@@ -1,0 +1,35 @@
+# A store built on a base that lives on another connection and schema.
+kind: Telo.Library
+metadata:
+  name: BaseStoreMismatch
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: SQLite.Connection
+metadata: { name: otherDb }
+file: ":memory:"
+---
+kind: SQLite.Schema
+metadata: { name: otherSchema }
+connection: !ref otherDb
+tables: [!ref people, !ref documents, !ref knowsTable]
+---
+kind: Layers.Store
+metadata: { name: elsewhere }
+connection: !ref otherDb
+schema: !ref otherSchema
+layer: elsewhere
+nodes: [!ref person]
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref appSchema
+layer: lost
+bases: [!ref elsewhere]
+nodes: [!ref person]

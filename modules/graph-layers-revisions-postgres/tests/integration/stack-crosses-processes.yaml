@@ -1,0 +1,363 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsPostgresStackCrossesProcesses
+  version: 1.0.0
+  description: |
+    A pinned stack changed by several processes over one PostgreSQL database,
+    each a child application with a connection pool of its own, where only the
+    database stands between them.
+
+    Two processes each pinning `top` to another layer outside any draft both
+    succeed, as two consecutive revisions, and the second holds both pins: a
+    pin move takes the layer's row like any published write. A draft that moved
+    a pin, published by one process while another writes the layer outside any
+    draft, ends one of the two ways the order allows — published, and the write
+    is the next revision; or the write came first and the publish is refused
+    GRAPH_DRAFT_STALE with the pin left in the draft — and never anything
+    between. And two processes giving two revisions the same label leave it on
+    exactly one: the other is refused GRAPH_REVISION_LABEL_EXISTS.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+include:
+  - ./__fixtures__/stack-processes/model.yaml
+imports:
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Layers: ../..
+  Graph: ../../../graph
+  GraphLayers: ../../../graph-layers
+  App: ../../../app
+  Run: ../../../run
+  Timer: ../../../timer
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref register
+  - !ref pinnerLeft
+  - !ref pinnerRight
+  - !ref twoPins
+  - !ref stageDraft
+  - !ref publisher
+  - !ref writer
+  - !ref publishOrWrite
+  - !ref labellerOne
+  - !ref labellerTwo
+  - !ref oneLabel
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Graph.FindNodes
+metadata: { name: notesFindPeople }
+store: !ref notes
+node: !ref person
+---
+kind: GraphLayers.ListRevisions
+metadata: { name: topRevisions }
+store: !ref top
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_revisions_stack_processes CASCADE
+---
+# Every layer is registered, and each layer to pin has a revision, before any
+# child starts: the children race on `top` rather than on a layer's first
+# write. A draft opened and discarded registers a layer and leaves nothing.
+kind: Run.Sequence
+metadata: { name: register }
+steps:
+  - name: left
+    invoke: { kind: Graph.CreateNode, store: !ref left, node: !ref person }
+    inputs: { key: l1, properties: { name: Left } }
+  - name: right
+    invoke: { kind: Graph.CreateNode, store: !ref right, node: !ref person }
+    inputs: { key: r1, properties: { name: Right } }
+  - name: extra
+    invoke: { kind: Graph.CreateNode, store: !ref extra, node: !ref person }
+    inputs: { key: e1, properties: { name: Extra } }
+  - name: top
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref top }
+    inputs: {}
+  - name: topDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref top }
+    inputs: { draft: !cel "steps.top.result.draft.id" }
+  - name: notes
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref notes }
+    inputs: {}
+  - name: notesDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref notes }
+    inputs: { draft: !cel "steps.notes.result.draft.id" }
+---
+kind: App.Instance
+metadata: { name: pinnerLeft }
+source: ./__fixtures__/stack-processes/pinner.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  name: pin-left
+  base: left
+---
+kind: Run.Loop
+metadata: { name: pinnerLeftExit }
+condition: !cel "resources.pinnerLeft.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: pinnerRight }
+source: ./__fixtures__/stack-processes/pinner.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  name: pin-right
+  base: right
+---
+kind: Run.Loop
+metadata: { name: pinnerRightExit }
+condition: !cel "resources.pinnerRight.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+# Both moves were applied, one after the other.
+kind: Run.Sequence
+metadata: { name: twoPins }
+steps:
+  - name: awaitLeft
+    invoke: !ref pinnerLeftExit
+  - name: awaitRight
+    invoke: !ref pinnerRightExit
+  - name: outcomes
+    invoke: !ref notesFindPeople
+    inputs: {}
+  - name: listed
+    invoke: !ref topRevisions
+    inputs: { order: ascending }
+  - name: bases
+    invoke: { kind: GraphLayers.ListBases, store: !ref top }
+    inputs: {}
+  - name: assertTwoConsecutiveRevisions
+    invoke: !ref check
+    inputs:
+      actual:
+        exits: !cel "[resources.pinnerLeft.status.exitCode, resources.pinnerRight.status.exitCode]"
+        outcomes: !cel "steps.outcomes.result.nodes.map(n, n.properties.name)"
+        numbers: !cel "steps.listed.result.revisions.map(r, r.number)"
+        pinsPerRevision: !cel "steps.listed.result.revisions.map(r, size(r.bases))"
+        pinned: !cel "sort(steps.bases.result.bases.map(b, b.layer))"
+        pinnedAt: !cel "steps.bases.result.bases.map(b, b.revision)"
+      expected:
+        exits: [0, 0]
+        outcomes: [pinned, pinned]
+        numbers: [1, 2]
+        pinsPerRevision: [1, 2]
+        pinned: [left, right]
+        pinnedAt: [1, 1]
+---
+# A draft of `top` that pins a third layer and states one person.
+kind: Run.Sequence
+metadata: { name: stageDraft }
+steps:
+  - name: open
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref top }
+    inputs: { message: pin-race }
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: pin
+          invoke: { kind: GraphLayers.PinBase, store: !ref top }
+          inputs: { bases: [{ layer: extra }] }
+        - name: create
+          invoke: { kind: Graph.CreateNode, store: !ref top, node: !ref person }
+          inputs: { key: staged, properties: { name: Staged } }
+---
+kind: App.Instance
+metadata: { name: publisher }
+source: ./__fixtures__/stack-processes/publisher.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  name: pin-race
+---
+kind: Run.Loop
+metadata: { name: publisherExit }
+condition: !cel "resources.publisher.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: writer }
+source: ./__fixtures__/stack-processes/writer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  name: outside
+---
+kind: Run.Loop
+metadata: { name: writerExit }
+condition: !cel "resources.writer.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+# Whichever reached the layer first, the history is one of the two the order
+# allows. The publish first: revision 3 holds the third pin and the write is
+# revision 4. The write first: it is revision 3, the publish was refused as
+# stale, and the pin is still only in the draft.
+kind: Run.Sequence
+metadata: { name: publishOrWrite }
+steps:
+  - name: awaitPublisher
+    invoke: !ref publisherExit
+  - name: awaitWriter
+    invoke: !ref writerExit
+  - name: outcomes
+    invoke: !ref notesFindPeople
+    inputs: {}
+  - name: outcome
+    value: !cel "steps.outcomes.result.nodes.filter(n, n.key == 'pin-race').map(n, string(n.properties.name))[0]"
+  - name: listed
+    invoke: !ref topRevisions
+    inputs: { order: ascending }
+  - name: bases
+    invoke: { kind: GraphLayers.ListBases, store: !ref top }
+    inputs: {}
+  - name: written
+    invoke: { kind: Graph.GetNode, store: !ref top, node: !ref person }
+    inputs: { key: outside }
+  - name: history
+    value: !cel >-
+      steps.outcome.result + ' ' +
+      steps.listed.result.revisions.map(r, string(r.number) + ':' + string(size(r.bases))).join(',') + ' ' +
+      sort(steps.bases.result.bases.map(b, b.layer)).join(',')
+  - name: assertOneOfTheTwoOrders
+    invoke: !ref check
+    inputs:
+      actual:
+        exits: !cel "[resources.publisher.status.exitCode, resources.writer.status.exitCode]"
+        written: !cel "steps.written.result.node.properties.name"
+        # Empty when the history is one of the two; else the history itself.
+        unexpected: !cel >-
+          steps.history.result in [
+            'published 1:1,2:2,3:3,4:3 extra,left,right',
+            'GRAPH_DRAFT_STALE 1:1,2:2,3:2 left,right'] ? '' : steps.history.result
+      expected: { exits: [0, 0], written: Written, unexpected: "" }
+---
+kind: App.Instance
+metadata: { name: labellerOne }
+source: ./__fixtures__/stack-processes/labeller.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  name: label-one
+  revision: 1
+---
+kind: Run.Loop
+metadata: { name: labellerOneExit }
+condition: !cel "resources.labellerOne.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: labellerTwo }
+source: ./__fixtures__/stack-processes/labeller.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  name: label-two
+  revision: 2
+---
+kind: Run.Loop
+metadata: { name: labellerTwoExit }
+condition: !cel "resources.labellerTwo.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+# One label names one revision: whichever asked second was refused.
+kind: Run.Sequence
+metadata: { name: oneLabel }
+steps:
+  - name: awaitOne
+    invoke: !ref labellerOneExit
+  - name: awaitTwo
+    invoke: !ref labellerTwoExit
+  - name: outcomes
+    invoke: !ref notesFindPeople
+    inputs: {}
+  - name: listed
+    invoke: !ref topRevisions
+    inputs: { order: ascending }
+  - name: assertExactlyOneRevisionCarriesTheLabel
+    invoke: !ref check
+    inputs:
+      actual:
+        exits: !cel "[resources.labellerOne.status.exitCode, resources.labellerTwo.status.exitCode]"
+        outcomes: !cel "sort(steps.outcomes.result.nodes.filter(n, n.key.startsWith('label-')).map(n, string(n.properties.name)))"
+        labelled: !cel "steps.listed.result.revisions.filter(r, has(r.label)).map(r, r.label)"
+        onOneOfTheTwo: !cel "steps.listed.result.revisions.filter(r, has(r.label)).all(r, r.number <= 2)"
+      expected:
+        exits: [0, 0]
+        outcomes: [GRAPH_REVISION_LABEL_EXISTS, labelled]
+        labelled: [release]
+        onOneOfTheTwo: true

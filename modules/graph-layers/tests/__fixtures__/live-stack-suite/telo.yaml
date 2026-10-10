@@ -1,0 +1,148 @@
+# What only a LIVE stack promises, once, for every strategy that reads its bases
+# as they are now: a change beneath is visible above on the very next read, with
+# nothing brought up to date in between. A strategy whose layers pin their bases
+# does not run this; what it promises instead is in `stacking-suite`.
+#
+# A run supplies two stores over the same types, `top`'s stack reaching `base`,
+# and starts empty. The keys are this suite's own (`v…`).
+kind: Telo.Library
+metadata:
+  name: LiveStackSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: the live-stack suite over two stores holding people who know
+    people.
+imports:
+  Graph: ../../../../graph
+  GraphLayers: ../../..
+  Run: ../../../../run
+  Assert: ../../../../assert
+resources:
+  base:
+    kind: GraphLayers.Store
+    description: Layer `base`.
+  top:
+    kind: GraphLayers.Store
+    description: Layer `top`, whose stack reaches `base`.
+  person:
+    kind: Graph.Node
+    description: People keyed by a text `id`, with a non-null text `name` and an integer `age`.
+  knows:
+    kind: Graph.Relationship
+    description: person → person, with an integer `since`.
+exports:
+  resources:
+    - liveBases
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Graph.CreateNode
+metadata: { name: baseCreatePerson }
+store: !ref base
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: topCreatePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: topGetPerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.CreateRelationship
+metadata: { name: topCreateKnows }
+store: !ref top
+relationship: !ref knows
+---
+kind: Graph.FindRelationships
+metadata: { name: topFindKnows }
+store: !ref top
+relationship: !ref knows
+---
+# Two single hops along `knows`.
+kind: Graph.Traverse
+metadata: { name: topFriendsOfFriends }
+store: !ref top
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+  - relationship: !ref knows
+---
+kind: Run.Sequence
+metadata: { name: liveBases }
+steps:
+  # A write to a base is visible above it on the next read.
+  - name: baseBob
+    invoke: !ref baseCreatePerson
+    inputs: { key: vb, properties: { name: Bob, age: 25 } }
+  - name: topGetBob
+    invoke: !ref topGetPerson
+    inputs: { key: vb }
+  - name: baseOlderBob
+    invoke: { kind: Graph.UpdateNode, store: !ref base, node: !ref person }
+    inputs: { key: vb, properties: { age: 26 } }
+  - name: topGetOlderBob
+    invoke: !ref topGetPerson
+    inputs: { key: vb }
+  - name: baseWriteShowsAboveAtOnce
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.topGetBob.result.node, steps.topGetOlderBob.result.node]"
+      expected: [{ key: vb, properties: { name: Bob, age: 25 }, origin: base }, { key: vb, properties: { name: Bob, age: 26 }, origin: base }]
+  # A relationship is in a view only while both its endpoints are, and a base is
+  # read as it is now: when `base` deletes a node `top` links to, the links
+  # leave `top`'s view with it — no listing returns them and no traversal passes
+  # through the node — and they are back when `base` states the node again.
+  - name: baseO2
+    invoke: !ref baseCreatePerson
+    inputs: { key: vo2, properties: { name: O2 } }
+  - name: baseO3
+    invoke: !ref baseCreatePerson
+    inputs: { key: vo3, properties: { name: O3 } }
+  - name: topO1
+    invoke: !ref topCreatePerson
+    inputs: { key: vo1, properties: { name: O1 } }
+  - name: topO1O2
+    invoke: !ref topCreateKnows
+    inputs: { source: vo1, target: vo2, properties: { since: 1 } }
+  - name: topO2O3
+    invoke: !ref topCreateKnows
+    inputs: { source: vo2, target: vo3, properties: { since: 2 } }
+  - name: baseDropsO2
+    invoke: { kind: Graph.DeleteNode, store: !ref base, node: !ref person }
+    inputs: { key: vo2 }
+  - name: fromO1WithoutO2
+    invoke: !ref topFindKnows
+    inputs: { source: vo1 }
+  - name: throughMissingO2
+    invoke: !ref topFriendsOfFriends
+    inputs: { key: vo1 }
+  - name: linkLeftWithItsEndpoint
+    invoke: !ref check
+    inputs:
+      actual:
+        links: !cel "steps.fromO1WithoutO2.result.relationships"
+        reached: !cel "steps.throughMissingO2.result.nodes"
+      expected: { links: [], reached: [] }
+  - name: baseO2Again
+    invoke: !ref baseCreatePerson
+    inputs: { key: vo2, properties: { name: O2 } }
+  - name: fromO1WithO2
+    invoke: !ref topFindKnows
+    inputs: { source: vo1 }
+  - name: throughO2
+    invoke: !ref topFriendsOfFriends
+    inputs: { key: vo1 }
+  - name: linkBackWithItsEndpoint
+    invoke: !ref check
+    inputs:
+      actual:
+        links: !cel "steps.fromO1WithO2.result.relationships"
+        reached: !cel "steps.throughO2.result.nodes.map(n, n.key)"
+      expected:
+        links: [{ source: vo1, target: vo2, properties: { since: 1 }, origin: top }]
+        reached: [vo3]

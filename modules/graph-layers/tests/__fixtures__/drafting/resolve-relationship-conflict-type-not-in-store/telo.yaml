@@ -1,0 +1,28 @@
+# A ResolveRelationshipConflict naming a relationship type its store does not list.
+kind: Telo.Library
+metadata:
+  name: ResolveRelationshipConflictTypeNotInStore
+include:
+  - ../../drafted-model.yaml
+imports:
+  GraphLayers: ../../../..
+  Layers: ../../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  # `bad` itself is not exported: a conflict kind needs a session on its store,
+  # which no importer could open around an exported one.
+  resources: [peopleOnly]
+---
+kind: Layers.Store
+metadata: { name: peopleOnly }
+connection: !ref db
+schema: !ref appSchema
+layer: lost
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref graphDrafts
+---
+kind: GraphLayers.ResolveRelationshipConflict
+metadata: { name: bad }
+store: !ref peopleOnly
+relationship: !ref knows

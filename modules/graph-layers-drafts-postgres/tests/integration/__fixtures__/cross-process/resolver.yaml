@@ -1,0 +1,79 @@
+# Runs the resolution loop over the open draft of `top` from its own process: it
+# lists the conflicts once, then decides each, taking `mine`. A conflict another
+# process decided first answers GRAPH_CONFLICT_NOT_FOUND, which it counts. Its
+# tallies are left as nodes in `base`.
+kind: Telo.Application
+metadata:
+  name: CrossProcessResolver
+  version: 1.0.0
+include:
+  - ./model.yaml
+imports:
+  Postgres: ../../../../../postgres
+  Layers: ../../../..
+  Graph: ../../../../../graph
+  GraphLayers: ../../../../../graph-layers
+  Run: ../../../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+  who: { env: RESOLVER_NAME, type: string }
+targets:
+  - !ref work
+---
+kind: Run.Sequence
+metadata: { name: work }
+steps:
+  - name: open
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref top }
+    inputs: {}
+  - name: session
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: listed
+          invoke: { kind: GraphLayers.NodeConflicts, store: !ref top, node: !ref person }
+          inputs: { limit: 100 }
+        - name: at
+          value: !cel "0"
+        - name: applied
+          value: !cel "0"
+        - name: missed
+          value: !cel "0"
+        - name: each
+          while: !cel "steps.at.result < size(steps.listed.result.conflicts)"
+          do:
+            - name: decide
+              try:
+                - name: resolve
+                  invoke: !ref resolvePerson
+                  inputs:
+                    key: !cel "steps.listed.result.conflicts[steps.at.result].key"
+                    take: mine
+                    token: !cel "steps.listed.result.conflicts[steps.at.result].token"
+                    resolvedBy: { type: process, id: !cel "variables.who" }
+                - name: applied
+                  value: !cel "steps.applied.result + 1"
+              catch:
+                # Any other failure drives the tally negative, which the parent refuses.
+                - name: missed
+                  value: !cel "error.code == 'GRAPH_CONFLICT_NOT_FOUND' ? steps.missed.result + 1 : steps.missed.result - 1000"
+            - name: at
+              value: !cel "steps.at.result + 1"
+  - name: tally
+    invoke: { kind: Graph.CreateNode, store: !ref base, node: !ref person }
+    inputs:
+      key: !cel "'tally-' + variables.who"
+      properties:
+        name: !cel "string(steps.session.result.applied.result) + '/' + string(steps.session.result.missed.result) + '/' + string(size(steps.session.result.listed.result.conflicts))"
+---
+kind: GraphLayers.ResolveNodeConflict
+metadata: { name: resolvePerson }
+store: !ref top
+node: !ref person

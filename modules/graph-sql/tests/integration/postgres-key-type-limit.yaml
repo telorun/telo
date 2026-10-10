@@ -1,0 +1,234 @@
+kind: Telo.Application
+metadata:
+  name: GraphSqlPostgresKeyTypeLimit
+  version: 1.0.0
+  description: |
+    The stated limit on PostgreSQL key types, pinned. A key or endpoint column
+    may be any type whose values the engine returns as the type its table
+    projects. `date` is not one today: the driver hands back a host date
+    where the table projects text, so reading one node is refused by the
+    operation's own output contract, and a listing that has a further page
+    is refused by the tail's encoding, which names the host date. `bigint`
+    and `numeric` are not either: the driver hands them back as text where
+    the table projects a number, so every operation returning such a key is
+    refused by its output contract. Each refusal is coded, and nothing is
+    returned with a key that would not address its own node.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Graph: ../../../graph
+  GraphSql: ../..
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref dayRefused
+  - !ref countRefused
+  - !ref priceRefused
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke: !ref write
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_sql_key_limit CASCADE
+---
+kind: Postgres.Table
+metadata: { name: dayTable }
+table: by_day
+columns:
+  id: { type: date, primaryKey: true }
+  note: { type: text }
+---
+kind: Postgres.Table
+metadata: { name: countTable }
+table: by_count
+columns:
+  id: { type: bigint, primaryKey: true }
+  note: { type: text }
+---
+kind: Postgres.Table
+metadata: { name: priceTable }
+table: by_price
+columns:
+  id: { type: numeric, primaryKey: true }
+  note: { type: text }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_sql_key_limit
+ledger: graph_sql_key_limit
+tables: [!ref dayTable, !ref countTable, !ref priceTable]
+---
+kind: GraphSql.Node
+metadata: { name: day }
+table: !ref dayTable
+key: id
+---
+kind: GraphSql.Node
+metadata: { name: count }
+table: !ref countTable
+key: id
+---
+kind: GraphSql.Node
+metadata: { name: price }
+table: !ref priceTable
+key: id
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref day, !ref count, !ref price]
+relationships: []
+---
+# Rows are written beside the store, since no operation returns a `date` key.
+kind: Run.Sequence
+metadata: { name: dayRefused }
+steps:
+  - name: one
+    invoke: !ref write
+    inputs:
+      sql: "INSERT INTO graph_sql_key_limit.by_day (id, note) VALUES ('2026-01-01', 'first')"
+  - name: get
+    try:
+      - name: getOne
+        invoke: { kind: Graph.GetNode, store: !ref kb, node: !ref day }
+        inputs: { key: "2026-01-01" }
+      - name: getUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "the node was returned" }
+    catch:
+      - name: getCode
+        value: !cel "error.code"
+  - name: two
+    invoke: !ref write
+    inputs:
+      sql: "INSERT INTO graph_sql_key_limit.by_day (id, note) VALUES ('2026-01-02', 'second')"
+  - name: find
+    try:
+      - name: findFirstPage
+        invoke: { kind: Graph.FindNodes, store: !ref kb, node: !ref day }
+        inputs: { limit: 1 }
+      - name: findUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "the page was returned" }
+    catch:
+      - name: findCode
+        value: !cel "error.code"
+  - name: assertBothRefusedByCode
+    invoke: !ref check
+    inputs:
+      actual:
+        getNode: !cel "steps.getCode.result"
+        findNodesAtAPageBoundary: !cel "steps.findCode.result"
+      expected:
+        getNode: ERR_OUTPUT_INVALID
+        findNodesAtAPageBoundary: ERR_TYPED_FRAME_UNENCODABLE
+---
+# Rows are written beside the store, since no operation returns a `bigint` key.
+kind: Run.Sequence
+metadata: { name: countRefused }
+steps:
+  - name: one
+    invoke: !ref write
+    inputs:
+      sql: "INSERT INTO graph_sql_key_limit.by_count (id, note) VALUES (5, 'first')"
+  - name: get
+    try:
+      - name: getOne
+        invoke: { kind: Graph.GetNode, store: !ref kb, node: !ref count }
+        inputs: { key: 5 }
+      - name: getUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "the node was returned" }
+    catch:
+      - name: getCode
+        value: !cel "error.code"
+  - name: two
+    invoke: !ref write
+    inputs:
+      sql: "INSERT INTO graph_sql_key_limit.by_count (id, note) VALUES (7, 'second')"
+  - name: find
+    try:
+      - name: findFirstPage
+        invoke: { kind: Graph.FindNodes, store: !ref kb, node: !ref count }
+        inputs: { limit: 1 }
+      - name: findUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "the page was returned" }
+    catch:
+      - name: findCode
+        value: !cel "error.code"
+  - name: assertBothRefusedByCode
+    invoke: !ref check
+    inputs:
+      actual:
+        getNode: !cel "steps.getCode.result"
+        findNodesAtAPageBoundary: !cel "steps.findCode.result"
+      expected:
+        getNode: ERR_OUTPUT_INVALID
+        findNodesAtAPageBoundary: ERR_OUTPUT_INVALID
+---
+# Rows are written beside the store, since no operation returns a `numeric` key.
+kind: Run.Sequence
+metadata: { name: priceRefused }
+steps:
+  - name: one
+    invoke: !ref write
+    inputs:
+      sql: "INSERT INTO graph_sql_key_limit.by_price (id, note) VALUES (1.5, 'first')"
+  - name: get
+    try:
+      - name: getOne
+        invoke: { kind: Graph.GetNode, store: !ref kb, node: !ref price }
+        inputs: { key: 1.5 }
+      - name: getUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "the node was returned" }
+    catch:
+      - name: getCode
+        value: !cel "error.code"
+  - name: two
+    invoke: !ref write
+    inputs:
+      sql: "INSERT INTO graph_sql_key_limit.by_price (id, note) VALUES (2.5, 'second')"
+  - name: find
+    try:
+      - name: findFirstPage
+        invoke: { kind: Graph.FindNodes, store: !ref kb, node: !ref price }
+        inputs: { limit: 1 }
+      - name: findUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "the page was returned" }
+    catch:
+      - name: findCode
+        value: !cel "error.code"
+  - name: assertBothRefusedByCode
+    invoke: !ref check
+    inputs:
+      actual:
+        getNode: !cel "steps.getCode.result"
+        findNodesAtAPageBoundary: !cel "steps.findCode.result"
+      expected:
+        getNode: ERR_OUTPUT_INVALID
+        findNodesAtAPageBoundary: ERR_OUTPUT_INVALID

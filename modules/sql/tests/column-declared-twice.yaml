@@ -1,0 +1,27 @@
+# One name under both `columns` and `internalColumns`, pinned both ways:
+# `telo check` refuses the declaring library, and a consumer whose entry-scoped
+# check is silent fails when the table is created, under the same code.
+kind: Telo.Application
+metadata:
+  name: ColumnDeclaredTwice
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+targets:
+  - !ref refusedAtCheck
+  - !ref refusedAtCreation
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCheck }
+source: ./__fixtures__/internal-columns/declared-twice/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "is also declared under 'columns'"
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCreation }
+source: ./__fixtures__/internal-columns/declared-twice-app.yaml
+expect:
+  errors: []
+  runFails: "SQL_COLUMN_DECLARED_TWICE"

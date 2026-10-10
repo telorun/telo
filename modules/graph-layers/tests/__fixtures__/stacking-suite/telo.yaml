@@ -1,0 +1,1699 @@
+# What only a PINNED stack promises, once, for every strategy and engine whose
+# layers are built on revisions of others: a layer is pinned to one or many
+# others at a revision number, a label or their head, in one move; a base
+# publishing again changes nothing above until a pin moves; a moved pin merges
+# what is clean and leaves the rest as the same five conflict classes a stale
+# draft gets, resolved the same way; a diamond is upgraded in one call; labels
+# are permanent; a cursor stays on the stack it began on; and a write that
+# changes nothing a layer states is no revision of it.
+#
+# A run supplies seven revisioned stores over the same types, none pinned to
+# anything, and runs the sequences in order, starting empty. The suite pins
+# them itself. Each sequence keeps to keys of its own prefix and leaves no
+# draft open; the stacks it leaves are stated where a later one relies on them.
+kind: Telo.Library
+metadata:
+  name: StackingGraphSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: the stacking suite over seven revisioned stores holding people
+    who know people.
+imports:
+  Graph: ../../../../graph
+  GraphLayers: ../../..
+  Run: ../../../../run
+  Assert: ../../../../assert
+resources:
+  base:
+    kind: GraphLayers.RevisionedStore
+    description: Layer `base`.
+  middle:
+    kind: GraphLayers.RevisionedStore
+    description: Layer `middle`.
+  side:
+    kind: GraphLayers.RevisionedStore
+    description: Layer `side`.
+  top:
+    kind: GraphLayers.RevisionedStore
+    description: Layer `top`.
+  left:
+    kind: GraphLayers.RevisionedStore
+    description: Layer `left`.
+  right:
+    kind: GraphLayers.RevisionedStore
+    description: Layer `right`.
+  apex:
+    kind: GraphLayers.RevisionedStore
+    description: Layer `apex`.
+  person:
+    kind: Graph.Node
+    description: People keyed by a text `id`, with a non-null text `name` and an integer `age`.
+  knows:
+    kind: Graph.Relationship
+    description: person → person, with an integer `since`.
+exports:
+  resources:
+    - pinning
+    - removals
+    - upgrade
+    - pinnedLinks
+    - cursors
+    - labels
+    - diamond
+    - rebasedPins
+    - equalWrites
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Graph.CreateNode
+metadata: { name: baseCreatePerson }
+store: !ref base
+node: !ref person
+---
+kind: Graph.UpdateNode
+metadata: { name: baseUpdatePerson }
+store: !ref base
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: middleCreatePerson }
+store: !ref middle
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: middleGetPerson }
+store: !ref middle
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: middleFindPeople }
+store: !ref middle
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: sideCreatePerson }
+store: !ref side
+node: !ref person
+---
+kind: Graph.UpdateNode
+metadata: { name: sideUpdatePerson }
+store: !ref side
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: sideDeletePerson }
+store: !ref side
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: topCreatePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.UpdateNode
+metadata: { name: topUpdatePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: topDeletePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: topGetPerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: topFindPeople }
+store: !ref top
+node: !ref person
+---
+kind: Graph.CreateRelationship
+metadata: { name: topCreateKnows }
+store: !ref top
+relationship: !ref knows
+---
+kind: Graph.FindRelationships
+metadata: { name: topFindKnows }
+store: !ref top
+relationship: !ref knows
+---
+# Two single hops along `knows`.
+kind: Graph.Traverse
+metadata: { name: topFriendsOfFriends }
+store: !ref top
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+  - relationship: !ref knows
+---
+kind: GraphLayers.PinBase
+metadata: { name: middlePin }
+store: !ref middle
+---
+kind: GraphLayers.PinBase
+metadata: { name: topPin }
+store: !ref top
+---
+kind: GraphLayers.UnpinBase
+metadata: { name: topUnpin }
+store: !ref top
+---
+kind: GraphLayers.ListBases
+metadata: { name: topBases }
+store: !ref top
+---
+kind: GraphLayers.ListRevisions
+metadata: { name: topRevisions }
+store: !ref top
+---
+kind: GraphLayers.ListRevisions
+metadata: { name: middleRevisions }
+store: !ref middle
+---
+kind: Graph.MergeNode
+metadata: { name: rightMergePerson }
+store: !ref right
+node: !ref person
+---
+kind: Graph.MergeRelationship
+metadata: { name: rightMergeKnows }
+store: !ref right
+relationship: !ref knows
+---
+kind: GraphLayers.ListRevisions
+metadata: { name: rightRevisions }
+store: !ref right
+---
+kind: GraphLayers.LabelRevision
+metadata: { name: baseLabel }
+store: !ref base
+---
+kind: GraphLayers.OpenDraft
+metadata: { name: topOpenDraft }
+store: !ref top
+---
+kind: GraphLayers.Publish
+metadata: { name: topPublish }
+store: !ref top
+---
+kind: GraphLayers.DiscardDraft
+metadata: { name: topDiscard }
+store: !ref top
+---
+kind: GraphLayers.RebaseDraft
+metadata: { name: topRebase }
+store: !ref top
+---
+# A layer is pinned to others at a revision number, a label, revision 0 or the
+# head; its stack is itself, then each pinned base in position order followed
+# by that base's own base list AT THE PINNED REVISION; `origin` names the layer
+# the winning statement belongs to. Nothing a base publishes afterwards shows
+# above until a pin moves, and a move that changes nothing makes no revision.
+#
+# Leaves: middle → [base]; top → [middle, side].
+kind: Run.Sequence
+metadata: { name: pinning }
+steps:
+  # A layer is registered by its first write; a draft opened and discarded is
+  # one that leaves nothing behind, and no revision.
+  - name: registerBase
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref base }
+    inputs: {}
+  - name: registerBaseDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref base }
+    inputs: { draft: !cel "steps.registerBase.result.draft.id" }
+  - name: nothingPinnedYet
+    invoke: !ref topBases
+    inputs: {}
+  # Revision 0 — a registered layer before its first revision — is a legal pin.
+  - name: pinAtZero
+    invoke: !ref middlePin
+    inputs: { bases: [{ layer: base, revision: 0 }] }
+  - name: pinnedBeforeTheFirstRevision
+    invoke: !ref check
+    inputs:
+      actual:
+        before: !cel "steps.nothingPinnedYet.result.bases"
+        pinned: !cel "steps.pinAtZero.result"
+      expected:
+        before: []
+        pinned: { bases: [{ layer: base, revision: 0, position: 0 }], merged: 0, conflicts: 0 }
+  - name: baseN1
+    invoke: !ref baseCreatePerson
+    inputs: { key: n1, properties: { name: One, age: 1 } }
+  - name: baseN2
+    invoke: !ref baseCreatePerson
+    inputs: { key: n2, properties: { name: Two, age: 2 } }
+  # A base publishing again changes nothing above.
+  - name: middleBeforeRepin
+    invoke: !ref middleFindPeople
+    inputs: {}
+  - name: pinByNumber
+    invoke: !ref middlePin
+    inputs: { bases: [{ layer: base, revision: 1 }] }
+  - name: middleAtOne
+    invoke: !ref middleFindPeople
+    inputs: {}
+  - name: labelTwo
+    invoke: !ref baseLabel
+    inputs: { revision: 2, label: v1 }
+  - name: pinByLabel
+    invoke: !ref middlePin
+    inputs: { bases: [{ layer: base, revision: v1 }] }
+  - name: middleAtLabel
+    invoke: !ref middleFindPeople
+    inputs: {}
+  - name: baseN3
+    invoke: !ref baseCreatePerson
+    inputs: { key: n3, properties: { name: Three, age: 3 } }
+  - name: middleBehindTheHead
+    invoke: !ref middleFindPeople
+    inputs: {}
+  - name: pinAtHead
+    invoke: !ref middlePin
+    inputs: { bases: [{ layer: base }] }
+  - name: middleAtHead
+    invoke: !ref middleFindPeople
+    inputs: {}
+  - name: pinnedByNumberLabelAndHead
+    invoke: !ref check
+    inputs:
+      actual:
+        beforeRepin: !cel "steps.middleBeforeRepin.result.nodes.map(n, n.key)"
+        atOne: !cel "steps.middleAtOne.result.nodes.map(n, [n.key, n.origin])"
+        byLabel: !cel "steps.pinByLabel.result.bases"
+        atLabel: !cel "steps.middleAtLabel.result.nodes.map(n, n.key)"
+        behind: !cel "steps.middleBehindTheHead.result.nodes.map(n, n.key)"
+        byHead: !cel "steps.pinAtHead.result.bases"
+        atHead: !cel "steps.middleAtHead.result.nodes.map(n, n.key)"
+      expected:
+        beforeRepin: []
+        atOne: [[n1, base]]
+        byLabel: [{ layer: base, revision: 2, label: v1, position: 0 }]
+        atLabel: [n1, n2]
+        behind: [n1, n2]
+        byHead: [{ layer: base, revision: 3, position: 0 }]
+        atHead: [n1, n2, n3]
+  # A move that changes nothing makes no revision.
+  - name: revisionsBefore
+    invoke: !ref middleRevisions
+    inputs: { limit: 1 }
+  - name: pinAtHeadAgain
+    invoke: !ref middlePin
+    inputs: { bases: [{ layer: base }] }
+  - name: revisionsAfter
+    invoke: !ref middleRevisions
+    inputs: { limit: 1 }
+  - name: nothingChangedMakesNoRevision
+    invoke: !ref check
+    inputs:
+      actual:
+        answer: !cel "steps.pinAtHeadAgain.result"
+        head: !cel "steps.revisionsAfter.result.revisions[0].number == steps.revisionsBefore.result.revisions[0].number"
+        bases: !cel "steps.revisionsAfter.result.revisions[0].bases"
+      expected:
+        answer: { bases: [{ layer: base, revision: 3, position: 0 }], merged: 0, conflicts: 0 }
+        head: true
+        bases: [{ layer: base, revision: 3, position: 0 }]
+  # Several pins are one move; a base's own base list is read at the pinned
+  # revision; the first statement in stack order wins.
+  - name: middleN2
+    invoke: { kind: Graph.MergeNode, store: !ref middle, node: !ref person }
+    inputs: { key: n2, properties: { name: Deux } }
+  - name: sideN1
+    invoke: !ref sideCreatePerson
+    inputs: { key: n1, properties: { name: Aside } }
+  - name: sideN4
+    invoke: !ref sideCreatePerson
+    inputs: { key: n4, properties: { name: Four } }
+  - name: pinTwo
+    invoke: !ref topPin
+    inputs: { bases: [{ layer: middle }, { layer: side }] }
+  - name: topAll
+    invoke: !ref topFindPeople
+    inputs: {}
+  - name: stackResolvesInOrder
+    invoke: !ref check
+    inputs:
+      actual:
+        bases: !cel "steps.pinTwo.result.bases.map(b, [b.layer, b.position])"
+        view: !cel "steps.topAll.result.nodes.map(n, [n.key, n.properties.name, n.origin])"
+      expected:
+        bases: [[middle, 0], [side, 1]]
+        view: [[n1, One, base], [n2, Deux, middle], [n3, Three, base], [n4, Four, side]]
+  # A position names a pin's place: `side` moved above `middle` wins for `n1`.
+  - name: sideFirst
+    invoke: !ref topPin
+    inputs: { bases: [{ layer: side, position: 0 }] }
+  - name: topN1SideFirst
+    invoke: !ref topGetPerson
+    inputs: { key: n1 }
+  - name: middleFirst
+    invoke: !ref topPin
+    inputs: { bases: [{ layer: middle, position: 0 }] }
+  - name: topN1MiddleFirst
+    invoke: !ref topGetPerson
+    inputs: { key: n1 }
+  - name: positionDecidesPrecedence
+    invoke: !ref check
+    inputs:
+      actual:
+        sideFirst: !cel "steps.sideFirst.result.bases.map(b, b.layer)"
+        n1SideFirst: !cel "steps.topN1SideFirst.result.node.origin"
+        middleFirst: !cel "steps.middleFirst.result.bases.map(b, b.layer)"
+        n1MiddleFirst: !cel "steps.topN1MiddleFirst.result.node.origin"
+      expected:
+        sideFirst: [side, middle]
+        n1SideFirst: side
+        middleFirst: [middle, side]
+        n1MiddleFirst: base
+  # Unpinning takes what that layer alone contributed out of the view.
+  - name: unpinSide
+    invoke: !ref topUnpin
+    inputs: { layer: side }
+  - name: topWithoutSide
+    invoke: !ref topFindPeople
+    inputs: {}
+  - name: pinSideAgain
+    invoke: !ref topPin
+    inputs: { bases: [{ layer: side }] }
+  - name: listed
+    invoke: !ref topBases
+    inputs: {}
+  - name: unpinnedAndPinnedAgain
+    invoke: !ref check
+    inputs:
+      actual:
+        unpinned: !cel "steps.unpinSide.result.bases.map(b, b.layer)"
+        without: !cel "steps.topWithoutSide.result.nodes.map(n, n.key)"
+        listed: !cel "steps.listed.result.bases.map(b, [b.layer, b.position])"
+      expected:
+        unpinned: [middle]
+        without: [n1, n2, n3]
+        listed: [[middle, 0], [side, 1]]
+  # What cannot be pinned, each refused with nothing changed.
+  - name: unknownLayer
+    try:
+      - name: unknownLayerAttempt
+        invoke: !ref topPin
+        inputs: { bases: [{ layer: nowhere }] }
+      - name: unknownLayerUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "unknownLayer did not fail" }
+    catch:
+      - name: unknownLayerCode
+        value: !cel "[error.code, error.data.layer]"
+  - name: unknownNumber
+    try:
+      - name: unknownNumberAttempt
+        invoke: !ref topPin
+        inputs: { bases: [{ layer: side, revision: 99 }] }
+      - name: unknownNumberUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "unknownNumber did not fail" }
+    catch:
+      - name: unknownNumberCode
+        value: !cel "[error.code, error.data.layer]"
+  - name: unknownLabel
+    try:
+      - name: unknownLabelAttempt
+        invoke: !ref topPin
+        inputs: { bases: [{ layer: side, revision: no-such-label }] }
+      - name: unknownLabelUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "unknownLabel did not fail" }
+    catch:
+      - name: unknownLabelCode
+        value: !cel "[error.code, error.data.revision]"
+  - name: ownLayer
+    try:
+      - name: ownLayerAttempt
+        invoke: !ref topPin
+        inputs: { bases: [{ layer: top }] }
+      - name: ownLayerUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "ownLayer did not fail" }
+    catch:
+      - name: ownLayerCode
+        value: !cel "error.code"
+  # `top` is built on `middle`, which is built on `base`: `base` on `top` is a cycle.
+  - name: ownLayerBeneath
+    try:
+      - name: ownLayerBeneathAttempt
+        invoke: { kind: GraphLayers.PinBase, store: !ref base }
+        inputs: { bases: [{ layer: top }] }
+      - name: ownLayerBeneathUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "ownLayerBeneath did not fail" }
+    catch:
+      - name: ownLayerBeneathCode
+        value: !cel "[error.code, error.data.layer]"
+  - name: namedTwice
+    try:
+      - name: namedTwiceAttempt
+        invoke: !ref topPin
+        inputs: { bases: [{ layer: side, revision: 1 }, { layer: side, revision: 2 }] }
+      - name: namedTwiceUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "namedTwice did not fail" }
+    catch:
+      - name: namedTwiceCode
+        value: !cel "[error.code, error.data.layer]"
+  - name: notPinned
+    try:
+      - name: notPinnedAttempt
+        invoke: !ref topUnpin
+        inputs: { layer: base }
+      - name: notPinnedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "notPinned did not fail" }
+    catch:
+      - name: notPinnedCode
+        value: !cel "[error.code, error.data.layer]"
+  - name: listedAfterRefusals
+    invoke: !ref topBases
+    inputs: {}
+  - name: refusedWithNothingChanged
+    invoke: !ref check
+    inputs:
+      actual:
+        unknownLayer: !cel "steps.unknownLayerCode.result"
+        unknownNumber: !cel "steps.unknownNumberCode.result"
+        unknownLabel: !cel "steps.unknownLabelCode.result"
+        ownLayer: !cel "steps.ownLayerCode.result"
+        ownLayerBeneath: !cel "steps.ownLayerBeneathCode.result"
+        namedTwice: !cel "steps.namedTwiceCode.result"
+        notPinned: !cel "steps.notPinnedCode.result"
+        unchanged: !cel "steps.listedAfterRefusals.result.bases == steps.listed.result.bases"
+      expected:
+        unknownLayer: [GRAPH_LAYER_NOT_FOUND, nowhere]
+        unknownNumber: [GRAPH_REVISION_NOT_FOUND, side]
+        unknownLabel: [GRAPH_REVISION_NOT_FOUND, no-such-label]
+        ownLayer: GRAPH_BASE_CYCLE
+        ownLayerBeneath: [GRAPH_BASE_CYCLE, top]
+        namedTwice: [GRAPH_BASE_REVISION_CONFLICT, side]
+        notPinned: [GRAPH_BASE_NOT_PINNED, base]
+        unchanged: true
+---
+# Deleting a key that resolves from beneath hides it: the layer's removal wins
+# over the bases beneath that layer, for every layer built on it. Retracting
+# the removal shows what lies beneath again.
+#
+# Relies on: middle → [base]; top → [middle, side].
+kind: Run.Sequence
+metadata: { name: removals }
+steps:
+  - name: baseR1
+    invoke: !ref baseCreatePerson
+    inputs: { key: r1, properties: { name: R1 } }
+  - name: baseR2
+    invoke: !ref baseCreatePerson
+    inputs: { key: r2, properties: { name: R2 } }
+  - name: sideR1
+    invoke: !ref sideCreatePerson
+    inputs: { key: r1, properties: { name: Aside } }
+  - name: middleTakesBase
+    invoke: !ref middlePin
+    inputs: { bases: [{ layer: base }] }
+  # `r1` resolves from beneath `middle`, so `middle` hides it; `r2` it restates
+  # first and then deletes — hidden too, not uncovered.
+  - name: middleHidesR1
+    invoke: { kind: Graph.DeleteNode, store: !ref middle, node: !ref person }
+    inputs: { key: r1 }
+  - name: middleRestatesR2
+    invoke: { kind: Graph.UpdateNode, store: !ref middle, node: !ref person }
+    inputs: { key: r2, properties: { name: Restated } }
+  - name: middleHidesR2
+    invoke: { kind: Graph.DeleteNode, store: !ref middle, node: !ref person }
+    inputs: { key: r2 }
+  - name: topTakesBoth
+    invoke: !ref topPin
+    inputs: { bases: [{ layer: middle }, { layer: side }] }
+  - name: topSees
+    invoke: !ref topFindPeople
+    inputs: {}
+  - name: baseStillHolds
+    invoke: { kind: Graph.FindNodes, store: !ref base, node: !ref person }
+    inputs: {}
+  # A removal in `middle` hides the key for `top` too — `side`, lower in the
+  # stack, states `r1` and does not show.
+  - name: removalHidesForEveryLayerAbove
+    invoke: !ref check
+    inputs:
+      actual:
+        hidden: !cel "steps.middleHidesR1.result.node"
+        restated: !cel "steps.middleHidesR2.result.node"
+        top: !cel "steps.topSees.result.nodes.filter(n, n.key.startsWith('r')).map(n, n.key)"
+        base: !cel "steps.baseStillHolds.result.nodes.filter(n, n.key.startsWith('r')).map(n, n.key)"
+      expected:
+        hidden: { key: r1, properties: { name: R1 }, origin: base }
+        restated: { key: r2, properties: { name: Restated }, origin: middle }
+        top: []
+        base: [r1, r2]
+  # A hidden key is absent, so it can be created again; the new statement
+  # replaces the removal.
+  - name: middleRecreatesR2
+    invoke: !ref middleCreatePerson
+    inputs: { key: r2, properties: { name: Reborn } }
+  # Retracting withdraws exactly the removal, and answers the value beneath.
+  - name: middleRetractsR1
+    invoke: { kind: GraphLayers.RetractNode, store: !ref middle, node: !ref person }
+    inputs: { key: r1 }
+  - name: middleRetractsAgain
+    try:
+      - name: middleRetractsAgainAttempt
+        invoke: { kind: GraphLayers.RetractNode, store: !ref middle, node: !ref person }
+        inputs: { key: r1 }
+      - name: middleRetractsAgainUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "middleRetractsAgain did not fail" }
+    catch:
+      - name: middleRetractsAgainCode
+        value: !cel "error.code"
+  - name: topTakesMiddle
+    invoke: !ref topPin
+    inputs: { bases: [{ layer: middle }] }
+  - name: topSeesAgain
+    invoke: !ref topFindPeople
+    inputs: {}
+  - name: retractionShowsWhatLiesBeneath
+    invoke: !ref check
+    inputs:
+      actual:
+        recreated: !cel "steps.middleRecreatesR2.result.node"
+        retracted: !cel "steps.middleRetractsR1.result"
+        again: !cel "steps.middleRetractsAgainCode.result"
+        top: !cel "steps.topSeesAgain.result.nodes.filter(n, n.key.startsWith('r')).map(n, [n.key, n.properties.name, n.origin])"
+      expected:
+        recreated: { key: r2, properties: { name: Reborn }, origin: middle }
+        retracted: { node: { key: r1, properties: { name: R1 }, origin: base } }
+        again: GRAPH_NODE_NOT_STATED
+        top: [[r1, R1, base], [r2, Reborn, middle]]
+---
+# A moved pin is an upgrade: what the layer states over a base is merged, per
+# property, with what that base changed, and what clashes is left in the same
+# five classes a stale draft gets — whether the layer's statement was only ever
+# published or is a row of the draft making the move. Outside a session a move
+# that would leave a conflict is refused and changes nothing; inside one the
+# conflicts are listed, decided and published.
+#
+# `top` overrides, hides and adds keys over `side`, half of them published (…1)
+# and half staged in the draft (…2); then `side` changes them all.
+#
+# Relies on: top → [middle, side]. Leaves the same.
+kind: Run.Sequence
+metadata: { name: upgrade }
+steps:
+  - name: sideSeed
+    invoke:
+      kind: Run.Sequence
+      steps:
+        - { name: a1, invoke: !ref sideCreatePerson, inputs: { key: ua1, properties: { name: A1, age: 1 } } }
+        - { name: a2, invoke: !ref sideCreatePerson, inputs: { key: ua2, properties: { name: A2, age: 1 } } }
+        - { name: b1, invoke: !ref sideCreatePerson, inputs: { key: ub1, properties: { name: B1, age: 1 } } }
+        - { name: b2, invoke: !ref sideCreatePerson, inputs: { key: ub2, properties: { name: B2, age: 1 } } }
+        - { name: c1, invoke: !ref sideCreatePerson, inputs: { key: uc1, properties: { name: C1, age: 1 } } }
+        - { name: c2, invoke: !ref sideCreatePerson, inputs: { key: uc2, properties: { name: C2, age: 1 } } }
+        - { name: d1, invoke: !ref sideCreatePerson, inputs: { key: ud1, properties: { name: D1, age: 1 } } }
+        - { name: d2, invoke: !ref sideCreatePerson, inputs: { key: ud2, properties: { name: D2, age: 1 } } }
+        - { name: f1, invoke: !ref sideCreatePerson, inputs: { key: uf1, properties: { name: F1 } } }
+        - { name: f2, invoke: !ref sideCreatePerson, inputs: { key: uf2, properties: { name: F2 } } }
+        - { name: g1, invoke: !ref sideCreatePerson, inputs: { key: ug1, properties: { name: G1, age: 1 } } }
+  - name: takeSeed
+    invoke: !ref topPin
+    inputs: { bases: [{ layer: side }] }
+  # What `top` had published before the upgrade.
+  - name: topPublished
+    invoke:
+      kind: Run.Sequence
+      steps:
+        - { name: a1, invoke: !ref topUpdatePerson, inputs: { key: ua1, properties: { age: 10 } } }
+        - { name: b1, invoke: !ref topUpdatePerson, inputs: { key: ub1, properties: { age: 10 } } }
+        - { name: c1, invoke: !ref topUpdatePerson, inputs: { key: uc1, properties: { age: 10 } } }
+        - { name: d1, invoke: !ref topDeletePerson, inputs: { key: ud1 } }
+        - { name: e1, invoke: !ref topCreatePerson, inputs: { key: ue1, properties: { name: Mine, age: 10 } } }
+        - { name: h1, invoke: !ref topCreatePerson, inputs: { key: uh1, properties: { name: H1 } } }
+        - { name: h1f1, invoke: !ref topCreateKnows, inputs: { source: uh1, target: uf1, properties: { since: 1 } } }
+        - { name: g1, invoke: !ref topUpdatePerson, inputs: { key: ug1, properties: { name: Same, age: 2 } } }
+  # What `top` stages in a draft before the upgrade.
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: { message: upgrade side }
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - { name: a2, invoke: !ref topUpdatePerson, inputs: { key: ua2, properties: { age: 20 } } }
+        - { name: b2, invoke: !ref topUpdatePerson, inputs: { key: ub2, properties: { age: 20 } } }
+        - { name: c2, invoke: !ref topUpdatePerson, inputs: { key: uc2, properties: { age: 20 } } }
+        - { name: d2, invoke: !ref topDeletePerson, inputs: { key: ud2 } }
+        - { name: e2, invoke: !ref topCreatePerson, inputs: { key: ue2, properties: { name: Mine, age: 20 } } }
+        - { name: h2, invoke: !ref topCreatePerson, inputs: { key: uh2, properties: { name: H2 } } }
+        - { name: h2f2, invoke: !ref topCreateKnows, inputs: { source: uh2, target: uf2, properties: { since: 2 } } }
+  # What `side` then publishes: another property of `a`, the same property of
+  # `b`, the removal of `c`, a change to `d`, a key `top` added on its own, the
+  # removal of a node `top` links to, and — for `g` — exactly what `top` states.
+  - name: sideMoves
+    invoke:
+      kind: Run.Sequence
+      steps:
+        - { name: a1, invoke: !ref sideUpdatePerson, inputs: { key: ua1, properties: { name: A1x } } }
+        - { name: a2, invoke: !ref sideUpdatePerson, inputs: { key: ua2, properties: { name: A2x } } }
+        - { name: b1, invoke: !ref sideUpdatePerson, inputs: { key: ub1, properties: { age: 2 } } }
+        - { name: b2, invoke: !ref sideUpdatePerson, inputs: { key: ub2, properties: { age: 2 } } }
+        - { name: c1, invoke: !ref sideDeletePerson, inputs: { key: uc1 } }
+        - { name: c2, invoke: !ref sideDeletePerson, inputs: { key: uc2 } }
+        - { name: d1, invoke: !ref sideUpdatePerson, inputs: { key: ud1, properties: { age: 2 } } }
+        - { name: d2, invoke: !ref sideUpdatePerson, inputs: { key: ud2, properties: { age: 2 } } }
+        - { name: e1, invoke: !ref sideCreatePerson, inputs: { key: ue1, properties: { name: Theirs, age: 2 } } }
+        - { name: e2, invoke: !ref sideCreatePerson, inputs: { key: ue2, properties: { name: Theirs, age: 2 } } }
+        - { name: f1, invoke: !ref sideDeletePerson, inputs: { key: uf1 } }
+        - { name: f2, invoke: !ref sideDeletePerson, inputs: { key: uf2 } }
+        - { name: g1, invoke: !ref sideUpdatePerson, inputs: { key: ug1, properties: { name: Same, age: 2 } } }
+  # A base publishing again changes nothing above.
+  - name: basesBefore
+    invoke: !ref topBases
+    inputs: {}
+  - name: headBefore
+    invoke: !ref topRevisions
+    inputs: { limit: 1 }
+  - name: viewBefore
+    invoke: !ref topFindPeople
+    inputs: {}
+  - name: linksBefore
+    invoke: !ref topFindKnows
+    inputs: { source: uh1 }
+  # Outside a session the move would leave conflicts: it is refused whole.
+  - name: outside
+    try:
+      - name: outsideAttempt
+        invoke: !ref topPin
+        inputs: { bases: [{ layer: side }] }
+      - name: outsideUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "outside did not fail" }
+    catch:
+      - name: outsideCode
+        value: !cel "error.code"
+  - name: basesAfter
+    invoke: !ref topBases
+    inputs: {}
+  - name: headAfter
+    invoke: !ref topRevisions
+    inputs: { limit: 1 }
+  - name: viewAfter
+    invoke: !ref topFindPeople
+    inputs: {}
+  - name: linksAfter
+    invoke: !ref topFindKnows
+    inputs: { source: uh1 }
+  - name: uncleanMoveOutsideASessionChangesNothing
+    invoke: !ref check
+    inputs:
+      actual:
+        code: !cel "steps.outsideCode.result"
+        bases: !cel "steps.basesAfter.result.bases == steps.basesBefore.result.bases"
+        head: !cel "steps.headAfter.result.revisions[0].number == steps.headBefore.result.revisions[0].number"
+        view: !cel "steps.viewAfter.result.nodes == steps.viewBefore.result.nodes"
+        stillBehind: !cel "steps.viewAfter.result.nodes.filter(n, n.key == 'ua1' || n.key == 'uc1').map(n, [n.key, n.properties.name, n.origin])"
+        links: !cel "steps.linksAfter.result.relationships.map(r, r.target)"
+        linksUnchanged: !cel "steps.linksAfter.result.relationships == steps.linksBefore.result.relationships"
+      expected:
+        code: GRAPH_DRAFT_CONFLICTED
+        bases: true
+        head: true
+        view: true
+        stillBehind: [[ua1, A1, top], [uc1, C1, top]]
+        links: [uf1]
+        linksUnchanged: true
+  # Inside the draft the move is made, and what clashes is listed.
+  - name: move
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: pin
+          invoke: !ref topPin
+          inputs: { bases: [{ layer: side }] }
+        - name: nodes
+          invoke: { kind: GraphLayers.NodeConflicts, store: !ref top, node: !ref person }
+          inputs: {}
+        - name: links
+          invoke: { kind: GraphLayers.RelationshipConflicts, store: !ref top, relationship: !ref knows }
+          inputs: {}
+        # What merged without asking, read in the draft.
+        - name: a1
+          invoke: !ref topGetPerson
+          inputs: { key: ua1 }
+        - name: a2
+          invoke: !ref topGetPerson
+          inputs: { key: ua2 }
+        - name: g1
+          invoke: !ref topGetPerson
+          inputs: { key: ug1 }
+  # `a` merged per property — the base's new name under the layer's own age —
+  # and `g`, now equal to what lies beneath, is no longer the layer's to state.
+  - name: cleanChangesMerged
+    invoke: !ref check
+    inputs:
+      actual:
+        merged: !cel "steps.move.result.pin.result.merged"
+        conflicts: !cel "steps.move.result.pin.result.conflicts"
+        a1: !cel "steps.move.result.a1.result.node"
+        a2: !cel "steps.move.result.a2.result.node"
+        g1: !cel "steps.move.result.g1.result.node"
+      expected:
+        merged: 3
+        conflicts: 10
+        a1: { key: ua1, properties: { name: A1x, age: 10 }, origin: top }
+        a2: { key: ua2, properties: { name: A2x, age: 20 }, origin: top }
+        g1: { key: ug1, properties: { name: Same, age: 2 }, origin: side }
+  # The five classes, each once from a statement `top` had only published (…1)
+  # and once from a row of the draft (…2).
+  - name: everyClassFromBothKinds
+    invoke: !ref check
+    inputs:
+      actual:
+        nodes: !cel "steps.move.result.nodes.result.conflicts.map(c, [c.key, c.class])"
+        changedBoth: !cel "steps.move.result.nodes.result.conflicts.filter(c, c.key == 'ub1').map(c, [c.properties, c.mine, c.theirs, c.base])"
+        links: !cel "steps.move.result.links.result.conflicts.map(c, [c.source, c.target, c.class])"
+      expected:
+        nodes:
+          - [ub1, changed-both]
+          - [ub2, changed-both]
+          - [uc1, changed-removed]
+          - [uc2, changed-removed]
+          - [ud1, removed-changed]
+          - [ud2, removed-changed]
+          - [ue1, added-both]
+          - [ue2, added-both]
+        changedBoth:
+          - - [age]
+            - { name: B1, age: 10 }
+            - { name: B1, age: 2 }
+            - { name: B1, age: 1 }
+        links:
+          - [uh1, uf1, endpoint-missing]
+          - [uh2, uf2, endpoint-missing]
+  - name: publishConflicted
+    try:
+      - name: publishConflictedAttempt
+        invoke: !ref topPublish
+        inputs: { draft: !cel "steps.open.result.draft.id" }
+      - name: publishConflictedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "publishConflicted did not fail" }
+    catch:
+      - name: publishConflictedCode
+        value: !cel "error.code"
+  # Decided as a stale draft's conflicts are: a side, a side with values set on
+  # top, an ordinary write, or — for a missing endpoint — stating the node.
+  - name: decide
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: b1
+          invoke: { kind: GraphLayers.ResolveNodeConflict, store: !ref top, node: !ref person }
+          inputs: { key: ub1, take: mine }
+        - name: b2
+          invoke: { kind: GraphLayers.ResolveNodeConflict, store: !ref top, node: !ref person }
+          inputs: { key: ub2, take: theirs }
+        - name: c1
+          invoke: { kind: GraphLayers.ResolveNodeConflict, store: !ref top, node: !ref person }
+          inputs: { key: uc1, take: theirs }
+        - name: c2
+          invoke: { kind: GraphLayers.ResolveNodeConflict, store: !ref top, node: !ref person }
+          inputs: { key: uc2, take: mine }
+        - name: d1
+          invoke: { kind: GraphLayers.ResolveNodeConflict, store: !ref top, node: !ref person }
+          inputs: { key: ud1, take: mine }
+        - name: d2
+          invoke: { kind: GraphLayers.ResolveNodeConflict, store: !ref top, node: !ref person }
+          inputs: { key: ud2, take: theirs }
+        - name: e1
+          invoke: { kind: GraphLayers.ResolveNodeConflict, store: !ref top, node: !ref person }
+          inputs: { key: ue1, take: theirs }
+        - name: e2
+          invoke: { kind: GraphLayers.ResolveNodeConflict, store: !ref top, node: !ref person }
+          inputs: { key: ue2, take: mine, set: { age: 22 } }
+        - name: mineOnMissingEndpoint
+          try:
+            - name: mineOnMissingEndpointAttempt
+              invoke: { kind: GraphLayers.ResolveRelationshipConflict, store: !ref top, relationship: !ref knows }
+              inputs: { source: uh1, target: uf1, take: mine }
+            - name: mineOnMissingEndpointUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "mineOnMissingEndpoint did not fail" }
+          catch:
+            - name: mineOnMissingEndpointCode
+              value: !cel "error.code"
+        - name: h1f1
+          invoke: { kind: GraphLayers.ResolveRelationshipConflict, store: !ref top, relationship: !ref knows }
+          inputs: { source: uh1, target: uf1, take: theirs }
+        # Stating the endpoint node clears the other.
+        - name: f2
+          invoke: !ref topCreatePerson
+          inputs: { key: uf2, properties: { name: Restored } }
+        - name: nodesLeft
+          invoke: { kind: GraphLayers.NodeConflicts, store: !ref top, node: !ref person }
+          inputs: {}
+        - name: linksLeft
+          invoke: { kind: GraphLayers.RelationshipConflicts, store: !ref top, relationship: !ref knows }
+          inputs: {}
+  - name: publish
+    invoke: !ref topPublish
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: viewPublished
+    invoke: !ref topFindPeople
+    inputs: {}
+  - name: linksPublished
+    invoke: !ref topFindKnows
+    inputs: {}
+  - name: basesPublished
+    invoke: !ref topBases
+    inputs: {}
+  - name: decidedAndPublished
+    invoke: !ref check
+    inputs:
+      actual:
+        refused: !cel "steps.publishConflictedCode.result"
+        invalid: !cel "steps.decide.result.mineOnMissingEndpointCode.result"
+        left: !cel "size(steps.decide.result.nodesLeft.result.conflicts) + size(steps.decide.result.linksLeft.result.conflicts)"
+        changed: !cel "steps.publish.result.changed"
+        pinnedAtTheHead: !cel "steps.basesPublished.result.bases == steps.move.result.pin.result.bases"
+        view: !cel "steps.viewPublished.result.nodes.filter(n, n.key.startsWith('u')).map(n, [n.key, n.properties.name, n.properties.?age.orValue(0), n.origin])"
+        links: !cel "steps.linksPublished.result.relationships.filter(r, r.source.startsWith('u')).map(r, [r.source, r.target])"
+      expected:
+        refused: GRAPH_DRAFT_CONFLICTED
+        invalid: GRAPH_RESOLUTION_INVALID
+        left: 0
+        changed: true
+        pinnedAtTheHead: true
+        view:
+          - [ua1, A1x, 10, top]
+          - [ua2, A2x, 20, top]
+          - [ub1, B1, 10, top]
+          - [ub2, B2, 2, side]
+          - [uc2, C2, 20, top]
+          - [ud2, D2, 2, side]
+          - [ue1, Theirs, 2, side]
+          - [ue2, Mine, 22, top]
+          - [uf2, Restored, 0, top]
+          - [ug1, Same, 2, side]
+          - [uh1, H1, 0, top]
+          - [uh2, H2, 0, top]
+        links: [[uh2, uf2]]
+  # A draft with no row of its own, re-pinned over a base that changed a
+  # property the layer overrides, lists that one conflict; and a draft that
+  # only moved a pin publishes a revision.
+  - name: sideAgain
+    invoke: !ref sideUpdatePerson
+    inputs: { key: ub1, properties: { age: 3 } }
+  - name: openEmpty
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: repin
+    inputs: { draft: !cel "steps.openEmpty.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: pin
+          invoke: !ref topPin
+          inputs: { bases: [{ layer: side }] }
+        - name: nodes
+          invoke: { kind: GraphLayers.NodeConflicts, store: !ref top, node: !ref person }
+          inputs: {}
+        - name: keepMine
+          invoke: { kind: GraphLayers.ResolveNodeConflict, store: !ref top, node: !ref person }
+          inputs: { key: ub1, take: mine, token: !cel "steps.nodes.result.conflicts[0].token" }
+  - name: publishEmpty
+    invoke: !ref topPublish
+    inputs: { draft: !cel "steps.openEmpty.result.draft.id" }
+  # Nothing beneath changed again, so this draft holds a pin move and no row.
+  - name: sideUntouched
+    invoke: !ref sideCreatePerson
+    inputs: { key: uz9, properties: { name: Unrelated } }
+  - name: openPinOnly
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: pinOnly
+    inputs: { draft: !cel "steps.openPinOnly.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: pin
+          invoke: !ref topPin
+          inputs: { bases: [{ layer: side }] }
+  - name: publishPinOnly
+    invoke: !ref topPublish
+    inputs: { draft: !cel "steps.openPinOnly.result.draft.id" }
+  - name: history
+    invoke: !ref topRevisions
+    inputs: { limit: 2 }
+  - name: emptyDraftListsOnePinOnlyDraftPublishes
+    invoke: !ref check
+    inputs:
+      actual:
+        listed: !cel "steps.repin.result.nodes.result.conflicts.map(c, [c.key, c.class, c.properties])"
+        counts: !cel "[steps.repin.result.pin.result.merged, steps.repin.result.pin.result.conflicts]"
+        pinOnly: !cel "[steps.pinOnly.result.pin.result.merged, steps.pinOnly.result.pin.result.conflicts]"
+        changed: !cel "steps.publishPinOnly.result.changed"
+        number: !cel "steps.publishPinOnly.result.revision.number == steps.publishEmpty.result.revision.number + 1"
+        latest: !cel "steps.history.result.revisions[0].number == steps.publishPinOnly.result.revision.number"
+        moved: !cel "steps.history.result.revisions[0].bases.filter(b, b.layer == 'side')[0].revision > steps.history.result.revisions[1].bases.filter(b, b.layer == 'side')[0].revision"
+      expected:
+        listed: [[ub1, changed-both, [age]]]
+        counts: [0, 1]
+        pinOnly: [0, 0]
+        changed: true
+        number: true
+        latest: true
+        moved: true
+---
+# A relationship is in a view only while both its endpoints are — and on a
+# pinned stack the view is the pins'. When a base deletes a node the layer links
+# to, nothing changes above; taking that revision would leave the layer stating
+# relationships whose endpoint does not resolve, so the move is refused outside
+# a session and lists them inside one; once the base states the node again the
+# move is clean.
+#
+# Relies on: top → [middle, side]. Leaves the same.
+kind: Run.Sequence
+metadata: { name: pinnedLinks }
+steps:
+  - name: sideO2
+    invoke: !ref sideCreatePerson
+    inputs: { key: o2, properties: { name: O2 } }
+  - name: sideO3
+    invoke: !ref sideCreatePerson
+    inputs: { key: o3, properties: { name: O3 } }
+  - name: take
+    invoke: !ref topPin
+    inputs: { bases: [{ layer: side }] }
+  - name: topO1
+    invoke: !ref topCreatePerson
+    inputs: { key: o1, properties: { name: O1 } }
+  - name: topO1O2
+    invoke: !ref topCreateKnows
+    inputs: { source: o1, target: o2, properties: { since: 1 } }
+  - name: topO2O3
+    invoke: !ref topCreateKnows
+    inputs: { source: o2, target: o3, properties: { since: 2 } }
+  # The base deletes the linked node and publishes: nothing changes above.
+  - name: sideDropsO2
+    invoke: !ref sideDeletePerson
+    inputs: { key: o2 }
+  - name: fromO1Pinned
+    invoke: !ref topFindKnows
+    inputs: { source: o1 }
+  - name: throughO2Pinned
+    invoke: !ref topFriendsOfFriends
+    inputs: { key: o1 }
+  # Re-pinning outside a session is refused, with every read unchanged.
+  - name: repinOutside
+    try:
+      - name: repinOutsideAttempt
+        invoke: !ref topPin
+        inputs: { bases: [{ layer: side }] }
+      - name: repinOutsideUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "repinOutside did not fail" }
+    catch:
+      - name: repinOutsideCode
+        value: !cel "error.code"
+  - name: fromO1Refused
+    invoke: !ref topFindKnows
+    inputs: { source: o1 }
+  - name: throughO2Refused
+    invoke: !ref topFriendsOfFriends
+    inputs: { key: o1 }
+  # In a session it lists both relationships.
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: repinInside
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: pin
+          invoke: !ref topPin
+          inputs: { bases: [{ layer: side }] }
+        - name: links
+          invoke: { kind: GraphLayers.RelationshipConflicts, store: !ref top, relationship: !ref knows }
+          inputs: {}
+        - name: fromO1
+          invoke: !ref topFindKnows
+          inputs: { source: o1 }
+  - name: drop
+    invoke: !ref topDiscard
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  # The base states the node again: the move is clean and the links are back.
+  - name: sideO2Again
+    invoke: !ref sideCreatePerson
+    inputs: { key: o2, properties: { name: O2 } }
+  - name: repinClean
+    invoke: !ref topPin
+    inputs: { bases: [{ layer: side }] }
+  - name: fromO1Clean
+    invoke: !ref topFindKnows
+    inputs: { source: o1 }
+  - name: throughO2Clean
+    invoke: !ref topFriendsOfFriends
+    inputs: { key: o1 }
+  - name: linksFollowThePin
+    invoke: !ref check
+    inputs:
+      actual:
+        pinned:
+          links: !cel "steps.fromO1Pinned.result.relationships.map(r, r.target)"
+          reached: !cel "steps.throughO2Pinned.result.nodes.map(n, n.key)"
+        refused:
+          code: !cel "steps.repinOutsideCode.result"
+          links: !cel "steps.fromO1Refused.result.relationships.map(r, r.target)"
+          reached: !cel "steps.throughO2Refused.result.nodes.map(n, n.key)"
+        inside:
+          conflicts: !cel "steps.repinInside.result.pin.result.conflicts"
+          listed: !cel "steps.repinInside.result.links.result.conflicts.map(c, [c.source, c.target, c.class])"
+          links: !cel "steps.repinInside.result.fromO1.result.relationships"
+        clean:
+          answer: !cel "[steps.repinClean.result.merged, steps.repinClean.result.conflicts]"
+          links: !cel "steps.fromO1Clean.result.relationships"
+          reached: !cel "steps.throughO2Clean.result.nodes.map(n, n.key)"
+      expected:
+        pinned: { links: [o2], reached: [o3] }
+        refused: { code: GRAPH_DRAFT_CONFLICTED, links: [o2], reached: [o3] }
+        inside:
+          conflicts: 2
+          listed: [[o1, o2, endpoint-missing], [o2, o3, endpoint-missing]]
+          links: []
+        clean:
+          answer: [0, 0]
+          links: [{ source: o1, target: o2, properties: { since: 1 }, origin: top }]
+          reached: [o3]
+---
+# A cursor stays on the stack its first page was read on. Inside a session that
+# stack is the draft's, so a pin the draft moves ends its cursors — and a move
+# that changes nothing does not. Outside one it is a published revision's, which
+# never changes: no publish ends a cursor, a pin moved by another caller
+# included. Labelling ends none.
+#
+# Relies on: top → [middle, side]. Leaves the same.
+kind: Run.Sequence
+metadata: { name: cursors }
+steps:
+  - name: sideC1
+    invoke: !ref sideCreatePerson
+    inputs: { key: c1, properties: { name: C1, age: 5151 } }
+  - name: sideC2
+    invoke: !ref sideCreatePerson
+    inputs: { key: c2, properties: { name: C2, age: 5151 } }
+  - name: sideC4
+    invoke: !ref sideCreatePerson
+    inputs: { key: c4, properties: { name: C4, age: 5151 } }
+  - name: take
+    invoke: !ref topPin
+    inputs: { bases: [{ layer: side }] }
+  # Outside a session: the first page pins the layer's revision and its stack.
+  - name: firstPage
+    invoke: !ref topFindPeople
+    inputs: { where: { eq: { age: 5151 } }, limit: 1 }
+  - name: sideC3
+    invoke: !ref sideCreatePerson
+    inputs: { key: c3, properties: { name: C3, age: 5151 } }
+  - name: anotherCallerMovesThePin
+    invoke: !ref topPin
+    inputs: { bases: [{ layer: side }] }
+  - name: headRevisions
+    invoke: !ref topRevisions
+    inputs: { limit: 1 }
+  - name: labelHead
+    invoke: { kind: GraphLayers.LabelRevision, store: !ref top }
+    inputs: { revision: !cel "steps.headRevisions.result.revisions[0].number", label: cursors-1 }
+  - name: secondPage
+    invoke: !ref topFindPeople
+    inputs: { where: { eq: { age: 5151 } }, limit: 1, cursor: !cel "steps.firstPage.result.next" }
+  - name: thirdPage
+    invoke: !ref topFindPeople
+    inputs: { where: { eq: { age: 5151 } }, limit: 1, cursor: !cel "steps.secondPage.result.next" }
+  - name: freshListing
+    invoke: !ref topFindPeople
+    inputs: { where: { eq: { age: 5151 } } }
+  - name: headCursorStaysOnItsStack
+    invoke: !ref check
+    inputs:
+      actual:
+        paged: !cel "(steps.firstPage.result.nodes + steps.secondPage.result.nodes + steps.thirdPage.result.nodes).map(n, n.key)"
+        ended: !cel "has(steps.thirdPage.result.next)"
+        fresh: !cel "steps.freshListing.result.nodes.map(n, n.key)"
+      expected:
+        paged: [c1, c2, c4]
+        ended: false
+        fresh: [c1, c2, c3, c4]
+  # Inside a session.
+  - name: sideC5
+    invoke: !ref sideCreatePerson
+    inputs: { key: c5, properties: { name: C5, age: 5151 } }
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: session
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: first
+          invoke: !ref topFindPeople
+          inputs: { limit: 1 }
+        # A move that changes nothing: `middle` is already pinned at its head.
+        - name: pinNothing
+          invoke: !ref topPin
+          inputs: { bases: [{ layer: middle }] }
+        - name: label
+          invoke: { kind: GraphLayers.LabelRevision, store: !ref top }
+          inputs: { revision: !cel "inputs.draft != '' ? 1 : 1", label: cursors-2 }
+        - name: stillReads
+          invoke: !ref topFindPeople
+          inputs: { limit: 1, cursor: !cel "steps.first.result.next" }
+        - name: pin
+          invoke: !ref topPin
+          inputs: { bases: [{ layer: side }] }
+        - name: afterPin
+          try:
+            - name: afterPinAttempt
+              invoke: !ref topFindPeople
+              inputs: { limit: 1, cursor: !cel "steps.first.result.next" }
+            - name: afterPinUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "afterPin did not fail" }
+          catch:
+            - name: afterPinCode
+              value: !cel "error.code"
+        - name: again
+          invoke: !ref topFindPeople
+          inputs: { limit: 1 }
+        - name: unpin
+          invoke: !ref topUnpin
+          inputs: { layer: side }
+        - name: afterUnpin
+          try:
+            - name: afterUnpinAttempt
+              invoke: !ref topFindPeople
+              inputs: { limit: 1, cursor: !cel "steps.again.result.next" }
+            - name: afterUnpinUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "afterUnpin did not fail" }
+          catch:
+            - name: afterUnpinCode
+              value: !cel "error.code"
+  - name: drop
+    invoke: !ref topDiscard
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: sessionCursorEndsWhenItsDraftMovesAPin
+    invoke: !ref check
+    inputs:
+      actual:
+        nothing: !cel "[steps.session.result.pinNothing.result.merged, steps.session.result.pinNothing.result.conflicts]"
+        stillReads: !cel "size(steps.session.result.stillReads.result.nodes)"
+        afterPin: !cel "steps.session.result.afterPinCode.result"
+        afterUnpin: !cel "steps.session.result.afterUnpinCode.result"
+      expected:
+        nothing: [0, 0]
+        stillReads: 1
+        afterPin: GRAPH_CURSOR_INVALID
+        afterUnpin: GRAPH_CURSOR_INVALID
+---
+# A label is a permanent second name of one published revision: never moved,
+# never removed, at most one per revision. A layer's history — its own, or any
+# other layer's in the same tables — lists each revision with its label and the
+# revisions it is pinned to.
+#
+# Relies on: middle → [base]; `base` revision 2 labelled `v1` by `pinning`.
+kind: Run.Sequence
+metadata: { name: labels }
+steps:
+  - name: again
+    invoke: !ref baseLabel
+    inputs: { revision: 2, label: v1 }
+  - name: labelOnAnother
+    try:
+      - name: labelOnAnotherAttempt
+        invoke: !ref baseLabel
+        inputs: { revision: 1, label: v1 }
+      - name: labelOnAnotherUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "labelOnAnother did not fail" }
+    catch:
+      - name: labelOnAnotherCode
+        value: !cel "[error.code, error.data.label, string(error.data.revision)]"
+  - name: secondLabel
+    try:
+      - name: secondLabelAttempt
+        invoke: !ref baseLabel
+        inputs: { revision: 2, label: v1.1+build-7 }
+      - name: secondLabelUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "secondLabel did not fail" }
+    catch:
+      - name: secondLabelCode
+        value: !cel "[error.code, string(error.data.revision), error.data.label]"
+  - name: noSuchRevision
+    try:
+      - name: noSuchRevisionAttempt
+        invoke: !ref baseLabel
+        inputs: { revision: 9999, label: v9 }
+      - name: noSuchRevisionUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "noSuchRevision did not fail" }
+    catch:
+      - name: noSuchRevisionCode
+        value: !cel "error.code"
+  # A label of digits only would read as a revision number: the input refuses it.
+  - name: digitsOnly
+    try:
+      - name: digitsOnlyAttempt
+        invoke: !ref baseLabel
+        inputs: { revision: 1, label: !cel "string(2024)" }
+      - name: digitsOnlyUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "digitsOnly did not fail" }
+    catch:
+      - name: digitsOnlyCode
+        value: !cel "error.code"
+  - name: other
+    invoke: !ref baseLabel
+    inputs: { revision: 1, label: v0.9_rc-1 }
+  # Any layer's history is listed through a store over the same tables.
+  - name: baseHistory
+    invoke: !ref topRevisions
+    inputs: { layer: base, order: ascending, limit: 3 }
+  - name: middleHistory
+    invoke: !ref topRevisions
+    inputs: { layer: middle, order: ascending, limit: 2 }
+  - name: unregistered
+    try:
+      - name: unregisteredAttempt
+        invoke: !ref topRevisions
+        inputs: { layer: nowhere }
+      - name: unregisteredUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "unregistered did not fail" }
+    catch:
+      - name: unregisteredCode
+        value: !cel "[error.code, error.data.layer]"
+  # A cursor is bound to the layer it lists.
+  - name: anotherLayersCursor
+    try:
+      - name: anotherLayersCursorAttempt
+        invoke: !ref topRevisions
+        inputs: { layer: middle, order: ascending, limit: 3, cursor: !cel "steps.baseHistory.result.next" }
+      - name: anotherLayersCursorUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "anotherLayersCursor did not fail" }
+    catch:
+      - name: anotherLayersCursorCode
+        value: !cel "error.code"
+  - name: labelsArePermanent
+    invoke: !ref check
+    inputs:
+      actual:
+        again: !cel "steps.again.result"
+        onAnother: !cel "steps.labelOnAnotherCode.result"
+        second: !cel "steps.secondLabelCode.result"
+        noSuchRevision: !cel "steps.noSuchRevisionCode.result"
+        digitsOnly: !cel "steps.digitsOnlyCode.result"
+        other: !cel "steps.other.result"
+        base: !cel "steps.baseHistory.result.revisions.map(r, [r.number, r.?label.orValue(''), r.bases])"
+        middle: !cel "steps.middleHistory.result.revisions.map(r, [r.number, r.bases])"
+        unregistered: !cel "steps.unregisteredCode.result"
+        anotherLayersCursor: !cel "steps.anotherLayersCursorCode.result"
+      expected:
+        again: { revision: { number: 2, label: v1 } }
+        onAnother: [GRAPH_REVISION_LABEL_EXISTS, v1, "2"]
+        second: [GRAPH_REVISION_LABELLED, "2", v1]
+        noSuchRevision: GRAPH_REVISION_NOT_FOUND
+        digitsOnly: ERR_INPUT_INVALID
+        other: { revision: { number: 1, label: v0.9_rc-1 } }
+        base: [[1, v0.9_rc-1, []], [2, v1, []], [3, "", []]]
+        middle:
+          - [1, [{ layer: base, revision: 0, position: 0 }]]
+          - [2, [{ layer: base, revision: 1, label: v0.9_rc-1, position: 0 }]]
+        unregistered: [GRAPH_LAYER_NOT_FOUND, nowhere]
+        anotherLayersCursor: GRAPH_CURSOR_INVALID
+---
+# Two layers built on one base, and a third built on both. Once the base has
+# moved and both sides have taken it, the third cannot take one side alone —
+# its stack would hold the base at two revisions — and takes both in one call.
+#
+# Leaves: left → [base]; right → [base]; apex → [left, right].
+kind: Run.Sequence
+metadata: { name: diamond }
+steps:
+  - name: baseG1
+    invoke: !ref baseCreatePerson
+    inputs: { key: g1, properties: { name: G1, age: 6161 } }
+  - name: leftOnBase
+    invoke: { kind: GraphLayers.PinBase, store: !ref left }
+    inputs: { bases: [{ layer: base }] }
+  - name: rightOnBase
+    invoke: { kind: GraphLayers.PinBase, store: !ref right }
+    inputs: { bases: [{ layer: base }] }
+  - name: apexOnBoth
+    invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+    inputs: { bases: [{ layer: left }, { layer: right }] }
+  - name: baseG2
+    invoke: !ref baseCreatePerson
+    inputs: { key: g2, properties: { name: G2, age: 6161 } }
+  - name: leftTakes
+    invoke: { kind: GraphLayers.PinBase, store: !ref left }
+    inputs: { bases: [{ layer: base }] }
+  - name: rightTakes
+    invoke: { kind: GraphLayers.PinBase, store: !ref right }
+    inputs: { bases: [{ layer: base }] }
+  - name: leftAlone
+    try:
+      - name: leftAloneAttempt
+        invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+        inputs: { bases: [{ layer: left }] }
+      - name: leftAloneUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "leftAlone did not fail" }
+    catch:
+      - name: leftAloneCode
+        value: !cel "[error.code, error.data.layer, size(error.data.revisions)]"
+  - name: rightAlone
+    try:
+      - name: rightAloneAttempt
+        invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+        inputs: { bases: [{ layer: right }] }
+      - name: rightAloneUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "rightAlone did not fail" }
+    catch:
+      - name: rightAloneCode
+        value: !cel "[error.code, error.data.layer, size(error.data.revisions)]"
+  - name: apexBehind
+    invoke: { kind: Graph.FindNodes, store: !ref apex, node: !ref person }
+    inputs: { where: { eq: { age: 6161 } } }
+  - name: bothAtOnce
+    invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+    inputs: { bases: [{ layer: left }, { layer: right }] }
+  - name: apexUpgraded
+    invoke: { kind: Graph.FindNodes, store: !ref apex, node: !ref person }
+    inputs: { where: { eq: { age: 6161 } } }
+  - name: diamondUpgradesInOneCall
+    invoke: !ref check
+    inputs:
+      actual:
+        leftAlone: !cel "steps.leftAloneCode.result"
+        rightAlone: !cel "steps.rightAloneCode.result"
+        behind: !cel "steps.apexBehind.result.nodes.map(n, n.key)"
+        both: !cel "steps.bothAtOnce.result.bases.map(b, b.layer)"
+        upgraded: !cel "steps.apexUpgraded.result.nodes.map(n, [n.key, n.origin])"
+      expected:
+        leftAlone: [GRAPH_BASE_REVISION_CONFLICT, base, 2]
+        rightAlone: [GRAPH_BASE_REVISION_CONFLICT, base, 2]
+        behind: [g1]
+        both: [left, right]
+        upgraded: [[g1, base], [g2, base]]
+---
+# A draft that moved pins of its own is rebased over a sibling's pin move by
+# re-applying the draft's moves onto the layer's pins as they now are: both
+# stand when they touch different bases, the draft's stands when they touch
+# one, and a result that is no legal stack is refused with nothing changed.
+#
+# Relies on: left → [base]; right → [base]; apex → [left, right]; middle → [base].
+kind: Run.Sequence
+metadata: { name: rebasedPins }
+steps:
+  # Different bases: the draft moves `left`, a sibling adds `side`.
+  - name: sideP1
+    invoke: !ref sideCreatePerson
+    inputs: { key: p1, properties: { name: P1, age: 7171 } }
+  - name: leftP2
+    invoke: { kind: Graph.CreateNode, store: !ref left, node: !ref person }
+    inputs: { key: p2, properties: { name: P2, age: 7171 } }
+  - name: openDifferent
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref apex }
+    inputs: {}
+  - name: draftMovesLeft
+    inputs: { draft: !cel "steps.openDifferent.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref apex
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: pin
+          invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+          inputs: { bases: [{ layer: left }] }
+  - name: siblingAddsSide
+    invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+    inputs: { bases: [{ layer: side }] }
+  - name: publishStale
+    try:
+      - name: publishStaleAttempt
+        invoke: { kind: GraphLayers.Publish, store: !ref apex }
+        inputs: { draft: !cel "steps.openDifferent.result.draft.id" }
+      - name: publishStaleUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "publishStale did not fail" }
+    catch:
+      - name: publishStaleCode
+        value: !cel "error.code"
+  - name: rebaseDifferent
+    invoke: { kind: GraphLayers.RebaseDraft, store: !ref apex }
+    inputs: { draft: !cel "steps.openDifferent.result.draft.id" }
+  - name: publishDifferent
+    invoke: { kind: GraphLayers.Publish, store: !ref apex }
+    inputs: { draft: !cel "steps.openDifferent.result.draft.id" }
+  - name: basesDifferent
+    invoke: { kind: GraphLayers.ListBases, store: !ref apex }
+    inputs: {}
+  - name: apexBoth
+    invoke: { kind: Graph.FindNodes, store: !ref apex, node: !ref person }
+    inputs: { where: { eq: { age: 7171 } } }
+  - name: movesOnDifferentBasesBothStand
+    invoke: !ref check
+    inputs:
+      actual:
+        stale: !cel "steps.publishStaleCode.result"
+        rebase: !cel "[steps.rebaseDifferent.result.merged, steps.rebaseDifferent.result.conflicts]"
+        changed: !cel "steps.publishDifferent.result.changed"
+        bases: !cel "steps.basesDifferent.result.bases.map(b, b.layer)"
+        leftMoved: !cel "steps.basesDifferent.result.bases[0].revision == steps.draftMovesLeft.result.pin.result.bases[0].revision"
+        view: !cel "steps.apexBoth.result.nodes.map(n, [n.key, n.origin])"
+      expected:
+        stale: GRAPH_DRAFT_STALE
+        rebase: [0, 0]
+        changed: true
+        bases: [left, right, side]
+        leftMoved: true
+        view: [[p1, side], [p2, left]]
+  # One base: the draft pins `side` where it was, a sibling moves it to its head.
+  - name: sideBefore
+    invoke: { kind: GraphLayers.ListBases, store: !ref apex }
+    inputs: {}
+  - name: sideP3
+    invoke: !ref sideCreatePerson
+    inputs: { key: p3, properties: { name: P3, age: 7272 } }
+  - name: sideP4
+    invoke: !ref sideCreatePerson
+    inputs: { key: p4, properties: { name: P4, age: 7272 } }
+  - name: openSame
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref apex }
+    inputs: {}
+  - name: draftPinsSideOneOn
+    inputs:
+      draft: !cel "steps.openSame.result.draft.id"
+      revision: !cel "steps.sideBefore.result.bases[2].revision + 1"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref apex
+      inputs: { draft: !cel "inputs.draft", revision: !cel "inputs.revision" }
+      steps:
+        - name: pin
+          invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+          inputs: { bases: [{ layer: side, revision: !cel "inputs.revision" }] }
+  - name: siblingMovesSideToHead
+    invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+    inputs: { bases: [{ layer: side }] }
+  - name: rebaseSame
+    invoke: { kind: GraphLayers.RebaseDraft, store: !ref apex }
+    inputs: { draft: !cel "steps.openSame.result.draft.id" }
+  - name: publishSame
+    invoke: { kind: GraphLayers.Publish, store: !ref apex }
+    inputs: { draft: !cel "steps.openSame.result.draft.id" }
+  - name: basesSame
+    invoke: { kind: GraphLayers.ListBases, store: !ref apex }
+    inputs: {}
+  - name: apexSide
+    invoke: { kind: Graph.FindNodes, store: !ref apex, node: !ref person }
+    inputs: { where: { eq: { age: 7272 } } }
+  - name: movesOnOneBaseTheDraftsStands
+    invoke: !ref check
+    inputs:
+      actual:
+        sibling: !cel "steps.siblingMovesSideToHead.result.bases[2].revision == steps.sideBefore.result.bases[2].revision + 2"
+        draftsStands: !cel "steps.basesSame.result.bases[2].revision == steps.sideBefore.result.bases[2].revision + 1"
+        view: !cel "steps.apexSide.result.nodes.map(n, n.key)"
+      expected:
+        sibling: true
+        draftsStands: true
+        view: [p3]
+  # No legal stack: the draft takes both sides of the diamond onto the moved
+  # base, while a sibling adds `middle`, built on the base as it was before.
+  - name: unpinSide
+    invoke: { kind: GraphLayers.UnpinBase, store: !ref apex }
+    inputs: { layer: side }
+  - name: middleOnBase
+    invoke: !ref middlePin
+    inputs: { bases: [{ layer: base }] }
+  - name: baseP5
+    invoke: !ref baseCreatePerson
+    inputs: { key: p5, properties: { name: P5 } }
+  - name: leftTakes
+    invoke: { kind: GraphLayers.PinBase, store: !ref left }
+    inputs: { bases: [{ layer: base }] }
+  - name: rightTakes
+    invoke: { kind: GraphLayers.PinBase, store: !ref right }
+    inputs: { bases: [{ layer: base }] }
+  - name: openIllegal
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref apex }
+    inputs: {}
+  - name: draftTakesBothSides
+    inputs: { draft: !cel "steps.openIllegal.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref apex
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: pin
+          invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+          inputs: { bases: [{ layer: left }, { layer: right }] }
+  - name: siblingAddsMiddle
+    invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+    inputs: { bases: [{ layer: middle }] }
+  - name: rebaseIllegal
+    try:
+      - name: rebaseIllegalAttempt
+        invoke: { kind: GraphLayers.RebaseDraft, store: !ref apex }
+        inputs: { draft: !cel "steps.openIllegal.result.draft.id" }
+      - name: rebaseIllegalUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "rebaseIllegal did not fail" }
+    catch:
+      - name: rebaseIllegalCode
+        value: !cel "[error.code, error.data.layer]"
+  - name: draftsAfterRefusal
+    invoke: { kind: GraphLayers.ListDrafts, store: !ref apex }
+    inputs: {}
+  # The caller pins again in the session — `middle`, once it has taken the base
+  # too — and rebases.
+  - name: middleTakes
+    invoke: !ref middlePin
+    inputs: { bases: [{ layer: base }] }
+  - name: draftTakesMiddle
+    inputs: { draft: !cel "steps.openIllegal.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref apex
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: before
+          invoke: { kind: GraphLayers.ListBases, store: !ref apex }
+          inputs: {}
+        - name: pin
+          invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+          inputs: { bases: [{ layer: middle }] }
+  - name: rebaseLegal
+    invoke: { kind: GraphLayers.RebaseDraft, store: !ref apex }
+    inputs: { draft: !cel "steps.openIllegal.result.draft.id" }
+  - name: publishLegal
+    invoke: { kind: GraphLayers.Publish, store: !ref apex }
+    inputs: { draft: !cel "steps.openIllegal.result.draft.id" }
+  - name: apexP5
+    invoke: { kind: Graph.GetNode, store: !ref apex, node: !ref person }
+    inputs: { key: p5 }
+  - name: illegalResultRefusedWithNothingChanged
+    invoke: !ref check
+    inputs:
+      actual:
+        refused: !cel "steps.rebaseIllegalCode.result"
+        stillStale: !cel "steps.draftsAfterRefusal.result.drafts.filter(d, d.id == steps.openIllegal.result.draft.id).map(d, [d.stale, d.parentRevision == steps.openIllegal.result.draft.parentRevision])"
+        draftsPinsKept: !cel "steps.draftTakesMiddle.result.before.result.bases == steps.draftTakesBothSides.result.pin.result.bases"
+        rebased: !cel "[steps.rebaseLegal.result.merged, steps.rebaseLegal.result.conflicts]"
+        changed: !cel "steps.publishLegal.result.changed"
+        p5: !cel "steps.apexP5.result.node.origin"
+      expected:
+        refused: [GRAPH_BASE_REVISION_CONFLICT, base]
+        stillStale: [[true, true]]
+        draftsPinsKept: true
+        rebased: [0, 0]
+        changed: true
+        p5: base
+---
+# A revision is a change to what a layer states. A merge whose values all equal
+# the layer's own statement writes nothing — no revision, so the change feed
+# stays as it was — for a node and for a relationship. A key the layer does not
+# itself state is another matter: writing it, even with the very values a base
+# states, makes the layer its origin, which is one revision; the same write
+# again then changes nothing.
+#
+# Relies on: right → [base], with `p5` stated by `base` alone.
+kind: Run.Sequence
+metadata: { name: equalWrites }
+steps:
+  - name: own
+    invoke: !ref rightMergePerson
+    inputs: { key: q1, properties: { name: Own, age: 1 } }
+  - name: other
+    invoke: !ref rightMergePerson
+    inputs: { key: q2, properties: { name: Other } }
+  - name: link
+    invoke: !ref rightMergeKnows
+    inputs: { source: q1, target: q2, properties: { since: 2020 } }
+  - name: before
+    invoke: !ref rightRevisions
+    inputs: { order: descending, limit: 3 }
+  - name: sameNode
+    invoke: !ref rightMergePerson
+    inputs: { key: q1, properties: { name: Own, age: 1 } }
+  - name: sameLink
+    invoke: !ref rightMergeKnows
+    inputs: { source: q1, target: q2, properties: { since: 2020 } }
+  - name: afterEqualMerges
+    invoke: !ref rightRevisions
+    inputs: { order: descending, limit: 3 }
+  - name: fromBeneath
+    invoke: { kind: Graph.GetNode, store: !ref right, node: !ref person }
+    inputs: { key: p5 }
+  - name: copyUp
+    invoke: !ref rightMergePerson
+    inputs: { key: p5, properties: { name: P5 } }
+  - name: afterCopyUp
+    invoke: !ref rightRevisions
+    inputs: { order: descending, limit: 3 }
+  - name: copyUpAgain
+    invoke: !ref rightMergePerson
+    inputs: { key: p5, properties: { name: P5 } }
+  - name: afterRepeat
+    invoke: !ref rightRevisions
+    inputs: { order: descending, limit: 3 }
+  - name: onlyAChangeIsARevision
+    invoke: !ref check
+    inputs:
+      actual:
+        equalMergesReturned: !cel "[steps.sameNode.result.node.properties, steps.sameLink.result.relationship.properties]"
+        feedAfterEqualMerges: !cel "steps.afterEqualMerges.result.revisions == steps.before.result.revisions"
+        originBefore: !cel "steps.fromBeneath.result.node.origin"
+        copiedUp: !cel "[steps.copyUp.result.node.origin, steps.copyUp.result.node.properties]"
+        revisionsAddedByCopyUp: !cel "steps.afterCopyUp.result.revisions[0].number - steps.before.result.revisions[0].number"
+        feedBeforeIsTheRestOfIt: !cel "steps.afterCopyUp.result.revisions[1].number == steps.before.result.revisions[0].number"
+        repeated: !cel "[steps.copyUpAgain.result.node.origin, steps.copyUpAgain.result.node.properties]"
+        feedAfterRepeat: !cel "steps.afterRepeat.result.revisions == steps.afterCopyUp.result.revisions"
+      expected:
+        equalMergesReturned: [{ name: Own, age: 1 }, { since: 2020 }]
+        feedAfterEqualMerges: true
+        originBefore: base
+        copiedUp: [right, { name: P5 }]
+        revisionsAddedByCopyUp: 1
+        feedBeforeIsTheRestOfIt: true
+        repeated: [right, { name: P5 }]
+        feedAfterRepeat: true

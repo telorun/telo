@@ -1,0 +1,78 @@
+kind: Telo.Application
+metadata:
+  name: GraphSqlInternalColumns
+  version: 1.0.0
+  description: |
+    A node type over a table with internal columns is made of the table's row
+    contract alone: the internal column is stored — here from its default — and
+    is no property of the node any operation returns.
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  GraphSql: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+  name: { type: text }
+internalColumns:
+  layer: { type: text, nullable: false, default: base }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people]
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref person]
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: create
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref person }
+    inputs: { key: a, properties: { name: Alice } }
+  - name: assertCreated
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.create.result"
+      expected: { node: { key: a, properties: { name: Alice } } }
+  - name: find
+    invoke: { kind: Graph.FindNodes, store: !ref kb, node: !ref person }
+  - name: assertFound
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.find.result"
+      expected: { nodes: [{ key: a, properties: { name: Alice } }] }
+  - name: stored
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: "SELECT id, layer FROM people"
+  - name: assertStored
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.stored.result.rows"
+      expected: [{ id: a, layer: base }]

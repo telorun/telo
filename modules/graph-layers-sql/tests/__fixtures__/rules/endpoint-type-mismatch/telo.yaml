@@ -1,0 +1,30 @@
+# A relationship table whose source column is not the type of the source node's key.
+# Refused at creation only: a rule reads one reference deep, and this needs the
+# endpoint node's table.
+kind: Telo.Library
+metadata:
+  name: EndpointTypeMismatch
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.RelationshipTable
+metadata: { name: ratingsTable }
+table: ratings
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: integer, nullable: false }
+  target: { type: text, nullable: false }
+---
+kind: Layers.Relationship
+metadata: { name: bad }
+table: !ref ratingsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target

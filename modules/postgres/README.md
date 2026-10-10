@@ -75,6 +75,36 @@ a `telo check` error rather than a database one. Every other column that omits
 `nullable` admits NULL, and `nullable: true` on a primary-key or identity column
 is refused.
 
+### Internal columns
+
+`internalColumns:` is a second column map, written exactly as `columns:` is. The
+schema pass creates, compares, tombstones and reclaims an internal column like any
+other, and an index or a foreign key may name one — but it is outside the table's
+row contract: a repository operation or any other consumer typed from the table
+does not see it, and a seed row cannot set it.
+
+```yaml
+kind: Postgres.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug: { type: text, nullable: false }
+  title: { type: text }
+internalColumns:
+  layer: { type: text, nullable: false, default: base }
+  retired_at: { type: timestamptz }
+indexes:
+  documents_layer_slug: { columns: [layer, slug], unique: true, where: "retired_at IS NULL" }
+```
+
+`columns` is the table's row contract and is always written. A table with no row contract writes `columns: {}` and declares every column under `internalColumns`. A table needs at least one column across the two maps.
+
+A name may appear in only one of the two maps (`SQL_COLUMN_DECLARED_TWICE`), and an
+internal column's `renamedFrom` may name neither itself
+(`SQL_INTERNAL_COLUMN_RENAME_FROM_SELF`) nor a column either map still declares
+(`SQL_INTERNAL_COLUMN_RENAME_SOURCE_STILL_DECLARED`). See
+[Internal columns](../sql/docs/declarative-schema.md#internal-columns--outside-the-row-contract).
+
 ### Domains, predicates and reference data
 
 A column's `type:` takes a storage class or a `!ref` to a declared enum, and the
@@ -114,6 +144,31 @@ tables: [ !ref messages ]
 A consumer that reads or writes a listed table addresses it through the schema
 instance, which names it in this namespace — `"app"."messages"` above — so the
 connection's `search_path` never decides which table a statement reaches.
+
+The schema instance also renders the current instant for a consumer that
+records database time: `clock_timestamp()` — the moment the statement runs, not
+the transaction's start — in the storage form of a `timestamptz` column.
+
+### What a column's values arrive as
+
+A table's row projection says what type each column's values are, and a typed
+consumer of the table — a graph node's key and properties, any contract derived
+from the projection — holds a returned value to it. For most storage classes
+the driver returns exactly that type. Six do not today:
+
+| Storage class | Projected as | The driver returns |
+| --- | --- | --- |
+| `date`, `timestamp`, `timestamptz` | text | a host date |
+| `interval` | text | a host object |
+| `bigint`, `numeric` | a number | text, since a double cannot hold either exactly |
+
+A consumer typed from the projection refuses such a value with its own contract
+error rather than pass on something its contract does not describe, so a column
+of one of these classes cannot be a graph node's key or a relationship's
+endpoint, and a typed read of one as a property fails the same way. `Sql.Query`
+and `Sql.Command` return rows as the driver hands them over and are unaffected;
+cast in the statement (`::int`, `::text`) where a typed consumer needs the
+projected type.
 
 `extensions:` provisions what a storage class needs before any column can use it
 — `citext` is unavailable until its extension exists — instead of smuggling

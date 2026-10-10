@@ -1,0 +1,53 @@
+# The layered graph every process of the concurrent-writes test shares: people in
+# a `base` layer and a `top` layer over it, in one PostgreSQL namespace. A
+# partial: the parent that includes it runs the schema; a child only names it.
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+  age: { type: integer }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_layers_write_race
+ledger: graph_layers_write_race
+tables: [!ref people]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Store
+metadata: { name: base }
+connection: !ref db
+schema: !ref appSchema
+layer: base
+nodes: [!ref person]
+---
+kind: Layers.Store
+metadata: { name: top }
+connection: !ref db
+schema: !ref appSchema
+layer: top
+bases: [!ref base]
+nodes: [!ref person]
+---
+# This strategy reads the layers beneath as they are now: nothing to bring up
+# to date.
+kind: Run.Sequence
+metadata: { name: refreshStacks }
+steps:
+  - name: live
+    value: true

@@ -94,6 +94,7 @@ columns:
   since: { type: integer }
 indexes:
   graph_suite_knows_pair: { columns: [source, target], unique: true }
+  graph_suite_knows_by_target: { columns: [target, source] }
 foreignKeys:
   graph_suite_knows_source:
     columns: [source]
@@ -113,6 +114,7 @@ columns:
   role: { type: text }
 indexes:
   graph_suite_authored_pair: { columns: [author, document], unique: true }
+  graph_suite_authored_by_document: { columns: [document, author] }
 foreignKeys:
   graph_suite_authored_author:
     columns: [author]

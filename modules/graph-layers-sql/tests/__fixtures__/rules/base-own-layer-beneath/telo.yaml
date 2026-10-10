@@ -1,0 +1,21 @@
+# A store whose own layer is named by a base of its base: `team` is built on
+# `shared`, and `bad` — a second store naming layer `shared` — is built on
+# `team`. No rule sees it, since a rule reads one reference deep.
+kind: Telo.Library
+metadata:
+  name: BaseOwnLayerBeneath
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref appSchema
+layer: shared
+bases: [!ref team]
+nodes: [!ref person]

@@ -17,6 +17,14 @@
  * the inline's kind, resolved in the holder's module scope. The bindings are
  * written by the accessor reader's one writer, which the kernel delivers with.
  *
+ * A declaration another module exported is read with its references in the form
+ * a local declaration's have. The pass that rewrites a `!ref` into `{ kind,
+ * name, alias? }` does not walk a dependency's declaration — its names belong to
+ * its own module — so a rule reading a member of such a reference met the tag
+ * and failed to evaluate, where the identical rule over a local declaration ran.
+ * Each reference a forwarded declaration writes is resolved here in the scope of
+ * the module that declared it; one that resolves to nothing is left as written.
+ *
  * One instance per analysis: a view is built once per declaration, and a
  * declaration with nothing to replace is returned by identity.
  *
@@ -26,6 +34,8 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { isTaggedSentinel } from "@telorun/templating";
 import { accessorFields, readsOnlySelf, withAccessorBindings } from "./accessor-binding.js";
 import type { CelEvalSites } from "./eval-paths.js";
+import { isForwardedDeclaration } from "./forwarded-declaration.js";
+import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
 import { isInlineResource } from "./reference-field-map.js";
 
 /** How one declaration is read: the eval sites of its kind, resolved in the
@@ -43,6 +53,13 @@ export type DeclarationEvalSites = (
   module: unknown,
 ) => DeclarationReading | undefined;
 
+/** What a reference written in `module` names, in the form a resolved local
+ *  reference takes — or nothing, when that module's scope holds no such name. */
+export type ForwardedReference = (
+  target: RefSentinelTarget,
+  module: string,
+) => { kind: string; name: string; alias?: string } | undefined;
+
 function isPlainContainer(value: unknown): value is Record<string, unknown> | unknown[] {
   if (!value || typeof value !== "object" || isTaggedSentinel(value)) return false;
   if (Array.isArray(value)) return true;
@@ -53,14 +70,29 @@ function isPlainContainer(value: unknown): value is Record<string, unknown> | un
 export class RuleDeclarationViews {
   private readonly views = new WeakMap<object, unknown>();
 
-  constructor(private readonly sitesOf: DeclarationEvalSites) {}
+  constructor(
+    private readonly sitesOf: DeclarationEvalSites,
+    /** Resolves a reference a dependency's declaration writes. Without it such a
+     *  reference is read as written. */
+    private readonly forwardedReference?: ForwardedReference,
+  ) {}
 
   of<T extends ResourceManifest>(declaration: T): T {
     const module = (declaration.metadata as { module?: unknown } | undefined)?.module;
-    return this.view(declaration as unknown as Record<string, unknown>, module) as unknown as T;
+    return this.view(
+      declaration as unknown as Record<string, unknown>,
+      module,
+      isForwardedDeclaration(declaration),
+    ) as unknown as T;
   }
 
-  private view(declaration: Record<string, unknown>, module: unknown): Record<string, unknown> {
+  /** `forwarded`: the declaration is a dependency's, or an inline declaration
+   *  beneath one. */
+  private view(
+    declaration: Record<string, unknown>,
+    module: unknown,
+    forwarded: boolean,
+  ): Record<string, unknown> {
     const cached = this.views.get(declaration);
     if (cached) return cached as Record<string, unknown>;
     const reading =
@@ -75,13 +107,20 @@ export class RuleDeclarationViews {
     );
     const written = new Set(fields.map((field) => field.path));
     // Inline declarations beneath it, each through its own kind.
+    const resolve =
+      forwarded && typeof module === "string" ? this.forwardedReference : undefined;
     const walk = (node: unknown, path: string): unknown => {
-      if (written.has(path) || !isPlainContainer(node)) return node;
+      if (written.has(path)) return node;
+      if (resolve) {
+        const target = refSentinelTarget(node);
+        if (target) return resolve(target, module as string) ?? node;
+      }
+      if (!isPlainContainer(node)) return node;
       if (Array.isArray(node)) {
         const items = node.map((item, index) => walk(item, `${path}[${index}]`));
         return items.some((item, index) => item !== node[index]) ? items : node;
       }
-      if (path !== "" && isInlineResource(node)) return this.view(node, module);
+      if (path !== "" && isInlineResource(node)) return this.view(node, module, forwarded);
       let copy: Record<string, unknown> | undefined;
       for (const [key, child] of Object.entries(node)) {
         const read = walk(child, path === "" ? key : `${path}.${key}`);

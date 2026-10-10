@@ -1,0 +1,40 @@
+# A table with no row contract: a repository over it has no column it can name.
+kind: Telo.Application
+metadata:
+  name: RepositoryNamesColumn
+  version: 1.0.0
+imports:
+  SQLite: ../../../
+  SqlRepository: ../../../../sql-repository
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref write
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: control }
+table: control
+columns: {}
+internalColumns:
+  name: { type: text, primaryKey: true }
+  head_revision: { type: integer, nullable: false, default: 0 }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref control]
+---
+kind: Run.Sequence
+metadata: { name: write }
+steps:
+  - name: insert
+    invoke:
+      kind: SqlRepository.Create
+      connection: !ref db
+      table: !ref control
+    inputs:
+      data: { head_revision: 3 }

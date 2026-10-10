@@ -22,8 +22,14 @@ export function resolveTable(
   return ctx.resolveRef(value, isDeclaredTable, () => `${describe}: 'table'`, "Sql.Table");
 }
 
+/** The columns of the table's row contract — what a node or relationship type
+ *  is made of. An internal column is the table's own and never part of a type. */
+export function rowColumns(table: DeclaredTable): DeclaredColumn[] {
+  return table.columns.filter((column) => !table.internalColumns.includes(column.name));
+}
+
 export function columnOf(table: DeclaredTable, name: string): DeclaredColumn | undefined {
-  return table.columns.find((column) => column.name === name);
+  return rowColumns(table).find((column) => column.name === name);
 }
 
 /** A creation-time twin of a `telo check` rule: same code, stated first. */

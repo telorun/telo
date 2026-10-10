@@ -1,0 +1,32 @@
+# Two layered node tables renamed from the same table.
+kind: Telo.Library
+metadata:
+  name: TableRenameSourceClaimedTwice
+imports:
+  Layers: ../../../..
+  SQLite: ../../../../../sqlite
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+renamedFrom: folk
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.NodeTable
+metadata: { name: persons }
+table: persons
+key: id
+renamedFrom: folk
+columns:
+  id: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref persons]

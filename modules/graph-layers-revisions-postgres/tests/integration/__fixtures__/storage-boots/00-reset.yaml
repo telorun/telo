@@ -1,0 +1,111 @@
+kind: Telo.Application
+metadata:
+  name: RevisionedStorageBoots
+  version: 1.0.0
+  description: |
+    Boot 0 — start from no namespace, so the ledger read later is this run's own.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../../postgres
+  Graph: ../../../../../graph
+  GraphLayers: ../../../../../graph-layers
+  Layers: ../../../..
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text }
+indexes:
+  people_by_name: { columns: [name] }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_revisions_boots
+ledger: graph_revisions_boots
+version: !cel "module.version"
+tables: [!ref people, !ref knowsTable, !ref graphLayers, !ref graphChangesets, !ref graphChangesetBases]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+nodes: [!ref person]
+relationships: [!ref knows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: drop
+    invoke: !ref write
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_revisions_boots CASCADE

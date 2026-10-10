@@ -1,0 +1,33 @@
+# A revisioned store listing a node type whose table its schema does not list.
+kind: Telo.Library
+metadata:
+  name: RevisionedTableNotInSchema
+include:
+  - ../../revisioned-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-revisions-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.NodeTable
+metadata: { name: notes }
+table: notes
+key: id
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.Node
+metadata: { name: note }
+table: !ref notes
+key: id
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref appSchema
+layer: lost
+nodes: [!ref person, !ref note]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases

@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata:
+  name: SqliteInternalColumnsAcrossBoots
+  version: 1.0.0
+  description: |
+    An internal column across real boots, each fixture its own process against
+    one database file: created with the table, re-read unchanged by a restart,
+    then dropped from the declaration and held like any declared column — while
+    a column moved from one map to the other is no change at all. A table with
+    no row contract (`columns: {}`) rides along: created, and unchanged by a
+    restart.
+
+    Ordering is the point, so the fixtures are numbered and the suite runs one at
+    a time.
+imports:
+  Test: ../../test
+targets:
+  - !ref boots
+---
+kind: Test.Suite
+metadata: { name: boots }
+include:
+  - "__fixtures__/internal-column-boots/*.yaml"
+exclude: []
+concurrency: 1

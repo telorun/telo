@@ -1,0 +1,17 @@
+# An internal column renamed from a column the row contract still declares.
+kind: Telo.Library
+metadata:
+  name: InternalRenameSourceDeclared
+imports:
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [documents]
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug: { type: text, primaryKey: true }
+  stage: { type: text }
+internalColumns:
+  layer: { type: text, renamedFrom: stage }

@@ -8,6 +8,7 @@ A [`graph`](../graph/README.md) backend over ordinary SQL tables, on SQLite and 
 - **The database does the integrity** — deleting a node removes its relationships through the tables' `onDelete: cascade` keys, and at most one relationship per ordered pair is the unique index, so nothing is enforced twice or in the wrong place.
 - **One statement per operation** — `INSERT … ON CONFLICT … RETURNING`, `UPDATE` / `DELETE … RETURNING`, and a traversal as one `WITH RECURSIVE` query, in the SQL both engines speak. Identifiers come from declarations and are quoted by the connection's dialect; every value is bound.
 - **Joins your transactions** — inside a `Sql.Transaction` on the store's connection, every write is part of it.
+- **Pages by seeking** — a listing resumes at its cursor through the key's index, so a page costs its `limit`, not its position; [which indexes that needs](docs/sql-graph.md#indexes-the-paging-promises-rest-on) is two lines on a relationship table.
 
 ## Kinds
 
@@ -46,6 +47,7 @@ columns:
   since: { type: integer }
 indexes:
   knowsPair: { columns: [source, target], unique: true }
+  knowsByTarget: { columns: [target, source] }
 foreignKeys:
   knowsSource: { columns: [source], references: { table: !ref people, columns: [id] }, onDelete: cascade }
   knowsTarget: { columns: [target], references: { table: !ref people, columns: [id] }, onDelete: cascade }

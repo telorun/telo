@@ -1,0 +1,49 @@
+# What the revisioned kinds refuse. `graph-layers` has no strategy of its own, so
+# the fixtures instantiate stores through the SQLite strategy modules.
+#
+# `ListRevisions`, `PinBase`, `UnpinBase`, `ListBases` and `LabelRevision` name
+# the revisioned level of the contract in their `store` slot: over a store that
+# keeps only current statements, or one that keeps drafts and a single
+# published state, each is a kind mismatch.
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsStaticRefusals
+  version: 1.0.0
+  description: The revisioned kinds' refusal over a store of a lower level of the contract.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref overCurrentStore
+  - !ref overDraftsStore
+---
+kind: Assert.Manifest
+metadata: { name: overCurrentStore }
+source: ./__fixtures__/revisions/over-current-store.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.ListRevisions/listRevisions: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.RevisionedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.PinBase/pinBase: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.RevisionedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.UnpinBase/unpinBase: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.RevisionedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.ListBases/listBases: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.RevisionedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.LabelRevision/labelRevision: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.RevisionedStore'"
+---
+kind: Assert.Manifest
+metadata: { name: overDraftsStore }
+source: ./__fixtures__/revisions/over-drafts-store.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.ListRevisions/listRevisions: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.RevisionedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.PinBase/pinBase: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.RevisionedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.UnpinBase/unpinBase: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.RevisionedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.ListBases/listBases: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.RevisionedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.LabelRevision/labelRevision: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.RevisionedStore'"

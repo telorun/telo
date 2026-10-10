@@ -1,0 +1,73 @@
+# A valid layered graph each rule fixture includes and builds its one mistake
+# on: people who know people, and documents, in a `shared` layer and a `team`
+# layer built on it. `graph-layers` owns no strategy, so its rules are exercised
+# through the SQLite one. A partial rather than an imported library, so every
+# reference the rules read is a local one.
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+---
+kind: Layers.NodeTable
+metadata: { name: documents }
+table: documents
+key: id
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+  since: { type: integer }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref documents, !ref knowsTable]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Node
+metadata: { name: document }
+table: !ref documents
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Store
+metadata: { name: shared }
+connection: !ref db
+schema: !ref appSchema
+layer: shared
+nodes: [!ref person, !ref document]
+relationships: [!ref knows]
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+bases: [!ref shared]
+nodes: [!ref person, !ref document]
+relationships: [!ref knows]

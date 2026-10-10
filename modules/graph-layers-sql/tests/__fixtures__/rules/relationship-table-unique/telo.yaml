@@ -1,0 +1,30 @@
+# A relationship table with a unique index of its own.
+kind: Telo.Library
+metadata:
+  name: RelationshipTableUnique
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.RelationshipTable
+metadata: { name: followsTable }
+table: follows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+indexes:
+  onePerSource: { columns: [source], unique: true }
+---
+kind: Layers.Relationship
+metadata: { name: bad }
+table: !ref followsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target

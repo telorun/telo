@@ -1,0 +1,41 @@
+# Pins `top` to the head of the layer this process is given, outside any
+# draft and from its own process, and records how that went as a node of the
+# `notes` layer: `pinned`, or the code it was refused with.
+kind: Telo.Application
+metadata:
+  name: StackProcessPinner
+  version: 1.0.0
+include:
+  - ./model.yaml
+imports:
+  Postgres: ../../../../../postgres
+  Layers: ../../../..
+  Graph: ../../../../../graph
+  GraphLayers: ../../../../../graph-layers
+  Run: ../../../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+  name: { env: ACTOR_NAME, type: string }
+  base: { env: BASE_LAYER, type: string }
+targets:
+  - !ref work
+---
+kind: Run.Sequence
+metadata: { name: work }
+steps:
+  - name: pin
+    try:
+      - name: attempt
+        invoke: { kind: GraphLayers.PinBase, store: !ref top }
+        inputs: { bases: [{ layer: !cel "variables.base" }] }
+      - name: pinned
+        invoke: { kind: Graph.CreateNode, store: !ref notes, node: !ref person }
+        inputs: { key: !cel "variables.name", properties: { name: pinned } }
+    catch:
+      - name: refused
+        invoke: { kind: Graph.CreateNode, store: !ref notes, node: !ref person }
+        inputs: { key: !cel "variables.name", properties: { name: !cel "error.code" } }

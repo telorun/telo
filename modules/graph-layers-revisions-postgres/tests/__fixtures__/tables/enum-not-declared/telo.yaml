@@ -1,0 +1,30 @@
+# A layered node table whose column is typed by an enum its schema does not list.
+kind: Telo.Library
+metadata:
+  name: EnumNotDeclared
+imports:
+  Layers: ../../../..
+  Postgres: ../../../../../postgres
+---
+kind: Postgres.Connection
+metadata: { name: db }
+# Never connected: the declaration is refused before anything reaches it.
+connectionString: postgres://unused:unused@localhost:1/unused
+---
+kind: Postgres.Enum
+metadata: { name: personStatus }
+typeName: person_status
+values: [active, retired]
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  status: { type: !ref personStatus }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people]

@@ -1,0 +1,53 @@
+# A node's properties are its table's row contract; an internal column of the
+# table is not one of them.
+kind: Telo.Application
+metadata:
+  name: InternalColumnProperty
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Graph: ../../../../graph
+  GraphSql: ../../..
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref write
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+  name: { type: text }
+internalColumns:
+  layer: { type: text }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people]
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref person]
+---
+kind: Run.Sequence
+metadata: { name: write }
+steps:
+  - name: create
+    invoke:
+      kind: Graph.CreateNode
+      store: !ref kb
+      node: !ref person
+    inputs: { key: a, properties: { name: Alice, layer: draft } }

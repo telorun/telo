@@ -1,0 +1,27 @@
+# A layered store holding a relationship type whose endpoint node type it does
+# not hold — the rule every backend inherits from `Graph.Relationship` — and an
+# operation over it.
+kind: Telo.Library
+metadata:
+  name: EndpointNotInStore
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+  Graph: ../../../../../graph
+exports:
+  resources: [createDocument]
+---
+kind: Layers.Store
+metadata: { name: documentsOnly }
+connection: !ref db
+schema: !ref appSchema
+layer: lost
+nodes: [!ref document]
+relationships: [!ref knows]
+---
+kind: Graph.CreateNode
+metadata: { name: createDocument }
+store: !ref documentsOnly
+node: !ref document

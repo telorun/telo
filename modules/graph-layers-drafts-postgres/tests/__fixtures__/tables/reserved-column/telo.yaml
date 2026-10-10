@@ -1,0 +1,15 @@
+# A layered node table declaring a column under the 'graph_' prefix, which is the
+# table kind's own. The table alone, so booting it reaches no database.
+kind: Telo.Library
+metadata:
+  name: ReservedColumn
+imports:
+  Layers: ../../../..
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  graph_layer: { type: text }

@@ -1,0 +1,26 @@
+# A layered node table marking two columns as its primary key. No node type
+# references it, so the layered rule against anything unique does not fire.
+kind: Telo.Library
+metadata:
+  name: CompositePrimaryKey
+imports:
+  Layers: ../../../..
+  SQLite: ../../../../../sqlite
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  tenant: { type: integer, primaryKey: true }
+  serial: { type: integer, primaryKey: true }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people]

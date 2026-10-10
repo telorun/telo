@@ -1,0 +1,41 @@
+# Labels one revision of `top` `release`, from its own process, and records
+# how that went as a node of the `notes` layer: `labelled`, or the code it was
+# refused with.
+kind: Telo.Application
+metadata:
+  name: StackProcessLabeller
+  version: 1.0.0
+include:
+  - ./model.yaml
+imports:
+  Postgres: ../../../../../postgres
+  Layers: ../../../..
+  Graph: ../../../../../graph
+  GraphLayers: ../../../../../graph-layers
+  Run: ../../../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+  name: { env: ACTOR_NAME, type: string }
+  revision: { env: REVISION, type: integer }
+targets:
+  - !ref work
+---
+kind: Run.Sequence
+metadata: { name: work }
+steps:
+  - name: label
+    try:
+      - name: attempt
+        invoke: { kind: GraphLayers.LabelRevision, store: !ref top }
+        inputs: { revision: !cel "variables.revision", label: release }
+      - name: labelled
+        invoke: { kind: Graph.CreateNode, store: !ref notes, node: !ref person }
+        inputs: { key: !cel "variables.name", properties: { name: labelled } }
+    catch:
+      - name: refused
+        invoke: { kind: Graph.CreateNode, store: !ref notes, node: !ref person }
+        inputs: { key: !cel "variables.name", properties: { name: !cel "error.code" } }

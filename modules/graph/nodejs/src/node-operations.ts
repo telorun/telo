@@ -5,19 +5,13 @@ import {
   type ResourceInstance,
 } from "@telorun/sdk";
 import { assertNodeListed } from "./graph-model-rules.js";
-import type {
-  GraphFilter,
-  GraphNodeType,
-  GraphNodeValue,
-  GraphPage,
-  GraphStore,
-} from "./graph-store.js";
+import type { GraphNodeType, GraphNodeValue, GraphStore } from "./graph-store.js";
 import {
+  boundName,
   declaredName,
   quoteKey,
   describeOperation,
-  filterOf,
-  pageOf,
+  Listing,
   propertiesOf,
   resolveNodeType,
   resolveStore,
@@ -33,7 +27,7 @@ interface NodeInputs {
   properties?: unknown;
   where?: unknown;
   limit?: unknown;
-  offset?: unknown;
+  cursor?: unknown;
 }
 
 /** What one node operation does with the store, given the bound type. */
@@ -152,11 +146,17 @@ export const GetNode = nodeOperation<{ node: GraphNodeValue }>(
   },
 );
 
-export const FindNodes = nodeOperation<{ nodes: GraphNodeValue[] }>(
+export const FindNodes = nodeOperation<{ nodes: GraphNodeValue[]; next?: string }>(
   "FindNodes",
   async (bound, inputs, ctx) => {
-    const where: GraphFilter = filterOf(inputs.where);
-    const page: GraphPage = pageOf(inputs, bound.describe);
-    return { nodes: await bound.store.findNodes(bound.type, where, page, ctx) };
+    const listing = new Listing(bound.describe, inputs, {
+      operation: "FindNodes",
+      store: boundName(bound.store, bound.describe, "store"),
+      type: boundName(bound.type, bound.describe, "node"),
+    });
+    const { items, ...more } = listing.result(
+      await bound.store.findNodes(bound.type, listing.where, listing.page, ctx),
+    );
+    return { nodes: items, ...more };
   },
 );

@@ -1,0 +1,51 @@
+# A revisioned store listing the current strategy's node type.
+kind: Telo.Application
+metadata:
+  name: OtherStrategyNode
+imports:
+  SQLite: ../../../../sqlite
+  Current: ../../../../graph-layers-current-sqlite
+  Layers: ../../..
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Current.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref graphLayers, !ref graphChangesets, !ref graphChangesetBases]
+---
+kind: Current.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases

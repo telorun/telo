@@ -1,0 +1,65 @@
+kind: Telo.Application
+metadata:
+  name: LayeredStorageBoots
+  version: 2.0.0
+  description: |
+    Boot 2 — the release that stops declaring the `notes` node table. A layered
+    table is an ordinary declared table, so the schema holds the removed one and
+    reports it rather than dropping it.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Layers: ../../..
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: LAYERED_STORAGE_BOOTS_DB, type: string, x-telo-type: Telo.HostPath, default: ./.telo/layered-storage-boots.db }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref people, !ref knowsTable]
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+# What the author declares: the node's own columns, and nothing of the layers.
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text }
+indexes:
+  people_by_name: { columns: [name] }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertHeld
+    invoke: !ref check
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation.map(p, p.object)"
+      expected: ["table notes"]

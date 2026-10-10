@@ -1,0 +1,132 @@
+# An application over node and relationship types another library exported: it
+# lists the library's tables in its own schema, the library's types in its own
+# stores, and names them from the graph and lifecycle kinds. Every layered rule
+# reads through those references.
+kind: Telo.Application
+metadata:
+  name: ExportedTypesApp
+  version: 1.0.0
+imports:
+  Types: ./types
+  SQLite: ../../../../sqlite
+  Layers: ../../..
+  Graph: ../../../../graph
+  GraphLayers: ../../../../graph-layers
+  Run: ../../../../run
+  Assert: ../../../../assert
+targets:
+  - !ref appSchema
+  - !ref use
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables:
+  - !ref Types.people
+  - !ref Types.knowsTable
+  - !ref graphLayers
+  - !ref graphChangesets
+  - !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: shared }
+connection: !ref db
+schema: !ref appSchema
+layer: shared
+nodes: [!ref Types.person]
+relationships: [!ref Types.knows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+nodes: [!ref Types.person]
+relationships: [!ref Types.knows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: use }
+steps:
+  - name: sharedAda
+    invoke: { kind: Graph.CreateNode, store: !ref shared, node: !ref Types.person }
+    inputs: { key: ada, properties: { name: Ada, age: 36 } }
+  - name: sharedBob
+    invoke: { kind: Graph.CreateNode, store: !ref shared, node: !ref Types.person }
+    inputs: { key: bob, properties: { name: Bob } }
+  - name: sharedKnows
+    invoke: { kind: Graph.CreateRelationship, store: !ref shared, relationship: !ref Types.knows }
+    inputs: { source: ada, target: bob, properties: { since: 2020 } }
+  - name: pin
+    invoke: { kind: GraphLayers.PinBase, store: !ref team }
+    inputs: { bases: [{ layer: shared }] }
+  - name: restate
+    invoke: { kind: Graph.UpdateNode, store: !ref team, node: !ref Types.person }
+    inputs: { key: ada, properties: { age: 37 } }
+  - name: restateLink
+    invoke: { kind: Graph.UpdateRelationship, store: !ref team, relationship: !ref Types.knows }
+    inputs: { source: ada, target: bob, properties: { since: 2021 } }
+  - name: retractLink
+    invoke: { kind: GraphLayers.RetractRelationship, store: !ref team, relationship: !ref Types.knows }
+    inputs: { source: ada, target: bob }
+  - name: open
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref team }
+    inputs: {}
+  - name: session
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: retract
+          invoke: { kind: GraphLayers.RetractNode, store: !ref team, node: !ref Types.person }
+          inputs: { key: ada }
+        - name: nodes
+          invoke: { kind: GraphLayers.NodeConflicts, store: !ref team, node: !ref Types.person }
+          inputs: {}
+        - name: links
+          invoke: { kind: GraphLayers.RelationshipConflicts, store: !ref team, relationship: !ref Types.knows }
+          inputs: {}
+  - name: publish
+    invoke: { kind: GraphLayers.Publish, store: !ref team }
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: assertUsable
+    invoke: !ref check
+    inputs:
+      actual:
+        restated: !cel "steps.restate.result.node"
+        link: !cel "steps.retractLink.result.relationship"
+        retracted: !cel "steps.session.result.retract.result.node"
+        conflicts: !cel "size(steps.session.result.nodes.result.conflicts) + size(steps.session.result.links.result.conflicts)"
+        changed: !cel "steps.publish.result.changed"
+      expected:
+        restated: { key: ada, properties: { name: Ada, age: 37 }, origin: team }
+        link: { source: ada, target: bob, properties: { since: 2020 }, origin: shared }
+        retracted: { key: ada, properties: { name: Ada, age: 36 }, origin: shared }
+        conflicts: 0
+        changed: true

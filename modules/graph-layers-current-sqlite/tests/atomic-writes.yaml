@@ -1,0 +1,203 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersCurrentSqliteAtomicWrites
+  version: 1.0.0
+  description: |
+    Every operation is atomic. A write of several statements stands or falls as
+    one: inside the caller's `Sql.Transaction` a rollback takes all of them, and
+    with no transaction open the operation commits on its own, so a statement
+    that fails part-way leaves nothing behind.
+
+    The first half deletes a node the layer has a relationship to — the node's
+    removal, then the withdrawal of that relationship. The second half needs a
+    statement that fails after an earlier one of the same operation has run:
+    deleting a node the layer restates over its base first withdraws the
+    layer's own statement, then states the removal of the base's — a row
+    carrying the base's values, which the `guarded` table's check refuses.
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  Layers: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref joinsTransaction
+  - !ref commitsOnItsOwn
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+---
+kind: Layers.NodeTable
+metadata: { name: guardedTable }
+table: guarded
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+# A removal keeps the values it hides, so this refuses hiding a row named Carol.
+checks:
+  carolStays: { expression: "NOT (graph_effect = 'removed' AND name = 'Carol')" }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref knowsTable, !ref guardedTable]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Node
+metadata: { name: guarded }
+table: !ref guardedTable
+key: id
+---
+kind: Layers.Store
+metadata: { name: shared }
+connection: !ref db
+schema: !ref appSchema
+layer: shared
+nodes: [!ref person, !ref guarded]
+relationships: [!ref knows]
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+bases: [!ref shared]
+nodes: [!ref person, !ref guarded]
+relationships: [!ref knows]
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Graph.CreateNode
+metadata: { name: sharedCreatePerson }
+store: !ref shared
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: teamDeletePerson }
+store: !ref team
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: teamGetPerson }
+store: !ref team
+node: !ref person
+---
+kind: Graph.FindRelationships
+metadata: { name: teamFindKnows }
+store: !ref team
+relationship: !ref knows
+---
+kind: Run.Sequence
+metadata: { name: joinsTransaction }
+steps:
+  - name: alice
+    invoke: !ref sharedCreatePerson
+    inputs: { key: a, properties: { name: Alice } }
+  - name: bob
+    invoke: !ref sharedCreatePerson
+    inputs: { key: b, properties: { name: Bob } }
+  - name: aliceKnowsBob
+    invoke: { kind: Graph.CreateRelationship, store: !ref team, relationship: !ref knows }
+    inputs: { source: a, target: b }
+  - name: failedTransaction
+    try:
+      - name: transaction
+        invoke:
+          kind: Sql.Transaction
+          connection: !ref db
+          steps:
+            kind: Run.Sequence
+            steps:
+              - name: hideAlice
+                invoke: !ref teamDeletePerson
+                inputs: { key: a }
+              - name: abort
+                throw: { code: ERR_TEST_ABORT, message: "roll the transaction back" }
+    catch:
+      - name: aborted
+        value: !cel "error.code"
+  - name: assertAborted
+    invoke: !ref check
+    inputs: { actual: !cel "steps.aborted.result", expected: ERR_TEST_ABORT }
+  - name: getAlice
+    invoke: !ref teamGetPerson
+    inputs: { key: a }
+  - name: fromAlice
+    invoke: !ref teamFindKnows
+    inputs: { source: a }
+  - name: assertRollbackTookEveryStatement
+    invoke: !ref check
+    inputs:
+      actual:
+        node: !cel "steps.getAlice.result.node.origin"
+        links: !cel "steps.fromAlice.result.relationships.map(r, [r.target, r.origin])"
+      expected: { node: shared, links: [[b, team]] }
+---
+kind: Run.Sequence
+metadata: { name: commitsOnItsOwn }
+steps:
+  - name: carol
+    invoke: { kind: Graph.CreateNode, store: !ref shared, node: !ref guarded }
+    inputs: { key: c, properties: { name: Carol } }
+  - name: restateCarol
+    invoke: { kind: Graph.UpdateNode, store: !ref team, node: !ref guarded }
+    inputs: { key: c, properties: { name: Caroline } }
+  # The layer's own statement is withdrawn first; the removal of the base's
+  # statement, which follows it, then fails the table's check.
+  - name: failedDelete
+    try:
+      - name: deleteCarol
+        invoke: { kind: Graph.DeleteNode, store: !ref team, node: !ref guarded }
+        inputs: { key: c }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "the guarded removal did not fail" }
+    catch:
+      - name: failed
+        value: !cel "error.code != 'ERR_TEST_UNREACHABLE'"
+  # Had the withdrawal been committed alone, Carol would show from `shared`.
+  - name: getCarol
+    invoke: { kind: Graph.GetNode, store: !ref team, node: !ref guarded }
+    inputs: { key: c }
+  - name: assertOwnStatementLeftInPlace
+    invoke: !ref check
+    inputs:
+      actual:
+        failed: !cel "steps.failed.result"
+        carol: !cel "steps.getCarol.result"
+      expected:
+        failed: true
+        carol: { node: { key: c, properties: { name: Caroline }, origin: team } }

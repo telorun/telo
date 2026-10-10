@@ -1,0 +1,32 @@
+# A drafted store listing a node type whose table its schema does not list.
+kind: Telo.Library
+metadata:
+  name: DraftedTableNotInSchema
+include:
+  - ../../drafted-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.NodeTable
+metadata: { name: notes }
+table: notes
+key: id
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.Node
+metadata: { name: note }
+table: !ref notes
+key: id
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref appSchema
+layer: lost
+nodes: [!ref person, !ref note]
+layers: !ref graphLayers
+drafts: !ref graphDrafts

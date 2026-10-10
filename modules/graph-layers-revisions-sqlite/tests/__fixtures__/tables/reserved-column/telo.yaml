@@ -1,0 +1,25 @@
+# A layered node table declaring a column under the 'graph_' prefix, which is the
+# table kind's own.
+kind: Telo.Library
+metadata:
+  name: ReservedColumn
+imports:
+  Layers: ../../../..
+  SQLite: ../../../../../sqlite
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  graph_layer: { type: text }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people]

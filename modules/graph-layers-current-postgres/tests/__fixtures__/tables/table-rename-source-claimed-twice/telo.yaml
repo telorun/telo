@@ -1,0 +1,33 @@
+# Two layered node tables renamed from the same table.
+kind: Telo.Library
+metadata:
+  name: TableRenameSourceClaimedTwice
+imports:
+  Layers: ../../../..
+  Postgres: ../../../../../postgres
+---
+kind: Postgres.Connection
+metadata: { name: db }
+# Never connected: the declaration is refused before anything reaches it.
+connectionString: postgres://unused:unused@localhost:1/unused
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+renamedFrom: folk
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.NodeTable
+metadata: { name: persons }
+table: persons
+key: id
+renamedFrom: folk
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref persons]

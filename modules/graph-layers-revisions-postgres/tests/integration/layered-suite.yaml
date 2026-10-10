@@ -1,0 +1,117 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsPostgresLayeredSuite
+  version: 1.0.0
+  description: |
+    The layered graph suite against a real PostgreSQL, over seven revisioned
+    stores used outside any draft. A revisioned layer is built on pinned
+    revisions of others, so the suite's `refreshStacks` is what makes a stack
+    take a change beneath it: it pins every upper layer to the head of the
+    layers it is built on, bottom-up, one move per layer — the diamond's two
+    sides in a single call.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+include:
+  - ./__fixtures__/suite-model.yaml
+imports:
+  Suite:
+    source: ../../../graph-layers/tests/__fixtures__/layered-suite
+    resources:
+      base: !ref base
+      middle: !ref middle
+      side: !ref side
+      top: !ref top
+      left: !ref left
+      right: !ref right
+      apex: !ref apex
+      person: !ref person
+      document: !ref document
+      knows: !ref knows
+      authored: !ref authored
+      refreshStacks: !ref refreshStacks
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Layers: ../..
+  Graph: ../../../graph
+  GraphLayers: ../../../graph-layers
+  Run: ../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref Suite.overlay
+  - !ref Suite.writes
+  - !ref Suite.relationships
+  - !ref Suite.traversals
+  - !ref Suite.deletions
+  - !ref Suite.retractions
+  - !ref Suite.diamond
+  - !ref Suite.paging
+  - !ref Suite.defaults
+---
+# Brings every stack up to date. A layer is registered by its first write, and
+# only a registered layer can be pinned, so each root layer first opens a draft
+# and discards it — a write that leaves nothing behind; then each upper layer
+# is pinned at the head of its bases, bottom-up. A pin that is already at the
+# head changes nothing and makes no revision.
+kind: Run.Sequence
+metadata: { name: refreshStacks }
+steps:
+  - name: registerBase
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref base }
+    inputs: {}
+  - name: registerBaseDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref base }
+    inputs: { draft: !cel "steps.registerBase.result.draft.id" }
+  - name: registerSide
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref side }
+    inputs: {}
+  - name: registerSideDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref side }
+    inputs: { draft: !cel "steps.registerSide.result.draft.id" }
+  - name: middle
+    invoke: { kind: GraphLayers.PinBase, store: !ref middle }
+    inputs: { bases: [{ layer: base }] }
+  - name: left
+    invoke: { kind: GraphLayers.PinBase, store: !ref left }
+    inputs: { bases: [{ layer: base }] }
+  - name: right
+    invoke: { kind: GraphLayers.PinBase, store: !ref right }
+    inputs: { bases: [{ layer: base }] }
+  - name: top
+    invoke: { kind: GraphLayers.PinBase, store: !ref top }
+    inputs: { bases: [{ layer: middle }, { layer: side }] }
+  - name: apex
+    invoke: { kind: GraphLayers.PinBase, store: !ref apex }
+    inputs: { bases: [{ layer: left }, { layer: right }] }
+---
+# The suite must start empty — the ledger included, which lives in the same
+# namespace, or a previous run's declaration would decide what this one plans.
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke:
+      kind: Sql.Command
+      connection: !ref db
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_revisions_layered_suite CASCADE
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_revisions_layered_suite
+ledger: graph_revisions_layered_suite
+tables:
+  - !ref people
+  - !ref documents
+  - !ref knowsTable
+  - !ref authoredTable
+  - !ref graphLayers
+  - !ref graphChangesets
+  - !ref graphChangesetBases

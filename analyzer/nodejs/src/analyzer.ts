@@ -82,7 +82,7 @@ import { FunctionBodyEvaluators } from "./function-body-evaluator.js";
 import { moduleCallDiagnostics, unboundSourceDiagnostics } from "./validate-module-calls.js";
 import { unboundCallReason, unboundCallSources } from "./unbound-call-site.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
-import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
+import { REF_RESOLUTION_SKIP_KINDS, REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
 import { resolveRefSentinels, resolveShapeRefs } from "./resolve-ref-sentinels.js";
 import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema-ref-kinds.js";
 import { runZoneAnalysis, type ZoneExportCache } from "./resolve-zone-requirements.js";
@@ -200,7 +200,7 @@ import {
 } from "./eval-paths.js";
 import { computedRefSlots, evaluatedField, refSlotComputedReason } from "./ref-slot-computed.js";
 import { accessorFields, accessorProblems, type AccessorProblem } from "./accessor-binding.js";
-import { RuleDeclarationViews } from "./rule-declaration-view.js";
+import { RuleDeclarationViews, type ForwardedReference } from "./rule-declaration-view.js";
 import { browserExportProblems, browserExportSites } from "./browser-export-slot.js";
 import { readBrowserEntries, type BrowserEntry } from "./module-browser.js";
 import {
@@ -1954,6 +1954,34 @@ export class StaticAnalyzer {
       }
       return bodyEntryModules.get(declaration);
     };
+    // A reference a dependency's declaration writes, resolved in the module that
+    // declared it: among that module's declarations this analysis holds, or
+    // through that module's own import of the alias it names.
+    let declaredByModule: Map<string, ResourceManifest> | undefined;
+    const declaredIn = (module: string, name: string): ResourceManifest | undefined => {
+      if (!declaredByModule) {
+        declaredByModule = new Map();
+        for (const m of allManifests as ResourceManifest[]) {
+          const owner = (m.metadata as { module?: unknown } | undefined)?.module;
+          const declared = m.metadata?.name;
+          if (typeof owner !== "string" || typeof declared !== "string") continue;
+          if (REF_RESOLUTION_SKIP_KINDS.has(m.kind)) continue;
+          declaredByModule.set(`${owner}\0${declared}`, m);
+        }
+      }
+      return declaredByModule.get(`${module}\0${name}`) ?? libraries.declaration(module, name);
+    };
+    const forwardedReference: ForwardedReference = (target, module) => {
+      const local = target.alias === undefined || target.alias === "Self";
+      const owner = local ? module : aliasesByModule.get(module)?.moduleForAlias(target.alias!);
+      const declaration = owner === undefined ? undefined : declaredIn(owner, target.name);
+      if (!owner || !declaration || typeof declaration.kind !== "string") return undefined;
+      // The kind is written through the declaring module's aliases.
+      const kind = declaration.kind.startsWith("Self.")
+        ? `${owner}.${declaration.kind.slice("Self.".length)}`
+        : (aliasesByModule.get(owner)?.resolveKind(declaration.kind) ?? declaration.kind);
+      return { kind, name: target.name, ...(local ? {} : { alias: target.alias }) };
+    };
     const ruleViews = new RuleDeclarationViews((declaration, module) => {
       const bodyEntry = bodyEntryOf(declaration);
       const definition = definitionInScope(
@@ -1968,7 +1996,7 @@ export class StaticAnalyzer {
         ruleSites.set(definition, governedCelEvalSites(definition, ruleDef));
       }
       return { sites: ruleSites.get(definition), bodyEntry: bodyEntry !== undefined };
-    });
+    }, forwardedReference);
     const referrerRuleContext: ReferrerRuleContext = {
       peerBinder: analyzerPeerBinder(
         defs,

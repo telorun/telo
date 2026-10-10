@@ -1,0 +1,26 @@
+# A layered relationship table naming one column for both endpoints.
+kind: Telo.Library
+metadata:
+  name: EndpointsOneColumn
+imports:
+  Layers: ../../../..
+  Postgres: ../../../../../postgres
+---
+kind: Postgres.Connection
+metadata: { name: db }
+# Never connected: the declaration is refused before anything reaches it.
+connectionString: postgres://unused:unused@localhost:1/unused
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: source
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref knowsTable]

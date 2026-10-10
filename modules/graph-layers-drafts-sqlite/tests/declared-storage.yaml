@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersDraftsSqliteDeclaredStorage
+  version: 1.0.0
+  description: |
+    Drafted storage is declared, across real boots against one database file: the
+    author's declarations show only the author's columns, the database holds them
+    plus the bookkeeping columns and indexes the table kinds add and the two
+    bookkeeping tables, and a second boot of the same release changes nothing.
+
+    Ordering is the point, so the fixtures are numbered and the suite runs one at
+    a time.
+imports:
+  Test: ../../test
+targets:
+  - !ref boots
+---
+kind: Test.Suite
+metadata: { name: boots }
+include:
+  - "__fixtures__/storage-boots/*.yaml"
+exclude: []
+concurrency: 1

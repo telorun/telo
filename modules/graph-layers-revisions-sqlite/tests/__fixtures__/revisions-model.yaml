@@ -1,0 +1,100 @@
+# A valid revisioned graph the module's own tests build on: people who know
+# people, with the two bookkeeping tables, and four independent layers over the
+# same tables — a revisioned layer is built on no other. A partial rather than
+# an imported library, so every reference a rule reads is a local one.
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+  age: { type: integer }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+  since: { type: integer }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref knowsTable, !ref graphLayers, !ref graphChangesets, !ref graphChangesetBases]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+nodes: [!ref person]
+relationships: [!ref knows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: archive }
+connection: !ref db
+schema: !ref appSchema
+layer: archive
+nodes: [!ref person]
+relationships: [!ref knows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: pages }
+connection: !ref db
+schema: !ref appSchema
+layer: pages
+nodes: [!ref person]
+relationships: [!ref knows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: plain }
+connection: !ref db
+schema: !ref appSchema
+layer: plain
+nodes: [!ref person]
+relationships: [!ref knows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases

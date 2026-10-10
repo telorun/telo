@@ -1,0 +1,13 @@
+# A bookkeeping table kind offers one field, the table's name: its columns are
+# the store's and are not the author's to declare.
+kind: Telo.Application
+metadata:
+  name: BookkeepingColumns
+imports:
+  Layers: ../../..
+---
+kind: Layers.DraftsTable
+metadata: { name: graphDrafts }
+table: graph_drafts
+columns:
+  note: { type: text }

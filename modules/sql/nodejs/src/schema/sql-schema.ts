@@ -21,6 +21,28 @@ export function isSqlSchema(value: unknown): value is SqlSchema {
   return typeof (value as SqlSchema | undefined)?.qualifiedTableName === "function";
 }
 
+/**
+ * A schema instance that also renders instants. The engine owns how an instant
+ * is stored, so it is the one place "now" is written: a consumer that spelled
+ * its own clock function would name an engine.
+ */
+export interface SqlInstantSchema extends SqlSchema {
+  /**
+   * The SQL expression for the instant the statement holding it runs — read
+   * when that statement executes, never frozen at a transaction's start — in the
+   * storage form of this engine's timestamp column. Values written through it
+   * sort chronologically under a plain comparison of that column.
+   */
+  currentInstant(): string;
+}
+
+/** True when a schema instance renders instants. An engine module older than
+ *  the member does not, and a consumer that records database time must refuse
+ *  it rather than take a clock of its own. */
+export function rendersCurrentInstant(value: unknown): value is SqlInstantSchema {
+  return isSqlSchema(value) && typeof (value as SqlInstantSchema).currentInstant === "function";
+}
+
 /** The membership half of {@link SqlSchema.qualifiedTableName}, shared by the
  *  engines: `table` must be one `listed` declares. */
 export function assertListedTable(

@@ -1,0 +1,18 @@
+# A node type over a plain engine table, which has no layer bookkeeping.
+kind: Telo.Application
+metadata:
+  name: PlainTable
+imports:
+  SQLite: ../../../../sqlite
+  Layers: ../../..
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id

@@ -1,0 +1,48 @@
+# The two rename rules over an internal column, each pinned both ways:
+# `telo check` refuses the declaring library, and a consumer whose entry-scoped
+# check is silent fails when the table is created.
+kind: Telo.Application
+metadata:
+  name: InternalColumnRename
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+targets:
+  - !ref fromSelfAtCheck
+  - !ref fromSelfAtCreation
+  - !ref sourceDeclaredAtCheck
+  - !ref sourceDeclaredAtCreation
+---
+kind: Assert.Manifest
+metadata: { name: fromSelfAtCheck }
+source: ./__fixtures__/internal-columns/rename-from-self/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'internalColumns.layer': declares renamedFrom itself"
+    # Its own name is also a column the table declares, so the second rule
+    # reports it too — as it does for a column of the row contract.
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'internalColumns.layer': renames from a column this table also declares"
+---
+kind: Assert.Manifest
+metadata: { name: fromSelfAtCreation }
+source: ./__fixtures__/internal-columns/rename-from-self-app.yaml
+expect:
+  errors: []
+  runFails: "column 'documents.layer' declares renamedFrom itself"
+---
+kind: Assert.Manifest
+metadata: { name: sourceDeclaredAtCheck }
+source: ./__fixtures__/internal-columns/rename-source-declared/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'internalColumns.layer': renames from a column this table also declares"
+---
+kind: Assert.Manifest
+metadata: { name: sourceDeclaredAtCreation }
+source: ./__fixtures__/internal-columns/rename-source-declared-app.yaml
+expect:
+  errors: []
+  runFails: "column 'documents.layer' renames from 'stage', which this table also declares"

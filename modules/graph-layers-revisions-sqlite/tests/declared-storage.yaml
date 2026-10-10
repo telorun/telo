@@ -1,0 +1,27 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsSqliteDeclaredStorage
+  version: 1.0.0
+  description: |
+    Revisioned storage is declared, across real boots against one database file.
+    The first boot leaves the database as the release before pinned stacks left
+    it; this release's kinds then take it over by expansion alone — a column on
+    each typed table, five on the changesets table, one index and one table —
+    with no manual step. The author's declarations show only the author's
+    columns, the database holds them plus the bookkeeping columns and indexes
+    the table kinds add and the three bookkeeping tables, and a second boot of
+    the same release changes nothing.
+
+    Ordering is the point, so the fixtures are numbered and the suite runs one at
+    a time.
+imports:
+  Test: ../../test
+targets:
+  - !ref boots
+---
+kind: Test.Suite
+metadata: { name: boots }
+include:
+  - "__fixtures__/storage-boots/*.yaml"
+exclude: []
+concurrency: 1

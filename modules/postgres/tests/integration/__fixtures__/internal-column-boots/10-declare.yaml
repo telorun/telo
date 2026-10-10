@@ -1,0 +1,110 @@
+kind: Telo.Application
+metadata:
+  name: PgInternalColumnBoots
+  version: 1.0.0
+  description: |
+    Boot 1 — the table is created with its internal columns, the internal primary
+    key and the partial unique index over an internal and a declared column.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Postgres.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug: { type: text, nullable: false }
+  title: { type: text }
+internalColumns:
+  row_id: { type: text, primaryKey: true, defaultExpression: "gen_random_uuid()::text" }
+  layer: { type: text, nullable: false, default: base }
+  retired_at: { type: timestamptz }
+indexes:
+  documents_layer_slug:
+    columns: [layer, slug]
+    unique: true
+    where: "retired_at IS NULL"
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: telo_pg_internal_columns
+version: !cel "module.version"
+tables: [!ref documents, !ref control]
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+# No row contract: every column is the table's own.
+kind: Postgres.Table
+metadata: { name: control }
+table: control
+columns: {}
+internalColumns:
+  name: { type: text, primaryKey: true }
+  head_revision: { type: integer, nullable: false, default: 0 }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: insert
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: "INSERT INTO telo_pg_internal_columns.documents (slug, title) VALUES ('intro', 'Introduction')"
+  - name: insertControl
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: "INSERT INTO telo_pg_internal_columns.control (name, head_revision) VALUES ('main', 4)"
+  - name: columns
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'telo_pg_internal_columns' AND table_name = 'documents'
+        ORDER BY column_name
+  - name: assertColumns
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.columns.result.rows"
+      expected:
+        - { column_name: layer }
+        - { column_name: retired_at }
+        - { column_name: row_id }
+        - { column_name: slug }
+        - { column_name: title }
+  - name: indexes
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT indexname, indexdef LIKE '%UNIQUE%(layer, slug) WHERE (retired_at IS NULL)' AS partial_unique
+        FROM pg_indexes
+        WHERE schemaname = 'telo_pg_internal_columns' AND tablename = 'documents'
+        ORDER BY indexname
+  - name: assertIndexes
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.indexes.result.rows"
+      expected:
+        - { indexname: documents_layer_slug, partial_unique: true }
+        - { indexname: documents_pkey, partial_unique: false }

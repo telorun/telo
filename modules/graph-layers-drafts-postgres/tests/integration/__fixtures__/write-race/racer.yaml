@@ -1,0 +1,42 @@
+# One process of the concurrent-writes test: it runs the one writing sequence
+# its `role` names, against the graph the other processes share.
+kind: Telo.Application
+metadata:
+  name: DraftsWriteRacer
+  version: 1.0.0
+include:
+  - ./model.yaml
+imports:
+  Race:
+    source: ../../../../../graph-layers/tests/__fixtures__/write-race
+    variables:
+      value: !cel "variables.value"
+    resources:
+      base: !ref base
+      top: !ref top
+      person: !ref person
+      refreshStacks: !ref refreshStacks
+  SessionRace:
+    source: ../../../../../graph-layers/tests/__fixtures__/session-race
+    resources:
+      top: !ref top
+      person: !ref person
+  Postgres: ../../../../../postgres
+  Layers: ../../../..
+  Graph: ../../../../../graph
+  GraphLayers: ../../../../../graph-layers
+  Run: ../../../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+  role: { env: RACER_ROLE, type: string }
+  value: { env: RACER_VALUE, type: string, default: none }
+targets:
+  - { ref: !ref Race.mergeFresh, when: !cel "variables.role == 'merge'" }
+  - { ref: !ref Race.deleteVisible, when: !cel "variables.role == 'delete'" }
+  - { ref: !ref Race.updateVisible, when: !cel "variables.role == 'update'" }
+  - { ref: !ref SessionRace.writeInSession, when: !cel "variables.role == 'session'" }
+  - { ref: !ref SessionRace.deleteOutside, when: !cel "variables.role == 'deleteOutside'" }

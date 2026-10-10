@@ -1,0 +1,373 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsPostgresCrossesProcesses
+  version: 1.0.0
+  description: |
+    Several processes over one PostgreSQL database, each a child application with
+    a connection pool of its own, where only the database stands between them.
+
+    Two processes each publishing one of two drafts opened on the same revision
+    create exactly one revision: one is answered with it and the other is
+    refused GRAPH_DRAFT_STALE. Two processes each writing the layer fifty times
+    outside any draft advance its head by exactly one hundred, and the history
+    lists one hundred consecutive revisions: the increment on the layer's row
+    hands out every number once, with no retry and no refusal. And a publish
+    issued by another process ends a session running here: its next write is
+    refused and the session fails GRAPH_DRAFT_CLOSED.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+include:
+  - ./__fixtures__/cross-process/model.yaml
+imports:
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Layers: ../..
+  Graph: ../../../graph
+  GraphLayers: ../../../graph-layers
+  App: ../../../app
+  Run: ../../../run
+  Timer: ../../../timer
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref register
+  - !ref twoDrafts
+  - !ref publisherA
+  - !ref publisherB
+  - !ref oneRevision
+  - !ref writerA
+  - !ref writerB
+  - !ref hundredRevisions
+  - !ref closedFromElsewhere
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Graph.CreateNode
+metadata: { name: topCreatePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: topGetPerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: notesFindPeople }
+store: !ref notes
+node: !ref person
+---
+kind: GraphLayers.OpenDraft
+metadata: { name: topOpenDraft }
+store: !ref top
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke: !ref write
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_revisions_processes CASCADE
+---
+# Both layers are registered before any child starts, so the children race on
+# revisions rather than on a layer's first write. A draft opened and discarded
+# registers a layer and leaves nothing.
+kind: Run.Sequence
+metadata: { name: register }
+steps:
+  - name: seed
+    invoke: !ref topCreatePerson
+    inputs: { key: seed, properties: { name: Seed } }
+  - name: notes
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref notes }
+    inputs: {}
+  - name: notesDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref notes }
+    inputs: { draft: !cel "steps.notes.result.draft.id" }
+---
+# Two drafts on one parent, each holding one write of its own.
+kind: Run.Sequence
+metadata: { name: twoDrafts }
+steps:
+  - name: a
+    invoke: !ref topOpenDraft
+    inputs: { message: race-a }
+  - name: b
+    invoke: !ref topOpenDraft
+    inputs: { message: race-b }
+  - name: stageA
+    inputs: { draft: !cel "steps.a.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: create
+          invoke: !ref topCreatePerson
+          inputs: { key: staged-a, properties: { name: Staged } }
+  - name: stageB
+    inputs: { draft: !cel "steps.b.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: create
+          invoke: !ref topCreatePerson
+          inputs: { key: staged-b, properties: { name: Staged } }
+  - name: assertOneParent
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.a.result.draft.parentRevision == steps.b.result.draft.parentRevision"
+      expected: true
+---
+kind: App.Instance
+metadata: { name: publisherA }
+source: ./__fixtures__/cross-process/publisher.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  pick: race-a
+---
+kind: Run.Loop
+metadata: { name: publisherAExit }
+condition: !cel "resources.publisherA.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: publisherB }
+source: ./__fixtures__/cross-process/publisher.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  pick: race-b
+---
+kind: Run.Loop
+metadata: { name: publisherBExit }
+condition: !cel "resources.publisherB.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+# Whichever published first, the other was refused: one revision, one refusal.
+kind: Run.Sequence
+metadata: { name: oneRevision }
+steps:
+  - name: awaitA
+    invoke: !ref publisherAExit
+  - name: awaitB
+    invoke: !ref publisherBExit
+  - name: state
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT (l.head_revision - MIN(c.parent_revision))::int AS advanced,
+          COUNT(c.revision)::int AS revisions,
+          COUNT(*) FILTER (WHERE c.published_at IS NULL)::int AS still_open,
+          (SELECT COUNT(*)::int FROM graph_revisions_processes.people p
+            WHERE p.id IN ('staged-a', 'staged-b') AND p.graph_from_revision IS NOT NULL) AS published
+        FROM graph_revisions_processes.graph_layers l
+          JOIN graph_revisions_processes.graph_changesets c ON c.layer_id = l.id
+        WHERE l.name = 'top' AND c.message IN ('race-a', 'race-b')
+        GROUP BY l.head_revision
+  - name: outcomes
+    invoke: !ref notesFindPeople
+    inputs: {}
+  - name: assertExactlyOneRevisionAndOneRefusal
+    invoke: !ref check
+    inputs:
+      actual:
+        exits: !cel "[resources.publisherA.status.exitCode, resources.publisherB.status.exitCode]"
+        state: !cel "steps.state.result.rows"
+        outcomes: !cel "sort(steps.outcomes.result.nodes.map(n, n.properties.name))"
+      expected:
+        exits: [0, 0]
+        state: [{ advanced: 1, revisions: 1, still_open: 1, published: 1 }]
+        outcomes: [GRAPH_DRAFT_STALE, published]
+---
+kind: App.Instance
+metadata: { name: writerA }
+source: ./__fixtures__/cross-process/writer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  name: wa
+---
+kind: Run.Loop
+metadata: { name: writerAExit }
+condition: !cel "resources.writerA.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: writerB }
+source: ./__fixtures__/cross-process/writer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  name: wb
+---
+kind: Run.Loop
+metadata: { name: writerBExit }
+condition: !cel "resources.writerB.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: GraphLayers.ListRevisions
+metadata: { name: topRevisions }
+store: !ref top
+---
+# One hundred writes from two processes are one hundred revisions, numbered
+# without a gap or a repeat.
+kind: Run.Sequence
+metadata: { name: hundredRevisions }
+steps:
+  - name: awaitA
+    invoke: !ref writerAExit
+  - name: awaitB
+    invoke: !ref writerBExit
+  - name: state
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT l.head_revision::int AS head,
+          (SELECT COUNT(*)::int FROM graph_revisions_processes.people p
+            WHERE p.graph_layer = l.id AND (p.id LIKE 'wa-%' OR p.id LIKE 'wb-%')
+              AND p.graph_to_revision IS NULL) AS written,
+          (SELECT COUNT(DISTINCT p.graph_from_revision)::int FROM graph_revisions_processes.people p
+            WHERE p.graph_layer = l.id AND (p.id LIKE 'wa-%' OR p.id LIKE 'wb-%')) AS revisions,
+          (SELECT MIN(p.graph_from_revision)::int FROM graph_revisions_processes.people p
+            WHERE p.graph_layer = l.id AND (p.id LIKE 'wa-%' OR p.id LIKE 'wb-%')) AS first
+        FROM graph_revisions_processes.graph_layers l WHERE l.name = 'top'
+  - name: listed
+    invoke: !ref topRevisions
+    inputs: { order: ascending, after: !cel "int(steps.state.result.rows[0].first) - 1", limit: 1000 }
+  - name: assertEveryNumberOnce
+    invoke: !ref check
+    inputs:
+      actual:
+        exits: !cel "[resources.writerA.status.exitCode, resources.writerB.status.exitCode]"
+        written: !cel "int(steps.state.result.rows[0].written)"
+        advanced: !cel "int(steps.state.result.rows[0].head) - int(steps.state.result.rows[0].first) + 1"
+        distinct: !cel "int(steps.state.result.rows[0].revisions)"
+        listed: !cel "size(steps.listed.result.revisions)"
+        consecutive: !cel "steps.listed.result.revisions[99].number - steps.listed.result.revisions[0].number"
+        ends: !cel "has(steps.listed.result.next)"
+      expected: { exits: [0, 0], written: 100, advanced: 100, distinct: 100, listed: 100, consecutive: 99, ends: false }
+---
+# The other process, started by the session's own body and gone when this
+# sequence ends: starting it waits for its work, so the publish has happened.
+kind: Run.Sequence
+metadata: { name: publishElsewhere }
+with:
+  - kind: App.Instance
+    metadata: { name: closer }
+    source: ./__fixtures__/cross-process/publisher.yaml
+    variables:
+      dbHost: !cel "variables.dbHost"
+      dbPort: !cel "variables.dbPort"
+      dbUser: !cel "variables.dbUser"
+      dbPassword: !cel "variables.dbPassword"
+      dbName: !cel "variables.dbName"
+      pick: closing
+targets:
+  - !ref closer
+steps:
+  - name: done
+    value: true
+---
+kind: Run.Sequence
+metadata: { name: closedFromElsewhere }
+steps:
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: { message: closing }
+  - name: closed
+    try:
+      - name: session
+        inputs: { draft: !cel "steps.open.result.draft.id" }
+        invoke:
+          kind: GraphLayers.DraftSession
+          store: !ref top
+          inputs: { draft: !cel "inputs.draft" }
+          steps:
+            - name: first
+              invoke: !ref topCreatePerson
+              inputs: { key: k1, properties: { name: Before } }
+            - name: elsewhere
+              invoke: !ref publishElsewhere
+            - name: second
+              invoke: !ref topCreatePerson
+              inputs: { key: k2, properties: { name: After } }
+      - name: closedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "the session outlived its draft" }
+    catch:
+      - name: closedError
+        value:
+          code: !cel "error.code"
+          closedAs: !cel "string(error.data.closedAs)"
+  - name: assertSessionEnded
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.closedError.result"
+      expected: { code: GRAPH_DRAFT_CLOSED, closedAs: published }
+  - name: first
+    invoke: !ref topGetPerson
+    inputs: { key: k1 }
+  - name: second
+    invoke: !ref read
+    inputs:
+      sql: "SELECT COUNT(*)::int AS n FROM graph_revisions_processes.people WHERE id = 'k2'"
+  - name: assertOnlyTheFirstWriteIsPublished
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.first.result.node.properties.name, string(steps.second.result.rows[0].n)]"
+      expected: [Before, "0"]

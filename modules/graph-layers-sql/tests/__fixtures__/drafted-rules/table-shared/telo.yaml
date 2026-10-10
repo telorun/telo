@@ -1,0 +1,25 @@
+# A drafted store listing two node types over one table.
+kind: Telo.Library
+metadata:
+  name: DraftedTableShared
+include:
+  - ../../drafted-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.Node
+metadata: { name: alias }
+table: !ref people
+key: id
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref appSchema
+layer: lost
+nodes: [!ref person, !ref alias]
+layers: !ref graphLayers
+drafts: !ref graphDrafts

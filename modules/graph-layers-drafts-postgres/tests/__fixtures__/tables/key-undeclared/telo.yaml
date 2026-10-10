@@ -1,0 +1,15 @@
+# A layered node table whose 'key' names no column it declares. No node type
+# references it, so only the table kind's own rule can report it.
+# The table alone, so booting it reaches no database.
+kind: Telo.Library
+metadata:
+  name: KeyUndeclared
+imports:
+  Layers: ../../../..
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: uid
+columns:
+  id: { type: text, nullable: false }

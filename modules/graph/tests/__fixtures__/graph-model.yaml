@@ -26,6 +26,7 @@ columns:
   target: { type: text, nullable: false }
 indexes:
   knowsPair: { columns: [source, target], unique: true }
+  knowsByTarget: { columns: [target, source] }
 foreignKeys:
   knowsSource:
     columns: [source]
@@ -44,6 +45,7 @@ columns:
   document: { type: text, nullable: false }
 indexes:
   authoredPair: { columns: [author, document], unique: true }
+  authoredByDocument: { columns: [document, author] }
 foreignKeys:
   authoredAuthor:
     columns: [author]

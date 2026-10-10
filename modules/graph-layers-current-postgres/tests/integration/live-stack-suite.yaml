@@ -1,0 +1,155 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersCurrentPostgresLiveStackSuite
+  version: 1.0.0
+  description: |
+    The live-stack suite against a real PostgreSQL: a current store reads the
+    layers beneath it as they are now, so what a base writes or deletes is in
+    the view above on the next read, with nothing brought up to date.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Suite:
+    source: ../../../graph-layers/tests/__fixtures__/live-stack-suite
+    resources:
+      base: !ref base
+      top: !ref top
+      person: !ref person
+      knows: !ref knows
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Layers: ../..
+  Run: ../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref Suite.liveBases
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+# The suite must start empty — the ledger included, which lives in the same
+# namespace, or a previous run's declaration would decide what this one plans.
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke:
+      kind: Sql.Command
+      connection: !ref db
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_layers_live_suite CASCADE
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: layers_live_people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+  age: { type: integer }
+---
+kind: Layers.NodeTable
+metadata: { name: documents }
+table: layers_live_documents
+key: id
+columns:
+  id: { type: text, nullable: false }
+  title: { type: text }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: layers_live_knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+  since: { type: integer }
+---
+kind: Layers.RelationshipTable
+metadata: { name: authoredTable }
+table: layers_live_authored
+sourceColumn: author
+targetColumn: document
+columns:
+  author: { type: text, nullable: false }
+  document: { type: text, nullable: false }
+  role: { type: text }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_layers_live_suite
+ledger: graph_layers_live_suite
+tables: [!ref people, !ref documents, !ref knowsTable, !ref authoredTable]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Node
+metadata: { name: document }
+table: !ref documents
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Relationship
+metadata: { name: authored }
+table: !ref authoredTable
+source: !ref person
+target: !ref document
+sourceColumn: author
+targetColumn: document
+---
+kind: Layers.Store
+metadata: { name: base }
+connection: !ref db
+schema: !ref appSchema
+layer: base
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+---
+kind: Layers.Store
+metadata: { name: middle }
+connection: !ref db
+schema: !ref appSchema
+layer: middle
+bases: [!ref base]
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+---
+kind: Layers.Store
+metadata: { name: side }
+connection: !ref db
+schema: !ref appSchema
+layer: side
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+---
+kind: Layers.Store
+metadata: { name: top }
+connection: !ref db
+schema: !ref appSchema
+layer: top
+bases: [!ref middle, !ref side]
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]

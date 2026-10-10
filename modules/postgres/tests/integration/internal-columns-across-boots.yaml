@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: PostgresInternalColumnsAcrossBoots
+  version: 1.0.0
+  description: |
+    A table with internal columns across two real boots on PostgreSQL: the first
+    creates it — an internal text primary key, and a partial unique index over
+    one internal and one declared column — and the second, an unchanged restart,
+    reads it back from the catalogue and changes nothing. A table with no row
+    contract (`columns: {}`) rides along.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Test: ../../../test
+targets:
+  - !ref boots
+---
+kind: Test.Suite
+metadata: { name: boots }
+include:
+  - "__fixtures__/internal-column-boots/*.yaml"
+exclude: []
+concurrency: 1

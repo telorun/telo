@@ -1,0 +1,99 @@
+# The revisioned store abstract's rules, each pinned both ways: `telo check`
+# refuses the declaring library, and a consumer whose entry-scoped check is
+# silent fails at creation with the same code. The abstract restates the three
+# store rules over the three bookkeeping tables. It has no `bases:` — what a
+# revisioned layer is built on is data — so none of the rules about a declared
+# stack apply to it.
+kind: Telo.Application
+metadata:
+  name: GraphLayersSqlRevisionedStaticRefusals
+  version: 1.0.0
+  description: The revisioned store's structural rules, refused statically and at creation.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref bookkeepingNotInSchema
+  - !ref bookkeepingNotInSchemaAtRuntime
+  - !ref basesNotInSchema
+  - !ref basesNotInSchemaAtRuntime
+  - !ref tableNotInSchema
+  - !ref tableNotInSchemaAtRuntime
+  - !ref schemaConnectionMismatch
+  - !ref schemaConnectionMismatchAtRuntime
+  - !ref tableShared
+  - !ref tableSharedAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: bookkeepingNotInSchema }
+source: ./__fixtures__/revisioned-rules/bookkeeping-not-in-schema/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a table its schema does not list in 'tables:'"
+---
+kind: Assert.Manifest
+metadata: { name: bookkeepingNotInSchemaAtRuntime }
+source: ./__fixtures__/revisioned-rules/bookkeeping-not-in-schema-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+---
+kind: Assert.Manifest
+metadata: { name: basesNotInSchema }
+source: ./__fixtures__/revisioned-rules/bases-not-in-schema/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a table its schema does not list in 'tables:'"
+---
+kind: Assert.Manifest
+metadata: { name: basesNotInSchemaAtRuntime }
+source: ./__fixtures__/revisioned-rules/bases-not-in-schema-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+---
+kind: Assert.Manifest
+metadata: { name: tableNotInSchema }
+source: ./__fixtures__/revisioned-rules/table-not-in-schema/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a table its schema does not list in 'tables:'"
+---
+kind: Assert.Manifest
+metadata: { name: tableNotInSchemaAtRuntime }
+source: ./__fixtures__/revisioned-rules/table-not-in-schema-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+---
+kind: Assert.Manifest
+metadata: { name: schemaConnectionMismatch }
+source: ./__fixtures__/revisioned-rules/schema-connection-mismatch/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a schema on a different connection"
+---
+kind: Assert.Manifest
+metadata: { name: schemaConnectionMismatchAtRuntime }
+source: ./__fixtures__/revisioned-rules/schema-connection-mismatch-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH"
+---
+kind: Assert.Manifest
+metadata: { name: tableShared }
+source: ./__fixtures__/revisioned-rules/table-shared/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names one table twice among its node and relationship types"
+---
+kind: Assert.Manifest
+metadata: { name: tableSharedAtRuntime }
+source: ./__fixtures__/revisioned-rules/table-shared-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_SHARED"

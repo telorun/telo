@@ -1,0 +1,229 @@
+kind: Telo.Application
+metadata:
+  name: RevisionedStorageBoots
+  version: 1.0.0
+  description: |
+    Boot 1 — this release's kinds over the namespace the previous release left.
+    Every table then holds the author's columns, the bookkeeping columns the
+    table kind adds and its indexes. What this release adds arrived by expansion
+    alone — `graph_beneath` on each typed table, the label and base-list columns
+    and the label index on the changesets table, and the changeset-bases table —
+    with nothing tombstoned or held. The row the previous release published
+    reads through the store, and the store then publishes one draft, so the
+    next boot has rows of both releases to find intact.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../../postgres
+  Graph: ../../../../../graph
+  GraphLayers: ../../../../../graph-layers
+  Layers: ../../../..
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text }
+indexes:
+  people_by_name: { columns: [name] }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_revisions_boots
+ledger: graph_revisions_boots
+version: !cel "module.version"
+tables: [!ref people, !ref knowsTable, !ref graphLayers, !ref graphChangesets, !ref graphChangesetBases]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+nodes: [!ref person]
+relationships: [!ref knows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: peopleColumns
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT column_name AS name, data_type AS type, is_nullable AS nullable
+        FROM information_schema.columns
+        WHERE table_schema = 'graph_revisions_boots' AND table_name = 'people' ORDER BY ordinal_position
+  - name: assertPeopleColumns
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.peopleColumns.result.rows"
+      expected:
+        - { name: id, type: text, nullable: "NO" }
+        - { name: name, type: text, nullable: "YES" }
+        - { name: graph_row, type: uuid, nullable: "NO" }
+        - { name: graph_layer, type: uuid, nullable: "NO" }
+        - { name: graph_changeset, type: uuid, nullable: "NO" }
+        - { name: graph_from_revision, type: bigint, nullable: "YES" }
+        - { name: graph_to_revision, type: bigint, nullable: "YES" }
+        - { name: graph_effect, type: text, nullable: "NO" }
+        - { name: graph_over, type: uuid, nullable: "YES" }
+        - { name: graph_resolution, type: text, nullable: "YES" }
+        - { name: graph_resolved_by_type, type: text, nullable: "YES" }
+        - { name: graph_resolved_by_id, type: text, nullable: "YES" }
+        - { name: graph_beneath, type: uuid, nullable: "YES" }
+  - name: bookkeepingColumns
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT table_name AS tbl, string_agg(column_name, ',' ORDER BY ordinal_position) AS cols
+        FROM information_schema.columns
+        WHERE table_schema = 'graph_revisions_boots' AND table_name IN ('graph_layers', 'graph_changesets', 'graph_changeset_bases')
+        GROUP BY table_name ORDER BY table_name DESC
+  - name: assertBookkeepingColumns
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.bookkeepingColumns.result.rows"
+      expected:
+        - { tbl: graph_layers, cols: "id,name,head_revision,created_at,created_by_type,created_by_id" }
+        - tbl: graph_changesets
+          cols: "id,public_id,layer_id,parent_revision,message,created_at,created_by_type,created_by_id,published_at,published_by_type,published_by_id,discarded_at,discarded_by_type,discarded_by_id,revision,label,labelled_at,labelled_by_type,labelled_by_id,bases_changeset"
+        - { tbl: graph_changeset_bases, cols: "id,changeset_id,position,base_layer_id,base_revision" }
+  - name: indexes
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT indexname AS name,
+          (indexdef LIKE 'CREATE UNIQUE%')::int AS uniq, (indexdef LIKE '% WHERE %')::int AS partial,
+          substring(indexdef FROM '\((.*?)\)') AS cols
+        FROM pg_indexes
+        WHERE schemaname = 'graph_revisions_boots' AND tablename IN ('people', 'knows', 'graph_changesets', 'graph_changeset_bases')
+          AND (indexname ~ '^graph_(graph_changesets|graph_changeset_bases|knows|people)_' OR indexname = 'people_by_name')
+        ORDER BY indexname
+  - name: assertIndexes
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.indexes.result.rows"
+      expected:
+        - { name: graph_graph_changeset_bases_layer, uniq: 1, partial: 0, cols: "changeset_id, base_layer_id" }
+        - { name: graph_graph_changeset_bases_position, uniq: 1, partial: 0, cols: "changeset_id, \"position\"" }
+        - { name: graph_graph_changesets_layer_label, uniq: 1, partial: 1, cols: "layer_id, label" }
+        - { name: graph_graph_changesets_layer_revision, uniq: 1, partial: 0, cols: "layer_id, revision" }
+        - { name: graph_graph_changesets_open, uniq: 0, partial: 1, cols: "layer_id, public_id" }
+        - { name: graph_knows_changeset_pair, uniq: 1, partial: 0, cols: "graph_changeset, source, target" }
+        - { name: graph_knows_changeset_target, uniq: 0, partial: 0, cols: "graph_changeset, target, source" }
+        - { name: graph_knows_layer_current, uniq: 1, partial: 1, cols: "graph_layer, source, target" }
+        - { name: graph_knows_layer_pair, uniq: 0, partial: 1, cols: "graph_layer, source, target, graph_from_revision" }
+        - { name: graph_knows_layer_target, uniq: 0, partial: 1, cols: "graph_layer, target, source, graph_from_revision" }
+        - { name: graph_people_changeset_key, uniq: 1, partial: 0, cols: "graph_changeset, id" }
+        - { name: graph_people_layer_current, uniq: 1, partial: 1, cols: "graph_layer, id" }
+        - { name: graph_people_layer_key, uniq: 0, partial: 1, cols: "graph_layer, id, graph_from_revision" }
+        - { name: people_by_name, uniq: 0, partial: 0, cols: "name" }
+  - name: assertNothingTombstoned
+    invoke: !ref check
+    inputs:
+      actual: !cel "resources.appSchema.status.tombstoned"
+      expected: []
+  - name: assertNothingHeld
+    invoke: !ref check
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected: []
+  # What the previous release wrote is the layer's first revision still.
+  - name: older
+    invoke: { kind: Graph.GetNode, store: !ref team, node: !ref person }
+    inputs: { key: older }
+  - name: history
+    invoke: { kind: GraphLayers.ListRevisions, store: !ref team }
+    inputs: {}
+  - name: assertPreviousReleaseTakenOver
+    invoke: !ref check
+    inputs:
+      actual:
+        node: !cel "steps.older.result.node"
+        history: !cel "steps.history.result.revisions.map(r, [r.number, r.message, r.bases])"
+      expected:
+        node: { key: older, properties: { name: Older }, origin: team }
+        history: [[1, written by the previous release, []]]
+  - name: open
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref team }
+    inputs: { message: kept across boots }
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: create
+          invoke: { kind: Graph.CreateNode, store: !ref team, node: !ref person }
+          inputs: { key: kept, properties: { name: Kept } }
+  - name: publish
+    invoke: { kind: GraphLayers.Publish, store: !ref team }
+    inputs: { draft: !cel "steps.open.result.draft.id" }

@@ -1,0 +1,25 @@
+# A revisioned store whose changeset-bases table its schema does not list.
+kind: Telo.Library
+metadata:
+  name: RevisionedBasesNotInSchema
+include:
+  - ../../revisioned-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-revisions-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: strayBases }
+table: stray_bases
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref appSchema
+layer: lost
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref strayBases

@@ -1,0 +1,46 @@
+# A store declared as the release before pinned stacks declared it: with no
+# changeset-bases table. The slot is required.
+kind: Telo.Application
+metadata:
+  name: StoreWithoutBasesTable
+imports:
+  SQLite: ../../../../sqlite
+  Layers: ../../..
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref graphLayers, !ref graphChangesets]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Store
+metadata: { name: shared }
+connection: !ref db
+schema: !ref appSchema
+layer: shared
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets

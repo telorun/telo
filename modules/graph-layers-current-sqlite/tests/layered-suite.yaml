@@ -1,0 +1,182 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersCurrentSqliteSuite
+  version: 1.0.0
+  description: |
+    The layered graph suite on an in-memory SQLite database, over seven current
+    stores sharing one set of layered tables: overlay by precedence, writes that
+    state only in the store's own layer, hiding and retraction, links and
+    traversals that cross layers, and keyset paging over the resolved view.
+imports:
+  Suite:
+    source: ../../graph-layers/tests/__fixtures__/layered-suite
+    resources:
+      base: !ref base
+      middle: !ref middle
+      side: !ref side
+      top: !ref top
+      left: !ref left
+      right: !ref right
+      apex: !ref apex
+      person: !ref person
+      document: !ref document
+      knows: !ref knows
+      authored: !ref authored
+      refreshStacks: !ref refreshStacks
+  SQLite: ../../sqlite
+  Layers: ../
+  Run: ../../run
+targets:
+  - !ref appSchema
+  - !ref Suite.overlay
+  - !ref Suite.writes
+  - !ref Suite.relationships
+  - !ref Suite.traversals
+  - !ref Suite.deletions
+  - !ref Suite.retractions
+  - !ref Suite.diamond
+  - !ref Suite.paging
+  - !ref Suite.defaults
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+  age: { type: integer }
+---
+kind: Layers.NodeTable
+metadata: { name: documents }
+table: documents
+key: id
+columns:
+  id: { type: text, nullable: false }
+  title: { type: text }
+  status: { type: text, nullable: false, default: draft }
+  pages: { type: integer, default: 1 }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+  since: { type: integer }
+---
+kind: Layers.RelationshipTable
+metadata: { name: authoredTable }
+table: authored
+sourceColumn: author
+targetColumn: document
+columns:
+  author: { type: text, nullable: false }
+  document: { type: text, nullable: false }
+  role: { type: text }
+  share: { type: integer, default: 100 }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref documents, !ref knowsTable, !ref authoredTable]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Node
+metadata: { name: document }
+table: !ref documents
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Relationship
+metadata: { name: authored }
+table: !ref authoredTable
+source: !ref person
+target: !ref document
+sourceColumn: author
+targetColumn: document
+---
+kind: Layers.Store
+metadata: { name: base }
+connection: !ref db
+schema: !ref appSchema
+layer: base
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+---
+kind: Layers.Store
+metadata: { name: middle }
+connection: !ref db
+schema: !ref appSchema
+layer: middle
+bases: [!ref base]
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+---
+kind: Layers.Store
+metadata: { name: side }
+connection: !ref db
+schema: !ref appSchema
+layer: side
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+---
+kind: Layers.Store
+metadata: { name: top }
+connection: !ref db
+schema: !ref appSchema
+layer: top
+bases: [!ref middle, !ref side]
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+---
+kind: Layers.Store
+metadata: { name: left }
+connection: !ref db
+schema: !ref appSchema
+layer: left
+bases: [!ref base]
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+---
+kind: Layers.Store
+metadata: { name: right }
+connection: !ref db
+schema: !ref appSchema
+layer: right
+bases: [!ref base]
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+---
+kind: Layers.Store
+metadata: { name: apex }
+connection: !ref db
+schema: !ref appSchema
+layer: apex
+bases: [!ref left, !ref right]
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+---
+# A current store reads its bases live, so there is nothing to bring up to date.
+kind: Run.Sequence
+metadata: { name: refreshStacks }
+steps:
+  - name: nothing
+    value: !cel "true"

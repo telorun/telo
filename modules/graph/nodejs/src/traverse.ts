@@ -19,10 +19,10 @@ import type {
   TraversalSpec,
 } from "./graph-store.js";
 import {
+  boundName,
   declaredName,
   describeOperation,
-  filterOf,
-  pageOf,
+  Listing,
   quoteKey,
   resolveNodeType,
   resolveRelationshipType,
@@ -47,22 +47,47 @@ interface TraverseInputs {
   key?: unknown;
   where?: unknown;
   limit?: unknown;
-  offset?: unknown;
+  cursor?: unknown;
 }
 
-class TraverseOperation implements ResourceInstance<TraverseInputs, { nodes: GraphNodeValue[] }> {
+interface TraverseOutput {
+  nodes: GraphNodeValue[];
+  next?: string;
+}
+
+/** The declared path, as a cursor is bound to it. */
+function pathOf(spec: TraversalSpec, describe: string): Record<string, unknown> {
+  return {
+    from: boundName(spec.from, describe, "from"),
+    to: boundName(spec.to, describe, "to"),
+    hops: spec.hops.map((hop, index) => ({
+      relationship: boundName(hop.relationship, describe, `hops[${index}].relationship`),
+      direction: hop.direction,
+      minHops: hop.minHops,
+      maxHops: hop.maxHops,
+    })),
+  };
+}
+
+class TraverseOperation implements ResourceInstance<TraverseInputs, TraverseOutput> {
   constructor(
     private readonly describe: string,
     private readonly store: GraphStore,
     private readonly prepared: PreparedTraversal,
   ) {}
 
-  async invoke(inputs: TraverseInputs, ctx?: InvokeContext): Promise<{ nodes: GraphNodeValue[] }> {
+  async invoke(inputs: TraverseInputs, ctx?: InvokeContext): Promise<TraverseOutput> {
+    const listing = new Listing(this.describe, inputs ?? {}, {
+      operation: "Traverse",
+      store: boundName(this.store, this.describe, "store"),
+      path: pathOf(this.prepared.spec, this.describe),
+      key: inputs?.key ?? null,
+    });
     const outcome = await this.store.traverse(
       this.prepared,
       inputs?.key,
-      filterOf(inputs?.where),
-      pageOf(inputs ?? {}, this.describe),
+      listing.where,
+      listing.page,
       ctx,
     );
     if (outcome.status === "absent") {
@@ -72,7 +97,8 @@ class TraverseOperation implements ResourceInstance<TraverseInputs, { nodes: Gra
           `key ${quoteKey(inputs?.key)} — does not exist.`,
       );
     }
-    return { nodes: outcome.value };
+    const { items, ...more } = listing.result(outcome);
+    return { nodes: items, ...more };
   }
 
   snapshot(): Record<string, unknown> {

@@ -1,0 +1,170 @@
+kind: Telo.Application
+metadata:
+  name: RevisionedStorageBoots
+  version: 1.0.0
+  description: |
+    Boot 0.5 — the namespace as the release before pinned stacks left it. The
+    four tables are declared as that release's table kinds rendered them: no
+    `graph_beneath` column, no label or base-list columns on the changesets
+    table, no label index, and no changeset-bases table. One layer, one
+    published revision and one row are written the way that release's store
+    wrote them, so the next boot — this release's kinds over the same namespace
+    — must take all of it over by adding columns, an index and a table, with no
+    manual step.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../../postgres
+  Run: ../../../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref seed
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_revisions_boots
+ledger: graph_revisions_boots
+version: !cel "module.version"
+tables: [!ref people, !ref knowsTable, !ref graphLayers, !ref graphChangesets]
+---
+kind: Postgres.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text }
+internalColumns:
+  graph_row: { type: uuid, nullable: false, primaryKey: true }
+  graph_layer: { type: uuid, nullable: false }
+  graph_changeset: { type: uuid, nullable: false }
+  graph_from_revision: { type: bigint }
+  graph_to_revision: { type: bigint }
+  graph_effect: { type: text, nullable: false }
+  graph_over: { type: uuid }
+  graph_resolution: { type: text }
+  graph_resolved_by_type: { type: text }
+  graph_resolved_by_id: { type: text }
+indexes:
+  people_by_name: { columns: [name] }
+  graph_people_changeset_key: { columns: [graph_changeset, id], unique: true }
+  graph_people_layer_current:
+    columns: [graph_layer, id]
+    unique: true
+    where: graph_from_revision IS NOT NULL AND graph_to_revision IS NULL
+  graph_people_layer_key:
+    columns: [graph_layer, id, graph_from_revision]
+    where: graph_from_revision IS NOT NULL
+---
+kind: Postgres.Table
+metadata: { name: knowsTable }
+table: knows
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+internalColumns:
+  graph_row: { type: uuid, nullable: false, primaryKey: true }
+  graph_layer: { type: uuid, nullable: false }
+  graph_changeset: { type: uuid, nullable: false }
+  graph_from_revision: { type: bigint }
+  graph_to_revision: { type: bigint }
+  graph_effect: { type: text, nullable: false }
+  graph_over: { type: uuid }
+  graph_resolution: { type: text }
+  graph_resolved_by_type: { type: text }
+  graph_resolved_by_id: { type: text }
+indexes:
+  graph_knows_changeset_pair: { columns: [graph_changeset, source, target], unique: true }
+  graph_knows_changeset_target: { columns: [graph_changeset, target, source] }
+  graph_knows_layer_current:
+    columns: [graph_layer, source, target]
+    unique: true
+    where: graph_from_revision IS NOT NULL AND graph_to_revision IS NULL
+  graph_knows_layer_pair:
+    columns: [graph_layer, source, target, graph_from_revision]
+    where: graph_from_revision IS NOT NULL
+  graph_knows_layer_target:
+    columns: [graph_layer, target, source, graph_from_revision]
+    where: graph_from_revision IS NOT NULL
+---
+kind: Postgres.Table
+metadata: { name: graphLayers }
+table: graph_layers
+columns: {}
+internalColumns:
+  id: { type: uuid, nullable: false, primaryKey: true }
+  name: { type: text, nullable: false, unique: true }
+  head_revision: { type: bigint, nullable: false }
+  created_at: { type: timestamptz, nullable: false }
+  created_by_type: { type: text, nullable: false }
+  created_by_id: { type: text, nullable: false }
+---
+kind: Postgres.Table
+metadata: { name: graphChangesets }
+table: graph_changesets
+columns: {}
+internalColumns:
+  id: { type: uuid, nullable: false, primaryKey: true }
+  public_id: { type: text, nullable: false, unique: true }
+  layer_id: { type: uuid, nullable: false }
+  parent_revision: { type: bigint, nullable: false }
+  message: { type: text }
+  created_at: { type: timestamptz, nullable: false }
+  created_by_type: { type: text, nullable: false }
+  created_by_id: { type: text, nullable: false }
+  published_at: { type: timestamptz }
+  published_by_type: { type: text }
+  published_by_id: { type: text }
+  discarded_at: { type: timestamptz }
+  discarded_by_type: { type: text }
+  discarded_by_id: { type: text }
+  revision: { type: bigint }
+indexes:
+  graph_graph_changesets_layer_revision: { columns: [layer_id, revision], unique: true }
+  graph_graph_changesets_open:
+    columns: [layer_id, public_id]
+    where: published_at IS NULL AND discarded_at IS NULL
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+# What that release's store left after one write outside a draft: the layer at
+# revision 1, the changeset that is that revision, and the row it published.
+kind: Run.Sequence
+metadata: { name: seed }
+steps:
+  - name: layer
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_revisions_boots.graph_layers (id, name, head_revision, created_at, created_by_type, created_by_id)
+        VALUES ('0190a000-0000-7000-8000-000000000001', 'team', 1, clock_timestamp(), 'store', 'team')
+  - name: changeset
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_revisions_boots.graph_changesets (id, public_id, layer_id, parent_revision, revision, message,
+          created_at, created_by_type, created_by_id, published_at, published_by_type, published_by_id)
+        VALUES ('0190a000-0000-7000-8000-000000000002', 'gdr_0000000000000000000001',
+          '0190a000-0000-7000-8000-000000000001', 0, 1, 'written by the previous release',
+          clock_timestamp(), 'store', 'team', clock_timestamp(), 'store', 'team')
+  - name: person
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_revisions_boots.people (id, name, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect)
+        VALUES ('older', 'Older', '0190a000-0000-7000-8000-000000000003',
+          '0190a000-0000-7000-8000-000000000001', '0190a000-0000-7000-8000-000000000002', 1, 'stated')

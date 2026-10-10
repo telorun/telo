@@ -1,0 +1,37 @@
+# A bookkeeping table has no row contract: a repository over it has no column
+# it can name, so nothing but the store writes it.
+kind: Telo.Application
+metadata:
+  name: BookkeepingRepository
+imports:
+  Postgres: ../../../../postgres
+  SqlRepository: ../../../../sql-repository
+  Layers: ../../..
+  Run: ../../../../run
+targets:
+  - !ref write
+---
+kind: Postgres.Connection
+metadata: { name: db }
+# Never connected: this fixture is only ever checked.
+connectionString: postgres://unused:unused@localhost:1/unused
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref graphLayers]
+---
+kind: Run.Sequence
+metadata: { name: write }
+steps:
+  - name: insert
+    invoke:
+      kind: SqlRepository.Create
+      connection: !ref db
+      table: !ref graphLayers
+    inputs:
+      data: { head_revision: 3 }

@@ -92,6 +92,68 @@ silent. The opposite of a removed *object*, and for the opposite reason — a
 dropped column is deferred because it CAN be executed later, while this cannot be
 executed at all.
 
+## Internal columns — outside the row contract
+
+A table can hold columns that are its own business rather than part of what a row
+means to its consumers — a soft-delete marker, a revision counter, bookkeeping a
+module keeps beside the data it stores. They go in `internalColumns:`, a second
+column map in the same engine vocabulary as `columns:`:
+
+```yaml
+kind: Postgres.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug:  { type: text, nullable: false }
+  title: { type: text }
+internalColumns:
+  row_id:     { type: uuid, primaryKey: true, defaultExpression: "gen_random_uuid()" }
+  layer:      { type: text, nullable: false, default: base }
+  retired_at: { type: timestamptz }
+indexes:
+  documents_layer_slug:
+    columns: [layer, slug]
+    unique: true
+    where: "retired_at IS NULL"
+```
+
+**To the database it is a column like any other.** The pass creates it, compares
+it, refuses an unsafe change to it, tombstones it when it leaves the declaration
+and reclaims it under the same `reclaim:` policy — a removed internal column is
+listed in `status.pendingReclamation` exactly as a declared one is. It may be the
+primary key, be `unique`, be renamed with `renamedFrom:`, reference an enum, and
+be named by an index, a foreign key or a check, alone or beside declared columns.
+The ledger records it the way it records every column, so moving a column from one
+map to the other is no change at all.
+
+**To everything typed from the table it does not exist.** The row projection is
+built from `columns:` alone, so an internal column is absent from every contract
+derived from the table — a repository operation's filters and data, a graph node's
+properties — and naming one there is a `telo check` error like any unknown column.
+A seed row states the row contract, so it cannot set one either, and `seeds.key`
+cannot name one; an internal column a seeded table needs a value for takes its
+`default`.
+
+`columns` is the table's row contract and is always written.
+A table with no row contract writes `columns: {}` and declares every column under `internalColumns`.
+A table needs at least one column across the two maps.
+Nothing typed from such a table can name a column of it, and it takes no seeds.
+`columns: {}` with no `internalColumns`, and `internalColumns: {}`, are both
+`SCHEMA_VIOLATION`.
+
+Three rules are the internal map's own, each reported by `telo check` and
+refused again when the table is created:
+
+| Rule | Refuses |
+|---|---|
+| `SQL_COLUMN_DECLARED_TWICE` | one name in both maps |
+| `SQL_INTERNAL_COLUMN_RENAME_FROM_SELF` | an internal column whose `renamedFrom` is its own name |
+| `SQL_INTERNAL_COLUMN_RENAME_SOURCE_STILL_DECLARED` | an internal column whose `renamedFrom` names a column either map still declares |
+
+The rules about a table's columns as a whole — an index or a foreign key naming
+an unknown column, more than one primary key, a `columns:` entry renamed from a
+name still declared, an enum the schema does not list — read both maps.
+
 ## Predicates — named table-level checks
 
 A `checks:` map beside `indexes:` and `foreignKeys:`, keyed by constraint name,
@@ -314,8 +376,8 @@ reason, and stops the release. Nothing is applied and nothing is skipped.
 
 Some are decided from the declaration alone, at resource creation, before a
 connection is even opened: a table with no columns, two columns marked
-`primaryKey`, a column renamed from itself or from a column the table still
-declares, an index or foreign key over a column that does not exist, a foreign
+`primaryKey`, one column name in both column maps, a column renamed from itself or
+from a column the table still declares, an index or foreign key over a column that does not exist, a foreign
 key whose two sides have different arity, a column declared both `nullable` and
 `primaryKey`, and — per engine — an identity column the engine cannot express
 there.

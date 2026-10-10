@@ -1,0 +1,27 @@
+# A layered node table declaring an index under the 'graph_' prefix, which is the
+# table kind's own.
+kind: Telo.Library
+metadata:
+  name: ReservedIndex
+imports:
+  Layers: ../../../..
+  SQLite: ../../../../../sqlite
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text }
+indexes:
+  graph_people_name: { columns: [name] }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people]

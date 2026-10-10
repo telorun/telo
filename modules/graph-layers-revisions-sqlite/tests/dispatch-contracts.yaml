@@ -1,0 +1,73 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsSqliteDispatchContracts
+  version: 1.0.0
+  description: |
+    A computed input the analyzer cannot see is held to the same derived contract
+    at dispatch — a misspelled property, a key of the wrong type, a value outside
+    a column's enum — and what an operation returns carries the author's columns
+    and the origin layer, never a bookkeeping column.
+include:
+  - ./__fixtures__/layered-model.yaml
+imports:
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  Layers: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Graph.CreateNode
+metadata: { name: createPerson }
+store: !ref team
+node: !ref person
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: create
+    invoke: !ref createPerson
+    inputs: { key: a, properties: { name: Alice, status: active } }
+  - name: assertStoredShape
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.create.result"
+      expected: { node: { key: a, properties: { name: Alice, status: active }, origin: team } }
+  - name: misspelled
+    try:
+      - name: attemptMisspelled
+        invoke: !ref createPerson
+        inputs: { key: m, properties: !cel "dyn({'nmae': 'Mallory'})" }
+    catch:
+      - name: misspelledRefused
+        value: !cel "error.code"
+  - name: assertMisspelledRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.misspelledRefused.result", expected: ERR_INPUT_INVALID }
+  - name: wrongKeyType
+    try:
+      - name: attemptWrongKey
+        invoke: { kind: Graph.GetNode, store: !ref team, node: !ref person }
+        inputs: { key: !cel "dyn(7)" }
+    catch:
+      - name: wrongKeyRefused
+        value: !cel "error.code"
+  - name: assertWrongKeyRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.wrongKeyRefused.result", expected: ERR_INPUT_INVALID }
+  - name: outsideEnum
+    try:
+      - name: attemptOutsideEnum
+        invoke: !ref createPerson
+        inputs: { key: e, properties: !cel "dyn({'name': 'Eve', 'status': 'gone'})" }
+    catch:
+      - name: outsideEnumRefused
+        value: !cel "error.code"
+  - name: assertOutsideEnumRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.outsideEnumRefused.result", expected: ERR_INPUT_INVALID }

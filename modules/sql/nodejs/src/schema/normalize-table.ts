@@ -56,6 +56,8 @@ export interface RawTable {
   readonly table: string;
   readonly renamedFrom?: string;
   readonly columns?: Record<string, RawColumn>;
+  /** Columns the table holds outside its row contract, in the same vocabulary. */
+  readonly internalColumns?: Record<string, RawColumn>;
   readonly indexes?: Record<string, RawIndex>;
   readonly foreignKeys?: Record<string, RawForeignKey>;
   readonly checks?: Record<string, RawCheck>;
@@ -214,14 +216,24 @@ function validateTable(table: DeclaredTable): void {
           `whether a row is the same row, and it is what the upsert conflicts on.`,
       );
     }
+    const internal = new Set(table.internalColumns);
     for (const column of table.seeds.key) {
-      if (names.has(column)) continue;
+      if (names.has(column) && !internal.has(column)) continue;
       throw new Error(
         `table '${where}' seeds are keyed on '${column}', which this table does not declare, ` +
           `so no row can be identified by it.`,
       );
     }
     for (const [index, row] of table.seeds.rows.entries()) {
+      // A seed row is typed by the row contract, which an internal column is
+      // outside of.
+      for (const column of Object.keys(row)) {
+        if (!internal.has(column)) continue;
+        throw new Error(
+          `table '${where}' seed row ${index} sets '${column}', an internal column. A seed row ` +
+            `states the table's row contract, which an internal column is not part of.`,
+        );
+      }
       for (const column of table.seeds.key) {
         if (row[column] !== undefined) continue;
         throw new Error(
@@ -267,8 +279,20 @@ export function normalizeTable(
   resolveReference: TableReferenceResolver,
   resolveType: ColumnTypeResolver,
 ): DeclaredTable {
-  const columns = Object.entries(raw.columns ?? {}).map(([name, column]) =>
-    normalizeColumn(name, column, resolveType),
+  const internalColumns = Object.keys(raw.internalColumns ?? {});
+  for (const name of internalColumns) {
+    if (raw.columns && Object.hasOwn(raw.columns, name)) {
+      throw new Error(
+        `SQL_COLUMN_DECLARED_TWICE: table '${raw.table}' declares column '${name}' under both ` +
+          `'columns' and 'internalColumns'. A column is part of the row contract or outside it — ` +
+          `keep one.`,
+      );
+    }
+  }
+  // One column list from here on: the diff, the ledger and reclamation treat an
+  // internal column exactly as a declared one.
+  const columns = Object.entries({ ...raw.columns, ...raw.internalColumns }).map(
+    ([name, column]) => normalizeColumn(name, column, resolveType),
   );
   const indexes: DeclaredIndex[] = Object.entries(raw.indexes ?? {}).map(([name, index]) => ({
     name,
@@ -297,6 +321,7 @@ export function normalizeTable(
     name: raw.table,
     renamedFrom: raw.renamedFrom,
     columns,
+    internalColumns,
     indexes,
     foreignKeys,
     checks,

@@ -1,0 +1,1649 @@
+# What drafting promises, once, for every strategy and engine that keeps drafts: a
+# session's writes are visible only inside it; a draft is published at once,
+# conditionally and idempotently, or discarded whole; a draft the layer moved
+# under is refused, rebased, and its conflicts listed in five classes and
+# decided by a side, by a side with values set on top, or by an ordinary write;
+# deciding can be automated with ordinary steps and any invocable; and a draft
+# closed under a running session ends that session.
+#
+# A run supplies two drafted stores over the same types — `base`, built on
+# nothing, and `top`, built on `base` — and runs the sequences in order, starting
+# empty. Each sequence keeps to keys of its own prefix and leaves no draft open.
+# Nothing here assumes how a strategy stores a draft, how many it lets a layer
+# open at once, or which changes it can merge on its own: every conflict is
+# built from both sides writing the SAME property.
+kind: Telo.Library
+metadata:
+  name: DraftingGraphSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: the drafting suite over two drafted stores holding people who
+    know people.
+imports:
+  Graph: ../../../../graph
+  GraphLayers: ../../..
+  Run: ../../../../run
+  Assert: ../../../../assert
+resources:
+  base:
+    kind: GraphLayers.DraftedStore
+    description: Layer `base`, built on nothing.
+  top:
+    kind: GraphLayers.DraftedStore
+    description: Layer `top`, built on `base`.
+  person:
+    kind: Graph.Node
+    description: People keyed by a text `id`, with a non-null text `name` and an integer `age`.
+  knows:
+    kind: Graph.Relationship
+    description: person → person, with an integer `since`.
+exports:
+  resources:
+    - isolation
+    - stale
+    - conflicts
+    - automation
+    - closedDraft
+    - cursors
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+# What a drain has gathered so far.
+kind: Run.Value
+metadata: { name: gathered }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [items]
+    properties:
+      items: { type: array }
+value:
+  items: !cel "inputs.items"
+---
+# The scripted decider of the automation sequence: an ordinary invocable that
+# answers a conflict with a side. A real one would ask a person, a rules table
+# or a model; the graph modules know nothing of which.
+kind: Run.Value
+metadata: { name: decider }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [class]
+    properties:
+      class: { type: string }
+value:
+  take: !cel "inputs.class == 'changed-both' ? 'mine' : 'theirs'"
+---
+# A decider that is down.
+kind: Run.Sequence
+metadata: { name: deciderDown }
+steps:
+  - name: refuse
+    throw: { code: ERR_DECIDER_DOWN, message: "the decider is not answering" }
+---
+kind: Graph.CreateNode
+metadata: { name: topCreatePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: topGetPerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.MergeNode
+metadata: { name: topMergePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.UpdateNode
+metadata: { name: topUpdatePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: topDeletePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: topFindPeople }
+store: !ref top
+node: !ref person
+---
+kind: Graph.CreateRelationship
+metadata: { name: topCreateKnows }
+store: !ref top
+relationship: !ref knows
+---
+kind: Graph.FindRelationships
+metadata: { name: topFindKnows }
+store: !ref top
+relationship: !ref knows
+---
+kind: GraphLayers.OpenDraft
+metadata: { name: topOpenDraft }
+store: !ref top
+---
+kind: GraphLayers.Publish
+metadata: { name: topPublish }
+store: !ref top
+---
+kind: GraphLayers.DiscardDraft
+metadata: { name: topDiscard }
+store: !ref top
+---
+kind: GraphLayers.RebaseDraft
+metadata: { name: topRebase }
+store: !ref top
+---
+kind: GraphLayers.ListDrafts
+metadata: { name: topListDrafts }
+store: !ref top
+---
+kind: Graph.CreateNode
+metadata: { name: baseCreatePerson }
+store: !ref base
+node: !ref person
+---
+kind: GraphLayers.OpenDraft
+metadata: { name: baseOpenDraft }
+store: !ref base
+---
+kind: GraphLayers.DiscardDraft
+metadata: { name: baseDiscard }
+store: !ref base
+---
+kind: GraphLayers.NodeConflicts
+metadata: { name: topNodeConflicts }
+store: !ref top
+node: !ref person
+---
+kind: GraphLayers.RelationshipConflicts
+metadata: { name: topKnowsConflicts }
+store: !ref top
+relationship: !ref knows
+---
+kind: GraphLayers.ResolveNodeConflict
+metadata: { name: topResolveNode }
+store: !ref top
+node: !ref person
+---
+kind: GraphLayers.ResolveRelationshipConflict
+metadata: { name: topResolveKnows }
+store: !ref top
+relationship: !ref knows
+---
+# A draft is a private workspace until it is published, and a closed draft stays closed.
+kind: Run.Sequence
+metadata: { name: isolation }
+steps:
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: { message: isolation }
+  - name: draftWasOpened
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.open.result.opened"
+      expected: true
+  - name: edit
+    inputs:
+      draft: !cel "steps.open.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        - name: createIvy
+          invoke: !ref topCreatePerson
+          inputs: { key: i1, properties: { name: Ivy, age: 1 } }
+        - name: createIan
+          invoke: !ref topCreatePerson
+          inputs: { key: i3, properties: { name: Ian } }
+        - name: link
+          invoke: !ref topCreateKnows
+          inputs: { source: i1, target: i3, properties: { since: 1 } }
+        - name: readInside
+          invoke: !ref topGetPerson
+          inputs: { key: i1 }
+        - name: sessionReadsItsDraft
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.readInside.result.node"
+            expected: { key: i1, properties: { name: Ivy, age: 1 }, origin: top }
+  # Nothing the draft holds is visible outside a session on it.
+  - name: outsideBeforePublish
+    try:
+      - name: outsideBeforePublishAttempt
+        invoke: !ref topGetPerson
+        inputs: { key: i1 }
+      - name: outsideBeforePublishUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "outsideBeforePublish did not fail" }
+    catch:
+      - name: outsideBeforePublishCode
+        value: !cel "error.code"
+  - name: outsideBeforePublishRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.outsideBeforePublishCode.result", expected: GRAPH_NODE_NOT_FOUND }
+  - name: listed
+    invoke: !ref topListDrafts
+    inputs: {}
+  - name: draftIsListed
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.listed.result.drafts.filter(d, d.id == steps.open.result.draft.id).map(d, [d.stale, d.parentRevision == steps.open.result.draft.parentRevision, d.message == 'isolation'])"
+      expected: [[false, true, true]]
+  - name: publish
+    invoke: !ref topPublish
+    inputs: { draft: !cel "steps.open.result.draft.id", message: first, actor: { type: user, id: u1 } }
+  - name: publishMadeTheNextRevision
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.publish.result.changed, steps.publish.result.revision.number == steps.open.result.draft.parentRevision + 1]"
+      expected: [true, true]
+  # Every statement of the draft is published together.
+  - name: afterPublish
+    invoke: !ref topGetPerson
+    inputs: { key: i1 }
+  - name: afterPublishLinks
+    invoke: !ref topFindKnows
+    inputs: { source: i1 }
+  - name: publishedWhole
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.afterPublish.result.node.origin] + steps.afterPublishLinks.result.relationships.map(r, r.target)"
+      expected: [top, i3]
+  # Publishing a published draft answers with the revision it became.
+  - name: publishAgain
+    invoke: !ref topPublish
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: publishIsIdempotent
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.publishAgain.result.changed, steps.publishAgain.result.revision.number == steps.publish.result.revision.number, steps.publishAgain.result.revision.publishedAt == steps.publish.result.revision.publishedAt]"
+      expected: [true, true, true]
+  # A draft with no change creates no revision.
+  - name: openEmpty
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: publishEmpty
+    invoke: !ref topPublish
+    inputs: { draft: !cel "steps.openEmpty.result.draft.id" }
+  - name: emptyDraftChangedNothing
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.publishEmpty.result.changed, steps.publishEmpty.result.revision.number == steps.publish.result.revision.number, steps.openEmpty.result.draft.parentRevision == steps.publish.result.revision.number]"
+      expected: [false, true, true]
+  # A discarded draft is gone whole, and stays closed.
+  - name: openDoomed
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: editDoomed
+    inputs:
+      draft: !cel "steps.openDoomed.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        - name: createDoomed
+          invoke: !ref topCreatePerson
+          inputs: { key: i2, properties: { name: Doomed } }
+  - name: discard
+    invoke: !ref topDiscard
+    inputs: { draft: !cel "steps.openDoomed.result.draft.id", actor: { type: user, id: u2 } }
+  - name: discardReturnsNothing
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.discard.result"
+      expected: {}
+  - name: discardedWrite
+    try:
+      - name: discardedWriteAttempt
+        invoke: !ref topGetPerson
+        inputs: { key: i2 }
+      - name: discardedWriteUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "discardedWrite did not fail" }
+    catch:
+      - name: discardedWriteCode
+        value: !cel "error.code"
+  - name: discardedWriteRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.discardedWriteCode.result", expected: GRAPH_NODE_NOT_FOUND }
+  - name: discardAgain
+    invoke: !ref topDiscard
+    inputs: { draft: !cel "steps.openDoomed.result.draft.id" }
+  - name: publishDiscarded
+    try:
+      - name: publishDiscardedAttempt
+        invoke: !ref topPublish
+        inputs: { draft: !cel "steps.openDoomed.result.draft.id" }
+      - name: publishDiscardedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "publishDiscarded did not fail" }
+    catch:
+      - name: publishDiscardedCode
+        value: !cel "error.code"
+  - name: publishDiscardedRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.publishDiscardedCode.result", expected: GRAPH_DRAFT_DISCARDED }
+  - name: rebaseDiscarded
+    try:
+      - name: rebaseDiscardedAttempt
+        invoke: !ref topRebase
+        inputs: { draft: !cel "steps.openDoomed.result.draft.id" }
+      - name: rebaseDiscardedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "rebaseDiscarded did not fail" }
+    catch:
+      - name: rebaseDiscardedCode
+        value: !cel "error.code"
+  - name: rebaseDiscardedRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.rebaseDiscardedCode.result", expected: GRAPH_DRAFT_CLOSED }
+  - name: sessionOnDiscarded
+    try:
+      - name: sessionOnDiscardedAttempt
+        inputs:
+          draft: !cel "steps.openDoomed.result.draft.id"
+        invoke:
+          kind: GraphLayers.DraftSession
+          store: !ref top
+          inputs:
+            draft: !cel "inputs.draft"
+          steps:
+            - name: never
+              invoke: !ref topGetPerson
+              inputs: { key: i1 }
+      - name: sessionOnDiscardedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "sessionOnDiscarded did not fail" }
+    catch:
+      - name: sessionOnDiscardedCode
+        value: !cel "error.code"
+  - name: sessionOnDiscardedRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.sessionOnDiscardedCode.result", expected: GRAPH_DRAFT_CLOSED }
+  - name: discardPublished
+    try:
+      - name: discardPublishedAttempt
+        invoke: !ref topDiscard
+        inputs: { draft: !cel "steps.open.result.draft.id" }
+      - name: discardPublishedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "discardPublished did not fail" }
+    catch:
+      - name: discardPublishedCode
+        value: !cel "error.code"
+  - name: discardPublishedRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.discardPublishedCode.result", expected: GRAPH_DRAFT_PUBLISHED }
+  - name: publishUnknown
+    try:
+      - name: publishUnknownAttempt
+        invoke: !ref topPublish
+        inputs: { draft: gdr_0000000000000000000000 }
+      - name: publishUnknownUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "publishUnknown did not fail" }
+    catch:
+      - name: publishUnknownCode
+        value: !cel "error.code"
+  - name: publishUnknownRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.publishUnknownCode.result", expected: GRAPH_DRAFT_NOT_FOUND }
+  - name: discardUnknown
+    try:
+      - name: discardUnknownAttempt
+        invoke: !ref topDiscard
+        inputs: { draft: gdr_0000000000000000000000 }
+      - name: discardUnknownUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "discardUnknown did not fail" }
+    catch:
+      - name: discardUnknownCode
+        value: !cel "error.code"
+  - name: discardUnknownRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.discardUnknownCode.result", expected: GRAPH_DRAFT_NOT_FOUND }
+  - name: rebaseUnknown
+    try:
+      - name: rebaseUnknownAttempt
+        invoke: !ref topRebase
+        inputs: { draft: gdr_0000000000000000000000 }
+      - name: rebaseUnknownUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "rebaseUnknown did not fail" }
+    catch:
+      - name: rebaseUnknownCode
+        value: !cel "error.code"
+  - name: rebaseUnknownRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.rebaseUnknownCode.result", expected: GRAPH_DRAFT_NOT_FOUND }
+  - name: sessionOnUnknown
+    try:
+      - name: sessionOnUnknownAttempt
+        inputs:
+          draft: !cel "'gdr_0000000000000000000000'"
+        invoke:
+          kind: GraphLayers.DraftSession
+          store: !ref top
+          inputs:
+            draft: !cel "inputs.draft"
+          steps:
+            - name: never
+              invoke: !ref topGetPerson
+              inputs: { key: i1 }
+      - name: sessionOnUnknownUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "sessionOnUnknown did not fail" }
+    catch:
+      - name: sessionOnUnknownCode
+        value: !cel "error.code"
+  - name: sessionOnUnknownRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.sessionOnUnknownCode.result", expected: GRAPH_DRAFT_NOT_FOUND }
+  # A draft is its layer's: another layer's store cannot open a session on it.
+  - name: openOnBase
+    invoke: !ref baseOpenDraft
+    inputs: {}
+  - name: sessionOnForeign
+    try:
+      - name: sessionOnForeignAttempt
+        inputs:
+          draft: !cel "steps.openOnBase.result.draft.id"
+        invoke:
+          kind: GraphLayers.DraftSession
+          store: !ref top
+          inputs:
+            draft: !cel "inputs.draft"
+          steps:
+            - name: never
+              invoke: !ref topGetPerson
+              inputs: { key: i1 }
+      - name: sessionOnForeignUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "sessionOnForeign did not fail" }
+    catch:
+      - name: sessionOnForeignCode
+        value: !cel "error.code"
+  - name: sessionOnForeignRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.sessionOnForeignCode.result", expected: GRAPH_DRAFT_FOREIGN }
+  - name: discardOnBase
+    invoke: !ref baseDiscard
+    inputs: { draft: !cel "steps.openOnBase.result.draft.id" }
+  # The next draft starts clean: nothing of the discarded one is in it.
+  - name: openNext
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: nextDraftIsAnother
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.openNext.result.opened, steps.openNext.result.draft.id != steps.openDoomed.result.draft.id]"
+      expected: [true, true]
+  - name: readNext
+    inputs:
+      draft: !cel "steps.openNext.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        - name: discardedIsNotInTheNext
+          try:
+            - name: discardedIsNotInTheNextAttempt
+              invoke: !ref topGetPerson
+              inputs: { key: i2 }
+            - name: discardedIsNotInTheNextUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "discardedIsNotInTheNext did not fail" }
+          catch:
+            - name: discardedIsNotInTheNextCode
+              value: !cel "error.code"
+        - name: discardedIsNotInTheNextRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.discardedIsNotInTheNextCode.result", expected: GRAPH_NODE_NOT_FOUND }
+  - name: discardNext
+    invoke: !ref topDiscard
+    inputs: { draft: !cel "steps.openNext.result.draft.id" }
+---
+# A draft the layer has moved under is refused until it is rebased.
+kind: Run.Sequence
+metadata: { name: stale }
+steps:
+  - name: seed
+    invoke: !ref topCreatePerson
+    inputs: { key: s0, properties: { name: Seed, age: 1 } }
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: edit
+    inputs:
+      draft: !cel "steps.open.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        - name: createSam
+          invoke: !ref topCreatePerson
+          inputs: { key: s1, properties: { name: Sam } }
+        - name: ageSeed
+          invoke: !ref topUpdatePerson
+          inputs: { key: s0, properties: { age: 2 } }
+  # A write outside the session moves the layer past the draft.
+  - name: outside
+    invoke: !ref topCreatePerson
+    inputs: { key: s2, properties: { name: Outside } }
+  - name: publishStale
+    try:
+      - name: publishStaleAttempt
+        invoke: !ref topPublish
+        inputs: { draft: !cel "steps.open.result.draft.id" }
+      - name: publishStaleUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "publishStale did not fail" }
+    catch:
+      - name: publishStaleCode
+        value: !cel "error.code"
+  - name: publishStaleRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.publishStaleCode.result", expected: GRAPH_DRAFT_STALE }
+  - name: listedStale
+    invoke: !ref topListDrafts
+    inputs: {}
+  - name: listedAsStale
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.listedStale.result.drafts.filter(d, d.id == steps.open.result.draft.id).map(d, d.stale)"
+      expected: [true]
+  - name: rebase
+    invoke: !ref topRebase
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: nothingCollided
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.rebase.result.conflicts, steps.rebase.result.parentRevision > steps.open.result.draft.parentRevision ? 1 : 0]"
+      expected: [0, 1]
+  - name: listedRebased
+    invoke: !ref topListDrafts
+    inputs: {}
+  - name: listedAsCurrent
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.listedRebased.result.drafts.filter(d, d.id == steps.open.result.draft.id).map(d, [d.stale, d.parentRevision == steps.rebase.result.parentRevision])"
+      expected: [[false, true]]
+  - name: publish
+    invoke: !ref topPublish
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: people
+    invoke: !ref topFindPeople
+    inputs: { where: { gte: { age: 0 } } }
+  - name: everyone
+    invoke: !ref topFindPeople
+    inputs: {}
+  - name: bothSidesArePublished
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.everyone.result.nodes.filter(n, n.key.startsWith('s')).map(n, n.key) + steps.people.result.nodes.filter(n, n.key == 's0').map(n, string(n.properties.age))"
+      expected: [s0, s1, s2, "2"]
+  # A write that changes nothing moves nothing: a merge and an update delivered
+  # again, with the values the layer already states, are no revision, so a
+  # draft opened before them still publishes.
+  - name: delivered
+    invoke: !ref topMergePerson
+    inputs: { key: s3, properties: { name: Delivered } }
+  - name: deliveredAge
+    invoke: !ref topUpdatePerson
+    inputs: { key: s3, properties: { age: 7 } }
+  - name: openBeforeRedelivery
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: editBeforeRedelivery
+    inputs:
+      draft: !cel "steps.openBeforeRedelivery.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        - name: createSid
+          invoke: !ref topCreatePerson
+          inputs: { key: s4, properties: { name: Sid } }
+  - name: redelivered
+    invoke: !ref topMergePerson
+    inputs: { key: s3, properties: { name: Delivered } }
+  - name: redeliveredAge
+    invoke: !ref topUpdatePerson
+    inputs: { key: s3, properties: { age: 7 } }
+  - name: publishAfterRedelivery
+    invoke: !ref topPublish
+    inputs: { draft: !cel "steps.openBeforeRedelivery.result.draft.id" }
+  - name: redeliveryChangedNothing
+    invoke: !ref check
+    inputs:
+      actual:
+        merged: !cel "steps.redelivered.result.node.properties"
+        updated: !cel "steps.redeliveredAge.result.node.properties"
+        published: !cel "steps.publishAfterRedelivery.result.changed"
+        revisions: !cel "steps.publishAfterRedelivery.result.revision.number - steps.openBeforeRedelivery.result.draft.parentRevision"
+      expected:
+        merged: { name: Delivered, age: 7 }
+        updated: { name: Delivered, age: 7 }
+        published: true
+        revisions: 1
+---
+# One conflict of each class, built by both sides writing the same key, then each
+# decided each way. Convergent changes are merged without asking.
+kind: Run.Sequence
+metadata: { name: conflicts }
+steps:
+  # The published state both sides start from.
+  - name: seed_cb1
+    invoke: !ref topCreatePerson
+    inputs: { key: cb1, properties: { name: Orig, age: 1 } }
+  - name: seed_cb2
+    invoke: !ref topCreatePerson
+    inputs: { key: cb2, properties: { name: Orig, age: 1 } }
+  - name: seed_cr1
+    invoke: !ref topCreatePerson
+    inputs: { key: cr1, properties: { name: Orig, age: 1 } }
+  - name: seed_cr2
+    invoke: !ref topCreatePerson
+    inputs: { key: cr2, properties: { name: Orig, age: 1 } }
+  - name: seed_rc1
+    invoke: !ref topCreatePerson
+    inputs: { key: rc1, properties: { name: Orig, age: 1 } }
+  - name: seed_rc2
+    invoke: !ref topCreatePerson
+    inputs: { key: rc2, properties: { name: Orig, age: 1 } }
+  - name: seed_st1
+    invoke: !ref topCreatePerson
+    inputs: { key: st1, properties: { name: Orig, age: 1 } }
+  - name: seed_st2
+    invoke: !ref topCreatePerson
+    inputs: { key: st2, properties: { name: Orig, age: 1 } }
+  - name: seed_ow1
+    invoke: !ref topCreatePerson
+    inputs: { key: ow1, properties: { name: Orig, age: 1 } }
+  - name: seed_v1
+    invoke: !ref topCreatePerson
+    inputs: { key: v1, properties: { name: Orig, age: 1 } }
+  - name: seed_v3
+    invoke: !ref topCreatePerson
+    inputs: { key: v3, properties: { name: Orig, age: 1 } }
+  - name: seed_e1
+    invoke: !ref topCreatePerson
+    inputs: { key: e1, properties: { name: Orig, age: 1 } }
+  - name: seed_e2
+    invoke: !ref topCreatePerson
+    inputs: { key: e2, properties: { name: Orig, age: 1 } }
+  - name: seed_f1
+    invoke: !ref topCreatePerson
+    inputs: { key: f1, properties: { name: Orig, age: 1 } }
+  - name: seed_f2
+    invoke: !ref topCreatePerson
+    inputs: { key: f2, properties: { name: Orig, age: 1 } }
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: {}
+  # The draft's side.
+  - name: mine
+    inputs:
+      draft: !cel "steps.open.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        - name: mine_cb1
+          invoke: !ref topUpdatePerson
+          inputs: { key: cb1, properties: { age: 10 } }
+        - name: mine_cb2
+          invoke: !ref topUpdatePerson
+          inputs: { key: cb2, properties: { age: 10 } }
+        - name: mine_cr1
+          invoke: !ref topUpdatePerson
+          inputs: { key: cr1, properties: { age: 10 } }
+        - name: mine_cr2
+          invoke: !ref topUpdatePerson
+          inputs: { key: cr2, properties: { age: 10 } }
+        - name: mine_st1
+          invoke: !ref topUpdatePerson
+          inputs: { key: st1, properties: { age: 10 } }
+        - name: mine_st2
+          invoke: !ref topUpdatePerson
+          inputs: { key: st2, properties: { age: 10 } }
+        - name: mine_ow1
+          invoke: !ref topUpdatePerson
+          inputs: { key: ow1, properties: { age: 10 } }
+        - name: mine_rc1
+          invoke: !ref topDeletePerson
+          inputs: { key: rc1 }
+        - name: mine_rc2
+          invoke: !ref topDeletePerson
+          inputs: { key: rc2 }
+        - name: mine_v3
+          invoke: !ref topDeletePerson
+          inputs: { key: v3 }
+        - name: mine_ab1
+          invoke: !ref topCreatePerson
+          inputs: { key: ab1, properties: { name: Mine } }
+        - name: mine_ab2
+          invoke: !ref topCreatePerson
+          inputs: { key: ab2, properties: { name: Mine } }
+        - name: mine_v1
+          invoke: !ref topUpdatePerson
+          inputs: { key: v1, properties: { age: 5 } }
+        - name: mine_v2
+          invoke: !ref topCreatePerson
+          inputs: { key: v2, properties: { name: Same } }
+        - name: mine_e
+          invoke: !ref topCreateKnows
+          inputs: { source: e1, target: e2, properties: { since: 1 } }
+        - name: mine_f
+          invoke: !ref topCreateKnows
+          inputs: { source: f1, target: f2, properties: { since: 1 } }
+  # The other side, published outside the draft. Each collision writes the
+  # property the draft wrote; v1, v2 and v3 say exactly what the draft says.
+  - name: theirs_cb1
+    invoke: !ref topUpdatePerson
+    inputs: { key: cb1, properties: { age: 20 } }
+  - name: theirs_cb2
+    invoke: !ref topUpdatePerson
+    inputs: { key: cb2, properties: { age: 20 } }
+  - name: theirs_rc1
+    invoke: !ref topUpdatePerson
+    inputs: { key: rc1, properties: { age: 20 } }
+  - name: theirs_rc2
+    invoke: !ref topUpdatePerson
+    inputs: { key: rc2, properties: { age: 20 } }
+  - name: theirs_st1
+    invoke: !ref topUpdatePerson
+    inputs: { key: st1, properties: { age: 20 } }
+  - name: theirs_st2
+    invoke: !ref topUpdatePerson
+    inputs: { key: st2, properties: { age: 20 } }
+  - name: theirs_ow1
+    invoke: !ref topUpdatePerson
+    inputs: { key: ow1, properties: { age: 20 } }
+  - name: theirs_cr1
+    invoke: !ref topDeletePerson
+    inputs: { key: cr1 }
+  - name: theirs_cr2
+    invoke: !ref topDeletePerson
+    inputs: { key: cr2 }
+  - name: theirs_v3
+    invoke: !ref topDeletePerson
+    inputs: { key: v3 }
+  - name: theirs_e2
+    invoke: !ref topDeletePerson
+    inputs: { key: e2 }
+  - name: theirs_f2
+    invoke: !ref topDeletePerson
+    inputs: { key: f2 }
+  - name: theirs_ab1
+    invoke: !ref topCreatePerson
+    inputs: { key: ab1, properties: { name: Theirs } }
+  - name: theirs_ab2
+    invoke: !ref topCreatePerson
+    inputs: { key: ab2, properties: { name: Theirs } }
+  - name: theirs_v1
+    invoke: !ref topUpdatePerson
+    inputs: { key: v1, properties: { age: 5 } }
+  - name: theirs_v2
+    invoke: !ref topCreatePerson
+    inputs: { key: v2, properties: { name: Same } }
+  - name: publishBeforeRebase
+    try:
+      - name: publishBeforeRebaseAttempt
+        invoke: !ref topPublish
+        inputs: { draft: !cel "steps.open.result.draft.id" }
+      - name: publishBeforeRebaseUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "publishBeforeRebase did not fail" }
+    catch:
+      - name: publishBeforeRebaseCode
+        value: !cel "error.code"
+  - name: publishBeforeRebaseRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.publishBeforeRebaseCode.result", expected: GRAPH_DRAFT_STALE }
+  - name: rebase
+    invoke: !ref topRebase
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  # Eleven collisions on nodes and two relationships with a missing endpoint;
+  # the three convergent changes are merged and are not among them.
+  - name: rebaseCountsWhatIsLeft
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.rebase.result.conflicts"
+      expected: 13
+  - name: publishConflicted
+    try:
+      - name: publishConflictedAttempt
+        invoke: !ref topPublish
+        inputs: { draft: !cel "steps.open.result.draft.id" }
+      - name: publishConflictedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "publishConflicted did not fail" }
+    catch:
+      - name: publishConflictedCode
+        value: !cel "error.code"
+  - name: publishConflictedRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.publishConflictedCode.result", expected: GRAPH_DRAFT_CONFLICTED }
+  - name: decideNodes
+    inputs:
+      draft: !cel "steps.open.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        - name: listed
+          invoke: !ref topNodeConflicts
+          inputs: {}
+        - name: oneConflictPerCollision
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.listed.result.conflicts.map(c, [c.key, c.class])"
+            expected: [[ab1, added-both], [ab2, added-both], [cb1, changed-both], [cb2, changed-both], [cr1, changed-removed], [cr2, changed-removed], [ow1, changed-both], [rc1, removed-changed], [rc2, removed-changed], [st1, changed-both], [st2, changed-both]]
+        - name: bothSidesAreShown
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.listed.result.conflicts.filter(c, c.key == 'cb1').map(c, [c.mine, c.theirs])"
+            expected: [[{ name: Orig, age: 10 }, { name: Orig, age: 20 }]]
+        - name: disagreementIsNamed
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.listed.result.conflicts.filter(c, c.key == 'cb1').map(c, c.properties)"
+            expected: [[age]]
+        - name: removedSideIsAbsent
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.listed.result.conflicts.filter(c, c.key == 'cr1' || c.key == 'rc1').map(c, [has(c.mine), has(c.theirs)])"
+            expected: [[true, false], [false, true]]
+        - name: listedLinks
+          invoke: !ref topKnowsConflicts
+          inputs: {}
+        - name: missingEndpointsAreConflicts
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.listedLinks.result.conflicts.map(c, [c.source, c.target, c.class])"
+            expected: [[e1, e2, endpoint-missing], [f1, f2, endpoint-missing]]
+        # A relationship listed as a conflict is not in the view until it is decided.
+        - name: linksInView
+          invoke: !ref topFindKnows
+          inputs: { source: e1 }
+        - name: conflictedLinkIsOutOfView
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.linksInView.result.relationships"
+            expected: []
+        # Following `next` passes over conflicts left undecided.
+        - name: conflictPage
+          invoke: !ref topNodeConflicts
+          inputs: { limit: 4 }
+        - name: conflictsSeen
+          invoke: !ref gathered
+          inputs: { items: !cel "steps.conflictPage.result.conflicts.map(c, c.key)" }
+        - name: conflictsFollow
+          while: !cel "has(steps.conflictPage.result.next)"
+          do:
+            - name: conflictPage
+              invoke: !ref topNodeConflicts
+              inputs: { limit: 4, cursor: !cel "steps.conflictPage.result.next" }
+            - name: conflictsSeen
+              invoke: !ref gathered
+              inputs: { items: !cel "steps.conflictsSeen.result.items + steps.conflictPage.result.conflicts.map(c, c.key)" }
+        - name: everyConflictOnce
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.conflictsSeen.result.items"
+            expected: [ab1, ab2, cb1, cb2, cr1, cr2, ow1, rc1, rc2, st1, st2]
+        # A decision that cannot apply writes nothing, and the conflict stays.
+        - name: mineOnMissingEndpoint
+          try:
+            - name: mineOnMissingEndpointAttempt
+              invoke: !ref topResolveKnows
+              inputs: { source: e1, target: e2, take: mine }
+            - name: mineOnMissingEndpointUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "mineOnMissingEndpoint did not fail" }
+          catch:
+            - name: mineOnMissingEndpointCode
+              value: !cel "error.code"
+        - name: mineOnMissingEndpointRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.mineOnMissingEndpointCode.result", expected: GRAPH_RESOLUTION_INVALID }
+        - name: setOnAbsentSide
+          try:
+            - name: setOnAbsentSideAttempt
+              invoke: !ref topResolveNode
+              inputs: { key: rc1, take: mine, set: { age: 3 } }
+            - name: setOnAbsentSideUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "setOnAbsentSide did not fail" }
+          catch:
+            - name: setOnAbsentSideCode
+              value: !cel "error.code"
+        - name: setOnAbsentSideRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.setOnAbsentSideCode.result", expected: GRAPH_RESOLUTION_INVALID }
+        - name: setOnRemovedSide
+          try:
+            - name: setOnRemovedSideAttempt
+              invoke: !ref topResolveNode
+              inputs: { key: cr1, take: theirs, set: { age: 3 } }
+            - name: setOnRemovedSideUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "setOnRemovedSide did not fail" }
+          catch:
+            - name: setOnRemovedSideCode
+              value: !cel "error.code"
+        - name: setOnRemovedSideRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.setOnRemovedSideCode.result", expected: GRAPH_RESOLUTION_INVALID }
+        - name: staleToken
+          try:
+            - name: staleTokenAttempt
+              invoke: !ref topResolveNode
+              inputs: { key: cb1, take: mine, token: not-this-conflict }
+            - name: staleTokenUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "staleToken did not fail" }
+          catch:
+            - name: staleTokenCode
+              value: !cel "error.code"
+        - name: staleTokenRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.staleTokenCode.result", expected: GRAPH_CONFLICT_NOT_FOUND }
+        - name: noConflictOnKey
+          try:
+            - name: noConflictOnKeyAttempt
+              invoke: !ref topResolveNode
+              inputs: { key: v1, take: mine }
+            - name: noConflictOnKeyUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "noConflictOnKey did not fail" }
+          catch:
+            - name: noConflictOnKeyCode
+              value: !cel "error.code"
+        - name: noConflictOnKeyRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.noConflictOnKeyCode.result", expected: GRAPH_CONFLICT_NOT_FOUND }
+        - name: stillListed
+          invoke: !ref topNodeConflicts
+          inputs: {}
+        - name: stillListedLinks
+          invoke: !ref topKnowsConflicts
+          inputs: {}
+        - name: refusedDecisionsLeftEverything
+          invoke: !ref check
+          inputs:
+            actual: !cel "[size(steps.stillListed.result.conflicts), size(steps.stillListedLinks.result.conflicts)]"
+            expected: [11, 2]
+        # Each class, decided each way.
+        - name: cb1
+          invoke: !ref topResolveNode
+          inputs: { key: cb1, take: mine, token: !cel "steps.listed.result.conflicts.filter(c, c.key == 'cb1')[0].token", resolvedBy: { type: user, id: u7 } }
+        - name: cb2
+          invoke: !ref topResolveNode
+          inputs: { key: cb2, take: theirs }
+        - name: changedBoth
+          invoke: !ref check
+          inputs:
+            actual: !cel "[steps.cb1.result.node.properties.age, steps.cb2.result.node.properties.age]"
+            expected: [10, 20]
+        - name: cr1
+          invoke: !ref topResolveNode
+          inputs: { key: cr1, take: mine }
+        - name: cr2
+          invoke: !ref topResolveNode
+          inputs: { key: cr2, take: theirs }
+        - name: changedRemoved
+          invoke: !ref check
+          inputs:
+            actual: !cel "[has(steps.cr1.result.node), has(steps.cr2.result.node)]"
+            expected: [true, false]
+        - name: rc1
+          invoke: !ref topResolveNode
+          inputs: { key: rc1, take: mine }
+        - name: rc2
+          invoke: !ref topResolveNode
+          inputs: { key: rc2, take: theirs }
+        - name: removedChanged
+          invoke: !ref check
+          inputs:
+            actual: !cel "[has(steps.rc1.result.node), has(steps.rc2.result.node)]"
+            expected: [false, true]
+        - name: ab1
+          invoke: !ref topResolveNode
+          inputs: { key: ab1, take: mine }
+        - name: ab2
+          invoke: !ref topResolveNode
+          inputs: { key: ab2, take: theirs }
+        - name: addedBoth
+          invoke: !ref check
+          inputs:
+            actual: !cel "[steps.ab1.result.node.properties.name, steps.ab2.result.node.properties.name]"
+            expected: [Mine, Theirs]
+        # Values set on top of the taken side.
+        - name: st1
+          invoke: !ref topResolveNode
+          inputs: { key: st1, take: mine, set: { name: Merged } }
+        - name: st2
+          invoke: !ref topResolveNode
+          inputs: { key: st2, take: theirs, set: { name: Merged } }
+        - name: setOnTopOfASide
+          invoke: !ref check
+          inputs:
+            actual: !cel "[steps.st1.result.node.properties, steps.st2.result.node.properties]"
+            expected: [{ name: Merged, age: 10 }, { name: Merged, age: 20 }]
+        # A decision applies once.
+        - name: decidedTwice
+          try:
+            - name: decidedTwiceAttempt
+              invoke: !ref topResolveNode
+              inputs: { key: cb1, take: theirs }
+            - name: decidedTwiceUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "decidedTwice did not fail" }
+          catch:
+            - name: decidedTwiceCode
+              value: !cel "error.code"
+        - name: decidedTwiceRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.decidedTwiceCode.result", expected: GRAPH_CONFLICT_NOT_FOUND }
+  # Conflicts are left: one node, two relationships.
+  - name: publishWhileSomeRemain
+    try:
+      - name: publishWhileSomeRemainAttempt
+        invoke: !ref topPublish
+        inputs: { draft: !cel "steps.open.result.draft.id" }
+      - name: publishWhileSomeRemainUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "publishWhileSomeRemain did not fail" }
+    catch:
+      - name: publishWhileSomeRemainCode
+        value: !cel "error.code"
+  - name: publishWhileSomeRemainRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.publishWhileSomeRemainCode.result", expected: GRAPH_DRAFT_CONFLICTED }
+  - name: decideRest
+    inputs:
+      draft: !cel "steps.open.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        # An ordinary write to the key settles its conflict, keeping the caller's version.
+        - name: writeOver
+          invoke: !ref topUpdatePerson
+          inputs: { key: ow1, properties: { age: 30 } }
+        - name: writeDecidedIt
+          try:
+            - name: writeDecidedItAttempt
+              invoke: !ref topResolveNode
+              inputs: { key: ow1, take: theirs }
+            - name: writeDecidedItUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "writeDecidedIt did not fail" }
+          catch:
+            - name: writeDecidedItCode
+              value: !cel "error.code"
+        - name: writeDecidedItRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.writeDecidedItCode.result", expected: GRAPH_CONFLICT_NOT_FOUND }
+        # `theirs` removes a relationship whose endpoint is gone; restoring the
+        # endpoint clears the conflict with no decision at all.
+        - name: dropLink
+          invoke: !ref topResolveKnows
+          inputs: { source: e1, target: e2, take: theirs }
+        - name: droppedLinkIsNoStatement
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.dropLink.result"
+            expected: {}
+        - name: restore
+          invoke: !ref topCreatePerson
+          inputs: { key: f2, properties: { name: Restored } }
+        - name: nodesLeft
+          invoke: !ref topNodeConflicts
+          inputs: {}
+        - name: linksLeft
+          invoke: !ref topKnowsConflicts
+          inputs: {}
+        - name: nothingIsLeft
+          invoke: !ref check
+          inputs:
+            actual: !cel "[size(steps.nodesLeft.result.conflicts), size(steps.linksLeft.result.conflicts)]"
+            expected: [0, 0]
+        - name: restoredLink
+          invoke: !ref topFindKnows
+          inputs: { source: f1 }
+        - name: restoredLinkIsBack
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.restoredLink.result.relationships.map(r, r.target)"
+            expected: [f2]
+  - name: publish
+    invoke: !ref topPublish
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: publishedOnceDecided
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.publish.result.changed"
+      expected: true
+  - name: published
+    invoke: !ref topFindPeople
+    inputs: {}
+  - name: everyDecisionIsPublished
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.published.result.nodes.filter(n, !n.key.startsWith('i') && !n.key.startsWith('s') || n.key.startsWith('st')).filter(n, !(n.key in ['e1', 'f1', 'f2'])).map(n, n.key + '=' + n.properties.name + '/' + (has(n.properties.age) ? string(n.properties.age) : '-'))"
+      expected: [ab1=Mine/-, ab2=Theirs/-, cb1=Orig/10, cb2=Orig/20, cr1=Orig/10, ow1=Orig/30, rc2=Orig/20, st1=Merged/10, st2=Merged/20, v1=Orig/5, v2=Same/-]
+  - name: publishedLinks
+    invoke: !ref topFindKnows
+    inputs: {}
+  - name: onlyTheRestoredLinkIsPublished
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.publishedLinks.result.relationships.filter(r, r.source == 'e1' || r.source == 'f1').map(r, [r.source, r.target])"
+      expected: [[f1, f2]]
+---
+# Deciding conflicts is ordinary steps: list one, `switch` on its class, take a
+# constant side for the classes the author calls mechanical, invoke any invocable
+# for the rest, then resolve. Two classes go to a constant here and the others
+# to a scripted decider.
+kind: Run.Sequence
+metadata: { name: automation }
+steps:
+  - name: seed_a2
+    invoke: !ref topCreatePerson
+    inputs: { key: a2, properties: { name: Orig, age: 1 } }
+  - name: seed_a3
+    invoke: !ref topCreatePerson
+    inputs: { key: a3, properties: { name: Orig, age: 1 } }
+  - name: seed_a4
+    invoke: !ref topCreatePerson
+    inputs: { key: a4, properties: { name: Orig, age: 1 } }
+  - name: seed_a5
+    invoke: !ref topCreatePerson
+    inputs: { key: a5, properties: { name: Orig, age: 1 } }
+  - name: seed_a6
+    invoke: !ref topCreatePerson
+    inputs: { key: a6, properties: { name: Orig, age: 1 } }
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: mine
+    inputs:
+      draft: !cel "steps.open.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        - name: add
+          invoke: !ref topCreatePerson
+          inputs: { key: a1, properties: { name: Mine } }
+        - name: change
+          invoke: !ref topUpdatePerson
+          inputs: { key: a2, properties: { age: 10 } }
+        - name: changeToo
+          invoke: !ref topUpdatePerson
+          inputs: { key: a3, properties: { age: 10 } }
+        - name: remove
+          invoke: !ref topDeletePerson
+          inputs: { key: a4 }
+        - name: link
+          invoke: !ref topCreateKnows
+          inputs: { source: a5, target: a6 }
+  - name: theirsAdd
+    invoke: !ref topCreatePerson
+    inputs: { key: a1, properties: { name: Theirs } }
+  - name: theirsRemove
+    invoke: !ref topDeletePerson
+    inputs: { key: a2 }
+  - name: theirsChange
+    invoke: !ref topUpdatePerson
+    inputs: { key: a3, properties: { age: 20 } }
+  - name: theirsChangeToo
+    invoke: !ref topUpdatePerson
+    inputs: { key: a4, properties: { age: 20 } }
+  - name: theirsDropEndpoint
+    invoke: !ref topDeletePerson
+    inputs: { key: a6 }
+  - name: rebase
+    invoke: !ref topRebase
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: fiveConflicts
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.rebase.result.conflicts"
+      expected: 5
+  # With the decider down, the loop decides the two mechanical conflicts, fails
+  # its step on the third, and the store retries nothing.
+  - name: firstPass
+    try:
+      - name: firstPassAttempt
+        inputs:
+          draft: !cel "steps.open.result.draft.id"
+        invoke:
+          kind: GraphLayers.DraftSession
+          store: !ref top
+          inputs:
+            draft: !cel "inputs.draft"
+          steps:
+            # One conflict at a time: a decided conflict leaves the listing, so the first
+            # entry is always the next undecided one.
+            - name: next
+              invoke: !ref topNodeConflicts
+              inputs: { limit: 1 }
+            - name: decideNodes
+              while: !cel "size(steps.next.result.conflicts) > 0"
+              do:
+                - name: byClass
+                  switch: !cel "steps.next.result.conflicts[0].class"
+                  cases:
+                    added-both:
+                      - name: keepMine
+                        invoke: !ref topResolveNode
+                        inputs: { key: !cel "steps.next.result.conflicts[0].key", take: mine, token: !cel "steps.next.result.conflicts[0].token" }
+                    changed-removed:
+                      - name: acceptRemoval
+                        invoke: !ref topResolveNode
+                        inputs: { key: !cel "steps.next.result.conflicts[0].key", take: theirs, token: !cel "steps.next.result.conflicts[0].token" }
+                  default:
+                    - name: ask
+                      invoke: !ref deciderDown
+                      inputs: { class: !cel "steps.next.result.conflicts[0].class" }
+                    - name: applyAnswer
+                      invoke: !ref topResolveNode
+                      inputs: { key: !cel "steps.next.result.conflicts[0].key", take: !cel "steps.ask.result.take", token: !cel "steps.next.result.conflicts[0].token" }
+                - name: next
+                  invoke: !ref topNodeConflicts
+                  inputs: { limit: 1 }
+            - name: nextLink
+              invoke: !ref topKnowsConflicts
+              inputs: { limit: 1 }
+            - name: decideLinks
+              while: !cel "size(steps.nextLink.result.conflicts) > 0"
+              do:
+                - name: askLink
+                  invoke: !ref deciderDown
+                  inputs: { class: !cel "steps.nextLink.result.conflicts[0].class" }
+                - name: applyLinkAnswer
+                  invoke: !ref topResolveKnows
+                  inputs: { source: !cel "steps.nextLink.result.conflicts[0].source", target: !cel "steps.nextLink.result.conflicts[0].target", take: !cel "steps.askLink.result.take" }
+                - name: nextLink
+                  invoke: !ref topKnowsConflicts
+                  inputs: { limit: 1 }
+      - name: firstPassUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "firstPass did not fail" }
+    catch:
+      - name: firstPassCode
+        value: !cel "error.code"
+  - name: deciderFailureFailsTheStep
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.firstPassCode.result"
+      expected: ERR_DECIDER_DOWN
+  - name: afterFirstPass
+    inputs:
+      draft: !cel "steps.open.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        - name: nodesLeft
+          invoke: !ref topNodeConflicts
+          inputs: {}
+        - name: linksLeft
+          invoke: !ref topKnowsConflicts
+          inputs: {}
+        - name: twoDecidedThreeLeft
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.nodesLeft.result.conflicts.map(c, c.key) + steps.linksLeft.result.conflicts.map(c, c.source)"
+            expected: [a3, a4, a5]
+  - name: publishAfterFirstPass
+    try:
+      - name: publishAfterFirstPassAttempt
+        invoke: !ref topPublish
+        inputs: { draft: !cel "steps.open.result.draft.id" }
+      - name: publishAfterFirstPassUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "publishAfterFirstPass did not fail" }
+    catch:
+      - name: publishAfterFirstPassCode
+        value: !cel "error.code"
+  - name: publishAfterFirstPassRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.publishAfterFirstPassCode.result", expected: GRAPH_DRAFT_CONFLICTED }
+  # With the decider answering, the same loop decides the rest and the draft publishes.
+  - name: secondPass
+    inputs:
+      draft: !cel "steps.open.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        # One conflict at a time: a decided conflict leaves the listing, so the first
+        # entry is always the next undecided one.
+        - name: next
+          invoke: !ref topNodeConflicts
+          inputs: { limit: 1 }
+        - name: decideNodes
+          while: !cel "size(steps.next.result.conflicts) > 0"
+          do:
+            - name: byClass
+              switch: !cel "steps.next.result.conflicts[0].class"
+              cases:
+                added-both:
+                  - name: keepMine
+                    invoke: !ref topResolveNode
+                    inputs: { key: !cel "steps.next.result.conflicts[0].key", take: mine, token: !cel "steps.next.result.conflicts[0].token" }
+                changed-removed:
+                  - name: acceptRemoval
+                    invoke: !ref topResolveNode
+                    inputs: { key: !cel "steps.next.result.conflicts[0].key", take: theirs, token: !cel "steps.next.result.conflicts[0].token" }
+              default:
+                - name: ask
+                  invoke: !ref decider
+                  inputs: { class: !cel "steps.next.result.conflicts[0].class" }
+                - name: applyAnswer
+                  invoke: !ref topResolveNode
+                  inputs: { key: !cel "steps.next.result.conflicts[0].key", take: !cel "steps.ask.result.take", token: !cel "steps.next.result.conflicts[0].token" }
+            - name: next
+              invoke: !ref topNodeConflicts
+              inputs: { limit: 1 }
+        - name: nextLink
+          invoke: !ref topKnowsConflicts
+          inputs: { limit: 1 }
+        - name: decideLinks
+          while: !cel "size(steps.nextLink.result.conflicts) > 0"
+          do:
+            - name: askLink
+              invoke: !ref decider
+              inputs: { class: !cel "steps.nextLink.result.conflicts[0].class" }
+            - name: applyLinkAnswer
+              invoke: !ref topResolveKnows
+              inputs: { source: !cel "steps.nextLink.result.conflicts[0].source", target: !cel "steps.nextLink.result.conflicts[0].target", take: !cel "steps.askLink.result.take" }
+            - name: nextLink
+              invoke: !ref topKnowsConflicts
+              inputs: { limit: 1 }
+  - name: publish
+    invoke: !ref topPublish
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: published
+    invoke: !ref topFindPeople
+    inputs: {}
+  - name: everyAnswerIsPublished
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.published.result.nodes.filter(n, n.key in ['a1', 'a2', 'a3', 'a4']).map(n, n.key + '=' + n.properties.name + '/' + (has(n.properties.age) ? string(n.properties.age) : '-'))"
+      expected: [a1=Mine/-, a3=Orig/10, a4=Orig/20]
+  - name: publishedLinks
+    invoke: !ref topFindKnows
+    inputs: { source: a5 }
+  - name: orphanedLinkWasDropped
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.publishedLinks.result.relationships"
+      expected: []
+---
+# A draft closed while a session on it runs ends that session.
+kind: Run.Sequence
+metadata: { name: closedDraft }
+steps:
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: {}
+  # The body publishes its own draft and writes again. The session ends there:
+  # no `try:` inside it catches the end, and no later step runs.
+  - name: closed
+    try:
+      - name: closedAttempt
+        inputs:
+          draft: !cel "steps.open.result.draft.id"
+        invoke:
+          kind: GraphLayers.DraftSession
+          store: !ref top
+          inputs:
+            draft: !cel "inputs.draft"
+          steps:
+            - name: first
+              invoke: !ref topCreatePerson
+              inputs: { key: z1, properties: { name: First } }
+            - name: publishOwn
+              invoke: !ref topPublish
+              inputs: { draft: !cel "inputs.draft" }
+            - name: third
+              try:
+                - name: thirdWrite
+                  invoke: !ref topCreatePerson
+                  inputs: { key: z2, properties: { name: Third } }
+              catch:
+                - name: caught
+                  throw: { code: ERR_TEST_CATCH_RAN, message: "the body caught the end of its session" }
+            - name: fourth
+              invoke: !ref topCreatePerson
+              inputs: { key: z3, properties: { name: Fourth } }
+      - name: closedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "closed did not fail" }
+    catch:
+      - name: closedError
+        value:
+          code: !cel "error.code"
+          closedAs: !cel "string(error.data.closedAs)"
+  - name: sessionEndedAsClosed
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.closedError.result"
+      expected: { code: GRAPH_DRAFT_CLOSED, closedAs: published }
+  - name: firstIsPublished
+    invoke: !ref topGetPerson
+    inputs: { key: z1 }
+  - name: thirdIsInNoRevision
+    try:
+      - name: thirdIsInNoRevisionAttempt
+        invoke: !ref topGetPerson
+        inputs: { key: z2 }
+      - name: thirdIsInNoRevisionUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "thirdIsInNoRevision did not fail" }
+    catch:
+      - name: thirdIsInNoRevisionCode
+        value: !cel "error.code"
+  - name: thirdIsInNoRevisionRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.thirdIsInNoRevisionCode.result", expected: GRAPH_NODE_NOT_FOUND }
+  - name: fourthNeverRan
+    try:
+      - name: fourthNeverRanAttempt
+        invoke: !ref topGetPerson
+        inputs: { key: z3 }
+      - name: fourthNeverRanUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "fourthNeverRan did not fail" }
+    catch:
+      - name: fourthNeverRanCode
+        value: !cel "error.code"
+  - name: fourthNeverRanRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.fourthNeverRanCode.result", expected: GRAPH_NODE_NOT_FOUND }
+  - name: openAfter
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: readAfter
+    inputs:
+      draft: !cel "steps.openAfter.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        - name: thirdIsInNoDraft
+          try:
+            - name: thirdIsInNoDraftAttempt
+              invoke: !ref topGetPerson
+              inputs: { key: z2 }
+            - name: thirdIsInNoDraftUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "thirdIsInNoDraft did not fail" }
+          catch:
+            - name: thirdIsInNoDraftCode
+              value: !cel "error.code"
+        - name: thirdIsInNoDraftRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.thirdIsInNoDraftCode.result", expected: GRAPH_NODE_NOT_FOUND }
+  - name: discardAfter
+    invoke: !ref topDiscard
+    inputs: { draft: !cel "steps.openAfter.result.draft.id" }
+---
+# A cursor is bound to what it was read from: the published state, or one draft
+# as it stood. It resumes nothing else.
+kind: Run.Sequence
+metadata: { name: cursors }
+steps:
+  - name: seed_q1
+    invoke: !ref topCreatePerson
+    inputs: { key: q1, properties: { name: Q } }
+  - name: seed_q2
+    invoke: !ref topCreatePerson
+    inputs: { key: q2, properties: { name: Q } }
+  - name: seed_q3
+    invoke: !ref topCreatePerson
+    inputs: { key: q3, properties: { name: Q } }
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: outsidePage
+    invoke: !ref topFindPeople
+    inputs: { where: { eq: { name: Q } }, limit: 1 }
+  - name: inside
+    inputs:
+      draft: !cel "steps.open.result.draft.id"
+      outside: !cel "steps.outsidePage.result.next"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+        outside: !cel "inputs.outside"
+      steps:
+        - name: add
+          invoke: !ref topCreatePerson
+          inputs: { key: q4, properties: { name: Q } }
+        - name: page
+          invoke: !ref topFindPeople
+          inputs: { where: { eq: { name: Q } }, limit: 1 }
+        - name: seen
+          invoke: !ref gathered
+          inputs: { items: !cel "steps.page.result.nodes.map(n, n.key)" }
+        - name: follow
+          while: !cel "has(steps.page.result.next)"
+          do:
+            - name: page
+              invoke: !ref topFindPeople
+              inputs: { where: { eq: { name: Q } }, limit: 1, cursor: !cel "steps.page.result.next" }
+            - name: seen
+              invoke: !ref gathered
+              inputs: { items: !cel "steps.seen.result.items + steps.page.result.nodes.map(n, n.key)" }
+        - name: sessionListingIsWhole
+          invoke: !ref check
+          inputs:
+            actual: !cel "steps.seen.result.items"
+            expected: [q1, q2, q3, q4]
+        - name: firstPage
+          invoke: !ref topFindPeople
+          inputs: { where: { eq: { name: Q } }, limit: 1 }
+        # A cursor read outside the session is not one of this session's.
+        - name: outsideCursorInside
+          try:
+            - name: outsideCursorInsideAttempt
+              invoke: !ref topFindPeople
+              inputs: { where: { eq: { name: Q } }, limit: 1, cursor: !cel "inputs.outside" }
+            - name: outsideCursorInsideUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "outsideCursorInside did not fail" }
+          catch:
+            - name: outsideCursorInsideCode
+              value: !cel "error.code"
+        - name: outsideCursorInsideRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.outsideCursorInsideCode.result", expected: GRAPH_CURSOR_INVALID }
+  # Nor does a cursor read inside a session resume outside it.
+  - name: insideCursorOutside
+    try:
+      - name: insideCursorOutsideAttempt
+        invoke: !ref topFindPeople
+        inputs: { where: { eq: { name: Q } }, limit: 1, cursor: !cel "steps.inside.result.firstPage.result.next" }
+      - name: insideCursorOutsideUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "insideCursorOutside did not fail" }
+    catch:
+      - name: insideCursorOutsideCode
+        value: !cel "error.code"
+  - name: insideCursorOutsideRefused
+    invoke: !ref check
+    inputs: { actual: !cel "steps.insideCursorOutsideCode.result", expected: GRAPH_CURSOR_INVALID }
+  # A rebase moves the draft, and a cursor read before it is refused.
+  - name: move
+    invoke: !ref topCreatePerson
+    inputs: { key: q5, properties: { name: Q } }
+  - name: rebase
+    invoke: !ref topRebase
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: afterRebase
+    inputs:
+      draft: !cel "steps.open.result.draft.id"
+      before: !cel "steps.inside.result.firstPage.result.next"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+        before: !cel "inputs.before"
+      steps:
+        - name: cursorFromBeforeRebase
+          try:
+            - name: cursorFromBeforeRebaseAttempt
+              invoke: !ref topFindPeople
+              inputs: { where: { eq: { name: Q } }, limit: 1, cursor: !cel "inputs.before" }
+            - name: cursorFromBeforeRebaseUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "cursorFromBeforeRebase did not fail" }
+          catch:
+            - name: cursorFromBeforeRebaseCode
+              value: !cel "error.code"
+        - name: cursorFromBeforeRebaseRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.cursorFromBeforeRebaseCode.result", expected: GRAPH_CURSOR_INVALID }
+  - name: discard
+    invoke: !ref topDiscard
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  # Nor in a session on another draft.
+  - name: openOther
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: otherDraft
+    inputs:
+      draft: !cel "steps.openOther.result.draft.id"
+      before: !cel "steps.inside.result.firstPage.result.next"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+        before: !cel "inputs.before"
+      steps:
+        - name: cursorFromAnotherDraft
+          try:
+            - name: cursorFromAnotherDraftAttempt
+              invoke: !ref topFindPeople
+              inputs: { where: { eq: { name: Q } }, limit: 1, cursor: !cel "inputs.before" }
+            - name: cursorFromAnotherDraftUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "cursorFromAnotherDraft did not fail" }
+          catch:
+            - name: cursorFromAnotherDraftCode
+              value: !cel "error.code"
+        - name: cursorFromAnotherDraftRefused
+          invoke: !ref check
+          inputs: { actual: !cel "steps.cursorFromAnotherDraftCode.result", expected: GRAPH_CURSOR_INVALID }
+  - name: discardOther
+    invoke: !ref topDiscard
+    inputs: { draft: !cel "steps.openOther.result.draft.id" }

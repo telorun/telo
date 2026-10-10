@@ -1,0 +1,169 @@
+# What the drafting kinds refuse, each pinned by a fixture. `graph-layers` has no
+# strategy of its own, so the fixtures instantiate stores through the SQLite
+# strategy modules.
+#
+# - Every drafting kind's `store` slot names the drafted level of the contract:
+#   over a store of the current strategy it is a kind mismatch.
+# - A conflict kind names a type its store lists (`GRAPH_TYPE_NOT_IN_STORE`, a
+#   rule twinned at creation).
+# - A conflict is listed and decided inside a session on the kind's store:
+#   reached from anywhere else it is `ZONE_REQUIREMENT_UNSATISFIED`, a session on
+#   another store does not answer, a library cannot export one unwrapped, and
+#   the kind refuses at dispatch with `ERR_ZONE_REQUIRED`.
+# - `set` is typed from the node type: a property it does not declare is refused
+#   on that line.
+kind: Telo.Application
+metadata:
+  name: GraphLayersDraftingStaticRefusals
+  version: 1.0.0
+  description: The drafting kinds' refusals, statically and at creation or dispatch.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref overCurrentStore
+  - !ref nodeConflictsTypeNotInStore
+  - !ref nodeConflictsTypeNotInStoreAtRuntime
+  - !ref resolveNodeConflictTypeNotInStore
+  - !ref resolveNodeConflictTypeNotInStoreAtRuntime
+  - !ref relationshipConflictsTypeNotInStore
+  - !ref relationshipConflictsTypeNotInStoreAtRuntime
+  - !ref resolveRelationshipConflictTypeNotInStore
+  - !ref resolveRelationshipConflictTypeNotInStoreAtRuntime
+  - !ref outsideSession
+  - !ref sessionOnAnotherStore
+  - !ref exportedOutsideSession
+  - !ref outsideSessionAtRuntime
+  - !ref setUnknownProperty
+---
+kind: Assert.Manifest
+metadata: { name: overCurrentStore }
+source: ./__fixtures__/drafting/over-current-store.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.OpenDraft/openDraft: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.DraftedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.DraftSession/draftSession: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.DraftedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.Publish/publish: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.DraftedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.DiscardDraft/discardDraft: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.DraftedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.RebaseDraft/rebaseDraft: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.DraftedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.ListDrafts/listDrafts: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.DraftedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.NodeConflicts/nodeConflicts: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.DraftedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.RelationshipConflicts/relationshipConflicts: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.DraftedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.ResolveNodeConflict/resolveNodeConflict: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.DraftedStore'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "GraphLayers.ResolveRelationshipConflict/resolveRelationshipConflict: reference at 'store' → 'Layers.Store' does not implement 'GraphLayers.DraftedStore'"
+---
+kind: Assert.Manifest
+metadata: { name: nodeConflictsTypeNotInStore }
+source: ./__fixtures__/drafting/node-conflicts-type-not-in-store/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a node type its store does not list in 'nodes:'"
+---
+kind: Assert.Manifest
+metadata: { name: nodeConflictsTypeNotInStoreAtRuntime }
+source: ./__fixtures__/drafting/node-conflicts-type-not-in-store-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+---
+kind: Assert.Manifest
+metadata: { name: resolveNodeConflictTypeNotInStore }
+source: ./__fixtures__/drafting/resolve-node-conflict-type-not-in-store/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a node type its store does not list in 'nodes:'"
+---
+kind: Assert.Manifest
+metadata: { name: resolveNodeConflictTypeNotInStoreAtRuntime }
+source: ./__fixtures__/drafting/resolve-node-conflict-type-not-in-store-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+---
+kind: Assert.Manifest
+metadata: { name: relationshipConflictsTypeNotInStore }
+source: ./__fixtures__/drafting/relationship-conflicts-type-not-in-store/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a relationship type its store does not list in 'relationships:'"
+---
+kind: Assert.Manifest
+metadata: { name: relationshipConflictsTypeNotInStoreAtRuntime }
+source: ./__fixtures__/drafting/relationship-conflicts-type-not-in-store-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+---
+kind: Assert.Manifest
+metadata: { name: resolveRelationshipConflictTypeNotInStore }
+source: ./__fixtures__/drafting/resolve-relationship-conflict-type-not-in-store/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a relationship type its store does not list in 'relationships:'"
+---
+kind: Assert.Manifest
+metadata: { name: resolveRelationshipConflictTypeNotInStoreAtRuntime }
+source: ./__fixtures__/drafting/resolve-relationship-conflict-type-not-in-store-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+---
+kind: Assert.Manifest
+metadata: { name: outsideSession }
+source: ./__fixtures__/drafting/outside-session.yaml
+expect:
+  errors:
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "GraphLayers.NodeConflicts 'SequenceListNodesSteps0Call' requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "GraphLayers.RelationshipConflicts 'SequenceListLinksSteps0Call' requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "GraphLayers.ResolveNodeConflict 'SequenceDecideNodeSteps0Call' requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "GraphLayers.ResolveRelationshipConflict 'SequenceDecideLinkSteps0Call' requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
+---
+kind: Assert.Manifest
+metadata: { name: sessionOnAnotherStore }
+source: ./__fixtures__/drafting/session-on-another-store.yaml
+expect:
+  errors:
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
+---
+kind: Assert.Manifest
+metadata: { name: exportedOutsideSession }
+source: ./__fixtures__/drafting/conflicts-outside-session/telo.yaml
+expect:
+  errors:
+    - code: ZONE_EXPORT_UNSATISFIABLE
+      message: "requires a GraphLayers.DraftSession zone on Layers.Store 'team', which this library does not export"
+---
+# The consumer's entry-scoped check is silent, so the kind's own refusal at
+# dispatch is what remains: `ERR_ZONE_REQUIRED`, matched here by its message.
+kind: Assert.Manifest
+metadata: { name: outsideSessionAtRuntime }
+source: ./__fixtures__/drafting/conflicts-outside-session-app.yaml
+expect:
+  errors: []
+  runFails: "no GraphLayers.DraftSession zone open on"
+---
+kind: Assert.Manifest
+metadata: { name: setUnknownProperty }
+source: ./__fixtures__/drafting/set-unknown-property.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'nmae' is not allowed"

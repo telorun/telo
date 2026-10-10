@@ -1,0 +1,31 @@
+# Two drafted stores each built on the other.
+kind: Telo.Library
+metadata:
+  name: DraftedBaseCycle
+include:
+  - ../../drafted-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [first]
+---
+kind: Layers.Store
+metadata: { name: first }
+connection: !ref db
+schema: !ref appSchema
+layer: first
+bases: [!ref second]
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref graphDrafts
+---
+kind: Layers.Store
+metadata: { name: second }
+connection: !ref db
+schema: !ref appSchema
+layer: second
+bases: [!ref first]
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref graphDrafts

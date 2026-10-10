@@ -1,0 +1,356 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsSqlitePinnedStorage
+  version: 1.0.0
+  description: |
+    What a pinned stack leaves in the tables, beyond the shared stacking suite.
+    A base list is stored once per change: a layer pinned to three others gains
+    no row in the changeset-bases table across a hundred writes outside a
+    session, and every one of those revisions lists the same three pins.
+    Deleting a key that resolves from beneath leaves a `removed` row — published
+    outside a session, a draft's inside one — that is a full row carrying the
+    values it hides and names the hidden row in `graph_beneath`, while deleting
+    a key only this layer states leaves no current row. Every row a layer
+    writes over a base records the row beneath it. And labelling joins the
+    caller's transaction: a publish and a label in one transaction leave
+    neither when the label is refused.
+include:
+  - ./__fixtures__/revisions-model.yaml
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  GraphLayers: ../../graph-layers
+  Layers: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref baseListStoredOncePerChange
+  - !ref removedRows
+  - !ref labelJoinsATransaction
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Graph.CreateNode
+metadata: { name: teamCreatePerson }
+store: !ref team
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: teamDeletePerson }
+store: !ref team
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: archiveCreatePerson }
+store: !ref archive
+node: !ref person
+---
+kind: GraphLayers.PinBase
+metadata: { name: teamPin }
+store: !ref team
+---
+kind: GraphLayers.OpenDraft
+metadata: { name: teamOpenDraft }
+store: !ref team
+---
+kind: GraphLayers.Publish
+metadata: { name: teamPublish }
+store: !ref team
+---
+kind: GraphLayers.LabelRevision
+metadata: { name: teamLabel }
+store: !ref team
+---
+kind: GraphLayers.ListRevisions
+metadata: { name: teamRevisions }
+store: !ref team
+---
+# How many base-list rows the tables hold, and how many changesets point at
+# each stored list.
+kind: Run.Sequence
+metadata: { name: countBases }
+steps:
+  - name: rows
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT (SELECT COUNT(*) FROM graph_changeset_bases) AS stored,
+          (SELECT COUNT(DISTINCT c.bases_changeset) FROM graph_changesets c
+            JOIN graph_layers l ON l.id = c.layer_id WHERE l.name = 'team') AS lists,
+          (SELECT COUNT(*) FROM graph_changesets c
+            JOIN graph_layers l ON l.id = c.layer_id WHERE l.name = 'team' AND c.revision IS NOT NULL) AS revisions
+outputs:
+  stored: !cel "int(steps.rows.result.rows[0].stored)"
+  lists: !cel "int(steps.rows.result.rows[0].lists)"
+  revisions: !cel "int(steps.rows.result.rows[0].revisions)"
+---
+kind: Run.Sequence
+metadata: { name: baseListStoredOncePerChange }
+steps:
+  - name: registerArchive
+    invoke: !ref archiveCreatePerson
+    inputs: { key: b0, properties: { name: Archived } }
+  - name: registerPages
+    invoke: { kind: Graph.CreateNode, store: !ref pages, node: !ref person }
+    inputs: { key: b1, properties: { name: Paged } }
+  - name: registerPlain
+    invoke: { kind: Graph.CreateNode, store: !ref plain, node: !ref person }
+    inputs: { key: b2, properties: { name: Plain } }
+  - name: pinThree
+    invoke: !ref teamPin
+    inputs: { bases: [{ layer: archive }, { layer: pages }, { layer: plain }] }
+  - name: before
+    invoke: !ref countBases
+  - name: n
+    value: !cel "0"
+  - name: writes
+    while: !cel "steps.n.result < 100"
+    do:
+      - name: write
+        invoke: !ref teamCreatePerson
+        inputs: { key: !cel "'w' + string(steps.n.result)", properties: { name: Written } }
+      - name: n
+        value: !cel "steps.n.result + 1"
+  - name: after
+    invoke: !ref countBases
+  # A draft inherits the list too, and so does the revision it becomes.
+  - name: open
+    invoke: !ref teamOpenDraft
+    inputs: {}
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: write
+          invoke: !ref teamCreatePerson
+          inputs: { key: wd, properties: { name: Drafted } }
+  - name: publish
+    invoke: !ref teamPublish
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: afterDraft
+    invoke: !ref countBases
+  - name: latest
+    invoke: !ref teamRevisions
+    inputs: { limit: 2 }
+  - name: assertStoredOnce
+    invoke: !ref check
+    inputs:
+      actual:
+        before: !cel "[steps.before.result.stored, steps.before.result.lists, steps.before.result.revisions]"
+        after: !cel "[steps.after.result.stored, steps.after.result.lists, steps.after.result.revisions]"
+        afterDraft: !cel "[steps.afterDraft.result.stored, steps.afterDraft.result.lists, steps.afterDraft.result.revisions]"
+        listed: !cel "steps.latest.result.revisions.map(r, r.bases.map(b, b.layer))"
+      expected:
+        before: [3, 1, 1]
+        after: [3, 1, 101]
+        afterDraft: [3, 1, 102]
+        listed: [[archive, pages, plain], [archive, pages, plain]]
+---
+# The rows a key's history leaves in `team`, oldest first.
+kind: Run.Sequence
+metadata: { name: versionsOf }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [key]
+    properties:
+      key: { type: string }
+steps:
+  - name: rows
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT p.name AS name, p.graph_effect AS effect,
+          CASE WHEN p.graph_from_revision IS NULL THEN 'draft' ELSE 'published' END AS state,
+          CASE WHEN p.graph_to_revision IS NULL THEN 'current' ELSE 'ended' END AS ended,
+          (SELECT bl.name FROM people b JOIN graph_layers bl ON bl.id = b.graph_layer
+            WHERE b.graph_row = p.graph_beneath) AS beneath
+        FROM people p JOIN graph_layers l ON l.id = p.graph_layer
+        WHERE l.name = 'team' AND p.id = ? ORDER BY p.graph_row
+      bindings: [!cel "inputs.key"]
+outputs:
+  rows: !cel "steps.rows.result.rows"
+---
+kind: Run.Sequence
+metadata: { name: removedRows }
+steps:
+  - name: archiveR1
+    invoke: !ref archiveCreatePerson
+    inputs: { key: r1, properties: { name: Beneath, age: 7 } }
+  - name: archiveR2
+    invoke: !ref archiveCreatePerson
+    inputs: { key: r2, properties: { name: Beneath, age: 7 } }
+  - name: archiveR3
+    invoke: !ref archiveCreatePerson
+    inputs: { key: r3, properties: { name: Beneath, age: 7 } }
+  - name: take
+    invoke: !ref teamPin
+    inputs: { bases: [{ layer: archive }] }
+  # Outside a session: a key from beneath, a key the layer restates, and a key
+  # only the layer states.
+  - name: hideR1
+    invoke: !ref teamDeletePerson
+    inputs: { key: r1 }
+  - name: restateR2
+    invoke: { kind: Graph.UpdateNode, store: !ref team, node: !ref person }
+    inputs: { key: r2, properties: { name: Restated } }
+  - name: hideR2
+    invoke: !ref teamDeletePerson
+    inputs: { key: r2 }
+  - name: ownR9
+    invoke: !ref teamCreatePerson
+    inputs: { key: r9, properties: { name: Own } }
+  - name: dropR9
+    invoke: !ref teamDeletePerson
+    inputs: { key: r9 }
+  - name: r1
+    invoke: !ref versionsOf
+    inputs: { key: r1 }
+  - name: r2
+    invoke: !ref versionsOf
+    inputs: { key: r2 }
+  - name: r9
+    invoke: !ref versionsOf
+    inputs: { key: r9 }
+  # Inside a session the removal is a row of the draft.
+  - name: open
+    invoke: !ref teamOpenDraft
+    inputs: {}
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: hideR3
+          invoke: !ref teamDeletePerson
+          inputs: { key: r3 }
+  - name: r3Staged
+    invoke: !ref versionsOf
+    inputs: { key: r3 }
+  - name: discard
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref team }
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: assertRemovedRows
+    invoke: !ref check
+    inputs:
+      actual:
+        fromBeneath: !cel "steps.r1.result.rows"
+        restated: !cel "steps.r2.result.rows"
+        ownOnly: !cel "steps.r9.result.rows"
+        staged: !cel "steps.r3Staged.result.rows"
+      expected:
+        # A full row carrying what it hides, naming the hidden row.
+        fromBeneath:
+          - { name: Beneath, effect: removed, state: published, ended: current, beneath: archive }
+        # The restatement is ended and a removal stands in its place.
+        restated:
+          - { name: Restated, effect: stated, state: published, ended: ended, beneath: archive }
+          - { name: Beneath, effect: removed, state: published, ended: current, beneath: archive }
+        # Withdrawn: the statement is ended and nothing stands in its place.
+        ownOnly:
+          - { name: Own, effect: stated, state: published, ended: ended, beneath: null }
+        staged:
+          - { name: Beneath, effect: removed, state: draft, ended: current, beneath: archive }
+---
+# The draft is published and the revision it becomes labelled with a label that
+# already names another revision: the label is refused, and the transaction
+# takes the publish back with it.
+kind: Sql.Transaction
+metadata: { name: publishThenLabel }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [draft, label]
+      properties:
+        draft: { type: string }
+        label: { type: string }
+  steps:
+    - name: publish
+      invoke: !ref teamPublish
+      inputs: { draft: !cel "inputs.draft" }
+    - name: label
+      invoke: !ref teamLabel
+      inputs: { revision: !cel "steps.publish.result.revision.number", label: !cel "inputs.label" }
+  outputs:
+    revision: !cel "steps.label.result.revision"
+inputs:
+  draft: !cel "inputs.draft"
+  label: !cel "inputs.label"
+---
+kind: Run.Sequence
+metadata: { name: labelJoinsATransaction }
+steps:
+  - name: head
+    invoke: !ref teamRevisions
+    inputs: { limit: 1 }
+  - name: taken
+    invoke: !ref teamLabel
+    inputs: { revision: !cel "steps.head.result.revisions[0].number", label: release-1 }
+  - name: open
+    invoke: !ref teamOpenDraft
+    inputs: {}
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: write
+          invoke: !ref teamCreatePerson
+          inputs: { key: t1, properties: { name: Transactional } }
+  - name: refused
+    try:
+      - name: refusedAttempt
+        invoke: !ref publishThenLabel
+        inputs: { draft: !cel "steps.open.result.draft.id", label: release-1 }
+      - name: refusedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "refused did not fail" }
+    catch:
+      - name: refusedCode
+        value: !cel "error.code"
+  - name: headAfterRefusal
+    invoke: !ref teamRevisions
+    inputs: { limit: 1 }
+  - name: draftsAfterRefusal
+    invoke: { kind: GraphLayers.ListDrafts, store: !ref team }
+    inputs: {}
+  # With a label of its own, both stand.
+  - name: accepted
+    invoke: !ref publishThenLabel
+    inputs: { draft: !cel "steps.open.result.draft.id", label: release-2 }
+  - name: headAfterAccepted
+    invoke: !ref teamRevisions
+    inputs: { limit: 1 }
+  - name: assertBothOrNeither
+    invoke: !ref check
+    inputs:
+      actual:
+        refused: !cel "steps.refusedCode.result"
+        headUnmoved: !cel "steps.headAfterRefusal.result.revisions[0].number == steps.head.result.revisions[0].number"
+        stillOpen: !cel "steps.draftsAfterRefusal.result.drafts.exists(d, d.id == steps.open.result.draft.id)"
+        accepted: !cel "steps.accepted.result.revision.label"
+        published: !cel "[steps.headAfterAccepted.result.revisions[0].number == steps.head.result.revisions[0].number + 1, steps.headAfterAccepted.result.revisions[0].label]"
+      expected:
+        refused: GRAPH_REVISION_LABEL_EXISTS
+        headUnmoved: true
+        stillOpen: true
+        accepted: release-2
+        published: [true, release-2]

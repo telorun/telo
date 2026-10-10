@@ -6,7 +6,8 @@ metadata:
     Schema-per-tenant: two PostgreSQL schemas list the same tables in two
     namespaces, and two stores share one set of node and relationship types. A
     node written through one tenant's store is absent through the other's, so
-    each store addresses only its own schema's tables.
+    each store addresses only its own schema's tables — and a cursor issued
+    through one is refused through the other.
 
     NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
 imports:
@@ -27,6 +28,7 @@ targets:
   - !ref tenantASchema
   - !ref tenantBSchema
   - !ref isolation
+  - !ref cursorsStayWithTheirStore
 ---
 kind: Postgres.Connection
 metadata: { name: db }
@@ -59,6 +61,7 @@ columns:
   target: { type: text, nullable: false }
 indexes:
   knows_pair: { columns: [source, target], unique: true }
+  knows_by_target: { columns: [target, source] }
 foreignKeys:
   knows_source:
     columns: [source]
@@ -133,3 +136,37 @@ steps:
     inputs:
       actual: !cel "steps.readRefused.result"
       expected: GRAPH_NODE_NOT_FOUND
+---
+# A cursor resumes a listing through the store that issued it and no other,
+# though both stores list the same node type.
+kind: Run.Sequence
+metadata: { name: cursorsStayWithTheirStore }
+steps:
+  - name: second
+    invoke:
+      kind: Graph.MergeNode
+      store: !ref tenantA
+      node: !ref person
+    inputs: { key: b, properties: { name: Bob } }
+  - name: page
+    invoke:
+      kind: Graph.FindNodes
+      store: !ref tenantA
+      node: !ref person
+    inputs: { limit: 1 }
+  - name: throughB
+    try:
+      - name: resume
+        invoke:
+          kind: Graph.FindNodes
+          store: !ref tenantB
+          node: !ref person
+        inputs: { limit: 1, cursor: !cel "steps.page.result.next" }
+    catch:
+      - name: resumeRefused
+        value: !cel "error.code"
+  - name: assertRefused
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.resumeRefused.result"
+      expected: GRAPH_CURSOR_INVALID

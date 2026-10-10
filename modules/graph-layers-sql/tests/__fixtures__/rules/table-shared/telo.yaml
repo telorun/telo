@@ -1,0 +1,23 @@
+# A store listing two node types over one table.
+kind: Telo.Library
+metadata:
+  name: TableShared
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.Node
+metadata: { name: alias }
+table: !ref people
+key: id
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref appSchema
+layer: lost
+nodes: [!ref person, !ref alias]

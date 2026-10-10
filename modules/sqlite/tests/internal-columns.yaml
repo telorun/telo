@@ -1,0 +1,175 @@
+kind: Telo.Application
+metadata:
+  name: SqliteInternalColumns
+  version: 1.0.0
+  description: |
+    A table holds columns outside its row contract. The schema pass creates them
+    with the declared ones — an internal column may be the primary key, and one
+    index may name columns of both maps, partial over an internal one — while
+    nothing typed from the table sees them: a repository operation and a seed
+    row are both refused an internal column by `telo check`.
+
+    A table may have no row contract at all — `columns: {}` beside its internal
+    columns — and then nothing can name a column of it; a table with no column
+    in either map is refused at check and at creation.
+imports:
+  Sql: ../../sql
+  SQLite: ../
+  SqlRepository: ../../sql-repository
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref created
+  - !ref repositoryContract
+  - !ref seedRowContract
+  - !ref emptyRowContract
+  - !ref seedsWithoutRowContract
+  - !ref emptyInternalMap
+  - !ref noColumnsAtCheck
+  - !ref noColumnsAtCreation
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug: { type: text, nullable: false }
+  title: { type: text }
+internalColumns:
+  row_id: { type: text, primaryKey: true, defaultExpression: "lower(hex(randomblob(16)))" }
+  layer: { type: text, nullable: false, default: base }
+  retired_at: { type: text }
+indexes:
+  documents_layer_slug:
+    columns: [layer, slug]
+    unique: true
+    where: "retired_at IS NULL"
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref documents]
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: SqlRepository.Create
+metadata: { name: insertDocument }
+connection: !ref db
+table: !ref documents
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: created }
+steps:
+  - name: columns
+    invoke: !ref read
+    inputs:
+      sql: "SELECT name, pk FROM pragma_table_info('documents') ORDER BY name"
+  - name: assertColumns
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.columns.result.rows"
+      expected:
+        - { name: layer, pk: 0 }
+        - { name: retired_at, pk: 0 }
+        - { name: row_id, pk: 1 }
+        - { name: slug, pk: 0 }
+        - { name: title, pk: 0 }
+  - name: indexColumns
+    invoke: !ref read
+    inputs:
+      sql: "SELECT name FROM pragma_index_info('documents_layer_slug') ORDER BY seqno"
+  - name: assertIndexColumns
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.indexColumns.result.rows"
+      expected: [{ name: layer }, { name: slug }]
+  - name: indexShape
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT "unique", partial FROM pragma_index_list('documents')
+        WHERE name = 'documents_layer_slug'
+  - name: assertIndexShape
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.indexShape.result.rows"
+      expected: [{ unique: 1, partial: 1 }]
+  # The repository writes only the row contract; the internal column takes its
+  # default.
+  - name: insert
+    invoke: !ref insertDocument
+    inputs:
+      data: { slug: intro, title: Introduction }
+  - name: stored
+    invoke: !ref read
+    inputs:
+      sql: "SELECT slug, title, layer FROM documents"
+  - name: assertStored
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.stored.result.rows"
+      expected: [{ slug: intro, title: Introduction, layer: base }]
+---
+kind: Assert.Manifest
+metadata: { name: repositoryContract }
+source: ./__fixtures__/internal-columns/repository-names-internal.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "layer"
+---
+kind: Assert.Manifest
+metadata: { name: seedRowContract }
+source: ./__fixtures__/internal-columns/seed-sets-internal.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "'layer' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: emptyRowContract }
+source: ./__fixtures__/internal-only/repository-names-column.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'head_revision' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: seedsWithoutRowContract }
+source: ./__fixtures__/internal-only/seeded.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'seeds.key[0]': names a column this table does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: emptyInternalMap }
+source: ./__fixtures__/internal-only/empty-internal.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/internalColumns must NOT have fewer than 1 properties"
+---
+kind: Assert.Manifest
+metadata: { name: noColumnsAtCheck }
+source: ./__fixtures__/internal-only/no-columns/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/columns must NOT have fewer than 1 properties"
+---
+kind: Assert.Manifest
+metadata: { name: noColumnsAtCreation }
+source: ./__fixtures__/internal-only/no-columns-app.yaml
+expect:
+  errors: []
+  runFails: "/columns must NOT have fewer than 1 properties"

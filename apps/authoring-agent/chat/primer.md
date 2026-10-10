@@ -2153,6 +2153,23 @@ to say.
   and a `when:` that turns FALSE is a declaration withdrawn, which tombstones
   those rows.
 
+  **A column outside the row contract goes in `internalColumns:`** — a second
+  column map on `Postgres.Table` / `SQLite.Table`, written exactly as
+  `columns:` is. The schema pass creates, compares, tombstones and reclaims it
+  like any column, it may be the primary key, and an index or foreign key may
+  name it (alone or beside declared columns, `where:` included) — but it is
+  absent from the row projection, so a repository operation or a graph node
+  over the table does not see it and naming it there is a `telo check` error,
+  and a seed row cannot set it. Use it for bookkeeping the consumers of the
+  table must not read or write (a soft-delete marker, a revision counter). One
+  name in both maps is `SQL_COLUMN_DECLARED_TWICE`. `columns:` is always
+  written; a table with no row contract writes `columns: {}` and puts every
+  column under `internalColumns:` (at least one column across the two maps,
+  and `internalColumns: {}` is refused). An internal column's
+  `renamedFrom` naming itself or a column either map still declares is
+  `SQL_INTERNAL_COLUMN_RENAME_FROM_SELF` /
+  `SQL_INTERNAL_COLUMN_RENAME_SOURCE_STILL_DECLARED`.
+
   **A table or an enum renames with `renamedFrom:`, natively and immediately**
   — unlike a column, whose rename is expand-contract. Copying every row is
   unbounded work and writes during an overlap would diverge, so the cost is
@@ -2166,13 +2183,19 @@ to say.
   migration key that is a lie the first time the entry is deleted.
 
   **A knowledge graph is `graph` + a backend (`graph-sql`), over tables you
-  declare.** Every node type and every relationship type is its OWN ordinary
+  declare.** `graph` declares `requires: telo: ">=0.108.0"`, so a graph of any
+  backend needs telo 0.108.0 or newer. Every node type and every relationship type is its OWN ordinary
   engine `Table`, listed in the engine `Schema` like any other — the graph
   issues no DDL. Then declare the mapping: `GraphSql.Node { table: !ref …,
   key: <column> }` (the key column is the primary key, or `unique` +
   `nullable: false`, never `identity` — keys are supplied by the caller, and
   a null key is refused, so an SQLite `integer` primary key never generates
-  one);
+  one). On PostgreSQL never key a node type, or declare a relationship
+  endpoint, on a `date`, `timestamp`, `timestamptz`, `interval`, `bigint` or
+  `numeric` column — the driver does not return those as the type the table
+  declares, so every operation returning such a key fails
+  (`ERR_OUTPUT_INVALID`); use `text`, `uuid`, `integer`, `boolean`, `bytea` or
+  `doublePrecision`. Any SQLite column type is fine;
   `GraphSql.Relationship { table, source: !ref <node>, target: !ref <node>,
   sourceColumn, targetColumn }`, whose table MUST declare a foreign key over
   each endpoint column to that node's table and key with `onDelete: cascade`
@@ -2183,26 +2206,327 @@ to say.
   store addresses every table in its schema's namespace (`Postgres.Schema`'s
   `schema:`), whatever the connection's `search_path` is — schema-per-tenant
   is one schema and one store per tenant, sharing the node and relationship
-  types. Every other column is a property. Put the `Schema` in `targets:`
-  first. The
+  types. Every other column of `columns:` is a property (an `internalColumns:`
+  entry is not). Put the `Schema` in `targets:` first. Declare the pair index
+  source-first (`columns: [source, target]`) and, when you list by `target:`
+  or traverse `in` / `both`, a second index `columns: [target, source]` — they
+  are what make a page cost its `limit`. The
   operations are `graph`'s, each `store:` plus `node:` / `relationship:`:
   `Graph.CreateNode` / `MergeNode` / `UpdateNode` / `DeleteNode` / `GetNode` /
   `FindNodes` take `key` / `properties`; `Graph.CreateRelationship` /
   `MergeRelationship` / `UpdateRelationship` / `DeleteRelationship` /
   `FindRelationships` take `source` / `target` (endpoint keys) /
   `properties`; results are `{ node: { key, properties } }` /
-  `{ relationship: { source, target, properties } }` / lists, all TYPED from
-  the tables, so a misspelled property fails `telo check`. `where:` is
+  `{ relationship: { source, target, properties } }` / lists (a layered store
+  adds `origin` to each value — see below), all TYPED from the tables, so a
+  misspelled property fails `telo check`. `where:` is
   operator-first — `{ gte: { age: 30 }, ne: { email: null } }`, operators
-  `eq ne lt lte gt gte`, ANDed; `eq: { x: null }` means "has no x". `limit` /
-  `offset` page. `Graph.Traverse { store, from, to, hops: [{ relationship,
+  `eq ne lt lte gt gte`, ANDed; `eq: { x: null }` means "has no x".
+  **Listings page by CURSOR — there is no `offset`** (writing one is a
+  `telo check` error): `FindNodes`, `FindRelationships` and `Traverse` take
+  `limit` (1–1000, default 100, so no call reads a whole type) and `cursor`,
+  and return `next` only when more exist. Pass `next` back unchanged as
+  `cursor`, with the same `where` / `source` / `target` / `key`, to read the
+  following page: first call without `cursor`, then
+  `while: !cel "has(steps.page.result.next)"` around a step that passes
+  `cursor: !cel "steps.page.result.next"`. A cursor is opaque and belongs to
+  the listing that issued it — another operation, store, type, filter or start key,
+  or a malformed one, is `GRAPH_CURSOR_INVALID`. A cursor is a position,
+  not a permission; on `GRAPH_CURSOR_INVALID` restart the listing, and never
+  keep a cursor across a new version of the application. A listing resumes
+  after a key of any type — text, a number, a boolean, bytes.
+  A traversal page costs at most one walk of its reach, never more than the
+  first page, and not less for a small `limit` — so for a wide one raise
+  `limit` rather than paging in small steps. `Graph.Traverse { store, from, to, hops: [{ relationship,
   direction: out|in|both, minHops, maxHops }] }` returns the DISTINCT end nodes
   of type `to` for input `key` (plus `where` / paging) — the hops must chain
   from `from` to `to`, and only a relationship within one node type may repeat
   (`maxHops` > 1 or `both`). Codes to catch: `GRAPH_NODE_NOT_FOUND`,
   `GRAPH_NODE_EXISTS`, `GRAPH_RELATIONSHIP_EXISTS`,
-  `GRAPH_RELATIONSHIP_NOT_FOUND`. No operation opens a transaction; inside a
-  `Sql.Transaction` on the store's connection they join it.
+  `GRAPH_RELATIONSHIP_NOT_FOUND`, `GRAPH_CURSOR_INVALID` (the three
+  listings). Every operation is atomic on its own; inside a
+  `Sql.Transaction` on the store's connection it joins that transaction.
+
+  **A LAYERED knowledge graph is `graph` + `graph-layers` + a STRATEGY
+  module for the engine** — several graphs kept as named layers over one set
+  of tables, a layer optionally built on others. A versioning strategy is a
+  MODULE per engine that ships the kinds the storage is declared with; there
+  are three. *current* (each layer holds only its current statements, a write
+  is immediate, no history, no drafts, no pinned view of a base):
+  `graph-layers-current-sqlite` / `graph-layers-current-postgres`. *drafts*
+  (a layer is edited in a draft and published atomically as a numbered
+  revision; described after this paragraph): `graph-layers-drafts-sqlite` /
+  `graph-layers-drafts-postgres`. *revisions* (every published revision is
+  kept, drafts are parallel, a stale draft is merged per property, and a
+  layer is built on PINNED revisions of others instead of a declared `bases:`;
+  described after DRAFTS):
+  `graph-layers-revisions-sqlite` / `graph-layers-revisions-postgres`. A
+  layered graph of ANY strategy needs telo 0.108.0 or newer: every strategy module imports `graph-layers`, which
+  declares `requires: telo: ">=0.108.0"`. Pick ONE strategy module per engine and
+  import it under one alias (say `Layers`); never mix kinds of two strategy
+  modules in one graph (`REFERENCE_KIND_MISMATCH`). Do NOT use `graph-sql` kinds or a
+  plain engine `Table` for a layered graph. Storage is still DECLARED, with
+  the strategy's own table kinds, listed in the engine `Schema`:
+  `Layers.NodeTable { table, key, columns }` and `Layers.RelationshipTable
+  { table, sourceColumn, targetColumn, columns }` take the engine's own column
+  vocabulary (optional `indexes`, `checks`, `renamedFrom`; NO `seeds`,
+  `foreignKeys` or `internalColumns`). Declare the key and both endpoint
+  columns `nullable: false`, and NOTHING `primaryKey`, `unique` or `identity`
+  and no unique index — each layer states the same key in a row of its own —
+  and no column or index named `graph_…` (the table kind adds `graph_layer`,
+  `graph_effect` and its own indexes; they are in no contract, and the name is
+  a `SCHEMA_VIOLATION`). A strategy table kind is held to its engine table's
+  rules, restated on its own fields, and reserves the `graph_` prefix in its
+  schema: an index over an undeclared column, or a `key` / `sourceColumn` /
+  `targetColumn` naming no declared column, is `SQL_INDEX_UNKNOWN_COLUMN` on
+  the table, exactly as the engine's rename, composite-key and unlisted-enum
+  rules are. Then
+  `Layers.Node { table: !ref <NodeTable>, key }` (the table's own key),
+  `Layers.Relationship { table: !ref <RelationshipTable>, source, target,
+  sourceColumn, targetColumn }` (the table's own), and one `Layers.Store
+  { connection, schema, layer: <name>, bases: [!ref <store>…], nodes,
+  relationships }` PER LAYER — all on one connection and schema, `bases`
+  highest precedence first, no layer twice among one store's `bases`, no base
+  naming the store's own layer, no cycle. A store's stack is its own layer,
+  then each base in order followed by that base's stack; a layer reached more
+  than once — two bases built on the same layer, which is legal — has one
+  place, the lowest of them, so every layer outranks the layers it is built
+  on. The first statement for a key wins, and every result value carries
+  `origin`, the winning layer's name (`{ node: { key, properties, origin } }`).
+  All twelve `Graph.*` operations work over a `Layers.Store` unchanged, and
+  writes state ONLY in the store's own layer: create refuses a key that
+  resolves from any layer; merge / update of a value from beneath copy the
+  row into this layer and change the copy; delete HIDES what resolves from
+  beneath (the base still has it) and removes what only this layer states.
+  Concurrent writes to one key through one layer each take effect in some
+  order — none fails for having raced another, on any strategy — so never
+  wrap a graph write in a retry or a lock "for safety". A READ NEVER WRITES:
+  a store only read from changes nothing in the database, and a layer nothing
+  has written yet reads as empty. The key-type limit above applies to layered
+  tables on PostgreSQL too.
+  **A key the store's view does not show is written as a NEW value**, on every
+  strategy: a merge or create of a key never stated, or hidden by this layer's
+  own delete, stores and returns the given properties plus the column default
+  of every other property (one with neither is absent). Nothing comes back
+  from what the delete hid — to keep a hidden value, retract the removal
+  instead of merging over it — and a `nullable: false` column with no default
+  must be given in such a write.
+  **There is no foreign key and no database cascade in a layered graph** — the
+  reverse of `graph-sql`: endpoints are keys resolved in the view (a layer may
+  link to a node a layer beneath states; the store checks both endpoints when
+  a relationship is created or merged, `GRAPH_NODE_NOT_FOUND`), and a
+  relationship is in a view only while both endpoints resolve; a node delete
+  withdraws the layer's own relationships touching it and states nothing
+  about those beneath. So when an endpoint stops resolving — a base deletes
+  the node, or a layer above hides it — the relationship leaves that view
+  (no listing returns it, no traversal reaches or passes through the node,
+  update / delete of it answer `GRAPH_RELATIONSHIP_NOT_FOUND`), nothing is
+  deleted for it, and it is back when the node resolves again. Never write
+  steps that delete or hide a node's relationships "to be safe" before
+  deleting the node. To make a layer stop saying anything about a key — undo an override
+  or a hide so the base shows again — use `GraphLayers.RetractNode { store,
+  node }` (input `key`, output `{ node? }`, `GRAPH_NODE_NOT_STATED`) or
+  `GraphLayers.RetractRelationship { store, relationship }` (inputs `source`,
+  `target`, output `{ relationship? }`, `GRAPH_RELATIONSHIP_NOT_STATED`);
+  their `store:` takes a layered store only. A retract withdraws exactly one
+  statement: retracting a node's removal shows the node again with every
+  relationship the layers beneath state for it, and `RetractRelationship` on a
+  relationship that is out of the view only because its node is hidden is
+  `GRAPH_RELATIONSHIP_NOT_STATED`. On the current and drafts strategies a
+  write to a base shows above it on the next read (on revisions only once the
+  pin is moved — below), and a paged listing is not a single-moment view. A node page
+  costs `limit` × the number of layers in the stack; a relationship page that
+  times twice the number of layers again.
+
+  **DRAFTS — stage changes, then publish them together.** With the *drafts*
+  strategy module the storage is declared exactly as above (the same
+  `Layers.NodeTable` / `RelationshipTable` / `Node` / `Relationship`), plus
+  TWO bookkeeping tables the author only names — `Layers.LayersTable
+  { table }` and `Layers.DraftsTable { table }` — both listed in the engine
+  `Schema`, and every `Layers.Store` adds `layers: !ref <LayersTable>` and
+  `drafts: !ref <DraftsTable>` (a layer and its bases share both tables).
+  The bookkeeping tables have no row contract: never point a repository or a
+  query kind's typed input at one. The strategy's own indexes lead on the
+  layer, then on whether a row is a draft's or published, then on the key —
+  so a layer's draft rows and published rows are two separate ranges: a
+  reader outside a session never passes a draft row, which is why a BULK
+  LOAD belongs in a draft, and publishing reads the draft, not the layer.
+  Never read or write the drafts table's `open_slot` column: it is a
+  temporary constant that will be removed. The lifecycle kinds are `graph-layers`'s
+  (alias `GraphLayers`), each taking `store:` — a drafts store; over a
+  *current* store they are `REFERENCE_KIND_MISMATCH`:
+  `GraphLayers.OpenDraft` (inputs `message?`, `actor?` → `{ draft: { id,
+  parentRevision, createdAt }, opened }`; ONE open draft per layer, an open
+  one is returned with `opened: false`); `GraphLayers.DraftSession { store,
+  steps: [...], inputs }` (invoked with `draft` plus whatever its `inputs:`
+  forwards; returns its step results) — EVERY `Graph.*` and retract operation
+  its body reaches on that store reads and writes the draft, and nothing
+  staged is visible outside a session; `GraphLayers.Publish` (inputs `draft`,
+  `message?`, `actor?` → `{ revision: { number, publishedAt }, changed }`;
+  `GRAPH_DRAFT_NOT_FOUND`, `GRAPH_DRAFT_DISCARDED`, `GRAPH_DRAFT_STALE`,
+  `GRAPH_DRAFT_CONFLICTED`; idempotent; `changed: false` for an empty
+  draft); `GraphLayers.DiscardDraft` (`draft`, `actor?`;
+  `GRAPH_DRAFT_PUBLISHED`); `GraphLayers.RebaseDraft` (`draft` →
+  `{ parentRevision, merged, conflicts }`); `GraphLayers.ListDrafts`
+  (`limit` / `cursor` → `{ drafts: [{ id, parentRevision, stale, message?,
+  createdAt, createdBy }], next? }`). `actor` is `{ type, id }`; omitted, the
+  store itself is recorded as `{ type: store, id: <the store's resource
+  name> }` — never write `store` as an application actor's type.
+  **A write that changes nothing is not a revision**: a merge or update
+  outside a session whose values all equal what the layer itself already
+  states returns that value and advances nothing, so delivering a write twice
+  never turns an open draft stale. Equal means the same value of the same
+  type: the text `"7"` is not the integer `7`, so do not rely on a no-op
+  across types. Writing a key the layer does NOT itself
+  state — even with exactly the values a base states — makes the layer state
+  it (its `origin` becomes this layer and it stops following the base); to
+  leave a node following its base, do not write it. The usual shape is one `Run.Sequence`: an
+  `OpenDraft` step, a step invoking an INLINE `GraphLayers.DraftSession`
+  with `inputs: { draft: !cel "steps.open.result.draft.id" }` on the step and
+  `inputs: { draft: !cel "inputs.draft" }` in its config, then a `Publish`
+  step. OUTSIDE a session a drafts store behaves like a current one: it reads
+  the published state and a write changes it in place, advancing the layer's
+  revision — so a write outside the session makes an open draft stale.
+  `GRAPH_DRAFT_STALE` means: `RebaseDraft`, decide the conflicts it reports,
+  publish again. Stale is ONLY "this layer was written since the draft was
+  opened or rebased": a write in a BASE never makes a draft stale — when it
+  removes a node a staged relationship points at, `Publish` is
+  `GRAPH_DRAFT_CONFLICTED` and the relationship is listed as
+  `endpoint-missing` (no rebase needed). Conflicts are listed and decided INSIDE a session on the
+  same store (`ZONE_REQUIREMENT_UNSATISFIED` otherwise) with
+  `GraphLayers.NodeConflicts { store, node }` / `RelationshipConflicts
+  { store, relationship }` (`limit` / `cursor` → `{ conflicts: [{ key |
+  source, target, class, properties?, mine?, theirs?, token }], next? }`,
+  `class` one of `changed-both`, `changed-removed`, `removed-changed`,
+  `added-both`, `endpoint-missing`) and `GraphLayers.ResolveNodeConflict` /
+  `ResolveRelationshipConflict` (inputs `key` or `source` + `target`, `take:
+  mine | theirs`, optional `set` — property values on top of the taken side —
+  `token`, `resolvedBy`; `GRAPH_CONFLICT_NOT_FOUND`,
+  `GRAPH_RESOLUTION_INVALID`). `mine` is the draft, `theirs` what is
+  published; `mine` on `endpoint-missing` is invalid — take `theirs` (drop the
+  relationship) or restore the endpoint node. On the drafts strategy two
+  sides changing DIFFERENT properties of one key are still one
+  `changed-both`. `endpoint-missing` also lists a relationship the layer
+  already published at a node the draft deletes or retracts. Conflicts are
+  not stored: each conflict page is computed from the whole draft, so its
+  cost follows the size of the draft, not `limit` — page with a small
+  `limit` to decide one at a time, not to make a page cheaper. A `token`
+  stops matching once either side is written again
+  (`GRAPH_CONFLICT_NOT_FOUND`: list again). A lifecycle cursor resumes only
+  the listing that issued it. To automate, loop inside the session: list with `limit: 1`
+  (a decided conflict leaves the listing), `switch` on
+  `steps.<list>.result.conflicts[0].class`, resolve with a constant `take`
+  for the mechanical classes and with the answer of ANY invocable for the
+  rest, passing the listed `token`. If the draft is published or discarded
+  while a session runs, the session fails `GRAPH_DRAFT_CLOSED` (`error.data.
+  closedAs`) and no `try:` INSIDE its body can catch that — catch it around
+  the `DraftSession` step. Do not wrap a session that calls an external
+  service in a `Sql.Transaction`: the call would hold the transaction open.
+
+  **REVISIONS — keep every published revision.** Pick the *revisions*
+  strategy module when the user needs history, an audit trail, a change feed,
+  several people drafting at once, or a merge that does not flag unrelated
+  edits, or a layer that must stay on a fixed version of another until it is
+  deliberately upgraded. Storage is declared as for drafts, with these
+  differences: there are THREE bookkeeping kinds the author only names —
+  `Layers.LayersTable { table }`, `Layers.ChangesetsTable { table }` and
+  `Layers.ChangesetBasesTable { table }`, all listed in the engine `Schema` —
+  and the store's slots are `layers:`, `changesets:` (NOT `drafts:`) and
+  `changesetBases:`, all three required; `Layers.Store { connection, schema,
+  layer, nodes, relationships, layers, changesets, changesetBases }` has NO
+  `bases:` (`SCHEMA_VIOLATION`) — declare one store per layer over the same
+  tables and build one on another at RUN TIME with `PinBase` (below); and NO
+  author column may be `primaryKey` at all (`SQL_COMPOSITE_PRIMARY_KEY`: the
+  table's own row id is its key). Every
+  drafting kind above works unchanged over a revisions store, with these
+  differences in behaviour: `OpenDraft` ALWAYS opens a new draft (`opened:
+  true`) — any number are open per layer, so keep the returned `draft.id` and
+  never call `OpenDraft` again to "get the open draft"; a session reads its
+  draft over the layer AS OF THE DRAFT'S PARENT REVISION, so it does not see
+  what a sibling draft published until `RebaseDraft`; a write outside a
+  session that changes what the layer states is itself a retained revision
+  (one that changes nothing makes none, so it adds nothing to the change
+  feed); of two drafts opened on one
+  revision the first `Publish` wins and the second is `GRAPH_DRAFT_STALE` →
+  `RebaseDraft` → decide → publish. The rebase is THREE-WAY, per property:
+  two sides changing DIFFERENT properties of one key merge with no conflict;
+  a `changed-both` conflict's `properties` names only what both changed to
+  different values, the conflict carries `base` (the common ancestor) beside
+  `mine` and `theirs`, and `take` decides those properties only — a property
+  one side alone changed keeps that side's value whichever side is taken. A
+  paged `Graph.FindNodes` / `FindRelationships` / `Traverse` outside a session
+  stays on the revision of its first page. History is
+  `GraphLayers.ListRevisions { store }` — its `store:` takes a revisions store
+  only (`REFERENCE_KIND_MISMATCH` over a current or drafts store) — inputs
+  `order?` (`descending` default | `ascending`), `after?` (a revision number:
+  only later revisions), `layer?` (the NAME of any layer in the same tables;
+  omitted, the store's own; `GRAPH_LAYER_NOT_FOUND`), `limit` / `cursor` →
+  `{ revisions: [{ number, label?, message?, publishedAt, publishedBy,
+  bases: [{ layer, revision, label?, position }] }], next? }`. To FOLLOW a layer, store
+  the last `number` seen and call it with `order: ascending, after:
+  <that number>`; numbers are consecutive, so detect a missed revision by a
+  gap in the numbers, never by comparing times. Retained history is
+  unbounded (no compaction): do not promise a size bound. Published writes
+  to one layer are applied one at a time, so a BULK LOAD belongs in a draft.
+
+  **PINNED STACKS — on revisions a layer is built on others by pinning, and
+  upgrading is moving the pin.** Four more `GraphLayers` kinds, each `store:`
+  a revisions store only (`REFERENCE_KIND_MISMATCH` otherwise):
+  `GraphLayers.PinBase { store }` — input `bases: [{ layer, revision?,
+  position? }]` (1–32 entries; `layer` is a layer NAME, not a `!ref`;
+  `revision` an integer number, a string label, or omitted for that layer's
+  newest revision at the call; `position` from 0, omitted keeps an existing
+  pin's place and appends a new one) → `{ bases: [{ layer, revision, label?,
+  position }], merged, conflicts }`; a layer can be pinned only once
+  something has WRITTEN it (a node or relationship write, a pin move that
+  changed its base list, or a draft opened on it — reading through its store
+  registers nothing, and neither does a call that is refused or changes
+  nothing), so pin a brand-new empty layer only after its first write; a pin
+  naming the store's own layer is always `GRAPH_BASE_CYCLE`; codes
+  `GRAPH_LAYER_NOT_FOUND` (no such layer, or nothing has written it yet),
+  `GRAPH_REVISION_NOT_FOUND`, `GRAPH_BASE_CYCLE`,
+  `GRAPH_BASE_REVISION_CONFLICT`, `GRAPH_BASE_LIMIT` (a stack holds at most
+  32 layers), `GRAPH_DRAFT_CONFLICTED`. `GraphLayers.UnpinBase { store }` —
+  input `layer` → the same output; `GRAPH_BASE_NOT_PINNED`,
+  `GRAPH_DRAFT_CONFLICTED`. `GraphLayers.ListBases { store }` — no inputs →
+  `{ bases }`, the DIRECT pins. `GraphLayers.LabelRevision { store }` — inputs
+  `revision` (a published number of the store's OWN layer, ≥ 1), `label`
+  (1–128 of letters, digits, `.`, `_`, `+`, `-`, at least one not a digit),
+  `actor?` → `{ revision: { number, label } }`; `GRAPH_REVISION_NOT_FOUND`,
+  `GRAPH_REVISION_LABEL_EXISTS`, `GRAPH_REVISION_LABELLED` (a layer nothing
+  has written has no revision: `GRAPH_REVISION_NOT_FOUND`). A label is
+  PERMANENT and a revision carries one: never write steps that move, replace
+  or remove a label. The stack is the layer, then each pin in position order
+  followed by that pinned revision's own pins; `origin` stays a layer NAME. A
+  pinned layer is read AS THAT REVISION LEFT IT: what a base publishes later
+  is invisible above until `PinBase` moves the pin, and a base's draft is
+  never visible above it. `PinBase`, `UnpinBase` and `ListBases` FOLLOW THE
+  SESSION: inside a `DraftSession` on the store they act on the draft and are
+  published with it; outside one a change is one published revision at once.
+  The whole `bases` list is ONE move — when two pinned layers share a layer
+  beneath (a diamond), upgrade BOTH in one call, since moving one alone is
+  `GRAPH_BASE_REVISION_CONFLICT`. A call that changes nothing makes no
+  revision. **Upgrading** = `PinBase` to the newer revision: what the base
+  changed is merged per property into what this layer states over it
+  (`merged`), and what both changed differently is left as conflicts
+  (`conflicts`) in the SAME five classes, listed and resolved with the same
+  conflict kinds — including statements the layer had only published, which
+  is the usual case. OUTSIDE a session a move that would leave any conflict
+  is refused `GRAPH_DRAFT_CONFLICTED` with nothing changed, so the safe shape
+  for an upgrade is: `OpenDraft` → a `DraftSession` whose body calls
+  `PinBase`, then lists and resolves conflicts → `Publish`. Use the outside
+  form only for a first pin or when nothing can collide. A pin move reads
+  every statement the layer itself makes, and outside a session holds the
+  layer meanwhile — move the pin of a LARGE layer inside a draft. `RebaseDraft`
+  keeps the draft's own pin moves on top of a sibling's and can also raise
+  `GRAPH_BASE_REVISION_CONFLICT` / `GRAPH_BASE_LIMIT` (re-pin in the session,
+  rebase again). A cursor read inside a session is `GRAPH_CURSOR_INVALID`
+  after a pin of that draft moves; a publish never invalidates a cursor. To
+  choose what to pin, list the other layer's revisions with `ListRevisions`
+  and `layer: <name>`. Limits to state honestly: every layer of a stack lives
+  in the application's own database and is written by that application —
+  there is no shipping or importing a layer from elsewhere, no diff / history
+  / restore of a key, no separate published copy, and no compaction.
 - `with:` / `targets:` (Run.Sequence) — `with:` is a LIST of full resource
   declarations whose lifetime is that one sequence run: created when it starts,
   torn down when it ends, referenced by `!ref` from its steps. `targets:` (the

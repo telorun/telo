@@ -1,0 +1,19 @@
+# A relationship type whose endpoint columns are its table's, swapped.
+kind: Telo.Library
+metadata:
+  name: EndpointMismatch
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.Relationship
+metadata: { name: bad }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: target
+targetColumn: source

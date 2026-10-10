@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersDraftsSqliteDraftingSuite
+  version: 1.0.0
+  description: |
+    The drafting suite on an in-memory SQLite database, over two drafted stores
+    sharing one set of tables: sessions, publish and discard, staleness and
+    rebase, the five conflict classes and their resolution, automated deciding,
+    a draft closed under a running session, and cursors bound to a draft.
+include:
+  - ./__fixtures__/suite-model.yaml
+imports:
+  Suite:
+    source: ../../graph-layers/tests/__fixtures__/drafting-suite
+    resources:
+      base: !ref base
+      top: !ref top
+      person: !ref person
+      knows: !ref knows
+  SQLite: ../../sqlite
+  Layers: ../
+targets:
+  - !ref appSchema
+  - !ref Suite.isolation
+  - !ref Suite.stale
+  - !ref Suite.conflicts
+  - !ref Suite.automation
+  - !ref Suite.closedDraft
+  - !ref Suite.cursors

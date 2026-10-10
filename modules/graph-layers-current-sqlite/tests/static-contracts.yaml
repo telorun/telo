@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersCurrentSqliteStaticContracts
+  version: 1.0.0
+  description: |
+    A graph operation's contract is derived from the layered table its node type
+    names — the table kind's own projection over the author's columns — so `telo
+    check` refuses a key of the wrong type, a property the table does not
+    declare and a value outside the enum a column is typed by. The layer
+    bookkeeping columns are in no contract: naming one is an unknown property.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref wrongKeyType
+  - !ref misspelledProperty
+  - !ref enumProperty
+  - !ref systemColumnProperty
+---
+kind: Assert.Manifest
+metadata: { name: wrongKeyType }
+source: ./__fixtures__/contracts/wrong-key-type.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/key must be string"
+---
+kind: Assert.Manifest
+metadata: { name: misspelledProperty }
+source: ./__fixtures__/contracts/misspelled-property.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'nmae' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: enumProperty }
+source: ./__fixtures__/contracts/enum-property.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "expected one of active | retired"
+---
+kind: Assert.Manifest
+metadata: { name: systemColumnProperty }
+source: ./__fixtures__/contracts/system-column-property.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'graph_layer' is not allowed"

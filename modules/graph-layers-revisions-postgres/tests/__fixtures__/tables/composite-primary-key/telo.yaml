@@ -1,0 +1,17 @@
+# A layered node table marking two columns as its primary key. No node type
+# references it, so the layered rule against anything unique does not fire.
+# The table alone, so booting it reaches no database.
+kind: Telo.Library
+metadata:
+  name: CompositePrimaryKey
+imports:
+  Layers: ../../../..
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  tenant: { type: integer, primaryKey: true }
+  serial: { type: integer, primaryKey: true }

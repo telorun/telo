@@ -1,0 +1,10 @@
+# Runs the library's sequence: the entry-scoped check is silent, so the kind's own
+# refusal at dispatch is what remains.
+kind: Telo.Application
+metadata:
+  name: ConsumesLibrary
+imports:
+  Lib: ./conflicts-outside-session
+targets:
+  - !ref Lib.appSchema
+  - !ref Lib.outside

@@ -1,0 +1,47 @@
+# A drafted store built on a base that registers its layers in another table: the
+# two would never agree on a layer's id.
+kind: Telo.Library
+metadata:
+  name: DraftedBaseBookkeepingMismatch
+include:
+  - ../../drafted-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.LayersTable
+metadata: { name: otherLayers }
+table: other_layers
+---
+kind: SQLite.Schema
+metadata: { name: widerSchema }
+connection: !ref db
+ledger: wider
+tables:
+  - !ref people
+  - !ref documents
+  - !ref knowsTable
+  - !ref graphLayers
+  - !ref graphDrafts
+  - !ref otherLayers
+---
+kind: Layers.Store
+metadata: { name: apart }
+connection: !ref db
+schema: !ref widerSchema
+layer: apart
+nodes: [!ref person]
+layers: !ref otherLayers
+drafts: !ref graphDrafts
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref widerSchema
+layer: lost
+bases: [!ref apart]
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref graphDrafts

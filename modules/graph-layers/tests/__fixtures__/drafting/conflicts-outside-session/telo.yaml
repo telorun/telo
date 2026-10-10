@@ -1,0 +1,41 @@
+# Conflict listings and resolutions reached with no session open on their store.
+kind: Telo.Library
+metadata:
+  name: ConflictsOutsideSession
+include:
+  - ../../drafted-model.yaml
+imports:
+  GraphLayers: ../../../..
+  Layers: ../../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../../sqlite
+  Run: ../../../../../run
+exports:
+  resources: [appSchema, outside]
+---
+kind: Run.Sequence
+metadata: { name: outside }
+steps:
+  - name: listNodes
+    invoke:
+      kind: GraphLayers.NodeConflicts
+      store: !ref team
+      node: !ref person
+    inputs: {}
+  - name: listLinks
+    invoke:
+      kind: GraphLayers.RelationshipConflicts
+      store: !ref team
+      relationship: !ref knows
+    inputs: {}
+  - name: decideNode
+    invoke:
+      kind: GraphLayers.ResolveNodeConflict
+      store: !ref team
+      node: !ref person
+    inputs: { key: a, take: mine }
+  - name: decideLink
+    invoke:
+      kind: GraphLayers.ResolveRelationshipConflict
+      store: !ref team
+      relationship: !ref knows
+    inputs: { source: a, target: b, take: theirs }

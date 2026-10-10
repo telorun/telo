@@ -1,0 +1,41 @@
+# A repository operation is typed from the table's row contract, which an
+# internal column is outside of.
+kind: Telo.Application
+metadata:
+  name: RepositoryNamesInternal
+  version: 1.0.0
+imports:
+  SQLite: ../../../
+  SqlRepository: ../../../../sql-repository
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref write
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug: { type: text, primaryKey: true }
+internalColumns:
+  layer: { type: text }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref documents]
+---
+kind: Run.Sequence
+metadata: { name: write }
+steps:
+  - name: insert
+    invoke:
+      kind: SqlRepository.Create
+      connection: !ref db
+      table: !ref documents
+    inputs:
+      data: { slug: intro, layer: draft }

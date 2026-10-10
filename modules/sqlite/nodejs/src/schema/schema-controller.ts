@@ -7,7 +7,7 @@ import {
   type DeclaredTable,
   type ReclaimPolicy,
   type SqlConnection,
-  type SqlSchema,
+  type SqlInstantSchema,
 } from "@telorun/sql";
 import { SqliteSchemaDriver } from "./sqlite-schema-driver.js";
 import type { SqliteEnumResource } from "./enum-controller.js";
@@ -32,7 +32,7 @@ interface SqliteSchemaManifest {
  * SQLite has exactly one namespace, so unlike the PostgreSQL kind there is no
  * `schema:` field to name and nothing to create.
  */
-class SqliteSchemaResource implements SqlSchema {
+class SqliteSchemaResource implements SqlInstantSchema {
   constructor(
     private readonly manifest: SqliteSchemaManifest,
     private readonly ctx: ResourceContext,
@@ -58,6 +58,12 @@ class SqliteSchemaResource implements SqlSchema {
       table,
     );
     return this.driver.qualify(this.namespace, table.name);
+  }
+
+  /** SQLite has no timestamp type: an instant is fixed-width UTC text
+   *  (`YYYY-MM-DDTHH:MM:SS.sssZ`), so plain text comparison is chronological. */
+  currentInstant(): string {
+    return "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
   }
 
   async run(): Promise<void> {
