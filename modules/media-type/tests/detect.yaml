@@ -1,0 +1,90 @@
+kind: Telo.Application
+metadata:
+  name: MediaTypeDetect
+  version: 1.0.0
+  description: |
+    Detection through the kind's contract: bytes held whole that contradict
+    their declared type are reported under the proven one, mislabelled, with
+    the output still every input byte; a computed `declared` that is not a media
+    type is read as no claim; a stream delivered in one-byte chunks is
+    read, compared against a declared type written with upper case and
+    parameters, and handed on unchanged.
+imports:
+  MediaType: ../
+  Octet: ../../octet-codec
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: MediaType.Detector
+metadata: { name: detect }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # A 1×1 PNG, declared as a JPEG.
+  - name: png
+    value: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==
+  - name: detected
+    inputs:
+      input: !cel "bytesFromBase64(steps.png.result)"
+      declared: image/jpeg
+    invoke: !ref detect
+  - name: drained
+    inputs: { input: !cel "steps.detected.result.output" }
+    invoke:
+      kind: Octet.Decoder
+  - name: assertMislabelled
+    inputs:
+      actual:
+        mediaType: !cel "steps.detected.result.mediaType"
+        mislabelled: !cel "steps.detected.result.mislabelled"
+        output: !cel "bytesToBase64(steps.drained.result.bytes)"
+      expected:
+        mediaType: image/png
+        mislabelled: true
+        output: !cel "steps.png.result"
+    invoke: { kind: Assert.Equals }
+
+  # A computed `declared` that is not a media type claims nothing.
+  - name: unreadable
+    inputs:
+      input: !cel "bytesFromBase64(steps.png.result)"
+      declared: !cel "'not a media type'"
+    invoke: !ref detect
+  - name: assertUnreadable
+    inputs:
+      actual:
+        mediaType: !cel "steps.unreadable.result.mediaType"
+        mislabelled: !cel "steps.unreadable.result.mislabelled"
+      expected: { mediaType: image/png, mislabelled: false }
+    invoke: { kind: Assert.Equals }
+
+  # A stream of one-byte chunks.
+  - name: source
+    inputs:
+      items: !cel "'plain words'.split('').map(c, bytes(c))"
+    invoke:
+      kind: Stream.Of
+  - name: streamed
+    inputs:
+      input: !cel "steps.source.result.output"
+      declared: Text/Plain; charset=utf-8
+    invoke: !ref detect
+  - name: streamDrained
+    inputs: { input: !cel "steps.streamed.result.output" }
+    invoke:
+      kind: Octet.Decoder
+  - name: assertStreamed
+    inputs:
+      actual:
+        mediaType: !cel "steps.streamed.result.mediaType"
+        mislabelled: !cel "steps.streamed.result.mislabelled"
+        output: !cel "string(steps.streamDrained.result.bytes)"
+      expected:
+        mediaType: text/plain
+        mislabelled: false
+        output: plain words
+    invoke: { kind: Assert.Equals }

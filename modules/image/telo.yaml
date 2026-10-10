@@ -5,15 +5,17 @@ metadata:
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Data]
-  description: |
-    Image generation and annotation: make a solid-colour canvas at a given size, and
-    draw labelled rectangles onto an existing image, returning encoded PNG, JPEG or
-    WebP bytes. Built for vision-grounding loops — render, let a model propose boxes,
-    draw them, look again. Coordinates are pixels from the top-left.
+  description: >-
+    Image processing for uploads and vision pipelines: resize a picture to fit a
+    box before storing it or sending it to a model, with file-size and pixel
+    limits enforced before decoding; make a solid-colour canvas; and draw
+    labelled rectangles onto an image. Reads PNG, JPEG, WebP and GIF, and
+    returns encoded PNG, JPEG or WebP bytes.
 exports:
   kinds:
     - Blank
     - Overlay
+    - Fit
 ---
 # Blank: a solid-color canvas → encoded image bytes. The seed of an image
 # pipeline — compose diagrams with Image.Overlay, or use it as a hermetic test
@@ -253,4 +255,133 @@ schema:
       maximum: 100
       default: 80
       description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
+  additionalProperties: false
+---
+# Fit: image bytes + a box → the image scaled down to fit it, re-encoded.
+#
+# Both limits are judged from the header, before a decoder is handed the bytes:
+# `maxBytes` against the input's length, `maxPixels` against the size the header
+# declares. The canvas is always re-encoded, so nothing but pixels survives.
+# An EXIF orientation — a JPEG's, a WebP's or a PNG's — is applied, and the box
+# is measured on the upright image.
+kind: Telo.Definition
+metadata:
+  name: Fit
+  description: >-
+    Scales an image down to fit within a maximum width and height, keeping its
+    aspect ratio and never enlarging it, then re-encodes it as PNG, JPEG or WebP
+    with metadata stripped and its EXIF orientation applied. Oversized files and
+    pixel counts are refused from the header before decoding. Returns the bytes,
+    the final dimensions and the media type.
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/@telorun/image@0.9.0?local_path=./nodejs#fit
+throws:
+  codes:
+    ERR_IMAGE_TOO_LARGE:
+      description: >-
+        The input is longer than `maxBytes`, or its header declares more pixels
+        than `maxPixels`. Raised before anything is decoded.
+      data:
+        type: object
+        additionalProperties: false
+        required: [limit, max]
+        properties:
+          limit:
+            type: string
+            enum: [ maxBytes, maxPixels ]
+            description: The limit that was exceeded.
+          max:
+            type: integer
+            description: That limit's value on the resource.
+    ERR_UNSUPPORTED_IMAGE:
+      description: >-
+        The bytes are not a PNG, JPEG, WebP or GIF image that can be read: the
+        signature is another format's, the header is truncated or malformed, or
+        the body is corrupt or cut short and the decoder rejects it. A signature
+        or header failure is raised before anything is decoded.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    examples:
+      - image: !cel "steps.upload.result.bytes"
+        maxWidth: 1568
+        maxHeight: 1568
+    properties:
+      image:
+        x-telo-type: Telo.Bytes
+        description: The image to fit, as bytes — PNG, JPEG, WebP or GIF.
+      maxWidth:
+        type: integer
+        minimum: 1
+        maximum: 16384
+        description: The widest the result may be, in pixels.
+      maxHeight:
+        type: integer
+        minimum: 1
+        maximum: 16384
+        description: The tallest the result may be, in pixels.
+      format:
+        type: string
+        enum: [ png, jpeg, webp ]
+        description: Output image format. Takes precedence over the resource-level format.
+      quality:
+        type: integer
+        minimum: 1
+        maximum: 100
+        description: Encoder quality for the lossy formats (jpeg/webp); ignored for png.
+    required: [ image, maxWidth, maxHeight ]
+    additionalProperties: false
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      image:
+        x-telo-type: Telo.Bytes
+        description: The fitted image, as image bytes in the chosen format.
+      width:
+        type: integer
+        description: Width of the result in pixels — at most `maxWidth`, and never more than the input's.
+      height:
+        type: integer
+        description: Height of the result in pixels — at most `maxHeight`, and never more than the input's.
+      mediaType:
+        type: string
+        description: MIME type of the encoded image (image/png, image/jpeg, or image/webp).
+    required: [ image, width, height, mediaType ]
+    additionalProperties: false
+schema:
+  type: object
+  examples:
+    - format: jpeg
+      quality: 85
+      maxBytes: 10485760
+  properties:
+    format:
+      title: Format
+      type: string
+      enum: [ png, jpeg, webp ]
+      default: png
+      description: Output image format. Runtime inputs.format takes precedence when set.
+    quality:
+      title: Quality
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 80
+      description: Encoder quality for the lossy formats (jpeg/webp); ignored for png. Runtime inputs.quality takes precedence when set.
+    maxBytes:
+      title: Max bytes
+      type: integer
+      minimum: 1
+      default: 26214400
+      description: The longest input accepted, in bytes. A longer one fails with ERR_IMAGE_TOO_LARGE before its header is read.
+    maxPixels:
+      title: Max pixels
+      type: integer
+      minimum: 1
+      default: 40000000
+      description: The most pixels (width × height) an input's header may declare. More fails with ERR_IMAGE_TOO_LARGE before anything is decoded.
   additionalProperties: false

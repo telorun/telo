@@ -1,0 +1,8 @@
+modules:
+  modules/image: Fixed
+  modules/pdf: Fixed
+body: "The canvas decoder moves from 1.0.0 to 1.0.10. An image whose signature is
+  recognised but whose body is corrupt or cut short is now an error the caller can
+  catch, where it ended the whole process: Image.Fit raises ERR_UNSUPPORTED_IMAGE and
+  Image.Overlay raises ERR_INVALID_INPUT. The pdf module stages the same version, since
+  it points every canvas loaded after it in the process at its own decoder file."

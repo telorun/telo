@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: ImageFitAfterPdfTest
+  version: 1.0.0
+  description: |
+    A PDF page is rendered first, which points every canvas loaded afterwards
+    at the pdf module's own decoder file; an image whose body is cut short is
+    then fitted by a resource created only at that moment, and is refused as
+    unsupported instead of ending the process. It holds only while that decoder
+    file and the canvas library are one version.
+imports:
+  Image: ../
+  Pdf: ../../pdf
+  Fixture: ../../pdf/tests/__fixtures__/sample-form.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+# The fit resource lives in this sequence's scope, so its controller — and the
+# canvas it loads — first exists after the page below has been rendered.
+kind: Run.Sequence
+metadata: { name: fitCorrupt }
+with:
+  - kind: Image.Fit
+    metadata: { name: fit }
+steps:
+  - name: tryCorrupt
+    try:
+      - name: corrupt
+        inputs:
+          image: !include-bytes ./__fixtures__/truncated.png
+          maxWidth: 512
+          maxHeight: 512
+        invoke: !ref fit
+      - name: corruptAccepted
+        throw: { code: NOT_REFUSED, message: the call was expected to fail }
+    catch:
+      - name: assertCorrupt
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_UNSUPPORTED_IMAGE
+        invoke: { kind: Assert.Equals }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: document
+    invoke: !ref Fixture.sampleFormPdf
+  - name: page
+    inputs:
+      data: !cel "steps.document.result.data"
+    invoke:
+      kind: Pdf.Rasterizer
+  - name: assertRendered
+    inputs:
+      actual: !cel "steps.page.result.mediaType"
+      expected: image/png
+    invoke: { kind: Assert.Equals }
+  - name: fitted
+    invoke: !ref fitCorrupt

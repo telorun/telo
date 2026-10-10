@@ -79,7 +79,12 @@ sources:
 kind: "Telo.Definition"
 metadata:
   name: "Server"
-  description: Listens on a TCP port and serves mounted routers, with CORS, per-mount request guards, OpenAPI docs, and custom content-type parsers.
+  description: >-
+    Listens on a TCP port and serves HTTP through the routers mounted on it, with
+    CORS, a per-mount request guard for authentication and access checks, a
+    generated OpenAPI document and custom content-type parsers. Request bodies are
+    bounded in bytes: a larger one is answered 413, and a body nobody reads to its
+    end closes the connection.
 capability: Telo.Service
 controllers:
   - pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpServerController
@@ -127,6 +132,20 @@ schema:
         enable behind a trusted proxy — otherwise clients can spoof their IP.
       type: ["boolean", "integer"]
       x-telo-eval: compile
+    maxBodyBytes:
+      title: Max Body Bytes
+      description: >-
+        Most of a request body that is buffered or handed to a handler, in
+        bytes, for every mount — buffered, streamed and multipart bodies alike.
+        A larger one is answered 413 with
+        `Connection: close` and the `{error: {code, message, data}}` envelope,
+        code `ERR_REQUEST_BODY_TOO_LARGE`. The answer is the server's own: no
+        `catches:` list sees it. A route's `maxBodyBytes` replaces this value
+        for that route. There is no way to switch the limit off.
+      type: "integer"
+      x-telo-eval: compile
+      minimum: 1
+      default: 1048576
     # No `logger:` field. Request logging is not a per-server flag — it is
     # governed by the structured logging pipeline like everything else. Fastify's
     # per-request access lines are `info`-severity, so they appear whenever this
@@ -408,9 +427,10 @@ schema:
               When true, deliver request bodies of this content type to the
               handler as a raw `Stream<Uint8Array>` — no buffering, no parsing,
               no schema validation. The matching route must declare
-              `request.schema.body` with `x-telo-stream: true`. Mutually
-              exclusive with `parser`: a content type on one server is either
-              streamed or parsed, never both.
+              `request.schema.body` with `x-telo-type: Telo.Stream`. The body
+              is counted against `maxBodyBytes` as the handler pulls it.
+              Mutually exclusive with `parser`: a content type on one server is
+              either streamed or parsed, never both.
             type: "boolean"
         required: [ "contentType" ]
         not:
@@ -647,6 +667,17 @@ schema:
               `examples` so the OpenAPI spec is complete.
             x-telo-topology-role: matcher
             x-telo-schema-from: "HttpDispatch.Request/$defs/Matcher"
+          maxBodyBytes:
+            title: Max Body Bytes
+            description: >-
+              Largest request body this route accepts, in bytes. Replaces the
+              server's `maxBodyBytes` for this route alone, larger or smaller —
+              an upload route raises it, a route taking a small document can
+              lower it. A larger body is answered 413 by the server; no
+              `catches:` entry sees it.
+            type: "integer"
+            x-telo-eval: compile
+            minimum: 1
           inputs:
             title: Inputs
             type: "object"

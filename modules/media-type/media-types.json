@@ -1,0 +1,54 @@
+{
+  "window": 4096,
+  "unknown": "application/octet-stream",
+  "types": [
+    {
+      "mediaType": "image/png",
+      "signatures": [[{ "offset": 0, "hex": "89504e470d0a1a0a" }]]
+    },
+    {
+      "mediaType": "image/jpeg",
+      "signatures": [[{ "offset": 0, "hex": "ffd8ff" }]]
+    },
+    {
+      "mediaType": "image/gif",
+      "signatures": [
+        [{ "offset": 0, "hex": "474946383761" }],
+        [{ "offset": 0, "hex": "474946383961" }]
+      ]
+    },
+    {
+      "mediaType": "image/webp",
+      "signatures": [
+        [
+          { "offset": 0, "hex": "52494646" },
+          { "offset": 8, "hex": "57454250" }
+        ]
+      ]
+    },
+    {
+      "mediaType": "application/pdf",
+      "signatures": [[{ "offset": 0, "hex": "255044462d" }]]
+    },
+    {
+      "mediaType": "application/zip",
+      "signatures": [
+        [{ "offset": 0, "hex": "504b0304" }],
+        [{ "offset": 0, "hex": "504b0506" }],
+        [{ "offset": 0, "hex": "504b0708" }]
+      ]
+    },
+    {
+      "mediaType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "container": "application/zip"
+    },
+    {
+      "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "container": "application/zip"
+    },
+    {
+      "mediaType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "container": "application/zip"
+    }
+  ]
+}

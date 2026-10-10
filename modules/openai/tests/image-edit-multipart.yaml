@@ -98,6 +98,11 @@ with:
                   data:
                     - b64_json: ZWRpdGVk
                       revised_prompt: !cel "result.parts.map(p, has(p.filename) ? p.name + '=' + p.filename : p.name).join(',')"
+        catches:
+          - status: 400
+            content:
+              application/json:
+                body: { error: { message: !cel "error.message" } }
   - kind: Server.Server
     metadata: { name: FakeServer }
     port: 8874

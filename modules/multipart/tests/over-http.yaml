@@ -68,6 +68,19 @@ with:
                   count: !cel "size(result.parts)"
                   names: !cel "result.parts.map(p, has(p.filename) ? p.filename : 'unnamed')"
                   texts: !cel "result.parts.map(p, string(p.content))"
+        # The decoder's two codes, each mapped: without an entry for one the
+        # route is UNCOVERED_THROW_CODE.
+        catches:
+          - when: !cel "error.code == 'ERR_MULTIPART_MALFORMED'"
+            status: 400
+            content:
+              application/json:
+                body: { reason: !cel "error.data.reason" }
+          - when: !cel "error.code == 'ERR_MULTIPART_LIMIT_EXCEEDED'"
+            status: 413
+            content:
+              application/json:
+                body: { limit: !cel "error.data.limit" }
   - kind: Server.Server
     metadata: { name: TestServer }
     port: 8873

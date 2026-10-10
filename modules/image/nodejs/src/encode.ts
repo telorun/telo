@@ -20,17 +20,17 @@ export interface EncodedImage {
 }
 
 /**
- * Encodes a canvas to the requested format, resolving format/quality against
- * resource defaults. `quality` (1–100) applies only to the lossy formats —
+ * Encodes a canvas to the requested format off the event loop, resolving
+ * format/quality against resource defaults. `quality` (1–100) applies only to the lossy formats —
  * it is ignored for png, which is inherently lossless. The library clamps an
  * out-of-range quality silently, so the bound is enforced here instead.
  */
-export function encodeCanvas(
+export async function encodeCanvas(
   canvas: Canvas,
   input: EncodeOptions,
   resource: EncodeOptions,
   label: string,
-): EncodedImage {
+): Promise<EncodedImage> {
   const format = (input.format ?? resource.format ?? "png") as ImageFormat;
   if (format !== "png" && format !== "jpeg" && format !== "webp") {
     throw new InvokeError(
@@ -41,7 +41,7 @@ export function encodeCanvas(
   const mediaType = MEDIA_TYPE[format];
 
   if (format === "png") {
-    return { image: new Uint8Array(canvas.toBuffer("image/png")), mediaType };
+    return { image: new Uint8Array(await canvas.encode("png")), mediaType };
   }
 
   const quality = input.quality ?? resource.quality ?? 80;
@@ -51,8 +51,5 @@ export function encodeCanvas(
       `${label}: 'quality' must be an integer between 1 and 100; got ${quality}.`,
     );
   }
-  return {
-    image: new Uint8Array(canvas.toBuffer(mediaType as "image/jpeg" | "image/webp", quality)),
-    mediaType,
-  };
+  return { image: new Uint8Array(await canvas.encode(format, quality)), mediaType };
 }

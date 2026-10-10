@@ -43,8 +43,11 @@ native:
 assets:
   - ./assets/
 sources:
+  # The addon staged here and the `@napi-rs/canvas` wrapper the lockfile holds are
+  # one version: the controller sets the addon path for the whole process, so
+  # every wrapper in it — another module's included — opens this file.
   canvas:
-    version: 1.0.0
+    version: 1.0.10
     url: https://registry.npmjs.org/@napi-rs/{upstream}/-/{upstream}-{version}.tgz
     archive: tar.gz
     notices: [./notices/napi-rs-canvas.LICENSE]
@@ -52,21 +55,21 @@ sources:
       ./notices/napi-rs-canvas.LICENSE:
         { upstream: canvas, member: package/LICENSE, sha256: 8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6, executable: false }
       ./native/darwin-amd64/skia.node:
-        { upstream: canvas-darwin-x64, member: package/skia.darwin-x64.node, sha256: 0f1a36d75ac10c4fd59a77acf76efb19903e9b0d99c790106475512e4f5eb18e, executable: false }
+        { upstream: canvas-darwin-x64, member: package/skia.darwin-x64.node, sha256: a1995c62e422e45b17bb3a64ce246112776c12f96bb6563be2697de5c66b3a61, executable: false }
       ./native/darwin-arm64/skia.node:
-        { upstream: canvas-darwin-arm64, member: package/skia.darwin-arm64.node, sha256: c1653d9e330282cf0b1fe32faa53cb6816f68bf8b11ec361460579bcfb976caf, executable: false }
+        { upstream: canvas-darwin-arm64, member: package/skia.darwin-arm64.node, sha256: 207921c48ce2f93b85548ffc1a1226d50d3e1c2cece96a711844828a62fdbabe, executable: false }
       ./native/linux-amd64-gnu/skia.node:
-        { upstream: canvas-linux-x64-gnu, member: package/skia.linux-x64-gnu.node, sha256: 08086cecf1707309542c8aa717a02af34fed2a63eb8cf97c25fb28a93c6a595c, executable: false }
+        { upstream: canvas-linux-x64-gnu, member: package/skia.linux-x64-gnu.node, sha256: eff464d8c283ad1e73e36c636d9ec9a6469ae34c3c04b298794735c89f9c863a, executable: false }
       ./native/linux-amd64-musl/skia.node:
-        { upstream: canvas-linux-x64-musl, member: package/skia.linux-x64-musl.node, sha256: 51d5dd5095107a9c6bd63f9fe70ec8420a5470dda1dc38a7ac15dcab283b3808, executable: false }
+        { upstream: canvas-linux-x64-musl, member: package/skia.linux-x64-musl.node, sha256: dd7ce0e30c270ef8f5fe7ca1905efb35ebeca52124631956a1e1da76a2972298, executable: false }
       ./native/linux-arm64-gnu/skia.node:
-        { upstream: canvas-linux-arm64-gnu, member: package/skia.linux-arm64-gnu.node, sha256: 5985df07d4cd2f1aedc0b2cbd989a4b2de508e80f1c3dda16d1b660742119aad, executable: false }
+        { upstream: canvas-linux-arm64-gnu, member: package/skia.linux-arm64-gnu.node, sha256: 5baabaf23dfe6559b75db5661e91b476f8fc5291a6855d7292a3e24a545654e9, executable: false }
       ./native/linux-arm64-musl/skia.node:
-        { upstream: canvas-linux-arm64-musl, member: package/skia.linux-arm64-musl.node, sha256: c21775d41575caf7153f0b17e6be3b631add4a86f0aff5ad9a812a8bd008820d, executable: false }
+        { upstream: canvas-linux-arm64-musl, member: package/skia.linux-arm64-musl.node, sha256: 7787bf4bff18a279dfdba877e8af113eddc57da10f14ef2fb2e5a9ab4d9bed01, executable: false }
       ./native/windows-amd64/skia.node:
-        { upstream: canvas-win32-x64-msvc, member: package/skia.win32-x64-msvc.node, sha256: f65bfb4c598dec157414a1435f74a71fbaba8f3406b0446f20f2df8a4fe618e4, executable: false }
+        { upstream: canvas-win32-x64-msvc, member: package/skia.win32-x64-msvc.node, sha256: c067e5d5df2abd36789c4d371efc60ce0a29d204575f316345b57dcd2f4b74e7, executable: false }
       ./native/windows-arm64/skia.node:
-        { upstream: canvas-win32-arm64-msvc, member: package/skia.win32-arm64-msvc.node, sha256: 91896f45a426676ae9511c0dd5d0b2d2c25b43d55a7f9261d262c37187efa62e, executable: false }
+        { upstream: canvas-win32-arm64-msvc, member: package/skia.win32-arm64-msvc.node, sha256: 8d931edf8d0933abae7609c584cbda240a12211bb3fa7149f04badfe7dbd98e8, executable: false }
   pdfjs:
     version: 6.0.227
     url: https://registry.npmjs.org/{upstream}/-/{upstream}-{version}.tgz

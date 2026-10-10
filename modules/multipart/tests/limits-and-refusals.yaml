@@ -1,0 +1,676 @@
+kind: Telo.Application
+metadata:
+  name: MultipartLimitsAndRefusalsTest
+  version: 1.0.0
+  description: |
+    Every way a received payload is refused, as the code and data a caller maps.
+
+    Payloads are written out by hand, chunk by chunk, because the refusals are
+    about exact bytes: a part of exactly `maxPartBytes` must pass and one byte
+    more must not, and a limit must stop the read on the chunk that crosses it
+    rather than after the payload was collected.
+
+    What a refusal does to its SOURCE is read off the kernel's dispatch record:
+    a tap in front of the source counts the chunks pulled, and an end handler
+    behind it says how the source's stream ended.
+imports:
+  Multipart: ../
+  Stream: ../../stream
+  RecordStream: ../../record-stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref decoderLimits
+  - !ref decoderMalformed
+  - !ref decoderStopsReading
+  - !ref readerStopsReading
+  - !ref readerRejectsMissingBoundary
+  - !ref readerFailsWhileDrained
+  - !ref sourceFailureIsRethrown
+  - !ref missingBoundaryReleasesInput
+  - !ref unpulledPartsReleaseInput
+  - !ref dispatches
+---
+# Two parts: `a` holds exactly five bytes, `file` holds ten.
+kind: Stream.Of
+metadata: { name: twoParts }
+items:
+  - "--b\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nhello\r\n"
+  - "--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"f.bin\"\r\n\r\n0123456789\r\n"
+  - "--b--\r\n"
+---
+kind: Run.Sequence
+metadata: { name: decoderLimits }
+steps:
+  # A part of exactly the limit passes: the line break before the next delimiter
+  # is framing, not content.
+  - name: exactSource
+    invoke: !ref twoParts
+  - name: exact
+    inputs:
+      input: !cel "steps.exactSource.result.output"
+      contentType: multipart/form-data; boundary=b
+      maxPartBytes: 10
+      maxParts: 2
+      maxTotalBytes: 145
+    invoke:
+      kind: Multipart.Decoder
+  - name: assertExact
+    inputs:
+      actual: !cel "steps.exact.result.parts.map(p, p.name + '=' + string(p.content))"
+      expected: ["a=hello", "file=0123456789"]
+    invoke: !ref Assert.equals
+
+  - name: partSource
+    invoke: !ref twoParts
+  - name: partTooLarge
+    try:
+      - name: decodePart
+        inputs:
+          input: !cel "steps.partSource.result.output"
+          contentType: multipart/form-data; boundary=b
+          maxPartBytes: 9
+        invoke:
+          kind: Multipart.Decoder
+      - name: partAccepted
+        throw: { code: NOT_REFUSED, message: a part over `maxPartBytes` was decoded }
+    catch:
+      - name: assertPart
+        inputs:
+          actual: { code: !cel "error.code", data: !cel "error.data" }
+          expected:
+            code: ERR_MULTIPART_LIMIT_EXCEEDED
+            data: { limit: maxPartBytes, max: !cel "9", part: !cel "1", name: file }
+        invoke: !ref Assert.equals
+
+  - name: countSource
+    invoke: !ref twoParts
+  - name: tooManyParts
+    try:
+      - name: decodeCount
+        inputs:
+          input: !cel "steps.countSource.result.output"
+          contentType: multipart/form-data; boundary=b
+          maxParts: 1
+        invoke:
+          kind: Multipart.Decoder
+      - name: countAccepted
+        throw: { code: NOT_REFUSED, message: more parts than `maxParts` were decoded }
+    catch:
+      - name: assertCount
+        inputs:
+          actual: { code: !cel "error.code", data: !cel "error.data" }
+          expected:
+            code: ERR_MULTIPART_LIMIT_EXCEEDED
+            data: { limit: maxParts, max: !cel "1", part: !cel "1" }
+        invoke: !ref Assert.equals
+
+  # One byte short of the payload's 145.
+  - name: totalSource
+    invoke: !ref twoParts
+  - name: totalTooLarge
+    try:
+      - name: decodeTotal
+        inputs:
+          input: !cel "steps.totalSource.result.output"
+          contentType: multipart/form-data; boundary=b
+          maxTotalBytes: 144
+        invoke:
+          kind: Multipart.Decoder
+      - name: totalAccepted
+        throw: { code: NOT_REFUSED, message: a payload over `maxTotalBytes` was decoded }
+    catch:
+      - name: assertTotal
+        inputs:
+          actual: { code: !cel "error.code", data: !cel "error.data" }
+          expected:
+            code: ERR_MULTIPART_LIMIT_EXCEEDED
+            data: { limit: maxTotalBytes, max: !cel "144" }
+        invoke: !ref Assert.equals
+---
+# One reason per way a payload can be wrong.
+kind: Run.Sequence
+metadata: { name: decoderMalformed }
+steps:
+  - name: cases
+    inputs:
+      cases:
+        - reason: boundary-missing
+          contentType: multipart/form-data
+          chunks: ["--b--\r\n"]
+        - reason: truncated
+          contentType: multipart/form-data; boundary=b
+          chunks: ["--b\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nhel"]
+        - reason: header-malformed
+          contentType: multipart/form-data; boundary=b
+          chunks: ["--b\r\nno blank line follows\r\n--b\r\n\r\nbody\r\n--b--\r\n"]
+        - reason: header-too-large
+          contentType: multipart/form-data; boundary=b
+          chunks:
+            - !cel "'--b\\r\\nX-Padding: ' + range(700).map(i, '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789').join('')"
+    invoke:
+      kind: Run.Iteration
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [cases]
+          properties:
+            cases:
+              type: array
+              items:
+                type: object
+                required: [reason, contentType, chunks]
+                properties:
+                  reason: { type: string }
+                  contentType: { type: string }
+                  chunks: { type: array, items: { type: string } }
+      collection: !cel "inputs.cases"
+      concurrency: 1
+      steps:
+        - name: source
+          inputs:
+            items: !cel "item.chunks"
+          invoke:
+            kind: Stream.Of
+        - name: refused
+          try:
+            - name: decode
+              inputs:
+                input: !cel "steps.source.result.output"
+                contentType: !cel "item.contentType"
+              invoke:
+                kind: Multipart.Decoder
+            - name: accepted
+              throw: { code: NOT_REFUSED, message: a malformed payload was decoded }
+          catch:
+            - name: assertReason
+              inputs:
+                actual: { code: !cel "error.code", data: !cel "error.data" }
+                expected:
+                  code: ERR_MULTIPART_MALFORMED
+                  data: { reason: !cel "item.reason" }
+              invoke: !ref Assert.equals
+---
+# Six ten-byte chunks behind a tap and an end handler. With `maxTotalBytes: 25`
+# the third chunk crosses the limit, so three are pulled and the source's stream
+# is then abandoned by its reader.
+kind: Run.Value
+metadata: { name: decoderPull }
+value: {}
+---
+kind: Run.Value
+metadata: { name: decoderSourceEnded }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: decoderStopsReading }
+steps:
+  - name: source
+    inputs:
+      items: ["0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789"]
+    invoke:
+      kind: Stream.Of
+  - name: counted
+    inputs:
+      input: !cel "steps.source.result.output"
+    invoke:
+      kind: Stream.Tap
+      invoke: !ref decoderPull
+  - name: observed
+    inputs:
+      input: !cel "steps.counted.result.output"
+    invoke:
+      kind: RecordStream.EndHandler
+      handler: !ref decoderSourceEnded
+      inputs:
+        state: !cel "outcome.state"
+  - name: refused
+    try:
+      - name: decode
+        inputs:
+          input: !cel "steps.observed.result.output"
+          contentType: multipart/form-data; boundary=b
+          maxTotalBytes: 25
+        invoke:
+          kind: Multipart.Decoder
+      - name: accepted
+        throw: { code: NOT_REFUSED, message: a payload over `maxTotalBytes` was decoded }
+    catch:
+      - name: assertRefused
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MULTIPART_LIMIT_EXCEEDED
+        invoke: !ref Assert.equals
+---
+# The reader over the same six chunks and the same limit: three pulls again, the
+# refusal arriving when its parts are drained rather than from the call.
+kind: Run.Value
+metadata: { name: readerPull }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: readerStopsReading }
+steps:
+  - name: source
+    inputs:
+      items: ["0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789"]
+    invoke:
+      kind: Stream.Of
+  - name: counted
+    inputs:
+      input: !cel "steps.source.result.output"
+    invoke:
+      kind: Stream.Tap
+      invoke: !ref readerPull
+  - name: read
+    inputs:
+      input: !cel "steps.counted.result.output"
+      contentType: multipart/form-data; boundary=b
+      maxTotalBytes: 25
+    invoke:
+      kind: Multipart.Reader
+  - name: refused
+    try:
+      - name: drainParts
+        inputs:
+          input: !cel "steps.read.result.parts"
+        invoke:
+          kind: Stream.Collect
+      - name: drained
+        throw: { code: NOT_REFUSED, message: a payload over `maxTotalBytes` was read }
+    catch:
+      - name: assertRefused
+        inputs:
+          actual: { code: !cel "error.code", data: !cel "error.data" }
+          expected:
+            code: ERR_MULTIPART_LIMIT_EXCEEDED
+            data: { limit: maxTotalBytes, max: !cel "25" }
+        invoke: !ref Assert.equals
+---
+# The one failure the reader raises from the call itself.
+kind: Run.Sequence
+metadata: { name: readerRejectsMissingBoundary }
+steps:
+  - name: source
+    invoke: !ref twoParts
+  - name: refused
+    try:
+      - name: read
+        inputs:
+          input: !cel "steps.source.result.output"
+          contentType: multipart/form-data
+        invoke:
+          kind: Multipart.Reader
+      - name: accepted
+        throw: { code: NOT_REFUSED, message: a payload with no boundary was read }
+    catch:
+      - name: assertReason
+        inputs:
+          actual: { code: !cel "error.code", data: !cel "error.data" }
+          expected:
+            code: ERR_MULTIPART_MALFORMED
+            data: { reason: boundary-missing }
+        invoke: !ref Assert.equals
+---
+# Everything else surfaces while the streams are drained. Three parts, the second
+# over `maxPartBytes`: reading it fails with the coded error; the walk carries on
+# regardless and asks for the next part, which fails the same way; the third part
+# is never delivered and the source is released.
+kind: Run.Value
+metadata: { name: readerPartDelivered }
+value: {}
+---
+kind: Run.Value
+metadata: { name: readerSourceEnded }
+value: {}
+---
+kind: Run.Iteration
+metadata: { name: drainEveryPart }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [parts]
+    properties:
+      parts:
+        x-telo-type:
+          name: Telo.Stream
+          of:
+            type: object
+            properties:
+              name: { type: string }
+              content:
+                x-telo-type:
+                  name: Telo.Stream
+                  of: Telo.Bytes
+collection: !cel "inputs.parts"
+concurrency: 1
+steps:
+  - name: delivered
+    invoke: !ref readerPartDelivered
+  - name: content
+    try:
+      - name: drain
+        inputs:
+          input: !cel "item.content"
+        invoke:
+          kind: Stream.Collect
+    catch:
+      - name: assertReadInProgress
+        inputs:
+          actual: { part: !cel "item.name", code: !cel "error.code", data: !cel "error.data" }
+          expected:
+            part: file
+            code: ERR_MULTIPART_LIMIT_EXCEEDED
+            data: { limit: maxPartBytes, max: !cel "9", part: !cel "1", name: file }
+        invoke: !ref Assert.equals
+---
+kind: Run.Sequence
+metadata: { name: readerFailsWhileDrained }
+steps:
+  - name: source
+    inputs:
+      items:
+        - "--b\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nhello\r\n"
+        - "--b\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\n0123456789\r\n"
+        - "--b\r\nContent-Disposition: form-data; name=\"never\"\r\n\r\nunread\r\n"
+        - "--b--\r\n"
+    invoke:
+      kind: Stream.Of
+  - name: observed
+    inputs:
+      input: !cel "steps.source.result.output"
+    invoke:
+      kind: RecordStream.EndHandler
+      handler: !ref readerSourceEnded
+      inputs:
+        state: !cel "outcome.state"
+  - name: read
+    inputs:
+      input: !cel "steps.observed.result.output"
+      contentType: multipart/form-data; boundary=b
+      maxPartBytes: 9
+    invoke:
+      kind: Multipart.Reader
+  - name: partsFailed
+    try:
+      - name: walk
+        inputs:
+          parts: !cel "steps.read.result.parts"
+        invoke: !ref drainEveryPart
+      - name: completed
+        throw: { code: NOT_REFUSED, message: the parts stream went on after a part failed }
+    catch:
+      - name: assertPartsStream
+        inputs:
+          actual: { code: !cel "error.code", data: !cel "error.data" }
+          expected:
+            code: ERR_MULTIPART_LIMIT_EXCEEDED
+            data: { limit: maxPartBytes, max: !cel "9", part: !cel "1", name: file }
+        invoke: !ref Assert.equals
+---
+# A failure of the source is not this module's to reword: it arrives as raised.
+kind: Run.Sequence
+metadata: { name: sourceBreaks }
+throws:
+  - code: SOURCE_BROKE
+steps:
+  - name: cutOff
+    throw: { code: SOURCE_BROKE, message: the upload was cut off }
+---
+kind: Run.Sequence
+metadata: { name: sourceFailureIsRethrown }
+steps:
+  - name: decoderSource
+    invoke: !ref twoParts
+  - name: decoderBroken
+    inputs:
+      input: !cel "steps.decoderSource.result.output"
+    invoke:
+      kind: Stream.Tap
+      invoke: !ref sourceBreaks
+      when: !cel "index == 1"
+  - name: decoderRefused
+    try:
+      - name: decode
+        inputs:
+          input: !cel "steps.decoderBroken.result.output"
+          contentType: multipart/form-data; boundary=b
+        invoke:
+          kind: Multipart.Decoder
+      - name: decoded
+        throw: { code: NOT_REFUSED, message: a broken source was decoded }
+    catch:
+      - name: assertDecoder
+        inputs:
+          actual: !cel "error.code"
+          expected: SOURCE_BROKE
+        invoke: !ref Assert.equals
+
+  - name: readerSource
+    invoke: !ref twoParts
+  - name: readerBroken
+    inputs:
+      input: !cel "steps.readerSource.result.output"
+    invoke:
+      kind: Stream.Tap
+      invoke: !ref sourceBreaks
+      when: !cel "index == 1"
+  - name: read
+    inputs:
+      input: !cel "steps.readerBroken.result.output"
+      contentType: multipart/form-data; boundary=b
+    invoke:
+      kind: Multipart.Reader
+  - name: readerRefused
+    try:
+      - name: drainParts
+        inputs:
+          input: !cel "steps.read.result.parts"
+        invoke:
+          kind: Stream.Collect
+      - name: drained
+        throw: { code: NOT_REFUSED, message: a broken source was read to its end }
+    catch:
+      - name: assertReader
+        inputs:
+          actual: !cel "error.code"
+          expected: SOURCE_BROKE
+        invoke: !ref Assert.equals
+---
+# A content type with no boundary refuses the call before anything is read, and
+# the input is released all the same: no chunk pulled, the source's stream ended
+# once by its reader.
+kind: Run.Value
+metadata: { name: unboundDecoderPull }
+value: {}
+---
+kind: Run.Value
+metadata: { name: unboundDecoderSourceEnded }
+value: {}
+---
+kind: Run.Value
+metadata: { name: unboundReaderPull }
+value: {}
+---
+kind: Run.Value
+metadata: { name: unboundReaderSourceEnded }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: missingBoundaryReleasesInput }
+steps:
+  - name: unboundDecoderSource
+    invoke: !ref twoParts
+  - name: unboundDecoderCounted
+    inputs:
+      input: !cel "steps.unboundDecoderSource.result.output"
+    invoke:
+      kind: Stream.Tap
+      invoke: !ref unboundDecoderPull
+  - name: unboundDecoderObserved
+    inputs:
+      input: !cel "steps.unboundDecoderCounted.result.output"
+    invoke:
+      kind: RecordStream.EndHandler
+      handler: !ref unboundDecoderSourceEnded
+      inputs:
+        state: !cel "outcome.state"
+  - name: decoderRefused
+    try:
+      - name: decode
+        inputs:
+          input: !cel "steps.unboundDecoderObserved.result.output"
+          contentType: multipart/form-data
+        invoke:
+          kind: Multipart.Decoder
+      - name: decoded
+        throw: { code: NOT_REFUSED, message: a payload with no boundary was decoded }
+    catch:
+      - name: assertDecoder
+        inputs:
+          actual: !cel "error.data.reason"
+          expected: boundary-missing
+        invoke: !ref Assert.equals
+
+  - name: unboundReaderSource
+    invoke: !ref twoParts
+  - name: unboundReaderCounted
+    inputs:
+      input: !cel "steps.unboundReaderSource.result.output"
+    invoke:
+      kind: Stream.Tap
+      invoke: !ref unboundReaderPull
+  - name: unboundReaderObserved
+    inputs:
+      input: !cel "steps.unboundReaderCounted.result.output"
+    invoke:
+      kind: RecordStream.EndHandler
+      handler: !ref unboundReaderSourceEnded
+      inputs:
+        state: !cel "outcome.state"
+  - name: readerRefused
+    try:
+      - name: read
+        inputs:
+          input: !cel "steps.unboundReaderObserved.result.output"
+          contentType: multipart/form-data
+        invoke:
+          kind: Multipart.Reader
+      - name: accepted
+        throw: { code: NOT_REFUSED, message: a payload with no boundary was read }
+    catch:
+      - name: assertReader
+        inputs:
+          actual: !cel "error.data.reason"
+          expected: boundary-missing
+        invoke: !ref Assert.equals
+---
+# The parts stream answers for the input once the reader has returned it. Its
+# consumer here gives it up without a single pull — a second reader refusing it
+# for a missing boundary — and the input beneath is released, unread.
+kind: Run.Value
+metadata: { name: unpulledPartsPull }
+value: {}
+---
+kind: Run.Value
+metadata: { name: unpulledPartsSourceEnded }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: unpulledPartsReleaseInput }
+steps:
+  - name: unpulledPartsSource
+    invoke: !ref twoParts
+  - name: unpulledPartsCounted
+    inputs:
+      input: !cel "steps.unpulledPartsSource.result.output"
+    invoke:
+      kind: Stream.Tap
+      invoke: !ref unpulledPartsPull
+  - name: unpulledPartsObserved
+    inputs:
+      input: !cel "steps.unpulledPartsCounted.result.output"
+    invoke:
+      kind: RecordStream.EndHandler
+      handler: !ref unpulledPartsSourceEnded
+      inputs:
+        state: !cel "outcome.state"
+  - name: read
+    inputs:
+      input: !cel "steps.unpulledPartsObserved.result.output"
+      contentType: multipart/form-data; boundary=b
+    invoke:
+      kind: Multipart.Reader
+  - name: givenUp
+    try:
+      # Handed on through an untyped input: a stream of parts is not the stream
+      # of bytes a reader declares, and only what it does with one unread matters.
+      - name: release
+        inputs:
+          payload: !cel "steps.read.result.parts"
+        invoke:
+          kind: Run.Sequence
+          steps:
+            - name: refuse
+              inputs:
+                input: !cel "inputs.payload"
+                contentType: multipart/form-data
+              invoke:
+                kind: Multipart.Reader
+      - name: accepted
+        throw: { code: NOT_REFUSED, message: a payload with no boundary was read }
+    catch:
+      - name: assertGivenUp
+        inputs:
+          actual: !cel "error.data.reason"
+          expected: boundary-missing
+        invoke: !ref Assert.equals
+---
+# The whole-run assertion, over the kernel's dispatch record.
+kind: Assert.Events
+metadata: { name: dispatches }
+filter:
+  - type: "decoderPull.Invoked"
+  - type: "decoderSourceEnded.Invoked"
+  - type: "readerPull.Invoked"
+  - type: "readerPartDelivered.Invoked"
+  - type: "readerSourceEnded.Invoked"
+  - type: "unboundDecoderPull.Invoked"
+  - type: "unboundDecoderSourceEnded.Invoked"
+  - type: "unboundReaderPull.Invoked"
+  - type: "unboundReaderSourceEnded.Invoked"
+  - type: "unpulledPartsPull.Invoked"
+  - type: "unpulledPartsSourceEnded.Invoked"
+expect:
+  # The limit plus one chunk: 10, 20, then the 30 that crosses 25.
+  - event: decoderPull.Invoked
+    times: 3
+  - event: decoderSourceEnded.Invoked
+    payload: { inputs: { state: cancelled } }
+    times: 1
+  - event: readerPull.Invoked
+    times: 3
+  # `a` and `file`; `never` is not delivered.
+  - event: readerPartDelivered.Invoked
+    times: 2
+  - event: readerSourceEnded.Invoked
+    payload: { inputs: { state: cancelled } }
+    times: 1
+  # Released without a pull, once each.
+  - event: unboundDecoderPull.Invoked
+    times: 0
+  - event: unboundDecoderSourceEnded.Invoked
+    payload: { inputs: { state: cancelled } }
+    times: 1
+  - event: unboundReaderPull.Invoked
+    times: 0
+  - event: unboundReaderSourceEnded.Invoked
+    payload: { inputs: { state: cancelled } }
+    times: 1
+  - event: unpulledPartsPull.Invoked
+    times: 0
+  - event: unpulledPartsSourceEnded.Invoked
+    payload: { inputs: { state: cancelled } }
+    times: 1

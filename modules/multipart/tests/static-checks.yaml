@@ -1,0 +1,44 @@
+kind: Telo.Application
+metadata:
+  name: MultipartStaticChecksTest
+  version: 1.0.0
+  description: |
+    What `telo check` says about the decoder's and the reader's contract, before
+    anything runs: both declare the same two codes with typed data, and their
+    limits are integers of at least 1.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref uncoveredCode
+  - !ref catchDataTypo
+  - !ref limitBelowOne
+---
+# A route mapping one of the two codes leaves the other uncovered.
+kind: Assert.Manifest
+metadata: { name: uncoveredCode }
+source: ./__fixtures__/uncovered-limit-code.yaml
+expect:
+  errors:
+    - code: UNCOVERED_THROW_CODE
+      message: "'ERR_MULTIPART_LIMIT_EXCEEDED'"
+---
+# `error.data` is typed per code, so a misspelled field is refused.
+kind: Assert.Manifest
+metadata: { name: catchDataTypo }
+source: ./__fixtures__/catch-data-typo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'reasn' is not defined (available: reason)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "'maximum' is not defined (available: limit, max, part, name)"
+---
+kind: Assert.Manifest
+metadata: { name: limitBelowOne }
+source: ./__fixtures__/limit-below-one.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: /maxParts must be >= 1
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: /maxTotalBytes must be >= 1

@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: MediaTypeStaticChecks
+  version: 1.0.0
+  description: |
+    What `telo check` says before anything runs: a literal `declared` that is
+    not text is refused against the detector's input contract.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref malformedDeclared
+---
+kind: Assert.Manifest
+metadata: { name: malformedDeclared }
+source: ./__fixtures__/malformed-declared.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: steps[0].inputs.declared

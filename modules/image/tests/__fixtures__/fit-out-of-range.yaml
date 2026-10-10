@@ -1,0 +1,39 @@
+kind: Telo.Application
+metadata:
+  name: ImageFitOutOfRangeFixture
+  version: 1.0.0
+  description: |
+    Analyzer fixture: literal Image.Fit limits and inputs outside their ranges.
+    Not a runnable test; loaded by tests/fit-static-checks.yaml.
+imports:
+  Image: ../../
+  Run: ../../../run
+targets:
+  - !ref outOfRange
+---
+kind: Image.Fit
+metadata: { name: noBytes }
+maxBytes: 0
+---
+kind: Image.Fit
+metadata: { name: noPixels }
+maxPixels: 0
+---
+kind: Image.Fit
+metadata: { name: fit }
+---
+kind: Run.Sequence
+metadata: { name: outOfRange }
+steps:
+  - name: noWidth
+    inputs: { image: !cel "bytes('x')", maxWidth: 0, maxHeight: 512 }
+    invoke: !ref fit
+  - name: tooTall
+    inputs: { image: !cel "bytes('x')", maxWidth: 512, maxHeight: 16385 }
+    invoke: !ref fit
+  - name: tooFine
+    inputs: { image: !cel "bytes('x')", maxWidth: 512, maxHeight: 512, quality: 101 }
+    invoke: !ref fit
+  - name: otherFormat
+    inputs: { image: !cel "bytes('x')", maxWidth: 512, maxHeight: 512, format: tiff }
+    invoke: !ref fit

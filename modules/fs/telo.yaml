@@ -8,9 +8,9 @@ metadata:
   description: >-
     Local filesystem access: read, write, edit in place, list, create and remove
     files and directories, plus content-hash snapshots and batch tree updates for
-    syncing. Text is UTF-8 by default with base64 for binary, whole files are
-    buffered in memory, and every operation resolves paths against an optional
-    working directory. Not a sandbox.
+    syncing. Text is UTF-8 by default with base64 for binary. Reads are buffered
+    whole; a write also takes a byte stream under a size limit, saving an upload
+    without holding it in memory. Not a sandbox.
 requires:
   # 0.98.0: every kind's `cwd` is a `Telo.HostPath`, which an older analyzer
   # rejects as X_TELO_TYPE_UNKNOWN.
@@ -111,19 +111,46 @@ schema:
 ---
 # Write a file, replacing it whole. `createParents` makes missing parent
 # directories. For surgical edits to an existing file use Fs.FileEdit.
+#
+# A byte stream is staged in a sibling file and renamed over the target, so no
+# reader ever sees part of an upload; text and bytes are written in place.
 kind: Telo.Definition
 metadata:
   name: FileWrite
   description: >-
     Writes a file on the local filesystem, replacing it whole, and reports the
-    number of bytes written. Content is utf8 text, a base64 string decoded to
-    binary, or raw bytes taken straight from a resource that produced them;
-    `createParents` makes missing parent directories first. The path
-    resolves against the resource's `cwd` unless absolute — for surgical changes to
-    an existing file, edit it in place instead.
+    bytes written. Content is utf8 text, base64 decoded to binary, raw bytes, or
+    a byte stream such as an upload, saved without buffering and swapped in only
+    once complete. An optional size limit refuses larger content and leaves the
+    previous file untouched.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#FileWriteController
+throws:
+  codes:
+    ERR_FILE_TOO_LARGE:
+      description: >-
+        The content is larger than the call's `maxBytes`. Text and bytes are
+        refused before the file is opened, with their `size`. A stream is
+        refused on the chunk that crosses the bound, with no `size`: its
+        staging file is removed and the target keeps its previous content, or
+        stays absent.
+      data:
+        type: object
+        additionalProperties: false
+        required: [path, maxBytes]
+        properties:
+          path:
+            type: string
+            description: The resolved path that was to be written.
+          maxBytes:
+            type: integer
+            description: The call's bound.
+          size:
+            type: integer
+            description: >-
+              The content's size in bytes. Present for text and bytes; absent
+              for a stream, whose size was never learned.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -139,20 +166,25 @@ inputType:
       content:
         title: Content
         description: >-
-          Bytes to write — utf8 text, a base64 string when `encoding: base64`, or
-          raw bytes (a Uint8Array) handed over by a byte-producing resource.
-        # anyOf, not oneOf: a consumer that does not know `x-telo-binary` reads the
-        # byte branch as an empty schema matching everything, so under oneOf a plain
-        # string would match BOTH branches and fail. anyOf degrades to permissive
-        # there while still rejecting a non-byte, non-string value here.
+          What to write — utf8 text, a base64 string when `encoding: base64`,
+          raw bytes handed over by a byte-producing resource, or a stream of
+          bytes (a request body, a download) written as it arrives.
+        # anyOf, not oneOf: a consumer that does not know a value type reads its
+        # branch as an empty schema matching everything, so under oneOf a plain
+        # string would match several branches and fail. anyOf degrades to
+        # permissive there while still rejecting any other value here.
         anyOf:
           - type: string
           - x-telo-type: Telo.Bytes
+          - x-telo-type:
+              name: Telo.Stream
+              of: Telo.Bytes
       encoding:
         title: Encoding
         description: >-
           How a string `content` is interpreted. `base64` decodes it to binary
-          first. Not applicable to raw bytes, which are written as they are.
+          first. Not applicable to raw bytes or a stream, which are written as
+          they are.
         type: string
         enum: [utf8, base64]
         default: utf8
@@ -161,6 +193,14 @@ inputType:
         description: Create missing parent directories before writing.
         type: boolean
         default: false
+      maxBytes:
+        title: Max bytes
+        description: >-
+          The most bytes this call writes. Larger content fails with
+          `ERR_FILE_TOO_LARGE` and the file is left as it was. Omitted: no
+          limit.
+        type: integer
+        minimum: 0
 outputType:
   kind: Telo.JsonSchema
   schema:

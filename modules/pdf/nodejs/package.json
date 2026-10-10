@@ -61,7 +61,7 @@
     "@telorun/sdk": "*"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^1.0.0",
+    "@napi-rs/canvas": "^1.0.10",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.0.227"
   },

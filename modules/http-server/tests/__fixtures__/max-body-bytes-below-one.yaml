@@ -1,0 +1,29 @@
+kind: Telo.Library
+metadata:
+  name: MaxBodyBytesBelowOneFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+# A body limit is an integer of at least 1, on the server and on a route:
+# there is no value that switches it off.
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /x, method: POST }
+    maxBodyBytes: 0
+    handler:
+      kind: Run.Value
+      value: { ok: true }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+---
+kind: Http.Server
+metadata: { name: server }
+port: 8080
+maxBodyBytes: 0
+mounts:
+  - path: /
+    mount: !ref api

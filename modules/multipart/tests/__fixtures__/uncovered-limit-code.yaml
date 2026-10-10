@@ -1,0 +1,33 @@
+kind: Telo.Library
+metadata:
+  name: MultipartUncoveredLimitCodeFixture
+  version: 1.0.0
+imports:
+  Http: ../../../http-server
+  Multipart: ../..
+---
+kind: Multipart.Decoder
+metadata: { name: decoder }
+---
+# The decoder declares two codes and this route maps one, with no catch-all.
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /upload
+      method: POST
+      schema:
+        body:
+          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+    inputs:
+      input: !cel "request.body"
+      contentType: !cel "request.headers['content-type']"
+    handler: !ref decoder
+    returns:
+      - status: 204
+    catches:
+      - when: !cel "error.code == 'ERR_MULTIPART_MALFORMED'"
+        status: 400
+        content:
+          application/json:
+            body: { reason: !cel "error.data.reason" }

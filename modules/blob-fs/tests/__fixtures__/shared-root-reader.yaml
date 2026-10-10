@@ -1,0 +1,47 @@
+# The other process of tests/shared-root.yaml: it reads the blob the writer
+# stored under the same root, and exits non-zero unless it is the same bytes.
+kind: Telo.Application
+metadata:
+  name: BlobSharedRootReader
+  version: 1.0.0
+imports:
+  Blob: ../../../blob
+  BlobFs: ../../
+  Octet: ../../../octet-codec
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  root:
+    env: BLOB_SHARED_ROOT
+    type: string
+    x-telo-type: Telo.HostPath
+targets:
+  - !ref read
+---
+kind: BlobFs.Store
+metadata: { name: store }
+root: !cel "variables.root"
+---
+kind: Run.Sequence
+metadata: { name: read }
+steps:
+  - name: found
+    inputs: { key: shared/payload.bin }
+    invoke:
+      kind: Blob.Get
+      store: !ref store
+  - name: drained
+    inputs: { input: !cel "steps.found.result.output" }
+    invoke:
+      kind: Octet.Decoder
+  - name: assertIdentical
+    inputs:
+      actual:
+        size: !cel "steps.found.result.size"
+        contentType: !cel "steps.found.result.contentType"
+        identical: !cel "bytesToBase64(steps.drained.result.bytes) == range(50000).map(i, 'AP8Q').join('')"
+      expected:
+        size: !cel "150000"
+        contentType: application/octet-stream
+        identical: true
+    invoke: !ref Assert.equals

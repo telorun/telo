@@ -1,0 +1,33 @@
+kind: Telo.Library
+metadata:
+  name: MultipartLimitBelowOneFixture
+  version: 1.0.0
+imports:
+  Multipart: ../..
+  Stream: ../../../stream
+  Run: ../../../run
+---
+# A limit is an integer of at least 1; "no limit" is the reader's omitted input,
+# never a zero.
+kind: Run.Sequence
+metadata: { name: zeroLimits }
+steps:
+  - name: source
+    inputs:
+      items: ["--b--\r\n"]
+    invoke:
+      kind: Stream.Of
+  - name: decode
+    inputs:
+      input: !cel "steps.source.result.output"
+      contentType: multipart/form-data; boundary=b
+      maxParts: 0
+    invoke:
+      kind: Multipart.Decoder
+  - name: read
+    inputs:
+      input: !cel "steps.source.result.output"
+      contentType: multipart/form-data; boundary=b
+      maxTotalBytes: 0
+    invoke:
+      kind: Multipart.Reader

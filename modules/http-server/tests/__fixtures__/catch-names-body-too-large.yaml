@@ -1,0 +1,32 @@
+kind: Telo.Library
+metadata:
+  name: CatchNamesBodyTooLargeFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: alwaysThrowsFoo }
+steps:
+  - name: boom
+    throw:
+      code: "FOO"
+      message: "always throws"
+---
+# The over-limit 413 is the server's own answer and no kind declares its code,
+# so an entry written for it can never match — and is reported as such.
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /x, method: POST }
+    handler: !ref alwaysThrowsFoo
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+    catches:
+      - when: !cel "error.code == 'ERR_REQUEST_BODY_TOO_LARGE'"
+        status: 413
+        content: { application/json: { body: { error: too large } } }
+      - status: 500
+        content: { application/json: { body: { error: !cel "error.message" } } }

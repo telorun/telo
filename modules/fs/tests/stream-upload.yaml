@@ -1,0 +1,145 @@
+kind: Telo.Application
+metadata:
+  name: FsStreamUpload
+  version: 1.0.0
+  description: |
+    An HTTP upload streamed straight into a file. The route hands the request
+    body — a stream of bytes — to Fs.FileWrite as `content`, with a bound of its
+    own. A 60,000-byte binary body lands byte for byte; a body over the bound is
+    answered through the route's catch for ERR_FILE_TOO_LARGE, and the file the
+    first upload wrote is still whole.
+imports:
+  Fs: ../
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Fs.File
+metadata: { name: read }
+cwd: !module-path ./__fixtures__
+---
+kind: Fs.FileRemoval
+metadata: { name: remove }
+cwd: !module-path ./__fixtures__
+---
+kind: Http.Api
+metadata: { name: uploads }
+routes:
+  - request:
+      path: /upload
+      method: PUT
+      schema:
+        body:
+          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+    handler:
+      kind: Fs.FileWrite
+      cwd: !module-path ./__fixtures__
+    inputs:
+      path: scratch-upload/upload.bin
+      content: !cel "request.body"
+      createParents: true
+      maxBytes: 60000
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { bytesWritten: !cel "result.bytesWritten" }
+    catches:
+      - when: !cel "error.code == 'ERR_FILE_TOO_LARGE'"
+        status: 413
+        content:
+          application/json:
+            body: { code: !cel "error.code", maxBytes: !cel "error.data.maxBytes" }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 8965
+    baseUrl: http://127.0.0.1:8965
+    contentTypeParsers:
+      - contentType: application/octet-stream
+        stream: true
+    mounts:
+      - path: /
+        mount: !ref uploads
+targets:
+  - !ref server
+steps:
+  - name: reset
+    try:
+      - name: doReset
+        inputs: { path: scratch-upload, recursive: true }
+        invoke: !ref remove
+    catch:
+      # Only a scratch directory that is already absent is tolerated.
+      - name: nothingToRemove
+        inputs:
+          actual: !cel "error.message.endsWith('(ENOENT)')"
+          expected: true
+        invoke: !ref Assert.equals
+
+  # 20,000 repeats of the bytes 00 ff 10 — not valid UTF-8, so a text round
+  # trip anywhere on the way would change them.
+  - name: payload
+    value: !cel "range(20000).map(i, 'AP8Q').join('')"
+
+  - name: upload
+    inputs:
+      url: http://127.0.0.1:8965/upload
+      method: PUT
+      headers:
+        content-type: application/octet-stream
+      body: !cel "bytesFromBase64(steps.payload.result)"
+    invoke:
+      kind: HttpClient.Request
+  - name: stored
+    inputs: { path: scratch-upload/upload.bin, encoding: base64 }
+    invoke: !ref read
+  - name: assertStored
+    inputs:
+      actual:
+        status: !cel "steps.upload.result.status"
+        body: !cel "steps.upload.result.body"
+        size: !cel "steps.stored.result.size"
+        identical: !cel "steps.stored.result.content == steps.payload.result"
+      expected:
+        status: 200
+        body: { bytesWritten: 60000 }
+        size: !cel "60000"
+        identical: true
+    invoke: !ref Assert.equals
+
+  # Three bytes over the route's bound.
+  - name: tooLarge
+    inputs:
+      url: http://127.0.0.1:8965/upload
+      method: PUT
+      headers:
+        content-type: application/octet-stream
+      body: !cel "bytesFromBase64(steps.payload.result + 'AP8Q')"
+    invoke:
+      kind: HttpClient.Request
+  - name: kept
+    inputs: { path: scratch-upload/upload.bin, encoding: base64 }
+    invoke: !ref read
+  - name: assertRefused
+    inputs:
+      actual:
+        status: !cel "steps.tooLarge.result.status"
+        body: !cel "steps.tooLarge.result.body"
+        identical: !cel "steps.kept.result.content == steps.payload.result"
+      expected:
+        status: 413
+        body: { code: ERR_FILE_TOO_LARGE, maxBytes: 60000 }
+        identical: true
+    invoke: !ref Assert.equals
+
+  - name: cleanup
+    inputs: { path: scratch-upload, recursive: true }
+    invoke: !ref remove

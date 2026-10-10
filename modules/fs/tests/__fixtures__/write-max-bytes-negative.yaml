@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: WriteMaxBytesNegativeFixture
+  version: 1.0.0
+  description: |
+    Analyzer fixture: a negative literal at `maxBytes`. Not a runnable test;
+    loaded by tests/write-max-bytes-rejects-negative.yaml.
+imports:
+  Fs: ../../
+  Run: ../../../run
+targets:
+  - !ref writeBounded
+---
+kind: Run.Sequence
+metadata: { name: writeBounded }
+steps:
+  - name: write
+    inputs:
+      path: ./x.txt
+      content: text
+      maxBytes: -1
+    invoke:
+      kind: Fs.FileWrite

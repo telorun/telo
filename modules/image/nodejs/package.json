@@ -38,6 +38,11 @@
       "types": "./dist/overlay-controller.d.ts",
       "bun": "./src/overlay-controller.ts",
       "import": "./dist/overlay-controller.js"
+    },
+    "./fit": {
+      "types": "./dist/fit-controller.d.ts",
+      "bun": "./src/fit-controller.ts",
+      "import": "./dist/fit-controller.js"
     }
   },
   "files": [
@@ -46,18 +51,20 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run",
     "prepack": "cp ../../../LICENSE . && cp ../../../README.md .",
     "postpack": "rm -f LICENSE && rm -f README.md"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
   },
   "peerDependencies": {
     "@telorun/sdk": "*"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^1.0.0"
+    "@napi-rs/canvas": "^1.0.10"
   }
 }

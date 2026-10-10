@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata:
+  name: FsWriteRejectsNegativeMaxBytes
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+targets:
+  - !ref testRejectsNegativeBound
+---
+# `maxBytes: 0` is a bound — only empty content passes it — so the floor is 0 and
+# a negative literal is a mistake caught before anything runs.
+kind: Assert.Manifest
+metadata:
+  name: testRejectsNegativeBound
+source: ./__fixtures__/write-max-bytes-negative.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH

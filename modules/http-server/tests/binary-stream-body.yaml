@@ -4,76 +4,19 @@ metadata:
   version: 1.0.0
   description: |
     End-to-end test for binary request bodies. An Http.Server declares a raw
-    stream content-type parser for application/gzip; a route marks its
-    request.schema.body with x-telo-stream, so request.body is delivered to the
+    stream content-type parser for application/gzip; a route declares its
+    request.schema.body as a `Telo.Stream`, so request.body is delivered to the
     handler as a Stream<Uint8Array> (no buffering, no AJV). The handler drains
-    the stream and echoes the bytes back; the client POSTs a known payload and
-    asserts it round-tripped byte-for-byte.
+    the stream and the route echoes the bytes back; the client POSTs a known
+    payload and asserts it round-tripped byte-for-byte.
 imports:
   Http: ../
-  JS: ../../javascript
+  HttpClient: ../../http-client
+  Octet: ../../octet-codec
   Run: ../../run
   Assert: ../../assert
 targets:
   - !ref testUpload
----
-# Handler: drain the streamed request body and echo it back decoded.
-kind: JS.Script
-metadata: { name: drainBody }
-code: |
-  async function main({ body }) {
-    const chunks = [];
-    for await (const chunk of body) chunks.push(Buffer.from(chunk));
-    const buf = Buffer.concat(chunks);
-    return { length: buf.length, text: buf.toString("utf8") };
-  }
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      body: { x-telo-type: Telo.Stream }
-    required: [ body ]
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      length: { type: integer }
-      text: { type: string }
-    required: [ length, text ]
----
-# Client: POST raw bytes with Content-Type application/gzip; the stream parser
-# passes them through undecoded. Read back the JSON echo.
-kind: JS.Script
-metadata: { name: upload }
-code: |
-  async function main({ url, payload }) {
-    const r = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/gzip" },
-      body: Buffer.from(payload, "utf8"),
-    });
-    const json = await r.json();
-    return { status: r.status, length: json.length, text: json.text };
-  }
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      url: { type: string }
-      payload: { type: string }
-    required: [ url, payload ]
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      status: { type: integer }
-      length: { type: integer }
-      text: { type: string }
-    required: [ status, length, text ]
 ---
 kind: Http.Api
 metadata: { name: api }
@@ -83,17 +26,21 @@ routes:
       method: POST
       schema:
         body:
-          x-telo-type: Telo.Stream
-    handler: !ref drainBody
+          x-telo-type:
+            name: Telo.Stream
+            of: Telo.Bytes
+    # Drains the streamed request body into one run of bytes.
+    handler:
+      kind: Octet.Decoder
     inputs:
-      body: !cel "request.body"
+      input: !cel "request.body"
     returns:
       - status: 200
         content:
           application/json:
             body:
-              length: !cel "result.length"
-              text: !cel "result.text"
+              length: !cel "size(result.bytes)"
+              text: !cel "string(result.bytes)"
 ---
 kind: Run.Sequence
 metadata: { name: testUpload }
@@ -112,22 +59,22 @@ with:
 targets:
   - !ref Server
 steps:
+  # The stream parser passes the bytes through undecoded.
   - name: upload
     inputs:
       url: http://127.0.0.1:8958/upload
-      payload: "hello stream body"
-    invoke: !ref upload
+      method: POST
+      headers:
+        content-type: application/gzip
+      body: hello stream body
+    invoke:
+      kind: HttpClient.Request
   - name: assert
     inputs:
-      status: !cel "steps.upload.result.status"
-      length: !cel "steps.upload.result.length"
-      text: !cel "steps.upload.result.text"
-    invoke:
-      kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          status: { const: 200 }
-          length: { const: 17 }
-          text: { const: "hello stream body" }
-        required: [ status, length, text ]
+      actual:
+        status: !cel "steps.upload.result.status"
+        body: !cel "steps.upload.result.body"
+      expected:
+        status: 200
+        body: { length: 17, text: hello stream body }
+    invoke: !ref Assert.equals

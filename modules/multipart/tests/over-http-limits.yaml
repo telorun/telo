@@ -1,0 +1,147 @@
+kind: Telo.Application
+metadata:
+  name: MultipartOverHttpLimitsTest
+  version: 1.0.0
+  description: |
+    An upload route's refusals and its raised limits, end to end.
+
+    The route maps the decoder's two codes — which is what makes it pass
+    `telo check` — so a truncated upload answers 400 and an oversized part 413,
+    each carrying the typed data the code declares.
+
+    A second route takes a body every default refuses: 9,216,000 bytes in one
+    part is over the server's 1 MiB body limit and over the decoder's 8 MiB part
+    limit, so the route raises `maxBodyBytes` and the call raises the decoder's
+    limits beside it. Raising one without the other moves the refusal, it does
+    not remove it.
+imports:
+  Server: ../../http-server
+  Http: ../../http-client
+  Multipart: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+# Named: two routes dispatch to it.
+kind: Multipart.Decoder
+metadata: { name: serverDecoder }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: UploadApi }
+    # One mapping of the two codes for every route of this router.
+    catches:
+      - when: !cel "error.code == 'ERR_MULTIPART_MALFORMED'"
+        status: 400
+        content:
+          application/json:
+            body: { code: !cel "error.code", data: !cel "error.data" }
+      - when: !cel "error.code == 'ERR_MULTIPART_LIMIT_EXCEEDED'"
+        status: 413
+        content:
+          application/json:
+            body: { code: !cel "error.code", data: !cel "error.data" }
+    routes:
+      - request:
+          path: /small
+          method: POST
+          schema:
+            body:
+              x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+        inputs:
+          input: !cel "request.body"
+          contentType: !cel "request.headers['content-type']"
+          maxPartBytes: 8
+        handler: !ref serverDecoder
+        returns:
+          - status: 200
+            content:
+              application/json:
+                body: { count: !cel "size(result.parts)" }
+      - request:
+          path: /large
+          method: POST
+          schema:
+            body:
+              x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+        maxBodyBytes: 12582912
+        inputs:
+          input: !cel "request.body"
+          contentType: !cel "request.headers['content-type']"
+          maxPartBytes: 10485760
+          maxTotalBytes: 12582912
+        handler: !ref serverDecoder
+        returns:
+          - status: 200
+            content:
+              application/json:
+                body:
+                  count: !cel "size(result.parts)"
+                  bytes: !cel "size(result.parts[0].content)"
+  - kind: Server.Server
+    metadata: { name: UploadServer }
+    port: 8884
+    baseUrl: http://localhost:8884
+    mounts:
+      - path: /api
+        mount: !ref UploadApi
+targets:
+  - !ref UploadServer
+steps:
+  - name: truncated
+    inputs:
+      url: http://localhost:8884/api/small
+      method: POST
+      headers:
+        content-type: multipart/form-data; boundary=b
+      body: "--b\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nhel"
+    invoke:
+      kind: Http.Request
+  - name: assertTruncated
+    inputs:
+      actual: { status: !cel "steps.truncated.result.status", body: !cel "steps.truncated.result.body" }
+      expected:
+        status: 400
+        body: { code: ERR_MULTIPART_MALFORMED, data: { reason: truncated } }
+    invoke: !ref Assert.equals
+
+  - name: oversizedPart
+    inputs:
+      url: http://localhost:8884/api/small
+      method: POST
+      headers:
+        content-type: multipart/form-data; boundary=b
+      body: "--b\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nhello\r\n--b\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\n0123456789\r\n--b--\r\n"
+    invoke:
+      kind: Http.Request
+  - name: assertOversizedPart
+    inputs:
+      actual: { status: !cel "steps.oversizedPart.result.status", body: !cel "steps.oversizedPart.result.body" }
+      expected:
+        status: 413
+        body:
+          code: ERR_MULTIPART_LIMIT_EXCEEDED
+          data: { limit: maxPartBytes, max: 8, part: 1, name: file }
+    invoke: !ref Assert.equals
+
+  - name: kilobyte
+    value: !cel "range(100).map(i, '0123456789').join('')"
+  - name: large
+    inputs:
+      url: http://localhost:8884/api/large
+      method: POST
+      headers:
+        content-type: multipart/form-data; boundary=b
+      body: !cel "'--b\\r\\nContent-Disposition: form-data; name=\"file\"\\r\\n\\r\\n' + range(9216).map(i, steps.kilobyte.result).join('') + '\\r\\n--b--\\r\\n'"
+    invoke:
+      kind: Http.Request
+  - name: assertLarge
+    inputs:
+      actual: { status: !cel "steps.large.result.status", body: !cel "steps.large.result.body" }
+      expected:
+        status: 200
+        body: { count: 1, bytes: 9216000 }
+    invoke: !ref Assert.equals

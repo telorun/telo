@@ -1,0 +1,26 @@
+{
+  "name": "@telorun/blob",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "description": "Telo blob module — the Blob.Store abstract, the put, get, head and delete operations, and the store contract every backend implements. Never published: the controller ships inside the module artifact as a pkg:telo/local/js bundle, and a backend reaches the contract through the module's exports.code specifier.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}

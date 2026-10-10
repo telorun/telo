@@ -50,7 +50,7 @@ class ImageBlank implements ResourceInstance<BlankInputs, BlankOutputs> {
     assertValidColor(ctx, color, label);
     ctx.fillStyle = color;
     ctx.fillRect(0, 0, inputs.width, inputs.height);
-    const { image, mediaType } = encodeCanvas(canvas, inputs, this.resource, label);
+    const { image, mediaType } = await encodeCanvas(canvas, inputs, this.resource, label);
     return { image, width: inputs.width, height: inputs.height, mediaType };
   }
 

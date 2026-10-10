@@ -1,0 +1,319 @@
+kind: Telo.Application
+metadata:
+  name: HttpRequestBodyLimitTest
+  version: 1.0.0
+  description: |
+    A request body is held to `maxBodyBytes` however it is delivered, and the
+    refusal is the server's own 413.
+
+    The server's limit is 64 bytes. One router carries a buffered route under it,
+    a route that raises it and one that lowers it; a streamed route and a
+    multipart route, whose bodies are counted as their handlers pull them; and an
+    MCP endpoint is mounted beside them. Every refusal is the same envelope.
+
+    The streamed route's handler wraps its sink in `try:` and has a step after
+    it, and the route declares a catch-all — none of which may answer: the
+    assertion on the kernel's dispatch record is that the catch and the step
+    after the sink never ran.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Mcp: ../../mcp-server
+  Octet: ../../octet-codec
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  raisedLimit:
+    env: HTTP_BODY_LIMIT_TEST_RAISED
+    type: integer
+    default: 256
+targets:
+  - !ref test
+  - !ref dispatches
+---
+# Named for the dispatch record: each must be seen never to have run.
+kind: Run.Value
+metadata: { name: bufferedHandler }
+value: { handled: true }
+---
+kind: Run.Value
+metadata: { name: caughtInTry }
+value: {}
+---
+kind: Run.Value
+metadata: { name: afterSink }
+value: {}
+---
+kind: Octet.Decoder
+metadata: { name: drain }
+---
+# Drains the body inside `try:`, then goes on to a further step.
+kind: Run.Sequence
+metadata: { name: guardedSink }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [body]
+    properties:
+      body:
+        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+steps:
+  - name: sink
+    try:
+      - name: drained
+        inputs:
+          input: !cel "inputs.body"
+        invoke: !ref drain
+    catch:
+      - name: swallowed
+        invoke: !ref caughtInTry
+  - name: next
+    invoke: !ref afterSink
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /buffered, method: POST }
+    handler: !ref bufferedHandler
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+  - request: { path: /raised, method: POST }
+    maxBodyBytes: !cel "variables.raisedLimit"
+    handler:
+      kind: Run.Value
+      value: { handled: true }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+  - request: { path: /lowered, method: POST }
+    maxBodyBytes: 8
+    handler: !ref bufferedHandler
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+  - request:
+      path: /streamed
+      method: POST
+      schema:
+        body:
+          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+    inputs:
+      body: !cel "request.body"
+    handler: !ref guardedSink
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+    # A catch-all, which would claim any throw the route's handler made.
+    catches:
+      - status: 418
+        content: { application/json: { body: { caught: true } } }
+  - request:
+      path: /form
+      method: POST
+      schema:
+        body:
+          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+    inputs:
+      input: !cel "request.body"
+    handler: !ref drain
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: mcpHttp }
+serverInfo: { name: telo-test-mcp, version: 1.0.0 }
+tools:
+  - kind: Mcp.Tools
+    entries:
+      - name: noop
+        description: Does nothing.
+        argumentsSchema: { type: object }
+        handler:
+          kind: Run.Value
+          value: {}
+        inputs: {}
+        result:
+          content:
+            - type: text
+              text: done
+---
+# One client for every call; a 413 is an answer to read, not a failure.
+kind: HttpClient.Request
+metadata: { name: post }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8972
+    baseUrl: http://127.0.0.1:8972
+    maxBodyBytes: 64
+    contentTypeParsers:
+      - contentType: application/octet-stream
+        stream: true
+    mounts:
+      - path: /api
+        mount: !ref api
+      - path: /mcp
+        mount: !ref mcpHttp
+targets:
+  - !ref Server
+steps:
+  # 100 bytes of JSON: over the server's 64, under the raised route's 256.
+  - name: document
+    value: !cel "json({'padding': '01234567890123456789012345678901234567890123456789012345678901234567890123456789012345'})"
+
+  - name: buffered
+    inputs:
+      url: http://127.0.0.1:8972/api/buffered
+      method: POST
+      headers: { content-type: application/json }
+      body: !cel "steps.document.result"
+    invoke: !ref post
+  - name: assertBuffered
+    inputs:
+      actual:
+        status: !cel "steps.buffered.result.status"
+        connection: !cel "steps.buffered.result.headers['connection']"
+        body: !cel "steps.buffered.result.body"
+      expected:
+        status: 413
+        connection: close
+        body:
+          error:
+            code: ERR_REQUEST_BODY_TOO_LARGE
+            message: Request body exceeds maxBodyBytes (64).
+            data: { maxBodyBytes: 64, contentLength: 100 }
+    invoke: !ref Assert.equals
+
+  - name: raised
+    inputs:
+      url: http://127.0.0.1:8972/api/raised
+      method: POST
+      headers: { content-type: application/json }
+      body: !cel "steps.document.result"
+    invoke: !ref post
+  - name: assertRaised
+    inputs:
+      actual: !cel "steps.raised.result.status"
+      expected: 200
+    invoke: !ref Assert.equals
+
+  # 20 bytes: under the server's limit, over this route's.
+  - name: lowered
+    inputs:
+      url: http://127.0.0.1:8972/api/lowered
+      method: POST
+      headers: { content-type: application/json }
+      body: '{"padding":"012345"}'
+    invoke: !ref post
+  - name: assertLowered
+    inputs:
+      actual:
+        status: !cel "steps.lowered.result.status"
+        data: !cel "steps.lowered.result.body.error.data"
+      expected:
+        status: 413
+        data: { maxBodyBytes: 8, contentLength: 20 }
+    invoke: !ref Assert.equals
+
+  # A byte stream has no declared length, so it is sent chunked and the limit is
+  # met while the handler is reading.
+  - name: chunks
+    inputs:
+      items: !cel "[bytes(steps.document.result)]"
+    invoke:
+      kind: Stream.Of
+  - name: streamed
+    inputs:
+      url: http://127.0.0.1:8972/api/streamed
+      method: POST
+      headers: { content-type: application/octet-stream }
+      body: !cel "steps.chunks.result.output"
+    invoke: !ref post
+  - name: assertStreamed
+    inputs:
+      actual:
+        status: !cel "steps.streamed.result.status"
+        connection: !cel "steps.streamed.result.headers['connection']"
+        body: !cel "steps.streamed.result.body"
+      expected:
+        status: 413
+        connection: close
+        body:
+          error:
+            code: ERR_REQUEST_BODY_TOO_LARGE
+            message: Request body exceeds maxBodyBytes (64).
+            data: { maxBodyBytes: 64 }
+    invoke: !ref Assert.equals
+
+  # The built-in multipart path: no `contentTypeParsers` entry, counted the same.
+  - name: formChunks
+    inputs:
+      items: !cel "[bytes('--b\\r\\nContent-Disposition: form-data; name=\"file\"\\r\\n\\r\\n' + steps.document.result + '\\r\\n--b--\\r\\n')]"
+    invoke:
+      kind: Stream.Of
+  - name: form
+    inputs:
+      url: http://127.0.0.1:8972/api/form
+      method: POST
+      headers: { content-type: multipart/form-data; boundary=b }
+      body: !cel "steps.formChunks.result.output"
+    invoke: !ref post
+  - name: assertForm
+    inputs:
+      actual:
+        status: !cel "steps.form.result.status"
+        code: !cel "steps.form.result.body.error.code"
+      expected:
+        status: 413
+        code: ERR_REQUEST_BODY_TOO_LARGE
+    invoke: !ref Assert.equals
+
+  # A mount that is not an Http.Api is held to the server's limit all the same.
+  - name: mcp
+    inputs:
+      url: http://127.0.0.1:8972/mcp
+      method: POST
+      headers: { content-type: application/json }
+      body: !cel "steps.document.result"
+    invoke: !ref post
+  - name: assertMcp
+    inputs:
+      actual:
+        status: !cel "steps.mcp.result.status"
+        body: !cel "steps.mcp.result.body"
+      expected:
+        status: 413
+        body:
+          error:
+            code: ERR_REQUEST_BODY_TOO_LARGE
+            message: Request body exceeds maxBodyBytes (64).
+            data: { maxBodyBytes: 64, contentLength: 100 }
+    invoke: !ref Assert.equals
+---
+kind: Assert.Events
+metadata: { name: dispatches }
+filter:
+  - type: "bufferedHandler.Invoked"
+  - type: "guardedSink.*"
+  - type: "caughtInTry.Invoked"
+  - type: "afterSink.Invoked"
+expect:
+  # Refused before the handler: by declared length, twice.
+  - event: bufferedHandler.Invoked
+    times: 0
+  # The streamed route's handler did run, and was cancelled by the refusal —
+  # past its own `try:`, with no step after it.
+  - event: guardedSink.InvokeCancelled
+    times: 1
+  - event: caughtInTry.Invoked
+    times: 0
+  - event: afterSink.Invoked
+    times: 0

@@ -1,0 +1,92 @@
+kind: Telo.Application
+metadata:
+  name: BlobFsSharedRoot
+  version: 1.0.0
+  description: |
+    A directory store is shared by whoever is given its root. One application
+    stores a blob and exits; a second, started afterwards over the same root,
+    reads it and exits non-zero unless it holds the same bytes, size and media
+    type. Neither knows of the other — the directory is all they share.
+imports:
+  App: ../../app
+  Fs: ../../fs
+  Timer: ../../timer
+  Run: ../../run
+  Assert: ../../assert
+# Named as the children name theirs: inside an `App.Instance`, `variables.<name>`
+# is checked against the names the child declares.
+variables:
+  root:
+    env: BLOB_FS_SHARED_ROOT
+    type: string
+    x-telo-type: Telo.HostPath
+    default: modules/blob-fs/tests/__fixtures__/scratch-shared
+targets:
+  - !ref reset
+  - !ref writer
+  - !ref writerExit
+  - !ref reader
+  - !ref readerExit
+  - !ref verdict
+---
+kind: Fs.FileRemoval
+metadata: { name: remove }
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: clear
+    try:
+      - name: doReset
+        inputs: { path: !cel "string(variables.root)", recursive: true }
+        invoke: !ref remove
+    catch:
+      - name: noLeftover
+        inputs: { actual: 1, expected: 1 }
+        invoke: !ref Assert.equals
+---
+kind: App.Instance
+metadata: { name: writer }
+source: ./__fixtures__/shared-root-writer.yaml
+awaitStart: false
+variables:
+  root: !cel "variables.root"
+---
+kind: Run.Loop
+metadata: { name: writerExit }
+condition: !cel "resources.writer.status.exitCode == null"
+# 120s for a child kernel to boot, write once and exit.
+maxIterations: 6000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: reader }
+source: ./__fixtures__/shared-root-reader.yaml
+awaitStart: false
+variables:
+  root: !cel "variables.root"
+---
+kind: Run.Loop
+metadata: { name: readerExit }
+condition: !cel "resources.reader.status.exitCode == null"
+# 120s for a child kernel to boot, read once and exit.
+maxIterations: 6000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Sequence
+metadata: { name: verdict }
+steps:
+  - name: assertBothSucceeded
+    inputs:
+      actual: !cel "[resources.writer.status.exitCode, resources.reader.status.exitCode]"
+      expected: [0, 0]
+    invoke: !ref Assert.equals
+  - name: cleanup
+    inputs: { path: !cel "string(variables.root)", recursive: true }
+    invoke: !ref remove
