@@ -1,0 +1,545 @@
+kind: Telo.Library
+metadata:
+  name: Anthropic
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [AI]
+  description: >-
+    Claude language models from Anthropic over the Messages HTTP API, with no
+    vendor SDK: complete or streamed answers with tool calling, image and PDF
+    input, extended thinking that survives a tool loop, and prompt caching at
+    declared breakpoints with a five-minute or one-hour lifetime. The API key and
+    base URL live on a configurable HTTP client.
+# First checked against this release: nothing older has run it.
+requires:
+  telo: ">=0.114.0"
+imports:
+  Ai: ../ai
+  Http: ../http-client
+  # For its code entry: the stream kind's controller reads event-stream frames
+  # with the reader `SseCodec.Decoder` runs.
+  SseCodec: ../sse-codec
+exports:
+  kinds:
+    - MessagesModel
+    - MessagesModelStream
+---
+# The Messages API as an `Ai.Model`. The account is not this kind's: `request`
+# names an Http.Request whose client carries the base URL and the `x-api-key`
+# credential. What the controller adds to every call is the dialect it speaks
+# (`anthropic-version`) and the opt-in features the resource lists
+# (`anthropic-beta`).
+kind: Telo.Definition
+metadata:
+  name: MessagesModel
+  description: >-
+    A Claude model called through Anthropic's Messages API for a complete answer:
+    model id, the request every call goes through — whose client carries the base
+    URL and the API key — the output token cap, the prompt-cache lifetime, opt-in
+    beta features and default request options. Returns the answer's content, tool
+    calls, a finish reason and token usage with cache read and write counts; a
+    failure arrives under one of the model failure codes every provider shares.
+capability: Telo.Invocable
+extends: Ai.Model
+controllers:
+  - pkg:telo/local/js?path=./nodejs/anthropic.mjs&local_path=./nodejs/src/index.ts#MessagesModelController
+# Ai.Model's whole failure list, restated: a kind with no `throws:` is read as
+# throwing nothing, and a code outside the list is refused.
+throws:
+  codes:
+    ERR_MODEL_ACCESS_DENIED:
+      description: >-
+        The credential was refused, or it has no permission for the model. Trying
+        again with the same credential fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_RATE_LIMITED:
+      description: >-
+        The endpoint asked the caller to slow down. Worth trying again, after
+        `retryAfterSeconds` when the endpoint named a wait.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_QUOTA_EXCEEDED:
+      description: >-
+        The account's credit or plan is exhausted. Trying again fails until the
+        account changes.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNAVAILABLE:
+      description: >-
+        The provider is overloaded or failing on its side, including a failure it
+        reported after the answer had begun. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_TIMEOUT:
+      description: >-
+        No complete response arrived in time, so whether the request ran is
+        unknown. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNREACHABLE:
+      description: >-
+        Nothing answered: the connection was refused, the host name did not
+        resolve, or the secure handshake failed. Worth trying again.
+    ERR_MODEL_CONTEXT_TOO_LONG:
+      description: >-
+        The input exceeds the model's context window or the endpoint's request
+        size limit. The same input fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_REFUSED:
+      description: >-
+        The endpoint rejected the request on content-policy grounds. A model's own
+        refusal given as its answer is not this: that arrives as a `refusal` part
+        with the finish reason `content-filter`.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_REQUEST_REJECTED:
+      description: >-
+        The endpoint refused the request as one it cannot serve, the provider
+        refused it before sending, or the request failed in a way nothing else
+        here names. The same request fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_UNSUPPORTED:
+      description: >-
+        A well-formed content part this API cannot carry: audio, video, an image
+        that is not JPEG, PNG, GIF or WebP, a file that is neither a PDF nor plain
+        text, a plain-text file by `uri`, an image or file whose `uri` is not
+        `http:` or `https:`, anything but text in a system message, or a part a
+        model produces (`reasoning`, `citation`, `refusal`, `tool-call`) submitted
+        as input. Raised before anything is sent, and the message says what the
+        endpoint takes instead.
+      data:
+        type: object
+        required: [partType]
+        properties:
+          partType:
+            type: string
+            description: The `type` of the content part that was refused.
+          scheme:
+            type: string
+            description: >-
+              The scheme of the part's `uri`, lowercased, when the scheme is why
+              it was refused.
+          mediaType:
+            type: string
+            description: The part's media type, when it has one.
+    ERR_MODEL_TOOL_ARGUMENTS_INVALID:
+      description: >-
+        The model asked for a tool with arguments that are not a JSON object.
+        Raised rather than passed on as empty arguments, which would run the tool
+        with a different request than the model made. Worth trying again.
+      data:
+        type: object
+        required: [tool]
+        properties:
+          tool:
+            type: string
+            description: The name of the tool the model asked for.
+    ERR_MODEL_RESPONSE_INVALID:
+      description: >-
+        The endpoint reported success but the answer cannot be read: a body that
+        is not the expected document, a malformed or oversized stream frame, or a
+        stream that ended before the answer was complete. Worth trying again.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        `request` did not resolve to a live Http.Request. A reference slot on a
+        resource declared inside a `with:` scope is not an injection site, so declare
+        the request at module level.
+schema:
+  type: object
+  properties:
+    model:
+      title: Model ID
+      description: Anthropic model identifier passed to the API (e.g. claude-sonnet-4-5, claude-haiku-4-5).
+      type: string
+      # Explicit because this kind is a Telo.Invocable: only a Telo.Provider's
+      # fields are compile-eval by default, and without it
+      # `model: !cel "variables.model"` is read as a literal.
+      x-telo-eval: compile
+    request:
+      title: Request
+      description: >-
+        The HTTP request every call is made through. Its client carries the base URL
+        (`https://api.anthropic.com/v1`, or a gateway's) and the credential — an
+        `Http.ApiKeyHeader` on `x-api-key` — so an account is declared once and no
+        key is held here.
+      x-telo-ref:
+        kind: Http.Request
+        use: call
+    maxTokens:
+      title: Max tokens
+      description: >-
+        The most tokens one answer may hold, thinking included. Required: the API
+        has no default, and one chosen here would be a silent truncation policy. A
+        call's `options.maxTokens` overrides it for that call; this resource's own
+        `options` may not name it.
+      type: integer
+      minimum: 1
+      x-telo-eval: compile
+    cacheLifetime:
+      title: Cache lifetime
+      description: >-
+        How long a prompt-cache entry written at a content part's `cacheBreakpoint`
+        lives. The API honours four breakpoints in one request: the last four in
+        request order are sent and earlier ones dropped.
+      type: string
+      enum: [ 5m, 1h ]
+      default: 5m
+      x-telo-eval: compile
+    betas:
+      title: Beta features
+      description: >-
+        Opt-in API features, sent on every call as the `anthropic-beta` header.
+      type: array
+      items:
+        type: string
+        minLength: 1
+      x-telo-eval: compile
+    options:
+      title: Options
+      description: >-
+        Model-level defaults as camelCase Messages API request params (temperature,
+        topP, topK, stopSequences, thinking, …); top-level keys are normalized to
+        snake_case and values are sent as written. Merged beneath
+        Ai.Text.options / Ai.Agent.options and per-call inputs.options; downstream
+        wins. The bag is open, so a name the API does not take is refused by the
+        endpoint rather than caught here. It may not name what the call itself
+        decides — `model`, `messages`, `system`, `tools`, `toolChoice`, `stream` —
+        nor `maxTokens`, which on this resource is the field of that name: two
+        homes for one value would leave the winner to merge order. A call's own
+        options may name `maxTokens`.
+      type: object
+      additionalProperties: true
+      # Forbidden with `false` properties, so the finding names the key.
+      properties:
+        model: false
+        messages: false
+        system: false
+        tools: false
+        toolChoice: false
+        tool_choice: false
+        stream: false
+        maxTokens: false
+        max_tokens: false
+      x-telo-eval: compile
+  required: [ model, request, maxTokens ]
+  additionalProperties: false
+  examples:
+    - model: claude-haiku-4-5
+      request: !ref anthropicRequest
+      maxTokens: 1024
+    - model: claude-sonnet-4-5
+      request: !ref anthropicRequest
+      maxTokens: 16000
+      cacheLifetime: 1h
+      options:
+        thinking: { type: enabled, budget_tokens: 8000 }
+---
+# The same API as an `Ai.ModelStream`: the same configuration, the same request
+# translation and the same failures, with the answer read from the endpoint's
+# event stream as it is written. The request is sent when the stream is first
+# read, so what the endpoint refuses rejects the iteration; what the request
+# alone decides rejects the call.
+kind: Telo.Definition
+metadata:
+  name: MessagesModelStream
+  description: >-
+    A Claude model called through Anthropic's Messages API for a streamed answer,
+    configured with a model id, an output token cap, a prompt-cache lifetime and
+    request options. Returns text and thinking deltas, tool calls as their
+    arguments are written, then a finish reason and token usage with cache counts;
+    a failure rejects the call or the iteration.
+capability: Telo.Invocable
+extends: Ai.ModelStream
+controllers:
+  - pkg:telo/local/js?path=./nodejs/anthropic.mjs&local_path=./nodejs/src/index.ts#MessagesModelStreamController
+# Ai.ModelStream's whole failure list, restated: a kind with no `throws:` is read as
+# throwing nothing, and a code outside the list is refused.
+throws:
+  codes:
+    ERR_MODEL_ACCESS_DENIED:
+      description: >-
+        The credential was refused, or it has no permission for the model. Trying
+        again with the same credential fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_RATE_LIMITED:
+      description: >-
+        The endpoint asked the caller to slow down. Worth trying again, after
+        `retryAfterSeconds` when the endpoint named a wait.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_QUOTA_EXCEEDED:
+      description: >-
+        The account's credit or plan is exhausted. Trying again fails until the
+        account changes.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNAVAILABLE:
+      description: >-
+        The provider is overloaded or failing on its side, including a failure it
+        reported after the answer had begun. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_TIMEOUT:
+      description: >-
+        No complete response arrived in time, so whether the request ran is
+        unknown. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNREACHABLE:
+      description: >-
+        Nothing answered: the connection was refused, the host name did not
+        resolve, or the secure handshake failed. Worth trying again.
+    ERR_MODEL_CONTEXT_TOO_LONG:
+      description: >-
+        The input exceeds the model's context window or the endpoint's request
+        size limit. The same input fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_REFUSED:
+      description: >-
+        The endpoint rejected the request on content-policy grounds. A model's own
+        refusal given as its answer is not this: that arrives as a `refusal` part
+        with the finish reason `content-filter`.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_REQUEST_REJECTED:
+      description: >-
+        The endpoint refused the request as one it cannot serve, the provider
+        refused it before sending, or the request failed in a way nothing else
+        here names. The same request fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_UNSUPPORTED:
+      description: >-
+        A well-formed content part this API cannot carry: audio, video, an image
+        that is not JPEG, PNG, GIF or WebP, a file that is neither a PDF nor plain
+        text, a plain-text file by `uri`, an image or file whose `uri` is not
+        `http:` or `https:`, anything but text in a system message, or a part a
+        model produces (`reasoning`, `citation`, `refusal`, `tool-call`) submitted
+        as input. Raised before anything is sent, and the message says what the
+        endpoint takes instead: the call is rejected, not the iteration.
+      data:
+        type: object
+        required: [partType]
+        properties:
+          partType:
+            type: string
+            description: The `type` of the content part that was refused.
+          scheme:
+            type: string
+            description: >-
+              The scheme of the part's `uri`, lowercased, when the scheme is why
+              it was refused.
+          mediaType:
+            type: string
+            description: The part's media type, when it has one.
+    ERR_MODEL_TOOL_ARGUMENTS_INVALID:
+      description: >-
+        The model asked for a tool with arguments that are not a JSON object, or
+        whose streamed text is not valid JSON once complete.
+        Raised rather than passed on as empty arguments, which would run the tool
+        with a different request than the model made. Worth trying again.
+      data:
+        type: object
+        required: [tool]
+        properties:
+          tool:
+            type: string
+            description: The name of the tool the model asked for.
+    ERR_MODEL_RESPONSE_INVALID:
+      description: >-
+        The endpoint reported success but the answer cannot be read: a body that
+        is not the expected document, a malformed or oversized stream frame, or a
+        stream that ended before the answer was complete. Worth trying again.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        `request` did not resolve to a live Http.Request. A reference slot on a
+        resource declared inside a `with:` scope is not an injection site, so declare
+        the request at module level.
+schema:
+  type: object
+  properties:
+    model:
+      title: Model ID
+      description: Anthropic model identifier passed to the API (e.g. claude-sonnet-4-5, claude-haiku-4-5).
+      type: string
+      # Explicit because this kind is a Telo.Invocable: only a Telo.Provider's
+      # fields are compile-eval by default, and without it
+      # `model: !cel "variables.model"` is read as a literal.
+      x-telo-eval: compile
+    request:
+      title: Request
+      description: >-
+        The HTTP request every call is made through, asked for the response as a
+        stream. Its client carries the base URL
+        (`https://api.anthropic.com/v1`, or a gateway's) and the credential — an
+        `Http.ApiKeyHeader` on `x-api-key` — so an account is declared once and no
+        key is held here.
+      x-telo-ref:
+        kind: Http.Request
+        use: call
+    maxTokens:
+      title: Max tokens
+      description: >-
+        The most tokens one answer may hold, thinking included. Required: the API
+        has no default, and one chosen here would be a silent truncation policy. A
+        call's `options.maxTokens` overrides it for that call; this resource's own
+        `options` may not name it.
+      type: integer
+      minimum: 1
+      x-telo-eval: compile
+    cacheLifetime:
+      title: Cache lifetime
+      description: >-
+        How long a prompt-cache entry written at a content part's `cacheBreakpoint`
+        lives. The API honours four breakpoints in one request: the last four in
+        request order are sent and earlier ones dropped.
+      type: string
+      enum: [ 5m, 1h ]
+      default: 5m
+      x-telo-eval: compile
+    betas:
+      title: Beta features
+      description: >-
+        Opt-in API features, sent on every call as the `anthropic-beta` header.
+      type: array
+      items:
+        type: string
+        minLength: 1
+      x-telo-eval: compile
+    options:
+      title: Options
+      description: >-
+        Model-level defaults as camelCase Messages API request params (temperature,
+        topP, topK, stopSequences, thinking, …); top-level keys are normalized to
+        snake_case and values are sent as written. Merged beneath
+        Ai.Text.options / Ai.Agent.options and per-call inputs.options; downstream
+        wins. The bag is open, so a name the API does not take is refused by the
+        endpoint rather than caught here. It may not name what the call itself
+        decides — `model`, `messages`, `system`, `tools`, `toolChoice`, `stream` —
+        nor `maxTokens`, which on this resource is the field of that name: two
+        homes for one value would leave the winner to merge order. A call's own
+        options may name `maxTokens`.
+      type: object
+      additionalProperties: true
+      # Forbidden with `false` properties, so the finding names the key.
+      properties:
+        model: false
+        messages: false
+        system: false
+        tools: false
+        toolChoice: false
+        tool_choice: false
+        stream: false
+        maxTokens: false
+        max_tokens: false
+      x-telo-eval: compile
+  required: [ model, request, maxTokens ]
+  additionalProperties: false
+  examples:
+    - model: claude-haiku-4-5
+      request: !ref anthropicRequest
+      maxTokens: 1024
+    - model: claude-sonnet-4-5
+      request: !ref anthropicRequest
+      maxTokens: 16000
+      cacheLifetime: 1h
+      options:
+        thinking: { type: enabled, budget_tokens: 8000 }

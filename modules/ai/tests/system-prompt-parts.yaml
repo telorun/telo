@@ -1,0 +1,143 @@
+kind: Telo.Application
+metadata:
+  name: SystemPromptPartsTest
+  version: 1.0.0
+  description: |
+    A system prompt written as a list of text parts — the form that can carry a
+    prompt-cache breakpoint — reaches the model as the conversation's system
+    message on all four operations, from the resource's own field and from a
+    call's input, which wins. A marked part in a user message runs the same way:
+    a breakpoint is a hint a model may ignore, and this one does.
+
+    The model answers with the conversation it was given, so each assertion reads
+    what the call actually sent.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+echoConversation: true
+---
+kind: AiEcho.EchoModelStream
+metadata: { name: echoStream }
+echoConversation: true
+---
+kind: Ai.Text
+metadata: { name: text }
+model: !ref echo
+system:
+  - { type: text, text: "You are terse. " }
+  - { type: text, text: Answer in one line., cacheBreakpoint: true }
+---
+kind: Ai.TextStream
+metadata: { name: textStream }
+model: !ref echoStream
+system:
+  - { type: text, text: "You are terse. " }
+  - { type: text, text: Answer in one line., cacheBreakpoint: true }
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model: !ref echo
+system:
+  - { type: text, text: "You are terse. " }
+  - { type: text, text: Answer in one line., cacheBreakpoint: true }
+---
+kind: Ai.AgentStream
+metadata: { name: agentStream }
+model: !ref echoStream
+system:
+  - { type: text, text: "You are terse. " }
+  - { type: text, text: Answer in one line., cacheBreakpoint: true }
+---
+kind: Run.Value
+metadata: { name: marked }
+value:
+  messages:
+    - role: user
+      content:
+        - { type: text, text: what is this?, cacheBreakpoint: true }
+---
+kind: Run.Value
+metadata: { name: overridden }
+value:
+  prompt: hello
+  system:
+    - { type: text, text: Speak plainly., cacheBreakpoint: true }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: marks
+    invoke: !ref marked
+  - name: viaText
+    inputs: !cel "steps.marks.result"
+    invoke: !ref text
+  - name: viaAgent
+    inputs: !cel "steps.marks.result"
+    invoke: !ref agent
+  - name: viaTextStream
+    inputs: !cel "steps.marks.result"
+    invoke: !ref textStream
+  - name: textStreamParts
+    inputs: { input: !cel "steps.viaTextStream.result.output" }
+    invoke: { kind: Stream.Collect }
+  - name: viaAgentStream
+    inputs: !cel "steps.marks.result"
+    invoke: !ref agentStream
+  - name: agentStreamParts
+    inputs: { input: !cel "steps.viaAgentStream.result.output" }
+    invoke: { kind: Stream.Collect }
+  - name: assertResourcePrompt
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        text: !cel "steps.viaText.result.text"
+        agent: !cel "steps.viaAgent.result.text"
+        textStream: !cel "steps.textStreamParts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
+        agentStream: !cel "steps.agentStreamParts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
+      expected:
+        text: "system=You are terse. Answer in one line. | user=what is this?"
+        agent: "system=You are terse. Answer in one line. | user=what is this?"
+        textStream: "system=You are terse. Answer in one line. | user=what is this?"
+        agentStream: "system=You are terse. Answer in one line. | user=what is this?"
+
+  - name: override
+    invoke: !ref overridden
+  - name: overrideText
+    inputs: !cel "steps.override.result"
+    invoke: !ref text
+  - name: overrideAgent
+    inputs: !cel "steps.override.result"
+    invoke: !ref agent
+  - name: overrideTextStream
+    inputs: !cel "steps.override.result"
+    invoke: !ref textStream
+  - name: overrideTextStreamParts
+    inputs: { input: !cel "steps.overrideTextStream.result.output" }
+    invoke: { kind: Stream.Collect }
+  - name: overrideAgentStream
+    inputs: !cel "steps.override.result"
+    invoke: !ref agentStream
+  - name: overrideAgentStreamParts
+    inputs: { input: !cel "steps.overrideAgentStream.result.output" }
+    invoke: { kind: Stream.Collect }
+  - name: assertInputPrompt
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        text: !cel "steps.overrideText.result.text"
+        agent: !cel "steps.overrideAgent.result.text"
+        textStream: !cel "steps.overrideTextStreamParts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
+        agentStream: !cel "steps.overrideAgentStreamParts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
+      expected:
+        text: "system=Speak plainly. | user=hello"
+        agent: "system=Speak plainly. | user=hello"
+        textStream: "system=Speak plainly. | user=hello"
+        agentStream: "system=Speak plainly. | user=hello"

@@ -221,7 +221,7 @@ steps:
           actual:
             code: !cel "error.code"
             saysIncomplete: !cel "error.message.contains('incomplete')"
-          expected: { code: ERR_OPENAI_REQUEST_FAILED, saysIncomplete: true }
+          expected: { code: ERR_MODEL_RESPONSE_INVALID, saysIncomplete: true }
         invoke:
           kind: Assert.Equals
 
@@ -247,6 +247,6 @@ steps:
           actual:
             code: !cel "error.code"
             carriesMessage: !cel "error.message.contains('overheated')"
-          expected: { code: ERR_OPENAI_REQUEST_FAILED, carriesMessage: true }
+          expected: { code: ERR_MODEL_UNAVAILABLE, carriesMessage: true }
         invoke:
           kind: Assert.Equals

@@ -18,6 +18,7 @@ import { boundToolContent } from "./tool-result-bound.js";
 import type {
   AiToolProviderInstance,
   Message,
+  SystemPrompt,
   ToolApproval,
   ToolCall,
   ToolDefinition,
@@ -64,7 +65,7 @@ export interface AssembledTools {
 export interface AgentInputs {
   prompt?: string;
   messages?: Message[];
-  system?: string;
+  system?: SystemPrompt;
   options?: Record<string, unknown>;
   /** Caller data handed to every tool dispatch; the kernel fills `{}` when omitted. */
   context?: Record<string, unknown>;
@@ -74,7 +75,7 @@ export interface AgentInputs {
 
 /** The manifest-level agent config the prelude reads (system prompt + base options). */
 export interface AgentConfig {
-  system?: string;
+  system?: SystemPrompt;
   options?: Record<string, unknown>;
 }
 

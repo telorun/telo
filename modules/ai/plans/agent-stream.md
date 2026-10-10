@@ -132,7 +132,7 @@ assumption is corrected to reference `Ai.AgentStream`.
   statically typed per consumer kind — buffered object vs. streaming `output` —
   the same split already made for `Ai.Text`/`Ai.TextStream`. A mode flag would make
   one kind's `outputType` ambiguous. This is the "pure additive consumer PR" the
-  model plan anticipated (`model-and-completion.md` §12).
+  model plan anticipated.
 - **Two named unions: `StreamPart` (model) and `AgentStreamPart` (agent), the
   latter reusing the former plus `tool-result`.** The agent's stream is the module's
   real deliverable, so it gets a schema, not narrative. Defining it as a superset

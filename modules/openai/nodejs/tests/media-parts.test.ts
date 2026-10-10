@@ -56,10 +56,10 @@ const toolTurn = (...content: ContentPart[]): Message[] => [
 ];
 
 beforeEach(() => {
-  requestMock = vi.fn(async (input: { path: string }) => ({
+  requestMock = vi.fn(async (input: { url: string }) => ({
     status: 200,
     headers: { "content-type": "application/json" },
-    body: input.path === "/responses" ? RESPONSES_ANSWER : CHAT_ANSWER,
+    body: JSON.stringify(input.url === "/responses" ? RESPONSES_ANSWER : CHAT_ANSWER),
   }));
 });
 
@@ -190,7 +190,7 @@ describe("a part the dialect cannot carry", () => {
     async (kind) => {
       const model = await kinds[kind]();
       await expect(model.invoke({ messages: user(AUDIO) })).rejects.toMatchObject({
-        code: "ERR_CONTENT_UNSUPPORTED",
+        code: "ERR_MODEL_CONTENT_UNSUPPORTED",
         data: { partType: "audio" },
       });
       expect(requestMock).not.toHaveBeenCalled();
@@ -202,42 +202,42 @@ describe("a part the dialect cannot carry", () => {
       "video",
       "chat",
       user({ type: "video", mediaType: "video/mp4", uri: "https://example.com/a.mp4" }),
-      { partType: "video" },
+      { partType: "video", mediaType: "video/mp4" },
       /'video' content part of media type 'video\/mp4'.*takes text, images and files/,
     ],
     [
       "video",
       "responses",
       user({ type: "video", mediaType: "video/mp4", data: "aGk=" }),
-      { partType: "video" },
+      { partType: "video", mediaType: "video/mp4" },
       /'video' content part of media type 'video\/mp4'/,
     ],
     [
       "an image by a file: URI",
       "chat",
       user({ type: "image", mediaType: "image/png", uri: "file:///tmp/a.png" }),
-      { partType: "image", scheme: "file" },
+      { partType: "image", scheme: "file", mediaType: "image/png" },
       /'image' content part of media type 'image\/png' cannot be sent by a 'file:' URI.*http\(s\) URL/,
     ],
     [
       "a file by an s3: URI",
       "responses",
       user({ type: "file", mediaType: "application/pdf", uri: "S3://bucket/report.pdf" }),
-      { partType: "file", scheme: "s3" },
+      { partType: "file", scheme: "s3", mediaType: "application/pdf" },
       /by a 's3:' URI/,
     ],
     [
       "a file by URL",
       "chat",
       user({ type: "file", mediaType: "application/pdf", uri: FILE_URL }),
-      { partType: "file" },
+      { partType: "file", mediaType: "application/pdf" },
       /'file' content part of media type 'application\/pdf'.*as bytes only/,
     ],
     [
       "a tool result's audio",
       "chat",
       toolTurn(AUDIO),
-      { partType: "audio" },
+      { partType: "audio", mediaType: "audio/wav" },
       /'audio' content part/,
     ],
     ...(["chat", "chatStream", "responses", "responsesStream"] as const).map(
@@ -245,7 +245,7 @@ describe("a part the dialect cannot carry", () => {
         "a file by bytes with no name",
         kind,
         user({ type: "file", mediaType: "application/pdf", data: "aGk=" }),
-        { partType: "file" },
+        { partType: "file", mediaType: "application/pdf" },
         /'file' content part of media type 'application\/pdf'.*sent by bytes needs 'name'/,
       ],
     ),
@@ -253,21 +253,21 @@ describe("a part the dialect cannot carry", () => {
       "a tool result's file by bytes with no name",
       "chat",
       toolTurn({ type: "file", mediaType: "application/pdf", data: "aGk=" }),
-      { partType: "file" },
+      { partType: "file", mediaType: "application/pdf" },
       /needs 'name'/,
     ],
     [
       "a tool result's file by bytes with no name",
       "responses",
       toolTurn({ type: "file", mediaType: "application/pdf", data: "aGk=" }),
-      { partType: "file" },
+      { partType: "file", mediaType: "application/pdf" },
       /needs 'name'/,
     ],
     [
       "a tool result's video",
       "responses",
       toolTurn({ type: "video", mediaType: "video/mp4", data: "aGk=" }),
-      { partType: "video" },
+      { partType: "video", mediaType: "video/mp4" },
       /'video' content part/,
     ],
     [
@@ -282,8 +282,9 @@ describe("a part the dialect cannot carry", () => {
   it.each(refused)("%s is refused by %s", async (what, kind, messages, data, message) => {
     const model = await kinds[kind]();
     const error = await model.invoke({ messages }).catch((err: unknown) => err);
-    expect(error).toMatchObject({ code: "ERR_CONTENT_UNSUPPORTED", data });
-    // Exactly the declared payload: no scheme unless a scheme is the reason.
+    expect(error).toMatchObject({ code: "ERR_MODEL_CONTENT_UNSUPPORTED", data });
+    // Exactly the declared payload: no scheme unless a scheme is the reason, and
+    // a media type only where the part has one.
     expect((error as { data: unknown }).data).toEqual(data);
     expect((error as Error).message).toMatch(message);
     expect(requestMock).not.toHaveBeenCalled();

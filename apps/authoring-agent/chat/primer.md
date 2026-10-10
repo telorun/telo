@@ -346,6 +346,34 @@ declare. Keep the completions pair for everything else and for every
 OpenAI-COMPATIBLE endpoint (Azure, Ollama, vLLM, Groq, OpenRouter): almost
 none of them serve `/v1/responses`.
 
+CLAUDE IS THE `anthropic` MODULE: `Anthropic.MessagesModel` is an `Ai.Model` and
+`Anthropic.MessagesModelStream` an `Ai.ModelStream` over Anthropic's Messages
+API — `Ai.Text` and `Ai.Agent` take the first, `Ai.TextStream` and
+`Ai.AgentStream` the second; the two take the same fields and may share one
+`Http.Request`. The stream kind sends its request when the stream is first
+read, so an endpoint failure rejects the iteration, not the call. Like the
+OpenAI kinds they hold no key: `request` names an `Http.Request` whose client has `baseUrl:
+https://api.anthropic.com/v1` and an `Http.ApiKeyHeader` credential on
+`x-api-key` (NOT a bearer token). Fields: `model`, `request`, `maxTokens`
+(REQUIRED — the API has no default token cap), `cacheLifetime` (`5m` default, or
+`1h`), `betas` (strings sent as `anthropic-beta`) and `options` (camelCase
+request params: `temperature`, `topP`, `stopSequences`, …). `options` may not
+name `model`, `messages`, `system`, `tools`, `toolChoice` or `stream`
+(SCHEMA_VIOLATION on the resource; in a call's own options bag the call is
+refused with `ERR_MODEL_REQUEST_REJECTED` before anything is sent), and on the
+MODEL RESOURCE it may not name `maxTokens`
+either — the field is its one home there. A CALL's options may: an
+`Ai.Text` / `Ai.Agent` `options: { maxTokens: … }`, or `inputs.options`,
+replaces the field's value for that call. Extended thinking has no field of its own: write
+`options: { thinking: { type: enabled, budget_tokens: 8000 } }`; the thinking
+comes back as `reasoning` parts and rides `providerState` through a tool loop
+with nothing to declare. It does not take the contract's `responseFormat`
+(`ERR_MODEL_REQUEST_REJECTED`). The module needs telo `>=0.114.0`.
+
+SWAPPING PROVIDERS CHANGES TWO DOCUMENTS: the model resource and its
+`Http.Client`. The operation over it, its routes and every `catches:` naming
+the thirteen model codes stay as they are.
+
 A model stream FAILS BY REJECTING: `finish` is the only terminal part, and a
 mid-stream failure raises. So a tool error under `onToolError: throw` and
 `ERR_AGENT_MAX_STEPS` are catchable — in a `try:`/`catch:` step, and in a
@@ -357,9 +385,50 @@ AN AI OPERATION THROWS WHAT ITS MODEL THROWS. `Ai.Text`, `Ai.TextStream`,
 `Ai.Agent`, `Ai.AgentStream` and `Ai.Buffered` declare `throws: { inherit: true
 }`, so the codes the model's kind declares are part of the operation's own
 union: a `catch:` step or a route's `catches:` over the operation may name a
-model code (`ERR_OPENAI_REQUEST_FAILED`, `ERR_CONTENT_UNSUPPORTED`) and read
-its declared `error.data`, and a `catches:` list with no catch-all must cover
-the model's codes too — UNCOVERED_THROW_CODE lists them.
+model code and read its declared `error.data`, and a `catches:` list with no
+catch-all must cover the model's codes too — UNCOVERED_THROW_CODE lists them.
+
+EVERY MODEL RAISES THE SAME THIRTEEN CODES, whichever provider is behind it.
+`Ai.Model` and `Ai.ModelStream` declare one failure list, each provider kind
+restates it and raises nothing else, so write `catches:` against these and
+never against a vendor's own code:
+
+- `ERR_MODEL_ACCESS_DENIED` — credential refused, or no permission for the
+  model. `error.data.status?`. Not worth retrying.
+- `ERR_MODEL_RATE_LIMITED` — asked to slow down. `status?`,
+  `retryAfterSeconds?` (from `Retry-After`). Retry, after that wait.
+- `ERR_MODEL_QUOTA_EXCEEDED` — credit or plan exhausted. `status?`. No.
+- `ERR_MODEL_UNAVAILABLE` — provider overloaded or failing, also a failure
+  reported after the answer began. `status?`, `retryAfterSeconds?`. Retry.
+- `ERR_MODEL_TIMEOUT` — no complete response in time. `status?`. Retry.
+- `ERR_MODEL_UNREACHABLE` — nothing answered (refused, DNS, TLS). Retry.
+- `ERR_MODEL_CONTEXT_TOO_LONG` — input exceeds the context window or request
+  size limit. `status?`. Not with that input.
+- `ERR_MODEL_CONTENT_REFUSED` — the ENDPOINT rejected the request on content
+  policy. `status?`. No. (A model's own refusal given as its answer is data:
+  a `refusal` part and `finishReason: content-filter`, not an error.)
+- `ERR_MODEL_REQUEST_REJECTED` — a request the endpoint cannot serve, or any
+  failure nothing else names. `status?`. No.
+- `ERR_MODEL_CONTENT_UNSUPPORTED` — a well-formed part this endpoint cannot
+  carry, raised before anything is sent. `partType`, `scheme?`, `mediaType?`.
+- `ERR_MODEL_TOOL_ARGUMENTS_INVALID` — tool arguments that are not a JSON
+  object. `tool`. Retry.
+- `ERR_MODEL_RESPONSE_INVALID` — a success whose answer cannot be read, a
+  broken or cut stream included. Retry.
+- `ERR_INVALID_REFERENCE` — a resource the model depends on is not live.
+
+`status` and `retryAfterSeconds` are optional — guard a read with `has(...)`.
+Nothing in `ai` retries; the model's `Http.Request` `retry:` policy does. A
+`catches:` entry naming a code no model raises is UNDECLARED_THROW_CODE, and a
+misspelled `error.data` member is CEL_UNKNOWN_FIELD. This holds for a model a
+library is only handed (`resources: { model: { kind: Ai.Model } }`) too, so
+such a route needs no catch-all. Versions of `ai` / `openai` published before
+this list raise `ERR_OPENAI_REQUEST_FAILED`, `ERR_OPENAI_INVALID_TOOL_ARGUMENTS`
+and an unprefixed `ERR_CONTENT_UNSUPPORTED` instead, and their model abstracts
+declare no list — read the `throws:` of the version you pin. A request handed
+to an OpenAI or Anthropic model kind is asked for its body as text or as a
+stream, so its own `success:` / `retryOn:` rule sees `body` undecoded: classify
+on `status`.
 
 WHEN A STREAMING CALL FAILS decides who can answer it. On a streaming model
 (`Ai.ModelStream`): a call is refused by REJECTING, and an implementation
@@ -385,6 +454,22 @@ and each `type` has a fixed shape:
   never relative), plus an optional file `name`.
 - `tool-call` — `toolCall`; `citation` — `citation`.
 
+A part a caller sends (`text`, `image`, `audio`, `video`, `file`) may also
+carry `cacheBreakpoint: true` — a PROMPT-CACHE BREAKPOINT: the request from its
+start through that part, tools and system prompt included, is a prefix you will
+send again unchanged. It is a hint: a provider that caches on its own (OpenAI)
+drops it, one with a limit honours the last few (Anthropic: the last four, kept
+for the model kind's `cacheLifetime`), and it never raises an error. Anthropic
+caches ONLY at a breakpoint, so an app on it that wants caching must mark one.
+It is refused on the model-produced types. `system` on `Ai.Text`,
+`Ai.TextStream`, `Ai.Agent` and `Ai.AgentStream` — the resource field and the
+call input — is a string OR a non-empty list of `text` parts, the form that can
+carry a breakpoint (`system: [{ type: text, text: …, cacheBreakpoint: true }]`).
+In the RESOURCE field a text part is exactly `{ type, text, cacheBreakpoint? }`
+and any other key is a SCHEMA_VIOLATION; a call's `system` input takes a text
+part as a message does. Mark the system prompt of an agent whose tools and prompt are stable. Older
+`ai` versions take `system` as a string only and have no `cacheBreakpoint`.
+
 There is no other key — no `cacheControl`. The shape is enforced by the
 contract of every kind that takes messages, never by a controller: a malformed
 literal part is CONTRACT_INPUTS_MISMATCH at `telo check`, on the key at fault,
@@ -392,32 +477,49 @@ and a malformed computed one is `ERR_INPUT_INVALID` at dispatch. A tool that
 returns media returns the same parts from its `result:` mapping.
 
 WHETHER A MODEL CAN CARRY A WELL-FORMED PART IS THE PROVIDER'S ANSWER, raised
-before any request under a code the provider declares. For the four OpenAI chat
-kinds that code is `ERR_CONTENT_UNSUPPORTED`, with `error.data.partType` and,
-when the `uri`'s scheme is the reason, `error.data.scheme`:
+before any request as `ERR_MODEL_CONTENT_UNSUPPORTED`, with
+`error.data.partType`, `error.data.mediaType` when the part has one and, when
+the `uri`'s scheme is the reason, `error.data.scheme`. For the four OpenAI chat
+kinds:
 
 - image by bytes, or by an `http:` / `https:` `uri` — carried by both the
   completions pair and the responses pair; the `uri` is sent as written and
   never fetched, so the endpoint must be able to reach it.
 - file by bytes, with `name` — carried by both, `name` sent as its filename. A
-  file by bytes with NO `name` is `ERR_CONTENT_UNSUPPORTED` on both
+  file by bytes with NO `name` is `ERR_MODEL_CONTENT_UNSUPPORTED` on both
   (`error.data.partType: file`, no `scheme`), also inside a tool result. No
   media type is gated here: at OpenAI's own endpoint a file by bytes on the
   completions pair is a PDF, and any other type is the endpoint's to accept or
-  refuse (`ERR_OPENAI_REQUEST_FAILED`).
+  refuse (usually `ERR_MODEL_REQUEST_REJECTED`).
 - file by `http(s)` `uri` — the RESPONSES pair only; on the completions pair it
-  is `ERR_CONTENT_UNSUPPORTED`, so read the bytes and send `data` instead.
+  is `ERR_MODEL_CONTENT_UNSUPPORTED`, so read the bytes and send `data` instead.
 - any other `uri` scheme (`file:`, `s3:`), audio, video, and a model-produced
-  part sent as input — `ERR_CONTENT_UNSUPPORTED` on both.
+  part sent as input — `ERR_MODEL_CONTENT_UNSUPPORTED` on both.
 - media a TOOL returned — on the responses pair it rides the tool result
   itself, in the tool's own part order, under the same rules as a user
   message's parts; on the completions pair, whose tool message is text only, it
   rides a `user` message after the run of tool messages.
 
+For `Anthropic.MessagesModel` and `Anthropic.MessagesModelStream`:
+
+- image by bytes or by an `http(s)` `uri` — `image/jpeg`, `image/png`,
+  `image/gif` and `image/webp` only; any other image type is
+  `ERR_MODEL_CONTENT_UNSUPPORTED`.
+- file — `application/pdf` by bytes or by an `http(s)` `uri`, and `text/plain`
+  by bytes only; `name` is optional and becomes the document's title. Any other
+  file type, and a plain-text file by `uri`, is `ERR_MODEL_CONTENT_UNSUPPORTED`.
+- any other `uri` scheme, audio, video, a model-produced part in a user
+  message, and anything but text in a `system` message —
+  `ERR_MODEL_CONTENT_UNSUPPORTED`.
+- media a TOOL returned — text and images ride the tool result itself, files
+  follow the results of that turn.
+
 `usage` ON EVERY COMPLETION is `promptTokens`, `completionTokens`,
 `totalTokens`, `unit`, `total`, plus `cachedPromptTokens` (the part of the
-prompt read from a cache) and `reasoningTokens` (the part of the completion
-spent reasoning) WHEN THE MODEL REPORTS THEM. Either may be absent, and absent
+prompt read from a cache), `cacheWritePromptTokens` (the part written to one)
+and `reasoningTokens` (the part of the completion spent reasoning) WHEN THE
+MODEL REPORTS THEM; `promptTokens` is the whole prompt, those shares included.
+Any may be absent, and absent
 is not zero — guard a read with `has(...)`. An agent sums them across its
 calls; `Ai.AgentStream` also carries them per call on each `step-finish`.
 
@@ -3456,7 +3558,7 @@ them before writing any resource from a module you did not author yourself:
 
 The standard library is published at `oci://ghcr.io/telorun/<name>`
 (http-server, http-client, sql + postgres/sqlite, run, config, console,
-assert, test, ai + openai, cache + cache-redis, mcp-client/server, s3,
+assert, test, ai + openai / anthropic, cache + cache-redis, mcp-client/server, s3,
 timer, scheduler, idempotency, lease, kv-store + kv-store-sql/-redis/-memory,
 workflow, and many more) — but NEVER assemble that ref from the module name.
 Always take the exact ref, `version`, and field schema from the tools.

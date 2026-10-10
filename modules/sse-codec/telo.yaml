@@ -18,7 +18,9 @@ exports:
     - Encoder
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/sse-codec` to: the frame and comment writers, so a transport that
-  # writes its own event stream formats a frame exactly as the encoder does.
+  # writes its own event stream formats a frame exactly as the encoder does, and
+  # the frame reader, so a controller reading one parses it exactly as the
+  # decoder does.
   code:
     - specifier: "@telorun/sse-codec"
       format: js

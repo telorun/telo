@@ -1,0 +1,137 @@
+# Every place a cache breakpoint is legal, and both forms of `system`, in both
+# places an operation takes one. `telo check` finds nothing.
+kind: Telo.Application
+metadata:
+  name: SystemPromptAccepted
+imports:
+  Ai: ../../
+  AiEcho: ./ai-echo.yaml
+  Run: ../../../run
+targets:
+  - !ref calls
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+---
+kind: AiEcho.EchoModelStream
+metadata: { name: echoStream }
+---
+kind: Ai.Text
+metadata: { name: textPlain }
+model: !ref echo
+system: be terse
+---
+kind: Ai.Text
+metadata: { name: textMarked }
+model: !ref echo
+system:
+  - { type: text, text: You are terse. }
+  - { type: text, text: Answer in one line., cacheBreakpoint: true }
+---
+kind: Ai.TextStream
+metadata: { name: textStreamPlain }
+model: !ref echoStream
+system: be terse
+---
+kind: Ai.TextStream
+metadata: { name: textStreamMarked }
+model: !ref echoStream
+system:
+  - { type: text, text: You are terse. }
+  - { type: text, text: Answer in one line., cacheBreakpoint: true }
+---
+kind: Ai.Agent
+metadata: { name: agentPlain }
+model: !ref echo
+system: be terse
+---
+kind: Ai.Agent
+metadata: { name: agentMarked }
+model: !ref echo
+system:
+  - { type: text, text: You are terse. }
+  - { type: text, text: Answer in one line., cacheBreakpoint: true }
+---
+kind: Ai.AgentStream
+metadata: { name: agentStreamPlain }
+model: !ref echoStream
+system: be terse
+---
+kind: Ai.AgentStream
+metadata: { name: agentStreamMarked }
+model: !ref echoStream
+system:
+  - { type: text, text: You are terse. }
+  - { type: text, text: Answer in one line., cacheBreakpoint: true }
+---
+kind: Run.Sequence
+metadata: { name: calls }
+steps:
+  - name: textString
+    invoke: !ref textMarked
+    inputs:
+      prompt: hello
+      system: be brief
+  - name: textParts
+    invoke: !ref textPlain
+    inputs:
+      system: [{ type: text, text: be brief, cacheBreakpoint: true }]
+      messages:
+        - role: user
+          content:
+            - { type: text, text: describe these, cacheBreakpoint: false }
+            - { type: image, mediaType: image/png, data: aGk=, cacheBreakpoint: true }
+            - { type: audio, mediaType: audio/wav, data: aGk=, cacheBreakpoint: true }
+            - { type: video, mediaType: video/mp4, uri: "https://example.com/a.mp4", cacheBreakpoint: true }
+            - { type: file, mediaType: application/pdf, name: a.pdf, data: aGk=, cacheBreakpoint: true }
+  - name: textStreamString
+    invoke: !ref textStreamMarked
+    inputs:
+      prompt: hello
+      system: be brief
+  - name: textStreamParts
+    invoke: !ref textStreamPlain
+    inputs:
+      system: [{ type: text, text: be brief, cacheBreakpoint: true }]
+      messages:
+        - role: user
+          content:
+            - { type: text, text: describe these, cacheBreakpoint: false }
+            - { type: image, mediaType: image/png, data: aGk=, cacheBreakpoint: true }
+            - { type: audio, mediaType: audio/wav, data: aGk=, cacheBreakpoint: true }
+            - { type: video, mediaType: video/mp4, uri: "https://example.com/a.mp4", cacheBreakpoint: true }
+            - { type: file, mediaType: application/pdf, name: a.pdf, data: aGk=, cacheBreakpoint: true }
+  - name: agentString
+    invoke: !ref agentMarked
+    inputs:
+      prompt: hello
+      system: be brief
+  - name: agentParts
+    invoke: !ref agentPlain
+    inputs:
+      system: [{ type: text, text: be brief, cacheBreakpoint: true }]
+      messages:
+        - role: user
+          content:
+            - { type: text, text: describe these, cacheBreakpoint: false }
+            - { type: image, mediaType: image/png, data: aGk=, cacheBreakpoint: true }
+            - { type: audio, mediaType: audio/wav, data: aGk=, cacheBreakpoint: true }
+            - { type: video, mediaType: video/mp4, uri: "https://example.com/a.mp4", cacheBreakpoint: true }
+            - { type: file, mediaType: application/pdf, name: a.pdf, data: aGk=, cacheBreakpoint: true }
+  - name: agentStreamString
+    invoke: !ref agentStreamMarked
+    inputs:
+      prompt: hello
+      system: be brief
+  - name: agentStreamParts
+    invoke: !ref agentStreamPlain
+    inputs:
+      system: [{ type: text, text: be brief, cacheBreakpoint: true }]
+      messages:
+        - role: user
+          content:
+            - { type: text, text: describe these, cacheBreakpoint: false }
+            - { type: image, mediaType: image/png, data: aGk=, cacheBreakpoint: true }
+            - { type: audio, mediaType: audio/wav, data: aGk=, cacheBreakpoint: true }
+            - { type: video, mediaType: video/mp4, uri: "https://example.com/a.mp4", cacheBreakpoint: true }
+            - { type: file, mediaType: application/pdf, name: a.pdf, data: aGk=, cacheBreakpoint: true }

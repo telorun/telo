@@ -1,0 +1,180 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicProviderSwap
+  version: 1.0.0
+  description: |
+    One assistant, two providers, nothing else changed. A shared partial holds
+    an `Ai.Agent`, the request its model goes through and a route whose
+    `catches:` names only the failure codes `Ai.Model` and `Ai.Agent` declare,
+    with no catch-all; two applications include it, and each declares only its
+    model and its client — one over `Anthropic.MessagesModel`, one over
+    `OpenAI.ChatModel`.
+
+    Both check clean, so the one `catches:` list covers either provider's
+    failures and names no code either lacks. Both run against a scripted
+    endpoint of their vendor: a question is answered, and a 429 carrying
+    `Retry-After: 7` reaches the route as `ERR_MODEL_RATE_LIMITED` with
+    `retryAfterSeconds` 7 under either.
+imports:
+  App: ../../app
+  Run: ../../run
+  HttpClient: ../../http-client
+  Server: ../../http-server
+  Assert: ../../assert
+targets:
+  - !ref anthropicChecksClean
+  - !ref openaiChecksClean
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: anthropicChecksClean }
+source: ./__fixtures__/swap/anthropic-app.yaml
+expect: {}
+---
+kind: Assert.Manifest
+metadata: { name: openaiChecksClean }
+source: ./__fixtures__/swap/openai-app.yaml
+expect: {}
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+kind: HttpClient.Request
+metadata: { name: askAnthropic }
+url: /ask
+method: POST
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8916
+  throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: askOpenai }
+url: /ask
+method: POST
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8917
+  throwOnHttpError: false
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: AnthropicApi }
+    routes:
+      - request:
+          path: /messages
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 429
+            when: !cel "json(request.body).contains('slow down')"
+            headers:
+              Retry-After: "7"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  type: error
+                  error: { type: rate_limit_error, message: slow down }
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  type: message
+                  role: assistant
+                  content: [{ type: text, text: pong }]
+                  stop_reason: end_turn
+                  usage: { input_tokens: 7, output_tokens: 3 }
+  - kind: Server.Api
+    metadata: { name: OpenaiApi }
+    routes:
+      - request:
+          path: /chat/completions
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 429
+            when: !cel "json(request.body).contains('slow down')"
+            headers:
+              Retry-After: "7"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  error: { message: slow down, type: rate_limit_error, code: rate_limit_exceeded }
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  choices:
+                    - message: { content: pong }
+                      finish_reason: stop
+                  usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 }
+  - kind: Server.Server
+    metadata: { name: Vendors }
+    port: 8915
+    baseUrl: http://localhost:8915
+    openapi:
+      info: { title: Fake vendor endpoints, version: 1.0.0 }
+    mounts:
+      - path: /anthropic/v1
+        mount: !ref AnthropicApi
+      - path: /openai/v1
+        mount: !ref OpenaiApi
+  - kind: App.Instance
+    metadata: { name: anthropicApp }
+    source: ./__fixtures__/swap/anthropic-app.yaml
+    variables:
+      endpoint: http://localhost:8915/anthropic/v1
+    ports:
+      http: 8916
+  - kind: App.Instance
+    metadata: { name: openaiApp }
+    source: ./__fixtures__/swap/openai-app.yaml
+    variables:
+      endpoint: http://localhost:8915/openai/v1
+    ports:
+      http: 8917
+targets:
+  - !ref Vendors
+  - !ref anthropicApp
+  - !ref openaiApp
+steps:
+  - name: anthropicAnswers
+    inputs: { body: { question: ping } }
+    invoke: !ref askAnthropic
+  - name: openaiAnswers
+    inputs: { body: { question: ping } }
+    invoke: !ref askOpenai
+  - name: anthropicLimited
+    inputs: { body: { question: slow down } }
+    invoke: !ref askAnthropic
+  - name: openaiLimited
+    inputs: { body: { question: slow down } }
+    invoke: !ref askOpenai
+  - name: sameUnderEither
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        anthropic:
+          answered: { status: !cel "steps.anthropicAnswers.result.status", body: !cel "steps.anthropicAnswers.result.body" }
+          limited: { status: !cel "steps.anthropicLimited.result.status", body: !cel "steps.anthropicLimited.result.body" }
+        openai:
+          answered: { status: !cel "steps.openaiAnswers.result.status", body: !cel "steps.openaiAnswers.result.body" }
+          limited: { status: !cel "steps.openaiLimited.result.status", body: !cel "steps.openaiLimited.result.body" }
+      expected:
+        anthropic:
+          answered: { status: 200, body: { answer: pong } }
+          limited: { status: 503, body: { code: ERR_MODEL_RATE_LIMITED, retryAfterSeconds: 7 } }
+        openai:
+          answered: { status: 200, body: { answer: pong } }
+          limited: { status: 503, body: { code: ERR_MODEL_RATE_LIMITED, retryAfterSeconds: 7 } }

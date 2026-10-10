@@ -1,0 +1,332 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicMessagesStreamOverHttp
+  version: 1.0.0
+  description: |
+    `Anthropic.MessagesModelStream` through a real `Http.Request`, where the
+    transport is part of the answer:
+
+      - the server answers only a request carrying the client's `x-api-key`,
+        the controller's `anthropic-version` and a body asking for a stream;
+        its event stream — thinking, text, a tool call written in fragments —
+        comes back as the contract's parts in order, the tool call under the
+        vendor's id from its first fragment, the carried state before the one
+        `finish`, whose usage adds the three input figures;
+      - a call the request alone refuses is rejected by the call, with nothing
+        sent: its model points at a port nothing listens on;
+      - everything the endpoint does arrives while the stream is read, never
+        from the call: a wrong key is `ERR_MODEL_ACCESS_DENIED`, an error event
+        after the answer began is classified by its type, a stream cut before
+        its closing event is `ERR_MODEL_RESPONSE_INVALID`, and an endpoint
+        nothing listens on `ERR_MODEL_UNREACHABLE`.
+
+    Offline: a local server scripted by model id.
+imports:
+  Anthropic: ../
+  Http: ../../http-client
+  Server: ../../http-server
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.ApiKeyHeader
+metadata: { name: goodKey }
+header: x-api-key
+key: test-key
+---
+kind: Http.Request
+metadata: { name: goodRequest }
+client:
+  kind: Http.Client
+  baseUrl: http://localhost:8921/v1
+  credential: !ref goodKey
+---
+kind: Http.Request
+metadata: { name: wrongKeyRequest }
+client:
+  kind: Http.Client
+  baseUrl: http://localhost:8921/v1
+  credential:
+    kind: Http.ApiKeyHeader
+    header: x-api-key
+    key: wrong-key
+---
+kind: Http.Request
+metadata: { name: nobodyRequest }
+client:
+  kind: Http.Client
+  baseUrl: http://127.0.0.1:1/v1
+  credential: !ref goodKey
+---
+kind: Anthropic.MessagesModelStream
+metadata: { name: answering }
+model: claude-test
+request: !ref goodRequest
+maxTokens: 256
+---
+kind: Anthropic.MessagesModelStream
+metadata: { name: wrongKey }
+model: claude-test
+request: !ref wrongKeyRequest
+maxTokens: 256
+---
+kind: Anthropic.MessagesModelStream
+metadata: { name: failing }
+model: claude-stream-error
+request: !ref goodRequest
+maxTokens: 256
+---
+kind: Anthropic.MessagesModelStream
+metadata: { name: cut }
+model: claude-cut-stream
+request: !ref goodRequest
+maxTokens: 256
+---
+kind: Anthropic.MessagesModelStream
+metadata: { name: nobody }
+model: claude-test
+request: !ref nobodyRequest
+maxTokens: 256
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: MessagesApi }
+    routes:
+      - request:
+          path: /messages
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          # The account and the dialect are checked where an endpoint checks them.
+          - status: 401
+            when: !cel >-
+              !('x-api-key' in request.headers && request.headers['x-api-key'] == 'test-key' &&
+              'anthropic-version' in request.headers && request.headers['anthropic-version'] == '2023-06-01' &&
+              request.body.stream == true)
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  type: error
+                  error: { type: authentication_error, message: invalid x-api-key }
+          - status: 200
+            when: !cel "request.body.model == 'claude-stream-error'"
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  event: message_start
+                  data: {"type":"message_start","message":{"usage":{"input_tokens":4,"output_tokens":1}}}
+
+                  event: content_block_start
+                  data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+                  event: content_block_delta
+                  data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}
+
+                  event: error
+                  data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}
+          - status: 200
+            when: !cel "request.body.model == 'claude-cut-stream'"
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  event: message_start
+                  data: {"type":"message_start","message":{"usage":{"input_tokens":4,"output_tokens":1}}}
+
+                  event: content_block_start
+                  data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+                  event: content_block_delta
+                  data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"half an ans"}}
+          - status: 200
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  event: message_start
+                  data: {"type":"message_start","message":{"type":"message","role":"assistant","content":[],"usage":{"input_tokens":5,"cache_read_input_tokens":20,"cache_creation_input_tokens":30,"output_tokens":1}}}
+
+                  event: content_block_start
+                  data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}
+
+                  event: content_block_delta
+                  data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Paris."}}
+
+                  event: content_block_delta
+                  data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig-1"}}
+
+                  event: content_block_stop
+                  data: {"type":"content_block_stop","index":0}
+
+                  event: ping
+                  data: {"type":"ping"}
+
+                  event: content_block_start
+                  data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
+
+                  event: content_block_delta
+                  data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Checking."}}
+
+                  event: content_block_stop
+                  data: {"type":"content_block_stop","index":1}
+
+                  event: content_block_start
+                  data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_1","name":"get_weather","input":{}}}
+
+                  event: content_block_delta
+                  data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"ci"}}
+
+                  event: content_block_delta
+                  data: {"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"ty\":\"Paris\"}"}}
+
+                  event: content_block_stop
+                  data: {"type":"content_block_stop","index":2}
+
+                  event: message_delta
+                  data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":9}}
+
+                  event: message_stop
+                  data: {"type":"message_stop"}
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 8921
+    baseUrl: http://localhost:8921
+    openapi:
+      info: { title: Fake Messages API event streams, version: 1.0.0 }
+    mounts:
+      - path: /v1
+        mount: !ref MessagesApi
+targets:
+  - !ref FakeServer
+steps:
+  - name: open
+    inputs: { messages: [{ role: user, content: weather in Paris? }] }
+    invoke: !ref answering
+  - name: read
+    inputs: { input: !cel "steps.open.result.output" }
+    invoke: { kind: Stream.Collect }
+  - name: assertParts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result.items"
+      expected:
+        - { type: reasoning-delta, delta: Paris. }
+        - { type: text-delta, delta: Checking. }
+        - { type: tool-call-delta, toolCallId: toolu_1, toolName: get_weather, delta: '{"ci' }
+        - { type: tool-call-delta, toolCallId: toolu_1, toolName: get_weather, delta: 'ty":"Paris"}' }
+        - type: tool-call
+          toolCall: { id: toolu_1, name: get_weather, arguments: { city: Paris } }
+        - type: provider-state
+          providerState:
+            api: messages
+            model: claude-test
+            resource: AnthropicMessagesStreamOverHttp.answering
+            content:
+              - { type: thinking, thinking: Paris., signature: sig-1 }
+              - { type: text, text: Checking. }
+              - { type: tool_use, id: toolu_1, name: get_weather, input: { city: Paris } }
+        - type: finish
+          finishReason: tool-calls
+          usage:
+            promptTokens: 55
+            completionTokens: 9
+            totalTokens: 64
+            cachedPromptTokens: 20
+            cacheWritePromptTokens: 30
+
+  # Refused by the call: nothing listens where this model points, so a request
+  # leaving it would arrive as ERR_MODEL_UNREACHABLE — and only at the read.
+  - name: refusedByTheCall
+    try:
+      - name: refusedCall
+        inputs:
+          messages:
+            - role: user
+              content: [{ type: audio, mediaType: audio/wav, data: aGk= }]
+        invoke: !ref nobody
+      - name: refusedUnreachable
+        throw: { code: TEST_FAILED, message: a part the API cannot carry was accepted by the call }
+    catch:
+      - name: refusedSeen
+        value: { code: !cel "error.code", partType: !cel "error.data.partType" }
+
+  # Everything else arrives while the handle is READ, never from the call.
+  - name: wrongKeyOpen
+    inputs: { messages: [{ role: user, content: hello }] }
+    invoke: !ref wrongKey
+  - name: wrongKeyRead
+    try:
+      - name: wrongKeyParts
+        inputs: { input: !cel "steps.wrongKeyOpen.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: wrongKeyUnreachable
+        throw: { code: TEST_FAILED, message: a wrong key was answered }
+    catch:
+      - name: wrongKeySeen
+        value: { code: !cel "error.code", data: !cel "error.data" }
+  - name: failingOpen
+    inputs: { messages: [{ role: user, content: hello }] }
+    invoke: !ref failing
+  - name: failingRead
+    try:
+      - name: failingParts
+        inputs: { input: !cel "steps.failingOpen.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: failingUnreachable
+        throw: { code: TEST_FAILED, message: an error event was ignored }
+    catch:
+      - name: failingSeen
+        value: { code: !cel "error.code", data: !cel "error.data" }
+  - name: cutOpen
+    inputs: { messages: [{ role: user, content: hello }] }
+    invoke: !ref cut
+  - name: cutRead
+    try:
+      - name: cutParts
+        inputs: { input: !cel "steps.cutOpen.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: cutUnreachable
+        throw: { code: TEST_FAILED, message: a cut stream finished cleanly }
+    catch:
+      - name: cutSeen
+        value: !cel "error.code"
+  - name: nobodyOpen
+    inputs: { messages: [{ role: user, content: hello }] }
+    invoke: !ref nobody
+  - name: nobodyRead
+    try:
+      - name: nobodyParts
+        inputs: { input: !cel "steps.nobodyOpen.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: nobodyUnreachable
+        throw: { code: TEST_FAILED, message: a call to nothing answered }
+    catch:
+      - name: nobodySeen
+        value: !cel "error.code"
+  - name: assertFailures
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        refusedByTheCall: !cel "steps.refusedSeen.result"
+        wrongKey: !cel "steps.wrongKeySeen.result"
+        errorEvent: !cel "steps.failingSeen.result"
+        cut: !cel "steps.cutSeen.result"
+        nobody: !cel "steps.nobodySeen.result"
+      expected:
+        refusedByTheCall: { code: ERR_MODEL_CONTENT_UNSUPPORTED, partType: audio }
+        wrongKey: { code: ERR_MODEL_ACCESS_DENIED, data: { status: 401 } }
+        errorEvent: { code: ERR_MODEL_UNAVAILABLE, data: {} }
+        cut: ERR_MODEL_RESPONSE_INVALID
+        nobody: ERR_MODEL_UNREACHABLE

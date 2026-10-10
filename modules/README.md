@@ -12,6 +12,7 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 | --- | --- |
 | [ai](./ai/README.md) | LLM access via `Ai.Model`, `Ai.Text` (buffered), and `Ai.TextStream` (streaming). |
 | [openai](./openai/README.md) | Every OpenAI surface under one import: chat (buffered and streaming), images, embeddings. Supersedes `ai-openai` and `embedding-openai`. |
+| [anthropic](./anthropic/README.md) | Claude models over Anthropic's Messages API (`Anthropic.MessagesModel`, `Anthropic.MessagesModelStream`), complete or streamed, with prompt caching and thinking that survives a tool loop. |
 
 ### HTTP & APIs
 

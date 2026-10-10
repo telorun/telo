@@ -107,19 +107,21 @@ Both chat APIs take text, images and documents; they differ in how a document ma
 | image by bytes (`data`) | yes — a `data:` URL | yes — a `data:` URL |
 | image by `http:` / `https:` `uri` | yes — the string as written | yes — the string as written |
 | file by bytes (`data`), with `name` (sent as its filename) | yes | yes |
-| file by bytes with no `name` | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
-| file by `http:` / `https:` `uri` | `ERR_CONTENT_UNSUPPORTED` | yes — the string as written |
-| any other `uri` scheme (`file:`, `s3:`, …) | `ERR_CONTENT_UNSUPPORTED`, `error.data.scheme` set | the same |
-| audio, video | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
-| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+| file by bytes with no `name` | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
+| file by `http:` / `https:` `uri` | `ERR_MODEL_CONTENT_UNSUPPORTED` | yes — the string as written |
+| any other `uri` scheme (`file:`, `s3:`, …) | `ERR_MODEL_CONTENT_UNSUPPORTED`, `error.data.scheme` set | the same |
+| audio, video | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
+| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
 
-A part the API cannot carry is refused by the call, before anything is sent, as `ERR_CONTENT_UNSUPPORTED` with `error.data.partType` (and `error.data.scheme` when the `uri`'s scheme is the reason). A `uri` is handed to the endpoint as written and never fetched.
+A part the API cannot carry is refused by the call, before anything is sent, as `ERR_MODEL_CONTENT_UNSUPPORTED` with `error.data.partType`, `error.data.mediaType` when the part has one, and `error.data.scheme` when the `uri`'s scheme is the reason. A `uri` is handed to the endpoint as written and never fetched.
 
-A file by bytes needs `name`: both APIs take the bytes beside a filename, so one without is refused here (`error.data.partType: file`, no `scheme`) rather than sent; a file by `uri` on the responses kinds needs none. The provider gates on no media type. At OpenAI's own endpoint a file by bytes on chat completions is a PDF; any other type is the endpoint's to accept or refuse, and a refusal is `ERR_OPENAI_REQUEST_FAILED`.
+A file by bytes needs `name`: both APIs take the bytes beside a filename, so one without is refused here (`error.data.partType: file`, no `scheme`) rather than sent; a file by `uri` on the responses kinds needs none. The provider gates on no media type. At OpenAI's own endpoint a file by bytes on chat completions is a PDF; any other type is the endpoint's to accept or refuse, and its refusal is the code its status and error name (usually `ERR_MODEL_REQUEST_REJECTED`).
 
 Media a **tool** returned reaches the model on both APIs, by different routes: on the responses kinds it rides the tool's own output, in the tool's part order; on the chat kinds, whose tool message is text only, it rides a `user` message that follows the run of tool messages. Details per API: [chat](docs/chat-model.md#multimodal-content), [responses](docs/responses-model.md#content-parts).
 
 `usage` carries `cachedPromptTokens` and `reasoningTokens` on all four chat kinds when the endpoint reports them, and leaves them absent when it does not.
+
+**Prompt caching is automatic here.** OpenAI caches a repeated prompt prefix on its own, so a part's `cacheBreakpoint` is dropped and nothing is sent for it, on both APIs; a `system` written as text parts is sent as its text. What was read from the cache comes back as `cachedPromptTokens`; these endpoints report no cache-write count, so `cacheWritePromptTokens` stays absent.
 
 ## Streamed tool calls
 
@@ -127,13 +129,61 @@ Both stream kinds report a tool call's arguments as they are written — `tool-c
 
 ## Errors
 
-The four chat kinds declare `ERR_OPENAI_REQUEST_FAILED`, `ERR_CONTENT_UNSUPPORTED`, `ERR_OPENAI_INVALID_TOOL_ARGUMENTS` and `ERR_INVALID_REFERENCE`. An `Ai` operation holding one passes them on, so a route's `catches:` names them whether its handler is the model or an operation over it.
+The four language kinds raise **only the failures `Ai.Model` declares** — the same thirteen codes every provider raises, so a `catches:` written against them holds when the model behind it is swapped. Each kind restates the whole list. An `Ai` operation holding one passes the codes on, so a route's `catches:` names them whether its handler is the model or an operation over it. The codes, their `error.data` and which are worth another try: [`ai` → Catching a model's errors](../ai/README.md#catching-a-models-errors).
 
-A refused request raises the provider's own message, not just a status. A failure
-**mid-stream rejects the iteration** rather than arriving as a data part — so it reaches
+How this module arrives at a code:
+
+| What happened | Code |
+| --- | --- |
+| The endpoint answered 401 or 403 | `ERR_MODEL_ACCESS_DENIED` |
+| 402 | `ERR_MODEL_QUOTA_EXCEEDED` |
+| 429 | `ERR_MODEL_RATE_LIMITED`, with `retryAfterSeconds` from `Retry-After` |
+| 408 or 504; the request timed out | `ERR_MODEL_TIMEOUT` |
+| 413 | `ERR_MODEL_CONTEXT_TOO_LONG` |
+| any other 4xx; a status that is neither a success nor an error (an unfollowed redirect); a success the request's own `success:` rule refused | `ERR_MODEL_REQUEST_REJECTED` |
+| The request could not be built | `ERR_MODEL_REQUEST_REJECTED`, no `status`, before anything is sent, the original kept as the error's cause |
+| 5xx | `ERR_MODEL_UNAVAILABLE`, with `retryAfterSeconds` when the response named a wait |
+| The connection was refused, the host did not resolve, the handshake failed | `ERR_MODEL_UNREACHABLE` |
+| A 2xx body that is empty, not JSON, not an object, or carries no answer (`choices[0].message`; an `output` list); a malformed stream frame; a frame or line over 1 MiB; a body that breaks mid-stream; a stream that ends before its terminal event | `ERR_MODEL_RESPONSE_INVALID` |
+| A member of a 2xx body or of a stream frame has the wrong shape — a list that must hold objects (`choices`, `tool_calls`, `output`, an item's `content` or `summary`) or an object (`message`, `delta`, a tool call's `function`, a frame's `item` or `response`) | `ERR_MODEL_RESPONSE_INVALID`, naming the member |
+| The answer could not be read for any other reason | `ERR_MODEL_RESPONSE_INVALID`, the original kept as the error's cause |
+| A content part this API cannot carry | `ERR_MODEL_CONTENT_UNSUPPORTED`, before anything is sent |
+| Tool arguments that are not a JSON object, or that arrive as anything but JSON text | `ERR_MODEL_TOOL_ARGUMENTS_INVALID` |
+| `request` is not a live `Http.Request` | `ERR_INVALID_REFERENCE` |
+| The request's credential holds no material (`ERR_INVALID_CREDENTIAL`) | `ERR_MODEL_ACCESS_DENIED`, no `status` |
+| Any other failure of the request — a `success:` / `retryOn:` rule that resolves to neither a list nor a boolean, a credential's own error, an uncoded error | `ERR_MODEL_REQUEST_REJECTED`, no `status`, the original kept as the error's cause |
+
+**An answer is read as untrusted.** A text, id, name, token count or finish reason of the wrong type is read as absent and never copied into the result: text that is not text is no text, a count that is not a number is not reported, and a tool-call id that is not text is treated as one the endpoint never sent. A refused streamed response whose body breaks while its explanation is read still raises the status failure, with the break as its cause.
+
+**The endpoint's own error object is read wherever it turns up** — a failed response's body, a 2xx body, a stream frame, a responses `error` / `response.failed` event, a run reported as failed — and it wins over any answer beside it. Its `code` and `type` are matched against these names first, and a match wins over the status:
+
+| `error.code` or `error.type` | Code |
+| --- | --- |
+| `invalid_api_key`, `account_deactivated` | `ERR_MODEL_ACCESS_DENIED` |
+| `insufficient_quota`, `billing_hard_limit_reached`, `billing_not_active` | `ERR_MODEL_QUOTA_EXCEEDED` |
+| `rate_limit_exceeded` | `ERR_MODEL_RATE_LIMITED` |
+| `context_length_exceeded` | `ERR_MODEL_CONTEXT_TOO_LONG` |
+| `content_policy_violation`, `content_filter`, `moderation_blocked`, `image_content_policy_violation` | `ERR_MODEL_CONTENT_REFUSED` |
+| `vector_store_timeout` | `ERR_MODEL_TIMEOUT` |
+| `invalid_prompt`, `model_not_found`, `invalid_image`, `invalid_image_format`, `invalid_base64_image`, `invalid_image_url`, `invalid_image_mode`, `image_too_large`, `image_too_small`, `image_parse_error`, `image_file_too_large`, `unsupported_image_media_type`, `empty_image_file`, `failed_to_download_image`, `image_file_not_found` | `ERR_MODEL_REQUEST_REJECTED` |
+| `server_error` | `ERR_MODEL_UNAVAILABLE` |
+
+With no such name, the status rows above decide when a response carried the failure. Only when none did — an error inside a 2xx body or a stream — is the error's family read: `authentication_error` / `permission_error` → `ERR_MODEL_ACCESS_DENIED`, `rate_limit_error` → `ERR_MODEL_RATE_LIMITED`, `invalid_request_error` / `not_found_error` → `ERR_MODEL_REQUEST_REJECTED`, `api_error` / `overloaded_error` → `ERR_MODEL_UNAVAILABLE`. Anything still unnamed is `ERR_MODEL_UNAVAILABLE`. The vendor's name is never put in `error.data`; its message is in the error's message.
+
+`status` is in `error.data` whenever a response carried the failure, whichever row decided the code, and absent for a failure reported inside a 2xx body or a stream. `retryAfterSeconds` comes only from the standard `Retry-After` header.
+
+**`throwOnHttpError` changes nothing a caller can see but the wait.** With it set, `http-client` raises `ERR_HTTP_STATUS` before this module sees the response; that is classified from the status and body it carries, to the same codes — without `retryAfterSeconds`, since that error carries no headers.
+
+**The kinds decode the answer themselves.** A buffered call asks the request for the body as text, a streamed one as a stream — never as parsed JSON — so what a response's `Content-Type` claims decides nothing. One consequence for a request handed to a model kind: its own `success:` / `retryOn:` rule sees `status` and `headers` as usual, but `body` is undecoded text on a buffered call and a stream on a streamed one. One limit: a buffered body that breaks mid-transfer is reported by the transport as a network failure, so it arrives as `ERR_MODEL_UNREACHABLE`.
+
+A cancelled call is `ERR_INVOKE_CANCELLED`, never one of the model codes; a durable suspension and the kernel's contract errors (`ERR_INPUT_INVALID`, `ERR_OUTPUT_INVALID`, `ERR_CONTRACT_UNRESOLVABLE`, `ERR_SCHEMA_PROJECTION_UNRESOLVED`, `ERR_FUNCTION_FAILED`, `ERR_PREDICATE_NOT_BOOLEAN`) pass through unchanged.
+
+`OpenAI.ImageModel` and `OpenAI.EmbeddingModel` are not invocables and declare no `throws:`; they go through the same boundary, so a failed call on either carries the same codes.
+
+A failure **mid-stream rejects the iteration** rather than arriving as a data part — so it reaches
 `catches:`, a throws union and a `try:` step, and a consumer that forgets to look for an
 error part cannot silently truncate. Parts already emitted still reach the consumer, and
-the shipped encoders frame the rejection with its code.
+the shipped encoders frame the rejection with its code. A chat-completions stream is complete once a chunk carried a `finish_reason` or the `[DONE]` sentinel arrived; one that reaches `[DONE]` with no finish reason finishes `other`. A stream whose request is refused fails when it is first read, having read the refusal's explanation under a bound and released the response; a consumer that stops reading releases the transport.
 
 ## The account is an `Http.Client`
 

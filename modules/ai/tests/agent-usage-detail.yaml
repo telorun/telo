@@ -3,10 +3,10 @@ metadata:
   name: AgentUsageDetailTest
   version: 1.0.0
   description: |
-    The cached share of the prompt and the reasoning share of the completion,
-    when a model reports them: a streaming agent carries them per call on each
+    The cached and cache-written shares of the prompt and the reasoning share of
+    the completion, when a model reports them: a streaming agent carries them per call on each
     step-finish and summed on the finish, and a buffered agent returns the sum.
-    A model that reports neither leaves both absent — agent-stream-parts.yaml
+    A model that reports none leaves them absent — agent-stream-parts.yaml
     compares that usage whole.
 imports:
   Ai: ../
@@ -38,7 +38,7 @@ steps:
       model:
         kind: AiEcho.EchoModelStream
         emitToolCall: { name: work }
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, reasoningTokens: 3 }
+        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, cacheWritePromptTokens: 2, reasoningTokens: 3 }
       toolProviders:
         - provider: !ref localTools
     inputs: { prompt: go }
@@ -52,11 +52,11 @@ steps:
       actual: !cel "steps.parts.result.items.filter(p, p.type == 'step-finish' || p.type == 'finish').map(p, {'type': p.type, 'usage': p.usage})"
       expected:
         - type: step-finish
-          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, reasoningTokens: 3, unit: tokens, total: 15 }
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, cacheWritePromptTokens: 2, reasoningTokens: 3, unit: tokens, total: 15 }
         - type: step-finish
-          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, reasoningTokens: 3, unit: tokens, total: 15 }
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, cacheWritePromptTokens: 2, reasoningTokens: 3, unit: tokens, total: 15 }
         - type: finish
-          usage: { promptTokens: 20, completionTokens: 10, totalTokens: 30, cachedPromptTokens: 8, reasoningTokens: 6, unit: tokens, total: 30 }
+          usage: { promptTokens: 20, completionTokens: 10, totalTokens: 30, cachedPromptTokens: 8, cacheWritePromptTokens: 4, reasoningTokens: 6, unit: tokens, total: 30 }
 ---
 kind: Run.Sequence
 metadata: { name: buffered }
@@ -67,7 +67,7 @@ steps:
       model:
         kind: AiEcho.EchoModel
         emitToolCall: { name: work }
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, reasoningTokens: 3 }
+        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, cacheWritePromptTokens: 2, reasoningTokens: 3 }
       toolProviders:
         - provider: !ref localTools
     inputs: { prompt: go }
@@ -75,4 +75,4 @@ steps:
     invoke: !ref Assert.equals
     inputs:
       actual: !cel "steps.run.result.usage"
-      expected: { promptTokens: 20, completionTokens: 10, totalTokens: 30, cachedPromptTokens: 8, reasoningTokens: 6, unit: tokens, total: 30 }
+      expected: { promptTokens: 20, completionTokens: 10, totalTokens: 30, cachedPromptTokens: 8, cacheWritePromptTokens: 4, reasoningTokens: 6, unit: tokens, total: 30 }

@@ -9,8 +9,14 @@ import { create, createStream } from "../src/openai-chat-controller.js";
 
 let requestMock: ReturnType<typeof vi.fn>;
 
+/** A buffered answer as the request controller delivers one when asked for
+ *  text: the body undecoded. */
 function ok(body: unknown) {
-  return { status: 200, headers: { "content-type": "application/json" }, body };
+  return {
+    status: 200,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  };
 }
 
 /** An SSE response as the request controller delivers one: a byte stream. */

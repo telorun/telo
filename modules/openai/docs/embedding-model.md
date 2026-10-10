@@ -53,6 +53,10 @@ queryPrompt: "task: search result | query: {text}"
 passagePrompt: "title: none | text: {text}"
 ```
 
+## Failures
+
+A failed call raises one of the [model failure codes](../README.md#errors) — `ERR_MODEL_ACCESS_DENIED` for a refused key, `ERR_MODEL_RATE_LIMITED` for a rate limit, `ERR_MODEL_RESPONSE_INVALID` for a 2xx body that is not a JSON object. This kind is a provider and declares no `throws:`, so the codes are not part of a caller's checked union. The request is asked for its body as text, so a `success:` / `retryOn:` rule on it sees `body` undecoded.
+
 ## Options merging
 
 The request body is built as: `{ model, input, dimensions? }` ← the model's `options` ← the per-call `options` passed on `Embedding.Query` / `Embedding.Passage`. Shallow merge; the caller wins.

@@ -98,15 +98,15 @@ Message `content` may be a string or [content parts](../../ai/docs/ai-model.md#m
 | image by bytes (`data`) | yes — a `data:` URL | yes — a `data:` URL |
 | image by `http:` / `https:` `uri` | yes — the string as written | yes — the string as written |
 | file by bytes (`data`), with `name` (sent as its filename) | yes | yes |
-| file by bytes with no `name` | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
-| file by `http:` / `https:` `uri` | `ERR_CONTENT_UNSUPPORTED` | yes — the string as written |
-| any other `uri` scheme (`file:`, `s3:`, …) | `ERR_CONTENT_UNSUPPORTED`, `error.data.scheme` set | the same |
-| audio, video | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
-| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+| file by bytes with no `name` | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
+| file by `http:` / `https:` `uri` | `ERR_MODEL_CONTENT_UNSUPPORTED` | yes — the string as written |
+| any other `uri` scheme (`file:`, `s3:`, …) | `ERR_MODEL_CONTENT_UNSUPPORTED`, `error.data.scheme` set | the same |
+| audio, video | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
+| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
 
-`ERR_CONTENT_UNSUPPORTED` is raised while the request is built — by the call itself, on the streaming kind too, and before anything is sent. Its message names the part type, its media type and what the endpoint takes instead; `error.data.partType` is the refused part's `type`, and `error.data.scheme` the `uri`'s scheme when the scheme is the reason. A `uri` is passed to the endpoint exactly as written and never fetched here: the endpoint must be able to reach it. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](../../ai/docs/ai-model.md#modality-lives-in-the-parts), refused by the contract (`ERR_INPUT_INVALID`).
+`ERR_MODEL_CONTENT_UNSUPPORTED` is raised while the request is built — by the call itself, on the streaming kind too, and before anything is sent. Its message names the part type, its media type and what the endpoint takes instead; `error.data.partType` is the refused part's `type`, `error.data.mediaType` its media type when it has one, and `error.data.scheme` the `uri`'s scheme when the scheme is the reason. A `uri` is passed to the endpoint exactly as written and never fetched here: the endpoint must be able to reach it. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](../../ai/docs/ai-model.md#modality-lives-in-the-parts), refused by the contract (`ERR_INPUT_INVALID`).
 
-A file by bytes needs `name`: both APIs take the bytes beside a filename, so one without is refused here (`error.data.partType: file`, no `scheme`) rather than sent; a file by `uri` on the responses kinds needs none. The provider gates on no media type. At OpenAI's own endpoint a file by bytes on chat completions is a PDF; any other type is the endpoint's to accept or refuse, and a refusal is `ERR_OPENAI_REQUEST_FAILED`.
+A file by bytes needs `name`: both APIs take the bytes beside a filename, so one without is refused here (`error.data.partType: file`, no `scheme`) rather than sent; a file by `uri` on the responses kinds needs none. The provider gates on no media type. At OpenAI's own endpoint a file by bytes on chat completions is a PDF; any other type is the endpoint's to accept or refuse, and its refusal is the code its status and error name (usually `ERR_MODEL_REQUEST_REJECTED`).
 
 How a carried part lands on this API's wire:
 
@@ -115,7 +115,7 @@ How a carried part lands on this API's wire:
 
 ## Usage
 
-`usage` carries `promptTokens`, `completionTokens` and `totalTokens`, plus `cachedPromptTokens` (from `prompt_tokens_details.cached_tokens`) and `reasoningTokens` (from `completion_tokens_details.reasoning_tokens`) when the endpoint reports them. A compatible endpoint that omits the detail objects leaves both absent, which is not zero. The streaming kind asks for usage (`stream_options.include_usage`) and reports it on `finish`.
+`usage` carries `promptTokens`, `completionTokens` and `totalTokens`, plus `cachedPromptTokens` (from `prompt_tokens_details.cached_tokens`) and `reasoningTokens` (from `completion_tokens_details.reasoning_tokens`) when the endpoint reports them. A compatible endpoint that omits the detail objects leaves both absent, which is not zero. These endpoints cache a repeated prefix on their own: a part's `cacheBreakpoint` is dropped before the request is built, and no cache-write count is reported. The streaming kind asks for usage (`stream_options.include_usage`) and reports it on `finish`.
 
 ## Options
 
@@ -144,18 +144,22 @@ Nothing needs redacting here: the key belongs to the client's credential, whose 
 
 ## Errors
 
-| Code | When |
-| ---- | ---- |
-| `ERR_OPENAI_REQUEST_FAILED` | The endpoint refused the request or failed mid-stream. Carries the provider's message and the HTTP status. |
-| `ERR_CONTENT_UNSUPPORTED` | A well-formed content part this API cannot carry — see [Multimodal content](#multimodal-content). Raised by the call, before any request; `error.data` is `{ partType, scheme? }`. |
-| `ERR_OPENAI_INVALID_TOOL_ARGUMENTS` | The model asked for a tool with arguments that are not a JSON object. |
-| `ERR_INVALID_REFERENCE` | `request` did not resolve to a live `Http.Request` — a ref slot on a `with:`-scoped resource is not an injection site. |
+This kind raises only the failures [`Ai.Model` declares](../../ai/README.md#catching-a-models-errors) — the thirteen codes every provider raises — and restates the whole list in its `throws:`. How a status, the endpoint's own error object, a transport failure or an unreadable answer becomes one of them is the same for all four language kinds: [Errors](../README.md#errors).
 
-Every `Ai` operation holding one of these kinds passes the codes on, so a route over an `Ai.Text` or an `Ai.AgentStream` names them in `catches:` exactly as a route over the model does:
+| Code | On this API |
+| ---- | ---- |
+| `ERR_MODEL_CONTENT_UNSUPPORTED` | A well-formed content part this API cannot carry — see [the table above](#multimodal-content). Raised by the call, before any request; `error.data` is `{ partType, scheme?, mediaType? }`. |
+| `ERR_MODEL_TOOL_ARGUMENTS_INVALID` | The model asked for a tool with arguments that are not a JSON object, or the endpoint sent them as anything but JSON text; `error.data.tool` names it. |
+| `ERR_MODEL_REQUEST_REJECTED` | Beside the endpoint's own refusals: the request could not be built (`cause` holds the original). |
+| `ERR_MODEL_RESPONSE_INVALID` | A 2xx body that is not a JSON object or carries no `choices[0].message`; on the streaming kind, a malformed or oversized frame, a body that breaks mid-stream, or a stream that ends with neither a `finish_reason` nor `[DONE]`. On both: a member of the answer or of a frame has the wrong shape (`choices`, `message`, `delta`, `tool_calls`, a call's `function`), or it could not be read for any other reason (`cause` holds the original). |
+| `ERR_INVALID_REFERENCE` | `request` did not resolve to a live `Http.Request` — a ref slot on a `with:`-scoped resource is not an injection site. |
+| the other eight | By the endpoint's status and its own error object — a rate limit is `ERR_MODEL_RATE_LIMITED` with `error.data.retryAfterSeconds`, a bad key `ERR_MODEL_ACCESS_DENIED`, an over-long prompt `ERR_MODEL_CONTEXT_TOO_LONG`, and so on. |
+
+Every `Ai` operation holding this kind passes the codes on, so a route over an `Ai.Text` or an `Ai.AgentStream` names them in `catches:` exactly as a route over the model does:
 
 ```yaml
 catches:
-  - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+  - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
     status: 422
     content:
       application/json:
@@ -164,9 +168,9 @@ catches:
     content: { application/json: { body: { code: !cel "error.code" } } }
 ```
 
-A non-2xx response from `invoke` throws an actionable error built from the provider's `{ error: { message } }` body (falling back to the raw response text), prefixed with the HTTP status. No retry, no swallowing. Wrap in `try` / `catch` inside `Run.Sequence` if you want to handle them.
+A failed status carries the provider's explanation even on a streamed call: the body is read, under a bound, before the error is raised.
 
-For streaming calls, a non-OK response or a mid-stream failure **rejects the iteration** rather than being yielded as a part. Already-emitted text-delta parts still reach the consumer, and the generic encoders (`Ndjson.Encoder`, `Sse.Encoder`) catch the rejection and frame it — carrying the error's `code` when it has one — so a client still sees partial output plus one terminal error record. Rejecting is what makes the failure reachable from a manifest: a `catch:` can name it, which a data part never could.
+The request this kind is handed is asked for its body as text (as a stream on the streaming kind), never as parsed JSON, so a `success:` / `retryOn:` rule on that request sees `body` undecoded.
 
 ## Azure OpenAI / OpenAI-compatible gateways
 

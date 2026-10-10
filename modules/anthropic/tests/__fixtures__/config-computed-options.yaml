@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicComputedOptions
+  version: 1.0.0
+  description: Fixture — a model whose `options` bag is computed, so only the running application can see that it names the token cap the kind's own field holds.
+imports:
+  Anthropic: ../../
+  Http: ../../../http-client
+  Run: ../../../run
+variables:
+  cap:
+    env: ANTHROPIC_FIXTURE_CAP
+    type: integer
+    default: 5
+targets:
+  - !ref main
+---
+kind: Http.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:1/v1
+---
+kind: Http.Request
+metadata: { name: request }
+client: !ref client
+---
+kind: Anthropic.MessagesModel
+metadata: { name: computed }
+model: claude-test
+request: !ref request
+maxTokens: 256
+options: !cel "{'maxTokens': variables.cap}"
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: nothing
+    value: {}

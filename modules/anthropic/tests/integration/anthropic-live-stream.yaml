@@ -1,0 +1,82 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicLiveStream
+  version: 1.0.0
+  description: |
+    Live Messages API test of `Anthropic.MessagesModelStream`: the endpoint's
+    event stream read through `Ai.TextStream` — text deltas that join to the
+    answer, then the one `finish` carrying usage. Skips silently when
+    ANTHROPIC_API_KEY is unset.
+secrets:
+  anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" }
+imports:
+  Anthropic: ../../
+  Http: ../../../http-client
+  Ai: ../../../ai
+  Stream: ../../../stream
+  Run: ../../../run
+  Assert: ../../../assert
+targets:
+  - !ref liveStream
+---
+# The account: base URL and credential in one place.
+kind: Http.Client
+metadata: { name: anthropicClient }
+baseUrl: https://api.anthropic.com/v1
+timeout: 120000
+credential:
+  kind: Http.ApiKeyHeader
+  header: x-api-key
+  key: !cel "secrets.anthropicApiKey"
+---
+kind: Http.Request
+metadata: { name: anthropicRequest }
+client: !ref anthropicClient
+---
+kind: Anthropic.MessagesModelStream
+metadata: { name: live }
+model: claude-haiku-4-5
+request: !ref anthropicRequest
+maxTokens: 64
+options:
+  temperature: 0
+---
+kind: Ai.TextStream
+metadata: { name: textStream }
+model: !ref live
+---
+kind: Run.Sequence
+metadata: { name: liveStream }
+steps:
+  - name: guardEnv
+    if: !cel "secrets.anthropicApiKey != ''"
+    then:
+      - name: open
+        inputs:
+          prompt: "Reply with the single word: pong"
+        invoke: !ref textStream
+      - name: read
+        inputs: { input: !cel "steps.open.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: parts
+        value:
+          text: !cel "steps.read.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
+          last: !cel "steps.read.result.items[size(steps.read.result.items) - 1]"
+          finishes: !cel "size(steps.read.result.items.filter(p, p.type == 'finish'))"
+      - name: assertParts
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            saysPong: !cel "steps.parts.result.text.lowerAscii().contains('pong')"
+            finishes: !cel "steps.parts.result.finishes"
+            endsOn: !cel "steps.parts.result.last.type"
+            finishReason: !cel "steps.parts.result.last.finishReason"
+            countsPrompt: !cel "steps.parts.result.last.usage.promptTokens > 0"
+            countsCompletion: !cel "steps.parts.result.last.usage.completionTokens > 0"
+          expected:
+            saysPong: true
+            finishes: 1
+            endsOn: finish
+            finishReason: stop
+            countsPrompt: true
+            countsCompletion: true

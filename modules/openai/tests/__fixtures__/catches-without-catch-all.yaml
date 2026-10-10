@@ -64,7 +64,7 @@ routes:
       - status: 200
         content: { application/json: { body: { text: !cel "result.text" } } }
     catches:
-      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+      - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
         status: 422
         content: { application/json: { body: { via: model, partType: !cel "error.data.partType" } } }
   - request: { path: /text, method: POST }
@@ -77,7 +77,7 @@ routes:
       - status: 200
         content: { application/json: { body: { text: !cel "result.text" } } }
     catches:
-      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+      - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
         status: 422
         content: { application/json: { body: { via: text, partType: !cel "error.data.partType" } } }
   - request: { path: /agent-stream, method: POST }
@@ -93,7 +93,7 @@ routes:
           application/x-ndjson:
             encoder: { kind: Ndjson.Encoder }
     catches:
-      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+      - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
         status: 422
         content:
           application/json:
@@ -111,6 +111,6 @@ routes:
       - status: 200
         content: { application/json: { body: { text: !cel "result.text" } } }
     catches:
-      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+      - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
         status: 422
         content: { application/json: { body: { via: buffered, partType: !cel "error.data.partType" } } }

@@ -61,7 +61,7 @@ toolProviders:
 | Field           | Type            | Required | Purpose                                                                                  |
 | --------------- | --------------- | -------- | ---------------------------------------------------------------------------------------- |
 | `model`         | ref (`Ai.Model`)| yes      | The LLM that drives the loop.                                                            |
-| `system`        | string          | no       | Default system prompt. Runtime `inputs.system` wins.                                     |
+| `system`        | string or text parts | no  | Default system prompt — a string, or a non-empty list of text parts when one marks a [prompt-cache breakpoint](../README.md#prompt-caching). Runtime `inputs.system` wins. In this field a text part is exactly `{ type: text, text, cacheBreakpoint? }`; any other key is refused. |
 | `options`       | object          | no       | Option overrides passed to the model each turn (merged under `inputs.options`).          |
 | `maxSteps`      | integer         | no       | Max model turns. Default `8`. May be computed (`!cel "variables.maxSteps"`), resolved once at startup. |
 | `onMaxSteps`    | `throw\|return\|conclude` | no | At the cap without finishing — see [When the step budget runs out](#when-the-step-budget-runs-out). Default `throw`. |
@@ -90,7 +90,7 @@ Tools are listed lazily on first invoke and cached. A name clash across provider
 | ---------- | ------ | --------------------------------- | ------------------------------------------------------------ |
 | `prompt`   | string | exactly one of `prompt`/`messages`| Shorthand for `messages: [{ role: user, content: prompt }]`. |
 | `messages` | array  | exactly one of `prompt`/`messages`| Full turns.                                                  |
-| `system`   | string | no                                | Runtime system override (wins over manifest `system`).       |
+| `system`   | string or text parts | no                  | Runtime system override, in either form (wins over manifest `system`). A text part here is read as a message's is. |
 | `options`  | object | no                                | Per-call option overrides.                                   |
 | `context`  | object | no                                | Data from the caller for the tools to read — see [Caller context](#caller-context). Default `{}`. |
 | `approvals` | array | no                                | Decisions on the tool calls `messages` leaves pending: `{ toolCallId, approved, reason? }` each. An `approvals` entry beside `prompt` is refused — see [Resuming](#resuming-a-run-that-ended-asking). |
@@ -118,7 +118,7 @@ A call that does not satisfy them is `CONTRACT_INPUTS_MISMATCH` at its `inputs:`
 `{ text, usage, finishReason, limit?, steps, toolResults, messages, interrupt?, approvalRequests?, approvalDecisions?, providerState? }`:
 
 - `text` — the model's final answer. On a run that [ends asking](#when-the-run-ends-asking) it is the text of the assistant turn that asked, often empty; a resumed run that ends asking again before making any model call returns an empty string.
-- `usage` — token usage summed across every model call in the loop. `cachedPromptTokens` (the part of `promptTokens` read from a cache) and `reasoningTokens` (the part of `completionTokens` spent reasoning) are summed the same way when the model reports them, and absent when no call did — absent is not zero.
+- `usage` — token usage summed across every model call in the loop. `cachedPromptTokens` (the part of `promptTokens` read from a cache), `cacheWritePromptTokens` (the part written to one) and `reasoningTokens` (the part of `completionTokens` spent reasoning) are summed the same way when the model reports them, and absent when no call did — absent is not zero.
 - `finishReason` — from the final turn.
 - `limit` — `max-steps` when the step budget ended the run (`onMaxSteps: return` or `conclude`); absent when the model finished on its own.
 - `steps` — one entry per model call the run made, the answering and the concluding call included: `{ text, toolCalls }`. A run that [resumes](#resuming-a-run-that-ended-asking) pending calls adds no entry for them. A call's id is fixed when the model requests it — a model that supplies none gets a generated `call_<uuid>`, unique across runs — and its result's `toolCallId` and the replayed assistant message carry the same one. The number of entries is the run's `ai.agent.steps`.
@@ -131,7 +131,7 @@ A call that does not satisfy them is `CONTRACT_INPUTS_MISMATCH` at its `inputs:`
 
 ## Errors
 
-The agent throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION`, `ERR_AGENT_MAX_STEPS`, `ERR_AGENT_UNKNOWN_TOOL`, `ERR_AGENT_TOOL_COLLISION`, `ERR_AGENT_APPROVAL_UNKNOWN_TOOL`, `ERR_AGENT_APPROVAL_DECISION_INVALID` — **and whatever its model or its approver throws**, unchanged: the kind declares `throws: { inherit: true }`, so their declared codes are part of the agent's own throw union. A `catch:` step or a route's `catches:` may name them, and a list with no catch-all must cover them (`UNCOVERED_THROW_CODE`). See [Ai.Text → Errors](./ai-text.md#errors) for a route that does.
+The agent throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION`, `ERR_AGENT_MAX_STEPS`, `ERR_AGENT_UNKNOWN_TOOL`, `ERR_AGENT_TOOL_COLLISION`, `ERR_AGENT_APPROVAL_UNKNOWN_TOOL`, `ERR_AGENT_APPROVAL_DECISION_INVALID` — **and whatever its model or its approver throws**, unchanged: the kind declares `throws: { inherit: true }`, so their declared codes are part of the agent's own throw union. Every model raises the same [thirteen codes](../README.md#catching-a-models-errors), whichever provider it is. A `catch:` step or a route's `catches:` may name them, and a list with no catch-all must cover them (`UNCOVERED_THROW_CODE`). See [Ai.Text → Errors](./ai-text.md#errors) for a route that does.
 
 The shape of the call — its messages and their content parts included — is the declared input type's (`CONTRACT_INPUTS_MISMATCH` under `telo check`, `ERR_INPUT_INVALID` at dispatch); `ERR_INVALID_INPUT` is what the shape cannot state: both `prompt` and `messages`, or neither, and an `approvals` list that cannot be placed.
 

@@ -1,0 +1,422 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiModelFailuresOverHttp
+  version: 1.0.0
+  description: |
+    What a language kind raises through a real `Http.Request`, where the
+    transport's own behaviour is part of the answer:
+
+      - a 429 carrying `Retry-After` is `ERR_MODEL_RATE_LIMITED` with the wait;
+      - a 200 whose JSON body is cut short, and one that is HTML, are
+        `ERR_MODEL_RESPONSE_INVALID` on both dialects — the kinds ask for the
+        body as text and decode it themselves, so the content type a response
+        claims decides nothing;
+      - a 200 whose answer holds a tool call with no `function` is
+        `ERR_MODEL_RESPONSE_INVALID` too, not an uncoded error;
+      - a chat stream cut after a content chunk, and one that reports an error in
+        a frame, reject while they are drained;
+      - an endpoint nothing listens on is `ERR_MODEL_UNREACHABLE`, at the call for
+        a buffered kind and at the drain for a streaming one.
+
+    And a prompt-cache breakpoint never reaches this vendor, which caches on its
+    own: an agent whose `system` is a list of marked text parts, given a marked
+    user part, sends a request holding no marker on either dialect.
+
+    Offline: a local server scripted by model id, and under a second mount one
+    that answers with the request body it received as the answer text.
+imports:
+  OpenAI: ../
+  Ai: ../../ai
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Stream: ../../stream
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Client
+metadata: { name: fakeClient }
+baseUrl: http://localhost:8914/v1
+---
+kind: Http.Request
+metadata: { name: fakeRequest }
+client: !ref fakeClient
+---
+kind: Http.Client
+metadata: { name: echoClient }
+baseUrl: http://localhost:8914/echo/v1
+---
+kind: Http.Request
+metadata: { name: echoRequest }
+client: !ref echoClient
+---
+kind: Http.Client
+metadata: { name: nobodyClient }
+baseUrl: http://127.0.0.1:1/v1
+---
+kind: Http.Request
+metadata: { name: nobodyRequest }
+client: !ref nobodyClient
+---
+kind: OpenAI.ChatModel
+metadata: { name: limited }
+model: gpt-limited
+request: !ref fakeRequest
+---
+kind: OpenAI.ChatModel
+metadata: { name: cutChat }
+model: gpt-cut-json
+request: !ref fakeRequest
+---
+kind: OpenAI.ResponsesModel
+metadata: { name: cutResponses }
+model: gpt-cut-json
+request: !ref fakeRequest
+---
+kind: OpenAI.ChatModel
+metadata: { name: htmlChat }
+model: gpt-html
+request: !ref fakeRequest
+---
+kind: OpenAI.ChatModel
+metadata: { name: misshapenChat }
+model: gpt-misshapen
+request: !ref fakeRequest
+---
+kind: OpenAI.ChatModelStream
+metadata: { name: cutStream }
+model: gpt-cut-stream
+request: !ref fakeRequest
+---
+kind: OpenAI.ChatModelStream
+metadata: { name: errorStream }
+model: gpt-stream-error
+request: !ref fakeRequest
+---
+kind: OpenAI.ChatModel
+metadata: { name: nobody }
+model: gpt-test
+request: !ref nobodyRequest
+---
+kind: OpenAI.ChatModelStream
+metadata: { name: nobodyStream }
+model: gpt-test
+request: !ref nobodyRequest
+---
+kind: OpenAI.ChatModel
+metadata: { name: echoChat }
+model: gpt-test
+request: !ref echoRequest
+---
+kind: OpenAI.ResponsesModel
+metadata: { name: echoResponses }
+model: gpt-test
+request: !ref echoRequest
+---
+kind: Ai.Agent
+metadata: { name: chatAgent }
+model: !ref echoChat
+system:
+  - { type: text, text: You are terse., cacheBreakpoint: true }
+---
+kind: Ai.Agent
+metadata: { name: responsesAgent }
+model: !ref echoResponses
+system:
+  - { type: text, text: You are terse., cacheBreakpoint: true }
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+kind: Run.Value
+metadata: { name: marked }
+value:
+  messages:
+    - role: user
+      content:
+        - { type: text, text: describe this, cacheBreakpoint: true }
+        - { type: image, mediaType: image/png, data: aGk=, cacheBreakpoint: true }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeApi }
+    routes:
+      - request:
+          path: /chat/completions
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 429
+            when: !cel "request.body.model == 'gpt-limited'"
+            headers:
+              Retry-After: "7"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  error: { message: slow down }
+          - status: 200
+            when: !cel "request.body.model == 'gpt-cut-json'"
+            content:
+              text/plain:
+                schema: { type: string }
+                body: '{"choices": [{"mess'
+          - status: 200
+            when: !cel "request.body.model == 'gpt-html'"
+            content:
+              text/html:
+                schema: { type: string }
+                body: <html>bad gateway</html>
+          - status: 200
+            when: !cel "request.body.model == 'gpt-misshapen'"
+            content:
+              text/plain:
+                schema: { type: string }
+                body: '{"choices": [{"message": {"tool_calls": [{"id": "a"}]}}]}'
+          - status: 200
+            when: !cel "request.body.model == 'gpt-cut-stream'"
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  data: {"choices":[{"delta":{"content":"half an ans"}}]}
+          # Every other model id: the stream that reports an error in a frame.
+          - status: 200
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  data: {"choices":[{"delta":{"content":"partial"}}]}
+
+                  data: {"error":{"code":"rate_limit_exceeded","message":"too many requests"}}
+
+                  data: [DONE]
+      - request:
+          path: /responses
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 200
+            content:
+              text/plain:
+                schema: { type: string }
+                body: '{"status": "completed", "outp'
+  # The echoing answers live under their own mount: a route serializes every
+  # answer of one status with one schema, so an object body cannot share a route
+  # with the text bodies above.
+  - kind: Server.Api
+    metadata: { name: EchoApi }
+    routes:
+      - request:
+          path: /chat/completions
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  choices:
+                    - message: { content: !cel "json(request.body)" }
+                      finish_reason: stop
+                  usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 }
+      - request:
+          path: /responses
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  status: completed
+                  output:
+                    - type: message
+                      content:
+                        - type: output_text
+                          text: !cel "json(request.body)"
+                  usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 }
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 8914
+    baseUrl: http://localhost:8914
+    openapi:
+      info: { title: Fake OpenAI API, version: 1.0.0 }
+    mounts:
+      - path: /v1
+        mount: !ref FakeApi
+      - path: /echo/v1
+        mount: !ref EchoApi
+targets:
+  - !ref FakeServer
+steps:
+  - name: rateLimited
+    try:
+      - name: limitedCall
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref limited
+      - name: limitedUnreachable
+        throw: { code: TEST_FAILED, message: the rate-limited call did not raise }
+    catch:
+      - name: limitedSeen
+        value: { code: !cel "error.code", data: !cel "error.data" }
+  - name: cutChatBody
+    try:
+      - name: cutChatCall
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref cutChat
+      - name: cutChatUnreachable
+        throw: { code: TEST_FAILED, message: a cut chat body was read as an answer }
+    catch:
+      - name: cutChatSeen
+        value: !cel "error.code"
+  - name: cutResponsesBody
+    try:
+      - name: cutResponsesCall
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref cutResponses
+      - name: cutResponsesUnreachable
+        throw: { code: TEST_FAILED, message: a cut responses body was read as an answer }
+    catch:
+      - name: cutResponsesSeen
+        value: !cel "error.code"
+  - name: htmlBody
+    try:
+      - name: htmlCall
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref htmlChat
+      - name: htmlUnreachable
+        throw: { code: TEST_FAILED, message: an HTML body was read as an answer }
+    catch:
+      - name: htmlSeen
+        value: !cel "error.code"
+  - name: misshapenBody
+    try:
+      - name: misshapenCall
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref misshapenChat
+      - name: misshapenUnreachable
+        throw: { code: TEST_FAILED, message: a tool call with no function was read as an answer }
+    catch:
+      - name: misshapenSeen
+        value: !cel "error.code"
+  # A streamed failure arrives while the handle is DRAINED, never at invoke.
+  - name: cutStreamOpen
+    inputs: { messages: [{ role: user, content: hello }] }
+    invoke: !ref cutStream
+  - name: cutStreamDrain
+    try:
+      - name: cutStreamParts
+        inputs: { input: !cel "steps.cutStreamOpen.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: cutStreamUnreachable
+        throw: { code: TEST_FAILED, message: a cut stream finished cleanly }
+    catch:
+      - name: cutStreamSeen
+        value: !cel "error.code"
+  - name: errorStreamOpen
+    inputs: { messages: [{ role: user, content: hello }] }
+    invoke: !ref errorStream
+  - name: errorStreamDrain
+    try:
+      - name: errorStreamParts
+        inputs: { input: !cel "steps.errorStreamOpen.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: errorStreamUnreachable
+        throw: { code: TEST_FAILED, message: an error frame was ignored }
+    catch:
+      - name: errorStreamSeen
+        value: { code: !cel "error.code", data: !cel "error.data" }
+  - name: nobodyListens
+    try:
+      - name: nobodyCall
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref nobody
+      - name: nobodyUnreachable
+        throw: { code: TEST_FAILED, message: a call to nothing answered }
+    catch:
+      - name: nobodySeen
+        value: !cel "error.code"
+  - name: nobodyStreamOpen
+    inputs: { messages: [{ role: user, content: hello }] }
+    invoke: !ref nobodyStream
+  - name: nobodyStreamDrain
+    try:
+      - name: nobodyStreamParts
+        inputs: { input: !cel "steps.nobodyStreamOpen.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: nobodyStreamUnreachable
+        throw: { code: TEST_FAILED, message: a stream from nothing answered }
+    catch:
+      - name: nobodyStreamSeen
+        value: !cel "error.code"
+  - name: assertFailures
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        rateLimited: !cel "steps.limitedSeen.result"
+        cutChat: !cel "steps.cutChatSeen.result"
+        cutResponses: !cel "steps.cutResponsesSeen.result"
+        html: !cel "steps.htmlSeen.result"
+        misshapen: !cel "steps.misshapenSeen.result"
+        cutStream: !cel "steps.cutStreamSeen.result"
+        errorStream: !cel "steps.errorStreamSeen.result"
+        nobody: !cel "steps.nobodySeen.result"
+        nobodyStream: !cel "steps.nobodyStreamSeen.result"
+      expected:
+        rateLimited: { code: ERR_MODEL_RATE_LIMITED, data: { status: 429, retryAfterSeconds: 7 } }
+        cutChat: ERR_MODEL_RESPONSE_INVALID
+        cutResponses: ERR_MODEL_RESPONSE_INVALID
+        html: ERR_MODEL_RESPONSE_INVALID
+        misshapen: ERR_MODEL_RESPONSE_INVALID
+        cutStream: ERR_MODEL_RESPONSE_INVALID
+        errorStream: { code: ERR_MODEL_RATE_LIMITED, data: {} }
+        nobody: ERR_MODEL_UNREACHABLE
+        nobodyStream: ERR_MODEL_UNREACHABLE
+
+  - name: marks
+    invoke: !ref marked
+  - name: viaChat
+    inputs: !cel "steps.marks.result"
+    invoke: !ref chatAgent
+  - name: viaResponses
+    inputs: !cel "steps.marks.result"
+    invoke: !ref responsesAgent
+  - name: assertNoMarker
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        chat: !cel "parseJson(steps.viaChat.result.text)"
+        responses: !cel "parseJson(steps.viaResponses.result.text)"
+      expected:
+        chat:
+          model: gpt-test
+          messages:
+            - { role: system, content: You are terse. }
+            - role: user
+              content:
+                - { type: text, text: describe this }
+                - { type: image_url, image_url: { url: "data:image/png;base64,aGk=" } }
+          stream: false
+        responses:
+          model: gpt-test
+          instructions: You are terse.
+          input:
+            - role: user
+              content:
+                - { type: input_text, text: describe this }
+                - { type: input_image, image_url: "data:image/png;base64,aGk=" }

@@ -119,7 +119,7 @@ schema:
 kind: Telo.JsonSchema
 metadata:
   name: ContentPart
-  description: One piece of a conversation turn — text, an image, audio, video, a document, a tool call, reasoning, a citation or a refusal. A media part carries its media type and either its bytes or an absolute URI to them, plus an optional file name, so a document is a matter of value rather than of a separate kind.
+  description: One piece of a conversation turn — text, an image, audio, video, a document, a tool call, reasoning, a citation or a refusal. A media part carries its media type and either its bytes or an absolute URI to them, plus an optional file name, so a document is a matter of value rather than of a separate kind. A part a caller sends may mark a prompt-cache breakpoint.
 schema:
   type: object
   additionalProperties: false
@@ -180,18 +180,36 @@ schema:
       description: What a `citation` part points at.
       type: object
       additionalProperties: true
+    cacheBreakpoint:
+      type: boolean
+      description: >-
+        Marks a prompt-cache breakpoint: the request from its start through this
+        part — the tools and system prompt before it included — is a prefix the
+        caller expects to send again unchanged. A hint, never a requirement: a
+        model that caches on its own ignores it, one that takes a limited number
+        honours the last ones in request order, and the answer is the same either
+        way. `false` is the same as absent. Only on a part a caller sends — text,
+        image, audio, video or file.
   # What each `type` must carry, as one branch per group of types. A branch names
   # its types and requires `type`, so a part is judged by the branch it plainly is.
+  # A part a model produces forbids `cacheBreakpoint` with a `false` property, so
+  # the finding names the key.
   anyOf:
     - required: [type, text]
       properties:
-        type: { enum: [text, reasoning, refusal] }
+        type: { const: text }
+    - required: [type, text]
+      properties:
+        type: { enum: [reasoning, refusal] }
+        cacheBreakpoint: false
     - required: [type, toolCall]
       properties:
         type: { const: tool-call }
+        cacheBreakpoint: false
     - required: [type, citation]
       properties:
         type: { const: citation }
+        cacheBreakpoint: false
     - required: [type, mediaType]
       properties:
         type: { enum: [image, audio, video, file] }
@@ -204,6 +222,34 @@ schema:
         data:
           properties:
             uri: false
+---
+# SystemPrompt — what the four operations take as `system`.
+#
+# Text, or text parts: the list form exists so the prompt can carry a cache
+# breakpoint, which a string has nowhere to hold. An agent's largest stable
+# prefix is its tools plus its system prompt, and a breakpoint on a later user
+# message does not cover it.
+#
+# Named by `!ref` in each operation's input contract — the form that carries the
+# shape into an importer's analysis. Each operation's resource field holds a
+# copy written inline, with the text part written out too, which the module's
+# unit test holds to this shape and to ContentPart.
+kind: Telo.JsonSchema
+metadata:
+  name: SystemPrompt
+  description: A system prompt — plain text, or a non-empty list of text parts when one of them marks a prompt-cache breakpoint.
+schema:
+  anyOf:
+    - type: string
+      contentMediaType: text/markdown
+      x-telo-widget: code
+    - type: array
+      minItems: 1
+      items:
+        allOf:
+          - $ref: "telo:AI/ContentPart"
+          - properties:
+              type: { const: text }
 ---
 # Ai.StreamPart — the same content, arriving in pieces.
 #
@@ -467,13 +513,18 @@ schema:
 kind: Telo.JsonSchema
 metadata:
   name: TokenUsage
-  description: What a request consumed in tokens, as a provider reports it — the prompt, completion and total counts, how many prompt tokens were served from a cache and how many completion tokens were spent reasoning when the endpoint says, optionally already carrying the provider-neutral unit and total.
+  description: What a request consumed in tokens, as a provider reports it — the prompt, completion and total counts, how many prompt tokens were served from a cache or written to one and how many completion tokens were spent reasoning when the endpoint says, optionally already carrying the provider-neutral unit and total.
 schema:
   type: object
   additionalProperties: false
   required: [promptTokens, completionTokens, totalTokens]
   properties:
-    promptTokens: { type: integer, minimum: 0 }
+    promptTokens:
+      type: integer
+      minimum: 0
+      description: >-
+        The whole prompt, the shares read from a cache and written to one
+        included.
     completionTokens: { type: integer, minimum: 0 }
     totalTokens: { type: integer, minimum: 0 }
     cachedPromptTokens:
@@ -482,6 +533,12 @@ schema:
       description: >-
         How many of `promptTokens` were read from a cache. Absent when the endpoint
         does not say, which is not the same as zero.
+    cacheWritePromptTokens:
+      type: integer
+      minimum: 0
+      description: >-
+        How many of `promptTokens` were written to a cache on this call. Absent
+        when the endpoint does not say, which is not the same as zero.
     reasoningTokens:
       type: integer
       minimum: 0
@@ -496,13 +553,18 @@ schema:
 kind: Telo.JsonSchema
 metadata:
   name: Usage
-  description: What a request consumed, as an operation reports it — the prompt/completion token triple, the cached share of the prompt and the reasoning share of the completion when the model reports them, plus a provider-neutral unit and total so spend can be summed across modalities.
+  description: What a request consumed, as an operation reports it — the prompt/completion token triple, the cached and cache-written shares of the prompt and the reasoning share of the completion when the model reports them, plus a provider-neutral unit and total so spend can be summed across modalities.
 schema:
   type: object
   additionalProperties: false
   required: [promptTokens, completionTokens, totalTokens, unit, total]
   properties:
-    promptTokens: { type: integer, minimum: 0 }
+    promptTokens:
+      type: integer
+      minimum: 0
+      description: >-
+        The whole prompt, the shares read from a cache and written to one
+        included.
     completionTokens: { type: integer, minimum: 0 }
     totalTokens: { type: integer, minimum: 0 }
     cachedPromptTokens:
@@ -511,6 +573,12 @@ schema:
       description: >-
         How many of `promptTokens` were read from a cache. Absent when the model
         does not report it, which is not the same as zero.
+    cacheWritePromptTokens:
+      type: integer
+      minimum: 0
+      description: >-
+        How many of `promptTokens` were written to a cache on this call. Absent
+        when the model does not report it, which is not the same as zero.
     reasoningTokens:
       type: integer
       minimum: 0
@@ -550,6 +618,155 @@ metadata:
     the finished content, token usage and a finish reason come back. Providers
     implement it for their own endpoint; consumers hold one and call it.
 capability: Telo.Invocable
+# The failure ceiling. Every kind that extends this abstract restates the whole
+# list — a kind with no `throws:` is read as throwing nothing — and may raise no
+# code outside it, so a `catches:` written against the abstract holds for any
+# provider. The code is the retry contract: rate-limited, unavailable, timeout,
+# unreachable, tool-arguments-invalid and response-invalid may be tried again;
+# the rest fail the same way until the request or the account changes. `status`
+# is present only when an HTTP response carried the failure.
+throws:
+  codes:
+    ERR_MODEL_ACCESS_DENIED:
+      description: >-
+        The credential was refused, or it has no permission for the model. Trying
+        again with the same credential fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_RATE_LIMITED:
+      description: >-
+        The endpoint asked the caller to slow down. Worth trying again, after
+        `retryAfterSeconds` when the endpoint named a wait.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_QUOTA_EXCEEDED:
+      description: >-
+        The account's credit or plan is exhausted. Trying again fails until the
+        account changes.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNAVAILABLE:
+      description: >-
+        The provider is overloaded or failing on its side, including a failure it
+        reported after the answer had begun. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_TIMEOUT:
+      description: >-
+        No complete response arrived in time, so whether the request ran is
+        unknown. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNREACHABLE:
+      description: >-
+        Nothing answered: the connection was refused, the host name did not
+        resolve, or the secure handshake failed. Worth trying again.
+    ERR_MODEL_CONTEXT_TOO_LONG:
+      description: >-
+        The input exceeds the model's context window or the endpoint's request
+        size limit. The same input fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_REFUSED:
+      description: >-
+        The endpoint rejected the request on content-policy grounds. A model's own
+        refusal given as its answer is not this: that arrives as a `refusal` part
+        with the finish reason `content-filter`.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_REQUEST_REJECTED:
+      description: >-
+        The endpoint refused the request as one it cannot serve, the provider
+        refused it before sending, or the request failed in a way nothing else
+        here names. The same request fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_UNSUPPORTED:
+      description: >-
+        A well-formed content part this endpoint cannot carry. Raised before
+        anything is sent, so no part of the message reaches the model.
+      data:
+        type: object
+        required: [partType]
+        properties:
+          partType:
+            type: string
+            description: The `type` of the content part that was refused.
+          scheme:
+            type: string
+            description: >-
+              The scheme of the part's `uri`, lowercased, when the scheme is why
+              it was refused.
+          mediaType:
+            type: string
+            description: The part's media type, when it has one.
+    ERR_MODEL_TOOL_ARGUMENTS_INVALID:
+      description: >-
+        The model asked for a tool with arguments that are not a JSON object.
+        Raised rather than passed on as empty arguments, which would run the tool
+        with a different request than the model made. Worth trying again.
+      data:
+        type: object
+        required: [tool]
+        properties:
+          tool:
+            type: string
+            description: The name of the tool the model asked for.
+    ERR_MODEL_RESPONSE_INVALID:
+      description: >-
+        The endpoint reported success but the answer cannot be read: a body that
+        is not the expected document, a malformed or oversized stream frame, or a
+        stream that ended before the answer was complete. Worth trying again.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        A resource the model depends on did not resolve to a live instance. A
+        wiring failure, not a request failure.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -677,6 +894,157 @@ metadata:
     are written, a terminal record with usage — as it is generated. A failure rejects
     the call or the iteration rather than yielding an error part.
 capability: Telo.Invocable
+# The failure ceiling, the same list as Ai.Model's — Ai.Buffered is a model that
+# throws whatever its streaming model throws, so a code on one list only would
+# make the other false. Every kind that extends this abstract restates the whole
+# list — a kind with no `throws:` is read as throwing nothing — and may raise no
+# code outside it, so a `catches:` written against the abstract holds for any
+# provider. The code is the retry contract: rate-limited, unavailable, timeout,
+# unreachable, tool-arguments-invalid and response-invalid may be tried again;
+# the rest fail the same way until the request or the account changes. `status`
+# is present only when an HTTP response carried the failure.
+throws:
+  codes:
+    ERR_MODEL_ACCESS_DENIED:
+      description: >-
+        The credential was refused, or it has no permission for the model. Trying
+        again with the same credential fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_RATE_LIMITED:
+      description: >-
+        The endpoint asked the caller to slow down. Worth trying again, after
+        `retryAfterSeconds` when the endpoint named a wait.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_QUOTA_EXCEEDED:
+      description: >-
+        The account's credit or plan is exhausted. Trying again fails until the
+        account changes.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNAVAILABLE:
+      description: >-
+        The provider is overloaded or failing on its side, including a failure it
+        reported after the answer had begun. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_TIMEOUT:
+      description: >-
+        No complete response arrived in time, so whether the request ran is
+        unknown. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNREACHABLE:
+      description: >-
+        Nothing answered: the connection was refused, the host name did not
+        resolve, or the secure handshake failed. Worth trying again.
+    ERR_MODEL_CONTEXT_TOO_LONG:
+      description: >-
+        The input exceeds the model's context window or the endpoint's request
+        size limit. The same input fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_REFUSED:
+      description: >-
+        The endpoint rejected the request on content-policy grounds. A model's own
+        refusal given as its answer is not this: that arrives as a `refusal` part
+        with the finish reason `content-filter`.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_REQUEST_REJECTED:
+      description: >-
+        The endpoint refused the request as one it cannot serve, the provider
+        refused it before sending, or the request failed in a way nothing else
+        here names. The same request fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_UNSUPPORTED:
+      description: >-
+        A well-formed content part this endpoint cannot carry. Raised before
+        anything is sent, so no part of the message reaches the model.
+      data:
+        type: object
+        required: [partType]
+        properties:
+          partType:
+            type: string
+            description: The `type` of the content part that was refused.
+          scheme:
+            type: string
+            description: >-
+              The scheme of the part's `uri`, lowercased, when the scheme is why
+              it was refused.
+          mediaType:
+            type: string
+            description: The part's media type, when it has one.
+    ERR_MODEL_TOOL_ARGUMENTS_INVALID:
+      description: >-
+        The model asked for a tool with arguments that are not a JSON object.
+        Raised rather than passed on as empty arguments, which would run the tool
+        with a different request than the model made. Worth trying again.
+      data:
+        type: object
+        required: [tool]
+        properties:
+          tool:
+            type: string
+            description: The name of the tool the model asked for.
+    ERR_MODEL_RESPONSE_INVALID:
+      description: >-
+        The endpoint reported success but the answer cannot be read: a body that
+        is not the expected document, a malformed or oversized stream frame, or a
+        stream that ended before the answer was complete. Worth trying again.
+    ERR_INVALID_REFERENCE:
+      description: >-
+        A resource the model depends on did not resolve to a live instance. A
+        wiring failure, not a request failure.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -773,7 +1141,7 @@ inputType:
       messages:
         type: array
         items: !ref Message
-      system: { type: string }
+      system: !ref SystemPrompt
       options: { type: object, additionalProperties: true }
     additionalProperties: false
 outputType:
@@ -799,10 +1167,27 @@ schema:
         use: call
     system:
       title: System prompt
-      description: Default system message. Runtime inputs.system takes precedence when set.
-      type: string
-      contentMediaType: text/markdown
-      x-telo-widget: code
+      description: >-
+        Default system message: text, or a non-empty list of text parts when one
+        marks a prompt-cache breakpoint. Runtime inputs.system takes precedence
+        when set.
+      # The SystemPrompt shape, written out with its text part: a kind's schema
+      # reaches an unexported shape by reference only in some check orders. Held
+      # to the shape and to ContentPart's text part by the module's unit test.
+      anyOf:
+        - type: string
+          contentMediaType: text/markdown
+          x-telo-widget: code
+        - type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, text]
+            properties:
+              type: { const: text }
+              text: { type: string }
+              cacheBreakpoint: { type: boolean }
     options:
       title: Options
       description: Completion-level option overrides. Shallow-merged between the model's options and runtime inputs.options; downstream wins.
@@ -861,7 +1246,7 @@ inputType:
       messages:
         type: array
         items: !ref Message
-      system: { type: string }
+      system: !ref SystemPrompt
       options: { type: object, additionalProperties: true }
     additionalProperties: false
 outputType:
@@ -893,10 +1278,27 @@ schema:
         use: [call, trigger.consumer]
     system:
       title: System prompt
-      description: Default system message. Runtime inputs.system takes precedence when set.
-      type: string
-      contentMediaType: text/markdown
-      x-telo-widget: code
+      description: >-
+        Default system message: text, or a non-empty list of text parts when one
+        marks a prompt-cache breakpoint. Runtime inputs.system takes precedence
+        when set.
+      # The SystemPrompt shape, written out with its text part: a kind's schema
+      # reaches an unexported shape by reference only in some check orders. Held
+      # to the shape and to ContentPart's text part by the module's unit test.
+      anyOf:
+        - type: string
+          contentMediaType: text/markdown
+          x-telo-widget: code
+        - type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, text]
+            properties:
+              type: { const: text }
+              text: { type: string }
+              cacheBreakpoint: { type: boolean }
     options:
       title: Options
       description: Per-resource option overrides. Shallow-merged with the model's options and runtime inputs.options; downstream wins.
@@ -1179,7 +1581,7 @@ inputType:
       messages:
         type: array
         items: !ref Message
-      system: { type: string }
+      system: !ref SystemPrompt
       options: { type: object, additionalProperties: true }
       context:
         description: >-
@@ -1336,10 +1738,27 @@ schema:
         use: call
     system:
       title: System prompt
-      description: Default system message. Runtime inputs.system takes precedence when set.
-      type: string
-      contentMediaType: text/markdown
-      x-telo-widget: code
+      description: >-
+        Default system message: text, or a non-empty list of text parts when one
+        marks a prompt-cache breakpoint. Runtime inputs.system takes precedence
+        when set.
+      # The SystemPrompt shape, written out with its text part: a kind's schema
+      # reaches an unexported shape by reference only in some check orders. Held
+      # to the shape and to ContentPart's text part by the module's unit test.
+      anyOf:
+        - type: string
+          contentMediaType: text/markdown
+          x-telo-widget: code
+        - type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, text]
+            properties:
+              type: { const: text }
+              text: { type: string }
+              cacheBreakpoint: { type: boolean }
     options:
       title: Options
       description: Completion-level option overrides passed to the model each turn.
@@ -1647,7 +2066,7 @@ inputType:
       messages:
         type: array
         items: !ref Message
-      system: { type: string }
+      system: !ref SystemPrompt
       options: { type: object, additionalProperties: true }
       providerState:
         description: >-
@@ -1723,10 +2142,27 @@ schema:
         use: [call, trigger.consumer]
     system:
       title: System prompt
-      description: Default system message. Runtime inputs.system takes precedence when set.
-      type: string
-      contentMediaType: text/markdown
-      x-telo-widget: code
+      description: >-
+        Default system message: text, or a non-empty list of text parts when one
+        marks a prompt-cache breakpoint. Runtime inputs.system takes precedence
+        when set.
+      # The SystemPrompt shape, written out with its text part: a kind's schema
+      # reaches an unexported shape by reference only in some check orders. Held
+      # to the shape and to ContentPart's text part by the module's unit test.
+      anyOf:
+        - type: string
+          contentMediaType: text/markdown
+          x-telo-widget: code
+        - type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, text]
+            properties:
+              type: { const: text }
+              text: { type: string }
+              cacheBreakpoint: { type: boolean }
     options:
       title: Options
       description: Completion-level option overrides passed to the model each turn.

@@ -391,8 +391,9 @@ steps:
     invoke:
       kind: Assert.Equals
 
-  # A failed run RAISES, carrying the endpoint's own words — the same code and
-  # shape the streaming half uses, so one `catches:` covers both.
+  # A failed run RAISES, carrying the endpoint's own words, classified by the
+  # error it names — one that names nothing is `ERR_MODEL_UNAVAILABLE`, as the
+  # streaming half reports it.
   - name: failedRun
     try:
       - name: failedCall
@@ -409,6 +410,6 @@ steps:
           actual:
             code: !cel "error.code"
             carriesMessage: !cel "error.message.contains('caught fire')"
-          expected: { code: ERR_OPENAI_REQUEST_FAILED, carriesMessage: true }
+          expected: { code: ERR_MODEL_UNAVAILABLE, carriesMessage: true }
         invoke:
           kind: Assert.Equals

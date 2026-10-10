@@ -45,6 +45,7 @@ import {
   type Message,
   type ModelInvokeInput,
   type StreamPart,
+  type SystemPrompt,
   type ToolApproval,
   type ToolCall,
   type Usage,
@@ -65,7 +66,7 @@ import {
 interface AiAgentStreamResource extends StepBudgetConfig {
   metadata: { name: string; module?: string };
   model: AiModelStreamInstance;
-  system?: string;
+  system?: SystemPrompt;
   options?: Record<string, unknown>;
   onToolError?: "feedback" | "throw";
   maxToolResultBytes?: number | bigint;
@@ -77,7 +78,7 @@ interface AiAgentStreamResource extends StepBudgetConfig {
 interface AiAgentStreamInputs {
   prompt?: string;
   messages?: Message[];
-  system?: string;
+  system?: SystemPrompt;
   options?: Record<string, unknown>;
   /** Opaque state a previous run's `provider-state` part carried, handed to the
    *  first model call so a conversation's reasoning continues across turns. */

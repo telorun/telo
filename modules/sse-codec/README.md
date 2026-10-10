@@ -75,6 +75,42 @@ response.write(sseComment("keepalive", "My.Mount 'admin'"));
 neither an object nor a string, a `type` or `id` holding a line break, a
 comment holding one.
 
+## Reading frames from another module's controller
+
+A controller that receives an event stream — a provider reading a streamed HTTP
+response — parses it with the reader `Sse.Decoder` runs, from the same code
+entry:
+
+```ts
+import { readSseRecords } from "@telorun/sse-codec";
+
+for await (const record of readSseRecords(body, "My.Client 'feed'", { maxFrameBytes: 1 << 20 })) {
+  handle(record.event, record.data);
+}
+```
+
+| Function | Returns |
+| --- | --- |
+| `readSseRecords(input, owner, bounds?)` | an async generator of `{ event, data, id?, retry? }`, one per dispatched frame, by the decoder's rules |
+
+`input` is an async iterable of byte chunks (or text). Each record is yielded as
+its frame completes, and a consumer that stops early returns `input`, so a
+transport behind it is told nobody is reading. A failure of `input` itself passes
+through unchanged.
+
+Two bounds keep a broken or hostile peer from turning a stream into memory:
+
+- **A line** — more than 1 MiB arriving with no line terminator is refused. Always
+  applied, and the only bound `Sse.Decoder` applies.
+- **A frame** — `bounds.maxFrameBytes`, when given, is the most payload one frame
+  may accumulate across its `data:` lines before the blank line that ends it,
+  each line counted with the newline that joins it. Without it a frame is
+  unbounded.
+
+Both refusals, and a chunk that is neither bytes nor text, are `ERR_INVALID_INPUT`
+naming `owner`. A reader with a failure vocabulary of its own re-raises them
+under its own code.
+
 ## Example
 
 ```yaml

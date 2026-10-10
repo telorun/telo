@@ -1,0 +1,56 @@
+kind: Telo.Application
+metadata:
+  name: ModelFailureCeilingTest
+  version: 1.0.0
+  description: |
+    `Ai.Model` and `Ai.ModelStream` declare the failures any model may raise, and
+    the list is a ceiling. A provider kind declaring a code outside it is refused
+    where it is declared and again from an application that imports it, which
+    cannot start. A route over a model its library is merely handed — constrained
+    by kind, so no provider is in sight — covers exactly those codes with no
+    catch-all; there, a vendor's own code is undeclared, and a
+    misspelled member of a code's declared data is an unknown field.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref outsideTheCeiling
+  - !ref outsideTheCeilingAtRuntime
+  - !ref kindOnlyRouteCovered
+  - !ref staleCodeAndMisspelledData
+---
+kind: Assert.Manifest
+metadata: { name: outsideTheCeiling }
+source: ./__fixtures__/model-ceiling/lib/telo.yaml
+expect:
+  errors:
+    - code: THROWS_NOT_SUBSTITUTABLE
+      message: "'VendorModel': throws 'ERR_VENDOR_DOWN', which 'AI.Model' does not declare"
+    - code: THROWS_NOT_SUBSTITUTABLE
+      message: "'VendorModelStream': throws 'ERR_VENDOR_STREAM_DOWN', which 'AI.ModelStream' does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: outsideTheCeilingAtRuntime }
+source: ./__fixtures__/model-ceiling/telo.yaml
+expect:
+  errors:
+    - code: THROWS_NOT_SUBSTITUTABLE
+      message: "'VendorModel': throws 'ERR_VENDOR_DOWN', which 'AI.Model' does not declare"
+    - code: THROWS_NOT_SUBSTITUTABLE
+      message: "'VendorModelStream': throws 'ERR_VENDOR_STREAM_DOWN', which 'AI.ModelStream' does not declare"
+  runFails: "Manifest validation failed"
+---
+kind: Assert.Manifest
+metadata: { name: kindOnlyRouteCovered }
+source: ./__fixtures__/model-catches/telo.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: staleCodeAndMisspelledData }
+source: ./__fixtures__/model-catches-stale/telo.yaml
+expect:
+  errors:
+    - code: UNDECLARED_THROW_CODE
+      message: "catches[4] references code 'ERR_VENDOR_REQUEST_FAILED' which is not in the handler's declared throw union"
+    - code: CEL_UNKNOWN_FIELD
+      message: "error.data.'staus' is not defined (available: status)"

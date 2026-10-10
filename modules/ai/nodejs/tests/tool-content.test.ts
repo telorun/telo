@@ -24,7 +24,18 @@ describe("a tool's result as message content", () => {
     ]);
   });
 
+  it("carries a part marking a cache breakpoint, on the parts a caller sends", () => {
+    const marked = [
+      { type: "text", text: "the manual", cacheBreakpoint: true },
+      { type: "file", mediaType: "application/pdf", name: "a.pdf", data: "aGk=", cacheBreakpoint: true },
+    ];
+    expect(toToolContent(marked)).toEqual(marked);
+    expect(toToolContent(marked[0])).toEqual([marked[0]]);
+  });
+
   it.each([
+    ["a cache breakpoint on a part a model produces", { type: "reasoning", text: "hm", cacheBreakpoint: true }],
+    ["a cache breakpoint that is not a boolean", { type: "text", text: "hi", cacheBreakpoint: "yes" }],
     ["neither bytes nor a URI", { type: "image", mediaType: "image/png" }],
     ["both", { type: "image", mediaType: "image/png", data: "aGk=", uri: "https://example.com/a.png" }],
     ["no media type", { type: "file", uri: "https://example.com/a.pdf" }],

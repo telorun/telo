@@ -45,6 +45,11 @@ export function tokenCounts(usage: Usage): Usage {
     ...(usage.cachedPromptTokens === undefined
       ? {}
       : { cachedPromptTokens: count(usage.cachedPromptTokens, "cachedPromptTokens") }),
+    ...(usage.cacheWritePromptTokens === undefined
+      ? {}
+      : {
+          cacheWritePromptTokens: count(usage.cacheWritePromptTokens, "cacheWritePromptTokens"),
+        }),
     ...(usage.reasoningTokens === undefined
       ? {}
       : { reasoningTokens: count(usage.reasoningTokens, "reasoningTokens") }),
@@ -62,6 +67,10 @@ export function addUsage(total: Usage, call: Usage): void {
   total.totalTokens += call.totalTokens;
   if (call.cachedPromptTokens !== undefined) {
     total.cachedPromptTokens = (total.cachedPromptTokens ?? 0) + call.cachedPromptTokens;
+  }
+  if (call.cacheWritePromptTokens !== undefined) {
+    total.cacheWritePromptTokens =
+      (total.cacheWritePromptTokens ?? 0) + call.cacheWritePromptTokens;
   }
   if (call.reasoningTokens !== undefined) {
     total.reasoningTokens = (total.reasoningTokens ?? 0) + call.reasoningTokens;

@@ -125,17 +125,17 @@ Which [content parts](../../ai/docs/ai-model.md#modality-lives-in-the-parts) eac
 | image by bytes (`data`) | yes — a `data:` URL | yes — a `data:` URL |
 | image by `http:` / `https:` `uri` | yes — the string as written | yes — the string as written |
 | file by bytes (`data`), with `name` (sent as its filename) | yes | yes |
-| file by bytes with no `name` | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
-| file by `http:` / `https:` `uri` | `ERR_CONTENT_UNSUPPORTED` | yes — the string as written |
-| any other `uri` scheme (`file:`, `s3:`, …) | `ERR_CONTENT_UNSUPPORTED`, `error.data.scheme` set | the same |
-| audio, video | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
-| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+| file by bytes with no `name` | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
+| file by `http:` / `https:` `uri` | `ERR_MODEL_CONTENT_UNSUPPORTED` | yes — the string as written |
+| any other `uri` scheme (`file:`, `s3:`, …) | `ERR_MODEL_CONTENT_UNSUPPORTED`, `error.data.scheme` set | the same |
+| audio, video | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
+| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
 
-`ERR_CONTENT_UNSUPPORTED` is raised while the request is built — by the call itself, on the streaming kind too, and before anything is sent. Its message names the part type, its media type and what the endpoint takes instead; `error.data.partType` is the refused part's `type`, and `error.data.scheme` the `uri`'s scheme when the scheme is the reason. A `uri` is passed to the endpoint exactly as written and never fetched here: the endpoint must be able to reach it. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](../../ai/docs/ai-model.md#modality-lives-in-the-parts), refused by the contract (`ERR_INPUT_INVALID`).
+`ERR_MODEL_CONTENT_UNSUPPORTED` is raised while the request is built — by the call itself, on the streaming kind too, and before anything is sent. Its message names the part type, its media type and what the endpoint takes instead; `error.data.partType` is the refused part's `type`, `error.data.mediaType` its media type when it has one, and `error.data.scheme` the `uri`'s scheme when the scheme is the reason. A `uri` is passed to the endpoint exactly as written and never fetched here: the endpoint must be able to reach it. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](../../ai/docs/ai-model.md#modality-lives-in-the-parts), refused by the contract (`ERR_INPUT_INVALID`).
 
 On this API's wire an image is `{type: input_image, image_url}` — the part's `uri`, or a `data:<mediaType>;base64,…` URL built from its bytes — and a file is `{type: input_file, filename, file_data}` by bytes (`filename` the part's `name`, `file_data` the same `data:` URL form) or `{type: input_file, file_url}` by reference.
 
-A file by bytes needs `name`: one without is refused here (`error.data.partType: file`, no `scheme`) rather than sent. A file by `uri` needs none. The provider gates on no media type — which types the endpoint reads is the endpoint's to say, and its refusal is `ERR_OPENAI_REQUEST_FAILED`.
+A file by bytes needs `name`: one without is refused here (`error.data.partType: file`, no `scheme`) rather than sent. A file by `uri` needs none. The provider gates on no media type — which types the endpoint reads is the endpoint's to say, and its refusal is the code its status and error name (usually `ERR_MODEL_REQUEST_REJECTED`).
 
 Media in a **tool result** rides the tool result itself. A tool that answered with a string, or with parts holding no media, is sent as a `function_call_output` whose `output` is a string. A tool that answered with media is sent with `output` as an array, in the tool's own part order: its text, image and file parts, each translated exactly as a user message's would be — so the same encoding applies, and so does every refusal above (audio, video, a `uri` scheme the endpoint cannot reach, a file by bytes with no `name`). Nothing is added: no placeholder text, and no `user` message after the outputs. The [chat kinds](./chat-model.md#multimodal-content) differ here, since their tool message is text only.
 
@@ -154,12 +154,12 @@ The endpoint reports no `finish_reason`. It reports a run status, so:
 | anything else | `other` |
 
 A run the endpoint answered `200` for and then reported as **failed** does not get a
-finish reason at all — it raises `ERR_OPENAI_REQUEST_FAILED` carrying the endpoint's own
-message. `Ai.FinishReason` has no `error` member, deliberately: a failure rejects, and a
+finish reason at all — it raises the failure its `error` names (`ERR_MODEL_UNAVAILABLE`
+when it names none), carrying the endpoint's own message. `Ai.FinishReason` has no `error` member, deliberately: a failure rejects, and a
 reason code saying "the answer failed" competes with the mechanism that already reports
 failure. Both halves behave the same way here.
 
-Usage is renamed off `input_tokens` / `output_tokens` / `total_tokens`, and carries `cachedPromptTokens` (from `input_tokens_details.cached_tokens`) and `reasoningTokens` (from `output_tokens_details.reasoning_tokens`) when the endpoint reports them — absent otherwise, which is not zero. Each is a share of the count it belongs to.
+Usage is renamed off `input_tokens` / `output_tokens` / `total_tokens`, and carries `cachedPromptTokens` (from `input_tokens_details.cached_tokens`) and `reasoningTokens` (from `output_tokens_details.reasoning_tokens`) when the endpoint reports them — absent otherwise, which is not zero. Each is a share of the count it belongs to. The endpoint caches a repeated prefix on its own: a part's `cacheBreakpoint` is dropped before the request is built, and no cache-write count is reported.
 
 ## The stream
 
@@ -181,15 +181,34 @@ Lifecycle frames (`response.created`, `.in_progress`, `.content_part.*`, the `.d
 
 **A turn that calls a tool emits no text delta at all**, so a consumer must not wait for text to know a turn is under way.
 
-**A stream fails by rejecting.** `finish` is the only terminator; a mid-stream `error` or `response.failed` frame raises `ERR_OPENAI_REQUEST_FAILED` carrying the provider's own words. Parts already emitted still reach the consumer. Rejecting is what makes the failure reachable from a manifest — a `catch:` can name it, which a data part never could.
+**A stream fails by rejecting.** `finish` is the only terminator; a mid-stream `error` or `response.failed` frame raises the failure its error names — `ERR_MODEL_RATE_LIMITED` for `rate_limit_exceeded`, `ERR_MODEL_UNAVAILABLE` when it names nothing known — carrying the provider's own words. Parts already emitted still reach the consumer. Rejecting is what makes the failure reachable from a manifest — a `catch:` can name it, which a data part never could.
 
 ## Errors
 
-| Code | When |
-| ---- | ---- |
-| `ERR_OPENAI_REQUEST_FAILED` | The endpoint refused the request, reported the run as failed, or failed mid-stream. Carries the provider's message and the HTTP status. Also raised when a stream ends with no terminal event — an interrupted answer is reported as interrupted rather than as a clean stop with zero usage. |
-| `ERR_CONTENT_UNSUPPORTED` | A well-formed content part this API cannot carry — see [Content parts](#content-parts). Raised by the call, before any request; `error.data` is `{ partType, scheme? }`. |
-| `ERR_OPENAI_INVALID_TOOL_ARGUMENTS` | The model asked for a tool with arguments that are not a JSON object. |
-| `ERR_INVALID_REFERENCE` | `request` did not resolve to a live `Http.Request` — a ref slot on a `with:`-scoped resource is not an injection site. |
+This kind raises only the failures [`Ai.Model` declares](../../ai/README.md#catching-a-models-errors) — the thirteen codes every provider raises — and restates the whole list in its `throws:`. How a status, the endpoint's own error object, a transport failure or an unreadable answer becomes one of them is the same for all four language kinds: [Errors](../README.md#errors).
 
-A failed status carries the provider's explanation even on a streamed call: the body is read before the error is raised.
+| Code | On this API |
+| ---- | ---- |
+| `ERR_MODEL_CONTENT_UNSUPPORTED` | A well-formed content part this API cannot carry — see [the table above](#content-parts). Raised by the call, before any request; `error.data` is `{ partType, scheme?, mediaType? }`. |
+| `ERR_MODEL_TOOL_ARGUMENTS_INVALID` | The model asked for a tool with arguments that are not a JSON object, or the endpoint sent them as anything but JSON text; `error.data.tool` names it. |
+| `ERR_MODEL_REQUEST_REJECTED` | Beside the endpoint's own refusals: the request could not be built (`cause` holds the original). |
+| `ERR_MODEL_RESPONSE_INVALID` | A 2xx body that is not a JSON object or carries no `output` list; on the streaming kind, a malformed or oversized frame, a body that breaks mid-stream, or a stream that ends with no terminal event — an interrupted answer is reported as interrupted rather than as a clean stop. On both: a member of the answer or of a frame has the wrong shape (`output`, an item's `content` or `summary`, a frame's `item` or `response`), or it could not be read for any other reason (`cause` holds the original). |
+| `ERR_INVALID_REFERENCE` | `request` did not resolve to a live `Http.Request` — a ref slot on a `with:`-scoped resource is not an injection site. |
+| the other eight | By the endpoint's status and its own error object — a rate limit is `ERR_MODEL_RATE_LIMITED` with `error.data.retryAfterSeconds`, a bad key `ERR_MODEL_ACCESS_DENIED`, an over-long prompt `ERR_MODEL_CONTEXT_TOO_LONG`, and so on. |
+
+Every `Ai` operation holding this kind passes the codes on, so a route over an `Ai.Text` or an `Ai.AgentStream` names them in `catches:` exactly as a route over the model does:
+
+```yaml
+catches:
+  - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
+    status: 422
+    content:
+      application/json:
+        body: { unsupported: !cel "error.data.partType" }
+  - status: 502
+    content: { application/json: { body: { code: !cel "error.code" } } }
+```
+
+A failed status carries the provider's explanation even on a streamed call: the body is read, under a bound, before the error is raised.
+
+The request this kind is handed is asked for its body as text (as a stream on the streaming kind), never as parsed JSON, so a `success:` / `retryOn:` rule on that request sees `body` undecoded.

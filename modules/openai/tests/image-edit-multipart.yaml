@@ -76,7 +76,7 @@ with:
         returns:
           # The authorization header is checked HERE, at the only place that
           # sees it: a request without the credential's token is answered 401,
-          # which the provider reports as ERR_OPENAI_REQUEST_FAILED and the
+          # which the provider reports as ERR_MODEL_ACCESS_DENIED and the
           # test fails on.
           - when: !cel "request.headers['authorization'] != 'Bearer sk-test-token'"
             status: 401

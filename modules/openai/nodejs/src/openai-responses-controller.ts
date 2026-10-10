@@ -6,6 +6,7 @@ import {
   type ContentPart,
   type MessageContent,
 } from "@telorun/ai";
+import { modelResponseInvalid, modelUnavailable } from "@telorun/ai";
 import type {
   AiModelInstance,
   AiModelStreamInstance,
@@ -25,10 +26,27 @@ import type {
   ResourceContext,
   ResourceInstance,
 } from "@telorun/sdk";
-import { InvokeError, Stream } from "@telorun/sdk";
+import { Stream } from "@telorun/sdk";
 import { mergeOptions, toOpenAiParams, toResponsesTextFormat } from "./openai-params.js";
-import { callOpenAi, type HttpRequestInstance } from "./openai-endpoint.js";
-import { parseSseData } from "./openai-sse.js";
+import {
+  isRecord,
+  numberLeaf,
+  objectList,
+  objectMember,
+  textLeaf,
+  type Members,
+} from "./openai-answer-shape.js";
+import {
+  readingParts,
+  building,
+  callLabel,
+  callOpenAi,
+  openOpenAiStream,
+  reading,
+  type HttpRequestInstance,
+} from "./openai-endpoint.js";
+import { reportedFailure, type VendorError } from "./openai-failure.js";
+import { parseFrame, parseSseData } from "./openai-sse.js";
 import {
   contentUnsupported,
   dataUrl,
@@ -66,61 +84,16 @@ interface ResponsesResource {
   options?: Record<string, unknown>;
 }
 
-// --- Responses wire shapes (only the fields this controller reads) ---
+// --- Responses wire shapes ---
 
-interface ResponsesUsage {
-  input_tokens?: number;
-  output_tokens?: number;
-  total_tokens?: number;
-  input_tokens_details?: { cached_tokens?: number } | null;
-  output_tokens_details?: { reasoning_tokens?: number } | null;
-}
-
-interface ResponsesMessageContent {
-  type: string;
-  text?: string;
-  refusal?: string;
-}
-
-interface ResponsesItem {
-  type: string;
-  id?: string;
-  call_id?: string;
-  name?: string;
-  arguments?: string;
-  content?: ResponsesMessageContent[];
-  summary?: Array<{ type?: string; text?: string }>;
-  /** LOAD-BEARING, and the one place this file's "only the fields it reads are
-   *  declared" rule is deliberately relaxed: a reasoning item is replayed
-   *  VERBATIM, so `encrypted_content` and anything else the endpoint puts on it
-   *  has to survive a round trip. The cost is that excess-property checking is
-   *  off for every `ResponsesItem` literal here. */
-  [key: string]: unknown;
-}
-
-interface ResponsesBody {
-  status?: string;
-  incomplete_details?: { reason?: string } | null;
-  error?: { message?: string } | null;
-  output?: ResponsesItem[];
-  usage?: ResponsesUsage;
-}
-
-/** One streamed frame. The vocabulary is named events rather than positional
- *  deltas, so only the members this controller acts on are declared. */
-interface ResponsesEvent {
-  type: string;
-  delta?: string;
-  /** On an argument delta: the function-call ITEM it belongs to — the item's own
-   *  id, not the call id a tool result answers. */
-  item_id?: string;
-  /** The position of the item an event concerns in the answer's output. */
-  output_index?: number;
-  item?: ResponsesItem;
-  response?: ResponsesBody;
-  message?: string;
-  error?: { message?: string };
-}
+/**
+ * One item of an answer's output, read member by member, as untrusted.
+ *
+ * Kept WHOLE rather than narrowed to what is read: a reasoning item is replayed
+ * VERBATIM, so `encrypted_content` and anything else the endpoint puts on it
+ * has to survive a round trip.
+ */
+type ResponsesItem = Members;
 
 /**
  * What a turn's reasoning is carried as between requests.
@@ -169,15 +142,18 @@ function isOwnState(
 
 /** The two breakdowns are carried only when the endpoint reports them: absent
  *  means "not said", which is not zero. */
-function mapUsage(u: ResponsesUsage | undefined): Usage {
-  const cached = u?.input_tokens_details?.cached_tokens;
-  const reasoning = u?.output_tokens_details?.reasoning_tokens;
+function mapUsage(reported: unknown): Usage {
+  const usage = isRecord(reported) ? reported : {};
+  const details = (member: string): Members =>
+    isRecord(usage[member]) ? (usage[member] as Members) : {};
+  const cached = numberLeaf(details("input_tokens_details").cached_tokens);
+  const reasoning = numberLeaf(details("output_tokens_details").reasoning_tokens);
   return {
-    promptTokens: u?.input_tokens ?? 0,
-    completionTokens: u?.output_tokens ?? 0,
-    totalTokens: u?.total_tokens ?? 0,
-    ...(typeof cached === "number" ? { cachedPromptTokens: cached } : {}),
-    ...(typeof reasoning === "number" ? { reasoningTokens: reasoning } : {}),
+    promptTokens: numberLeaf(usage.input_tokens) ?? 0,
+    completionTokens: numberLeaf(usage.output_tokens) ?? 0,
+    totalTokens: numberLeaf(usage.total_tokens) ?? 0,
+    ...(cached === undefined ? {} : { cachedPromptTokens: cached }),
+    ...(reasoning === undefined ? {} : { reasoningTokens: reasoning }),
   };
 }
 
@@ -189,9 +165,9 @@ function mapUsage(u: ResponsesUsage | undefined): Usage {
  * therefore derived from the output itself — a turn that asked for tools ended
  * because it asked for tools.
  */
-function mapFinishReason(body: ResponsesBody | undefined, askedForTools: boolean): FinishReason {
+function mapFinishReason(body: Members | undefined, askedForTools: boolean): FinishReason {
   if (askedForTools) return "tool-calls";
-  const reason = body?.incomplete_details?.reason;
+  const reason = isRecord(body?.incomplete_details) ? body.incomplete_details.reason : undefined;
   if (reason === "max_output_tokens") return "length";
   if (reason === "content_filter") return "content-filter";
   if (body?.status === "completed") return "stop";
@@ -345,18 +321,19 @@ function buildTools(defs: ToolDefinition[] | undefined): unknown[] | undefined {
 }
 
 function toolCallOf(item: ResponsesItem): ToolCall {
+  const name = textLeaf(item.name) ?? "";
   return {
-    id: item.call_id ?? item.id ?? "",
-    name: item.name ?? "",
-    arguments: parseToolArguments(item.arguments, item.name ?? "(unnamed)"),
+    id: textLeaf(item.call_id) ?? textLeaf(item.id) ?? "",
+    name,
+    arguments: parseToolArguments(item.arguments, name || "(unnamed)"),
   };
 }
 
 /** The text a reasoning item exposes. Empty unless a `summary` was asked for —
  *  the reasoning itself is encrypted and only ever replayed. */
-function reasoningText(item: ResponsesItem): string {
-  return (item.summary ?? [])
-    .map((s) => s.text ?? "")
+function reasoningText(item: ResponsesItem, label: string): string {
+  return (objectList(item.summary, "output[].summary", label) ?? [])
+    .map((s) => textLeaf(s.text) ?? "")
     .filter((t) => t !== "")
     .join("\n");
 }
@@ -426,25 +403,29 @@ abstract class ResponsesBase {
 
 class ResponsesModelInstance extends ResponsesBase implements ResourceInstance, AiModelInstance {
   async invoke(input: ModelInvokeInput, ctx?: InvokeContext): Promise<CompletionResult> {
-    const data = (await callOpenAi(
+    const operation = callLabel("OpenAI responses", this.resource.metadata.name);
+    const body = building(operation, ctx, () => this.buildBody(input, false));
+    // A run the endpoint answered 200 for and then reported as FAILED raises at
+    // the boundary when it carries an error object, classified by what the
+    // error names. One that says only `failed` gives nothing to classify.
+    const data = await callOpenAi(
       this.resource.request,
       this.resource.metadata.name,
       "OpenAI responses",
-      { path: "/responses", body: this.buildBody(input, false) },
+      { path: "/responses", body },
       ctx,
-    )) as ResponsesBody;
+    );
+    return reading(operation, ctx, () => this.read(data, operation));
+  }
 
-    // A run the endpoint answered 200 for and then reported as FAILED. It has to
-    // raise, not report a reason: `Ai.FinishReason` has no `error` member, so
-    // returning one is an `ERR_OUTPUT_INVALID` at dispatch — and it would bury
-    // the endpoint's own explanation under a message about an enum. Same code
-    // and same shape as the streaming half.
+  private read(data: Members, operation: string): CompletionResult {
     if (data.status === "failed") {
-      throw new InvokeError(
-        "ERR_OPENAI_REQUEST_FAILED",
-        `OpenAI responses "${this.resource.metadata.name}": the run failed. ` +
-          `${data.error?.message ?? "The endpoint gave no reason."}`,
-      );
+      throw modelUnavailable(`${operation}: the run failed. The endpoint gave no reason.`);
+    }
+    // An answer with no output list is not an empty answer.
+    const output = objectList(data.output, "output", operation);
+    if (!output) {
+      throw modelResponseInvalid(`${operation}: the endpoint's answer carries no 'output' list.`);
     }
 
     const content: ContentPart[] = [];
@@ -452,21 +433,23 @@ class ResponsesModelInstance extends ResponsesBase implements ResourceInstance, 
     const reasoningItems: ResponsesItem[] = [];
     let text = "";
 
-    for (const item of data.output ?? []) {
+    for (const item of output) {
       if (item.type === "message") {
-        for (const part of item.content ?? []) {
-          if (part.type === "output_text" && part.text) {
-            content.push({ type: "text", text: part.text });
-            text += part.text;
-          } else if (part.type === "refusal" && part.refusal) {
-            content.push({ type: "refusal", text: part.refusal });
+        for (const part of objectList(item.content, "output[].content", operation) ?? []) {
+          const said = textLeaf(part.text);
+          const refused = textLeaf(part.refusal);
+          if (part.type === "output_text" && said) {
+            content.push({ type: "text", text: said });
+            text += said;
+          } else if (part.type === "refusal" && refused) {
+            content.push({ type: "refusal", text: refused });
           }
         }
       } else if (item.type === "function_call") {
         toolCalls.push(toolCallOf(item));
       } else if (item.type === "reasoning") {
         reasoningItems.push(item);
-        const summary = reasoningText(item);
+        const summary = reasoningText(item, operation);
         if (summary) content.push({ type: "reasoning", text: summary });
       }
     }
@@ -491,26 +474,36 @@ class ResponsesModelStreamInstance
     // Built here rather than when the stream is first read: a part this dialect
     // cannot carry fails the CALL, and only the endpoint's own failures reject
     // the iteration.
-    return { output: new Stream(this.parts(this.buildBody(input, true), ctx)) };
+    const operation = callLabel("OpenAI responses stream", this.resource.metadata.name);
+    const body = building(operation, ctx, () => this.buildBody(input, true));
+    return { output: new Stream(this.parts(body, operation, ctx)) };
   }
 
   private async *parts(
     requestBody: Record<string, unknown>,
+    operation: string,
     ctx?: InvokeContext,
   ): AsyncIterable<StreamPart> {
-    // A refused request FAILS — the status check lives in `callOpenAi`, which
-    // reads the provider's own message out of the body. Parts already emitted
+    // A refused request FAILS — the status is judged at the endpoint boundary,
+    // which reads the vendor's own error out of the body. Parts already emitted
     // still reach the consumer when a failure comes later.
-    const body = await callOpenAi(
+    const body = await openOpenAiStream(
       this.resource.request,
       this.resource.metadata.name,
       "OpenAI responses stream",
-      { path: "/responses", body: requestBody, stream: true },
+      { path: "/responses", body: requestBody },
       ctx,
     );
+    yield* readingParts(operation, ctx, this.read(body, operation, ctx));
+  }
 
+  private async *read(
+    body: AsyncIterable<Uint8Array>,
+    operation: string,
+    ctx?: InvokeContext,
+  ): AsyncGenerator<StreamPart> {
     let usage: Usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-    let completed: ResponsesBody | undefined;
+    let completed: Members | undefined;
     let sawTerminal = false;
     let sawToolCall = false;
     const reasoningItems: ResponsesItem[] = [];
@@ -519,41 +512,46 @@ class ResponsesModelStreamInstance
     // from the item's `added` event; until both are known its text is held.
     const streaming = new Map<string, StreamedCall>();
 
-    for await (const data of parseSseData(
-      body as AsyncIterable<Uint8Array>,
-      `OpenAI responses stream "${this.resource.metadata.name}"`,
-    )) {
+    for await (const data of parseSseData(body, operation, ctx)) {
       // The responses stream ends after `response.completed` rather than with a
       // sentinel; the chat dialect's `[DONE]` is tolerated so a gateway that
       // appends one is not read as a frame.
       if (data === "[DONE]") break;
-      const event = JSON.parse(data) as ResponsesEvent;
+      // The vocabulary is named events rather than positional deltas. An
+      // argument delta names the function-call ITEM it belongs to — the item's
+      // own id, not the call id a tool result answers.
+      const event = parseFrame(data, operation);
+      const delta = textLeaf(event.delta);
       switch (event.type) {
         case "response.output_text.delta":
-          if (event.delta) yield { type: "text-delta", delta: event.delta };
+          if (delta) yield { type: "text-delta", delta };
           break;
         case "response.reasoning_summary_text.delta":
-          if (event.delta) yield { type: "reasoning-delta", delta: event.delta };
+          if (delta) yield { type: "reasoning-delta", delta };
           break;
         case "response.output_item.added": {
-          const item = event.item;
+          const item = objectMember(event.item, "item", operation);
           const key = itemKey(event);
           if (item?.type === "function_call" && key !== undefined) {
-            streaming.set(key, { id: item.call_id ?? "", name: item.name ?? "", held: "" });
+            streaming.set(key, {
+              id: textLeaf(item.call_id) ?? "",
+              name: textLeaf(item.name) ?? "",
+              held: "",
+            });
           }
           break;
         }
         case "response.function_call_arguments.delta": {
           const key = itemKey(event);
-          if (!event.delta || key === undefined) break;
+          if (!delta || key === undefined) break;
           const call = streaming.get(key) ?? { id: "", name: "", held: "" };
           streaming.set(key, call);
-          call.held += event.delta;
+          call.held += delta;
           if (call.id && call.name) yield* releaseHeld(call);
           break;
         }
         case "response.output_item.done": {
-          const item = event.item;
+          const item = objectMember(event.item, "item", operation);
           if (!item) break;
           if (item.type === "function_call") {
             sawToolCall = true;
@@ -580,20 +578,16 @@ class ResponsesModelStreamInstance
         }
         case "response.completed":
         case "response.incomplete":
-          completed = event.response;
+          completed = objectMember(event.response, "response", operation);
           sawTerminal = true;
-          usage = mapUsage(event.response?.usage);
+          usage = mapUsage(completed?.usage);
           break;
         case "error":
         case "response.failed":
           // A stream FAILS BY REJECTING. An error part would have to be
           // remembered by every drainer, and one that forgets truncates
           // silently; a thrown error also reaches `catches:` and a throws union.
-          throw new InvokeError(
-            "ERR_OPENAI_REQUEST_FAILED",
-            `OpenAI responses stream "${this.resource.metadata.name}": the endpoint failed ` +
-              `mid-stream. ${streamFailureMessage(event)}`,
-          );
+          throw reportedFailure(operation, "the endpoint failed mid-stream", streamFailure(event));
         default:
           // The vocabulary is open and grows: lifecycle frames
           // (`response.created`, `.in_progress`, `.content_part.*`, the `.done`
@@ -608,10 +602,8 @@ class ResponsesModelStreamInstance
     // interrupted answer as a clean stop with zero usage, which is the one thing
     // a consumer cannot detect for itself.
     if (!sawTerminal) {
-      throw new InvokeError(
-        "ERR_OPENAI_REQUEST_FAILED",
-        `OpenAI responses stream "${this.resource.metadata.name}": the stream ended without ` +
-          `a terminal event, so the answer is incomplete.`,
+      throw modelResponseInvalid(
+        `${operation}: the stream ended without a terminal event, so the answer is incomplete.`,
       );
     }
 
@@ -632,10 +624,11 @@ interface StreamedCall {
 
 /** Which output item an event concerns: its id, or — from an endpoint that
  *  gives items none — its position in the output. */
-function itemKey(event: ResponsesEvent): string | undefined {
-  const id = event.item_id ?? event.item?.id;
+function itemKey(event: Members): string | undefined {
+  const id = textLeaf(event.item_id) ?? (isRecord(event.item) ? textLeaf(event.item.id) : undefined);
   if (id) return id;
-  return event.output_index === undefined ? undefined : `#${event.output_index}`;
+  const position = numberLeaf(event.output_index);
+  return position === undefined ? undefined : `#${position}`;
 }
 
 /** Report the argument text a call is holding, under the id it now has. */
@@ -646,16 +639,20 @@ function* releaseHeld(call: StreamedCall): Generator<StreamPart> {
   yield { type: "tool-call-delta", toolCallId: call.id, toolName: call.name, delta };
 }
 
-/** The provider's own words for a mid-stream failure. A bare `error` frame carries
- *  them at the top level; `response.failed` nests them under the run it is
+/** The error a mid-stream failure reports. A bare `error` frame carries it at the
+ *  top level or under `error`; `response.failed` nests it under the run it is
  *  reporting on. */
-function streamFailureMessage(event: ResponsesEvent): string {
-  return (
-    event.error?.message ??
-    event.response?.error?.message ??
-    event.message ??
-    "The endpoint gave no reason."
-  );
+function streamFailure(event: Members): VendorError {
+  const reported = event.error ?? (isRecord(event.response) ? event.response.error : undefined);
+  const error = isRecord(reported) ? reported : {};
+  const code = textLeaf(error.code) ?? textLeaf(event.code);
+  const type = textLeaf(error.type);
+  const message = textLeaf(error.message) ?? textLeaf(event.message);
+  return {
+    ...(code === undefined ? {} : { code }),
+    ...(type === undefined ? {} : { type }),
+    ...(message === undefined ? {} : { message }),
+  };
 }
 
 export function register(_ctx: ControllerContext): void {}

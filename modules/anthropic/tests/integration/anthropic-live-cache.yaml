@@ -1,0 +1,84 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicLiveCache
+  version: 1.0.0
+  description: |
+    Live Messages API test of a prompt-cache breakpoint. A long system prompt,
+    unique to this run and marked `cacheBreakpoint`, is sent twice: the first
+    call reports it under `cacheWritePromptTokens`, the second under
+    `cachedPromptTokens`, and `promptTokens` counts the whole prompt both
+    times. Skips silently when ANTHROPIC_API_KEY is unset.
+secrets:
+  anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" }
+imports:
+  Anthropic: ../../
+  Http: ../../../http-client
+  Ai: ../../../ai
+  Run: ../../../run
+  Assert: ../../../assert
+targets:
+  - !ref liveCache
+---
+# The account: base URL and credential in one place.
+kind: Http.Client
+metadata: { name: anthropicClient }
+baseUrl: https://api.anthropic.com/v1
+timeout: 120000
+credential:
+  kind: Http.ApiKeyHeader
+  header: x-api-key
+  key: !cel "secrets.anthropicApiKey"
+---
+kind: Http.Request
+metadata: { name: anthropicRequest }
+client: !ref anthropicClient
+---
+kind: Anthropic.MessagesModel
+metadata: { name: live }
+model: claude-haiku-4-5
+request: !ref anthropicRequest
+maxTokens: 32
+options:
+  temperature: 0
+---
+kind: Ai.Text
+metadata: { name: text }
+model: !ref live
+---
+kind: Run.Sequence
+metadata: { name: liveCache }
+steps:
+  - name: guardEnv
+    if: !cel "secrets.anthropicApiKey != ''"
+    then:
+      # Well past the longest minimum any model sets for a cacheable prefix, and
+      # opened by a value no earlier run sent, so the first call cannot be a read.
+      - name: prefix
+        value: !cel "'Reference ' + uuidv4() + '. ' + [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(a, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(b, [0, 1, 2, 3, 4, 5, 6, 7].map(c, 'The archive keeps one ledger line for every parcel that leaves the northern depot. ').join('')).join('')).join('')"
+      - name: first
+        inputs:
+          system:
+            - { type: text, text: !cel "steps.prefix.result", cacheBreakpoint: true }
+          prompt: "Reply with the single word: pong"
+        invoke: !ref text
+      - name: second
+        inputs:
+          system:
+            - { type: text, text: !cel "steps.prefix.result", cacheBreakpoint: true }
+          prompt: "Reply with the single word: pong"
+        invoke: !ref text
+      - name: assertCounts
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            firstWrote: !cel "has(steps.first.result.usage.cacheWritePromptTokens) && steps.first.result.usage.cacheWritePromptTokens > 0"
+            firstCountsItInThePrompt: !cel "steps.first.result.usage.promptTokens > steps.first.result.usage.cacheWritePromptTokens"
+            secondRead: !cel "has(steps.second.result.usage.cachedPromptTokens) && steps.second.result.usage.cachedPromptTokens > 0"
+            secondCountsItInThePrompt: !cel "steps.second.result.usage.promptTokens > steps.second.result.usage.cachedPromptTokens"
+            readWhatWasWritten: !cel "steps.second.result.usage.cachedPromptTokens == steps.first.result.usage.cacheWritePromptTokens"
+          expected:
+            firstWrote: true
+            firstCountsItInThePrompt: true
+            secondRead: true
+            secondCountsItInThePrompt: true
+            readWhatWasWritten: true

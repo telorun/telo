@@ -1,0 +1,226 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicProviderSwapStream
+  version: 1.0.0
+  description: |
+    One streaming assistant, two providers, nothing else changed. A shared
+    partial holds an `Ai.AgentStream`, the request its model goes through and
+    two routes — one forwarding the parts as they arrive, one reading the answer
+    to its end — whose `catches:` name only the failure codes `Ai.ModelStream`
+    and `Ai.AgentStream` declare, with no catch-all; two applications include
+    it, and each declares only its model and its client — one over
+    `Anthropic.MessagesModelStream`, one over `OpenAI.ChatModelStream`.
+
+    Both check clean, so the one `catches:` list covers either provider's
+    failures and names no code either lacks. Both run against a scripted event
+    stream of their vendor's dialect: a question is answered part by part, and
+    a 429 carrying `Retry-After: 7` — which a streaming model raises while the
+    answer is read, not from the call — ends the forwarded stream with a record
+    naming `ERR_MODEL_RATE_LIMITED`, and reaches the reading route's `catches:`
+    with `retryAfterSeconds` 7, under either.
+imports:
+  App: ../../app
+  Run: ../../run
+  HttpClient: ../../http-client
+  Server: ../../http-server
+  Assert: ../../assert
+targets:
+  - !ref anthropicChecksClean
+  - !ref openaiChecksClean
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: anthropicChecksClean }
+source: ./__fixtures__/swap-stream/anthropic-app.yaml
+expect: {}
+---
+kind: Assert.Manifest
+metadata: { name: openaiChecksClean }
+source: ./__fixtures__/swap-stream/openai-app.yaml
+expect: {}
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+kind: HttpClient.Request
+metadata: { name: askAnthropic }
+method: POST
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8919
+  throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: askOpenai }
+method: POST
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8920
+  throwOnHttpError: false
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: AnthropicApi }
+    routes:
+      - request:
+          path: /messages
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 429
+            when: !cel "json(request.body).contains('slow down')"
+            headers:
+              Retry-After: "7"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  type: error
+                  error: { type: rate_limit_error, message: slow down }
+          - status: 200
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  event: message_start
+                  data: {"type":"message_start","message":{"type":"message","role":"assistant","content":[],"usage":{"input_tokens":7,"output_tokens":1}}}
+
+                  event: content_block_start
+                  data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+                  event: ping
+                  data: {"type":"ping"}
+
+                  event: content_block_delta
+                  data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"po"}}
+
+                  event: content_block_delta
+                  data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ng"}}
+
+                  event: content_block_stop
+                  data: {"type":"content_block_stop","index":0}
+
+                  event: message_delta
+                  data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}
+
+                  event: message_stop
+                  data: {"type":"message_stop"}
+  - kind: Server.Api
+    metadata: { name: OpenaiApi }
+    routes:
+      - request:
+          path: /chat/completions
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 429
+            when: !cel "json(request.body).contains('slow down')"
+            headers:
+              Retry-After: "7"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  error: { message: slow down, type: rate_limit_error, code: rate_limit_exceeded }
+          - status: 200
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  data: {"choices":[{"delta":{"content":"po"}}]}
+
+                  data: {"choices":[{"delta":{"content":"ng"}}]}
+
+                  data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":3,"total_tokens":10}}
+
+                  data: [DONE]
+  - kind: Server.Server
+    metadata: { name: Vendors }
+    port: 8918
+    baseUrl: http://localhost:8918
+    openapi:
+      info: { title: Fake vendor endpoints, version: 1.0.0 }
+    mounts:
+      - path: /anthropic/v1
+        mount: !ref AnthropicApi
+      - path: /openai/v1
+        mount: !ref OpenaiApi
+  - kind: App.Instance
+    metadata: { name: anthropicApp }
+    source: ./__fixtures__/swap-stream/anthropic-app.yaml
+    variables:
+      endpoint: http://localhost:8918/anthropic/v1
+    ports:
+      http: 8919
+  - kind: App.Instance
+    metadata: { name: openaiApp }
+    source: ./__fixtures__/swap-stream/openai-app.yaml
+    variables:
+      endpoint: http://localhost:8918/openai/v1
+    ports:
+      http: 8920
+targets:
+  - !ref Vendors
+  - !ref anthropicApp
+  - !ref openaiApp
+steps:
+  - name: anthropicStreams
+    inputs: { url: /ask, body: { question: ping } }
+    invoke: !ref askAnthropic
+  - name: openaiStreams
+    inputs: { url: /ask, body: { question: ping } }
+    invoke: !ref askOpenai
+  - name: anthropicStreamLimited
+    inputs: { url: /ask, body: { question: slow down } }
+    invoke: !ref askAnthropic
+  - name: openaiStreamLimited
+    inputs: { url: /ask, body: { question: slow down } }
+    invoke: !ref askOpenai
+  - name: anthropicLimited
+    inputs: { url: /ask/complete, body: { question: slow down } }
+    invoke: !ref askAnthropic
+  - name: openaiLimited
+    inputs: { url: /ask/complete, body: { question: slow down } }
+    invoke: !ref askOpenai
+  # A forwarded stream is one JSON record a line: its text deltas in order, the
+  # type it ended on, and the code a terminal error record names.
+  - name: records
+    value:
+      anthropic: !cel "steps.anthropicStreams.result.body.split('\\n').filter(l, l != '').map(l, parseJson(l))"
+      openai: !cel "steps.openaiStreams.result.body.split('\\n').filter(l, l != '').map(l, parseJson(l))"
+      anthropicLimited: !cel "steps.anthropicStreamLimited.result.body.split('\\n').filter(l, l != '').map(l, parseJson(l))"
+      openaiLimited: !cel "steps.openaiStreamLimited.result.body.split('\\n').filter(l, l != '').map(l, parseJson(l))"
+  - name: sameUnderEither
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        anthropic:
+          streamed:
+            status: !cel "steps.anthropicStreams.result.status"
+            deltas: !cel "steps.records.result.anthropic.filter(p, p.type == 'text-delta').map(p, p.delta)"
+            last: !cel "steps.records.result.anthropic[size(steps.records.result.anthropic) - 1].type"
+          streamLimited: !cel "steps.records.result.anthropicLimited.map(p, p.type == 'error' ? p.error.code : p.type)"
+          limited: { status: !cel "steps.anthropicLimited.result.status", body: !cel "steps.anthropicLimited.result.body" }
+        openai:
+          streamed:
+            status: !cel "steps.openaiStreams.result.status"
+            deltas: !cel "steps.records.result.openai.filter(p, p.type == 'text-delta').map(p, p.delta)"
+            last: !cel "steps.records.result.openai[size(steps.records.result.openai) - 1].type"
+          streamLimited: !cel "steps.records.result.openaiLimited.map(p, p.type == 'error' ? p.error.code : p.type)"
+          limited: { status: !cel "steps.openaiLimited.result.status", body: !cel "steps.openaiLimited.result.body" }
+      expected:
+        anthropic:
+          streamed: { status: 200, deltas: [po, ng], last: finish }
+          streamLimited: [ERR_MODEL_RATE_LIMITED]
+          limited: { status: 503, body: { code: ERR_MODEL_RATE_LIMITED, retryAfterSeconds: 7 } }
+        openai:
+          streamed: { status: 200, deltas: [po, ng], last: finish }
+          streamLimited: [ERR_MODEL_RATE_LIMITED]
+          limited: { status: 503, body: { code: ERR_MODEL_RATE_LIMITED, retryAfterSeconds: 7 } }

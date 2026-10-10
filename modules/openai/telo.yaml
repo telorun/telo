@@ -40,21 +40,117 @@ capability: Telo.Invocable
 extends: Ai.Model
 controllers:
   - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ChatModelController
+# Ai.Model's whole failure list, restated: a kind with no `throws:` is read as
+# throwing nothing, and a code outside the list is refused.
 throws:
   codes:
-    ERR_OPENAI_REQUEST_FAILED:
+    ERR_MODEL_ACCESS_DENIED:
       description: >-
-        The endpoint refused the request or failed mid-stream. Carries the provider's
-        own message and the HTTP status, so a caller reads why rather than a status
-        line.
-    ERR_CONTENT_UNSUPPORTED:
+        The credential was refused, or it has no permission for the model. Trying
+        again with the same credential fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_RATE_LIMITED:
+      description: >-
+        The endpoint asked the caller to slow down. Worth trying again, after
+        `retryAfterSeconds` when the endpoint named a wait.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_QUOTA_EXCEEDED:
+      description: >-
+        The account's credit or plan is exhausted. Trying again fails until the
+        account changes.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNAVAILABLE:
+      description: >-
+        The provider is overloaded or failing on its side, including a failure it
+        reported after the answer had begun. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_TIMEOUT:
+      description: >-
+        No complete response arrived in time, so whether the request ran is
+        unknown. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNREACHABLE:
+      description: >-
+        Nothing answered: the connection was refused, the host name did not
+        resolve, or the secure handshake failed. Worth trying again.
+    ERR_MODEL_CONTEXT_TOO_LONG:
+      description: >-
+        The input exceeds the model's context window or the endpoint's request
+        size limit. The same input fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_REFUSED:
+      description: >-
+        The endpoint rejected the request on content-policy grounds. A model's own
+        refusal given as its answer is not this: that arrives as a `refusal` part
+        with the finish reason `content-filter`.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_REQUEST_REJECTED:
+      description: >-
+        The endpoint refused the request as one it cannot serve, the provider
+        refused it before sending, or the request failed in a way nothing else
+        here names. The same request fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_UNSUPPORTED:
       description: >-
         A well-formed content part this API cannot carry: audio, video, a file by
         `uri`, a file by bytes with no `name`, an image or file whose `uri` is not
-        `http:` or `https:`, or a part a
-        model produces (`reasoning`, `citation`, `refusal`, `tool-call`) submitted
-        as input. Raised before anything is sent, and the message says what the
-        endpoint takes instead.
+        `http:` or `https:`, or a part a model produces (`reasoning`, `citation`,
+        `refusal`, `tool-call`) submitted as input. Raised before anything is sent,
+        and the message says what the endpoint takes instead.
       data:
         type: object
         required: [partType]
@@ -67,11 +163,26 @@ throws:
             description: >-
               The scheme of the part's `uri`, lowercased, when the scheme is why
               it was refused.
-    ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
+          mediaType:
+            type: string
+            description: The part's media type, when it has one.
+    ERR_MODEL_TOOL_ARGUMENTS_INVALID:
       description: >-
-        The model asked for a tool with arguments that are not a JSON object. Raised
-        rather than passed on as empty arguments, which would run the tool with a
-        different request than the model made.
+        The model asked for a tool with arguments that are not a JSON object.
+        Raised rather than passed on as empty arguments, which would run the tool
+        with a different request than the model made. Worth trying again.
+      data:
+        type: object
+        required: [tool]
+        properties:
+          tool:
+            type: string
+            description: The name of the tool the model asked for.
+    ERR_MODEL_RESPONSE_INVALID:
+      description: >-
+        The endpoint reported success but the answer cannot be read: a body that
+        is not the expected document, a malformed or oversized stream frame, or a
+        stream that ended before the answer was complete. Worth trying again.
     ERR_INVALID_REFERENCE:
       description: >-
         `request` did not resolve to a live Http.Request. A reference slot on a
@@ -137,21 +248,117 @@ capability: Telo.Invocable
 extends: Ai.ModelStream
 controllers:
   - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ChatModelStreamController
+# Ai.Model's whole failure list, restated: a kind with no `throws:` is read as
+# throwing nothing, and a code outside the list is refused.
 throws:
   codes:
-    ERR_OPENAI_REQUEST_FAILED:
+    ERR_MODEL_ACCESS_DENIED:
       description: >-
-        The endpoint refused the request or failed mid-stream. Carries the provider's
-        own message and the HTTP status, so a caller reads why rather than a status
-        line.
-    ERR_CONTENT_UNSUPPORTED:
+        The credential was refused, or it has no permission for the model. Trying
+        again with the same credential fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_RATE_LIMITED:
+      description: >-
+        The endpoint asked the caller to slow down. Worth trying again, after
+        `retryAfterSeconds` when the endpoint named a wait.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_QUOTA_EXCEEDED:
+      description: >-
+        The account's credit or plan is exhausted. Trying again fails until the
+        account changes.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNAVAILABLE:
+      description: >-
+        The provider is overloaded or failing on its side, including a failure it
+        reported after the answer had begun. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_TIMEOUT:
+      description: >-
+        No complete response arrived in time, so whether the request ran is
+        unknown. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNREACHABLE:
+      description: >-
+        Nothing answered: the connection was refused, the host name did not
+        resolve, or the secure handshake failed. Worth trying again.
+    ERR_MODEL_CONTEXT_TOO_LONG:
+      description: >-
+        The input exceeds the model's context window or the endpoint's request
+        size limit. The same input fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_REFUSED:
+      description: >-
+        The endpoint rejected the request on content-policy grounds. A model's own
+        refusal given as its answer is not this: that arrives as a `refusal` part
+        with the finish reason `content-filter`.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_REQUEST_REJECTED:
+      description: >-
+        The endpoint refused the request as one it cannot serve, the provider
+        refused it before sending, or the request failed in a way nothing else
+        here names. The same request fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_UNSUPPORTED:
       description: >-
         A well-formed content part this API cannot carry: audio, video, a file by
         `uri`, a file by bytes with no `name`, an image or file whose `uri` is not
-        `http:` or `https:`, or a part a
-        model produces (`reasoning`, `citation`, `refusal`, `tool-call`) submitted
-        as input. Raised before anything is sent, and the message says what the
-        endpoint takes instead.
+        `http:` or `https:`, or a part a model produces (`reasoning`, `citation`,
+        `refusal`, `tool-call`) submitted as input. Raised before anything is sent,
+        and the message says what the endpoint takes instead.
       data:
         type: object
         required: [partType]
@@ -164,11 +371,26 @@ throws:
             description: >-
               The scheme of the part's `uri`, lowercased, when the scheme is why
               it was refused.
-    ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
+          mediaType:
+            type: string
+            description: The part's media type, when it has one.
+    ERR_MODEL_TOOL_ARGUMENTS_INVALID:
       description: >-
-        The model asked for a tool with arguments that are not a JSON object. Raised
-        rather than passed on as empty arguments, which would run the tool with a
-        different request than the model made.
+        The model asked for a tool with arguments that are not a JSON object.
+        Raised rather than passed on as empty arguments, which would run the tool
+        with a different request than the model made. Worth trying again.
+      data:
+        type: object
+        required: [tool]
+        properties:
+          tool:
+            type: string
+            description: The name of the tool the model asked for.
+    ERR_MODEL_RESPONSE_INVALID:
+      description: >-
+        The endpoint reported success but the answer cannot be read: a body that
+        is not the expected document, a malformed or oversized stream frame, or a
+        stream that ended before the answer was complete. Worth trying again.
     ERR_INVALID_REFERENCE:
       description: >-
         `request` did not resolve to a live Http.Request. A reference slot on a
@@ -276,21 +498,117 @@ capability: Telo.Invocable
 extends: Ai.Model
 controllers:
   - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ResponsesModelController
+# Ai.Model's whole failure list, restated: a kind with no `throws:` is read as
+# throwing nothing, and a code outside the list is refused.
 throws:
   codes:
-    ERR_OPENAI_REQUEST_FAILED:
+    ERR_MODEL_ACCESS_DENIED:
       description: >-
-        The endpoint refused the request or failed mid-stream. Carries the provider's
-        own message and the HTTP status, so a caller reads why rather than a status
-        line.
-    ERR_CONTENT_UNSUPPORTED:
+        The credential was refused, or it has no permission for the model. Trying
+        again with the same credential fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_RATE_LIMITED:
+      description: >-
+        The endpoint asked the caller to slow down. Worth trying again, after
+        `retryAfterSeconds` when the endpoint named a wait.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_QUOTA_EXCEEDED:
+      description: >-
+        The account's credit or plan is exhausted. Trying again fails until the
+        account changes.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNAVAILABLE:
+      description: >-
+        The provider is overloaded or failing on its side, including a failure it
+        reported after the answer had begun. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_TIMEOUT:
+      description: >-
+        No complete response arrived in time, so whether the request ran is
+        unknown. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNREACHABLE:
+      description: >-
+        Nothing answered: the connection was refused, the host name did not
+        resolve, or the secure handshake failed. Worth trying again.
+    ERR_MODEL_CONTEXT_TOO_LONG:
+      description: >-
+        The input exceeds the model's context window or the endpoint's request
+        size limit. The same input fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_REFUSED:
+      description: >-
+        The endpoint rejected the request on content-policy grounds. A model's own
+        refusal given as its answer is not this: that arrives as a `refusal` part
+        with the finish reason `content-filter`.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_REQUEST_REJECTED:
+      description: >-
+        The endpoint refused the request as one it cannot serve, the provider
+        refused it before sending, or the request failed in a way nothing else
+        here names. The same request fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_UNSUPPORTED:
       description: >-
         A well-formed content part this API cannot carry: audio, video, a file by
-        bytes with no `name`, an image or
-        file whose `uri` is not `http:` or `https:`, or a part a model produces
-        (`reasoning`, `citation`, `refusal`, `tool-call`) submitted as input. Raised
-        before anything is sent, and the message says what the endpoint takes
-        instead.
+        bytes with no `name`, an image or file whose `uri` is not `http:` or
+        `https:`, or a part a model produces (`reasoning`, `citation`, `refusal`,
+        `tool-call`) submitted as input. Raised before anything is sent, and the
+        message says what the endpoint takes instead.
       data:
         type: object
         required: [partType]
@@ -303,11 +621,26 @@ throws:
             description: >-
               The scheme of the part's `uri`, lowercased, when the scheme is why
               it was refused.
-    ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
+          mediaType:
+            type: string
+            description: The part's media type, when it has one.
+    ERR_MODEL_TOOL_ARGUMENTS_INVALID:
       description: >-
-        The model asked for a tool with arguments that are not a JSON object. Raised
-        rather than passed on as empty arguments, which would run the tool with a
-        different request than the model made.
+        The model asked for a tool with arguments that are not a JSON object.
+        Raised rather than passed on as empty arguments, which would run the tool
+        with a different request than the model made. Worth trying again.
+      data:
+        type: object
+        required: [tool]
+        properties:
+          tool:
+            type: string
+            description: The name of the tool the model asked for.
+    ERR_MODEL_RESPONSE_INVALID:
+      description: >-
+        The endpoint reported success but the answer cannot be read: a body that
+        is not the expected document, a malformed or oversized stream frame, or a
+        stream that ended before the answer was complete. Worth trying again.
     ERR_INVALID_REFERENCE:
       description: >-
         `request` did not resolve to a live Http.Request. A reference slot on a
@@ -389,21 +722,117 @@ capability: Telo.Invocable
 extends: Ai.ModelStream
 controllers:
   - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ResponsesModelStreamController
+# Ai.Model's whole failure list, restated: a kind with no `throws:` is read as
+# throwing nothing, and a code outside the list is refused.
 throws:
   codes:
-    ERR_OPENAI_REQUEST_FAILED:
+    ERR_MODEL_ACCESS_DENIED:
       description: >-
-        The endpoint refused the request or failed mid-stream. Carries the provider's
-        own message and the HTTP status, so a caller reads why rather than a status
-        line.
-    ERR_CONTENT_UNSUPPORTED:
+        The credential was refused, or it has no permission for the model. Trying
+        again with the same credential fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_RATE_LIMITED:
+      description: >-
+        The endpoint asked the caller to slow down. Worth trying again, after
+        `retryAfterSeconds` when the endpoint named a wait.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_QUOTA_EXCEEDED:
+      description: >-
+        The account's credit or plan is exhausted. Trying again fails until the
+        account changes.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNAVAILABLE:
+      description: >-
+        The provider is overloaded or failing on its side, including a failure it
+        reported after the answer had begun. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+          retryAfterSeconds:
+            type: integer
+            minimum: 0
+            description: >-
+              How long the endpoint asked the caller to wait, in whole seconds
+              rounded up, read from a standard `Retry-After` header. Absent when
+              it named none.
+    ERR_MODEL_TIMEOUT:
+      description: >-
+        No complete response arrived in time, so whether the request ran is
+        unknown. Worth trying again.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_UNREACHABLE:
+      description: >-
+        Nothing answered: the connection was refused, the host name did not
+        resolve, or the secure handshake failed. Worth trying again.
+    ERR_MODEL_CONTEXT_TOO_LONG:
+      description: >-
+        The input exceeds the model's context window or the endpoint's request
+        size limit. The same input fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_REFUSED:
+      description: >-
+        The endpoint rejected the request on content-policy grounds. A model's own
+        refusal given as its answer is not this: that arrives as a `refusal` part
+        with the finish reason `content-filter`.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_REQUEST_REJECTED:
+      description: >-
+        The endpoint refused the request as one it cannot serve, the provider
+        refused it before sending, or the request failed in a way nothing else
+        here names. The same request fails the same way.
+      data:
+        type: object
+        properties:
+          status:
+            type: integer
+            description: The HTTP status that carried the failure, when a response did.
+    ERR_MODEL_CONTENT_UNSUPPORTED:
       description: >-
         A well-formed content part this API cannot carry: audio, video, a file by
-        bytes with no `name`, an image or
-        file whose `uri` is not `http:` or `https:`, or a part a model produces
-        (`reasoning`, `citation`, `refusal`, `tool-call`) submitted as input. Raised
-        before anything is sent, and the message says what the endpoint takes
-        instead.
+        bytes with no `name`, an image or file whose `uri` is not `http:` or
+        `https:`, or a part a model produces (`reasoning`, `citation`, `refusal`,
+        `tool-call`) submitted as input. Raised before anything is sent, and the
+        message says what the endpoint takes instead.
       data:
         type: object
         required: [partType]
@@ -416,11 +845,26 @@ throws:
             description: >-
               The scheme of the part's `uri`, lowercased, when the scheme is why
               it was refused.
-    ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
+          mediaType:
+            type: string
+            description: The part's media type, when it has one.
+    ERR_MODEL_TOOL_ARGUMENTS_INVALID:
       description: >-
-        The model asked for a tool with arguments that are not a JSON object. Raised
-        rather than passed on as empty arguments, which would run the tool with a
-        different request than the model made.
+        The model asked for a tool with arguments that are not a JSON object.
+        Raised rather than passed on as empty arguments, which would run the tool
+        with a different request than the model made. Worth trying again.
+      data:
+        type: object
+        required: [tool]
+        properties:
+          tool:
+            type: string
+            description: The name of the tool the model asked for.
+    ERR_MODEL_RESPONSE_INVALID:
+      description: >-
+        The endpoint reported success but the answer cannot be read: a body that
+        is not the expected document, a malformed or oversized stream frame, or a
+        stream that ended before the answer was complete. Worth trying again.
     ERR_INVALID_REFERENCE:
       description: >-
         `request` did not resolve to a live Http.Request. A reference slot on a

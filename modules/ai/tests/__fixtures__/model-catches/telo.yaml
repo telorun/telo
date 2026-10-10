@@ -1,0 +1,59 @@
+# A route over a model the library is HANDED — constrained by kind alone, so the
+# provider is unknown here. `Ai.Model` declares what any model may raise, so the
+# route's `catches:` names those codes and needs no catch-all.
+kind: Telo.Library
+metadata:
+  name: ModelRoute
+  version: 1.0.0
+  description: Fixture library whose route calls whatever model it is handed and renders every failure a model may raise.
+imports:
+  Ai: ../../..
+  Http: ../../../../http-server
+resources:
+  model: { kind: Ai.Model }
+exports:
+  resources: [api]
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /ask
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [question]
+          properties:
+            question: { type: string }
+    handler: !ref model
+    inputs:
+      messages:
+        - role: user
+          content: !cel "request.body.question"
+    returns:
+      - status: 200
+        content: { application/json: { body: { answer: !cel "result.text" } } }
+    catches:
+      # Worth another try, and when.
+      - when: !cel "error.code == 'ERR_MODEL_RATE_LIMITED' || error.code == 'ERR_MODEL_UNAVAILABLE'"
+        status: 503
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              retryAfterSeconds: !cel "has(error.data.retryAfterSeconds) ? error.data.retryAfterSeconds : 0"
+      - when: !cel "error.code in ['ERR_MODEL_TIMEOUT', 'ERR_MODEL_UNREACHABLE', 'ERR_MODEL_TOOL_ARGUMENTS_INVALID', 'ERR_MODEL_RESPONSE_INVALID']"
+        status: 502
+        content: { application/json: { body: { code: !cel "error.code" } } }
+      - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
+        status: 422
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              partType: !cel "error.data.partType"
+      # The same request fails the same way.
+      - when: !cel "error.code in ['ERR_MODEL_ACCESS_DENIED', 'ERR_MODEL_QUOTA_EXCEEDED', 'ERR_MODEL_CONTEXT_TOO_LONG', 'ERR_MODEL_CONTENT_REFUSED', 'ERR_MODEL_REQUEST_REJECTED', 'ERR_INVALID_REFERENCE']"
+        status: 500
+        content: { application/json: { body: { code: !cel "error.code" } } }

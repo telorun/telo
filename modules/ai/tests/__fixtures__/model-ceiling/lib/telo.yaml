@@ -1,0 +1,32 @@
+# A provider whose kinds declare a failure of their own beside the model
+# abstracts' list. The list is a ceiling, so both are refused — by `telo check`
+# and by the kernel when the definitions are registered.
+kind: Telo.Library
+metadata:
+  name: VendorModels
+  version: 1.0.0
+  description: Fixture library whose model kinds declare a failure code the model abstracts do not.
+imports:
+  Ai: ../../../..
+exports:
+  kinds: [VendorModel, VendorModelStream]
+---
+kind: Telo.Abstract
+metadata:
+  name: VendorModel
+extends: Ai.Model
+throws:
+  codes:
+    ERR_MODEL_TIMEOUT:
+      description: No complete response arrived in time.
+    ERR_VENDOR_DOWN:
+      description: The vendor's own name for an outage.
+---
+kind: Telo.Abstract
+metadata:
+  name: VendorModelStream
+extends: Ai.ModelStream
+throws:
+  codes:
+    ERR_VENDOR_STREAM_DOWN:
+      description: The vendor's own name for a stream outage.

@@ -7,7 +7,7 @@ import type {
 import { InvokeError } from "@telorun/sdk";
 import { logCompletion } from "./completion-log.js";
 import { tokenCounts, withTokenQuantity } from "./usage.js";
-import type { AiModelInstance, FinishReason, Message, Usage } from "./types.js";
+import type { AiModelInstance, FinishReason, Message, SystemPrompt, Usage } from "./types.js";
 
 /**
  * Shape of the Ai.Text manifest after Phase 5 ref injection.
@@ -17,14 +17,14 @@ import type { AiModelInstance, FinishReason, Message, Usage } from "./types.js";
 interface AiTextResource {
   metadata: { name: string; module?: string };
   model: AiModelInstance;
-  system?: string;
+  system?: SystemPrompt;
   options?: Record<string, unknown>;
 }
 
 interface AiTextInputs {
   prompt?: string;
   messages?: Message[];
-  system?: string;
+  system?: SystemPrompt;
   options?: Record<string, unknown>;
 }
 
