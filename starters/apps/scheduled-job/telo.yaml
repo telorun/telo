@@ -20,9 +20,9 @@ metadata:
     To watch it tick without waiting for 03:00:
         JOB_CRON='*/10 * * * * *' telo .
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
   Schedule: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
-  Fs: oci://ghcr.io/telorun/fs@0.13.0#sha256-N1958jBabVz-eFK2L43qLw-AQ3rImZnSfoH2b2KEyiw
+  Fs: oci://ghcr.io/telorun/fs@0.14.0#sha256-N5xTrQgDJ91sb_XrS6mPLsH_g0_70yj1S3xBB_hLDdA
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:

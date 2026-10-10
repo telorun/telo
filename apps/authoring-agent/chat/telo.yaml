@@ -31,12 +31,12 @@ metadata:
     OpenAI key, the model endpoint, the workspace directory and the agent's state
     directory, which holds `agent.sqlite`.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.27.0#sha256-YuRyAUKvsFQu845vDQkBLUgU9tO4o1V1ZeAsx81510g
-  OpenAI: oci://ghcr.io/telorun/openai@0.12.0#sha256-hKc2_SoJ5vZtMltBiuTFpCu-_POOVKpvl9KJ27iM63s
+  Ai: oci://ghcr.io/telorun/ai@0.28.0#sha256-zpi3w-6zWjD3HGhxoMJKItuFM4ELZa-NTVHOtFacRII
+  OpenAI: oci://ghcr.io/telorun/openai@0.13.0#sha256-Tt9DaH254A972an-WTH_mtJOy9HAuUuH_SK1_bfOvHM
   HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.22.0#sha256--pPbtZmctk5SfisUpMj4ZIrir2EL64BQQ7OLB-lskQQ
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.23.0#sha256-AtK6YNh3oQJkAlTFE4iYkxr4HTzw-O-bInBjgNHaup0
   Mcp: oci://ghcr.io/telorun/mcp-client@0.16.0#sha256-uGRA31NI6oUiT8Pr88uBvMqIvCgoG5QLASMIshc7c-A
-  Fs: oci://ghcr.io/telorun/fs@0.13.0#sha256-N1958jBabVz-eFK2L43qLw-AQ3rImZnSfoH2b2KEyiw
+  Fs: oci://ghcr.io/telorun/fs@0.14.0#sha256-N5xTrQgDJ91sb_XrS6mPLsH_g0_70yj1S3xBB_hLDdA
   TextDiff: oci://ghcr.io/telorun/text-diff@0.3.0#sha256-FaVk4PVZVI1-ryRkgdTmN1MNtEP1E8bjAXXl365nSW4
   Shell: oci://ghcr.io/telorun/shell@0.13.0#sha256-h4-z6gdCjduwxgU1n7o5eol8RYgsxBCS2iQcxpCV_u0
   Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
