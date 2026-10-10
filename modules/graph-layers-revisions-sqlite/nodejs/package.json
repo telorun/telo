@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "license": "MIT",
   "private": true,
-  "description": "Build-only package for the std/graph-layers-revisions-sqlite module's bundled controller. Never published \u2014 the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild resolves and to TYPE-CHECK the source, which esbuild does not do.",
+  "description": "Build-only package for the std/graph-layers-revisions-sqlite module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild resolves and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
