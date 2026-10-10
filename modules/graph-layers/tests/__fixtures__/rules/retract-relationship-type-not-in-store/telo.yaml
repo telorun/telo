@@ -1,0 +1,24 @@
+# A retraction naming a relationship type its store does not list.
+kind: Telo.Library
+metadata:
+  name: RetractRelationshipTypeNotInStore
+include:
+  - ../../layered-model.yaml
+imports:
+  GraphLayers: ../../../..
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [retract]
+---
+kind: Layers.Store
+metadata: { name: noLinks }
+connection: !ref db
+schema: !ref appSchema
+layer: lost
+nodes: [!ref person]
+---
+kind: GraphLayers.RetractRelationship
+metadata: { name: retract }
+store: !ref noLinks
+relationship: !ref knows

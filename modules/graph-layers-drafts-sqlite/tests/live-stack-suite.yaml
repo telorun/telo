@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersDraftsSqliteLiveStackSuite
+  version: 1.0.0
+  description: |
+    The live-stack suite on an in-memory SQLite database, over drafted stores
+    used outside any draft: a drafted store reads the published state of the
+    layers beneath it as it is now, so what a base writes or deletes is in the
+    view above on the next read, with nothing brought up to date.
+include:
+  - ./__fixtures__/suite-model.yaml
+imports:
+  Suite:
+    source: ../../graph-layers/tests/__fixtures__/live-stack-suite
+    resources:
+      base: !ref base
+      top: !ref top
+      person: !ref person
+      knows: !ref knows
+  SQLite: ../../sqlite
+  Layers: ../
+targets:
+  - !ref appSchema
+  - !ref Suite.liveBases

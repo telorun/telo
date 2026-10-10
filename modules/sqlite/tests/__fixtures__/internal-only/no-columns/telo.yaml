@@ -1,0 +1,13 @@
+# An empty row contract with no internal columns: a table of nothing.
+kind: Telo.Library
+metadata:
+  name: NoColumns
+imports:
+  SQLite: ../../../../
+exports:
+  resources: [control]
+---
+kind: SQLite.Table
+metadata: { name: control }
+table: control
+columns: {}

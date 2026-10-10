@@ -1,0 +1,24 @@
+# A node table with a unique column beside its key.
+kind: Telo.Library
+metadata:
+  name: NodeTableUnique
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.NodeTable
+metadata: { name: accounts }
+table: accounts
+key: id
+columns:
+  id: { type: text, nullable: false }
+  email: { type: text, unique: true }
+---
+kind: Layers.Node
+metadata: { name: bad }
+table: !ref accounts
+key: id

@@ -12,13 +12,18 @@ metadata:
     node and relationship types are declared once, so every call is checked
     against the model before anything runs.
 requires:
-  # The operation contracts use the object form of `x-telo-schema-projection-from`
-  # (`{ from, pick, omit }`) with pointers that cross references (`/node/key`,
-  # `/relationship/source`). 0.104.0 checks this file clean but leaves the
-  # object-form contracts untyped, and its kernel fails the relationship
-  # operations at dispatch with ERR_SCHEMA_PROJECTION_UNRESOLVED. Verified by
-  # execution (`run`) against 0.104.0.
-  telo: ">=0.105.0"
+  # The backend key tail (`encodeKeyTail` / `decodeKeyTail` in this module's
+  # code library) imports the typed-frame generation exports of `@telorun/sdk`
+  # (`TYPED_FRAME_GENERATION`, `readsTypedFrameGeneration`), first published in
+  # 0.108.0. On 0.107.0 every graph resource fails at controller load with
+  # "does not provide an export named 'TYPED_FRAME_GENERATION'". Verified by
+  # execution (`run`) against 0.107.0.
+  #
+  # An older reason, which this floor covers: the operation contracts use the
+  # object form of `x-telo-schema-projection-from` (`{ from, pick, omit }`) with
+  # pointers that cross references, which 0.104.0 leaves untyped and fails at
+  # dispatch with ERR_SCHEMA_PROJECTION_UNRESOLVED.
+  telo: ">=0.108.0"
 exports:
   kinds:
     - Store
@@ -186,6 +191,10 @@ outputType:
       properties:
         key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
         properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+        origin:
+          title: Origin
+          description: The layer the value was resolved from; set only by a layered store.
+          type: string
 schema:
   type: object
   required: [store, node]
@@ -250,6 +259,10 @@ outputType:
       properties:
         key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
         properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+        origin:
+          title: Origin
+          description: The layer the value was resolved from; set only by a layered store.
+          type: string
 schema:
   type: object
   required: [store, node]
@@ -315,6 +328,10 @@ outputType:
       properties:
         key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
         properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+        origin:
+          title: Origin
+          description: The layer the value was resolved from; set only by a layered store.
+          type: string
 schema:
   type: object
   required: [store, node]
@@ -375,6 +392,10 @@ outputType:
       properties:
         key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
         properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+        origin:
+          title: Origin
+          description: The layer the value was resolved from; set only by a layered store.
+          type: string
 schema:
   type: object
   required: [store, node]
@@ -435,6 +456,10 @@ outputType:
       properties:
         key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
         properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+        origin:
+          title: Origin
+          description: The layer the value was resolved from; set only by a layered store.
+          type: string
 schema:
   type: object
   required: [store, node]
@@ -464,13 +489,18 @@ metadata:
   description: >-
     Lists the entities of one type in a knowledge graph whose properties match a
     filter — equal, not equal, less or greater than a value — ordered by key and
-    paged with a limit and an offset. An empty filter lists every entity of the
-    type.
+    read a bounded page at a time through an opaque cursor, each page returning
+    the cursor of the next until the listing ends. An empty filter lists every
+    entity of the type.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#FindNodes
 throws:
-  codes: {}
+  codes:
+    GRAPH_CURSOR_INVALID:
+      description: >-
+        The cursor is malformed, of an envelope version this runtime does not
+        read, or was issued for another operation, type or filter.
 inputType:
   type: object
   additionalProperties: false
@@ -493,14 +523,18 @@ inputType:
         gte: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
     limit:
       title: Limit
-      description: The most nodes returned.
+      description: The most nodes returned in one page.
       type: integer
       minimum: 1
-    offset:
-      title: Offset
-      description: How many matching nodes, in key order, to skip first.
-      type: integer
-      minimum: 0
+      maximum: 1000
+      default: 100
+    cursor:
+      title: Cursor
+      description: >-
+        The `next` of an earlier page of this same listing — same type, same
+        filter — passed back unchanged to read the page after it. Omitted, the
+        listing starts at its beginning.
+      type: string
 outputType:
   type: object
   required: [nodes]
@@ -508,7 +542,7 @@ outputType:
   properties:
     nodes:
       title: Nodes
-      description: The matching nodes, ordered by key.
+      description: One page of the matching nodes, ordered by key.
       type: array
       items:
         type: object
@@ -517,6 +551,16 @@ outputType:
         properties:
           key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
           properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+          origin:
+            title: Origin
+            description: The layer the value was resolved from; set only by a layered store.
+            type: string
+    next:
+      title: Next
+      description: >-
+        The cursor of the following page. Present only when more exist; absent on
+        the last page.
+      type: string
 schema:
   type: object
   required: [store, node]
@@ -596,6 +640,10 @@ outputType:
         source: { x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key } }
         target: { x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key } }
         properties: { x-telo-schema-projection-from: /relationship }
+        origin:
+          title: Origin
+          description: The layer the value was resolved from; set only by a layered store.
+          type: string
 schema:
   type: object
   required: [store, relationship]
@@ -668,6 +716,10 @@ outputType:
         source: { x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key } }
         target: { x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key } }
         properties: { x-telo-schema-projection-from: /relationship }
+        origin:
+          title: Origin
+          description: The layer the value was resolved from; set only by a layered store.
+          type: string
 schema:
   type: object
   required: [store, relationship]
@@ -738,6 +790,10 @@ outputType:
         source: { x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key } }
         target: { x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key } }
         properties: { x-telo-schema-projection-from: /relationship }
+        origin:
+          title: Origin
+          description: The layer the value was resolved from; set only by a layered store.
+          type: string
 schema:
   type: object
   required: [store, relationship]
@@ -803,6 +859,10 @@ outputType:
         source: { x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key } }
         target: { x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key } }
         properties: { x-telo-schema-projection-from: /relationship }
+        origin:
+          title: Origin
+          description: The layer the value was resolved from; set only by a layered store.
+          type: string
 schema:
   type: object
   required: [store, relationship]
@@ -832,12 +892,17 @@ metadata:
   description: >-
     Lists the links of one type in a knowledge graph, optionally only those from a
     given source or to a given target, filtered by their properties and ordered by
-    source then target, paged with a limit and an offset.
+    source then target, and read a bounded page at a time through an opaque
+    cursor until the listing ends.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#FindRelationships
 throws:
-  codes: {}
+  codes:
+    GRAPH_CURSOR_INVALID:
+      description: >-
+        The cursor is malformed, of an envelope version this runtime does not
+        read, or was issued for another operation, type or filter.
 inputType:
   type: object
   additionalProperties: false
@@ -868,14 +933,18 @@ inputType:
         gte: { x-telo-schema-projection-from: /relationship }
     limit:
       title: Limit
-      description: The most relationships returned.
+      description: The most relationships returned in one page.
       type: integer
       minimum: 1
-    offset:
-      title: Offset
-      description: How many matching relationships, in (source, target) order, to skip first.
-      type: integer
-      minimum: 0
+      maximum: 1000
+      default: 100
+    cursor:
+      title: Cursor
+      description: >-
+        The `next` of an earlier page of this same listing — same type, same
+        filter — passed back unchanged to read the page after it. Omitted, the
+        listing starts at its beginning.
+      type: string
 outputType:
   type: object
   required: [relationships]
@@ -883,7 +952,7 @@ outputType:
   properties:
     relationships:
       title: Relationships
-      description: The matching relationships, ordered by source then target.
+      description: One page of the matching relationships, ordered by source then target.
       type: array
       items:
         type: object
@@ -893,6 +962,16 @@ outputType:
           source: { x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key } }
           target: { x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key } }
           properties: { x-telo-schema-projection-from: /relationship }
+          origin:
+            title: Origin
+            description: The layer the value was resolved from; set only by a layered store.
+            type: string
+    next:
+      title: Next
+      description: >-
+        The cursor of the following page. Present only when more exist; absent on
+        the last page.
+      type: string
 schema:
   type: object
   required: [store, relationship]
@@ -927,7 +1006,8 @@ metadata:
     Follows links through a knowledge graph from one starting entity, hop by hop
     along declared link types and directions, each hop repeatable a bounded number
     of times, and returns the distinct entities reached at the end — friends of
-    friends, documents citing documents — filtered, ordered by key and paged.
+    friends, documents citing documents — filtered, ordered by key and read a
+    bounded page at a time through an opaque cursor.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#Traverse
@@ -935,6 +1015,10 @@ throws:
   codes:
     GRAPH_NODE_NOT_FOUND:
       description: The start node does not exist.
+    GRAPH_CURSOR_INVALID:
+      description: >-
+        The cursor is malformed, of an envelope version this runtime does not
+        read, or was issued for another operation, type or filter.
 inputType:
   type: object
   required: [key]
@@ -962,14 +1046,18 @@ inputType:
         gte: { x-telo-schema-projection-from: { from: /to, omit: [/to/key] } }
     limit:
       title: Limit
-      description: The most end nodes returned.
+      description: The most end nodes returned in one page.
       type: integer
       minimum: 1
-    offset:
-      title: Offset
-      description: How many end nodes, in key order, to skip first.
-      type: integer
-      minimum: 0
+      maximum: 1000
+      default: 100
+    cursor:
+      title: Cursor
+      description: >-
+        The `next` of an earlier page of this same listing — same type, same
+        filter — passed back unchanged to read the page after it. Omitted, the
+        listing starts at its beginning.
+      type: string
 outputType:
   type: object
   required: [nodes]
@@ -977,7 +1065,7 @@ outputType:
   properties:
     nodes:
       title: Nodes
-      description: The distinct end nodes reached, ordered by key.
+      description: One page of the distinct end nodes reached, ordered by key.
       type: array
       items:
         type: object
@@ -986,6 +1074,16 @@ outputType:
         properties:
           key: { x-telo-schema-projection-from: { from: /to, pick: /to/key } }
           properties: { x-telo-schema-projection-from: { from: /to, omit: [/to/key] } }
+          origin:
+            title: Origin
+            description: The layer the value was resolved from; set only by a layered store.
+            type: string
+    next:
+      title: Next
+      description: >-
+        The cursor of the following page. Present only when more exist; absent on
+        the last page.
+      type: string
 schema:
   type: object
   required: [store, from, hops, to]

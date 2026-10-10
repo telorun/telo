@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersCurrentSqliteDeclaredStorage
+  version: 1.0.0
+  description: |
+    Layered storage is declared, across real boots against one database file: the
+    author's table declarations show only the author's columns, the database
+    holds them plus the two `graph_` columns and the indexes the table kinds add,
+    and a node table dropped from the manifest is held and reported by the schema
+    like any other removed table.
+
+    Ordering is the point, so the fixtures are numbered and the suite runs one at
+    a time.
+imports:
+  Test: ../../test
+targets:
+  - !ref boots
+---
+kind: Test.Suite
+metadata: { name: boots }
+include:
+  - "__fixtures__/storage-boots/*.yaml"
+exclude: []
+concurrency: 1

@@ -1,0 +1,46 @@
+# The rule both retract kinds declare, pinned both ways: `telo check` refuses
+# the declaring library, and a consumer whose entry-scoped check is silent fails
+# at creation with the same code. `graph-layers` has no strategy of its own, so
+# the fixtures instantiate a store through the SQLite one.
+kind: Telo.Application
+metadata:
+  name: GraphLayersStaticRefusals
+  version: 1.0.0
+  description: The layered graph's retract rules, refused statically and at creation.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref retractNodeTypeNotInStore
+  - !ref retractNodeTypeNotInStoreAtRuntime
+  - !ref retractRelationshipTypeNotInStore
+  - !ref retractRelationshipTypeNotInStoreAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: retractNodeTypeNotInStore }
+source: ./__fixtures__/rules/retract-node-type-not-in-store/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a node type its store does not list in 'nodes:'"
+---
+kind: Assert.Manifest
+metadata: { name: retractNodeTypeNotInStoreAtRuntime }
+source: ./__fixtures__/rules/retract-node-type-not-in-store-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+---
+kind: Assert.Manifest
+metadata: { name: retractRelationshipTypeNotInStore }
+source: ./__fixtures__/rules/retract-relationship-type-not-in-store/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a relationship type its store does not list in 'relationships:'"
+---
+kind: Assert.Manifest
+metadata: { name: retractRelationshipTypeNotInStoreAtRuntime }
+source: ./__fixtures__/rules/retract-relationship-type-not-in-store-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TYPE_NOT_IN_STORE"

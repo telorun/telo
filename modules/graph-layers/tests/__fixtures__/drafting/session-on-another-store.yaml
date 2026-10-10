@@ -1,0 +1,32 @@
+# A conflict listing on `team` reached inside a session on `shared`: the zone is
+# correlated on the store, so a session on another one does not answer.
+kind: Telo.Application
+metadata:
+  name: SessionOnAnotherStore
+include:
+  - ../drafted-model.yaml
+imports:
+  GraphLayers: ../../..
+  Layers: ../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref wrong
+---
+kind: Run.Sequence
+metadata: { name: wrong }
+steps:
+  - name: session
+    inputs: { draft: gdr_0000000000000000000000 }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref shared
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: list
+          invoke:
+            kind: GraphLayers.NodeConflicts
+            store: !ref team
+            node: !ref person
+          inputs: {}

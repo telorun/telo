@@ -1,0 +1,22 @@
+# A drafted store whose own layer is named by a base of its base. No rule sees
+# it, since a rule reads one reference deep.
+kind: Telo.Library
+metadata:
+  name: DraftedBaseOwnLayerBeneath
+include:
+  - ../../drafted-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref appSchema
+layer: shared
+bases: [!ref team]
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref graphDrafts

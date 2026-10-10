@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsSqliteStackingSuite
+  version: 1.0.0
+  description: |
+    The stacking suite on an in-memory SQLite database, over seven revisioned
+    stores sharing one set of tables: pinning by number, label and head, what a
+    stack resolves, a moved pin merged and its conflicts resolved, the diamond
+    upgraded in one call, permanent labels, and cursors over a pinned stack.
+include:
+  - ./__fixtures__/suite-model.yaml
+imports:
+  Suite:
+    source: ../../graph-layers/tests/__fixtures__/stacking-suite
+    resources:
+      base: !ref base
+      middle: !ref middle
+      side: !ref side
+      top: !ref top
+      left: !ref left
+      right: !ref right
+      apex: !ref apex
+      person: !ref person
+      knows: !ref knows
+  SQLite: ../../sqlite
+  Layers: ../
+targets:
+  - !ref appSchema
+  - !ref Suite.pinning
+  - !ref Suite.removals
+  - !ref Suite.upgrade
+  - !ref Suite.pinnedLinks
+  - !ref Suite.cursors
+  - !ref Suite.labels
+  - !ref Suite.diamond
+  - !ref Suite.rebasedPins
+  - !ref Suite.equalWrites

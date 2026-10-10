@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersDraftsPostgresDeclaredStorage
+  version: 1.0.0
+  description: |
+    Drafted storage is declared, across real boots against one PostgreSQL
+    namespace: the database holds the author's columns plus the bookkeeping
+    columns and indexes the table kinds add and the two bookkeeping tables, and a
+    second boot of the same release changes nothing.
+
+    Ordering is the point, so the fixtures are numbered and the suite runs one at
+    a time. NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Test: ../../../test
+targets:
+  - !ref boots
+---
+kind: Test.Suite
+metadata: { name: boots }
+include:
+  - "__fixtures__/storage-boots/*.yaml"
+exclude: []
+concurrency: 1

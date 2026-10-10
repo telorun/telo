@@ -18,6 +18,7 @@ columns:
   target: { type: text, nullable: false }
 indexes:
   knowsPair: { columns: [source, target], unique: true }
+  knowsByTarget: { columns: [target, source] }
 foreignKeys:
   knowsSource:
     columns: [source]

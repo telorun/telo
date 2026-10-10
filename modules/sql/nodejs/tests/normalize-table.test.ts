@@ -136,3 +136,44 @@ describe("implied non-nullability", () => {
     expect(table({ a: { type: "text", nullable: false } }).columns[0]?.nullable).toBe(false);
   });
 });
+
+/**
+ * `internalColumns` is a second column map. Everything downstream reads ONE
+ * column list, so the pass treats an internal column as it treats any other;
+ * what stays apart is the list of names outside the row contract.
+ */
+describe("internal columns", () => {
+  const table = (rest: Record<string, any>) =>
+    normalizeTable({ table: "documents", ...rest } as any, byName, asStorageClass);
+
+  it("joins the declared columns in one list and names the internal ones", () => {
+    const declared = table({
+      columns: { slug: { type: "text" } },
+      internalColumns: { layer: { type: "text", nullable: false } },
+      indexes: { byLayerSlug: { columns: ["layer", "slug"], unique: true } },
+    });
+    expect(declared.columns.map((c) => c.name)).toEqual(["slug", "layer"]);
+    expect(declared.columns[1]).toMatchObject({ name: "layer", nullable: false });
+    expect(declared.internalColumns).toEqual(["layer"]);
+  });
+
+  it("refuses a seed row that sets an internal column", () => {
+    expect(() =>
+      table({
+        columns: { slug: { type: "text" } },
+        internalColumns: { layer: { type: "text" } },
+        seeds: { key: ["slug"], rows: [{ slug: "intro", layer: "draft" }] },
+      }),
+    ).toThrow(/sets 'layer', an internal column/);
+  });
+
+  it("refuses seeds keyed on an internal column", () => {
+    expect(() =>
+      table({
+        columns: { slug: { type: "text" } },
+        internalColumns: { layer: { type: "text" } },
+        seeds: { key: ["layer"], rows: [{ slug: "intro" }] },
+      }),
+    ).toThrow(/keyed on 'layer'/);
+  });
+});

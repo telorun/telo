@@ -171,6 +171,12 @@ schema:
   type: object
   additionalProperties: false
   required: [table, columns]
+  # A table needs a column. `columns` is the row contract and is always
+  # written; it may be empty only when `internalColumns` holds the table's columns.
+  anyOf:
+    - properties:
+        columns: { minProperties: 1 }
+    - required: [internalColumns]
   examples:
     - table: users
       columns:
@@ -208,8 +214,9 @@ schema:
         Columns keyed by name. The key is durable identity — tombstones key on it
         and a rename is expand-contract, never a native RENAME — so column order
         carries no meaning and a duplicate name is structurally unrepresentable.
+        The row contract: `{}` beside `internalColumns` declares a table that
+        has none.
       type: object
-      minProperties: 1
       propertyNames:
         pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
       additionalProperties:
@@ -321,6 +328,21 @@ schema:
               old one into it and tombstones the old one — a native rename would take
               effect immediately and break the version still running.
             type: string
+    internalColumns:
+      title: Internal Columns
+      description: >-
+        Columns the table holds outside its row contract, keyed by name and
+        written exactly as `columns` are. The schema pass creates, compares and
+        reclaims one like any other column, and an index or a foreign key may
+        name it — but it is absent from the projected row, so no consumer typed
+        from this table sees it and no seed row may set it. A name may appear in
+        only one of the two maps.
+      type: object
+      minProperties: 1
+      propertyNames:
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      additionalProperties:
+        $ref: "#/properties/columns/additionalProperties"
     indexes:
       title: Indexes
       description: Indexes keyed by name, which is their durable identity.

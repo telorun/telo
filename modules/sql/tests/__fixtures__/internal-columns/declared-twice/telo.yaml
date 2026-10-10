@@ -1,0 +1,17 @@
+# A table naming `layer` in both of its column maps.
+kind: Telo.Library
+metadata:
+  name: DeclaredTwice
+imports:
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [documents]
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug: { type: text, primaryKey: true }
+  layer: { type: text }
+internalColumns:
+  layer: { type: text }

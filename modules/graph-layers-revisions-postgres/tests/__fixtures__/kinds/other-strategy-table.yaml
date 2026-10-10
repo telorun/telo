@@ -1,0 +1,21 @@
+# A revisioned node type over the drafts strategy's node table, which keeps one
+# published row per key and none of the bookkeeping a revision needs.
+kind: Telo.Application
+metadata:
+  name: OtherStrategyTable
+imports:
+  Postgres: ../../../../postgres
+  Drafts: ../../../../graph-layers-drafts-postgres
+  Layers: ../../..
+---
+kind: Drafts.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id

@@ -1,0 +1,19 @@
+# A store naming its base's own layer.
+kind: Telo.Library
+metadata:
+  name: BaseLayerDuplicate
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref appSchema
+layer: shared
+bases: [!ref shared]
+nodes: [!ref person]

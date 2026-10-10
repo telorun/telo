@@ -1,0 +1,25 @@
+# An internal map that is written holds at least one column.
+kind: Telo.Application
+metadata:
+  name: EmptyInternalColumns
+  version: 1.0.0
+imports:
+  SQLite: ../../../
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: control }
+table: control
+columns:
+  name: { type: text, primaryKey: true }
+internalColumns: {}
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref control]

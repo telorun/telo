@@ -1,0 +1,30 @@
+# A seed row states the row contract, so it cannot set an internal column.
+kind: Telo.Application
+metadata:
+  name: SeedSetsInternal
+  version: 1.0.0
+imports:
+  SQLite: ../../../
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug: { type: text, primaryKey: true }
+internalColumns:
+  layer: { type: text }
+seeds:
+  key: [slug]
+  rows:
+    - { slug: intro, layer: draft }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref documents]

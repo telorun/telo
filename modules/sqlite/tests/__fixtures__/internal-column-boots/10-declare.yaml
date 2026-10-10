@@ -1,0 +1,73 @@
+kind: Telo.Application
+metadata:
+  name: InternalColumnBoots
+  version: 1.0.0
+  description: |
+    Boot 1 — the table is created with its internal columns and an index over one
+    internal and one declared column; a row is written so later boots can prove
+    the data survives.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: INTERNAL_COLUMN_BOOTS_DB, type: string, x-telo-type: Telo.HostPath, default: ./.telo/internal-column-boots.db }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref documents, !ref control]
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug: { type: text, primaryKey: true }
+  note: { type: text }
+internalColumns:
+  layer: { type: text, nullable: false, default: base }
+  revision: { type: integer }
+indexes:
+  documents_layer_slug: { columns: [layer, slug], unique: true }
+---
+# No row contract: every column is the table's own.
+kind: SQLite.Table
+metadata: { name: control }
+table: control
+columns: {}
+internalColumns:
+  name: { type: text, primaryKey: true }
+  head_revision: { type: integer, nullable: false, default: 0 }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: insert
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: "INSERT INTO documents (slug, note, revision) VALUES ('intro', 'first', 7)"
+  - name: insertControl
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: "INSERT INTO control (name, head_revision) VALUES ('main', 4)"
+  - name: assertNothingHeld
+    invoke: !ref check
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected: []

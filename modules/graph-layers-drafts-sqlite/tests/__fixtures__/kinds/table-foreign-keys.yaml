@@ -1,0 +1,18 @@
+# A layered node table declaring a foreign key, which the kind does not offer.
+kind: Telo.Application
+metadata:
+  name: TableForeignkeys
+imports:
+  SQLite: ../../../../sqlite
+  Layers: ../../..
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+foreignKeys:
+  peopleSelf:
+    columns: [id]
+    references: { table: !ref people, columns: [id] }

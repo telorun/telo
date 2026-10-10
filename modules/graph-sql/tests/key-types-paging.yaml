@@ -1,0 +1,408 @@
+kind: Telo.Application
+metadata:
+  name: GraphSqlKeyTypesPaging
+  version: 1.0.0
+  description: |
+    A listing resumes after any key an operation returns, on the plain SQL graph: node
+    types keyed by integer, real, text, blob each drain at one node a page,
+    every key once and in key order, and so do a relationship listing and a
+    traversal over a pair of binary keys. A tail carries a key in the value
+    domain's own encoding, so the key comes back as the value it was read as.
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  GraphSql: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref populate
+  - !ref countedDrain
+  - !ref measuredDrain
+  - !ref namedDrain
+  - !ref packedDrain
+  - !ref joinsDrain
+  - !ref reachedDrain
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: countedTable }
+table: counted
+columns:
+  id: { type: integer, primaryKey: true }
+  note: { type: text }
+---
+kind: SQLite.Table
+metadata: { name: measuredTable }
+table: measured
+columns:
+  id: { type: real, primaryKey: true }
+  note: { type: text }
+---
+kind: SQLite.Table
+metadata: { name: namedTable }
+table: named
+columns:
+  id: { type: text, primaryKey: true }
+  note: { type: text }
+---
+kind: SQLite.Table
+metadata: { name: packedTable }
+table: packed
+columns:
+  id: { type: blob, primaryKey: true }
+  note: { type: text }
+---
+kind: SQLite.Table
+metadata: { name: joinsTable }
+table: joins
+columns:
+  source: { type: blob, nullable: false }
+  target: { type: blob, nullable: false }
+indexes:
+  joins_pair: { columns: [source, target], unique: true }
+  joins_by_target: { columns: [target, source] }
+foreignKeys:
+  joins_source:
+    columns: [source]
+    references: { table: !ref packedTable, columns: [id] }
+    onDelete: cascade
+  joins_target:
+    columns: [target]
+    references: { table: !ref packedTable, columns: [id] }
+    onDelete: cascade
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref countedTable, !ref measuredTable, !ref namedTable, !ref packedTable, !ref joinsTable]
+---
+kind: GraphSql.Node
+metadata: { name: counted }
+table: !ref countedTable
+key: id
+---
+kind: GraphSql.Node
+metadata: { name: measured }
+table: !ref measuredTable
+key: id
+---
+kind: GraphSql.Node
+metadata: { name: named }
+table: !ref namedTable
+key: id
+---
+kind: GraphSql.Node
+metadata: { name: packed }
+table: !ref packedTable
+key: id
+---
+kind: GraphSql.Relationship
+metadata: { name: joins }
+table: !ref joinsTable
+source: !ref packed
+target: !ref packed
+sourceColumn: source
+targetColumn: target
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref counted, !ref measured, !ref named, !ref packed]
+relationships: [!ref joins]
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+# What a drain has gathered so far.
+kind: Run.Value
+metadata: { name: gathered }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [items]
+    properties:
+      items: { type: array }
+value:
+  items: !cel "inputs.items"
+---
+kind: Graph.FindNodes
+metadata: { name: findCounted }
+store: !ref kb
+node: !ref counted
+---
+kind: Graph.FindNodes
+metadata: { name: findMeasured }
+store: !ref kb
+node: !ref measured
+---
+kind: Graph.FindNodes
+metadata: { name: findNamed }
+store: !ref kb
+node: !ref named
+---
+kind: Graph.FindNodes
+metadata: { name: findPacked }
+store: !ref kb
+node: !ref packed
+---
+kind: Graph.FindRelationships
+metadata: { name: findJoins }
+store: !ref kb
+relationship: !ref joins
+---
+kind: Graph.Traverse
+metadata: { name: reached }
+store: !ref kb
+from: !ref packed
+to: !ref packed
+hops:
+  - { relationship: !ref joins, direction: out }
+---
+# Written out of key order, so an ordered drain is the listing's doing.
+kind: Run.Sequence
+metadata: { name: populate }
+steps:
+  - name: counted0
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref counted }
+    inputs:
+      key: 2
+      properties: { note: n0 }
+  - name: counted1
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref counted }
+    inputs:
+      key: 10
+      properties: { note: n1 }
+  - name: counted2
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref counted }
+    inputs:
+      key: -1
+      properties: { note: n2 }
+  - name: measured0
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref measured }
+    inputs:
+      key: 1.5
+      properties: { note: n0 }
+  - name: measured1
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref measured }
+    inputs:
+      key: -0.25
+      properties: { note: n1 }
+  - name: measured2
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref measured }
+    inputs:
+      key: 10.75
+      properties: { note: n2 }
+  - name: named0
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref named }
+    inputs:
+      key: b
+      properties: { note: n0 }
+  - name: named1
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref named }
+    inputs:
+      key: a
+      properties: { note: n1 }
+  - name: named2
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref named }
+    inputs:
+      key: c
+      properties: { note: n2 }
+  - name: packed0
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref packed }
+    inputs:
+      key: !cel "bytes('b1')"
+      properties: { note: n0 }
+  - name: packed1
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref packed }
+    inputs:
+      key: !cel "bytes('a1')"
+      properties: { note: n1 }
+  - name: packed2
+    invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref packed }
+    inputs:
+      key: !cel "bytes('c1')"
+      properties: { note: n2 }
+  - name: joins0
+    invoke: { kind: Graph.CreateRelationship, store: !ref kb, relationship: !ref joins }
+    inputs:
+      source: !cel "bytes('a1')"
+      target: !cel "bytes('b1')"
+  - name: joins1
+    invoke: { kind: Graph.CreateRelationship, store: !ref kb, relationship: !ref joins }
+    inputs:
+      source: !cel "bytes('b1')"
+      target: !cel "bytes('c1')"
+  - name: joins2
+    invoke: { kind: Graph.CreateRelationship, store: !ref kb, relationship: !ref joins }
+    inputs:
+      source: !cel "bytes('a1')"
+      target: !cel "bytes('c1')"
+---
+# Keyed by integer.
+kind: Run.Sequence
+metadata: { name: countedDrain }
+steps:
+  - name: page
+    invoke: !ref findCounted
+    inputs: { limit: 1 }
+  - name: seen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.page.result.nodes.map(n, n.key)"
+  - name: follow
+    while: !cel "has(steps.page.result.next)"
+    do:
+      - name: page
+        invoke: !ref findCounted
+        inputs: { limit: 1, cursor: !cel "steps.page.result.next" }
+      - name: seen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.seen.result.items + steps.page.result.nodes.map(n, n.key)"
+  - name: assertEveryKeyOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.seen.result.items"
+      expected: [-1, 2, 10]
+---
+# Keyed by real.
+kind: Run.Sequence
+metadata: { name: measuredDrain }
+steps:
+  - name: page
+    invoke: !ref findMeasured
+    inputs: { limit: 1 }
+  - name: seen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.page.result.nodes.map(n, n.key)"
+  - name: follow
+    while: !cel "has(steps.page.result.next)"
+    do:
+      - name: page
+        invoke: !ref findMeasured
+        inputs: { limit: 1, cursor: !cel "steps.page.result.next" }
+      - name: seen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.seen.result.items + steps.page.result.nodes.map(n, n.key)"
+  - name: assertEveryKeyOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.seen.result.items"
+      expected: [-0.25, 1.5, 10.75]
+---
+# Keyed by text.
+kind: Run.Sequence
+metadata: { name: namedDrain }
+steps:
+  - name: page
+    invoke: !ref findNamed
+    inputs: { limit: 1 }
+  - name: seen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.page.result.nodes.map(n, n.key)"
+  - name: follow
+    while: !cel "has(steps.page.result.next)"
+    do:
+      - name: page
+        invoke: !ref findNamed
+        inputs: { limit: 1, cursor: !cel "steps.page.result.next" }
+      - name: seen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.seen.result.items + steps.page.result.nodes.map(n, n.key)"
+  - name: assertEveryKeyOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.seen.result.items"
+      expected: [a, b, c]
+---
+# Keyed by blob.
+kind: Run.Sequence
+metadata: { name: packedDrain }
+steps:
+  - name: page
+    invoke: !ref findPacked
+    inputs: { limit: 1 }
+  - name: seen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.page.result.nodes.map(n, string(n.key))"
+  - name: follow
+    while: !cel "has(steps.page.result.next)"
+    do:
+      - name: page
+        invoke: !ref findPacked
+        inputs: { limit: 1, cursor: !cel "steps.page.result.next" }
+      - name: seen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.seen.result.items + steps.page.result.nodes.map(n, string(n.key))"
+  - name: assertEveryKeyOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.seen.result.items"
+      expected: [a1, b1, c1]
+---
+# Relationships between binary keys: the tail holds both.
+kind: Run.Sequence
+metadata: { name: joinsDrain }
+steps:
+  - name: page
+    invoke: !ref findJoins
+    inputs: { limit: 1 }
+  - name: seen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.page.result.relationships.map(n, [string(n.source), string(n.target)])"
+  - name: follow
+    while: !cel "has(steps.page.result.next)"
+    do:
+      - name: page
+        invoke: !ref findJoins
+        inputs: { limit: 1, cursor: !cel "steps.page.result.next" }
+      - name: seen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.seen.result.items + steps.page.result.relationships.map(n, [string(n.source), string(n.target)])"
+  - name: assertEveryKeyOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.seen.result.items"
+      expected: [[a1, b1], [a1, c1], [b1, c1]]
+---
+# A traversal ending on binary keys.
+kind: Run.Sequence
+metadata: { name: reachedDrain }
+steps:
+  - name: page
+    invoke: !ref reached
+    inputs: { key: !cel "bytes('a1')", limit: 1 }
+  - name: seen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.page.result.nodes.map(n, string(n.key))"
+  - name: follow
+    while: !cel "has(steps.page.result.next)"
+    do:
+      - name: page
+        invoke: !ref reached
+        inputs: { key: !cel "bytes('a1')", limit: 1, cursor: !cel "steps.page.result.next" }
+      - name: seen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.seen.result.items + steps.page.result.nodes.map(n, string(n.key))"
+  - name: assertEveryKeyOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.seen.result.items"
+      expected: [b1, c1]

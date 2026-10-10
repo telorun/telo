@@ -1,0 +1,165 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersCurrentSqliteNodeDeletes
+  version: 1.0.0
+  description: |
+    What a node delete writes. A relationship is in a view only while both its
+    endpoints are, so hiding a node from beneath states nothing about the
+    relationships the layers beneath hold for it: the relationship table gains
+    no row. And a store with no bases behaves as a plain graph — a node deleted
+    and created again has no relationships, because the delete withdrew the
+    layer's own.
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  Layers: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref hidingWritesNoRelationshipRow
+  - !ref noBasesDeleteThenCreate
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref knowsTable]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Store
+metadata: { name: shared }
+connection: !ref db
+schema: !ref appSchema
+layer: shared
+nodes: [!ref person]
+relationships: [!ref knows]
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+bases: [!ref shared]
+nodes: [!ref person]
+relationships: [!ref knows]
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Graph.CreateNode
+metadata: { name: sharedCreatePerson }
+store: !ref shared
+node: !ref person
+---
+kind: Graph.CreateRelationship
+metadata: { name: sharedCreateKnows }
+store: !ref shared
+relationship: !ref knows
+---
+kind: Run.Sequence
+metadata: { name: hidingWritesNoRelationshipRow }
+steps:
+  - name: alice
+    invoke: !ref sharedCreatePerson
+    inputs: { key: a, properties: { name: Alice } }
+  - name: bob
+    invoke: !ref sharedCreatePerson
+    inputs: { key: b, properties: { name: Bob } }
+  - name: aliceKnowsBob
+    invoke: !ref sharedCreateKnows
+    inputs: { source: a, target: b }
+  - name: bobKnowsAlice
+    invoke: !ref sharedCreateKnows
+    inputs: { source: b, target: a }
+  - name: hideAlice
+    invoke: { kind: Graph.DeleteNode, store: !ref team, node: !ref person }
+    inputs: { key: a }
+  - name: statements
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT 'knows' AS tbl, graph_layer AS layer, graph_effect AS effect, count(*) AS n
+        FROM knows GROUP BY graph_layer, graph_effect
+        UNION ALL
+        SELECT 'people', graph_layer, graph_effect, count(*)
+        FROM people WHERE id = 'a' GROUP BY graph_layer, graph_effect
+        ORDER BY 1, 2
+  - name: assertOnlyTheNodeRemovalWritten
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.statements.result.rows"
+      expected:
+        - { tbl: knows, layer: shared, effect: stated, n: 2 }
+        - { tbl: people, layer: shared, effect: stated, n: 1 }
+        - { tbl: people, layer: team, effect: removed, n: 1 }
+---
+kind: Run.Sequence
+metadata: { name: noBasesDeleteThenCreate }
+steps:
+  - name: carol
+    invoke: !ref sharedCreatePerson
+    inputs: { key: c, properties: { name: Carol } }
+  - name: dave
+    invoke: !ref sharedCreatePerson
+    inputs: { key: d, properties: { name: Dave } }
+  - name: carolKnowsDave
+    invoke: !ref sharedCreateKnows
+    inputs: { source: c, target: d }
+  - name: daveKnowsCarol
+    invoke: !ref sharedCreateKnows
+    inputs: { source: d, target: c }
+  - name: deleteCarol
+    invoke: { kind: Graph.DeleteNode, store: !ref shared, node: !ref person }
+    inputs: { key: c }
+  - name: carolAgain
+    invoke: !ref sharedCreatePerson
+    inputs: { key: c, properties: { name: Carol } }
+  - name: fromCarol
+    invoke: { kind: Graph.FindRelationships, store: !ref shared, relationship: !ref knows }
+    inputs: { source: c }
+  - name: toCarol
+    invoke: { kind: Graph.FindRelationships, store: !ref shared, relationship: !ref knows }
+    inputs: { target: c }
+  - name: assertNoRelationships
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.fromCarol.result.relationships + steps.toCarol.result.relationships"
+      expected: []

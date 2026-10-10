@@ -1,0 +1,113 @@
+kind: Telo.Application
+metadata:
+  name: LayeredStorageBoots
+  version: 1.0.0
+  description: |
+    Boot 1 — the schema creates each layered table with the author's columns, the
+    two bookkeeping columns the table kind adds, and its indexes: unique per
+    layer and key on a node table; unique per layer and pair, plus a
+    target-leading one, on a relationship table. There is no bookkeeping table.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Layers: ../../..
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: LAYERED_STORAGE_BOOTS_DB, type: string, x-telo-type: Telo.HostPath, default: ./.telo/layered-storage-boots.db }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref people, !ref knowsTable, !ref notes]
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+# What the author declares: the node's own columns, and nothing of the layers.
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text }
+indexes:
+  people_by_name: { columns: [name] }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+---
+kind: Layers.NodeTable
+metadata: { name: notes }
+table: notes
+key: id
+columns:
+  id: { type: text, nullable: false }
+  body: { type: text }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: peopleColumns
+    invoke: !ref read
+    inputs:
+      sql: "SELECT name, \"notnull\" AS required FROM pragma_table_info('people') ORDER BY cid"
+  - name: assertPeopleColumns
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.peopleColumns.result.rows"
+      expected:
+        - { name: id, required: 1 }
+        - { name: name, required: 0 }
+        - { name: graph_layer, required: 1 }
+        - { name: graph_effect, required: 1 }
+  - name: indexes
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT l.tbl_name AS tbl, l.name AS name, i."unique" AS uniq,
+          (SELECT group_concat(c.name, ',') FROM pragma_index_info(l.name) c) AS cols
+        FROM sqlite_master l JOIN pragma_index_list(l.tbl_name) i ON i.name = l.name
+        WHERE l.type = 'index' AND l.tbl_name IN ('people', 'knows') ORDER BY l.name
+  - name: assertIndexes
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.indexes.result.rows"
+      expected:
+        - { tbl: knows, name: graph_knows_layer_pair, uniq: 1, cols: "graph_layer,source,target" }
+        - { tbl: knows, name: graph_knows_layer_target, uniq: 0, cols: "graph_layer,target,source" }
+        - { tbl: people, name: graph_people_layer_key, uniq: 1, cols: "graph_layer,id" }
+        - { tbl: people, name: people_by_name, uniq: 0, cols: "name" }
+  - name: tables
+    invoke: !ref read
+    inputs:
+      sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'telo_schema%' ORDER BY name"
+  - name: assertNoBookkeepingTable
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.tables.result.rows.map(r, r.name)"
+      expected: [knows, notes, people]
+  - name: assertNothingHeld
+    invoke: !ref check
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected: []

@@ -1,0 +1,31 @@
+# A layered node table renamed from a table its schema still declares.
+kind: Telo.Library
+metadata:
+  name: TableRenameSourceDeclared
+imports:
+  Layers: ../../../..
+  SQLite: ../../../../../sqlite
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: folk }
+table: folk
+key: id
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+renamedFrom: folk
+columns:
+  id: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref folk, !ref people]

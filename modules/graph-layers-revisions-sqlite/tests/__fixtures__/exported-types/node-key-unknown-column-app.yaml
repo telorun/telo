@@ -1,0 +1,44 @@
+# An application over the exporting library beside it, listing its tables and
+# types. The library's mistake is the library's to report: this application's
+# own check is silent, and its store is refused when the node type is created.
+kind: Telo.Application
+metadata:
+  name: ConsumesMistakenTypes
+imports:
+  Types: ./node-key-unknown-column
+  SQLite: ../../../../sqlite
+  Layers: ../../..
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref Types.people, !ref Types.knowsTable, !ref graphLayers, !ref graphChangesets, !ref graphChangesetBases]
+---
+kind: Layers.Store
+metadata: { name: shared }
+connection: !ref db
+schema: !ref appSchema
+layer: lost
+nodes: [!ref Types.person]
+relationships: [!ref Types.knows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases

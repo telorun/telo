@@ -70,6 +70,12 @@ SQLite has exactly one namespace, so unlike `Postgres.Schema` there is no
 `schema:` field to name and nothing to create. A consumer addressing a listed
 table through the schema instance gets the quoted table name on its own.
 
+The schema instance also renders the current instant for a consumer that
+records database time. SQLite has no timestamp type, so an instant is
+fixed-width UTC text — `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`, giving
+`YYYY-MM-DDTHH:MM:SS.sssZ` in a `text` column — and plain text comparison is
+chronological. The clock has millisecond resolution.
+
 Declared foreign keys are enforced under both host drivers (better-sqlite3 on
 Node, `bun:sqlite` on Bun): the connection switches SQLite's per-connection
 `foreign_keys` setting on when it opens the database and reads it back, and a
@@ -81,6 +87,36 @@ it). Rows written before enforcement was on are not re-checked. Dropping a table
 that another table references, by reclamation or in a `migrations:` rebuild, runs
 its foreign keys' `onDelete` actions (SQLite deletes the rows first), and
 enforcement cannot be switched off inside the migration's transaction.
+
+### Internal columns
+
+`internalColumns:` is a second column map, written exactly as `columns:` is. The
+schema pass creates, compares, tombstones and reclaims an internal column like any
+other, and an index or a foreign key may name one — but it is outside the table's
+row contract: a repository operation or any other consumer typed from the table
+does not see it, and a seed row cannot set it.
+
+```yaml
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug: { type: text, nullable: false }
+  title: { type: text }
+internalColumns:
+  layer: { type: text, nullable: false, default: base }
+  retired_at: { type: text }
+indexes:
+  documents_layer_slug: { columns: [layer, slug], unique: true, where: "retired_at IS NULL" }
+```
+
+`columns` is the table's row contract and is always written. A table with no row contract writes `columns: {}` and declares every column under `internalColumns`. A table needs at least one column across the two maps.
+
+A name may appear in only one of the two maps (`SQL_COLUMN_DECLARED_TWICE`), and an
+internal column's `renamedFrom` may name neither itself
+(`SQL_INTERNAL_COLUMN_RENAME_FROM_SELF`) nor a column either map still declares
+(`SQL_INTERNAL_COLUMN_RENAME_SOURCE_STILL_DECLARED`). See
+[Internal columns](../sql/docs/declarative-schema.md#internal-columns--outside-the-row-contract).
 
 ### Domains, predicates and reference data
 

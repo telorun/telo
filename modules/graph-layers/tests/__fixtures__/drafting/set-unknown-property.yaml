@@ -1,0 +1,31 @@
+# A resolution setting a property the node type does not declare.
+kind: Telo.Application
+metadata:
+  name: SetUnknownProperty
+include:
+  - ../drafted-model.yaml
+imports:
+  GraphLayers: ../../..
+  Layers: ../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref decide
+---
+kind: Run.Sequence
+metadata: { name: decide }
+steps:
+  - name: session
+    inputs: { draft: gdr_0000000000000000000000 }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: resolve
+          invoke:
+            kind: GraphLayers.ResolveNodeConflict
+            store: !ref team
+            node: !ref person
+          inputs: { key: a, take: mine, set: { nmae: Alice } }

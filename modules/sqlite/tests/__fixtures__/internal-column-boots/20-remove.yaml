@@ -1,0 +1,84 @@
+kind: Telo.Application
+metadata:
+  name: InternalColumnBoots
+  version: 2.0.0
+  description: |
+    Boot 3 — the release that stops declaring the internal column `revision` and
+    moves `note` out of the row contract. The removed column is tombstoned and
+    held exactly as a declared one is; the moved one is the same column, so it is
+    neither tombstoned nor altered.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: INTERNAL_COLUMN_BOOTS_DB, type: string, x-telo-type: Telo.HostPath, default: ./.telo/internal-column-boots.db }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref documents, !ref control]
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug: { type: text, primaryKey: true }
+internalColumns:
+  layer: { type: text, nullable: false, default: base }
+  note: { type: text }
+indexes:
+  documents_layer_slug: { columns: [layer, slug], unique: true }
+---
+# No row contract: every column is the table's own.
+kind: SQLite.Table
+metadata: { name: control }
+table: control
+columns: {}
+internalColumns:
+  name: { type: text, primaryKey: true }
+  head_revision: { type: integer, nullable: false, default: 0 }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertTombstoned
+    invoke: !ref check
+    inputs:
+      actual: !cel "resources.appSchema.status.tombstoned"
+      expected: ["column documents.revision"]
+  - name: assertReported
+    invoke: !ref check
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected:
+        - object: "column documents.revision"
+          missingSinceVersion: "2.0.0"
+          versionsRemaining: null
+          msRemaining: null
+          eligible: false
+  - name: row
+    invoke: !ref read
+    inputs:
+      sql: "SELECT slug, note, revision FROM documents"
+  - name: assertHeld
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.row.result.rows"
+      expected: [{ slug: intro, note: first, revision: 7 }]

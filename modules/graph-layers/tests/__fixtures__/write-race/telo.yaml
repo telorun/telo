@@ -1,0 +1,209 @@
+# What concurrent writers of one key through one layer are promised, once, for
+# every strategy: each write takes effect in some order — none fails for having
+# raced another write of the same key, and none reports an outcome the layer
+# does not then hold.
+#
+# A run supplies a store `top` and the store `base` beneath it, over one node
+# type, starting empty, and `refreshStacks`, which brings `top`'s stack up to
+# date after `base` is written. The writing sequences (`mergeFresh`,
+# `deleteVisible`, `updateVisible`) are run by SEPARATE PROCESSES against one
+# database, two at a time; the checking sequences by whoever started them, once
+# both have exited. `value` is what a process names the nodes it merges.
+kind: Telo.Library
+metadata:
+  name: WriteRaceSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: two processes writing the same keys through one layer of a
+    layered graph of people.
+imports:
+  Graph: ../../../../graph
+  GraphLayers: ../../..
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  value:
+    type: string
+    description: What this process names the nodes it merges.
+resources:
+  base:
+    kind: GraphLayers.Store
+    description: Layer `base`, built on nothing.
+  top:
+    kind: GraphLayers.Store
+    description: Layer `top`, whose stack reaches `base`.
+  person:
+    kind: Graph.Node
+    description: People keyed by a text `id`, with a non-null text `name` and an integer `age`.
+  refreshStacks:
+    kind: Run.Sequence
+    description: >-
+      Brings `top`'s stack up to date with what `base` now holds. Takes no input.
+exports:
+  resources:
+    - mergeFresh
+    - mergedOnce
+    - seedVisible
+    - deleteVisible
+    - updateVisible
+    - deletedAreAbsent
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Graph.FindNodes
+metadata: { name: topFindPeople }
+store: !ref top
+node: !ref person
+---
+# One process's half of the merge race: the same 200 fresh keys as the other
+# process, under this process's own value. Any failure fails the process.
+kind: Run.Sequence
+metadata: { name: mergeFresh }
+steps:
+  - name: n
+    value: !cel "0"
+  - name: merges
+    while: !cel "steps.n.result < 200"
+    do:
+      - name: merge
+        invoke: { kind: Graph.MergeNode, store: !ref top, node: !ref person }
+        inputs:
+          key: !cel "'m' + string(1000 + steps.n.result)"
+          properties: { name: !cel "variables.value" }
+      - name: n
+        value: !cel "steps.n.result + 1"
+---
+# After both mergers: every key is listed once, and holds one of the two values.
+kind: Run.Sequence
+metadata: { name: mergedOnce }
+steps:
+  - name: n
+    value: !cel "0"
+  - name: expected
+    value: !cel "[]"
+  - name: count
+    while: !cel "steps.n.result < 200"
+    do:
+      - name: expected
+        value: !cel "steps.expected.result + ['m' + string(1000 + steps.n.result)]"
+      - name: n
+        value: !cel "steps.n.result + 1"
+  - name: listed
+    invoke: !ref topFindPeople
+    inputs: { limit: 1000 }
+  - name: assertEveryKeyOnceWithOneOfTheValues
+    invoke: !ref check
+    inputs:
+      actual:
+        keys: !cel "steps.listed.result.nodes.map(n, n.key)"
+        foreignValues: !cel "steps.listed.result.nodes.filter(n, !(n.properties.name in ['left', 'right'])).map(n, n.key)"
+        more: !cel "has(steps.listed.result.next)"
+      expected:
+        keys: !cel "steps.expected.result"
+        foreignValues: []
+        more: false
+---
+# 200 people in `base`, visible through `top`.
+kind: Run.Sequence
+metadata: { name: seedVisible }
+steps:
+  - name: n
+    value: !cel "0"
+  - name: seeds
+    while: !cel "steps.n.result < 200"
+    do:
+      - name: seed
+        invoke: { kind: Graph.CreateNode, store: !ref base, node: !ref person }
+        inputs:
+          key: !cel "'d' + string(1000 + steps.n.result)"
+          properties: { name: Doomed, age: 0 }
+      - name: n
+        value: !cel "steps.n.result + 1"
+  - name: refresh
+    invoke: !ref refreshStacks
+---
+# One process deletes the seeded people through `top`. Each delete that answers
+# success is recorded as a marker in `base`; a node already absent is the one
+# refusal the contract allows, and anything else fails the process.
+kind: Run.Sequence
+metadata: { name: deleteVisible }
+steps:
+  - name: n
+    value: !cel "0"
+  - name: deletes
+    while: !cel "steps.n.result < 200"
+    do:
+      - name: attempt
+        try:
+          - name: delete
+            invoke: { kind: Graph.DeleteNode, store: !ref top, node: !ref person }
+            inputs: { key: !cel "'d' + string(1000 + steps.n.result)" }
+          - name: record
+            invoke: { kind: Graph.CreateNode, store: !ref base, node: !ref person }
+            inputs:
+              key: !cel "'x' + string(1000 + steps.n.result)"
+              properties: { name: Deleted }
+        catch:
+          - name: unexpected
+            if: !cel "error.code != 'GRAPH_NODE_NOT_FOUND'"
+            then:
+              - name: rethrow
+                throw:
+                  code: !cel "error.code"
+                  message: !cel "error.message"
+      - name: n
+        value: !cel "steps.n.result + 1"
+---
+# The other process updates the same people through `top` meanwhile. An update
+# cannot re-create a node, so one that lost to the delete answers not found.
+kind: Run.Sequence
+metadata: { name: updateVisible }
+steps:
+  - name: n
+    value: !cel "0"
+  - name: updates
+    while: !cel "steps.n.result < 200"
+    do:
+      - name: attempt
+        try:
+          - name: update
+            invoke: { kind: Graph.UpdateNode, store: !ref top, node: !ref person }
+            inputs:
+              key: !cel "'d' + string(1000 + steps.n.result)"
+              properties: { age: !cel "steps.n.result + 1" }
+        catch:
+          - name: unexpected
+            if: !cel "error.code != 'GRAPH_NODE_NOT_FOUND'"
+            then:
+              - name: rethrow
+                throw:
+                  code: !cel "error.code"
+                  message: !cel "error.message"
+      - name: n
+        value: !cel "steps.n.result + 1"
+---
+# After both: every delete answered success, and no key whose delete answered
+# success is still visible through `top`.
+kind: Run.Sequence
+metadata: { name: deletedAreAbsent }
+steps:
+  - name: stillVisible
+    invoke: !ref topFindPeople
+    inputs: { limit: 1000, where: { eq: { name: Doomed } } }
+  - name: markers
+    invoke: { kind: Graph.FindNodes, store: !ref base, node: !ref person }
+    inputs: { limit: 1000, where: { eq: { name: Deleted } } }
+  - name: deleted
+    value: !cel "steps.markers.result.nodes.map(n, 'd' + n.key.substring(1))"
+  - name: assertEveryAnsweredDeleteHolds
+    invoke: !ref check
+    inputs:
+      actual:
+        deletesAnswered: !cel "size(steps.deleted.result)"
+        deletedYetVisible: !cel "steps.stillVisible.result.nodes.map(n, n.key).filter(k, k in steps.deleted.result)"
+        visible: !cel "steps.stillVisible.result.nodes.map(n, n.key)"
+      expected:
+        deletesAnswered: 200
+        deletedYetVisible: []
+        visible: []

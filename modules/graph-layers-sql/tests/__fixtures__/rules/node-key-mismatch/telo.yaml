@@ -1,0 +1,16 @@
+# A node type keyed by a declared column that is not its table's key.
+kind: Telo.Library
+metadata:
+  name: NodeKeyMismatch
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.Node
+metadata: { name: bad }
+table: !ref people
+key: name

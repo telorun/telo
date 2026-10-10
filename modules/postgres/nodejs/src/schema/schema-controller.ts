@@ -7,7 +7,7 @@ import {
   type DeclaredTable,
   type ReclaimPolicy,
   type SqlConnection,
-  type SqlSchema,
+  type SqlInstantSchema,
 } from "@telorun/sql";
 import { PostgresSchemaDriver } from "./postgres-schema-driver.js";
 import type { PostgresEnumResource } from "./enum-controller.js";
@@ -34,7 +34,7 @@ interface PostgresSchemaManifest {
  * two schema resources, and schema-per-tenant falls out as one per tenant, each
  * with its own migration history and reclaim clock.
  */
-class PostgresSchemaResource implements SqlSchema {
+class PostgresSchemaResource implements SqlInstantSchema {
   constructor(
     private readonly manifest: PostgresSchemaManifest,
     private readonly ctx: ResourceContext,
@@ -59,6 +59,12 @@ class PostgresSchemaResource implements SqlSchema {
       table,
     );
     return this.driver.qualify(this.namespace, table.name);
+  }
+
+  /** `clock_timestamp()` rather than `now()`: the latter is the transaction's
+   *  start, so two statements of one transaction would record one instant. */
+  currentInstant(): string {
+    return "clock_timestamp()";
   }
 
   async run(): Promise<void> {

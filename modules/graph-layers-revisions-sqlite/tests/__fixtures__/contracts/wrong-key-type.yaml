@@ -1,0 +1,24 @@
+# A key of the wrong type for the node type's key column.
+kind: Telo.Application
+metadata:
+  name: WrongKeyType
+include:
+  - ../layered-model.yaml
+imports:
+  SQLite: ../../../../sqlite
+  Graph: ../../../../graph
+  Layers: ../../..
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref probe
+---
+kind: Run.Sequence
+metadata: { name: probe }
+steps:
+  - name: call
+    invoke:
+      kind: Graph.GetNode
+      store: !ref team
+      node: !ref person
+    inputs: { key: 7 }

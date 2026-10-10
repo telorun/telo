@@ -1,0 +1,205 @@
+kind: Telo.Application
+metadata:
+  name: RevisionedStorageBoots
+  version: 1.0.0
+  description: |
+    Boot 2 — the same release, restarted. Every table, column and index is read
+    back as the first boot left it, nothing is tombstoned or held, and the layer,
+    its revisions and the rows both releases published are intact.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Graph: ../../../../graph
+  GraphLayers: ../../../../graph-layers
+  Layers: ../../..
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile: { env: REVISIONED_STORAGE_BOOTS_DB, type: string, x-telo-type: Telo.HostPath, default: ./.telo/revisioned-storage-boots.db }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref people, !ref knowsTable, !ref graphLayers, !ref graphChangesets, !ref graphChangesetBases]
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+# What the author declares: the node's own columns, and nothing of the versions.
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text }
+indexes:
+  people_by_name: { columns: [name] }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+---
+# The two bookkeeping tables: the author names each and nothing else.
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+nodes: [!ref person]
+relationships: [!ref knows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertNothingTombstoned
+    invoke: !ref check
+    inputs:
+      actual: !cel "resources.appSchema.status.tombstoned"
+      expected: []
+  - name: assertNothingHeld
+    invoke: !ref check
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected: []
+  - name: peopleColumns
+    invoke: !ref read
+    inputs:
+      sql: "SELECT name, \"notnull\" AS required FROM pragma_table_info('people') ORDER BY cid"
+  - name: assertPeopleColumns
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.peopleColumns.result.rows"
+      expected:
+        - { name: id, required: 1 }
+        - { name: name, required: 0 }
+        - { name: graph_row, required: 1 }
+        - { name: graph_layer, required: 1 }
+        - { name: graph_changeset, required: 1 }
+        - { name: graph_from_revision, required: 0 }
+        - { name: graph_to_revision, required: 0 }
+        - { name: graph_effect, required: 1 }
+        - { name: graph_over, required: 0 }
+        - { name: graph_resolution, required: 0 }
+        - { name: graph_resolved_by_type, required: 0 }
+        - { name: graph_resolved_by_id, required: 0 }
+        - { name: graph_beneath, required: 0 }
+  - name: bookkeepingColumns
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT 'graph_layers' AS tbl, group_concat(name, ',') AS cols FROM pragma_table_info('graph_layers')
+        UNION ALL
+        SELECT 'graph_changesets', group_concat(name, ',') FROM pragma_table_info('graph_changesets')
+        UNION ALL
+        SELECT 'graph_changeset_bases', group_concat(name, ',') FROM pragma_table_info('graph_changeset_bases')
+  - name: assertBookkeepingColumns
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.bookkeepingColumns.result.rows"
+      expected:
+        - { tbl: graph_layers, cols: "id,name,head_revision,created_at,created_by_type,created_by_id" }
+        - tbl: graph_changesets
+          cols: "id,public_id,layer_id,parent_revision,message,created_at,created_by_type,created_by_id,published_at,published_by_type,published_by_id,discarded_at,discarded_by_type,discarded_by_id,revision,label,labelled_at,labelled_by_type,labelled_by_id,bases_changeset"
+        - { tbl: graph_changeset_bases, cols: "id,changeset_id,position,base_layer_id,base_revision" }
+  - name: indexes
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT l.tbl_name AS tbl, l.name AS name, i."unique" AS uniq, i.partial AS partial,
+          (SELECT group_concat(c.name, ',') FROM pragma_index_info(l.name) c) AS cols
+        FROM sqlite_master l JOIN pragma_index_list(l.tbl_name) i ON i.name = l.name
+        WHERE l.type = 'index' AND l.sql IS NOT NULL
+          AND l.tbl_name IN ('people', 'knows', 'graph_layers', 'graph_changesets', 'graph_changeset_bases')
+        ORDER BY l.name
+  - name: assertIndexes
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.indexes.result.rows"
+      expected:
+        - { tbl: graph_changeset_bases, name: graph_graph_changeset_bases_layer, uniq: 1, partial: 0, cols: "changeset_id,base_layer_id" }
+        - { tbl: graph_changeset_bases, name: graph_graph_changeset_bases_position, uniq: 1, partial: 0, cols: "changeset_id,position" }
+        - { tbl: graph_changesets, name: graph_graph_changesets_layer_label, uniq: 1, partial: 1, cols: "layer_id,label" }
+        - { tbl: graph_changesets, name: graph_graph_changesets_layer_revision, uniq: 1, partial: 0, cols: "layer_id,revision" }
+        - { tbl: graph_changesets, name: graph_graph_changesets_open, uniq: 0, partial: 1, cols: "layer_id,public_id" }
+        - { tbl: knows, name: graph_knows_changeset_pair, uniq: 1, partial: 0, cols: "graph_changeset,source,target" }
+        - { tbl: knows, name: graph_knows_changeset_target, uniq: 0, partial: 0, cols: "graph_changeset,target,source" }
+        - { tbl: knows, name: graph_knows_layer_current, uniq: 1, partial: 1, cols: "graph_layer,source,target" }
+        - { tbl: knows, name: graph_knows_layer_pair, uniq: 0, partial: 1, cols: "graph_layer,source,target,graph_from_revision" }
+        - { tbl: knows, name: graph_knows_layer_target, uniq: 0, partial: 1, cols: "graph_layer,target,source,graph_from_revision" }
+        - { tbl: people, name: graph_people_changeset_key, uniq: 1, partial: 0, cols: "graph_changeset,id" }
+        - { tbl: people, name: graph_people_layer_current, uniq: 1, partial: 1, cols: "graph_layer,id" }
+        - { tbl: people, name: graph_people_layer_key, uniq: 0, partial: 1, cols: "graph_layer,id,graph_from_revision" }
+        - { tbl: people, name: people_by_name, uniq: 0, partial: 0, cols: "name" }
+  - name: state
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT l.name AS layer, l.head_revision AS head, d.message AS message, d.revision AS revision,
+          p.id AS person, p.graph_from_revision AS f, p.graph_to_revision AS t
+        FROM graph_layers l JOIN graph_changesets d ON d.layer_id = l.id
+          JOIN people p ON p.graph_layer = l.id AND p.graph_from_revision = d.revision
+        ORDER BY d.revision
+  - name: assertStateIntact
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.state.result.rows"
+      expected:
+        - { layer: team, head: 2, message: written by the previous release, revision: 1, person: older, f: 1, t: null }
+        - { layer: team, head: 2, message: kept across boots, revision: 2, person: kept, f: 2, t: null }
+  - name: readThroughTheStore
+    invoke:
+      kind: Graph.GetNode
+      store: !ref team
+      node: !ref person
+    inputs: { key: kept }
+  - name: assertReadable
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.readThroughTheStore.result.node"
+      expected: { key: kept, properties: { name: Kept }, origin: team }

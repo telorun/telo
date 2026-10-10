@@ -1,0 +1,16 @@
+# A layered node table declaring internal columns of its own, which the kind does not offer.
+kind: Telo.Application
+metadata:
+  name: TableInternalcolumns
+imports:
+  SQLite: ../../../../sqlite
+  Layers: ../../..
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+internalColumns:
+  revision: { type: integer }

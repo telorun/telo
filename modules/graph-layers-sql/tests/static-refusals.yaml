@@ -1,0 +1,300 @@
+# Every rule the layered SQL abstracts declare, pinned both ways: `telo check`
+# refuses the declaring library (RESOURCE_RULE_VIOLATED, the rule's code in
+# `data.rule`), and a consumer whose entry-scoped check is silent fails at boot
+# with the controller's refusal under the same code. The abstracts have no
+# engine, so the fixtures instantiate them through the SQLite strategy module —
+# whose node, relationship and store kinds declare no rule of their own, so each
+# of these is the abstract's, inherited.
+kind: Telo.Application
+metadata:
+  name: GraphLayersSqlStaticRefusals
+  version: 1.0.0
+  description: The layered SQL graph's structural rules, refused statically and at creation.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref nodeKeyUnknownColumn
+  - !ref nodeKeyUnknownColumnAtRuntime
+  - !ref nodeKeyMismatch
+  - !ref nodeKeyMismatchAtRuntime
+  - !ref nodeKeyNotLayerable
+  - !ref nodeKeyNotLayerableAtRuntime
+  - !ref nodeTableUnique
+  - !ref nodeTableUniqueAtRuntime
+  - !ref endpointUnknownColumn
+  - !ref endpointUnknownColumnAtRuntime
+  - !ref endpointMismatch
+  - !ref endpointMismatchAtRuntime
+  - !ref endpointNullable
+  - !ref endpointNullableAtRuntime
+  - !ref relationshipTableUnique
+  - !ref relationshipTableUniqueAtRuntime
+  - !ref tableNotInSchema
+  - !ref tableNotInSchemaAtRuntime
+  - !ref schemaConnectionMismatch
+  - !ref schemaConnectionMismatchAtRuntime
+  - !ref tableShared
+  - !ref tableSharedAtRuntime
+  - !ref baseStoreMismatch
+  - !ref baseStoreMismatchAtRuntime
+  - !ref baseLayerDuplicate
+  - !ref baseLayerDuplicateAtRuntime
+  - !ref baseOwnLayerBeneath
+  - !ref baseOwnLayerBeneathAtRuntime
+  - !ref endpointNotInStore
+  - !ref endpointNotInStoreAtRuntime
+  - !ref endpointTypeMismatch
+  - !ref endpointTypeMismatchAtRuntime
+  - !ref baseCycle
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyUnknownColumn }
+source: ./__fixtures__/rules/node-key-unknown-column/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a key column its table does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyUnknownColumnAtRuntime }
+source: ./__fixtures__/rules/node-key-unknown-column-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN"
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyMismatch }
+source: ./__fixtures__/rules/node-key-mismatch/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a key column other than its table's 'key'"
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyMismatchAtRuntime }
+source: ./__fixtures__/rules/node-key-mismatch-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_NODE_KEY_MISMATCH"
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyNotLayerable }
+source: ./__fixtures__/rules/node-key-not-layerable/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a key column that cannot hold one statement per layer"
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyNotLayerableAtRuntime }
+source: ./__fixtures__/rules/node-key-not-layerable-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_NODE_KEY_NOT_LAYERABLE"
+---
+kind: Assert.Manifest
+metadata: { name: nodeTableUnique }
+source: ./__fixtures__/rules/node-table-unique/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "is stored in a table that declares a primary key, a unique column or a unique index"
+---
+kind: Assert.Manifest
+metadata: { name: nodeTableUniqueAtRuntime }
+source: ./__fixtures__/rules/node-table-unique-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_UNIQUE_DECLARED"
+---
+kind: Assert.Manifest
+metadata: { name: endpointUnknownColumn }
+source: ./__fixtures__/rules/endpoint-unknown-column/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a sourceColumn or targetColumn its table does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: endpointUnknownColumnAtRuntime }
+source: ./__fixtures__/rules/endpoint-unknown-column-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_ENDPOINT_UNKNOWN_COLUMN"
+---
+kind: Assert.Manifest
+metadata: { name: endpointMismatch }
+source: ./__fixtures__/rules/endpoint-mismatch/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names endpoint columns other than its table's"
+---
+kind: Assert.Manifest
+metadata: { name: endpointMismatchAtRuntime }
+source: ./__fixtures__/rules/endpoint-mismatch-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_ENDPOINT_MISMATCH"
+---
+kind: Assert.Manifest
+metadata: { name: endpointNullable }
+source: ./__fixtures__/rules/endpoint-nullable/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names an endpoint column that admits NULL"
+---
+kind: Assert.Manifest
+metadata: { name: endpointNullableAtRuntime }
+source: ./__fixtures__/rules/endpoint-nullable-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_ENDPOINT_NULLABLE"
+---
+kind: Assert.Manifest
+metadata: { name: relationshipTableUnique }
+source: ./__fixtures__/rules/relationship-table-unique/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "is stored in a table that declares a primary key, a unique column or a unique index"
+---
+kind: Assert.Manifest
+metadata: { name: relationshipTableUniqueAtRuntime }
+source: ./__fixtures__/rules/relationship-table-unique-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_UNIQUE_DECLARED"
+---
+kind: Assert.Manifest
+metadata: { name: tableNotInSchema }
+source: ./__fixtures__/rules/table-not-in-schema/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "lists a node or relationship type whose table its schema does not list"
+---
+kind: Assert.Manifest
+metadata: { name: tableNotInSchemaAtRuntime }
+source: ./__fixtures__/rules/table-not-in-schema-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+---
+kind: Assert.Manifest
+metadata: { name: schemaConnectionMismatch }
+source: ./__fixtures__/rules/schema-connection-mismatch/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a schema on a different connection"
+---
+kind: Assert.Manifest
+metadata: { name: schemaConnectionMismatchAtRuntime }
+source: ./__fixtures__/rules/schema-connection-mismatch-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH"
+---
+kind: Assert.Manifest
+metadata: { name: tableShared }
+source: ./__fixtures__/rules/table-shared/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "lists two node or relationship types over the same table"
+---
+kind: Assert.Manifest
+metadata: { name: tableSharedAtRuntime }
+source: ./__fixtures__/rules/table-shared-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_SHARED"
+---
+kind: Assert.Manifest
+metadata: { name: baseStoreMismatch }
+source: ./__fixtures__/rules/base-store-mismatch/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "lists a base on another connection or another schema"
+---
+kind: Assert.Manifest
+metadata: { name: baseStoreMismatchAtRuntime }
+source: ./__fixtures__/rules/base-store-mismatch-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_BASE_STORE_MISMATCH"
+---
+kind: Assert.Manifest
+metadata: { name: baseLayerDuplicate }
+source: ./__fixtures__/rules/base-layer-duplicate/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names the same layer twice among 'bases:', or a base naming this store's own 'layer'"
+---
+kind: Assert.Manifest
+metadata: { name: baseLayerDuplicateAtRuntime }
+source: ./__fixtures__/rules/base-layer-duplicate-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_BASE_LAYER_DUPLICATE"
+---
+# Creation only, and the known gap: the store's own layer reached beneath a
+# base of a base is a cycle among layer NAMES through two store resources, and
+# a rule reads one reference deep — the reason `GRAPH_ENDPOINT_TYPE_MISMATCH`
+# is creation only. Clean at check, refused when the store is created.
+kind: Assert.Manifest
+metadata: { name: baseOwnLayerBeneath }
+source: ./__fixtures__/rules/base-own-layer-beneath/telo.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: baseOwnLayerBeneathAtRuntime }
+source: ./__fixtures__/rules/base-own-layer-beneath-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_BASE_LAYER_DUPLICATE"
+---
+kind: Assert.Manifest
+metadata: { name: endpointNotInStore }
+source: ./__fixtures__/rules/endpoint-not-in-store/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "lists a relationship type whose source or target node type it does not list in 'nodes:'"
+---
+kind: Assert.Manifest
+metadata: { name: endpointNotInStoreAtRuntime }
+source: ./__fixtures__/rules/endpoint-not-in-store-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_ENDPOINT_NOT_IN_STORE"
+---
+# Creation only: a rule reads one reference deep, and comparing an endpoint
+# column with the endpoint node's key needs the node's table, two away.
+kind: Assert.Manifest
+metadata: { name: endpointTypeMismatch }
+source: ./__fixtures__/rules/endpoint-type-mismatch/telo.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: endpointTypeMismatchAtRuntime }
+source: ./__fixtures__/rules/endpoint-type-mismatch-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_ENDPOINT_TYPE_MISMATCH"
+---
+# The analyzer's own refusal, which the `bases:` slot leans on: a base is a
+# dependency, so two stores built on each other are a cycle.
+kind: Assert.Manifest
+metadata: { name: baseCycle }
+source: ./__fixtures__/rules/base-cycle/telo.yaml
+expect:
+  errors:
+    - code: DEPENDENCY_CYCLE
+      message: "second"

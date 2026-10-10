@@ -1,0 +1,291 @@
+# What the drafted PostgreSQL kinds refuse on their own, each pinned by a
+# fixture, with no database needed: a node type's `table` slot names this
+# module's own table kind, so a plain engine table is a kind mismatch; the table
+# kinds offer no seed rows, foreign keys or internal columns of the author's;
+# they reserve the `graph_` prefix in their schema, refused at check and again
+# at creation; they restate the engine table's rules, which `telo check` reports
+# on the table itself; and a column typed by a PostgreSQL enum projects as that
+# enum into an operation's contract.
+kind: Telo.Application
+metadata:
+  name: GraphLayersDraftsPostgresStaticRefusals
+  version: 1.0.0
+  description: The drafted PostgreSQL kinds' structural refusals, as `telo check` reports them.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref plainTable
+  - !ref otherStrategyTable
+  - !ref otherStrategyNode
+  - !ref bookkeepingRepository
+  - !ref bookkeepingColumns
+  - !ref tableSeeds
+  - !ref tableForeignKeys
+  - !ref tableInternalColumns
+  - !ref enumProperty
+  - !ref tableReservedColumn
+  - !ref tableReservedColumnAtRuntime
+  - !ref tableReservedIndex
+  - !ref tableReservedIndexAtRuntime
+  - !ref tableKeyUndeclared
+  - !ref tableKeyUndeclaredAtRuntime
+  - !ref tableIndexUndeclaredColumn
+  - !ref tableIndexUndeclaredColumnAtRuntime
+  - !ref tableEndpointsOneColumn
+  - !ref tableColumnRenameFromSelf
+  - !ref tableColumnRenameFromSelfAtRuntime
+  - !ref tableColumnRenameSourceDeclared
+  - !ref tableColumnRenameSourceDeclaredAtRuntime
+  - !ref tableCompositePrimaryKey
+  - !ref tableCompositePrimaryKeyAtRuntime
+  - !ref tableRenameFromSelf
+  - !ref tableRenameFromSelfAtRuntime
+  - !ref tableEnumNotDeclared
+  - !ref tableRenameSourceDeclared
+  - !ref tableRenameSourceClaimedTwice
+---
+kind: Assert.Manifest
+metadata: { name: plainTable }
+source: ./__fixtures__/kinds/plain-table.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "does not match required 'GraphLayersDraftsPostgres.NodeTable'"
+---
+kind: Assert.Manifest
+metadata: { name: tableSeeds }
+source: ./__fixtures__/kinds/table-seeds.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "'seeds' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: tableForeignKeys }
+source: ./__fixtures__/kinds/table-foreign-keys.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "'foreignKeys' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: tableInternalColumns }
+source: ./__fixtures__/kinds/table-internal-columns.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "'internalColumns' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: enumProperty }
+source: ./__fixtures__/contracts/enum-property.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "expected one of active | retired"
+---
+# The `graph_` prefix is the table kind's own, refused by its schema — at check,
+# and again at creation before `base:` maps anything onto the engine table.
+kind: Assert.Manifest
+metadata: { name: tableReservedColumn }
+source: ./__fixtures__/tables/reserved-column/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/columns matches a shape that is not allowed here"
+    - code: SCHEMA_VIOLATION
+      message: "/columns property name must be valid"
+---
+kind: Assert.Manifest
+metadata: { name: tableReservedColumnAtRuntime }
+source: ./__fixtures__/tables/reserved-column-app.yaml
+expect:
+  errors: []
+  runFails: "/columns property name must be valid"
+---
+kind: Assert.Manifest
+metadata: { name: tableReservedIndex }
+source: ./__fixtures__/tables/reserved-index/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/indexes matches a shape that is not allowed here"
+    - code: SCHEMA_VIOLATION
+      message: "/indexes property name must be valid"
+---
+kind: Assert.Manifest
+metadata: { name: tableReservedIndexAtRuntime }
+source: ./__fixtures__/tables/reserved-index-app.yaml
+expect:
+  errors: []
+  runFails: "/indexes property name must be valid"
+---
+# The engine table's own rules, restated on the table kinds under the engine's
+# codes (the code rides in `data.rule`), as `telo check` reports them. The
+# first is a table no type references, so nothing but the table kind's own
+# rule could report it. Six of them the engine table refuses again at
+# creation, in its own words and with no code — the `…AtRuntime` pins at the
+# end, by message as the engine's own tests pin them. The other four it does
+# not refuse on a fresh database, for a plain engine table either, and one
+# column for both endpoints is stricter than boot: check only.
+kind: Assert.Manifest
+metadata: { name: tableKeyUndeclared }
+source: ./__fixtures__/tables/key-undeclared/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a column this table does not declare, as its 'key' or in an index"
+---
+kind: Assert.Manifest
+metadata: { name: tableIndexUndeclaredColumn }
+source: ./__fixtures__/tables/index-undeclared-column/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a column this table does not declare, as its 'key' or in an index"
+---
+kind: Assert.Manifest
+metadata: { name: tableEndpointsOneColumn }
+source: ./__fixtures__/tables/endpoints-one-column/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "or names one column for both endpoints"
+---
+kind: Assert.Manifest
+metadata: { name: tableColumnRenameFromSelf }
+source: ./__fixtures__/tables/column-rename-from-self/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "declares renamedFrom itself, which describes no rename"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "renames from a column this table also declares"
+---
+kind: Assert.Manifest
+metadata: { name: tableColumnRenameSourceDeclared }
+source: ./__fixtures__/tables/column-rename-source-declared/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "renames from a column this table also declares"
+---
+kind: Assert.Manifest
+metadata: { name: tableCompositePrimaryKey }
+source: ./__fixtures__/tables/composite-primary-key/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "marks more than one column as primaryKey"
+---
+kind: Assert.Manifest
+metadata: { name: tableRenameFromSelf }
+source: ./__fixtures__/tables/table-rename-from-self/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "declares renamedFrom itself, which describes no rename"
+---
+kind: Assert.Manifest
+metadata: { name: tableEnumNotDeclared }
+source: ./__fixtures__/tables/enum-not-declared/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "has a column whose type references an enum this schema does not list"
+---
+kind: Assert.Manifest
+metadata: { name: tableRenameSourceDeclared }
+source: ./__fixtures__/tables/table-rename-source-declared/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "renames from a table this schema also declares"
+---
+kind: Assert.Manifest
+metadata: { name: tableRenameSourceClaimedTwice }
+source: ./__fixtures__/tables/table-rename-source-claimed-twice/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "renames from a table another declaration in this schema also claims"
+    - code: REFERRER_RULE_VIOLATED
+      message: "renames from a table another declaration in this schema also claims"
+---
+kind: Assert.Manifest
+metadata: { name: tableKeyUndeclaredAtRuntime }
+source: ./__fixtures__/tables/key-undeclared-app.yaml
+expect:
+  errors: []
+  runFails: "index 'people.graph_people_layer_key' names column 'uid', which this table does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: tableIndexUndeclaredColumnAtRuntime }
+source: ./__fixtures__/tables/index-undeclared-column-app.yaml
+expect:
+  errors: []
+  runFails: "index 'people.people_name' names column 'nmae', which this table does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: tableColumnRenameFromSelfAtRuntime }
+source: ./__fixtures__/tables/column-rename-from-self-app.yaml
+expect:
+  errors: []
+  runFails: "column 'people.name' declares renamedFrom itself"
+---
+kind: Assert.Manifest
+metadata: { name: tableColumnRenameSourceDeclaredAtRuntime }
+source: ./__fixtures__/tables/column-rename-source-declared-app.yaml
+expect:
+  errors: []
+  runFails: "column 'people.title' renames from 'name', which this table also declares"
+---
+kind: Assert.Manifest
+metadata: { name: tableCompositePrimaryKeyAtRuntime }
+source: ./__fixtures__/tables/composite-primary-key-app.yaml
+expect:
+  errors: []
+  runFails: "table 'people' marks 'tenant' and 'serial' as primaryKey"
+---
+kind: Assert.Manifest
+metadata: { name: tableRenameFromSelfAtRuntime }
+source: ./__fixtures__/tables/table-rename-from-self-app.yaml
+expect:
+  errors: []
+  runFails: "table 'people' declares renamedFrom itself"
+---
+# A node or table of another strategy module carries other bookkeeping, and the
+# slots name this module's own kinds.
+kind: Assert.Manifest
+metadata: { name: otherStrategyTable }
+source: ./__fixtures__/kinds/other-strategy-table.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "does not match required 'GraphLayersDraftsPostgres.NodeTable'"
+---
+kind: Assert.Manifest
+metadata: { name: otherStrategyNode }
+source: ./__fixtures__/kinds/other-strategy-node.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "does not match required 'GraphLayersDraftsPostgres.Node'"
+---
+# A bookkeeping table declares no row projection, so nothing can be typed from
+# it: a repository over one is refused before it can name a column.
+kind: Assert.Manifest
+metadata: { name: bookkeepingRepository }
+source: ./__fixtures__/kinds/bookkeeping-repository.yaml
+expect:
+  errors:
+    - code: SCHEMA_PROJECTION_FROM_UNRESOLVED
+      message: "declares no 'x-telo-schema-projection'"
+---
+kind: Assert.Manifest
+metadata: { name: bookkeepingColumns }
+source: ./__fixtures__/kinds/bookkeeping-columns.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "'columns' is not allowed"

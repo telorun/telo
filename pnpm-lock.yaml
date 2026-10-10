@@ -1101,6 +1101,203 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
+  modules/graph-layers-current-postgres/nodejs:
+    dependencies:
+      '@telorun/graph-layers-sql':
+        specifier: workspace:*
+        version: link:../../graph-layers-sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+
+  modules/graph-layers-current-sqlite/nodejs:
+    dependencies:
+      '@telorun/graph-layers-sql':
+        specifier: workspace:*
+        version: link:../../graph-layers-sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+
+  modules/graph-layers-drafts-postgres/nodejs:
+    dependencies:
+      '@telorun/graph-layers-sql':
+        specifier: workspace:*
+        version: link:../../graph-layers-sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+
+  modules/graph-layers-drafts-sqlite/nodejs:
+    dependencies:
+      '@telorun/graph-layers-sql':
+        specifier: workspace:*
+        version: link:../../graph-layers-sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+
+  modules/graph-layers-revisions-postgres/nodejs:
+    dependencies:
+      '@telorun/graph-layers-sql':
+        specifier: workspace:*
+        version: link:../../graph-layers-sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+
+  modules/graph-layers-revisions-sqlite/nodejs:
+    dependencies:
+      '@telorun/graph-layers-sql':
+        specifier: workspace:*
+        version: link:../../graph-layers-sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+
+  modules/graph-layers-sql/nodejs:
+    dependencies:
+      '@telorun/graph':
+        specifier: workspace:*
+        version: link:../../graph/nodejs
+      '@telorun/graph-layers':
+        specifier: workspace:*
+        version: link:../../graph-layers/nodejs
+      '@telorun/sql':
+        specifier: workspace:*
+        version: link:../../sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+
+  modules/graph-layers/nodejs:
+    dependencies:
+      '@telorun/graph':
+        specifier: workspace:*
+        version: link:../../graph/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/graph-sql/nodejs:
     dependencies:
       '@telorun/graph':
@@ -1122,6 +1319,9 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/graph/nodejs:
     devDependencies:
@@ -1137,6 +1337,9 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/gzip/nodejs:
     devDependencies:

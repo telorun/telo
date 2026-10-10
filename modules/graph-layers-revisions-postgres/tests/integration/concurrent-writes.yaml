@@ -1,0 +1,258 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsPostgresConcurrentWrites
+  version: 1.0.0
+  description: |
+    Two processes writing the same keys through one layer, each a child
+    application with a connection pool of its own, where only the database
+    stands between them. On this strategy such writes apply one at a time, each holding the layer's row.
+
+    Both processes merge the same 200 fresh keys under different values: both
+    exit 0, every key is listed once, and each holds one of the two values. Then
+    one process deletes 200 keys visible from the layer beneath while the other
+    updates them: no call fails but an update of a node already deleted, which
+    answers not found; every delete answers success; and no key whose delete
+    answered success is visible afterwards.
+
+    Last, one process updates and merges 400 people of the layer inside a draft
+    session while the other deletes them outside it: a session write whose
+    source the delete removed answers as after that delete, so no call fails
+    but an update of a node already deleted, and every delete holds.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+include:
+  - ./__fixtures__/write-race/model.yaml
+imports:
+  Race:
+    source: ../../../graph-layers/tests/__fixtures__/write-race
+    variables:
+      value: parent
+    resources:
+      base: !ref base
+      top: !ref top
+      person: !ref person
+      refreshStacks: !ref refreshStacks
+  SessionRace:
+    source: ../../../graph-layers/tests/__fixtures__/session-race
+    resources:
+      top: !ref top
+      person: !ref person
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Layers: ../..
+  Graph: ../../../graph
+  GraphLayers: ../../../graph-layers
+  App: ../../../app
+  Run: ../../../run
+  Timer: ../../../timer
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref mergerLeft
+  - !ref mergerRight
+  - !ref mergeRace
+  - !ref Race.seedVisible
+  - !ref deleter
+  - !ref updater
+  - !ref deleteRace
+  - !ref SessionRace.seedOwn
+  - !ref sessionWriter
+  - !ref outsideDeleter
+  - !ref sessionRace
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_revisions_write_race CASCADE
+---
+kind: App.Instance
+metadata: { name: mergerLeft }
+source: ./__fixtures__/write-race/racer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  role: merge
+  value: left
+---
+kind: Run.Loop
+metadata: { name: mergerLeftExit }
+condition: !cel "resources.mergerLeft.status.exitCode == null"
+# 120s for a child kernel to boot, write 200 times and exit.
+maxIterations: 6000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: mergerRight }
+source: ./__fixtures__/write-race/racer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  role: merge
+  value: right
+---
+kind: Run.Loop
+metadata: { name: mergerRightExit }
+condition: !cel "resources.mergerRight.status.exitCode == null"
+# 120s for a child kernel to boot, write 200 times and exit.
+maxIterations: 6000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Sequence
+metadata: { name: mergeRace }
+steps:
+  - name: awaitLeft
+    invoke: !ref mergerLeftExit
+  - name: awaitRight
+    invoke: !ref mergerRightExit
+  - name: assertNeitherFailed
+    invoke: !ref check
+    inputs:
+      actual: !cel "[resources.mergerLeft.status.exitCode, resources.mergerRight.status.exitCode]"
+      expected: [0, 0]
+  - name: merged
+    invoke: !ref Race.mergedOnce
+---
+kind: App.Instance
+metadata: { name: deleter }
+source: ./__fixtures__/write-race/racer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  role: delete
+---
+kind: Run.Loop
+metadata: { name: deleterExit }
+condition: !cel "resources.deleter.status.exitCode == null"
+# 120s for a child kernel to boot, write 200 times and exit.
+maxIterations: 6000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: updater }
+source: ./__fixtures__/write-race/racer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  role: update
+---
+kind: Run.Loop
+metadata: { name: updaterExit }
+condition: !cel "resources.updater.status.exitCode == null"
+# 120s for a child kernel to boot, write 200 times and exit.
+maxIterations: 6000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Sequence
+metadata: { name: deleteRace }
+steps:
+  - name: awaitDeleter
+    invoke: !ref deleterExit
+  - name: awaitUpdater
+    invoke: !ref updaterExit
+  - name: assertNeitherFailed
+    invoke: !ref check
+    inputs:
+      actual: !cel "[resources.deleter.status.exitCode, resources.updater.status.exitCode]"
+      expected: [0, 0]
+  - name: deleted
+    invoke: !ref Race.deletedAreAbsent
+---
+kind: App.Instance
+metadata: { name: sessionWriter }
+source: ./__fixtures__/write-race/racer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  role: session
+---
+kind: Run.Loop
+metadata: { name: sessionWriterExit }
+condition: !cel "resources.sessionWriter.status.exitCode == null"
+# 120s for a child kernel to boot, write 400 times and exit.
+maxIterations: 6000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: outsideDeleter }
+source: ./__fixtures__/write-race/racer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  role: deleteOutside
+---
+kind: Run.Loop
+metadata: { name: outsideDeleterExit }
+condition: !cel "resources.outsideDeleter.status.exitCode == null"
+# 120s for a child kernel to boot, write 400 times and exit.
+maxIterations: 6000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Sequence
+metadata: { name: sessionRace }
+steps:
+  - name: awaitSessionWriter
+    invoke: !ref sessionWriterExit
+  - name: awaitOutsideDeleter
+    invoke: !ref outsideDeleterExit
+  - name: assertNeitherFailed
+    invoke: !ref check
+    inputs:
+      actual: !cel "[resources.sessionWriter.status.exitCode, resources.outsideDeleter.status.exitCode]"
+      expected: [0, 0]
+  - name: deleted
+    invoke: !ref SessionRace.deletedAreAbsent

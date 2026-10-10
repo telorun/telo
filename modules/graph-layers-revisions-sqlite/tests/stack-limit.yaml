@@ -1,0 +1,646 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsSqliteStackLimit
+  version: 1.0.0
+  description: |
+    A resolved stack holds at most 32 layers, the store's own included. Layer
+    `top` is pinned to thirty-one others in one move — a stack of exactly 32 —
+    and a thirty-third layer is refused with nothing changed.
+imports:
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  GraphLayers: ../../graph-layers
+  Layers: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref limit
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref graphLayers, !ref graphChangesets, !ref graphChangesetBases]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: GraphLayers.PinBase
+metadata: { name: topPin }
+store: !ref top
+---
+kind: Layers.Store
+metadata: { name: top }
+connection: !ref db
+schema: !ref appSchema
+layer: top
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l01 }
+connection: !ref db
+schema: !ref appSchema
+layer: l01
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l02 }
+connection: !ref db
+schema: !ref appSchema
+layer: l02
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l03 }
+connection: !ref db
+schema: !ref appSchema
+layer: l03
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l04 }
+connection: !ref db
+schema: !ref appSchema
+layer: l04
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l05 }
+connection: !ref db
+schema: !ref appSchema
+layer: l05
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l06 }
+connection: !ref db
+schema: !ref appSchema
+layer: l06
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l07 }
+connection: !ref db
+schema: !ref appSchema
+layer: l07
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l08 }
+connection: !ref db
+schema: !ref appSchema
+layer: l08
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l09 }
+connection: !ref db
+schema: !ref appSchema
+layer: l09
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l10 }
+connection: !ref db
+schema: !ref appSchema
+layer: l10
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l11 }
+connection: !ref db
+schema: !ref appSchema
+layer: l11
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l12 }
+connection: !ref db
+schema: !ref appSchema
+layer: l12
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l13 }
+connection: !ref db
+schema: !ref appSchema
+layer: l13
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l14 }
+connection: !ref db
+schema: !ref appSchema
+layer: l14
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l15 }
+connection: !ref db
+schema: !ref appSchema
+layer: l15
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l16 }
+connection: !ref db
+schema: !ref appSchema
+layer: l16
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l17 }
+connection: !ref db
+schema: !ref appSchema
+layer: l17
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l18 }
+connection: !ref db
+schema: !ref appSchema
+layer: l18
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l19 }
+connection: !ref db
+schema: !ref appSchema
+layer: l19
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l20 }
+connection: !ref db
+schema: !ref appSchema
+layer: l20
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l21 }
+connection: !ref db
+schema: !ref appSchema
+layer: l21
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l22 }
+connection: !ref db
+schema: !ref appSchema
+layer: l22
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l23 }
+connection: !ref db
+schema: !ref appSchema
+layer: l23
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l24 }
+connection: !ref db
+schema: !ref appSchema
+layer: l24
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l25 }
+connection: !ref db
+schema: !ref appSchema
+layer: l25
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l26 }
+connection: !ref db
+schema: !ref appSchema
+layer: l26
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l27 }
+connection: !ref db
+schema: !ref appSchema
+layer: l27
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l28 }
+connection: !ref db
+schema: !ref appSchema
+layer: l28
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l29 }
+connection: !ref db
+schema: !ref appSchema
+layer: l29
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l30 }
+connection: !ref db
+schema: !ref appSchema
+layer: l30
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l31 }
+connection: !ref db
+schema: !ref appSchema
+layer: l31
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: l32 }
+connection: !ref db
+schema: !ref appSchema
+layer: l32
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Run.Sequence
+metadata: { name: limit }
+steps:
+  # A layer is registered by its first write; a draft opened and discarded
+  # is one that leaves nothing behind.
+  - name: registerL01
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l01 }
+    inputs: {}
+  - name: registerL01Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l01 }
+    inputs: { draft: !cel "steps.registerL01.result.draft.id" }
+  - name: registerL02
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l02 }
+    inputs: {}
+  - name: registerL02Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l02 }
+    inputs: { draft: !cel "steps.registerL02.result.draft.id" }
+  - name: registerL03
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l03 }
+    inputs: {}
+  - name: registerL03Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l03 }
+    inputs: { draft: !cel "steps.registerL03.result.draft.id" }
+  - name: registerL04
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l04 }
+    inputs: {}
+  - name: registerL04Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l04 }
+    inputs: { draft: !cel "steps.registerL04.result.draft.id" }
+  - name: registerL05
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l05 }
+    inputs: {}
+  - name: registerL05Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l05 }
+    inputs: { draft: !cel "steps.registerL05.result.draft.id" }
+  - name: registerL06
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l06 }
+    inputs: {}
+  - name: registerL06Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l06 }
+    inputs: { draft: !cel "steps.registerL06.result.draft.id" }
+  - name: registerL07
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l07 }
+    inputs: {}
+  - name: registerL07Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l07 }
+    inputs: { draft: !cel "steps.registerL07.result.draft.id" }
+  - name: registerL08
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l08 }
+    inputs: {}
+  - name: registerL08Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l08 }
+    inputs: { draft: !cel "steps.registerL08.result.draft.id" }
+  - name: registerL09
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l09 }
+    inputs: {}
+  - name: registerL09Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l09 }
+    inputs: { draft: !cel "steps.registerL09.result.draft.id" }
+  - name: registerL10
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l10 }
+    inputs: {}
+  - name: registerL10Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l10 }
+    inputs: { draft: !cel "steps.registerL10.result.draft.id" }
+  - name: registerL11
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l11 }
+    inputs: {}
+  - name: registerL11Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l11 }
+    inputs: { draft: !cel "steps.registerL11.result.draft.id" }
+  - name: registerL12
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l12 }
+    inputs: {}
+  - name: registerL12Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l12 }
+    inputs: { draft: !cel "steps.registerL12.result.draft.id" }
+  - name: registerL13
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l13 }
+    inputs: {}
+  - name: registerL13Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l13 }
+    inputs: { draft: !cel "steps.registerL13.result.draft.id" }
+  - name: registerL14
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l14 }
+    inputs: {}
+  - name: registerL14Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l14 }
+    inputs: { draft: !cel "steps.registerL14.result.draft.id" }
+  - name: registerL15
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l15 }
+    inputs: {}
+  - name: registerL15Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l15 }
+    inputs: { draft: !cel "steps.registerL15.result.draft.id" }
+  - name: registerL16
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l16 }
+    inputs: {}
+  - name: registerL16Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l16 }
+    inputs: { draft: !cel "steps.registerL16.result.draft.id" }
+  - name: registerL17
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l17 }
+    inputs: {}
+  - name: registerL17Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l17 }
+    inputs: { draft: !cel "steps.registerL17.result.draft.id" }
+  - name: registerL18
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l18 }
+    inputs: {}
+  - name: registerL18Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l18 }
+    inputs: { draft: !cel "steps.registerL18.result.draft.id" }
+  - name: registerL19
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l19 }
+    inputs: {}
+  - name: registerL19Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l19 }
+    inputs: { draft: !cel "steps.registerL19.result.draft.id" }
+  - name: registerL20
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l20 }
+    inputs: {}
+  - name: registerL20Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l20 }
+    inputs: { draft: !cel "steps.registerL20.result.draft.id" }
+  - name: registerL21
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l21 }
+    inputs: {}
+  - name: registerL21Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l21 }
+    inputs: { draft: !cel "steps.registerL21.result.draft.id" }
+  - name: registerL22
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l22 }
+    inputs: {}
+  - name: registerL22Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l22 }
+    inputs: { draft: !cel "steps.registerL22.result.draft.id" }
+  - name: registerL23
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l23 }
+    inputs: {}
+  - name: registerL23Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l23 }
+    inputs: { draft: !cel "steps.registerL23.result.draft.id" }
+  - name: registerL24
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l24 }
+    inputs: {}
+  - name: registerL24Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l24 }
+    inputs: { draft: !cel "steps.registerL24.result.draft.id" }
+  - name: registerL25
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l25 }
+    inputs: {}
+  - name: registerL25Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l25 }
+    inputs: { draft: !cel "steps.registerL25.result.draft.id" }
+  - name: registerL26
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l26 }
+    inputs: {}
+  - name: registerL26Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l26 }
+    inputs: { draft: !cel "steps.registerL26.result.draft.id" }
+  - name: registerL27
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l27 }
+    inputs: {}
+  - name: registerL27Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l27 }
+    inputs: { draft: !cel "steps.registerL27.result.draft.id" }
+  - name: registerL28
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l28 }
+    inputs: {}
+  - name: registerL28Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l28 }
+    inputs: { draft: !cel "steps.registerL28.result.draft.id" }
+  - name: registerL29
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l29 }
+    inputs: {}
+  - name: registerL29Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l29 }
+    inputs: { draft: !cel "steps.registerL29.result.draft.id" }
+  - name: registerL30
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l30 }
+    inputs: {}
+  - name: registerL30Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l30 }
+    inputs: { draft: !cel "steps.registerL30.result.draft.id" }
+  - name: registerL31
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l31 }
+    inputs: {}
+  - name: registerL31Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l31 }
+    inputs: { draft: !cel "steps.registerL31.result.draft.id" }
+  - name: registerL32
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref l32 }
+    inputs: {}
+  - name: registerL32Discarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref l32 }
+    inputs: { draft: !cel "steps.registerL32.result.draft.id" }
+  - name: thirtyOne
+    invoke: !ref topPin
+    inputs:
+      bases:
+        - { layer: l01 }
+        - { layer: l02 }
+        - { layer: l03 }
+        - { layer: l04 }
+        - { layer: l05 }
+        - { layer: l06 }
+        - { layer: l07 }
+        - { layer: l08 }
+        - { layer: l09 }
+        - { layer: l10 }
+        - { layer: l11 }
+        - { layer: l12 }
+        - { layer: l13 }
+        - { layer: l14 }
+        - { layer: l15 }
+        - { layer: l16 }
+        - { layer: l17 }
+        - { layer: l18 }
+        - { layer: l19 }
+        - { layer: l20 }
+        - { layer: l21 }
+        - { layer: l22 }
+        - { layer: l23 }
+        - { layer: l24 }
+        - { layer: l25 }
+        - { layer: l26 }
+        - { layer: l27 }
+        - { layer: l28 }
+        - { layer: l29 }
+        - { layer: l30 }
+        - { layer: l31 }
+  - name: thirtyThird
+    try:
+      - name: thirtyThirdAttempt
+        invoke: !ref topPin
+        inputs: { bases: [{ layer: l32 }] }
+      - name: thirtyThirdUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "thirtyThird did not fail" }
+    catch:
+      - name: thirtyThirdCode
+        value: !cel "[error.code, string(error.data.limit)]"
+  - name: listed
+    invoke: { kind: GraphLayers.ListBases, store: !ref top }
+    inputs: {}
+  - name: assertStackHoldsThirtyTwo
+    invoke: !ref check
+    inputs:
+      actual:
+        pinned: !cel "size(steps.thirtyOne.result.bases)"
+        refused: !cel "steps.thirtyThirdCode.result"
+        unchanged: !cel "steps.listed.result.bases == steps.thirtyOne.result.bases"
+      expected:
+        pinned: 31
+        refused: [GRAPH_BASE_LIMIT, "32"]
+        unchanged: true

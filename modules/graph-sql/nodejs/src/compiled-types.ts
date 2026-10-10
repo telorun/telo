@@ -1,5 +1,17 @@
-import type { GraphNodeValue, GraphRelationshipValue } from "@telorun/graph";
-import type { DeclaredTable, SqlDialect, SqlSchema } from "@telorun/sql";
+import {
+  filterOperands,
+  type GraphFilter,
+  type GraphNodeValue,
+  type GraphRelationshipValue,
+} from "@telorun/graph";
+import {
+  sqlComparison,
+  type DeclaredTable,
+  type SqlDialect,
+  type SqlFragments,
+  type SqlSchema,
+} from "@telorun/sql";
+import { rowColumns } from "./declared-table.js";
 import type { SqlNodeType } from "./node-type.js";
 import type { SqlRelationshipType } from "./relationship-type.js";
 
@@ -58,7 +70,7 @@ function requiredColumns(
   declaration: DeclaredTable,
   props: ReadonlyMap<string, CompiledColumn>,
 ): CompiledColumn[] {
-  return declaration.columns
+  return rowColumns(declaration)
     .filter(
       (c) =>
         props.has(c.name) &&
@@ -79,7 +91,7 @@ export function compileNode(
   const key = column(dialect, type.key);
   const props = properties(
     dialect,
-    declaration.columns.map((c) => c.name),
+    rowColumns(declaration).map((c) => c.name),
     new Set([type.key]),
   );
   return {
@@ -104,7 +116,7 @@ export function compileRelationship(
   const targetColumn = column(dialect, type.targetColumn);
   const props = properties(
     dialect,
-    declaration.columns.map((c) => c.name),
+    rowColumns(declaration).map((c) => c.name),
     new Set([type.sourceColumn, type.targetColumn]),
   );
   return {
@@ -168,4 +180,19 @@ export function namedColumns(
       }
       return { column: found, value };
     });
+}
+
+/** A `where` as conditions over this type's own columns, ANDed by the caller:
+ *  each property a comparison names selects its declared column. */
+export function filterConditions(
+  describe: string,
+  typeName: string,
+  where: GraphFilter,
+  columns: ReadonlyMap<string, CompiledColumn>,
+  qualifier: string,
+): SqlFragments[] {
+  return filterOperands(describe, where).map(({ operator, property, value }) => {
+    const [{ column }] = namedColumns(describe, typeName, columns, { [property]: value });
+    return sqlComparison(`${qualifier}${column.sql}`, operator, value);
+  });
 }

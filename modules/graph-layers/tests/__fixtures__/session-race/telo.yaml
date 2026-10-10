@@ -1,0 +1,162 @@
+# What a draft session is promised when the layer's published statements are
+# deleted from outside it while it writes them, once, for every strategy with
+# drafts: a session write whose source a delete removed answers as after that
+# delete — an update finds the node absent, a merge states it anew — and
+# neither fails for having raced it.
+#
+# A run supplies a drafted store `top` over one node type. `seedOwn` states 400
+# people in `top` itself. The writing sequences (`writeInSession`,
+# `deleteOutside`) are run by SEPARATE PROCESSES against one database, at the
+# same time; `deletedAreAbsent` by whoever started them, once both have exited.
+kind: Telo.Library
+metadata:
+  name: SessionRaceSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: one process writing people inside a draft session while
+    another deletes them outside it.
+imports:
+  Graph: ../../../../graph
+  GraphLayers: ../../..
+  Run: ../../../../run
+  Assert: ../../../../assert
+resources:
+  top:
+    kind: GraphLayers.DraftedStore
+    description: The layer both processes write.
+  person:
+    kind: Graph.Node
+    description: People keyed by a text `id`, with a non-null text `name` and an integer `age`.
+exports:
+  resources:
+    - seedOwn
+    - writeInSession
+    - deleteOutside
+    - deletedAreAbsent
+---
+kind: Graph.CreateNode
+metadata: { name: topCreatePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: topFindPeople }
+store: !ref top
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: topDeletePerson }
+store: !ref top
+node: !ref person
+---
+# 200 people the session updates (`u…`) and 200 it merges (`g…`), published in
+# `top`.
+kind: Run.Sequence
+metadata: { name: seedOwn }
+steps:
+  - name: n
+    value: !cel "0"
+  - name: seeds
+    while: !cel "steps.n.result < 200"
+    do:
+      - name: updated
+        invoke: !ref topCreatePerson
+        inputs:
+          key: !cel "'u' + string(1000 + steps.n.result)"
+          properties: { name: Seeded, age: 0 }
+      - name: merged
+        invoke: !ref topCreatePerson
+        inputs:
+          key: !cel "'g' + string(1000 + steps.n.result)"
+          properties: { name: Seeded, age: 0 }
+      - name: n
+        value: !cel "steps.n.result + 1"
+---
+# One process, inside a session on a draft it opens: it updates the `u…` people
+# and merges the `g…` ones, each written from the layer's published statement.
+# An update of a node already deleted answers not found, the one refusal the
+# contract allows; anything else fails the process.
+kind: Run.Sequence
+metadata: { name: writeInSession }
+steps:
+  - name: open
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref top }
+    inputs: {}
+  - name: session
+    inputs:
+      draft: !cel "steps.open.result.draft.id"
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs:
+        draft: !cel "inputs.draft"
+      steps:
+        - name: n
+          value: !cel "0"
+        - name: writes
+          while: !cel "steps.n.result < 200"
+          do:
+            - name: attempt
+              try:
+                - name: update
+                  invoke: { kind: Graph.UpdateNode, store: !ref top, node: !ref person }
+                  inputs:
+                    key: !cel "'u' + string(1000 + steps.n.result)"
+                    properties: { age: !cel "steps.n.result + 1" }
+              catch:
+                - name: unexpected
+                  if: !cel "error.code != 'GRAPH_NODE_NOT_FOUND'"
+                  then:
+                    - name: rethrow
+                      throw:
+                        code: !cel "error.code"
+                        message: !cel "error.message"
+            - name: merge
+              invoke: { kind: Graph.MergeNode, store: !ref top, node: !ref person }
+              inputs:
+                key: !cel "'g' + string(1000 + steps.n.result)"
+                properties: { name: Merged }
+            - name: n
+              value: !cel "steps.n.result + 1"
+  - name: discard
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref top }
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+---
+# The other process deletes the same people outside any session meanwhile.
+kind: Run.Sequence
+metadata: { name: deleteOutside }
+steps:
+  - name: n
+    value: !cel "0"
+  - name: deletes
+    while: !cel "steps.n.result < 200"
+    do:
+      - name: updated
+        invoke: !ref topDeletePerson
+        inputs: { key: !cel "'u' + string(1000 + steps.n.result)" }
+      - name: merged
+        invoke: !ref topDeletePerson
+        inputs: { key: !cel "'g' + string(1000 + steps.n.result)" }
+      - name: n
+        value: !cel "steps.n.result + 1"
+---
+# After both: every delete took effect, and nothing the discarded draft wrote
+# is published.
+kind: Run.Sequence
+metadata: { name: deletedAreAbsent }
+steps:
+  - name: seeded
+    invoke: !ref topFindPeople
+    inputs: { limit: 1000, where: { eq: { name: Seeded } } }
+  - name: merged
+    invoke: !ref topFindPeople
+    inputs: { limit: 1000, where: { eq: { name: Merged } } }
+  - name: assertNoneLeft
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        seeded: !cel "steps.seeded.result.nodes.map(n, n.key)"
+        merged: !cel "steps.merged.result.nodes.map(n, n.key)"
+      expected:
+        seeded: []
+        merged: []

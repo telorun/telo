@@ -548,6 +548,14 @@ schema:
         Columns keyed by name. The key is the column's identity, which is what a
         rename is stated against.
       type: object
+    internalColumns:
+      title: Internal Columns
+      description: >-
+        Columns the table holds outside its row contract, keyed by name and
+        written exactly as `columns` are. Created, compared and reclaimed like
+        any other column, and nameable by an index or a foreign key, but absent
+        from the projected row: no consumer's contract and no seed row sees one.
+      type: object
     indexes:
       title: Indexes
       description: Indexes keyed by name, which is their durable identity.
@@ -580,15 +588,30 @@ schema:
   # and `key` its map key, `self` the whole table. Each is decidable by reading
   # the YAML, and otherwise only at boot — several of them after
   # `prepare:` has already changed the database.
+  #
+  # A column lives in one of two maps, either of which may be absent, and a rule
+  # about "the table's columns" reads both. `has()` rather than `.?` for the
+  # absent map, for the reason given on the enum rule above: the optional select
+  # would make the dynamic-leaf scan read the whole resource.
   x-telo-resource-rules:
+    - in: /internalColumns
+      condition: !cel "!(has(self.columns) && key in self.columns)"
+      code: SQL_COLUMN_DECLARED_TWICE
+      message: >-
+        is also declared under 'columns'. A column is part of the row contract or
+        outside it — keep one.
     - in: /indexes
-      condition: !cel "this.columns.all(c, c in self.columns)"
+      condition: !cel >-
+        this.columns.all(c, (has(self.columns) && c in self.columns)
+          || (has(self.internalColumns) && c in self.internalColumns))
       code: SQL_INDEX_UNKNOWN_COLUMN
       message: >-
         names a column this table does not declare. The index cannot be created,
         and the engine's complaint would name a generated statement.
     - in: /foreignKeys
-      condition: !cel "this.columns.all(c, c in self.columns)"
+      condition: !cel >-
+        this.columns.all(c, (has(self.columns) && c in self.columns)
+          || (has(self.internalColumns) && c in self.internalColumns))
       code: SQL_FOREIGN_KEY_UNKNOWN_COLUMN
       message: names a column this table does not declare.
     - in: /foreignKeys
@@ -602,13 +625,36 @@ schema:
       code: SQL_RENAME_FROM_SELF
       message: declares renamedFrom itself, which describes no rename.
     - in: /columns
-      condition: !cel "!(this.?renamedFrom.orValue('') in self.columns)"
+      condition: !cel >-
+        !(this.?renamedFrom.orValue('') in self.columns
+          || (has(self.internalColumns) && this.?renamedFrom.orValue('') in self.internalColumns))
       code: SQL_RENAME_SOURCE_STILL_DECLARED
       message: >-
         renames from a column this table also declares. A rename's source is the
         column being retired, so declaring both would copy one live column into
         another and retire neither.
-    - condition: !cel "size(self.columns.filter(c, self.columns[c].?primaryKey.orValue(false))) <= 1"
+    # The two rename rules again, over the second map: a rule iterates one
+    # collection and a code names one rule.
+    - in: /internalColumns
+      condition: !cel "this.?renamedFrom.orValue('') != key"
+      code: SQL_INTERNAL_COLUMN_RENAME_FROM_SELF
+      message: declares renamedFrom itself, which describes no rename.
+    - in: /internalColumns
+      condition: !cel >-
+        !((has(self.columns) && this.?renamedFrom.orValue('') in self.columns)
+          || this.?renamedFrom.orValue('') in self.internalColumns)
+      code: SQL_INTERNAL_COLUMN_RENAME_SOURCE_STILL_DECLARED
+      message: >-
+        renames from a column this table also declares. A rename's source is the
+        column being retired, so declaring both would copy one live column into
+        another and retire neither.
+    - condition: !cel >-
+        (has(self.columns)
+            ? size(self.columns.filter(c, self.columns[c].?primaryKey.orValue(false)))
+            : 0)
+          + (has(self.internalColumns)
+              ? size(self.internalColumns.filter(c, self.internalColumns[c].?primaryKey.orValue(false)))
+              : 0) <= 1
       code: SQL_COMPOSITE_PRIMARY_KEY
       message: >-
         marks more than one column as primaryKey. A composite primary key is not
@@ -628,7 +674,7 @@ schema:
     # for exactly the tables most likely to have one. Iterating the key reads the
     # key alone, and anchors on the offending entry into the bargain.
     - in: /seeds/key
-      condition: !cel "this in self.columns"
+      condition: !cel "has(self.columns) && this in self.columns"
       code: SQL_SEED_KEY_UNKNOWN_COLUMN
       message: >-
         names a column this table does not declare, so no row can be identified
@@ -654,8 +700,12 @@ schema:
     - referrer: Self.Schema
       peers: /enums
       condition: !cel >-
-        self.columns.all(c, self.columns[c].type.?name.orValue('') == ''
-          || peers.exists(e, e.metadata.name == self.columns[c].type.name))
+        (!has(self.columns)
+          || self.columns.all(c, self.columns[c].type.?name.orValue('') == ''
+            || peers.exists(e, e.metadata.name == self.columns[c].type.name)))
+        && (!has(self.internalColumns)
+          || self.internalColumns.all(c, self.internalColumns[c].type.?name.orValue('') == ''
+            || peers.exists(e, e.metadata.name == self.internalColumns[c].type.name)))
       code: SQL_ENUM_NOT_DECLARED
       message: >-
         has a column whose type references an enum this schema does not list in

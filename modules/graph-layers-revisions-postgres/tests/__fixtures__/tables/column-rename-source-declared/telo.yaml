@@ -1,0 +1,16 @@
+# A layered node table whose column is renamed from one it still declares.
+# The table alone, so booting it reaches no database.
+kind: Telo.Library
+metadata:
+  name: ColumnRenameSourceDeclared
+imports:
+  Layers: ../../../..
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text }
+  title: { type: text, renamedFrom: name }

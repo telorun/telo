@@ -1,0 +1,576 @@
+kind: Telo.Library
+metadata:
+  name: GraphLayersSql
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Storage, Data]
+  description: >-
+    The shared half of keeping layered knowledge graphs in a relational database:
+    the entity-type, link-type and layer-store contracts, the rules that make a
+    table safe to hold several overlaid layers, and the database-neutral query
+    logic for overlay by precedence, copy-on-write edits, drafts published
+    atomically with conflict detection, retained revision history with three-way
+    merge, layers pinned to revisions of others, keyset paging and cross-layer
+    traversal.
+imports:
+  Graph: ../graph
+  GraphLayers: ../graph-layers
+  Sql: ../sql
+exports:
+  kinds:
+    - Node
+    - Relationship
+    - CurrentStore
+    - DraftedStore
+    - RevisionedStore
+  # The controllers every SQL strategy module names: an engine module's own
+  # bundle re-exports them, so the implementation is one module scope across
+  # engines.
+  code:
+    - specifier: "@telorun/graph-layers-sql"
+      format: js
+      path: ./nodejs/graph-layers-sql.mjs
+      source: ./nodejs/src/index.ts
+---
+# GraphLayersSql.Node — a node type over one layered table. The table is a
+# strategy module's own table kind, which adds the layer bookkeeping columns the
+# author never sees; every rule below reads the AUTHOR's declaration of it.
+kind: Telo.Abstract
+metadata:
+  name: Node
+  description: >-
+    One type of graph entity kept in a relational table that holds several
+    overlaid layers: one column carries the identifying key, every other declared
+    column is a property, and the same key may be stated once in each layer.
+capability: Telo.Provider
+extends: Graph.Node
+schema:
+  type: object
+  required: [table, key]
+  properties:
+    table:
+      title: Table
+      description: >-
+        The layered table holding the nodes. Declared with the strategy module's
+        node table kind and listed in the engine schema, which creates and
+        migrates it.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
+    key:
+      title: Key
+      description: >-
+        The column identifying a node within a layer. It must be the table's own
+        `key`, declared `nullable: false`, and neither a primary key, unique nor
+        an identity column: the same key is stated once per layer.
+      type: string
+      minLength: 1
+  x-telo-resource-rules:
+    - resolve: [/table]
+      condition: !cel "self.key in self.table.columns"
+      code: GRAPH_NODE_KEY_UNKNOWN_COLUMN
+      message: names a key column its table does not declare.
+    # The next two read the key column, so each is moot — and left to the rule
+    # above — while the table does not declare it.
+    - resolve: [/table]
+      condition: !cel >-
+        !(self.key in self.table.columns) || !has(self.table.key) || self.table.key == self.key
+      code: GRAPH_NODE_KEY_MISMATCH
+      message: >-
+        names a key column other than its table's 'key'. The table's uniqueness
+        within a layer is built on its own key, so the node type must use it.
+    - resolve: [/table]
+      condition: !cel >-
+        !(self.key in self.table.columns)
+          || (!self.table.columns[self.key].?nullable.orValue(true)
+              && !self.table.columns[self.key].?primaryKey.orValue(false)
+              && !self.table.columns[self.key].?unique.orValue(false)
+              && !self.table.columns[self.key].?identity.hasValue())
+      code: GRAPH_NODE_KEY_NOT_LAYERABLE
+      message: >-
+        names a key column that cannot hold one statement per layer: it must be
+        'nullable: false', and must not be a primary key, unique or an identity
+        column, since each layer states the same key in a row of its own.
+    - resolve: [/table]
+      condition: !cel >-
+        self.table.columns.all(c, c == self.key
+            || (!self.table.columns[c].?primaryKey.orValue(false)
+                && !self.table.columns[c].?unique.orValue(false)))
+          && (!has(self.table.indexes)
+              || self.table.indexes.all(i, !self.table.indexes[i].?unique.orValue(false)))
+      code: GRAPH_TABLE_UNIQUE_DECLARED
+      message: >-
+        is stored in a table that declares a primary key, a unique column or a
+        unique index. A layered table holds one row per layer for the same node,
+        so a value unique across the table would refuse the second layer's row.
+---
+# GraphLayersSql.Relationship — a relationship type over one layered table. Its
+# endpoint columns hold logical keys resolved in the layered view: there is no
+# foreign key, since an endpoint may be stated by any layer beneath.
+kind: Telo.Abstract
+metadata:
+  name: Relationship
+  description: >-
+    One type of graph link kept in a relational table that holds several overlaid
+    layers: two columns carry the source and target entities' keys, every other
+    declared column is a property of the link, and the same ordered pair may be
+    stated once in each layer.
+capability: Telo.Provider
+extends: Graph.Relationship
+schema:
+  type: object
+  required: [table, source, target, sourceColumn, targetColumn]
+  properties:
+    table:
+      title: Table
+      description: >-
+        The layered table holding the relationships. Declared with the strategy
+        module's relationship table kind and listed in the engine schema.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
+    source:
+      title: Source
+      description: The node type a relationship starts at.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+    target:
+      title: Target
+      description: The node type a relationship ends at. May be the source's type.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+    sourceColumn:
+      title: Source Column
+      description: >-
+        The column holding the source node's key: the table's own `sourceColumn`,
+        `nullable: false`, of the source node's key type.
+      type: string
+      minLength: 1
+    targetColumn:
+      title: Target Column
+      description: >-
+        The column holding the target node's key: the table's own `targetColumn`,
+        `nullable: false`, of the target node's key type.
+      type: string
+      minLength: 1
+  x-telo-resource-rules:
+    - resolve: [/table]
+      condition: !cel >-
+        self.sourceColumn in self.table.columns
+          && self.targetColumn in self.table.columns
+          && self.sourceColumn != self.targetColumn
+      code: GRAPH_ENDPOINT_UNKNOWN_COLUMN
+      message: >-
+        names a sourceColumn or targetColumn its table does not declare, or names
+        the same column for both.
+    # The next two read the endpoint columns, so each is moot — and left to the
+    # rule above — while either is undeclared or both are one column.
+    - resolve: [/table]
+      condition: !cel >-
+        !(self.sourceColumn in self.table.columns && self.targetColumn in self.table.columns
+            && self.sourceColumn != self.targetColumn)
+          || ((!has(self.table.sourceColumn) || self.table.sourceColumn == self.sourceColumn)
+              && (!has(self.table.targetColumn) || self.table.targetColumn == self.targetColumn))
+      code: GRAPH_ENDPOINT_MISMATCH
+      message: >-
+        names endpoint columns other than its table's 'sourceColumn' and
+        'targetColumn'. The table's uniqueness within a layer is built on its
+        own endpoint columns, so the relationship type must use them.
+    - resolve: [/table]
+      condition: !cel >-
+        !(self.sourceColumn in self.table.columns && self.targetColumn in self.table.columns)
+          || (!self.table.columns[self.sourceColumn].?nullable.orValue(true)
+              && !self.table.columns[self.targetColumn].?nullable.orValue(true))
+      code: GRAPH_ENDPOINT_NULLABLE
+      message: >-
+        names an endpoint column that admits NULL. Declare both endpoint columns
+        'nullable: false': a relationship always joins two nodes.
+    - resolve: [/table]
+      condition: !cel >-
+        self.table.columns.all(c, !self.table.columns[c].?primaryKey.orValue(false)
+            && !self.table.columns[c].?unique.orValue(false))
+          && (!has(self.table.indexes)
+              || self.table.indexes.all(i, !self.table.indexes[i].?unique.orValue(false)))
+      code: GRAPH_TABLE_UNIQUE_DECLARED
+      message: >-
+        is stored in a table that declares a primary key, a unique column or a
+        unique index. A layered table holds one row per layer for the same
+        relationship, so a value unique across the table would refuse the second
+        layer's row.
+---
+# GraphLayersSql.CurrentStore — one layer of a graph kept in layered tables, with
+# no versioning: the layer holds only its current statements and a write is
+# immediate. It issues no DDL; the engine schema it names creates every table.
+kind: Telo.Abstract
+metadata:
+  name: CurrentStore
+  description: >-
+    One named layer of a knowledge graph kept in relational tables shared with
+    other layers, optionally built on an ordered list of base layers whose
+    content shows through wherever this layer says nothing. Holds only current
+    statements: every write takes effect at once and no history is kept.
+capability: Telo.Provider
+extends: GraphLayers.Store
+schema:
+  type: object
+  required: [connection, schema, layer, nodes]
+  properties:
+    connection:
+      title: Connection
+      description: The connection every statement runs on.
+      x-telo-ref:
+        kind: Sql.Connection
+        use: dependency
+    schema:
+      title: Schema
+      description: >-
+        The engine schema that declares every table this graph uses, on the same
+        connection. It creates and migrates them; the graph issues no DDL.
+      x-telo-ref:
+        kind: Sql.Schema
+        use: dependency
+    layer:
+      title: Layer
+      description: >-
+        The layer's name, written into every row this store states. Stores naming
+        the same layer over the same tables are the same layer.
+      type: string
+      minLength: 1
+    bases:
+      title: Bases
+      description: >-
+        The layers this one is built on, highest precedence first. The stack is
+        this layer, then each base in order followed by that base's stack; a
+        layer two bases share has one place, the lowest. The first statement
+        found for a key wins.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.CurrentStore
+          use: dependency
+    nodes:
+      title: Nodes
+      description: The node types this graph holds.
+      type: array
+      minItems: 1
+      items:
+        x-telo-ref:
+          kind: Self.Node
+          use: dependency
+    relationships:
+      title: Relationships
+      description: The relationship types this graph holds.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Relationship
+          use: dependency
+  x-telo-resource-rules:
+    - resolve: [/schema, /nodes, /relationships]
+      condition: !cel >-
+        self.nodes.all(n, self.schema.?tables.orValue([]).exists(t, t.name == n.table.name))
+          && self.?relationships.orValue([]).all(r,
+            self.schema.?tables.orValue([]).exists(t, t.name == r.table.name))
+      code: GRAPH_TABLE_NOT_IN_SCHEMA
+      message: >-
+        lists a node or relationship type whose table its schema does not list in
+        'tables:'. The schema is what creates and migrates the table; add it there.
+    - resolve: [/schema]
+      condition: !cel "self.schema.connection.name == self.connection.name"
+      code: GRAPH_SCHEMA_CONNECTION_MISMATCH
+      message: >-
+        names a schema on a different connection. The schema must create its
+        tables where the graph reads them.
+    - resolve: [/nodes, /relationships]
+      condition: !cel >-
+        (self.nodes.map(n, n.table.name) + self.?relationships.orValue([]).map(r, r.table.name))
+          .all(t, size((self.nodes.map(n, n.table.name)
+            + self.?relationships.orValue([]).map(r, r.table.name)).filter(u, u == t)) == 1)
+      code: GRAPH_TABLE_SHARED
+      message: >-
+        lists two node or relationship types over the same table. Each type is its
+        own table, so a row belongs to exactly one type.
+    - resolve: [/bases]
+      condition: !cel >-
+        self.?bases.orValue([]).all(b,
+          b.connection.name == self.connection.name && b.schema.name == self.schema.name)
+      code: GRAPH_BASE_STORE_MISMATCH
+      message: >-
+        lists a base on another connection or another schema. A layer and its
+        bases are read in one statement, so they must share both.
+    - resolve: [/bases]
+      condition: !cel >-
+        ([self.layer] + self.?bases.orValue([]).map(b, b.layer))
+          .all(l, size(([self.layer] + self.?bases.orValue([]).map(b, b.layer)).filter(m, m == l)) == 1)
+      code: GRAPH_BASE_LAYER_DUPLICATE
+      message: >-
+        names the same layer twice among 'bases:', or a base naming this store's
+        own 'layer'.
+---
+# GraphLayersSql.DraftedStore — one layer of a graph kept in drafted tables: a
+# published row and at most one draft row per key, a revision counter per layer
+# and one open draft per layer, recorded in two bookkeeping tables the author
+# declares like every other. It issues no DDL.
+kind: Telo.Abstract
+metadata:
+  name: DraftedStore
+  description: >-
+    One named layer of a knowledge graph kept in relational tables shared with
+    other layers, edited in a draft and published atomically as a numbered
+    revision. Keeps one published statement and at most one staged statement per
+    key, so a draft costs only what it changes; earlier revisions are not kept.
+capability: Telo.Provider
+extends: GraphLayers.DraftedStore
+schema:
+  type: object
+  required: [connection, schema, layer, nodes, layers, drafts]
+  properties:
+    connection:
+      title: Connection
+      description: The connection every statement runs on.
+      x-telo-ref:
+        kind: Sql.Connection
+        use: dependency
+    schema:
+      title: Schema
+      description: >-
+        The engine schema that declares every table this graph uses, on the same
+        connection. It creates and migrates them; the graph issues no DDL.
+      x-telo-ref:
+        kind: Sql.Schema
+        use: dependency
+    layer:
+      title: Layer
+      description: >-
+        The layer's name, written into every row this store states. Stores naming
+        the same layer over the same tables are the same layer.
+      type: string
+      minLength: 1
+    bases:
+      title: Bases
+      description: >-
+        The layers this one is built on, highest precedence first. The stack is
+        this layer, then each base in order followed by that base's stack; a
+        layer two bases share has one place, the lowest. The first statement
+        found for a key wins.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.DraftedStore
+          use: dependency
+    nodes:
+      title: Nodes
+      description: The node types this graph holds.
+      type: array
+      minItems: 1
+      items:
+        x-telo-ref:
+          kind: Self.Node
+          use: dependency
+    relationships:
+      title: Relationships
+      description: The relationship types this graph holds.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Relationship
+          use: dependency
+    layers:
+      title: Layers
+      description: >-
+        The bookkeeping table registering every layer with its revision counter.
+        Declared with the strategy module's layers table kind and listed in the
+        schema; a layer and its bases share it.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
+    drafts:
+      title: Drafts
+      description: >-
+        The bookkeeping table recording every draft: what it was opened on, by
+        whom, and how it ended. Declared with the strategy module's drafts table
+        kind and listed in the schema; a layer and its bases share it.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/schema, /nodes, /relationships]
+      condition: !cel >-
+        self.nodes.all(n, self.schema.?tables.orValue([]).exists(t, t.name == n.table.name))
+          && self.?relationships.orValue([]).all(r,
+            self.schema.?tables.orValue([]).exists(t, t.name == r.table.name))
+          && self.schema.?tables.orValue([]).exists(t, t.name == self.layers.name)
+          && self.schema.?tables.orValue([]).exists(t, t.name == self.drafts.name)
+      code: GRAPH_TABLE_NOT_IN_SCHEMA
+      message: >-
+        names a table its schema does not list in 'tables:' — a node or
+        relationship type's, or its 'layers' or 'drafts' table. The schema is what
+        creates and migrates the table; add it there.
+    - resolve: [/schema]
+      condition: !cel "self.schema.connection.name == self.connection.name"
+      code: GRAPH_SCHEMA_CONNECTION_MISMATCH
+      message: >-
+        names a schema on a different connection. The schema must create its
+        tables where the graph reads them.
+    - resolve: [/nodes, /relationships]
+      condition: !cel >-
+        (self.nodes.map(n, n.table.name) + self.?relationships.orValue([]).map(r, r.table.name)
+            + [self.layers.name, self.drafts.name])
+          .all(t, size((self.nodes.map(n, n.table.name)
+            + self.?relationships.orValue([]).map(r, r.table.name)
+            + [self.layers.name, self.drafts.name]).filter(u, u == t)) == 1)
+      code: GRAPH_TABLE_SHARED
+      message: >-
+        names one table twice among its node and relationship types and its
+        'layers' and 'drafts' tables. Each is a table of its own.
+    - resolve: [/bases]
+      condition: !cel >-
+        self.?bases.orValue([]).all(b,
+          b.connection.name == self.connection.name && b.schema.name == self.schema.name
+            && b.layers.name == self.layers.name && b.drafts.name == self.drafts.name)
+      code: GRAPH_BASE_STORE_MISMATCH
+      message: >-
+        lists a base on another connection or another schema, or one that keeps
+        its layers or drafts in another table. A layer and its bases are read in
+        one statement and registered in one layers table, so they must share all
+        four.
+    - resolve: [/bases]
+      condition: !cel >-
+        ([self.layer] + self.?bases.orValue([]).map(b, b.layer))
+          .all(l, size(([self.layer] + self.?bases.orValue([]).map(b, b.layer)).filter(m, m == l)) == 1)
+      code: GRAPH_BASE_LAYER_DUPLICATE
+      message: >-
+        names the same layer twice among 'bases:', or a base naming this store's
+        own 'layer'.
+---
+# GraphLayersSql.RevisionedStore — one layer of a graph kept in revisioned
+# tables: every row is one version of the layer's statement about a key, written
+# by one changeset, which is a draft while open and a numbered revision once
+# published. Three bookkeeping tables the author declares like every other. It
+# issues no DDL. What a revisioned layer is built on is data — pins, set with
+# GraphLayers.PinBase and kept in the 'changesetBases' table — so there is no
+# 'bases' field.
+kind: Telo.Abstract
+metadata:
+  name: RevisionedStore
+  description: >-
+    One named layer of a knowledge graph kept in relational tables shared with
+    other layers, where every published revision is retained. Any number of
+    drafts are edited in parallel, each reading the layer as it stood when the
+    draft began; publishing is atomic, a stale draft is merged per property
+    against its ancestor, history is listed by revision number, and the layers
+    beneath are pinned at a revision until a pin is moved.
+capability: Telo.Provider
+extends: GraphLayers.RevisionedStore
+schema:
+  type: object
+  required: [connection, schema, layer, nodes, layers, changesets, changesetBases]
+  properties:
+    connection:
+      title: Connection
+      description: The connection every statement runs on.
+      x-telo-ref:
+        kind: Sql.Connection
+        use: dependency
+    schema:
+      title: Schema
+      description: >-
+        The engine schema that declares every table this graph uses, on the same
+        connection. It creates and migrates them; the graph issues no DDL.
+      x-telo-ref:
+        kind: Sql.Schema
+        use: dependency
+    layer:
+      title: Layer
+      description: >-
+        The layer's name. Stores naming the same layer over the same tables are
+        the same layer.
+      type: string
+      minLength: 1
+    nodes:
+      title: Nodes
+      description: The node types this graph holds.
+      type: array
+      minItems: 1
+      items:
+        x-telo-ref:
+          kind: Self.Node
+          use: dependency
+    relationships:
+      title: Relationships
+      description: The relationship types this graph holds.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Relationship
+          use: dependency
+    layers:
+      title: Layers
+      description: >-
+        The bookkeeping table registering every layer with its head revision.
+        Declared with the strategy module's layers table kind and listed in the
+        schema.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
+    changesetBases:
+      title: Changeset Bases
+      description: >-
+        The bookkeeping table holding every base list: the layers a layer is
+        built on, each at the revision it is pinned to, stored once per change.
+        Declared with the strategy module's changeset-bases table kind and
+        listed in the schema.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
+    changesets:
+      title: Changesets
+      description: >-
+        The bookkeeping table recording every changeset — a draft while open, a
+        revision of its layer once published: what it was opened on, by whom,
+        and how it ended. Declared with the strategy module's changesets table
+        kind and listed in the schema.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
+  # `changesetBases` is guarded where it is read: a store written before the
+  # slot existed is refused once, for the missing slot, and not again by a rule
+  # that could not read it.
+  x-telo-resource-rules:
+    - resolve: [/schema, /nodes, /relationships]
+      condition: !cel >-
+        self.nodes.all(n, self.schema.?tables.orValue([]).exists(t, t.name == n.table.name))
+          && self.?relationships.orValue([]).all(r,
+            self.schema.?tables.orValue([]).exists(t, t.name == r.table.name))
+          && self.schema.?tables.orValue([]).exists(t, t.name == self.layers.name)
+          && self.schema.?tables.orValue([]).exists(t, t.name == self.changesets.name)
+          && (!has(self.changesetBases)
+            || self.schema.?tables.orValue([]).exists(t, t.name == self.changesetBases.name))
+      code: GRAPH_TABLE_NOT_IN_SCHEMA
+      message: >-
+        names a table its schema does not list in 'tables:' — a node or
+        relationship type's, or its 'layers', 'changesets' or 'changesetBases'
+        table. The schema is what creates and migrates the table; add it there.
+    - resolve: [/schema]
+      condition: !cel "self.schema.connection.name == self.connection.name"
+      code: GRAPH_SCHEMA_CONNECTION_MISMATCH
+      message: >-
+        names a schema on a different connection. The schema must create its
+        tables where the graph reads them.
+    - resolve: [/nodes, /relationships]
+      condition: !cel >-
+        (self.nodes.map(n, n.table.name) + self.?relationships.orValue([]).map(r, r.table.name)
+            + [self.layers.name, self.changesets.name]
+            + (has(self.changesetBases) ? [self.changesetBases.name] : []))
+          .all(t, size((self.nodes.map(n, n.table.name)
+            + self.?relationships.orValue([]).map(r, r.table.name)
+            + [self.layers.name, self.changesets.name]
+            + (has(self.changesetBases) ? [self.changesetBases.name] : [])).filter(u, u == t)) == 1)
+      code: GRAPH_TABLE_SHARED
+      message: >-
+        names one table twice among its node and relationship types and its
+        'layers', 'changesets' and 'changesetBases' tables. Each is a table of
+        its own.

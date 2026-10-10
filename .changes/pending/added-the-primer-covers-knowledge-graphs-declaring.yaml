@@ -1,0 +1,9 @@
+modules:
+  apps/authoring-agent: Added
+body: "The primer covers knowledge graphs: declaring a graph over plain tables with
+  graph-sql and its twelve operations, cursor paging and the PostgreSQL key-type limit;
+  layered graphs and their three strategies - current, drafts and revisions - with
+  declared storage, drafts and sessions, conflicts and their resolution, pinned stacks,
+  labels and upgrades; and what holds on every strategy: concurrent writes to one key
+  take effect in some order, a write that changes nothing is no revision, a read never
+  writes, and the store itself is recorded as the actor store."

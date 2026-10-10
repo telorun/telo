@@ -1,0 +1,19 @@
+# A relationship type naming a source column its table does not declare.
+kind: Telo.Library
+metadata:
+  name: EndpointUnknownColumn
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.Relationship
+metadata: { name: bad }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: origin
+targetColumn: target

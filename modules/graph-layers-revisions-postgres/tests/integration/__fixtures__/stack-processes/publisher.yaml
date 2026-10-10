@@ -1,0 +1,48 @@
+# Publishes, from its own process, the draft of `top` the parent opened with
+# the message this process is given — found by reading the changesets table,
+# since a child is given only what it declares — and records how that went as
+# a node of the `notes` layer: `published`, or the code it was refused with.
+kind: Telo.Application
+metadata:
+  name: StackProcessPublisher
+  version: 1.0.0
+include:
+  - ./model.yaml
+imports:
+  Postgres: ../../../../../postgres
+  Layers: ../../../..
+  Sql: ../../../../../sql
+  Graph: ../../../../../graph
+  GraphLayers: ../../../../../graph-layers
+  Run: ../../../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+  name: { env: ACTOR_NAME, type: string }
+targets:
+  - !ref work
+---
+kind: Run.Sequence
+metadata: { name: work }
+steps:
+  - name: staged
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: !sql >-
+        SELECT public_id AS id FROM graph_revisions_stack_processes.graph_changesets
+        WHERE message = ${{ variables.name }}
+  - name: publish
+    try:
+      - name: attempt
+        invoke: { kind: GraphLayers.Publish, store: !ref top }
+        inputs: { draft: !cel "string(steps.staged.result.rows[0].id)" }
+      - name: published
+        invoke: { kind: Graph.CreateNode, store: !ref notes, node: !ref person }
+        inputs: { key: !cel "variables.name", properties: { name: published } }
+    catch:
+      - name: refused
+        invoke: { kind: Graph.CreateNode, store: !ref notes, node: !ref person }
+        inputs: { key: !cel "variables.name", properties: { name: !cel "error.code" } }

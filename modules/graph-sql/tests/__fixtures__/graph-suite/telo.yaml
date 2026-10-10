@@ -285,14 +285,34 @@ steps:
     inputs:
       actual: !cel "steps.findBelowNull.result.nodes"
       expected: []
+  # A page resumes after the cursor of the one before; `limit` may change
+  # between them, and the last page carries no cursor.
+  - name: findFirst
+    invoke: !ref findPeople
+    inputs: { limit: 1 }
+  - name: assertFirst
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.findFirst.result.nodes.map(n, n.key)"
+      expected: [a]
   - name: findPage
     invoke: !ref findPeople
-    inputs: { limit: 2, offset: 1 }
+    inputs: { limit: 2, cursor: !cel "steps.findFirst.result.next" }
   - name: assertPage
     invoke: !ref check
     inputs:
       actual: !cel "steps.findPage.result.nodes.map(n, n.key)"
       expected: [b, c]
+  - name: findRest
+    invoke: !ref findPeople
+    inputs: { cursor: !cel "steps.findPage.result.next" }
+  - name: assertRest
+    invoke: !ref check
+    inputs:
+      actual:
+        keys: !cel "steps.findRest.result.nodes.map(n, n.key)"
+        more: !cel "has(steps.findRest.result.next)"
+      expected: { keys: [d, e], more: false }
 ---
 kind: Run.Sequence
 metadata: { name: relationshipWrites }
@@ -449,9 +469,12 @@ steps:
       actual: !cel "steps.sinceAfter2020.result.relationships"
       expected:
         - { source: a, target: b, properties: { since: 2022 } }
+  - name: first
+    invoke: !ref findKnows
+    inputs: { limit: 1 }
   - name: page
     invoke: !ref findKnows
-    inputs: { limit: 2, offset: 1 }
+    inputs: { limit: 2, cursor: !cel "steps.first.result.next" }
   - name: assertPage
     invoke: !ref check
     inputs:
@@ -487,9 +510,12 @@ steps:
     inputs:
       actual: !cel "steps.withinThreeOlder.result.nodes.map(n, n.key)"
       expected: [a, d]
+  - name: withinThreeFirst
+    invoke: !ref reachable
+    inputs: { key: a, limit: 1 }
   - name: withinThreePage
     invoke: !ref reachable
-    inputs: { key: a, limit: 2, offset: 1 }
+    inputs: { key: a, limit: 2, cursor: !cel "steps.withinThreeFirst.result.next" }
   - name: assertWithinThreePage
     invoke: !ref check
     inputs:

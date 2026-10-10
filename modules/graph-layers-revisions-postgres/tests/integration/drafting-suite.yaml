@@ -1,0 +1,65 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsPostgresDraftingSuite
+  version: 1.0.0
+  description: |
+    The drafting suite against a real PostgreSQL: the same sequences the SQLite
+    run executes, over two revisioned stores sharing one set of PostgreSQL tables,
+    so both engines are held to one behaviour.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+include:
+  - ./__fixtures__/suite-model.yaml
+imports:
+  Suite:
+    source: ../../../graph-layers/tests/__fixtures__/drafting-suite
+    resources:
+      base: !ref base
+      top: !ref top
+      person: !ref person
+      knows: !ref knows
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Layers: ../..
+  Run: ../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref Suite.isolation
+  - !ref Suite.stale
+  - !ref Suite.conflicts
+  - !ref Suite.automation
+  - !ref Suite.closedDraft
+  - !ref Suite.cursors
+---
+# The suite must start empty — the ledger included, which lives in the same
+# namespace, or a previous run's declaration would decide what this one plans.
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke:
+      kind: Sql.Command
+      connection: !ref db
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_revisions_drafting_suite CASCADE
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_revisions_drafting_suite
+ledger: graph_revisions_drafting_suite
+tables:
+  - !ref people
+  - !ref documents
+  - !ref knowsTable
+  - !ref authoredTable
+  - !ref graphLayers
+  - !ref graphChangesets
+  - !ref graphChangesetBases

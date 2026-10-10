@@ -1,0 +1,26 @@
+kind: Telo.Application
+metadata:
+  name: RevisionedStorageBoots
+  version: 1.0.0
+  description: Boot 0 — start from no database, so the ledger read later is this run's own.
+imports:
+  Fs: ../../../../fs
+  Run: ../../../../run
+variables:
+  dbFile: { env: REVISIONED_STORAGE_BOOTS_DB, type: string, x-telo-type: Telo.HostPath, default: ./.telo/revisioned-storage-boots.db }
+targets:
+  - !ref reset
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: removeStaleDatabase
+    try:
+      - name: remove
+        invoke: { kind: Fs.FileRemoval }
+        inputs:
+          path: !cel "variables.dbFile"
+    catch:
+      # No database to remove is the normal case on a first run.
+      - name: alreadyGone
+        value: true

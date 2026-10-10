@@ -128,7 +128,13 @@ export interface DeclaredSeeds {
 export interface DeclaredTable {
   /** Physical table name. */
   readonly name: string;
+  /** Every column the table holds, internal ones included. */
   readonly columns: readonly DeclaredColumn[];
+  /** Names of the {@link columns} that are outside the row contract: reconciled
+   *  like any other, never projected, never set by a seed row. Names rather than
+   *  a flag on the column, so moving a column between the two maps leaves its
+   *  ledger entry unchanged. */
+  readonly internalColumns: readonly string[];
   readonly indexes: readonly DeclaredIndex[];
   readonly foreignKeys: readonly DeclaredForeignKey[];
   readonly checks: readonly DeclaredCheck[];

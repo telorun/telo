@@ -1,0 +1,28 @@
+# A relationship table whose target column admits NULL.
+kind: Telo.Library
+metadata:
+  name: EndpointNullable
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.RelationshipTable
+metadata: { name: likesTable }
+table: likes
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text }
+---
+kind: Layers.Relationship
+metadata: { name: bad }
+table: !ref likesTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target

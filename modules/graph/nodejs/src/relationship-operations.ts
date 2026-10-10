@@ -7,11 +7,11 @@ import {
 import { assertRelationshipListed } from "./graph-model-rules.js";
 import type { GraphRelationshipType, GraphRelationshipValue, GraphStore } from "./graph-store.js";
 import {
+  boundName,
   declaredName,
   quoteKey,
   describeOperation,
-  filterOf,
-  pageOf,
+  Listing,
   propertiesOf,
   resolveRelationshipType,
   resolveStore,
@@ -28,7 +28,7 @@ interface RelationshipInputs {
   properties?: unknown;
   where?: unknown;
   limit?: unknown;
-  offset?: unknown;
+  cursor?: unknown;
 }
 
 interface BoundRelationshipOperation {
@@ -170,12 +170,18 @@ export const DeleteRelationship = relationshipOperation<{ relationship: GraphRel
 
 export const FindRelationships = relationshipOperation<{
   relationships: GraphRelationshipValue[];
-}>("FindRelationships", async (bound, inputs, ctx) => ({
-  relationships: await bound.store.findRelationships(
-    bound.type,
-    { source: inputs.source, target: inputs.target },
-    filterOf(inputs.where),
-    pageOf(inputs, bound.describe),
-    ctx,
-  ),
-}));
+  next?: string;
+}>("FindRelationships", async (bound, inputs, ctx) => {
+  const endpoints = { source: inputs.source, target: inputs.target };
+  const listing = new Listing(bound.describe, inputs, {
+    operation: "FindRelationships",
+    store: boundName(bound.store, bound.describe, "store"),
+    type: boundName(bound.type, bound.describe, "relationship"),
+    source: inputs.source ?? null,
+    target: inputs.target ?? null,
+  });
+  const { items, ...more } = listing.result(
+    await bound.store.findRelationships(bound.type, endpoints, listing.where, listing.page, ctx),
+  );
+  return { relationships: items, ...more };
+});

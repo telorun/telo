@@ -1,0 +1,28 @@
+# Seeds on a table with no row contract: no key column can be named.
+kind: Telo.Application
+metadata:
+  name: SeededInternalOnly
+  version: 1.0.0
+imports:
+  SQLite: ../../../
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: control }
+table: control
+columns: {}
+internalColumns:
+  name: { type: text, primaryKey: true }
+seeds:
+  key: [name]
+  rows: []
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref control]

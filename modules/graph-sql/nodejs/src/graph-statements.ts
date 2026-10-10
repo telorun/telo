@@ -1,5 +1,5 @@
 import type { CompiledColumn, CompiledNode, CompiledRelationship } from "./compiled-types.js";
-import { SqlFragments } from "./sql-fragments.js";
+import { SqlFragments } from "@telorun/sql";
 
 /**
  * Every node and relationship statement, in the one grammar both engines speak:
@@ -88,17 +88,9 @@ export function selectNode(node: CompiledNode, key: unknown): SqlFragments {
     .value(key);
 }
 
-/**
- * The paging tail. A statement always carries both clauses — SQLite admits no
- * `OFFSET` without a `LIMIT`, PostgreSQL no negative one — so an unset limit is
- * the largest integer both bind exactly.
- */
-export function paging(limit: number | undefined, offset: number | undefined): SqlFragments {
-  return new SqlFragments()
-    .text(" LIMIT ")
-    .value(limit ?? Number.MAX_SAFE_INTEGER)
-    .text(" OFFSET ")
-    .value(offset ?? 0);
+/** One row more than the page holds, so its presence says whether more exist. */
+export function pageLimit(limit: number): SqlFragments {
+  return new SqlFragments().text(" LIMIT ").value(limit + 1);
 }
 
 /**

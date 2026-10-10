@@ -1,8 +1,8 @@
 import type { GraphFilter, PreparedTraversal, TraversalDirection, TraversalSpec } from "@telorun/graph";
 import type { CompiledNode, CompiledRelationship } from "./compiled-types.js";
-import { filterConditions } from "./property-filter.js";
-import { paging } from "./graph-statements.js";
-import { SqlFragments } from "./sql-fragments.js";
+import { filterConditions } from "./compiled-types.js";
+import { pageLimit } from "./graph-statements.js";
+import { SqlFragments } from "@telorun/sql";
 
 export interface CompiledHop {
   readonly relationship: CompiledRelationship;
@@ -114,9 +114,12 @@ export function prepareTraversal(
 }
 
 /**
- * The call: the start key, then the end nodes reached — filtered, ordered by key
- * and paged inside the statement. The start set's size rides on a one-row outer
- * select, so an absent start node is told apart from one that reaches nothing.
+ * The call: the start key, then one page of the end nodes reached, in key order.
+ * The whole reach is walked on every page — the walk is what finds the end keys —
+ * and the page is cut from those keys: the ones after the cursor, and, when no
+ * property filter has to read the nodes first, only the page's own. The start
+ * set's size rides on a one-row outer select, so an absent start node is told
+ * apart from one that reaches nothing.
  */
 export function traversalStatement(
   describe: string,
@@ -124,12 +127,13 @@ export function traversalStatement(
   prepared: SqlPreparedTraversal,
   key: unknown,
   where: GraphFilter,
-  limit: number | undefined,
-  offset: number | undefined,
+  limit: number,
+  after: unknown,
 ): SqlFragments {
   const { end, quote, last } = prepared;
   const k = quote("k");
   const n = "n";
+  const conditions = filterConditions(describe, typeName, where, end.properties, "");
   const sql = new SqlFragments()
     .text(prepared.headBefore)
     .value(key)
@@ -139,13 +143,14 @@ export function traversalStatement(
         [end.key, ...end.properties.values()].map((c) => `${n}.${c.sql}`).join(", ") +
         ` FROM (SELECT COUNT(*) AS ${quote("present")} FROM ${prepared.start}) c` +
         ` LEFT JOIN (SELECT ${end.returning} FROM ${end.table}` +
-        ` WHERE ${end.key.sql} IN (SELECT ${k} FROM ${last})`,
+        ` WHERE ${end.key.sql} IN (SELECT ${k} FROM ${last}`,
     );
-  for (const condition of filterConditions(describe, typeName, where, end.properties, "")) {
-    sql.text(" AND ").append(condition);
-  }
+  if (after !== undefined) sql.text(` WHERE ${k} > `).value(after);
+  if (conditions.length === 0) sql.text(` ORDER BY ${k}`).append(pageLimit(limit));
+  sql.text(")");
+  for (const condition of conditions) sql.text(" AND ").append(condition);
   return sql
     .text(` ORDER BY ${end.key.sql}`)
-    .append(paging(limit, offset))
+    .append(pageLimit(limit))
     .text(`) ${n} ON 1 = 1 ORDER BY ${n}.${end.key.sql}`);
 }

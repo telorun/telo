@@ -1,0 +1,24 @@
+# A drafted store whose drafts table its schema does not list.
+kind: Telo.Library
+metadata:
+  name: DraftedBookkeepingNotInSchema
+include:
+  - ../../drafted-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.DraftsTable
+metadata: { name: strayDrafts }
+table: stray_drafts
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref appSchema
+layer: lost
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref strayDrafts

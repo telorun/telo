@@ -1,0 +1,45 @@
+# Publishes, from its own process, the draft the parent staged — the latest in
+# the drafts table, found by reading it and never by opening, so that two
+# publishers name the SAME draft whichever runs second — and holds its own
+# answer to the one revision that draft became: exit 0 only when it was
+# answered with it.
+kind: Telo.Application
+metadata:
+  name: CrossProcessPublisher
+  version: 1.0.0
+include:
+  - ./model.yaml
+imports:
+  Postgres: ../../../../../postgres
+  Layers: ../../../..
+  Sql: ../../../../../sql
+  Graph: ../../../../../graph
+  GraphLayers: ../../../../../graph-layers
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref work
+---
+kind: Run.Sequence
+metadata: { name: work }
+steps:
+  - name: staged
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: >-
+        SELECT public_id AS id, parent_revision::int AS parent
+        FROM graph_drafts_processes.graph_drafts ORDER BY created_at DESC LIMIT 1
+  - name: publish
+    invoke: { kind: GraphLayers.Publish, store: !ref top }
+    inputs: { draft: !cel "string(steps.staged.result.rows[0].id)" }
+  - name: assertAnsweredWithTheOneRevision
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[int(steps.publish.result.revision.number) - int(steps.staged.result.rows[0].parent), steps.publish.result.changed ? 1 : 0]"
+      expected: [1, 1]

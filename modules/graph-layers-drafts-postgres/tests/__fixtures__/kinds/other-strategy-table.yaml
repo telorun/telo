@@ -1,0 +1,21 @@
+# A drafted node type over the current strategy's node table, which carries
+# none of the bookkeeping a draft needs.
+kind: Telo.Application
+metadata:
+  name: OtherStrategyTable
+imports:
+  Postgres: ../../../../postgres
+  Current: ../../../../graph-layers-current-postgres
+  Layers: ../../..
+---
+kind: Current.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id

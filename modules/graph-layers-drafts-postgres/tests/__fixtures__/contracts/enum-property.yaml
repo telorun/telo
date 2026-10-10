@@ -1,0 +1,68 @@
+# A value outside the PostgreSQL enum a layered node table's column is typed by.
+kind: Telo.Application
+metadata:
+  name: EnumProperty
+imports:
+  Postgres: ../../../../postgres
+  Graph: ../../../../graph
+  Layers: ../../..
+  Run: ../../../../run
+targets:
+  - !ref probe
+---
+kind: Postgres.Connection
+metadata: { name: db }
+# Never connected: this fixture is only ever checked.
+connectionString: postgres://unused:unused@localhost:1/unused
+---
+kind: Postgres.Enum
+metadata: { name: personStatus }
+typeName: person_status
+values: [active, retired]
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: uuid, nullable: false }
+  name: { type: varchar, length: 64, nullable: false }
+  status: { type: !ref personStatus }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+enums: [!ref personStatus]
+tables: [!ref people, !ref graphLayers, !ref graphDrafts]
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.DraftsTable
+metadata: { name: graphDrafts }
+table: graph_drafts
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref graphDrafts
+---
+kind: Run.Sequence
+metadata: { name: probe }
+steps:
+  - name: call
+    invoke:
+      kind: Graph.CreateNode
+      store: !ref team
+      node: !ref person
+    inputs: { key: 2f1c7a52-6c1e-4b7e-9d53-0c7f3a1b2c3d, properties: { name: Alice, status: gone } }

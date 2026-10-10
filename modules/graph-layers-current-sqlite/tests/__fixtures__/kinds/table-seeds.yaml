@@ -1,0 +1,17 @@
+# A layered node table declaring seed rows, which the kind does not offer.
+kind: Telo.Application
+metadata:
+  name: TableSeeds
+imports:
+  SQLite: ../../../../sqlite
+  Layers: ../../..
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+seeds:
+  key: [id]
+  rows: [{ id: a }]

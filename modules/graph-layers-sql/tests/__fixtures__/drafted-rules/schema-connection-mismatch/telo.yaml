@@ -1,0 +1,24 @@
+# A drafted store on one connection naming a schema on another.
+kind: Telo.Library
+metadata:
+  name: DraftedSchemaConnectionMismatch
+include:
+  - ../../drafted-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: SQLite.Connection
+metadata: { name: other }
+file: ":memory:"
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref other
+schema: !ref appSchema
+layer: lost
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref graphDrafts

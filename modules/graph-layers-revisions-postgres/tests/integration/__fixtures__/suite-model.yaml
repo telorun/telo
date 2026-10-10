@@ -1,0 +1,169 @@
+# The model the behaviour suites run over, in revisioned PostgreSQL tables:
+# people and documents, who knows whom and who authored what, with the seven
+# stores the suites name. None declares a base: what a revisioned layer is
+# built on is data, pinned by the runner — so until a runner pins anything, the
+# seven are independent layers sharing the tables. A partial: the runner that
+# includes it declares the schema `appSchema` listing these tables — in a
+# namespace of its own, so two runners never share one — and supplies the
+# connection variables.
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: layers_suite_people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+  age: { type: integer }
+---
+kind: Layers.NodeTable
+metadata: { name: documents }
+table: layers_suite_documents
+key: id
+columns:
+  id: { type: text, nullable: false }
+  title: { type: text }
+  status: { type: text, nullable: false, default: draft }
+  pages: { type: integer, default: 1 }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: layers_suite_knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+  since: { type: integer }
+---
+kind: Layers.RelationshipTable
+metadata: { name: authoredTable }
+table: layers_suite_authored
+sourceColumn: author
+targetColumn: document
+columns:
+  author: { type: text, nullable: false }
+  document: { type: text, nullable: false }
+  role: { type: text }
+  share: { type: integer, default: 100 }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: layers_suite_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: layers_suite_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: layers_suite_changeset_bases
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Node
+metadata: { name: document }
+table: !ref documents
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Relationship
+metadata: { name: authored }
+table: !ref authoredTable
+source: !ref person
+target: !ref document
+sourceColumn: author
+targetColumn: document
+---
+kind: Layers.Store
+metadata: { name: base }
+connection: !ref db
+schema: !ref appSchema
+layer: base
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: middle }
+connection: !ref db
+schema: !ref appSchema
+layer: middle
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: side }
+connection: !ref db
+schema: !ref appSchema
+layer: side
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: top }
+connection: !ref db
+schema: !ref appSchema
+layer: top
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: left }
+connection: !ref db
+schema: !ref appSchema
+layer: left
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: right }
+connection: !ref db
+schema: !ref appSchema
+layer: right
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: apex }
+connection: !ref db
+schema: !ref appSchema
+layer: apex
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases

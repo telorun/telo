@@ -1,0 +1,155 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsPostgresEqualByType
+  version: 1.0.0
+  description: |
+    Two values are the same only when they are the same value of the same type.
+    A `jsonb` property holds the JSON string "7"; a merge giving the integer 7
+    is a change — one more revision, and the stored value is then the integer —
+    where the same merge again is none.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Graph: ../../../graph
+  GraphLayers: ../../../graph-layers
+  Layers: ../..
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref equalByType
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_revisions_equal_by_type CASCADE
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+  payload: { type: jsonb }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_revisions_equal_by_type
+ledger: graph_revisions_equal_by_type
+tables: [!ref people, !ref graphLayers, !ref graphChangesets, !ref graphChangesetBases]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Store
+metadata: { name: top }
+connection: !ref db
+schema: !ref appSchema
+layer: top
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Sql.Query
+metadata: { name: stored }
+connection: !ref db
+---
+kind: Graph.MergeNode
+metadata: { name: mergePerson }
+store: !ref top
+node: !ref person
+---
+kind: GraphLayers.ListRevisions
+metadata: { name: revisions }
+store: !ref top
+---
+kind: Run.Sequence
+metadata: { name: equalByType }
+steps:
+  - name: create
+    invoke: { kind: Graph.CreateNode, store: !ref top, node: !ref person }
+    inputs: { key: a, properties: { name: Alice } }
+  # The driver binds a string as the JSON text itself, so the JSON string "7"
+  # is put in place by statement.
+  - name: holdText
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: >-
+        UPDATE graph_revisions_equal_by_type.people SET payload = '"7"'::jsonb WHERE id = 'a'
+  - name: held
+    invoke: { kind: Graph.GetNode, store: !ref top, node: !ref person }
+    inputs: { key: a }
+  - name: before
+    invoke: !ref revisions
+    inputs: {}
+  - name: mergeInteger
+    invoke: !ref mergePerson
+    inputs: { key: a, properties: { payload: 7 } }
+  - name: after
+    invoke: !ref revisions
+    inputs: {}
+  - name: mergeIntegerAgain
+    invoke: !ref mergePerson
+    inputs: { key: a, properties: { payload: 7 } }
+  - name: afterAgain
+    invoke: !ref revisions
+    inputs: {}
+  - name: storedType
+    invoke: !ref stored
+    inputs:
+      sql: >-
+        SELECT jsonb_typeof(payload) AS type FROM graph_revisions_equal_by_type.people
+        WHERE id = 'a' AND graph_to_revision IS NULL
+  - name: assertTextIsNotTheInteger
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        held: !cel "steps.held.result.node.properties.payload"
+        revisionsBefore: !cel "size(steps.before.result.revisions)"
+        merged: !cel "steps.mergeInteger.result.node.properties.payload"
+        revisionsAfter: !cel "size(steps.after.result.revisions)"
+        revisionsAfterTheSameAgain: !cel "size(steps.afterAgain.result.revisions)"
+        storedType: !cel "steps.storedType.result.rows.map(r, r.type)"
+      expected:
+        held: "7"
+        revisionsBefore: 1
+        merged: 7
+        revisionsAfter: 2
+        revisionsAfterTheSameAgain: 2
+        storedType: [number]

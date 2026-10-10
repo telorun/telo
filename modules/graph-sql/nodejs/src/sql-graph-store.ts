@@ -6,7 +6,10 @@ import {
 } from "@telorun/sdk";
 import {
   assertEndpointsListed,
+  decodeKeyTail,
+  encodeKeyTail,
   type Absent,
+  type CursorInvalid,
   type EndpointAbsent,
   type Exists,
   type Found,
@@ -14,13 +17,21 @@ import {
   type GraphNodeType,
   type GraphNodeValue,
   type GraphPage,
+  type GraphPageResult,
   type GraphRelationshipType,
   type GraphRelationshipValue,
   type GraphStore,
   type PreparedTraversal,
   type TraversalSpec,
 } from "@telorun/graph";
-import { isSqlSchema, resolveSqlConnection, type SqlConnection, type SqlSchema } from "@telorun/sql";
+import {
+  isSqlSchema,
+  resolveSqlConnection,
+  SqlFragments,
+  sqlWhere,
+  type SqlConnection,
+  type SqlSchema,
+} from "@telorun/sql";
 import {
   compileNode,
   compileRelationship,
@@ -38,14 +49,13 @@ import {
   endpointsPresent,
   insertNode,
   insertRelationship,
-  paging,
+  pageLimit,
   selectNode,
   updateNode,
   updateRelationship,
 } from "./graph-statements.js";
 import { isSqlNodeType, type SqlNodeType } from "./node-type.js";
-import { filterConditions, whereClause } from "./property-filter.js";
-import { SqlFragments } from "./sql-fragments.js";
+import { filterConditions } from "./compiled-types.js";
 import { isSqlRelationshipType, type SqlRelationshipType } from "./relationship-type.js";
 import {
   prepareTraversal,
@@ -71,8 +81,9 @@ function nameOf(type: object): string {
  * `GraphSql.Store` — the graph over one connection, in the standard SQL both
  * engines speak. Every identifier comes from a declaration, fixed when the
  * store is created: tables as its schema addresses them, columns quoted by the
- * connection's dialect; every value is bound. It opens no transaction: each statement runs on the caller's ambient
- * one when there is one on this connection.
+ * connection's dialect; every value is bound. Every operation's effect is one
+ * statement, so it is atomic on its own and joins the caller's transaction when
+ * one is open on this connection.
  */
 class SqlGraphStore implements GraphStore, ResourceInstance {
   private readonly nodeTables = new Map<GraphNodeType, CompiledNode>();
@@ -203,20 +214,45 @@ class SqlGraphStore implements GraphStore, ResourceInstance {
     return row ? { status: "found", value: nodeValue(node, row) } : { status: "absent" };
   }
 
+  /** A page cut from one row more than it holds: the items, and the tail of the
+   *  last one when that extra row says more exist. */
+  private page<T>(
+    rows: readonly Row[],
+    limit: number,
+    value: (row: Row) => T,
+    keys: (row: Row) => unknown[],
+  ): Found<GraphPageResult<T>> {
+    const kept = rows.slice(0, limit);
+    const items = kept.map(value);
+    return rows.length > limit
+      ? { status: "found", value: { items, next: encodeKeyTail(keys(kept[kept.length - 1])) } }
+      : { status: "found", value: { items } };
+  }
+
   async findNodes(
     type: GraphNodeType,
     where: GraphFilter,
     page: GraphPage,
     ctx?: InvokeContext,
-  ): Promise<GraphNodeValue[]> {
+  ): Promise<Found<GraphPageResult<GraphNodeValue>> | CursorInvalid> {
     const node = this.node(type);
     const conditions = filterConditions(this.describe, nameOf(type), where, node.properties, "");
+    if (page.after !== undefined) {
+      const after = decodeKeyTail(page.after, 1);
+      if (!after) return { status: "cursorInvalid" };
+      conditions.push(new SqlFragments().text(`${node.key.sql} > `).value(after[0]));
+    }
     const sql = new SqlFragments()
       .text(`SELECT ${node.returning} FROM ${node.table}`)
-      .append(whereClause(conditions))
+      .append(sqlWhere(conditions))
       .text(` ORDER BY ${node.key.sql}`)
-      .append(paging(page.limit, page.offset));
-    return (await this.rows(sql, ctx)).map((row) => nodeValue(node, row));
+      .append(pageLimit(page.limit));
+    return this.page(
+      await this.rows(sql, ctx),
+      page.limit,
+      (row) => nodeValue(node, row),
+      (row) => [row[node.key.name]],
+    );
   }
 
   async createRelationship(
@@ -297,28 +333,50 @@ class SqlGraphStore implements GraphStore, ResourceInstance {
     where: GraphFilter,
     page: GraphPage,
     ctx?: InvokeContext,
-  ): Promise<GraphRelationshipValue[]> {
+  ): Promise<Found<GraphPageResult<GraphRelationshipValue>> | CursorInvalid> {
     const relationship = this.relationship(type);
+    const { sourceColumn: s, targetColumn: t } = relationship;
     const conditions: SqlFragments[] = [];
     if (endpoints.source !== undefined) {
-      conditions.push(
-        new SqlFragments().text(`${relationship.sourceColumn.sql} = `).value(endpoints.source),
-      );
+      conditions.push(new SqlFragments().text(`${s.sql} = `).value(endpoints.source));
     }
     if (endpoints.target !== undefined) {
-      conditions.push(
-        new SqlFragments().text(`${relationship.targetColumn.sql} = `).value(endpoints.target),
-      );
+      conditions.push(new SqlFragments().text(`${t.sql} = `).value(endpoints.target));
+    }
+    if (page.after !== undefined) {
+      const after = decodeKeyTail(page.after, 2);
+      if (!after) return { status: "cursorInvalid" };
+      // The seek names only the columns still free, so it continues along the
+      // index that already satisfied the endpoint filter.
+      if (endpoints.source !== undefined && endpoints.target === undefined) {
+        conditions.push(new SqlFragments().text(`${t.sql} > `).value(after[1]));
+      } else if (endpoints.target !== undefined && endpoints.source === undefined) {
+        conditions.push(new SqlFragments().text(`${s.sql} > `).value(after[0]));
+      } else {
+        conditions.push(
+          new SqlFragments()
+            .text(`(${s.sql}, ${t.sql}) > (`)
+            .value(after[0])
+            .text(", ")
+            .value(after[1])
+            .text(")"),
+        );
+      }
     }
     conditions.push(
       ...filterConditions(this.describe, nameOf(type), where, relationship.properties, ""),
     );
     const sql = new SqlFragments()
       .text(`SELECT ${relationship.returning} FROM ${relationship.table}`)
-      .append(whereClause(conditions))
-      .text(` ORDER BY ${relationship.sourceColumn.sql}, ${relationship.targetColumn.sql}`)
-      .append(paging(page.limit, page.offset));
-    return (await this.rows(sql, ctx)).map((row) => relationshipValue(relationship, row));
+      .append(sqlWhere(conditions))
+      .text(` ORDER BY ${s.sql}, ${t.sql}`)
+      .append(pageLimit(page.limit));
+    return this.page(
+      await this.rows(sql, ctx),
+      page.limit,
+      (row) => relationshipValue(relationship, row),
+      (row) => [row[s.name], row[t.name]],
+    );
   }
 
   prepareTraversal(spec: TraversalSpec): PreparedTraversal {
@@ -347,8 +405,10 @@ class SqlGraphStore implements GraphStore, ResourceInstance {
     where: GraphFilter,
     page: GraphPage,
     ctx?: InvokeContext,
-  ): Promise<Found<GraphNodeValue[]> | Absent> {
+  ): Promise<Found<GraphPageResult<GraphNodeValue>> | Absent | CursorInvalid> {
     const compiled = prepared as SqlPreparedTraversal;
+    const after = page.after === undefined ? undefined : decodeKeyTail(page.after, 1);
+    if (page.after !== undefined && !after) return { status: "cursorInvalid" };
     const rows = await this.rows(
       traversalStatement(
         this.describe,
@@ -357,16 +417,18 @@ class SqlGraphStore implements GraphStore, ResourceInstance {
         key,
         where,
         page.limit,
-        page.offset,
+        after?.[0],
       ),
       ctx,
     );
     if (Number(rows[0]?.[compiled.presentAlias] ?? 0) === 0) return { status: "absent" };
     const end = compiled.end;
-    const nodes = rows
-      .filter((row) => row[end.key.name] !== null && row[end.key.name] !== undefined)
-      .map((row) => nodeValue(end, row));
-    return { status: "found", value: nodes };
+    return this.page(
+      rows.filter((row) => row[end.key.name] !== null && row[end.key.name] !== undefined),
+      page.limit,
+      (row) => nodeValue(end, row),
+      (row) => [row[end.key.name]],
+    );
   }
 }
 

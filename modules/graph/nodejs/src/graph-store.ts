@@ -16,18 +16,21 @@ export interface GraphRelationshipType {
 }
 
 /** A node as every operation returns it: its key, and every other property it
- *  holds. A property with no value is absent rather than null. */
+ *  holds. A property with no value is absent rather than null. `origin` is the
+ *  layer the value was resolved from, set only by a layered store. */
 export interface GraphNodeValue {
   readonly key: unknown;
   readonly properties: Record<string, unknown>;
+  readonly origin?: string;
 }
 
 /** A relationship as every operation returns it: its endpoints' keys, and every
- *  property of its own. */
+ *  property of its own. `origin` as on a node. */
 export interface GraphRelationshipValue {
   readonly source: unknown;
   readonly target: unknown;
   readonly properties: Record<string, unknown>;
+  readonly origin?: string;
 }
 
 export const COMPARISON_OPERATORS = ["eq", "ne", "lt", "lte", "gt", "gte"] as const;
@@ -40,9 +43,20 @@ export type ComparisonOperator = (typeof COMPARISON_OPERATORS)[number];
  */
 export type GraphFilter = Partial<Record<ComparisonOperator, Record<string, unknown>>>;
 
+/**
+ * One page of a listing. `after` is the backend's own tail — the `next` of the
+ * page before, handed back verbatim; `graph` never reads it.
+ */
 export interface GraphPage {
-  readonly limit?: number;
-  readonly offset?: number;
+  readonly limit: number;
+  readonly after?: string;
+}
+
+/** The items of one page, in the listing's order, and — only when more exist —
+ *  the tail to resume from. */
+export interface GraphPageResult<T> {
+  readonly items: T[];
+  readonly next?: string;
 }
 
 export type TraversalDirection = "out" | "in" | "both";
@@ -71,6 +85,8 @@ export interface PreparedTraversal {
 export type Found<T> = { readonly status: "found"; readonly value: T };
 export type Absent = { readonly status: "absent" };
 export type Exists = { readonly status: "exists" };
+/** The backend does not accept the tail it was handed. */
+export type CursorInvalid = { readonly status: "cursorInvalid" };
 export type EndpointAbsent = {
   readonly status: "endpointAbsent";
   readonly endpoint: "source" | "target";
@@ -84,8 +100,14 @@ export type EndpointAbsent = {
  * once for every backend. A failure that is not an outcome (a lost connection, a
  * constraint the model does not describe) is thrown as it arrives.
  *
- * Every write joins whatever transaction is ambient on the caller's context and
- * opens none of its own.
+ * Every operation is atomic. It joins the caller's transaction when one is open,
+ * and otherwise commits on its own, opening a transaction that never outlives
+ * the call.
+ *
+ * A listing — `findNodes`, `findRelationships`, `traverse` — returns at most
+ * `page.limit` items in its stated order, resuming strictly after `page.after`,
+ * and sets `next` only when more exist. A tail it does not accept is the
+ * outcome `cursorInvalid`.
  */
 export interface GraphStore {
   readonly nodes: readonly GraphNodeType[];
@@ -124,7 +146,7 @@ export interface GraphStore {
     where: GraphFilter,
     page: GraphPage,
     ctx?: InvokeContext,
-  ): Promise<GraphNodeValue[]>;
+  ): Promise<Found<GraphPageResult<GraphNodeValue>> | CursorInvalid>;
 
   createRelationship(
     type: GraphRelationshipType,
@@ -160,7 +182,7 @@ export interface GraphStore {
     where: GraphFilter,
     page: GraphPage,
     ctx?: InvokeContext,
-  ): Promise<GraphRelationshipValue[]>;
+  ): Promise<Found<GraphPageResult<GraphRelationshipValue>> | CursorInvalid>;
 
   /** Compile one traversal. Called once, when the operation is created, and
    *  never performs I/O. */
@@ -172,7 +194,7 @@ export interface GraphStore {
     where: GraphFilter,
     page: GraphPage,
     ctx?: InvokeContext,
-  ): Promise<Found<GraphNodeValue[]> | Absent>;
+  ): Promise<Found<GraphPageResult<GraphNodeValue>> | Absent | CursorInvalid>;
 }
 
 export function isGraphStore(value: unknown): value is GraphStore {

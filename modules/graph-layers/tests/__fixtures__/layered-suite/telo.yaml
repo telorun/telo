@@ -1,0 +1,1577 @@
+# The layered graph's behaviour, once, for every strategy and engine: overlay by
+# precedence, writes that only ever state in the store's own layer, hiding and
+# retraction, links and traversals that cross layers, a relationship being in a
+# view only while both its endpoints are, and keyset paging over the resolved
+# view, and a new value taking its columns' defaults. A run supplies seven
+# stores over the same types and runs these in order, starting empty; each
+# sequence keeps to keys of its own prefix.
+#
+# The stacks the stores must form:
+#   top  → [middle → [base], side]         `top` resolves top, middle, base, side
+#   apex → [left → [base], right → [base]]  `apex` resolves apex, left, right, base
+# A layer two bases share has one place, the lowest: `base` is beneath `right`.
+#
+# The base level of the contract does not say WHEN a stack takes a change made
+# beneath it, only that it is visible above once the stack has taken it. So the
+# run also supplies `refreshStacks`, which brings every stack up to date, and
+# every sequence invokes it after each maximal run of writes through one store
+# that has a store above it (`base`, `middle`, `side`, `left`, `right`), before
+# the next step. A strategy whose stacks are read live supplies a sequence that
+# does nothing; what only a live stack promises is in `live-stack-suite`, and
+# what only a pinned one promises in `stacking-suite`.
+kind: Telo.Library
+metadata:
+  name: LayeredGraphSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: the layered graph suite over seven stores holding people who
+    know people and author documents.
+imports:
+  Graph: ../../../../graph
+  GraphLayers: ../../..
+  Run: ../../../../run
+  Assert: ../../../../assert
+resources:
+  base:
+    kind: GraphLayers.Store
+    description: Layer `base`, built on nothing.
+  middle:
+    kind: GraphLayers.Store
+    description: Layer `middle`, built on `base`.
+  side:
+    kind: GraphLayers.Store
+    description: Layer `side`, built on nothing.
+  top:
+    kind: GraphLayers.Store
+    description: Layer `top`, built on `middle` then `side`.
+  left:
+    kind: GraphLayers.Store
+    description: Layer `left`, built on `base`.
+  right:
+    kind: GraphLayers.Store
+    description: Layer `right`, built on `base`.
+  apex:
+    kind: GraphLayers.Store
+    description: Layer `apex`, built on `left` then `right`.
+  person:
+    kind: Graph.Node
+    description: People keyed by a text `id`, with a non-null text `name` and an integer `age`.
+  document:
+    kind: Graph.Node
+    description: >-
+      Documents keyed by a text `id`, with a text `title`, a non-null text
+      `status` defaulting to `draft` and an integer `pages` defaulting to 1.
+  knows:
+    kind: Graph.Relationship
+    description: person → person, with an integer `since`.
+  authored:
+    kind: Graph.Relationship
+    description: person → document, with a text `role` and an integer `share` defaulting to 100.
+  refreshStacks:
+    kind: Run.Sequence
+    description: >-
+      Brings every store's stack up to date with what the stores beneath it now
+      hold. Takes no input.
+exports:
+  resources:
+    - overlay
+    - writes
+    - relationships
+    - traversals
+    - deletions
+    - retractions
+    - diamond
+    - paging
+    - defaults
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+# What a drain has gathered so far.
+kind: Run.Value
+metadata: { name: gathered }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [items]
+    properties:
+      items: { type: array }
+value:
+  items: !cel "inputs.items"
+---
+# Two single hops along `knows`.
+kind: Graph.Traverse
+metadata: { name: topFriendsOfFriends }
+store: !ref top
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+  - relationship: !ref knows
+---
+# One hop along `knows`.
+kind: Graph.Traverse
+metadata: { name: topFriends }
+store: !ref top
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+---
+# Everyone reachable in one to three `knows` hops — through a cycle.
+kind: Graph.Traverse
+metadata: { name: topReachable }
+store: !ref top
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+    minHops: 1
+    maxHops: 3
+---
+kind: Graph.CreateNode
+metadata: { name: baseCreatePerson }
+store: !ref base
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: baseGetPerson }
+store: !ref base
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: baseFindPeople }
+store: !ref base
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: middleCreatePerson }
+store: !ref middle
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: middleGetPerson }
+store: !ref middle
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: middleFindPeople }
+store: !ref middle
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: sideCreatePerson }
+store: !ref side
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: sideGetPerson }
+store: !ref side
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: sideFindPeople }
+store: !ref side
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: topCreatePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: topGetPerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: topFindPeople }
+store: !ref top
+node: !ref person
+---
+kind: Graph.CreateRelationship
+metadata: { name: baseCreateKnows }
+store: !ref base
+relationship: !ref knows
+---
+kind: Graph.FindRelationships
+metadata: { name: baseFindKnows }
+store: !ref base
+relationship: !ref knows
+---
+kind: Graph.CreateNode
+metadata: { name: baseCreateDocument }
+store: !ref base
+node: !ref document
+---
+kind: Graph.CreateRelationship
+metadata: { name: topCreateKnows }
+store: !ref top
+relationship: !ref knows
+---
+kind: Graph.FindRelationships
+metadata: { name: topFindKnows }
+store: !ref top
+relationship: !ref knows
+---
+kind: Graph.CreateNode
+metadata: { name: topCreateDocument }
+store: !ref top
+node: !ref document
+---
+kind: Graph.UpdateNode
+metadata: { name: baseUpdatePerson }
+store: !ref base
+node: !ref person
+---
+kind: Graph.MergeNode
+metadata: { name: middleMergePerson }
+store: !ref middle
+node: !ref person
+---
+kind: Graph.MergeNode
+metadata: { name: topMergePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.UpdateNode
+metadata: { name: topUpdatePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: topDeletePerson }
+store: !ref top
+node: !ref person
+---
+kind: GraphLayers.RetractNode
+metadata: { name: topRetractPerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.UpdateRelationship
+metadata: { name: topUpdateKnows }
+store: !ref top
+relationship: !ref knows
+---
+kind: Graph.DeleteRelationship
+metadata: { name: topDeleteKnows }
+store: !ref top
+relationship: !ref knows
+---
+kind: GraphLayers.RetractRelationship
+metadata: { name: topRetractKnows }
+store: !ref top
+relationship: !ref knows
+---
+kind: Graph.FindNodes
+metadata: { name: topFindDocuments }
+store: !ref top
+node: !ref document
+---
+kind: Graph.MergeNode
+metadata: { name: rightMergePerson }
+store: !ref right
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: apexGetPerson }
+store: !ref apex
+node: !ref person
+---
+# A store reads its own layer, then each base in order followed by that base's
+# own bases; the first statement for a key wins, and `origin` names its layer.
+kind: Run.Sequence
+metadata: { name: overlay }
+steps:
+  - name: baseAlice
+    invoke: !ref baseCreatePerson
+    inputs: { key: a, properties: { name: Alice, age: 30 } }
+  - name: baseBob
+    invoke: !ref baseCreatePerson
+    inputs: { key: b, properties: { name: Bob, age: 25 } }
+  - name: refreshAfterBaseBob
+    invoke: !ref refreshStacks
+  - name: sideAlice
+    invoke: !ref sideCreatePerson
+    inputs: { key: a, properties: { name: Aside } }
+  - name: sideSid
+    invoke: !ref sideCreatePerson
+    inputs: { key: s, properties: { name: Sid } }
+  - name: refreshAfterSideSid
+    invoke: !ref refreshStacks
+  - name: middleMia
+    invoke: !ref middleCreatePerson
+    inputs: { key: m, properties: { name: Mia } }
+  - name: refreshAfterMiddleMia
+    invoke: !ref refreshStacks
+  # `base` is reached through `middle`, which `top` lists before `side`.
+  - name: topGetAlice
+    invoke: !ref topGetPerson
+    inputs: { key: a }
+  - name: aliceFromBase
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topGetAlice.result"
+      expected: { node: { key: a, properties: { name: Alice, age: 30 }, origin: base } }
+  - name: topFindAll
+    invoke: !ref topFindPeople
+    inputs: {}
+  - name: everyLayerShowsThrough
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topFindAll.result.nodes"
+      expected: [{ key: a, properties: { name: Alice, age: 30 }, origin: base }, { key: b, properties: { name: Bob, age: 25 }, origin: base }, { key: m, properties: { name: Mia }, origin: middle }, { key: s, properties: { name: Sid }, origin: side }]
+  # A store that lists no base sees only its own layer, over the same tables.
+  - name: sideFindAll
+    invoke: !ref sideFindPeople
+    inputs: {}
+  - name: sideSeesOnlyItself
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.sideFindAll.result.nodes"
+      expected: [{ key: a, properties: { name: Aside }, origin: side }, { key: s, properties: { name: Sid }, origin: side }]
+  - name: baseFindAll
+    invoke: !ref baseFindPeople
+    inputs: {}
+  - name: baseSeesOnlyItself
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.baseFindAll.result.nodes.map(n, n.key)"
+      expected: [a, b]
+  # A filter judges the winner only: once `middle` restates Alice, the row
+  # `base` still holds no longer answers for her.
+  - name: middleOlderAlice
+    invoke: !ref middleMergePerson
+    inputs: { key: a, properties: { age: 40 } }
+  - name: refreshAfterMiddleOlderAlice
+    invoke: !ref refreshStacks
+  - name: topFindThirty
+    invoke: !ref topFindPeople
+    inputs: { where: { eq: { age: 30 } } }
+  - name: shadowedRowNeverMatches
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topFindThirty.result.nodes"
+      expected: []
+  - name: topFindForty
+    invoke: !ref topFindPeople
+    inputs: { where: { eq: { age: 40 } } }
+  - name: winnerMatches
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topFindForty.result.nodes"
+      expected: [{ key: a, properties: { name: Alice, age: 40 }, origin: middle }]
+  # A write to a base is visible above it once the stack has taken it.
+  - name: baseOlderBob
+    invoke: !ref baseUpdatePerson
+    inputs: { key: b, properties: { age: 26 } }
+  - name: refreshAfterBaseOlderBob
+    invoke: !ref refreshStacks
+  - name: topGetBob
+    invoke: !ref topGetPerson
+    inputs: { key: b }
+  - name: baseWriteShowsAbove
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topGetBob.result"
+      expected: { node: { key: b, properties: { name: Bob, age: 26 }, origin: base } }
+---
+# A write states only in the store's own layer. A key that resolves from any
+# layer cannot be created again; changing a value from beneath copies the whole
+# row into the store's layer and applies the change there.
+kind: Run.Sequence
+metadata: { name: writes }
+steps:
+  - name: baseOne
+    invoke: !ref baseCreatePerson
+    inputs: { key: w1, properties: { name: One, age: 1 } }
+  - name: refreshAfterBaseOne
+    invoke: !ref refreshStacks
+  - name: createOverBase
+    try:
+      - name: createOverBaseAttempt
+        invoke: !ref topCreatePerson
+        inputs: { key: w1, properties: { name: Imposter } }
+      - name: createOverBaseUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "createOverBase did not fail" }
+    catch:
+      - name: createOverBaseCode
+        value: !cel "error.code"
+  - name: createOverBaseRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.createOverBaseCode.result"
+      expected: GRAPH_NODE_EXISTS
+  - name: topUpdateOne
+    invoke: !ref topUpdatePerson
+    inputs: { key: w1, properties: { age: 2 } }
+  - name: updateCopiedTheRow
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topUpdateOne.result"
+      expected: { node: { key: w1, properties: { name: One, age: 2 }, origin: top } }
+  - name: baseGetOne
+    invoke: !ref baseGetPerson
+    inputs: { key: w1 }
+  - name: baseUnchanged
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.baseGetOne.result"
+      expected: { node: { key: w1, properties: { name: One, age: 1 }, origin: base } }
+  - name: baseTwo
+    invoke: !ref baseCreatePerson
+    inputs: { key: w2, properties: { name: Two, age: 1 } }
+  - name: refreshAfterBaseTwo
+    invoke: !ref refreshStacks
+  - name: topMergeTwo
+    invoke: !ref topMergePerson
+    inputs: { key: w2, properties: { name: Deux } }
+  - name: mergeCopiedTheRow
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topMergeTwo.result"
+      expected: { node: { key: w2, properties: { name: Deux, age: 1 }, origin: top } }
+  - name: topThree
+    invoke: !ref topCreatePerson
+    inputs: { key: w3, properties: { name: Three } }
+  - name: createdInOwnLayer
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topThree.result"
+      expected: { node: { key: w3, properties: { name: Three }, origin: top } }
+  - name: baseGetThree
+    try:
+      - name: baseGetThreeAttempt
+        invoke: !ref baseGetPerson
+        inputs: { key: w3 }
+      - name: baseGetThreeUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "baseGetThree did not fail" }
+    catch:
+      - name: baseGetThreeCode
+        value: !cel "error.code"
+  - name: baseGetThreeRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.baseGetThreeCode.result"
+      expected: GRAPH_NODE_NOT_FOUND
+  - name: topMergeFour
+    invoke: !ref topMergePerson
+    inputs: { key: w4, properties: { name: Four } }
+  - name: mergeCreated
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topMergeFour.result"
+      expected: { node: { key: w4, properties: { name: Four }, origin: top } }
+  - name: updateNobody
+    try:
+      - name: updateNobodyAttempt
+        invoke: !ref topUpdatePerson
+        inputs: { key: w9, properties: { age: 1 } }
+      - name: updateNobodyUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "updateNobody did not fail" }
+    catch:
+      - name: updateNobodyCode
+        value: !cel "error.code"
+  - name: updateNobodyRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.updateNobodyCode.result"
+      expected: GRAPH_NODE_NOT_FOUND
+---
+# Endpoints are keys resolved in the store's view: a layer may link its own
+# node to one a layer beneath states, and never to one it cannot see.
+kind: Run.Sequence
+metadata: { name: relationships }
+steps:
+  - name: baseR1
+    invoke: !ref baseCreatePerson
+    inputs: { key: r1, properties: { name: R1 } }
+  - name: baseR2
+    invoke: !ref baseCreatePerson
+    inputs: { key: r2, properties: { name: R2 } }
+  - name: refreshAfterBaseR2
+    invoke: !ref refreshStacks
+  - name: topR3
+    invoke: !ref topCreatePerson
+    inputs: { key: r3, properties: { name: R3 } }
+  - name: topLinksDown
+    invoke: !ref topCreateKnows
+    inputs: { source: r3, target: r1, properties: { since: 2020 } }
+  - name: linkedToNodeBeneath
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topLinksDown.result"
+      expected: { relationship: { source: r3, target: r1, properties: { since: 2020 }, origin: top } }
+  - name: baseLink
+    invoke: !ref baseCreateKnows
+    inputs: { source: r1, target: r2, properties: { since: 2019 } }
+  - name: refreshAfterBaseLink
+    invoke: !ref refreshStacks
+  - name: createOverBaseLink
+    try:
+      - name: createOverBaseLinkAttempt
+        invoke: !ref topCreateKnows
+        inputs: { source: r1, target: r2 }
+      - name: createOverBaseLinkUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "createOverBaseLink did not fail" }
+    catch:
+      - name: createOverBaseLinkCode
+        value: !cel "error.code"
+  - name: createOverBaseLinkRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.createOverBaseLinkCode.result"
+      expected: GRAPH_RELATIONSHIP_EXISTS
+  - name: missingTarget
+    try:
+      - name: missingTargetAttempt
+        invoke: !ref topCreateKnows
+        inputs: { source: r3, target: r9 }
+      - name: missingTargetUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "missingTarget did not fail" }
+    catch:
+      - name: missingTargetCode
+        value: !cel "{'code': error.code, 'endpoint': error.data.endpoint}"
+  - name: missingTargetRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.missingTargetCode.result"
+      expected: { code: GRAPH_NODE_NOT_FOUND, endpoint: target }
+  # `r3` is `top`'s: `base` cannot see it, so cannot link to it.
+  - name: linkUpward
+    try:
+      - name: linkUpwardAttempt
+        invoke: !ref baseCreateKnows
+        inputs: { source: r1, target: r3 }
+      - name: linkUpwardUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "linkUpward did not fail" }
+    catch:
+      - name: linkUpwardCode
+        value: !cel "{'code': error.code, 'endpoint': error.data.endpoint}"
+  - name: refreshAfterLinkUpward
+    invoke: !ref refreshStacks
+  - name: linkUpwardRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.linkUpwardCode.result"
+      expected: { code: GRAPH_NODE_NOT_FOUND, endpoint: target }
+  - name: topUpdateLink
+    invoke: !ref topUpdateKnows
+    inputs: { source: r1, target: r2, properties: { since: 2021 } }
+  - name: linkCopiedUp
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topUpdateLink.result"
+      expected: { relationship: { source: r1, target: r2, properties: { since: 2021 }, origin: top } }
+  - name: baseFindLink
+    invoke: !ref baseFindKnows
+    inputs: { source: r1 }
+  - name: baseLinkUnchanged
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.baseFindLink.result.relationships"
+      expected: [{ source: r1, target: r2, properties: { since: 2019 }, origin: base }]
+  - name: topMergeLink
+    invoke: { kind: Graph.MergeRelationship, store: !ref top, relationship: !ref knows }
+    inputs: { source: r2, target: r1, properties: { since: 2022 } }
+  - name: mergeCreatedLink
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topMergeLink.result"
+      expected: { relationship: { source: r2, target: r1, properties: { since: 2022 }, origin: top } }
+  - name: topFindFromR1
+    invoke: !ref topFindKnows
+    inputs: { source: r1 }
+  - name: winnerListed
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topFindFromR1.result.relationships"
+      expected: [{ source: r1, target: r2, properties: { since: 2021 }, origin: top }]
+  - name: topFindOldLink
+    invoke: !ref topFindKnows
+    inputs: { source: r1, where: { eq: { since: 2019 } } }
+  - name: shadowedLinkNeverMatches
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topFindOldLink.result.relationships"
+      expected: []
+  - name: topFindToR1
+    invoke: !ref topFindKnows
+    inputs: { target: r1 }
+  - name: listedByTarget
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topFindToR1.result.relationships"
+      expected: [{ source: r2, target: r1, properties: { since: 2022 }, origin: top }, { source: r3, target: r1, properties: { since: 2020 }, origin: top }]
+---
+# A traversal follows the resolved relationships and returns the resolved end
+# nodes, so it crosses a link between layers and stops at whatever a layer hides.
+kind: Run.Sequence
+metadata: { name: traversals }
+steps:
+  - name: baseT1
+    invoke: !ref baseCreatePerson
+    inputs: { key: t1, properties: { name: T1 } }
+  - name: baseT2
+    invoke: !ref baseCreatePerson
+    inputs: { key: t2, properties: { name: T2 } }
+  - name: baseT4
+    invoke: !ref baseCreatePerson
+    inputs: { key: t4, properties: { name: T4 } }
+  - name: refreshAfterBaseT4
+    invoke: !ref refreshStacks
+  - name: topT3
+    invoke: !ref topCreatePerson
+    inputs: { key: t3, properties: { name: T3 } }
+  - name: baseT1T2
+    invoke: !ref baseCreateKnows
+    inputs: { source: t1, target: t2 }
+  - name: baseT2T4
+    invoke: !ref baseCreateKnows
+    inputs: { source: t2, target: t4 }
+  - name: refreshAfterBaseT2T4
+    invoke: !ref refreshStacks
+  - name: topT2T3
+    invoke: !ref topCreateKnows
+    inputs: { source: t2, target: t3 }
+  - name: topT3T1
+    invoke: !ref topCreateKnows
+    inputs: { source: t3, target: t1 }
+  - name: acrossLayers
+    invoke: !ref topFriendsOfFriends
+    inputs: { key: t1 }
+  - name: crossedTheLayerLink
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.acrossLayers.result.nodes"
+      expected: [{ key: t3, properties: { name: T3 }, origin: top }, { key: t4, properties: { name: T4 }, origin: base }]
+  - name: baseOnly
+    invoke: { kind: Graph.Traverse, store: !ref base, from: !ref person, to: !ref person, hops: [{ relationship: !ref knows }, { relationship: !ref knows }] }
+    inputs: { key: t1 }
+  - name: baseFollowsOnlyItsOwn
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.baseOnly.result.nodes.map(n, n.key)"
+      expected: [t4]
+  - name: throughCycle
+    invoke: !ref topReachable
+    inputs: { key: t1 }
+  - name: cycleBounded
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.throughCycle.result.nodes.map(n, [n.key, n.origin])"
+      expected: [[t1, base], [t2, base], [t3, top], [t4, base]]
+  - name: filteredEnd
+    invoke: !ref topReachable
+    inputs: { key: t1, where: { eq: { name: T3 } } }
+  - name: endNodesFiltered
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.filteredEnd.result.nodes.map(n, n.key)"
+      expected: [t3]
+  # A hidden node is no end node.
+  - name: topHidesT4
+    invoke: !ref topDeletePerson
+    inputs: { key: t4 }
+  - name: afterHiding
+    invoke: !ref topFriendsOfFriends
+    inputs: { key: t1 }
+  - name: hiddenNodeNotReached
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.afterHiding.result.nodes.map(n, n.key)"
+      expected: [t3]
+  - name: topHidesT1T2
+    invoke: !ref topDeleteKnows
+    inputs: { source: t1, target: t2 }
+  - name: afterCut
+    invoke: !ref topReachable
+    inputs: { key: t1 }
+  - name: hiddenLinkNotFollowed
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.afterCut.result.nodes"
+      expected: []
+  - name: absentStart
+    try:
+      - name: absentStartAttempt
+        invoke: !ref topFriends
+        inputs: { key: t9 }
+      - name: absentStartUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "absentStart did not fail" }
+    catch:
+      - name: absentStartCode
+        value: !cel "error.code"
+  - name: absentStartRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.absentStartCode.result"
+      expected: GRAPH_NODE_NOT_FOUND
+---
+# Deleting what resolves from beneath hides it in the store's own layer;
+# deleting what only this layer states removes the statement. Either way the
+# layer's own relationships touching the node are withdrawn, nothing is stated
+# about those beneath — they are out of the view because the node is — and the
+# layers beneath are untouched.
+kind: Run.Sequence
+metadata: { name: deletions }
+steps:
+  - name: baseD1
+    invoke: !ref baseCreatePerson
+    inputs: { key: d1, properties: { name: D1 } }
+  - name: baseD2
+    invoke: !ref baseCreatePerson
+    inputs: { key: d2, properties: { name: D2 } }
+  - name: baseD4
+    invoke: !ref baseCreatePerson
+    inputs: { key: d4, properties: { name: D4 } }
+  - name: refreshAfterBaseD4
+    invoke: !ref refreshStacks
+  - name: topD3
+    invoke: !ref topCreatePerson
+    inputs: { key: d3, properties: { name: D3 } }
+  - name: baseD1D2
+    invoke: !ref baseCreateKnows
+    inputs: { source: d1, target: d2, properties: { since: 1 } }
+  - name: baseD2D1
+    invoke: !ref baseCreateKnows
+    inputs: { source: d2, target: d1, properties: { since: 2 } }
+  - name: baseD2D4
+    invoke: !ref baseCreateKnows
+    inputs: { source: d2, target: d4, properties: { since: 3 } }
+  - name: refreshAfterBaseD2D4
+    invoke: !ref refreshStacks
+  - name: topD3D1
+    invoke: !ref topCreateKnows
+    inputs: { source: d3, target: d1, properties: { since: 4 } }
+  - name: topRestatesD1D2
+    invoke: !ref topUpdateKnows
+    inputs: { source: d1, target: d2, properties: { since: 5 } }
+  - name: hideD1
+    invoke: !ref topDeletePerson
+    inputs: { key: d1 }
+  - name: deleteReturnsLastState
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.hideD1.result"
+      expected: { node: { key: d1, properties: { name: D1 }, origin: base } }
+  - name: topGetHidden
+    try:
+      - name: topGetHiddenAttempt
+        invoke: !ref topGetPerson
+        inputs: { key: d1 }
+      - name: topGetHiddenUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "topGetHidden did not fail" }
+    catch:
+      - name: topGetHiddenCode
+        value: !cel "error.code"
+  - name: topGetHiddenRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topGetHiddenCode.result"
+      expected: GRAPH_NODE_NOT_FOUND
+  - name: baseGetD1
+    invoke: !ref baseGetPerson
+    inputs: { key: d1 }
+  - name: baseStillHoldsIt
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.baseGetD1.result.node.origin"
+      expected: base
+  - name: topFromD1
+    invoke: !ref topFindKnows
+    inputs: { source: d1 }
+  - name: topToD1
+    invoke: !ref topFindKnows
+    inputs: { target: d1 }
+  - name: everyTouchingLinkGone
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topFromD1.result.relationships + steps.topToD1.result.relationships"
+      expected: []
+  - name: baseFromD1
+    invoke: !ref baseFindKnows
+    inputs: { source: d1 }
+  - name: baseLinksUntouched
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.baseFromD1.result.relationships"
+      expected: [{ source: d1, target: d2, properties: { since: 1 }, origin: base }]
+  - name: deleteHiddenAgain
+    try:
+      - name: deleteHiddenAgainAttempt
+        invoke: !ref topDeletePerson
+        inputs: { key: d1 }
+      - name: deleteHiddenAgainUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "deleteHiddenAgain did not fail" }
+    catch:
+      - name: deleteHiddenAgainCode
+        value: !cel "error.code"
+  - name: deleteHiddenAgainRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.deleteHiddenAgainCode.result"
+      expected: GRAPH_NODE_NOT_FOUND
+  # A hidden key is absent, so it can be created again. The same key is the same
+  # node in every layer: the links `base` states for it show again, and the two
+  # `top` had stated — its restated `d1 → d2` and `d3 → d1` — were withdrawn with
+  # the delete and stay withdrawn.
+  - name: recreateD1
+    invoke: !ref topCreatePerson
+    inputs: { key: d1, properties: { name: Reborn } }
+  - name: recreatedInOwnLayer
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.recreateD1.result"
+      expected: { node: { key: d1, properties: { name: Reborn }, origin: top } }
+  - name: topFromReborn
+    invoke: !ref topFindKnows
+    inputs: { source: d1 }
+  - name: topToReborn
+    invoke: !ref topFindKnows
+    inputs: { target: d1 }
+  - name: linksBeneathShowAgain
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topFromReborn.result.relationships + steps.topToReborn.result.relationships"
+      expected: [{ source: d1, target: d2, properties: { since: 1 }, origin: base }, { source: d2, target: d1, properties: { since: 2 }, origin: base }]
+  # What only this layer states is removed outright.
+  - name: dropD3
+    invoke: !ref topDeletePerson
+    inputs: { key: d3 }
+  - name: ownStatementReturned
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.dropD3.result"
+      expected: { node: { key: d3, properties: { name: D3 }, origin: top } }
+  - name: topGetDropped
+    try:
+      - name: topGetDroppedAttempt
+        invoke: !ref topGetPerson
+        inputs: { key: d3 }
+      - name: topGetDroppedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "topGetDropped did not fail" }
+    catch:
+      - name: topGetDroppedCode
+        value: !cel "error.code"
+  - name: topGetDroppedRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topGetDroppedCode.result"
+      expected: GRAPH_NODE_NOT_FOUND
+  # A key this layer restates over one beneath is hidden too, not uncovered.
+  - name: baseD5
+    invoke: !ref baseCreatePerson
+    inputs: { key: d5, properties: { name: D5 } }
+  - name: refreshAfterBaseD5
+    invoke: !ref refreshStacks
+  - name: topRestatesD5
+    invoke: !ref topUpdatePerson
+    inputs: { key: d5, properties: { name: Restated } }
+  - name: hideD5
+    invoke: !ref topDeletePerson
+    inputs: { key: d5 }
+  - name: restatedReturned
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.hideD5.result"
+      expected: { node: { key: d5, properties: { name: Restated }, origin: top } }
+  - name: topGetD5
+    try:
+      - name: topGetD5Attempt
+        invoke: !ref topGetPerson
+        inputs: { key: d5 }
+      - name: topGetD5Unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "topGetD5 did not fail" }
+    catch:
+      - name: topGetD5Code
+        value: !cel "error.code"
+  - name: topGetD5Refused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topGetD5Code.result"
+      expected: GRAPH_NODE_NOT_FOUND
+  - name: baseGetD5
+    invoke: !ref baseGetPerson
+    inputs: { key: d5 }
+  - name: baseKeepsD5
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.baseGetD5.result"
+      expected: { node: { key: d5, properties: { name: D5 }, origin: base } }
+  # A relationship is hidden or removed the same way.
+  - name: hideD2D4
+    invoke: !ref topDeleteKnows
+    inputs: { source: d2, target: d4 }
+  - name: linkDeleteReturnsLastState
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.hideD2D4.result"
+      expected: { relationship: { source: d2, target: d4, properties: { since: 3 }, origin: base } }
+  - name: topFromD2
+    invoke: !ref topFindKnows
+    inputs: { source: d2 }
+  - name: linkHidden
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topFromD2.result.relationships.map(r, r.target)"
+      expected: [d1]
+  - name: baseFromD2
+    invoke: !ref baseFindKnows
+    inputs: { source: d2 }
+  - name: baseLinkStillThere
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.baseFromD2.result.relationships.map(r, r.target)"
+      expected: [d1, d4]
+  - name: deleteHiddenLinkAgain
+    try:
+      - name: deleteHiddenLinkAgainAttempt
+        invoke: !ref topDeleteKnows
+        inputs: { source: d2, target: d4 }
+      - name: deleteHiddenLinkAgainUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "deleteHiddenLinkAgain did not fail" }
+    catch:
+      - name: deleteHiddenLinkAgainCode
+        value: !cel "error.code"
+  - name: deleteHiddenLinkAgainRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.deleteHiddenLinkAgainCode.result"
+      expected: GRAPH_RELATIONSHIP_NOT_FOUND
+  - name: topD4D2
+    invoke: !ref topCreateKnows
+    inputs: { source: d4, target: d2, properties: { since: 6 } }
+  - name: dropD4D2
+    invoke: !ref topDeleteKnows
+    inputs: { source: d4, target: d2 }
+  - name: ownLinkReturned
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.dropD4D2.result"
+      expected: { relationship: { source: d4, target: d2, properties: { since: 6 }, origin: top } }
+  # A relationship leaves the view with its target as with its source, whatever
+  # the target's node type.
+  - name: baseDoc
+    invoke: !ref baseCreateDocument
+    inputs: { key: doc1, properties: { title: Graphs } }
+  - name: baseAuthored
+    invoke: { kind: Graph.CreateRelationship, store: !ref base, relationship: !ref authored }
+    inputs: { source: d2, target: doc1, properties: { role: lead } }
+  - name: refreshAfterBaseAuthored
+    invoke: !ref refreshStacks
+  - name: hideDoc
+    invoke: { kind: Graph.DeleteNode, store: !ref top, node: !ref document }
+    inputs: { key: doc1 }
+  - name: topAuthored
+    invoke: { kind: Graph.FindRelationships, store: !ref top, relationship: !ref authored }
+    inputs: { source: d2 }
+  - name: authoredHiddenWithDocument
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topAuthored.result.relationships"
+      expected: []
+  - name: baseAuthoredStill
+    invoke: { kind: Graph.FindRelationships, store: !ref base, relationship: !ref authored }
+    inputs: { source: d2 }
+  - name: baseAuthoredUntouched
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.baseAuthoredStill.result.relationships.map(r, [r.target, r.origin])"
+      expected: [[doc1, base]]
+---
+# Retracting withdraws exactly one statement of the layer's own — a value or a
+# removal — so what lies beneath shows again.
+kind: Run.Sequence
+metadata: { name: retractions }
+steps:
+  - name: baseX1
+    invoke: !ref baseCreatePerson
+    inputs: { key: x1, properties: { name: Beneath } }
+  - name: baseX3
+    invoke: !ref baseCreatePerson
+    inputs: { key: x3, properties: { name: X3 } }
+  - name: refreshAfterBaseX3
+    invoke: !ref refreshStacks
+  - name: topRestatesX1
+    invoke: !ref topUpdatePerson
+    inputs: { key: x1, properties: { name: Above } }
+  - name: retractValue
+    invoke: !ref topRetractPerson
+    inputs: { key: x1 }
+  - name: beneathShowsAgain
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.retractValue.result"
+      expected: { node: { key: x1, properties: { name: Beneath }, origin: base } }
+  - name: topHidesX1
+    invoke: !ref topDeletePerson
+    inputs: { key: x1 }
+  - name: retractRemoval
+    invoke: !ref topRetractPerson
+    inputs: { key: x1 }
+  - name: removalWithdrawn
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.retractRemoval.result"
+      expected: { node: { key: x1, properties: { name: Beneath }, origin: base } }
+  - name: topGetX1
+    invoke: !ref topGetPerson
+    inputs: { key: x1 }
+  - name: visibleAgain
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topGetX1.result.node.origin"
+      expected: base
+  # With nothing beneath, the key is simply absent afterwards.
+  - name: topX2
+    invoke: !ref topCreatePerson
+    inputs: { key: x2, properties: { name: Lonely } }
+  - name: retractOnly
+    invoke: !ref topRetractPerson
+    inputs: { key: x2 }
+  - name: nothingBeneath
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.retractOnly.result"
+      expected: {}
+  - name: topGetX2
+    try:
+      - name: topGetX2Attempt
+        invoke: !ref topGetPerson
+        inputs: { key: x2 }
+      - name: topGetX2Unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "topGetX2 did not fail" }
+    catch:
+      - name: topGetX2Code
+        value: !cel "error.code"
+  - name: topGetX2Refused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.topGetX2Code.result"
+      expected: GRAPH_NODE_NOT_FOUND
+  - name: retractNothing
+    try:
+      - name: retractNothingAttempt
+        invoke: !ref topRetractPerson
+        inputs: { key: x2 }
+      - name: retractNothingUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "retractNothing did not fail" }
+    catch:
+      - name: retractNothingCode
+        value: !cel "error.code"
+  - name: retractNothingRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.retractNothingCode.result"
+      expected: GRAPH_NODE_NOT_STATED
+  - name: baseX1X3
+    invoke: !ref baseCreateKnows
+    inputs: { source: x1, target: x3, properties: { since: 7 } }
+  - name: refreshAfterBaseX1X3
+    invoke: !ref refreshStacks
+  - name: topHidesLink
+    invoke: !ref topDeleteKnows
+    inputs: { source: x1, target: x3 }
+  - name: retractLinkRemoval
+    invoke: !ref topRetractKnows
+    inputs: { source: x1, target: x3 }
+  - name: linkShowsAgain
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.retractLinkRemoval.result"
+      expected: { relationship: { source: x1, target: x3, properties: { since: 7 }, origin: base } }
+  - name: retractNoLink
+    try:
+      - name: retractNoLinkAttempt
+        invoke: !ref topRetractKnows
+        inputs: { source: x1, target: x3 }
+      - name: retractNoLinkUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "retractNoLink did not fail" }
+    catch:
+      - name: retractNoLinkCode
+        value: !cel "error.code"
+  - name: retractNoLinkRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.retractNoLinkCode.result"
+      expected: GRAPH_RELATIONSHIP_NOT_STATED
+  - name: topX3X1
+    invoke: !ref topCreateKnows
+    inputs: { source: x3, target: x1 }
+  - name: retractOwnLink
+    invoke: !ref topRetractKnows
+    inputs: { source: x3, target: x1 }
+  - name: noLinkBeneath
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.retractOwnLink.result"
+      expected: {}
+  # Hiding a node takes the links beneath out of the view without stating
+  # anything about them, so retracting the node's removal brings them back —
+  # while a link this layer hid on purpose stays hidden.
+  - name: baseX4
+    invoke: !ref baseCreatePerson
+    inputs: { key: x4, properties: { name: X4 } }
+  - name: baseX5
+    invoke: !ref baseCreatePerson
+    inputs: { key: x5, properties: { name: X5 } }
+  - name: baseX6
+    invoke: !ref baseCreatePerson
+    inputs: { key: x6, properties: { name: X6 } }
+  - name: baseX7
+    invoke: !ref baseCreatePerson
+    inputs: { key: x7, properties: { name: X7 } }
+  - name: baseX4X5
+    invoke: !ref baseCreateKnows
+    inputs: { source: x4, target: x5, properties: { since: 8 } }
+  - name: baseX5X6
+    invoke: !ref baseCreateKnows
+    inputs: { source: x5, target: x6, properties: { since: 9 } }
+  - name: baseX5X7
+    invoke: !ref baseCreateKnows
+    inputs: { source: x5, target: x7, properties: { since: 10 } }
+  - name: refreshAfterBaseX5X7
+    invoke: !ref refreshStacks
+  - name: topHidesX5X7
+    invoke: !ref topDeleteKnows
+    inputs: { source: x5, target: x7 }
+  - name: topHidesX5
+    invoke: !ref topDeletePerson
+    inputs: { key: x5 }
+  - name: toHiddenX5
+    invoke: !ref topFindKnows
+    inputs: { source: x4 }
+  - name: throughHiddenX5
+    invoke: !ref topFriendsOfFriends
+    inputs: { key: x4 }
+  - name: baseToX5
+    invoke: !ref baseFindKnows
+    inputs: { source: x4 }
+  - name: linkOutOfViewWithItsNode
+    invoke: !ref check
+    inputs:
+      actual:
+        top: !cel "steps.toHiddenX5.result.relationships"
+        reached: !cel "steps.throughHiddenX5.result.nodes"
+        base: !cel "steps.baseToX5.result.relationships"
+      expected:
+        top: []
+        reached: []
+        base: [{ source: x4, target: x5, properties: { since: 8 }, origin: base }]
+  # The layer states nothing for the link, and the view does not hold it.
+  - name: retractUnstatedLink
+    try:
+      - name: retractUnstatedLinkAttempt
+        invoke: !ref topRetractKnows
+        inputs: { source: x4, target: x5 }
+      - name: retractUnstatedLinkUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "retractUnstatedLink did not fail" }
+    catch:
+      - name: retractUnstatedLinkCode
+        value: !cel "error.code"
+  - name: retractUnstatedLinkRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.retractUnstatedLinkCode.result"
+      expected: GRAPH_RELATIONSHIP_NOT_STATED
+  - name: updateLinkOutOfView
+    try:
+      - name: updateLinkOutOfViewAttempt
+        invoke: !ref topUpdateKnows
+        inputs: { source: x4, target: x5, properties: { since: 11 } }
+      - name: updateLinkOutOfViewUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "updateLinkOutOfView did not fail" }
+    catch:
+      - name: updateLinkOutOfViewCode
+        value: !cel "error.code"
+  - name: updateLinkOutOfViewRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.updateLinkOutOfViewCode.result"
+      expected: GRAPH_RELATIONSHIP_NOT_FOUND
+  - name: deleteLinkOutOfView
+    try:
+      - name: deleteLinkOutOfViewAttempt
+        invoke: !ref topDeleteKnows
+        inputs: { source: x4, target: x5 }
+      - name: deleteLinkOutOfViewUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "deleteLinkOutOfView did not fail" }
+    catch:
+      - name: deleteLinkOutOfViewCode
+        value: !cel "error.code"
+  - name: deleteLinkOutOfViewRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.deleteLinkOutOfViewCode.result"
+      expected: GRAPH_RELATIONSHIP_NOT_FOUND
+  - name: retractX5
+    invoke: !ref topRetractPerson
+    inputs: { key: x5 }
+  - name: toX5
+    invoke: !ref topFindKnows
+    inputs: { source: x4 }
+  - name: fromX5
+    invoke: !ref topFindKnows
+    inputs: { source: x5 }
+  - name: throughX5
+    invoke: !ref topFriendsOfFriends
+    inputs: { key: x4 }
+  - name: nodeAndItsLinksBack
+    invoke: !ref check
+    inputs:
+      actual:
+        node: !cel "steps.retractX5.result"
+        to: !cel "steps.toX5.result.relationships"
+        from: !cel "steps.fromX5.result.relationships.map(r, r.target)"
+        reached: !cel "steps.throughX5.result.nodes.map(n, n.key)"
+      expected:
+        node: { node: { key: x5, properties: { name: X5 }, origin: base } }
+        to: [{ source: x4, target: x5, properties: { since: 8 }, origin: base }]
+        from: [x6]
+        reached: [x6]
+---
+# Two bases built on the same layer: that layer has one place in the stack, the
+# lowest, so `apex` resolves apex, left, right, base and every layer outranks
+# the layers it is built on.
+kind: Run.Sequence
+metadata: { name: diamond }
+steps:
+  - name: baseG1
+    invoke: !ref baseCreatePerson
+    inputs: { key: g1, properties: { name: Base, age: 4242 } }
+  - name: baseG2
+    invoke: !ref baseCreatePerson
+    inputs: { key: g2, properties: { name: Base, age: 4242 } }
+  - name: baseG3
+    invoke: !ref baseCreatePerson
+    inputs: { key: g3, properties: { name: Base, age: 4242 } }
+  - name: baseG4
+    invoke: !ref baseCreatePerson
+    inputs: { key: g4, properties: { name: Base, age: 4242 } }
+  - name: refreshAfterBaseG4
+    invoke: !ref refreshStacks
+  - name: rightG1
+    invoke: !ref rightMergePerson
+    inputs: { key: g1, properties: { name: Right } }
+  - name: refreshAfterRightG1
+    invoke: !ref refreshStacks
+  - name: leftG2
+    invoke: { kind: Graph.MergeNode, store: !ref left, node: !ref person }
+    inputs: { key: g2, properties: { name: Left } }
+  - name: refreshAfterLeftG2
+    invoke: !ref refreshStacks
+  - name: rightG2
+    invoke: !ref rightMergePerson
+    inputs: { key: g2, properties: { name: Right } }
+  - name: rightHidesG3
+    invoke: { kind: Graph.DeleteNode, store: !ref right, node: !ref person }
+    inputs: { key: g3 }
+  - name: refreshAfterRightHidesG3
+    invoke: !ref refreshStacks
+  # `left` reaches `base` first, yet `right` — built on `base` — outranks it.
+  - name: apexG1
+    invoke: !ref apexGetPerson
+    inputs: { key: g1 }
+  - name: apexG2
+    invoke: !ref apexGetPerson
+    inputs: { key: g2 }
+  - name: overridesOutrankTheSharedLayer
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.apexG1.result.node, steps.apexG2.result.node]"
+      expected: [{ key: g1, properties: { name: Right, age: 4242 }, origin: right }, { key: g2, properties: { name: Left, age: 4242 }, origin: left }]
+  - name: apexG3
+    try:
+      - name: apexG3Attempt
+        invoke: !ref apexGetPerson
+        inputs: { key: g3 }
+      - name: apexG3Unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "apexG3 did not fail" }
+    catch:
+      - name: apexG3Code
+        value: !cel "error.code"
+  - name: apexG3Refused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.apexG3Code.result"
+      expected: GRAPH_NODE_NOT_FOUND
+  - name: apexListing
+    invoke: { kind: Graph.FindNodes, store: !ref apex, node: !ref person }
+    inputs: { where: { eq: { age: 4242 } } }
+  - name: eachKeyOnce
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.apexListing.result.nodes.map(n, [n.key, n.origin])"
+      expected: [[g1, right], [g2, left], [g4, base]]
+---
+# Following `next` to the end returns every key of the resolved view exactly
+# once, in order, whichever layers state, restate or hide it.
+kind: Run.Sequence
+metadata: { name: paging }
+steps:
+  - name: baseP1
+    invoke: !ref baseCreateDocument
+    inputs: { key: p01, properties: { title: Base } }
+  - name: baseP2
+    invoke: !ref baseCreateDocument
+    inputs: { key: p02, properties: { title: Base } }
+  - name: baseP3
+    invoke: !ref baseCreateDocument
+    inputs: { key: p03, properties: { title: Base } }
+  - name: baseP4
+    invoke: !ref baseCreateDocument
+    inputs: { key: p04, properties: { title: Base } }
+  - name: baseP5
+    invoke: !ref baseCreateDocument
+    inputs: { key: p05, properties: { title: Base } }
+  - name: baseP6
+    invoke: !ref baseCreateDocument
+    inputs: { key: p06, properties: { title: Base } }
+  - name: refreshAfterBaseP6
+    invoke: !ref refreshStacks
+  - name: sideP1
+    invoke: { kind: Graph.CreateNode, store: !ref side, node: !ref document }
+    inputs: { key: p01, properties: { title: Side } }
+  - name: sideP8
+    invoke: { kind: Graph.CreateNode, store: !ref side, node: !ref document }
+    inputs: { key: p08, properties: { title: Side } }
+  - name: refreshAfterSideP8
+    invoke: !ref refreshStacks
+  - name: middleP2
+    invoke: { kind: Graph.MergeNode, store: !ref middle, node: !ref document }
+    inputs: { key: p02, properties: { title: Middle } }
+  - name: refreshAfterMiddleP2
+    invoke: !ref refreshStacks
+  - name: topHidesP3
+    invoke: { kind: Graph.DeleteNode, store: !ref top, node: !ref document }
+    inputs: { key: p03 }
+  - name: topP7
+    invoke: !ref topCreateDocument
+    inputs: { key: p07, properties: { title: Top } }
+  - name: documentsPage
+    invoke: !ref topFindDocuments
+    inputs: { limit: 2 }
+  - name: documentsSeen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.documentsPage.result.nodes.map(n, [n.key, n.origin])"
+  - name: documentsFollow
+    while: !cel "has(steps.documentsPage.result.next)"
+    do:
+      - name: documentsPage
+        invoke: !ref topFindDocuments
+        inputs: { limit: 2, cursor: !cel "steps.documentsPage.result.next" }
+      - name: documentsSeen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.documentsSeen.result.items + steps.documentsPage.result.nodes.map(n, [n.key, n.origin])"
+  - name: everyDocumentOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.documentsSeen.result.items"
+      expected: [[p01, base], [p02, middle], [p04, base], [p05, base], [p06, base], [p07, top], [p08, side]]
+  - name: baseK0
+    invoke: !ref baseCreatePerson
+    inputs: { key: k0, properties: { name: K0 } }
+  - name: baseK1
+    invoke: !ref baseCreatePerson
+    inputs: { key: k1, properties: { name: K1 } }
+  - name: baseK2
+    invoke: !ref baseCreatePerson
+    inputs: { key: k2, properties: { name: K2 } }
+  - name: baseK3
+    invoke: !ref baseCreatePerson
+    inputs: { key: k3, properties: { name: K3 } }
+  - name: baseK4
+    invoke: !ref baseCreatePerson
+    inputs: { key: k4, properties: { name: K4 } }
+  - name: refreshAfterBaseK4
+    invoke: !ref refreshStacks
+  - name: topK5
+    invoke: !ref topCreatePerson
+    inputs: { key: k5, properties: { name: K5 } }
+  - name: baseK0K1
+    invoke: !ref baseCreateKnows
+    inputs: { source: k0, target: k1, properties: { since: 777 } }
+  - name: baseK0K2
+    invoke: !ref baseCreateKnows
+    inputs: { source: k0, target: k2, properties: { since: 777 } }
+  - name: baseK0K3
+    invoke: !ref baseCreateKnows
+    inputs: { source: k0, target: k3, properties: { since: 777 } }
+  - name: baseK0K4
+    invoke: !ref baseCreateKnows
+    inputs: { source: k0, target: k4, properties: { since: 777 } }
+  - name: refreshAfterBaseK0K4
+    invoke: !ref refreshStacks
+  - name: topK0K5
+    invoke: !ref topCreateKnows
+    inputs: { source: k0, target: k5, properties: { since: 777 } }
+  - name: topK5K0
+    invoke: !ref topCreateKnows
+    inputs: { source: k5, target: k0, properties: { since: 777 } }
+  - name: topHidesK0K2
+    invoke: !ref topDeleteKnows
+    inputs: { source: k0, target: k2 }
+  - name: fromK0Page
+    invoke: !ref topFindKnows
+    inputs: { source: k0, limit: 2 }
+  - name: fromK0Seen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.fromK0Page.result.relationships.map(r, [r.target, r.origin])"
+  - name: fromK0Follow
+    while: !cel "has(steps.fromK0Page.result.next)"
+    do:
+      - name: fromK0Page
+        invoke: !ref topFindKnows
+        inputs: { source: k0, limit: 2, cursor: !cel "steps.fromK0Page.result.next" }
+      - name: fromK0Seen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.fromK0Seen.result.items + steps.fromK0Page.result.relationships.map(r, [r.target, r.origin])"
+  - name: everyLinkOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.fromK0Seen.result.items"
+      expected: [[k1, base], [k3, base], [k4, base], [k5, top]]
+  - name: taggedPage
+    invoke: !ref topFindKnows
+    inputs: { where: { eq: { since: 777 } }, limit: 2 }
+  - name: taggedSeen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.taggedPage.result.relationships.map(r, [r.source, r.target])"
+  - name: taggedFollow
+    while: !cel "has(steps.taggedPage.result.next)"
+    do:
+      - name: taggedPage
+        invoke: !ref topFindKnows
+        inputs: { where: { eq: { since: 777 } }, limit: 2, cursor: !cel "steps.taggedPage.result.next" }
+      - name: taggedSeen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.taggedSeen.result.items + steps.taggedPage.result.relationships.map(r, [r.source, r.target])"
+  - name: everyPairOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.taggedSeen.result.items"
+      expected: [[k0, k1], [k0, k3], [k0, k4], [k0, k5], [k5, k0]]
+  - name: friendsOfK0Page
+    invoke: !ref topFriends
+    inputs: { key: k0, limit: 2 }
+  - name: friendsOfK0Seen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.friendsOfK0Page.result.nodes.map(n, n.key)"
+  - name: friendsOfK0Follow
+    while: !cel "has(steps.friendsOfK0Page.result.next)"
+    do:
+      - name: friendsOfK0Page
+        invoke: !ref topFriends
+        inputs: { key: k0, limit: 2, cursor: !cel "steps.friendsOfK0Page.result.next" }
+      - name: friendsOfK0Seen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.friendsOfK0Seen.result.items + steps.friendsOfK0Page.result.nodes.map(n, n.key)"
+  - name: everyEndNodeOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.friendsOfK0Seen.result.items"
+      expected: [k1, k3, k4, k5]
+---
+# A key the store's view does not show — never stated, or hidden by the layer's
+# own removal — is stated as a new value: the given properties plus the declared
+# default of every other one, and nothing of the statement the removal hid.
+kind: Run.Sequence
+metadata: { name: defaults }
+steps:
+  - name: mergeNew
+    invoke: { kind: Graph.MergeNode, store: !ref top, node: !ref document }
+    inputs: { key: f1, properties: { title: New } }
+  - name: mergedNewTakesDefaults
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.mergeNew.result"
+      expected: { node: { key: f1, properties: { title: New, status: draft, pages: 1 }, origin: top } }
+  - name: baseF2
+    invoke: !ref baseCreateDocument
+    inputs: { key: f2, properties: { title: Base, status: final, pages: 9 } }
+  - name: baseF3
+    invoke: !ref baseCreateDocument
+    inputs: { key: f3, properties: { title: Base, status: final, pages: 9 } }
+  - name: refreshAfterBaseF3
+    invoke: !ref refreshStacks
+  - name: hideF2
+    invoke: { kind: Graph.DeleteNode, store: !ref top, node: !ref document }
+    inputs: { key: f2 }
+  - name: mergeOverRemoval
+    invoke: { kind: Graph.MergeNode, store: !ref top, node: !ref document }
+    inputs: { key: f2, properties: { title: Again } }
+  - name: mergedOverRemovalTakesDefaults
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.mergeOverRemoval.result"
+      expected: { node: { key: f2, properties: { title: Again, status: draft, pages: 1 }, origin: top } }
+  - name: hideF3
+    invoke: { kind: Graph.DeleteNode, store: !ref top, node: !ref document }
+    inputs: { key: f3 }
+  - name: createOverRemoval
+    invoke: !ref topCreateDocument
+    inputs: { key: f3, properties: { title: Anew } }
+  - name: createdOverRemovalTakesDefaults
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.createOverRemoval.result"
+      expected: { node: { key: f3, properties: { title: Anew, status: draft, pages: 1 }, origin: top } }
+  # The same three over a relationship.
+  - name: baseAuthor
+    invoke: !ref baseCreatePerson
+    inputs: { key: f0, properties: { name: Author } }
+  - name: baseF4
+    invoke: !ref baseCreateDocument
+    inputs: { key: f4, properties: { title: Fourth } }
+  - name: baseF5
+    invoke: !ref baseCreateDocument
+    inputs: { key: f5, properties: { title: Fifth } }
+  - name: baseAuthoredF4
+    invoke: { kind: Graph.CreateRelationship, store: !ref base, relationship: !ref authored }
+    inputs: { source: f0, target: f4, properties: { role: lead, share: 5 } }
+  - name: baseAuthoredF5
+    invoke: { kind: Graph.CreateRelationship, store: !ref base, relationship: !ref authored }
+    inputs: { source: f0, target: f5, properties: { role: lead, share: 5 } }
+  - name: refreshAfterBaseAuthoredF5
+    invoke: !ref refreshStacks
+  - name: mergeNewAuthored
+    invoke: { kind: Graph.MergeRelationship, store: !ref top, relationship: !ref authored }
+    inputs: { source: f0, target: f1, properties: { role: editor } }
+  - name: mergedNewAuthoredTakesDefaults
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.mergeNewAuthored.result"
+      expected: { relationship: { source: f0, target: f1, properties: { role: editor, share: 100 }, origin: top } }
+  - name: hideAuthoredF4
+    invoke: { kind: Graph.DeleteRelationship, store: !ref top, relationship: !ref authored }
+    inputs: { source: f0, target: f4 }
+  - name: mergeAuthoredOverRemoval
+    invoke: { kind: Graph.MergeRelationship, store: !ref top, relationship: !ref authored }
+    inputs: { source: f0, target: f4, properties: { role: again } }
+  - name: mergedAuthoredOverRemovalTakesDefaults
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.mergeAuthoredOverRemoval.result"
+      expected: { relationship: { source: f0, target: f4, properties: { role: again, share: 100 }, origin: top } }
+  - name: hideAuthoredF5
+    invoke: { kind: Graph.DeleteRelationship, store: !ref top, relationship: !ref authored }
+    inputs: { source: f0, target: f5 }
+  - name: createAuthoredOverRemoval
+    invoke: { kind: Graph.CreateRelationship, store: !ref top, relationship: !ref authored }
+    inputs: { source: f0, target: f5, properties: { role: anew } }
+  - name: createdAuthoredOverRemovalTakesDefaults
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.createAuthoredOverRemoval.result"
+      expected: { relationship: { source: f0, target: f5, properties: { role: anew, share: 100 }, origin: top } }

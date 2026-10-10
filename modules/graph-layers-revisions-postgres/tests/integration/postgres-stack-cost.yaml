@@ -1,0 +1,1794 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsPostgresStackCost
+  version: 1.0.0
+  description: |
+    What a pinned stack reads on PostgreSQL. Three layers share the tables:
+    `base` publishes 20,000 and then 200,000 people, the relationship from each
+    to the next, and one from and one to a hub for each; `middle` is pinned to
+    `base` and `top` to `middle`, and each restates one in twenty of them and
+    hides another, across the whole range — so every layer of the stack grows
+    with it, and every page here, read mid-layer after ten thousand keys,
+    crosses keys each of them overrides and hides. Every figure is the
+    difference between two readings of
+    `pg_stat_xact_user_tables`, summed over the three typed tables, taken
+    inside the transaction that ran the operation, after `ANALYZE`, with
+    autovacuum off on all three.
+
+    1. A node page of 100 through `top` fetches the identical number of rows at
+       both sizes, and no more than 3 layers × 2 × (limit + 1) = 606.
+    2. The same page fetches the identical number with `base` at the revision
+       it is pinned at and one hundred revisions past it, those having touched
+       another key: a pin reads what it pinned, at the cost of reading a head.
+    3. A relationship page of 100 through `top`, by source and by target,
+       likewise at both sizes and both heads.
+    4. A page inside a session on `top` — the draft over the whole stack —
+       fetches the identical number with the session's own draft at 100 rows
+       and at 19,000, and beside a sibling draft holding nothing and holding
+       20,000 keys inside the page's range.
+    5. A traversal crossing all three layers, drained at 2 a page outside a
+       session and inside one whose draft holds 19,000 rows: no page reads a
+       typed table sequentially, the first page fetches the identical number
+       at both sizes and both heads, and no later page fetches more than the
+       first.
+    6. `PinBase` inside a session on `narrow`, a layer pinned to `middle` that
+       makes 200 statements, fetches
+       the identical number with `base` at 20,000 and at 200,000 rows, and with
+       `base`'s head at the new pin and one hundred revisions past it. On
+       `wide`, which makes 2,000, it fetches no more than eleven times that: a
+       pin move costs the statements of the layer being re-pinned.
+    7. `PinBase` outside a session, clean: the same two equalities.
+    8. On `big`, which publishes as many people as `base` and as many
+       relationships: after a moved pin that leaves conflicts, one page of each
+       conflict listing, and `Publish` once they are decided, read no typed
+       table sequentially and fetch the
+       identical number at both sizes. They are driven from the draft.
+    9. `ListBases`, and a page of `ListRevisions` with each revision's bases,
+       read no row of a typed table.
+
+    The bookkeeping tables are outside these claims: they hold a few rows,
+    which the planner is free to read whole.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Layers: ../..
+  Graph: ../../../graph
+  GraphLayers: ../../../graph-layers
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref cost
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+  age: { type: integer }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+  since: { type: integer }
+---
+kind: Layers.RelationshipTable
+metadata: { name: followsTable }
+table: follows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+  since: { type: integer }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_stack_cost
+ledger: graph_stack_cost
+tables:
+  - !ref people
+  - !ref knowsTable
+  - !ref followsTable
+  - !ref graphLayers
+  - !ref graphChangesets
+  - !ref graphChangesetBases
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Relationship
+metadata: { name: follows }
+table: !ref followsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Store
+metadata: { name: base }
+connection: !ref db
+schema: !ref appSchema
+layer: base
+nodes: [!ref person]
+relationships: [!ref knows, !ref follows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: middle }
+connection: !ref db
+schema: !ref appSchema
+layer: middle
+nodes: [!ref person]
+relationships: [!ref knows, !ref follows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: top }
+connection: !ref db
+schema: !ref appSchema
+layer: top
+nodes: [!ref person]
+relationships: [!ref knows, !ref follows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: narrow }
+connection: !ref db
+schema: !ref appSchema
+layer: narrow
+nodes: [!ref person]
+relationships: [!ref knows, !ref follows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: wide }
+connection: !ref db
+schema: !ref appSchema
+layer: wide
+nodes: [!ref person]
+relationships: [!ref knows, !ref follows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: big }
+connection: !ref db
+schema: !ref appSchema
+layer: big
+nodes: [!ref person]
+relationships: [!ref knows, !ref follows]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Graph.FindNodes
+metadata: { name: findPeople }
+store: !ref top
+node: !ref person
+---
+kind: Graph.FindRelationships
+metadata: { name: findFollows }
+store: !ref top
+relationship: !ref follows
+---
+# A repeated hop, which the store walks recursively, in both directions.
+kind: Graph.Traverse
+metadata: { name: nearby }
+store: !ref top
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+    direction: both
+    maxHops: 2
+---
+kind: Graph.UpdateNode
+metadata: { name: baseUpdatePerson }
+store: !ref base
+node: !ref person
+---
+kind: GraphLayers.PinBase
+metadata: { name: middlePin }
+store: !ref middle
+---
+kind: GraphLayers.OpenDraft
+metadata: { name: topOpenDraft }
+store: !ref top
+---
+kind: GraphLayers.DiscardDraft
+metadata: { name: topDiscard }
+store: !ref top
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke: !ref write
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_stack_cost CASCADE
+---
+# What this transaction has read from the three typed tables so far.
+kind: Run.Sequence
+metadata: { name: readCounters }
+steps:
+  - name: read
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: >-
+        SELECT COALESCE(SUM(seq_scan + seq_tup_read), 0)::int AS "sequential",
+               COALESCE(SUM(idx_tup_fetch), 0)::int AS "fetched"
+        FROM pg_stat_xact_user_tables
+        WHERE schemaname = 'graph_stack_cost' AND relname IN ('people', 'knows', 'follows')
+outputs:
+  sequential: !cel "int(steps.read.result.rows[0].sequential)"
+  fetched: !cel "int(steps.read.result.rows[0].fetched)"
+---
+kind: Run.Sequence
+metadata: { name: analyze }
+steps:
+  - name: people
+    invoke: !ref write
+    inputs: { sql: ANALYZE graph_stack_cost.people }
+  - name: knows
+    invoke: !ref write
+    inputs: { sql: ANALYZE graph_stack_cost.knows }
+  - name: follows
+    invoke: !ref write
+    inputs: { sql: ANALYZE graph_stack_cost.follows }
+---
+# What does not grow. Each layer's first revision is a seed changeset; `middle`
+# is pinned to `base` at it, and `top`, `narrow`, `wide` and `big` to `middle`. `base`
+# states the two hubs, and one person — sorting last — for revisions that touch
+# nothing a page reads.
+kind: Run.Sequence
+metadata: { name: addFixed }
+steps:
+  - name: changesets
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.graph_changesets
+          (id, public_id, layer_id, parent_revision, revision, bases_changeset, created_at, created_by_type,
+           created_by_id, published_at, published_by_type, published_by_id)
+        SELECT v.id::uuid, 'gdr_seed_' || l.name, l.id, 0, 1, v.bases::uuid, clock_timestamp(), 'test', 'seed',
+               clock_timestamp(), 'test', 'seed'
+        FROM graph_stack_cost.graph_layers l
+          JOIN (VALUES ('base', '00000000-0000-7000-8000-000000000001', NULL),
+                       ('middle', '00000000-0000-7000-8000-000000000002', '00000000-0000-7000-8000-000000000002'),
+                       ('top', '00000000-0000-7000-8000-000000000003', '00000000-0000-7000-8000-000000000003'),
+                       ('narrow', '00000000-0000-7000-8000-000000000006', '00000000-0000-7000-8000-000000000006'),
+                       ('wide', '00000000-0000-7000-8000-000000000004', '00000000-0000-7000-8000-000000000004'),
+                       ('big', '00000000-0000-7000-8000-000000000005', '00000000-0000-7000-8000-000000000005')) v(name, id, bases) ON v.name = l.name
+  - name: bases
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.graph_changeset_bases (id, changeset_id, "position", base_layer_id, base_revision)
+        SELECT gen_random_uuid(), v.changeset::uuid, 0, l.id, 1
+        FROM (VALUES ('00000000-0000-7000-8000-000000000002', 'base'), ('00000000-0000-7000-8000-000000000003', 'middle'), ('00000000-0000-7000-8000-000000000006', 'middle'),
+                     ('00000000-0000-7000-8000-000000000004', 'middle'), ('00000000-0000-7000-8000-000000000005', 'middle')) v(changeset, base)
+          JOIN graph_stack_cost.graph_layers l ON l.name = v.base
+  - name: heads
+    invoke: !ref write
+    inputs:
+      sql: UPDATE graph_stack_cost.graph_layers SET head_revision = 1
+  - name: hubs
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.people
+          (id, name, age, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect)
+        SELECT v.id, 'Fixed', 1, gen_random_uuid(), l.id, '00000000-0000-7000-8000-000000000001'::uuid, 1, 'stated'
+        FROM graph_stack_cost.graph_layers l CROSS JOIN (VALUES ('hin'), ('hout'), ('z000001')) v(id)
+        WHERE l.name = 'base'
+---
+# People p000001… published by `base` at its first revision, with the
+# relationship from each to the next, one from the hub `hout` to each, and one
+# from each to the hub `hin`.
+kind: Run.Sequence
+metadata: { name: addPublished }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [from, to]
+    properties:
+      from: { type: integer }
+      to: { type: integer }
+steps:
+  - name: people
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.people
+          (id, name, age, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect)
+        SELECT 'p' || lpad((i)::text, 6, '0'), 'Person ' || i, 1, gen_random_uuid(), l.id, '00000000-0000-7000-8000-000000000001'::uuid, 1, 'stated'
+        FROM generate_series($1::int, $2::int) i JOIN graph_stack_cost.graph_layers l ON l.name = 'base'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: knows
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.knows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect)
+        SELECT 'p' || lpad((i)::text, 6, '0'), 'p' || lpad((i + 1)::text, 6, '0'), 1, gen_random_uuid(), l.id, '00000000-0000-7000-8000-000000000001'::uuid, 1, 'stated'
+        FROM generate_series($1::int, $2::int) i JOIN graph_stack_cost.graph_layers l ON l.name = 'base'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: followsOut
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.follows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect)
+        SELECT 'hout', 'p' || lpad((i)::text, 6, '0'), 1, gen_random_uuid(), l.id, '00000000-0000-7000-8000-000000000001'::uuid, 1, 'stated'
+        FROM generate_series($1::int, $2::int) i JOIN graph_stack_cost.graph_layers l ON l.name = 'base'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: followsIn
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.follows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect)
+        SELECT 'p' || lpad((i)::text, 6, '0'), 'hin', 1, gen_random_uuid(), l.id, '00000000-0000-7000-8000-000000000001'::uuid, 1, 'stated'
+        FROM generate_series($1::int, $2::int) i JOIN graph_stack_cost.graph_layers l ON l.name = 'base'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: analyze
+    invoke: !ref analyze
+---
+# What `middle` and `top` state over `base`, across the whole range, each at
+# its first revision and each row recording the row of `base` it stands over.
+# Of every twenty people `middle` restates one and hides one, and `top`
+# another two; likewise the relationships from the hub; each restates one in
+# twenty of those to the hub and of the links of the chain. So each layer of
+# the stack holds a real share of every table at both sizes — a planner reads
+# a layer holding a handful of rows whole or by key as it pleases, and a count
+# that turned on that would say nothing about the statement — and every page
+# read here crosses keys each of them overrides and hides.
+kind: Run.Sequence
+metadata: { name: addBands }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [from, to]
+    properties:
+      from: { type: integer }
+      to: { type: integer }
+steps:
+  - name: middlePeople
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.people
+          (id, name, age, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect, graph_beneath)
+        SELECT b.id, b.name, CASE WHEN v.effect = 'stated' THEN 40 ELSE b.age END, gen_random_uuid(), l.id, c.id, 1,
+               v.effect, b.graph_row
+        FROM graph_stack_cost.graph_layers l
+          JOIN graph_stack_cost.graph_changesets c ON c.layer_id = l.id AND c.revision = 1
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT i, 'stated' AS effect FROM generate_series($1::int, $2::int) i WHERE i % 20 = 2
+            UNION ALL
+            SELECT i, 'removed' FROM generate_series($1::int, $2::int) i WHERE i % 20 = 7
+          ) v
+          JOIN graph_stack_cost.people b ON b.graph_layer = bl.id AND b.id = 'p' || lpad((v.i)::text, 6, '0')
+        WHERE l.name = 'middle'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: middleFollows
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.follows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect, graph_beneath)
+        SELECT b.source, b.target, CASE WHEN v.effect = 'stated' THEN 40 ELSE b.since END, gen_random_uuid(), l.id,
+               c.id, 1, v.effect, b.graph_row
+        FROM graph_stack_cost.graph_layers l
+          JOIN graph_stack_cost.graph_changesets c ON c.layer_id = l.id AND c.revision = 1
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT 'hout' AS source, 'p' || lpad((i)::text, 6, '0') AS target, 'stated' AS effect FROM generate_series($1::int, $2::int) i WHERE i % 20 = 3
+            UNION ALL
+            SELECT 'hout', 'p' || lpad((i)::text, 6, '0'), 'removed' FROM generate_series($1::int, $2::int) i WHERE i % 20 = 8
+            UNION ALL
+            SELECT 'p' || lpad((i)::text, 6, '0'), 'hin', 'stated' FROM generate_series($1::int, $2::int) i WHERE i % 20 = 3
+          ) v
+          JOIN graph_stack_cost.follows b ON b.graph_layer = bl.id AND b.source = v.source AND b.target = v.target
+        WHERE l.name = 'middle'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: middleKnows
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.knows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect, graph_beneath)
+        SELECT b.source, b.target, CASE WHEN v.effect = 'stated' THEN 40 ELSE b.since END, gen_random_uuid(), l.id,
+               c.id, 1, v.effect, b.graph_row
+        FROM graph_stack_cost.graph_layers l
+          JOIN graph_stack_cost.graph_changesets c ON c.layer_id = l.id AND c.revision = 1
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT 'p' || lpad((i)::text, 6, '0') AS source, 'p' || lpad((i + 1)::text, 6, '0') AS target, 'stated' AS effect FROM generate_series($1::int, $2::int) i WHERE i % 20 = 3
+          ) v
+          JOIN graph_stack_cost.knows b ON b.graph_layer = bl.id AND b.source = v.source AND b.target = v.target
+        WHERE l.name = 'middle'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: topPeople
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.people
+          (id, name, age, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect, graph_beneath)
+        SELECT b.id, b.name, CASE WHEN v.effect = 'stated' THEN 50 ELSE b.age END, gen_random_uuid(), l.id, c.id, 1,
+               v.effect, b.graph_row
+        FROM graph_stack_cost.graph_layers l
+          JOIN graph_stack_cost.graph_changesets c ON c.layer_id = l.id AND c.revision = 1
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT i, 'stated' AS effect FROM generate_series($1::int, $2::int) i WHERE i % 20 = 4
+            UNION ALL
+            SELECT i, 'removed' FROM generate_series($1::int, $2::int) i WHERE i % 20 = 9
+          ) v
+          JOIN graph_stack_cost.people b ON b.graph_layer = bl.id AND b.id = 'p' || lpad((v.i)::text, 6, '0')
+        WHERE l.name = 'top'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: topFollows
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.follows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect, graph_beneath)
+        SELECT b.source, b.target, CASE WHEN v.effect = 'stated' THEN 50 ELSE b.since END, gen_random_uuid(), l.id,
+               c.id, 1, v.effect, b.graph_row
+        FROM graph_stack_cost.graph_layers l
+          JOIN graph_stack_cost.graph_changesets c ON c.layer_id = l.id AND c.revision = 1
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT 'hout' AS source, 'p' || lpad((i)::text, 6, '0') AS target, 'stated' AS effect FROM generate_series($1::int, $2::int) i WHERE i % 20 = 5
+            UNION ALL
+            SELECT 'hout', 'p' || lpad((i)::text, 6, '0'), 'removed' FROM generate_series($1::int, $2::int) i WHERE i % 20 = 10
+            UNION ALL
+            SELECT 'p' || lpad((i)::text, 6, '0'), 'hin', 'stated' FROM generate_series($1::int, $2::int) i WHERE i % 20 = 5
+          ) v
+          JOIN graph_stack_cost.follows b ON b.graph_layer = bl.id AND b.source = v.source AND b.target = v.target
+        WHERE l.name = 'top'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: topKnows
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.knows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect, graph_beneath)
+        SELECT b.source, b.target, CASE WHEN v.effect = 'stated' THEN 50 ELSE b.since END, gen_random_uuid(), l.id,
+               c.id, 1, v.effect, b.graph_row
+        FROM graph_stack_cost.graph_layers l
+          JOIN graph_stack_cost.graph_changesets c ON c.layer_id = l.id AND c.revision = 1
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT 'p' || lpad((i)::text, 6, '0') AS source, 'p' || lpad((i + 1)::text, 6, '0') AS target, 'stated' AS effect FROM generate_series($1::int, $2::int) i WHERE i % 20 = 4
+          ) v
+          JOIN graph_stack_cost.knows b ON b.graph_layer = bl.id AND b.source = v.source AND b.target = v.target
+        WHERE l.name = 'top'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: analyze
+    invoke: !ref analyze
+---
+# A layer pinned to `middle` that makes exactly `count` statements at its first
+# revision, from p010010 on, over keys neither `middle` nor `top` states, each
+# recording the row of `base` it stands over: two fifths of them people
+# restated, a tenth people hidden, a fifth relationships from the hub restated,
+# a fifth relationships to the hub, and a tenth links of the chain.
+kind: Run.Sequence
+metadata: { name: addUpper }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [layer, count]
+    properties:
+      layer: { type: string }
+      count: { type: integer }
+steps:
+  - name: people
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.people
+          (id, name, age, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect, graph_beneath)
+        SELECT b.id, b.name, CASE WHEN v.effect = 'stated' THEN 60 ELSE b.age END, gen_random_uuid(), l.id, c.id, 1,
+               v.effect, b.graph_row
+        FROM graph_stack_cost.graph_layers l
+          JOIN graph_stack_cost.graph_changesets c ON c.layer_id = l.id AND c.revision = 1
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT 10010 + 10 * j AS i, 'stated' AS effect FROM generate_series(0, $2::int * 2 / 5 - 1) j
+            UNION ALL
+            SELECT 10015 + 10 * j, 'removed' FROM generate_series(0, $2::int / 10 - 1) j
+          ) v
+          JOIN graph_stack_cost.people b ON b.graph_layer = bl.id AND b.id = 'p' || lpad((v.i)::text, 6, '0')
+        WHERE l.name = $1
+      bindings: [!cel "inputs.layer", !cel "inputs.count"]
+  - name: follows
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.follows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect, graph_beneath)
+        SELECT b.source, b.target, CASE WHEN v.effect = 'stated' THEN 60 ELSE b.since END, gen_random_uuid(), l.id,
+               c.id, 1, v.effect, b.graph_row
+        FROM graph_stack_cost.graph_layers l
+          JOIN graph_stack_cost.graph_changesets c ON c.layer_id = l.id AND c.revision = 1
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT 'hout' AS source, 'p' || lpad((10011 + 10 * j)::text, 6, '0') AS target, 'stated' AS effect FROM generate_series(0, $2::int / 5 - 1) j
+            UNION ALL
+            SELECT 'p' || lpad((10011 + 10 * j)::text, 6, '0'), 'hin', 'stated' FROM generate_series(0, $2::int / 5 - 1) j
+          ) v
+          JOIN graph_stack_cost.follows b ON b.graph_layer = bl.id AND b.source = v.source AND b.target = v.target
+        WHERE l.name = $1
+      bindings: [!cel "inputs.layer", !cel "inputs.count"]
+  - name: knows
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.knows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect, graph_beneath)
+        SELECT b.source, b.target, CASE WHEN v.effect = 'stated' THEN 60 ELSE b.since END, gen_random_uuid(), l.id,
+               c.id, 1, v.effect, b.graph_row
+        FROM graph_stack_cost.graph_layers l
+          JOIN graph_stack_cost.graph_changesets c ON c.layer_id = l.id AND c.revision = 1
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT 'p' || lpad((10010 + 10 * j)::text, 6, '0') AS source, 'p' || lpad((10011 + 10 * j)::text, 6, '0') AS target, 'stated' AS effect FROM generate_series(0, $2::int / 10 - 1) j
+          ) v
+          JOIN graph_stack_cost.knows b ON b.graph_layer = bl.id AND b.source = v.source AND b.target = v.target
+        WHERE l.name = $1
+      bindings: [!cel "inputs.layer", !cel "inputs.count"]
+  - name: analyze
+    invoke: !ref analyze
+---
+# People b000001… published by `big` at its first revision, and the
+# relationship from each to the next: keys no layer beneath states, so each
+# stands over nothing.
+kind: Run.Sequence
+metadata: { name: addBig }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [from, to]
+    properties:
+      from: { type: integer }
+      to: { type: integer }
+steps:
+  - name: people
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.people
+          (id, name, age, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect)
+        SELECT 'b' || lpad(i::text, 6, '0'), 'Big ' || i, 1, gen_random_uuid(), l.id, '00000000-0000-7000-8000-000000000005'::uuid, 1, 'stated'
+        FROM generate_series($1::int, $2::int) i JOIN graph_stack_cost.graph_layers l ON l.name = 'big'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: follows
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.follows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect)
+        SELECT 'b' || lpad(i::text, 6, '0'), 'b' || lpad((i + 1)::text, 6, '0'), 1, gen_random_uuid(), l.id,
+               '00000000-0000-7000-8000-000000000005'::uuid, 1, 'stated'
+        FROM generate_series($1::int, $2::int - 1) i JOIN graph_stack_cost.graph_layers l ON l.name = 'big'
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: analyze
+    invoke: !ref analyze
+---
+# What `big` states over `base`, for the two rounds of conflicts: the age of ten
+# people — every tenth from p018001, and from p019001 — and from its own
+# b000001 a relationship to two people after each ten. Keys no layer between
+# states, so each stands over `base`'s row.
+kind: Run.Sequence
+metadata: { name: addBigOverBase }
+steps:
+  - name: people
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.people
+          (id, name, age, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect, graph_beneath)
+        SELECT b.id, b.name, CASE WHEN v.effect = 'stated' THEN 70 ELSE b.age END, gen_random_uuid(), l.id, c.id, 1,
+               v.effect, b.graph_row
+        FROM graph_stack_cost.graph_layers l
+          JOIN graph_stack_cost.graph_changesets c ON c.layer_id = l.id AND c.revision = 1
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT 18001 + 10 * j AS i, 'stated' AS effect FROM generate_series(0, 9) j UNION ALL SELECT 19001 + 10 * j, 'stated' FROM generate_series(0, 9) j
+            UNION ALL
+            SELECT 0, 'removed' WHERE false
+          ) v
+          JOIN graph_stack_cost.people b ON b.graph_layer = bl.id AND b.id = 'p' || lpad((v.i)::text, 6, '0')
+        WHERE l.name = 'big'
+  - name: follows
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.follows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_from_revision, graph_effect)
+        SELECT 'b000001', 'p' || lpad((v.i)::text, 6, '0'), 70, gen_random_uuid(), l.id, '00000000-0000-7000-8000-000000000005'::uuid, 1, 'stated'
+        FROM graph_stack_cost.graph_layers l CROSS JOIN (VALUES (18101), (18111), (19101), (19111)) v(i)
+        WHERE l.name = 'big'
+  - name: analyze
+    invoke: !ref analyze
+---
+# One hundred revisions of `base` that touch one key no page here reads.
+kind: Run.Sequence
+metadata: { name: hundredBaseRevisions }
+steps:
+  - name: n
+    value: !cel "0"
+  - name: revisions
+    while: !cel "steps.n.result < 100"
+    do:
+      - name: write
+        invoke: !ref baseUpdatePerson
+        inputs: { key: z000001, properties: { name: !cel "'Revision ' + string(steps.n.result)" } }
+      - name: n
+        value: !cel "steps.n.result + 1"
+  - name: analyze
+    invoke: !ref analyze
+---
+# One more revision of `base`, touching that key, and `middle` pinned to it.
+# The value differs on every call: a write that changes nothing is no revision.
+kind: Run.Sequence
+metadata: { name: moveMiddle }
+steps:
+  - name: write
+    invoke: !ref baseUpdatePerson
+    inputs: { key: z000001, properties: { name: !cel "'Moved ' + uuidv4()" } }
+  - name: pin
+    invoke: !ref middlePin
+    inputs: { bases: [{ layer: base }] }
+  - name: analyze
+    invoke: !ref analyze
+---
+# The 100 draft rows a session page reads from its cursor on, which stands after
+# ten thousand keys: 40 people restated and 20 new ones among them from the
+# start of the page, 20 of `top`'s own restatements retracted from p011204 on —
+# the page ends among them — and 20 restated beyond it.
+kind: Run.Sequence
+metadata: { name: addPageDraft }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [draft]
+    properties:
+      draft: { type: string }
+steps:
+  - name: people
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.people
+          (id, name, age, graph_row, graph_layer, graph_changeset, graph_effect, graph_over, graph_beneath)
+        SELECT v.id, 'Draft', 9, gen_random_uuid(), c.layer_id, c.id, v.effect, p.graph_row, b.graph_row
+        FROM graph_stack_cost.graph_changesets c
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT 'p' || lpad((11106 + 10 * k)::text, 6, '0') AS id, 'stated' AS effect FROM generate_series(0, 39) k
+            UNION ALL
+            SELECT 'p' || lpad((11204 + 20 * k)::text, 6, '0'), 'retracted' FROM generate_series(0, 19) k
+            UNION ALL
+            SELECT 'p' || lpad((11101 + 5 * k)::text, 6, '0') || 'n', 'stated' FROM generate_series(0, 19) k
+            UNION ALL
+            SELECT 'p' || lpad((11606 + 10 * k)::text, 6, '0'), 'stated' FROM generate_series(0, 19) k
+          ) v
+          LEFT JOIN graph_stack_cost.people p
+            ON p.graph_layer = c.layer_id AND p.id = v.id
+              AND p.graph_from_revision IS NOT NULL AND p.graph_to_revision IS NULL
+          LEFT JOIN graph_stack_cost.people b
+            ON b.graph_layer = bl.id AND b.id = v.id
+              AND b.graph_from_revision IS NOT NULL AND b.graph_to_revision IS NULL
+        WHERE c.public_id = $1
+      bindings: [!cel "inputs.draft"]
+  - name: analyze
+    invoke: !ref analyze
+---
+# 18,910 more people rows in that draft, every one before that cursor: the
+# 8,910 people of the first 9,900 that no layer hides restated, and 10,000 new
+# among them — 10,000 more visible keys before the cursor — and the links of
+# the chain between the restated people restated
+# too, with the one the traversal enters p010003 by.
+kind: Run.Sequence
+metadata: { name: growPageDraft }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [draft]
+    properties:
+      draft: { type: string }
+steps:
+  - name: people
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.people
+          (id, name, age, graph_row, graph_layer, graph_changeset, graph_effect, graph_beneath)
+        SELECT v.id, 'Draft', 9, gen_random_uuid(), c.layer_id, c.id, 'stated', b.graph_row
+        FROM graph_stack_cost.graph_changesets c
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          CROSS JOIN (
+            SELECT 'p' || lpad((i)::text, 6, '0') AS id FROM generate_series(1, 9900) i WHERE i % 20 NOT IN (7, 9)
+            UNION ALL
+            SELECT 'p' || lpad((i)::text, 6, '0') || 'n' FROM generate_series(1, 9000) i
+            UNION ALL
+            SELECT 'p' || lpad((i)::text, 6, '0') || 'm' FROM generate_series(1, 1000) i
+          ) v
+          LEFT JOIN graph_stack_cost.people b
+            ON b.graph_layer = bl.id AND b.id = v.id
+              AND b.graph_from_revision IS NOT NULL AND b.graph_to_revision IS NULL
+        WHERE c.public_id = $1
+      bindings: [!cel "inputs.draft"]
+  - name: knows
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.knows
+          (source, target, since, graph_row, graph_layer, graph_changeset, graph_effect, graph_beneath)
+        SELECT k.source, k.target, 9, gen_random_uuid(), c.layer_id, c.id, 'stated', k.graph_row
+        FROM graph_stack_cost.graph_changesets c
+          JOIN graph_stack_cost.graph_layers bl ON bl.name = 'base'
+          JOIN graph_stack_cost.knows k ON k.graph_layer = bl.id
+            AND k.graph_from_revision IS NOT NULL AND k.graph_to_revision IS NULL
+        WHERE c.public_id = $1 AND (k.source <= 'p009900' OR k.source = 'p010002')
+      bindings: [!cel "inputs.draft"]
+  - name: analyze
+    invoke: !ref analyze
+---
+# 20,000 keys of a draft's own, 200 after each of 100 keys inside the measured
+# page's range.
+kind: Run.Sequence
+metadata: { name: addDraftOnlyKeys }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [draft]
+    properties:
+      draft: { type: string }
+steps:
+  - name: people
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_stack_cost.people
+          (id, name, age, graph_row, graph_layer, graph_changeset, graph_effect)
+        SELECT 'p' || lpad((11098 + i)::text, 6, '0') || '-' || lpad(j::text, 3, '0'), 'Draft', 9,
+               gen_random_uuid(), c.layer_id, c.id, 'stated'
+        FROM generate_series(1, 100) i, generate_series(1, 200) j, graph_stack_cost.graph_changesets c
+        WHERE c.public_id = $1
+      bindings: [!cel "inputs.draft"]
+  - name: analyze
+    invoke: !ref analyze
+---
+# Outside a session: ten pages of 1,000 through `top` bring a cursor mid-layer.
+kind: Run.Sequence
+metadata: { name: peopleCursor }
+steps:
+  - name: page
+    invoke: !ref findPeople
+    inputs: { limit: 1000 }
+  - name: pages
+    value: !cel "1"
+  - name: advance
+    while: !cel "steps.pages.result < 10"
+    do:
+      - name: page
+        invoke: !ref findPeople
+        inputs: { limit: 1000, cursor: !cel "steps.page.result.next" }
+      - name: pages
+        value: !cel "steps.pages.result + 1"
+outputs:
+  cursor: !cel "steps.page.result.next"
+---
+# The same over the relationships from the hub.
+kind: Run.Sequence
+metadata: { name: outCursor }
+steps:
+  - name: page
+    invoke: !ref findFollows
+    inputs: { source: hout, limit: 1000 }
+  - name: pages
+    value: !cel "1"
+  - name: advance
+    while: !cel "steps.pages.result < 10"
+    do:
+      - name: page
+        invoke: !ref findFollows
+        inputs: { source: hout, limit: 1000, cursor: !cel "steps.page.result.next" }
+      - name: pages
+        value: !cel "steps.pages.result + 1"
+outputs:
+  cursor: !cel "steps.page.result.next"
+---
+# The same over the relationships to the hub.
+kind: Run.Sequence
+metadata: { name: inCursor }
+steps:
+  - name: page
+    invoke: !ref findFollows
+    inputs: { target: hin, limit: 1000 }
+  - name: pages
+    value: !cel "1"
+  - name: advance
+    while: !cel "steps.pages.result < 10"
+    do:
+      - name: page
+        invoke: !ref findFollows
+        inputs: { target: hin, limit: 1000, cursor: !cel "steps.page.result.next" }
+      - name: pages
+        value: !cel "steps.pages.result + 1"
+outputs:
+  cursor: !cel "steps.page.result.next"
+---
+kind: Sql.Transaction
+metadata: { name: measurePeopleAfter }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [cursor]
+      properties:
+        cursor: { type: string }
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: page
+      invoke: !ref findPeople
+      inputs: { limit: 100, cursor: !cel "inputs.cursor" }
+    - name: after
+      invoke: !ref readCounters
+  outputs:
+    returned: !cel "size(steps.page.result.nodes)"
+    first: !cel "string(steps.page.result.nodes[0].key)"
+    origins: !cel "size(steps.page.result.nodes.filter(i, i.origin == 'top')) * 10000 + size(steps.page.result.nodes.filter(i, i.origin == 'middle')) * 100 + size(steps.page.result.nodes.filter(i, i.origin == 'base'))"
+    sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+    fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+inputs:
+  cursor: !cel "inputs.cursor"
+---
+kind: Sql.Transaction
+metadata: { name: measureOutAfter }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [cursor]
+      properties:
+        cursor: { type: string }
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: page
+      invoke: !ref findFollows
+      inputs: { source: hout, limit: 100, cursor: !cel "inputs.cursor" }
+    - name: after
+      invoke: !ref readCounters
+  outputs:
+    returned: !cel "size(steps.page.result.relationships)"
+    first: !cel "string(steps.page.result.relationships[0].target)"
+    origins: !cel "size(steps.page.result.relationships.filter(i, i.origin == 'top')) * 10000 + size(steps.page.result.relationships.filter(i, i.origin == 'middle')) * 100 + size(steps.page.result.relationships.filter(i, i.origin == 'base'))"
+    sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+    fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+inputs:
+  cursor: !cel "inputs.cursor"
+---
+kind: Sql.Transaction
+metadata: { name: measureInAfter }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [cursor]
+      properties:
+        cursor: { type: string }
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: page
+      invoke: !ref findFollows
+      inputs: { target: hin, limit: 100, cursor: !cel "inputs.cursor" }
+    - name: after
+      invoke: !ref readCounters
+  outputs:
+    returned: !cel "size(steps.page.result.relationships)"
+    first: !cel "string(steps.page.result.relationships[0].source)"
+    origins: !cel "size(steps.page.result.relationships.filter(i, i.origin == 'top')) * 10000 + size(steps.page.result.relationships.filter(i, i.origin == 'middle')) * 100 + size(steps.page.result.relationships.filter(i, i.origin == 'base'))"
+    sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+    fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+inputs:
+  cursor: !cel "inputs.cursor"
+---
+# One page of 100 of each listing, read mid-layer through `top` as a new
+# listing: people, relationships from the hub, relationships to it.
+kind: Run.Sequence
+metadata: { name: measureHeadPages }
+steps:
+  - name: peopleAt
+    invoke: !ref peopleCursor
+  - name: people
+    invoke: !ref measurePeopleAfter
+    inputs: { cursor: !cel "steps.peopleAt.result.cursor" }
+  - name: outboundAt
+    invoke: !ref outCursor
+  - name: outbound
+    invoke: !ref measureOutAfter
+    inputs: { cursor: !cel "steps.outboundAt.result.cursor" }
+  - name: inboundAt
+    invoke: !ref inCursor
+  - name: inbound
+    invoke: !ref measureInAfter
+    inputs: { cursor: !cel "steps.inboundAt.result.cursor" }
+outputs:
+  people: !cel "[int(steps.people.result.returned), steps.people.result.first, int(steps.people.result.origins), int(steps.people.result.sequential), int(steps.people.result.fetched)]"
+  outbound: !cel "[int(steps.outbound.result.returned), steps.outbound.result.first, int(steps.outbound.result.origins), int(steps.outbound.result.sequential), int(steps.outbound.result.fetched)]"
+  inbound: !cel "[int(steps.inbound.result.returned), steps.inbound.result.first, int(steps.inbound.result.origins), int(steps.inbound.result.sequential), int(steps.inbound.result.fetched)]"
+---
+# Inside one session on `top`: `pages` pages of 1,000 bring the cursor
+# mid-layer, then the page of 100 after it is read in a transaction with the
+# counters taken either side of it.
+kind: Run.Sequence
+metadata: { name: measureSessionPage }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [draft, pages]
+    properties:
+      draft: { type: string }
+      pages: { type: integer }
+steps:
+  - name: session
+    inputs: { draft: !cel "inputs.draft", count: !cel "inputs.pages" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft", count: !cel "inputs.count" }
+      steps:
+        - name: page
+          invoke: !ref findPeople
+          inputs: { limit: 1000 }
+        - name: pages
+          value: !cel "1"
+        - name: advance
+          while: !cel "steps.pages.result < inputs.count"
+          do:
+            - name: page
+              invoke: !ref findPeople
+              inputs: { limit: 1000, cursor: !cel "steps.page.result.next" }
+            - name: pages
+              value: !cel "steps.pages.result + 1"
+        - name: measured
+          inputs: { cursor: !cel "steps.page.result.next" }
+          invoke:
+            kind: Sql.Transaction
+            connection: !ref db
+            inputs: { cursor: !cel "inputs.cursor" }
+            steps:
+              kind: Run.Sequence
+              inputType:
+                kind: Telo.JsonSchema
+                schema:
+                  type: object
+                  required: [cursor]
+                  properties:
+                    cursor: { type: string }
+              steps:
+                - name: before
+                  invoke: !ref readCounters
+                - name: page
+                  invoke: !ref findPeople
+                  inputs: { limit: 100, cursor: !cel "inputs.cursor" }
+                - name: after
+                  invoke: !ref readCounters
+              outputs:
+                keys: !cel "steps.page.result.nodes.map(n, n.key)"
+                sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+                fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+outputs:
+  page: !cel "[size(steps.session.result.measured.result.keys), string(steps.session.result.measured.result.keys[0]), int(steps.session.result.measured.result.sequential), int(steps.session.result.measured.result.fetched)]"
+---
+kind: Sql.Transaction
+metadata: { name: nearbyFirstPage }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: page
+      invoke: !ref nearby
+      inputs: { key: p010003, limit: 2 }
+    - name: after
+      invoke: !ref readCounters
+  outputs:
+    keys: !cel "steps.page.result.nodes.map(n, n.key)"
+    next: !cel "steps.page.result.?next.orValue('')"
+    sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+    fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+---
+kind: Sql.Transaction
+metadata: { name: nearbyNextPage }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [cursor]
+      properties:
+        cursor: { type: string }
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: page
+      invoke: !ref nearby
+      inputs: { key: p010003, limit: 2, cursor: !cel "inputs.cursor" }
+    - name: after
+      invoke: !ref readCounters
+  outputs:
+    keys: !cel "steps.page.result.nodes.map(n, n.key)"
+    next: !cel "steps.page.result.?next.orValue('')"
+    sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+    fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+inputs:
+  cursor: !cel "inputs.cursor"
+---
+# The traversal followed to its end outside a session.
+kind: Run.Sequence
+metadata: { name: measureHeadWalk }
+steps:
+    - name: first
+      invoke: !ref nearbyFirstPage
+    - name: page
+      value: !cel "steps.first.result"
+    - name: tally
+      value:
+        keys: !cel "steps.first.result.keys"
+        sequential: !cel "int(steps.first.result.sequential)"
+        laterWithinFirst: true
+    - name: follow
+      while: !cel "steps.page.result.next != ''"
+      do:
+        - name: page
+          invoke: !ref nearbyNextPage
+          inputs: { cursor: !cel "string(steps.page.result.next)" }
+        - name: tally
+          value:
+            keys: !cel "steps.tally.result.keys + steps.page.result.keys"
+            sequential: !cel "steps.tally.result.sequential + int(steps.page.result.sequential)"
+            laterWithinFirst: !cel "steps.tally.result.laterWithinFirst && int(steps.page.result.fetched) <= int(steps.first.result.fetched)"
+outputs:
+  walk: !cel "[steps.tally.result.keys, int(steps.tally.result.sequential), steps.tally.result.laterWithinFirst, int(steps.first.result.fetched)]"
+---
+# The traversal followed to its end inside one session on `top`.
+kind: Run.Sequence
+metadata: { name: measureSessionWalk }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [draft]
+    properties:
+      draft: { type: string }
+steps:
+  - name: session
+    inputs: { draft: !cel "inputs.draft" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: first
+          invoke: !ref nearbyFirstPage
+        - name: page
+          value: !cel "steps.first.result"
+        - name: tally
+          value:
+            keys: !cel "steps.first.result.keys"
+            sequential: !cel "int(steps.first.result.sequential)"
+            laterWithinFirst: true
+        - name: follow
+          while: !cel "steps.page.result.next != ''"
+          do:
+            - name: page
+              invoke: !ref nearbyNextPage
+              inputs: { cursor: !cel "string(steps.page.result.next)" }
+            - name: tally
+              value:
+                keys: !cel "steps.tally.result.keys + steps.page.result.keys"
+                sequential: !cel "steps.tally.result.sequential + int(steps.page.result.sequential)"
+                laterWithinFirst: !cel "steps.tally.result.laterWithinFirst && int(steps.page.result.fetched) <= int(steps.first.result.fetched)"
+outputs:
+  walk: !cel "[steps.session.result.tally.result.keys, int(steps.session.result.tally.result.sequential), steps.session.result.tally.result.laterWithinFirst, int(steps.session.result.first.result.fetched)]"
+---
+# `ListBases` and one page of `ListRevisions`, in a transaction with the
+# counters of the typed tables taken either side.
+kind: Sql.Transaction
+metadata: { name: measureBases }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: bases
+      invoke: { kind: GraphLayers.ListBases, store: !ref top }
+      inputs: {}
+    - name: revisions
+      invoke: { kind: GraphLayers.ListRevisions, store: !ref top }
+      inputs: { limit: 100 }
+    - name: after
+      invoke: !ref readCounters
+  outputs:
+    bases: !cel "steps.bases.result.bases.map(b, b.layer)"
+    listed: !cel "steps.revisions.result.revisions.all(r, r.bases.map(b, b.layer) == ['middle'])"
+    sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+    fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+---
+# A draft opened on `narrow`, its pin moved to the head of `middle` inside a
+# session — in a transaction with the counters taken either side of the move —
+# and the draft discarded, so the layer is left as it was.
+kind: Run.Sequence
+metadata: { name: measurePinInSession }
+steps:
+  - name: open
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref narrow }
+    inputs: {}
+  - name: session
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref narrow
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: measured
+          invoke:
+            kind: Sql.Transaction
+            connection: !ref db
+            steps:
+              kind: Run.Sequence
+              steps:
+                - name: before
+                  invoke: !ref readCounters
+                - name: pin
+                  invoke: { kind: GraphLayers.PinBase, store: !ref narrow }
+                  inputs: { bases: [{ layer: middle }] }
+                - name: after
+                  invoke: !ref readCounters
+              outputs:
+                merged: !cel "steps.pin.result.merged"
+                conflicts: !cel "steps.pin.result.conflicts"
+                sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+                fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+  - name: discard
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref narrow }
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+outputs:
+  pin: !cel "[int(steps.session.result.measured.result.merged), int(steps.session.result.measured.result.conflicts), int(steps.session.result.measured.result.sequential), int(steps.session.result.measured.result.fetched)]"
+---
+# A draft opened on `wide`, its pin moved to the head of `middle` inside a
+# session — in a transaction with the counters taken either side of the move —
+# and the draft discarded, so the layer is left as it was.
+kind: Run.Sequence
+metadata: { name: measureWidePinInSession }
+steps:
+  - name: open
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref wide }
+    inputs: {}
+  - name: session
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref wide
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: measured
+          invoke:
+            kind: Sql.Transaction
+            connection: !ref db
+            steps:
+              kind: Run.Sequence
+              steps:
+                - name: before
+                  invoke: !ref readCounters
+                - name: pin
+                  invoke: { kind: GraphLayers.PinBase, store: !ref wide }
+                  inputs: { bases: [{ layer: middle }] }
+                - name: after
+                  invoke: !ref readCounters
+              outputs:
+                merged: !cel "steps.pin.result.merged"
+                conflicts: !cel "steps.pin.result.conflicts"
+                sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+                fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+  - name: discard
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref wide }
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+outputs:
+  pin: !cel "[int(steps.session.result.measured.result.merged), int(steps.session.result.measured.result.conflicts), int(steps.session.result.measured.result.sequential), int(steps.session.result.measured.result.fetched)]"
+---
+# `narrow`'s pin moved to the head of `middle` outside a session — one
+# published revision — in a transaction with the counters taken either side.
+kind: Sql.Transaction
+metadata: { name: measurePinOutside }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: pin
+      invoke: { kind: GraphLayers.PinBase, store: !ref narrow }
+      inputs: { bases: [{ layer: middle }] }
+    - name: after
+      invoke: !ref readCounters
+  outputs:
+    pin: !cel "[int(steps.pin.result.merged), int(steps.pin.result.conflicts), steps.after.result.sequential - steps.before.result.sequential, steps.after.result.fetched - steps.before.result.fetched]"
+---
+# Lines 6 and 7 at one size. `middle` takes a new revision of `base` — which
+# touched a key no layer above states — and `narrow`'s pin is moved to it
+# inside a session and then outside one; then again, with `base` a hundred
+# revisions past what `middle` pinned.
+kind: Run.Sequence
+metadata: { name: measurePins }
+steps:
+  - name: moveAtHead
+    invoke: !ref moveMiddle
+  - name: sessionAtHead
+    invoke: !ref measurePinInSession
+  - name: wideAtHead
+    invoke: !ref measureWidePinInSession
+  - name: outsideAtHead
+    invoke: !ref measurePinOutside
+  - name: moveBehind
+    invoke: !ref moveMiddle
+  - name: later
+    invoke: !ref hundredBaseRevisions
+  - name: sessionBehind
+    invoke: !ref measurePinInSession
+  - name: outsideBehind
+    invoke: !ref measurePinOutside
+outputs:
+  session: !cel "[steps.sessionAtHead.result.pin, steps.sessionBehind.result.pin]"
+  outside: !cel "[steps.outsideAtHead.result.pin, steps.outsideBehind.result.pin]"
+  wide: !cel "steps.wideAtHead.result.pin"
+---
+# Line 8 at one size. `base` changes the age of the ten people after `at` that
+# `big` restates and deletes the two beyond them that `big` links to; `middle`
+# takes that revision; and `big` moves its pin inside a draft, which leaves ten
+# conflicts on people and two relationships without an endpoint. One page of
+# each listing is measured, the conflicts are decided, and the publish is
+# measured.
+kind: Run.Sequence
+metadata: { name: measureConflicts }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [at]
+    properties:
+      at: { type: integer }
+steps:
+  - name: j
+    value: !cel "1"
+  - name: ages
+    while: !cel "steps.j.result <= 10"
+    do:
+      - name: change
+        invoke: !ref baseUpdatePerson
+        inputs: { key: !cel "'p0' + string(inputs.at + 10 * steps.j.result - 9)", properties: { age: 2 } }
+      - name: j
+        value: !cel "steps.j.result + 1"
+  - name: dropFirst
+    invoke: { kind: Graph.DeleteNode, store: !ref base, node: !ref person }
+    inputs: { key: !cel "'p0' + string(inputs.at + 101)" }
+  - name: dropSecond
+    invoke: { kind: Graph.DeleteNode, store: !ref base, node: !ref person }
+    inputs: { key: !cel "'p0' + string(inputs.at + 111)" }
+  - name: middleTakes
+    invoke: !ref middlePin
+    inputs: { bases: [{ layer: base }] }
+  - name: settle
+    invoke: !ref analyze
+  - name: open
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref big }
+    inputs: {}
+  - name: move
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref big
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: pin
+          invoke: { kind: GraphLayers.PinBase, store: !ref big }
+          inputs: { bases: [{ layer: middle }] }
+  - name: settleDraft
+    invoke: !ref analyze
+  - name: listed
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref big
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: nodes
+          invoke:
+            kind: Sql.Transaction
+            connection: !ref db
+            steps:
+              kind: Run.Sequence
+              steps:
+                - name: before
+                  invoke: !ref readCounters
+                - name: page
+                  invoke: { kind: GraphLayers.NodeConflicts, store: !ref big, node: !ref person }
+                  inputs: { limit: 100 }
+                - name: after
+                  invoke: !ref readCounters
+              outputs:
+                conflicts: !cel "steps.page.result.conflicts"
+                sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+                fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+        - name: links
+          invoke:
+            kind: Sql.Transaction
+            connection: !ref db
+            steps:
+              kind: Run.Sequence
+              steps:
+                - name: before
+                  invoke: !ref readCounters
+                - name: page
+                  invoke: { kind: GraphLayers.RelationshipConflicts, store: !ref big, relationship: !ref follows }
+                  inputs: { limit: 100 }
+                - name: after
+                  invoke: !ref readCounters
+              outputs:
+                conflicts: !cel "steps.page.result.conflicts"
+                sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+                fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+        - name: i
+          value: !cel "0"
+        - name: decideNodes
+          while: !cel "steps.i.result < size(steps.nodes.result.conflicts)"
+          do:
+            - name: decide
+              invoke: { kind: GraphLayers.ResolveNodeConflict, store: !ref big, node: !ref person }
+              inputs: { key: !cel "steps.nodes.result.conflicts[steps.i.result].key", take: mine }
+            - name: i
+              value: !cel "steps.i.result + 1"
+        - name: k
+          value: !cel "0"
+        - name: decideLinks
+          while: !cel "steps.k.result < size(steps.links.result.conflicts)"
+          do:
+            - name: decide
+              invoke: { kind: GraphLayers.ResolveRelationshipConflict, store: !ref big, relationship: !ref follows }
+              inputs:
+                source: !cel "steps.links.result.conflicts[steps.k.result].source"
+                target: !cel "steps.links.result.conflicts[steps.k.result].target"
+                take: theirs
+            - name: k
+              value: !cel "steps.k.result + 1"
+  - name: publish
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref db
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [draft]
+            properties:
+              draft: { type: string }
+        steps:
+          - name: before
+            invoke: !ref readCounters
+          - name: publish
+            invoke: { kind: GraphLayers.Publish, store: !ref big }
+            inputs: { draft: !cel "inputs.draft" }
+          - name: after
+            invoke: !ref readCounters
+        outputs:
+          changed: !cel "steps.publish.result.changed ? 1 : 0"
+          sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+          fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+  - name: settleAgain
+    invoke: !ref analyze
+outputs:
+  moved: !cel "[int(steps.move.result.pin.result.merged), int(steps.move.result.pin.result.conflicts)]"
+  nodes: !cel "[steps.listed.result.nodes.result.conflicts.map(c, c.class), int(steps.listed.result.nodes.result.sequential), int(steps.listed.result.nodes.result.fetched)]"
+  links: !cel "[steps.listed.result.links.result.conflicts.map(c, c.class), int(steps.listed.result.links.result.sequential), int(steps.listed.result.links.result.fetched)]"
+  publish: !cel "[int(steps.publish.result.changed), int(steps.publish.result.sequential), int(steps.publish.result.fetched)]"
+---
+# Lines 1 to 5 and 9 at one size: the pages and the traversal with `base` at
+# the revision `middle` pinned and a hundred revisions past it; the session
+# page beside an empty and a 20,000-key sibling draft and with its own draft
+# grown from 100 rows to 19,010; and the traversal inside that grown draft.
+kind: Run.Sequence
+metadata: { name: measureReaders }
+steps:
+  - name: sibling
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: own
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: stageOwn
+    invoke: !ref addPageDraft
+    inputs: { draft: !cel "steps.own.result.draft.id" }
+  - name: pagesAtPin
+    invoke: !ref measureHeadPages
+  - name: walkAtPin
+    invoke: !ref measureHeadWalk
+  - name: sessionBesideNothing
+    invoke: !ref measureSessionPage
+    inputs: { draft: !cel "steps.own.result.draft.id", pages: 10 }
+  - name: fillSibling
+    invoke: !ref addDraftOnlyKeys
+    inputs: { draft: !cel "steps.sibling.result.draft.id" }
+  - name: sessionBesideDraft
+    invoke: !ref measureSessionPage
+    inputs: { draft: !cel "steps.own.result.draft.id", pages: 10 }
+  - name: grow
+    invoke: !ref growPageDraft
+    inputs: { draft: !cel "steps.own.result.draft.id" }
+  - name: sessionLargeDraft
+    invoke: !ref measureSessionPage
+    inputs: { draft: !cel "steps.own.result.draft.id", pages: 20 }
+  - name: sessionWalkAtPin
+    invoke: !ref measureSessionWalk
+    inputs: { draft: !cel "steps.own.result.draft.id" }
+  - name: later
+    invoke: !ref hundredBaseRevisions
+  - name: pagesPastPin
+    invoke: !ref measureHeadPages
+  - name: walkPastPin
+    invoke: !ref measureHeadWalk
+  - name: sessionWalkPastPin
+    invoke: !ref measureSessionWalk
+    inputs: { draft: !cel "steps.own.result.draft.id" }
+  - name: bases
+    invoke: !ref measureBases
+  - name: dropOwn
+    invoke: !ref topDiscard
+    inputs: { draft: !cel "steps.own.result.draft.id" }
+  - name: dropSibling
+    invoke: !ref topDiscard
+    inputs: { draft: !cel "steps.sibling.result.draft.id" }
+  - name: settleAgain
+    invoke: !ref analyze
+outputs:
+  people: !cel "[steps.pagesAtPin.result.people, steps.pagesPastPin.result.people]"
+  outbound: !cel "[steps.pagesAtPin.result.outbound, steps.pagesPastPin.result.outbound]"
+  inbound: !cel "[steps.pagesAtPin.result.inbound, steps.pagesPastPin.result.inbound]"
+  session: !cel "[steps.sessionBesideNothing.result.page, steps.sessionBesideDraft.result.page, steps.sessionLargeDraft.result.page]"
+  walk: !cel "[steps.walkAtPin.result.walk, steps.walkPastPin.result.walk]"
+  sessionWalk: !cel "[steps.sessionWalkAtPin.result.walk, steps.sessionWalkPastPin.result.walk]"
+  bases: !cel "[steps.bases.result.bases, steps.bases.result.listed, int(steps.bases.result.sequential), int(steps.bases.result.fetched)]"
+---
+kind: Run.Sequence
+metadata: { name: cost }
+steps:
+  # A layer is registered by its first write; a draft opened and discarded
+  # is one that leaves nothing behind.
+  - name: registerBase
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref base }
+    inputs: {}
+  - name: registerBaseDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref base }
+    inputs: { draft: !cel "steps.registerBase.result.draft.id" }
+  - name: registerMiddle
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref middle }
+    inputs: {}
+  - name: registerMiddleDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref middle }
+    inputs: { draft: !cel "steps.registerMiddle.result.draft.id" }
+  - name: registerTop
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref top }
+    inputs: {}
+  - name: registerTopDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref top }
+    inputs: { draft: !cel "steps.registerTop.result.draft.id" }
+  - name: registerNarrow
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref narrow }
+    inputs: {}
+  - name: registerNarrowDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref narrow }
+    inputs: { draft: !cel "steps.registerNarrow.result.draft.id" }
+  - name: registerWide
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref wide }
+    inputs: {}
+  - name: registerWideDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref wide }
+    inputs: { draft: !cel "steps.registerWide.result.draft.id" }
+  - name: registerBig
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref big }
+    inputs: {}
+  - name: registerBigDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref big }
+    inputs: { draft: !cel "steps.registerBig.result.draft.id" }
+  - name: noAutovacuumPeople
+    invoke: !ref write
+    inputs:
+      sql: ALTER TABLE graph_stack_cost.people SET (autovacuum_enabled = false)
+  - name: noAutovacuumKnows
+    invoke: !ref write
+    inputs:
+      sql: ALTER TABLE graph_stack_cost.knows SET (autovacuum_enabled = false)
+  - name: noAutovacuumFollows
+    invoke: !ref write
+    inputs:
+      sql: ALTER TABLE graph_stack_cost.follows SET (autovacuum_enabled = false)
+  - name: fixed
+    invoke: !ref addFixed
+  - name: populate
+    invoke: !ref addPublished
+    inputs: { from: 1, to: 20000 }
+  - name: bands
+    invoke: !ref addBands
+    inputs: { from: 1, to: 20000 }
+  - name: narrow
+    invoke: !ref addUpper
+    inputs: { layer: narrow, count: 200 }
+  - name: wide
+    invoke: !ref addUpper
+    inputs: { layer: wide, count: 2000 }
+  - name: big
+    invoke: !ref addBig
+    inputs: { from: 1, to: 20000 }
+  - name: bigOverBase
+    invoke: !ref addBigOverBase
+
+  # ── 20,000 rows published by `base` ──
+  - name: readersSmall
+    invoke: !ref measureReaders
+  - name: pinsSmall
+    invoke: !ref measurePins
+  - name: conflictsSmall
+    invoke: !ref measureConflicts
+    inputs: { at: 18000 }
+
+  # ── 200,000 rows published by `base`, and by `big` ──
+  - name: grow
+    invoke: !ref addPublished
+    inputs: { from: 20001, to: 200000 }
+  - name: growBands
+    invoke: !ref addBands
+    inputs: { from: 20001, to: 200000 }
+  - name: growBig
+    invoke: !ref addBig
+    inputs: { from: 20001, to: 200000 }
+  - name: readersLarge
+    invoke: !ref measureReaders
+  - name: pinsLarge
+    invoke: !ref measurePins
+  - name: conflictsLarge
+    invoke: !ref measureConflicts
+    inputs: { at: 19000 }
+
+  - name: report
+    value:
+      readers: { small: !cel "steps.readersSmall.result", large: !cel "steps.readersLarge.result" }
+      pins: { small: !cel "steps.pinsSmall.result", large: !cel "steps.pinsLarge.result" }
+      conflicts: { small: !cel "steps.conflictsSmall.result", large: !cel "steps.conflictsLarge.result" }
+
+  # 1–3. One page of each listing: the same page, no sequential read, and the
+  # identical number of rows fetched at both sizes and both heads of `base`.
+  - name: assertPagesAreTheSamePage
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.readersSmall.result, steps.readersLarge.result].map(r,
+          [r.people, r.outbound, r.inbound].map(l, l.map(p, [p[0], p[1], p[2], p[3]])))
+      expected:
+        - - [[100, p011111, 50590, 0], [100, p011111, 50590, 0]]
+          - [[100, p012501, 60787, 0], [100, p012501, 60787, 0]]
+          - [[100, p011113, 50590, 0], [100, p011113, 50590, 0]]
+        - - [[100, p011111, 50590, 0], [100, p011111, 50590, 0]]
+          - [[100, p012501, 60787, 0], [100, p012501, 60787, 0]]
+          - [[100, p011113, 50590, 0], [100, p011113, 50590, 0]]
+  - name: assertPagesFetchTheSameEveryWay
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.readersSmall.result, steps.readersLarge.result].map(r,
+          [r.people[0][4] - steps.readersSmall.result.people[0][4], r.people[1][4] - steps.readersSmall.result.people[0][4],
+           r.outbound[0][4] - steps.readersSmall.result.outbound[0][4], r.outbound[1][4] - steps.readersSmall.result.outbound[0][4],
+           r.inbound[0][4] - steps.readersSmall.result.inbound[0][4], r.inbound[1][4] - steps.readersSmall.result.inbound[0][4]])
+      expected: [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]]
+  - name: assertNodePageWithinTheBound
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.readersSmall.result.people[0][4] > 0, steps.readersSmall.result.people[0][4] <= 606,
+         steps.readersSmall.result.outbound[0][4] > 0, steps.readersSmall.result.inbound[0][4] > 0]
+      expected: [true, true, true, true]
+
+  # 4. A page inside a session, over the whole stack.
+  - name: assertSessionPageIsTheSamePage
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.readersSmall.result.session, steps.readersLarge.result.session].map(s, s.map(p, [p[0], p[1], p[2]]))
+      expected:
+        - [[100, p011108, 0], [100, p011108, 0], [100, p011108, 0]]
+        - [[100, p011108, 0], [100, p011108, 0], [100, p011108, 0]]
+  - name: assertSessionPageFetchesTheSameEveryWay
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.readersSmall.result.session, steps.readersLarge.result.session].map(s,
+          s.map(p, p[3] - steps.readersSmall.result.session[0][3]))
+        + [[steps.readersSmall.result.session[0][3] > 0 ? 0 : 1]]
+      expected: [[0, 0, 0], [0, 0, 0], [0]]
+
+  # 5. A traversal crossing the three layers, outside a session and inside one.
+  - name: assertWalks
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.readersSmall.result, steps.readersLarge.result].map(r,
+          (r.walk + r.sessionWalk).map(w, [w[0], w[1], w[2], w[3] > 0]))
+      expected:
+        - - [[p010001, p010002, p010003, p010004, p010005], 0, true, true]
+          - [[p010001, p010002, p010003, p010004, p010005], 0, true, true]
+          - [[p010001, p010002, p010003, p010004, p010005], 0, true, true]
+          - [[p010001, p010002, p010003, p010004, p010005], 0, true, true]
+        - - [[p010001, p010002, p010003, p010004, p010005], 0, true, true]
+          - [[p010001, p010002, p010003, p010004, p010005], 0, true, true]
+          - [[p010001, p010002, p010003, p010004, p010005], 0, true, true]
+          - [[p010001, p010002, p010003, p010004, p010005], 0, true, true]
+  - name: assertWalksFetchTheSameEveryWay
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.readersSmall.result, steps.readersLarge.result].map(r,
+          r.walk.map(w, w[3] - steps.readersSmall.result.walk[0][3])
+          + r.sessionWalk.map(w, w[3] - steps.readersSmall.result.sessionWalk[0][3]))
+      expected: [[0, 0, 0, 0], [0, 0, 0, 0]]
+
+  # 6–7. A pin move costs the statements of the layer being re-pinned.
+  - name: assertPinsMovedCleanlyWithoutASequentialRead
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.pinsSmall.result, steps.pinsLarge.result].map(p,
+          (p.session + p.outside + [p.wide]).map(m, [m[0], m[1], m[2]]))
+      expected:
+        - [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        - [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+  - name: assertPinsFetchTheSameEveryWay
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.pinsSmall.result, steps.pinsLarge.result].map(p,
+          p.session.map(m, m[3] - steps.pinsSmall.result.session[0][3])
+          + p.outside.map(m, m[3] - steps.pinsSmall.result.outside[0][3])
+          + [p.wide[3] - steps.pinsSmall.result.wide[3]])
+      expected: [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]
+  - name: assertPinCostFollowsTheLayerBeingRepinned
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.pinsSmall.result.session[0][3] >= 200, steps.pinsSmall.result.outside[0][3] >= 200,
+         steps.pinsSmall.result.wide[3] > steps.pinsSmall.result.session[0][3],
+         steps.pinsSmall.result.wide[3] <= 11 * steps.pinsSmall.result.session[0][3]]
+      expected: [true, true, true, true]
+
+  # 8. The conflicts a moved pin leaves are listed, decided and published from
+  # the draft.
+  - name: assertConflictsListedAndPublished
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.conflictsSmall.result, steps.conflictsLarge.result].map(c,
+          [c.moved, size(c.nodes[0].filter(k, k == 'changed-both')), size(c.links[0].filter(k, k == 'endpoint-missing')),
+           c.nodes[1], c.links[1], c.publish[0], c.publish[1]])
+      expected: [[[0, 12], 10, 2, 0, 0, 1, 0], [[0, 12], 10, 2, 0, 0, 1, 0]]
+  - name: assertConflictsFetchTheSameAtBothSizes
+    invoke: !ref check
+    inputs:
+      actual: !cel >-
+        [steps.conflictsLarge.result.nodes[2] - steps.conflictsSmall.result.nodes[2],
+         steps.conflictsLarge.result.links[2] - steps.conflictsSmall.result.links[2],
+         steps.conflictsLarge.result.publish[2] - steps.conflictsSmall.result.publish[2],
+         steps.conflictsSmall.result.nodes[2] > 0 ? 0 : 1, steps.conflictsSmall.result.links[2] > 0 ? 0 : 1,
+         steps.conflictsSmall.result.publish[2] > 0 ? 0 : 1]
+      expected: [0, 0, 0, 0, 0, 0]
+
+  # 9. A base list is bookkeeping: listing one reads no typed table.
+  - name: assertBaseListsReadNoTypedTable
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.readersSmall.result.bases, steps.readersLarge.result.bases]"
+      expected: [[[middle], true, 0, 0], [[middle], true, 0, 0]]

@@ -1,0 +1,44 @@
+# Opens a draft on `top` from its own process — once, or `rounds` times over,
+# publishing each draft it is answered with when `publish` is set.
+kind: Telo.Application
+metadata:
+  name: CrossProcessOpener
+  version: 1.0.0
+include:
+  - ./model.yaml
+imports:
+  Postgres: ../../../../../postgres
+  Layers: ../../../..
+  Graph: ../../../../../graph
+  GraphLayers: ../../../../../graph-layers
+  Run: ../../../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+  rounds: { env: OPENER_ROUNDS, type: integer, default: 1 }
+  publish: { env: OPENER_PUBLISH, type: boolean, default: false }
+targets:
+  - !ref work
+---
+kind: Run.Sequence
+metadata: { name: work }
+steps:
+  - name: n
+    value: !cel "0"
+  - name: rounds
+    while: !cel "steps.n.result < variables.rounds"
+    do:
+      - name: open
+        invoke: { kind: GraphLayers.OpenDraft, store: !ref top }
+        inputs: {}
+      - name: close
+        if: !cel "variables.publish"
+        then:
+          - name: publish
+            invoke: { kind: GraphLayers.Publish, store: !ref top }
+            inputs: { draft: !cel "steps.open.result.draft.id" }
+      - name: n
+        value: !cel "steps.n.result + 1"

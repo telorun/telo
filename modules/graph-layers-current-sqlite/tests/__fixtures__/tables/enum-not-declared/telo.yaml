@@ -1,0 +1,30 @@
+# A layered node table whose column is typed by an enum its schema does not list.
+kind: Telo.Library
+metadata:
+  name: EnumNotDeclared
+imports:
+  Layers: ../../../..
+  SQLite: ../../../../../sqlite
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Enum
+metadata: { name: personStatus }
+typeName: person_status
+baseType: text
+values: [active, retired]
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  status: { type: !ref personStatus }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people]

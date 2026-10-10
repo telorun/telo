@@ -1,0 +1,23 @@
+# A node type whose key column admits NULL.
+kind: Telo.Library
+metadata:
+  name: NodeKeyNotLayerable
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.NodeTable
+metadata: { name: tags }
+table: tags
+key: id
+columns:
+  id: { type: text }
+---
+kind: Layers.Node
+metadata: { name: bad }
+table: !ref tags
+key: id

@@ -1,0 +1,765 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersCurrentPostgresCost
+  version: 1.0.0
+  description: |
+    What a page of a layered graph costs on PostgreSQL, over a three-layer stack
+    (`top` on `middle` on `base`), read from `pg_stat_xact_user_tables` in the
+    transaction that ran it, after `ANALYZE`. Each measurement is the difference
+    between a reading taken before the page and one taken after it, both inside
+    the transaction.
+
+    A find costs its limit times the stack's depth, never the table's size.
+    `base` states every person, `middle` restates every 20th and `top` states
+    every 25th, hiding every 50th. One page of 100 from 10,000 keys into the
+    listing reads no row sequentially and fetches at most depth × (limit + 1) =
+    303 rows through the layer-and-key index — each layer reads no more than its
+    own first 101 visible winners, and a row found shadowed or hidden counts
+    with the row that shadows it. The same page fetches the identical number of
+    rows with 20,000 people in `base`, with 60,000 and with 240,000 — the
+    smallest is where a planner would sooner read a layer whole than probe it,
+    which is why every probe of a layer above is a scalar subquery.
+
+    A page of relationships costs its limit times the stack's depth for the
+    relationship rows, and that again times twice the depth for their endpoints:
+    a relationship is in the view only while both its endpoint nodes resolve, and
+    each endpoint is resolved by one probe of the node table's layer-and-key
+    index per layer. One page of 100, from 5,000 pairs into a listing whose
+    relationships all three layers state, reads no row sequentially from either
+    table and fetches at most depth × (limit + 1) × (1 + 2 × depth) = 2,121 rows
+    from the two together, with 20,000 relationships and with 200,000. One
+    person in fifty is hidden by `top`, so the page also passes over the
+    relationships touching them, as it would rows a filter rejects. The bound
+    is for rows fetched per returned relationship; the measured page also passes
+    over relationships with a hidden endpoint, and the measured counts (343 and
+    319) sit far inside it.
+
+    A traversal page costs at most one walk of its reach, whatever else the
+    graph holds, and no page costs more than the first. From one person, links
+    stated by all three layers lead two hops out — one restated by `middle`, one
+    hidden by `top`, one end node hidden by `top` — and both a two-hop traversal
+    (28 end nodes) and one hop followed in both directions up to twice (34) are
+    followed to the end at 10 a page, beside 20,000 and then 200,000
+    relationships they never reach. For each, no page reads a row sequentially
+    from either table, the first page fetches the identical number of rows at
+    both sizes, no later page fetches more than the first, and the keys gathered
+    are the reach, in order, each once.
+
+    Autovacuum is switched off on the two tables so that the counts compared
+    across the run are not moved by a vacuum landing between them.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Layers: ../..
+  Graph: ../../../graph
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref populate
+  - !ref cost
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_layers_cost
+ledger: graph_layers_cost
+tables: [!ref people, !ref knowsTable]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Store
+metadata: { name: base }
+connection: !ref db
+schema: !ref appSchema
+layer: base
+nodes: [!ref person]
+relationships: [!ref knows]
+---
+kind: Layers.Store
+metadata: { name: middle }
+connection: !ref db
+schema: !ref appSchema
+layer: middle
+bases: [!ref base]
+nodes: [!ref person]
+relationships: [!ref knows]
+---
+kind: Layers.Store
+metadata: { name: top }
+connection: !ref db
+schema: !ref appSchema
+layer: top
+bases: [!ref middle]
+nodes: [!ref person]
+relationships: [!ref knows]
+---
+kind: Graph.FindNodes
+metadata: { name: findPeople }
+store: !ref top
+node: !ref person
+---
+kind: Graph.FindRelationships
+metadata: { name: findKnows }
+store: !ref top
+relationship: !ref knows
+---
+kind: Graph.Traverse
+metadata: { name: friendsOfFriends }
+store: !ref top
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+  - relationship: !ref knows
+---
+# A repeated hop, which the store walks recursively, in both directions.
+kind: Graph.Traverse
+metadata: { name: withinTwo }
+store: !ref top
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+    direction: both
+    maxHops: 2
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+# What this transaction has read from the two tables so far.
+kind: Run.Sequence
+metadata: { name: readCounters }
+steps:
+  - name: read
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: >-
+        SELECT relname AS "table", seq_tup_read::int AS "sequential",
+               COALESCE(idx_tup_fetch, 0)::int AS "fetched"
+        FROM pg_stat_xact_user_tables
+        WHERE schemaname = 'graph_layers_cost' AND relname IN ('people', 'knows')
+        ORDER BY relname
+outputs:
+  rows: !cel "steps.read.result.rows"
+---
+# What was read between two readings, per table.
+kind: Run.Sequence
+metadata: { name: readBetween }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [before, after]
+    properties:
+      before: { type: array }
+      after: { type: array }
+steps: []
+outputs:
+  knows:
+    sequential: !cel "int(inputs.after[0].sequential) - int(inputs.before[0].sequential)"
+    fetched: !cel "int(inputs.after[0].fetched) - int(inputs.before[0].fetched)"
+  people:
+    sequential: !cel "int(inputs.after[1].sequential) - int(inputs.before[1].sequential)"
+    fetched: !cel "int(inputs.after[1].fetched) - int(inputs.before[1].fetched)"
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke: !ref write
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_layers_cost CASCADE
+---
+# The walked neighbourhood, written straight into the layered tables: a000
+# knows a001…a005 in `base`; each of those knows six more — the links of a001
+# and a002 stated by `base`, a003's by `middle`, a004's and a005's by `top`,
+# whose end nodes only `top` states. `middle` restates the link a001 → a111,
+# `top` hides the link a002 → a121 and the node a113.
+kind: Run.Sequence
+metadata: { name: populate }
+steps:
+  - name: noAutovacuumOnPeople
+    invoke: !ref write
+    inputs:
+      sql: ALTER TABLE graph_layers_cost.people SET (autovacuum_enabled = false)
+  - name: noAutovacuumOnKnows
+    invoke: !ref write
+    inputs:
+      sql: ALTER TABLE graph_layers_cost.knows SET (autovacuum_enabled = false)
+  - name: walkedPeople
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_layers_cost.people (id, name, graph_layer, graph_effect)
+        SELECT 'a00' || f, 'Near', 'base', 'stated' FROM generate_series(0, 5) f
+        UNION ALL
+        SELECT 'a1' || f || g, 'End', CASE WHEN f >= 4 THEN 'top' ELSE 'base' END, 'stated'
+        FROM generate_series(1, 5) f, generate_series(1, 6) g
+        UNION ALL
+        SELECT 'a113', 'End', 'top', 'removed'
+  - name: walkedLinks
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_layers_cost.knows (source, target, graph_layer, graph_effect)
+        SELECT 'a000', 'a00' || f, 'base', 'stated' FROM generate_series(1, 5) f
+        UNION ALL
+        SELECT 'a00' || f, 'a1' || f || g,
+               CASE WHEN f <= 2 THEN 'base' WHEN f = 3 THEN 'middle' ELSE 'top' END, 'stated'
+        FROM generate_series(1, 5) f, generate_series(1, 6) g
+        UNION ALL
+        SELECT 'a001', 'a111', 'middle', 'stated'
+        UNION ALL
+        SELECT 'a002', 'a121', 'top', 'removed'
+  - name: grow
+    invoke: !ref addUnrelated
+    inputs: { peopleFrom: 1, peopleTo: 20000, linksFrom: 1, linksTo: 0 }
+---
+# People p000001… in all three layers, and relationships among them that the
+# measured walks never reach, a tenth of them stated by each upper layer.
+kind: Run.Sequence
+metadata: { name: addUnrelated }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [peopleFrom, peopleTo, linksFrom, linksTo]
+    properties:
+      peopleFrom: { type: integer }
+      peopleTo: { type: integer }
+      linksFrom: { type: integer }
+      linksTo: { type: integer }
+steps:
+  - name: basePeople
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_layers_cost.people (id, name, graph_layer, graph_effect)
+        SELECT 'p' || lpad(i::text, 6, '0'), 'Person ' || i, 'base', 'stated'
+        FROM generate_series($1::int, $2::int) i
+      bindings: [!cel "inputs.peopleFrom", !cel "inputs.peopleTo"]
+  - name: middlePeople
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_layers_cost.people (id, name, graph_layer, graph_effect)
+        SELECT 'p' || lpad(i::text, 6, '0'), 'Restated ' || i, 'middle', 'stated'
+        FROM generate_series($1::int, $2::int) i WHERE i % 20 = 0
+      bindings: [!cel "inputs.peopleFrom", !cel "inputs.peopleTo"]
+  - name: topPeople
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_layers_cost.people (id, name, graph_layer, graph_effect)
+        SELECT 'p' || lpad(i::text, 6, '0'), 'Top ' || i, 'top',
+               CASE WHEN i % 50 = 0 THEN 'removed' ELSE 'stated' END
+        FROM generate_series($1::int, $2::int) i WHERE i % 25 = 0
+      bindings: [!cel "inputs.peopleFrom", !cel "inputs.peopleTo"]
+  - name: links
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_layers_cost.knows (source, target, graph_layer, graph_effect)
+        SELECT 'p' || lpad((1001 + (j - 1) % 8000)::text, 6, '0'),
+               'p' || lpad((1002 + (j - 1) % 8000 + (j - 1) / 8000)::text, 6, '0'),
+               CASE j % 10 WHEN 0 THEN 'top' WHEN 1 THEN 'middle' ELSE 'base' END, 'stated'
+        FROM generate_series($1::int, $2::int) j
+      bindings: [!cel "inputs.linksFrom", !cel "inputs.linksTo"]
+  - name: analyzePeople
+    invoke: !ref write
+    inputs:
+      sql: ANALYZE graph_layers_cost.people
+  - name: analyzeKnows
+    invoke: !ref write
+    inputs:
+      sql: ANALYZE graph_layers_cost.knows
+---
+kind: Sql.Transaction
+metadata: { name: findPage }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [cursor]
+      properties:
+        cursor: { type: string }
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: page
+      invoke: !ref findPeople
+      inputs: { limit: 100, cursor: !cel "inputs.cursor" }
+    - name: after
+      invoke: !ref readCounters
+    - name: read
+      invoke: !ref readBetween
+      inputs:
+        before: !cel "steps.before.result.rows"
+        after: !cel "steps.after.result.rows"
+  outputs:
+    page: !cel "steps.page.result"
+    read: !cel "steps.read.result"
+inputs:
+  cursor: !cel "inputs.cursor"
+---
+kind: Sql.Transaction
+metadata: { name: knowsPage }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [cursor]
+      properties:
+        cursor: { type: string }
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: page
+      invoke: !ref findKnows
+      inputs: { limit: 100, cursor: !cel "inputs.cursor" }
+    - name: after
+      invoke: !ref readCounters
+    - name: read
+      invoke: !ref readBetween
+      inputs:
+        before: !cel "steps.before.result.rows"
+        after: !cel "steps.after.result.rows"
+  outputs:
+    page: !cel "steps.page.result"
+    read: !cel "steps.read.result"
+inputs:
+  cursor: !cel "inputs.cursor"
+---
+# Five pages of 1,000 reach 5,000 pairs into the relationship listing.
+kind: Run.Sequence
+metadata: { name: knowsFiveThousandIn }
+steps:
+  - name: page
+    invoke: !ref findKnows
+    inputs: { limit: 1000 }
+  - name: pages
+    value: !cel "1"
+  - name: advance
+    while: !cel "steps.pages.result < 5"
+    do:
+      - name: page
+        invoke: !ref findKnows
+        inputs: { limit: 1000, cursor: !cel "steps.page.result.next" }
+      - name: pages
+        value: !cel "steps.pages.result + 1"
+  - name: measured
+    invoke: !ref knowsPage
+    inputs: { cursor: !cel "steps.page.result.next" }
+outputs:
+  returned: !cel "size(steps.measured.result.page.relationships)"
+  sequential: !cel "steps.measured.result.read.knows.sequential + steps.measured.result.read.people.sequential"
+  fetched: !cel "steps.measured.result.read.knows.fetched + steps.measured.result.read.people.fetched"
+---
+kind: Sql.Transaction
+metadata: { name: twoHopsFirstPage }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: page
+      invoke: !ref friendsOfFriends
+      inputs: { key: a000, limit: 10 }
+    - name: after
+      invoke: !ref readCounters
+    - name: read
+      invoke: !ref readBetween
+      inputs:
+        before: !cel "steps.before.result.rows"
+        after: !cel "steps.after.result.rows"
+  outputs:
+    page: !cel "steps.page.result"
+    read: !cel "steps.read.result"
+---
+kind: Sql.Transaction
+metadata: { name: twoHopsNextPage }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [cursor]
+      properties:
+        cursor: { type: string }
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: page
+      invoke: !ref friendsOfFriends
+      inputs: { key: a000, limit: 10, cursor: !cel "inputs.cursor" }
+    - name: after
+      invoke: !ref readCounters
+    - name: read
+      invoke: !ref readBetween
+      inputs:
+        before: !cel "steps.before.result.rows"
+        after: !cel "steps.after.result.rows"
+  outputs:
+    page: !cel "steps.page.result"
+    read: !cel "steps.read.result"
+inputs:
+  cursor: !cel "inputs.cursor"
+---
+kind: Sql.Transaction
+metadata: { name: withinTwoFirstPage }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: page
+      invoke: !ref withinTwo
+      inputs: { key: a000, limit: 10 }
+    - name: after
+      invoke: !ref readCounters
+    - name: read
+      invoke: !ref readBetween
+      inputs:
+        before: !cel "steps.before.result.rows"
+        after: !cel "steps.after.result.rows"
+  outputs:
+    page: !cel "steps.page.result"
+    read: !cel "steps.read.result"
+---
+kind: Sql.Transaction
+metadata: { name: withinTwoNextPage }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [cursor]
+      properties:
+        cursor: { type: string }
+  steps:
+    - name: before
+      invoke: !ref readCounters
+    - name: page
+      invoke: !ref withinTwo
+      inputs: { key: a000, limit: 10, cursor: !cel "inputs.cursor" }
+    - name: after
+      invoke: !ref readCounters
+    - name: read
+      invoke: !ref readBetween
+      inputs:
+        before: !cel "steps.before.result.rows"
+        after: !cel "steps.after.result.rows"
+  outputs:
+    page: !cel "steps.page.result"
+    read: !cel "steps.read.result"
+inputs:
+  cursor: !cel "inputs.cursor"
+---
+# What a drain has gathered so far: the keys, the rows read sequentially over
+# every page and both tables, and whether every page after the first fetched no
+# more than the first did, on each table.
+kind: Run.Value
+metadata: { name: tallied }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [keys, sequential, laterWithinFirst]
+    properties:
+      keys: { type: array }
+      sequential: { type: integer }
+      laterWithinFirst: { type: boolean }
+value:
+  keys: !cel "inputs.keys"
+  sequential: !cel "inputs.sequential"
+  laterWithinFirst: !cel "inputs.laterWithinFirst"
+---
+kind: Run.Sequence
+metadata: { name: drainTwoHops }
+steps:
+  - name: first
+    invoke: !ref twoHopsFirstPage
+  - name: page
+    value: !cel "steps.first.result"
+  - name: tally
+    invoke: !ref tallied
+    inputs:
+      keys: !cel "steps.first.result.page.nodes.map(n, n.key)"
+      sequential: !cel "steps.first.result.read.knows.sequential + steps.first.result.read.people.sequential"
+      laterWithinFirst: true
+  - name: follow
+    while: !cel "has(steps.page.result.page.next)"
+    do:
+      - name: page
+        invoke: !ref twoHopsNextPage
+        inputs: { cursor: !cel "steps.page.result.page.next" }
+      - name: tally
+        invoke: !ref tallied
+        inputs:
+          keys: !cel "steps.tally.result.keys + steps.page.result.page.nodes.map(n, n.key)"
+          sequential: !cel >-
+            steps.tally.result.sequential
+            + steps.page.result.read.knows.sequential + steps.page.result.read.people.sequential
+          laterWithinFirst: !cel >-
+            steps.tally.result.laterWithinFirst
+            && steps.page.result.read.knows.fetched <= steps.first.result.read.knows.fetched
+            && steps.page.result.read.people.fetched <= steps.first.result.read.people.fetched
+outputs:
+  keys: !cel "steps.tally.result.keys"
+  sequential: !cel "steps.tally.result.sequential"
+  laterWithinFirst: !cel "steps.tally.result.laterWithinFirst"
+  first:
+    knows: !cel "steps.first.result.read.knows.fetched"
+    people: !cel "steps.first.result.read.people.fetched"
+---
+kind: Run.Sequence
+metadata: { name: drainWithinTwo }
+steps:
+  - name: first
+    invoke: !ref withinTwoFirstPage
+  - name: page
+    value: !cel "steps.first.result"
+  - name: tally
+    invoke: !ref tallied
+    inputs:
+      keys: !cel "steps.first.result.page.nodes.map(n, n.key)"
+      sequential: !cel "steps.first.result.read.knows.sequential + steps.first.result.read.people.sequential"
+      laterWithinFirst: true
+  - name: follow
+    while: !cel "has(steps.page.result.page.next)"
+    do:
+      - name: page
+        invoke: !ref withinTwoNextPage
+        inputs: { cursor: !cel "steps.page.result.page.next" }
+      - name: tally
+        invoke: !ref tallied
+        inputs:
+          keys: !cel "steps.tally.result.keys + steps.page.result.page.nodes.map(n, n.key)"
+          sequential: !cel >-
+            steps.tally.result.sequential
+            + steps.page.result.read.knows.sequential + steps.page.result.read.people.sequential
+          laterWithinFirst: !cel >-
+            steps.tally.result.laterWithinFirst
+            && steps.page.result.read.knows.fetched <= steps.first.result.read.knows.fetched
+            && steps.page.result.read.people.fetched <= steps.first.result.read.people.fetched
+outputs:
+  keys: !cel "steps.tally.result.keys"
+  sequential: !cel "steps.tally.result.sequential"
+  laterWithinFirst: !cel "steps.tally.result.laterWithinFirst"
+  first:
+    knows: !cel "steps.first.result.read.knows.fetched"
+    people: !cel "steps.first.result.read.people.fetched"
+---
+kind: Run.Sequence
+metadata: { name: cost }
+steps:
+  # Ten pages of 1,000 reach 10,000 keys into the listing.
+  - name: page
+    invoke: !ref findPeople
+    inputs: { limit: 1000 }
+  - name: pages
+    value: !cel "1"
+  - name: advance
+    while: !cel "steps.pages.result < 10"
+    do:
+      - name: page
+        invoke: !ref findPeople
+        inputs: { limit: 1000, cursor: !cel "steps.page.result.next" }
+      - name: pages
+        value: !cel "steps.pages.result + 1"
+  - name: findSmallest
+    invoke: !ref findPage
+    inputs: { cursor: !cel "steps.page.result.next" }
+  - name: growToSmall
+    invoke: !ref addUnrelated
+    inputs: { peopleFrom: 20001, peopleTo: 60000, linksFrom: 1, linksTo: 20000 }
+  - name: findSmall
+    invoke: !ref findPage
+    inputs: { cursor: !cel "steps.page.result.next" }
+  - name: knowsSmall
+    invoke: !ref knowsFiveThousandIn
+  - name: twoHopsSmall
+    invoke: !ref drainTwoHops
+  - name: withinTwoSmall
+    invoke: !ref drainWithinTwo
+  - name: grow
+    invoke: !ref addUnrelated
+    inputs: { peopleFrom: 60001, peopleTo: 240000, linksFrom: 20001, linksTo: 200000 }
+  - name: sizes
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: >-
+        SELECT (SELECT count(*)::int FROM graph_layers_cost.people) AS people,
+               (SELECT count(*)::int FROM graph_layers_cost.knows) AS knows
+  - name: assertGrown
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.sizes.result.rows[0]"
+      expected: { people: 261637, knows: 200037 }
+  - name: findLarge
+    invoke: !ref findPage
+    inputs: { cursor: !cel "steps.page.result.next" }
+  - name: knowsLarge
+    invoke: !ref knowsFiveThousandIn
+  - name: twoHopsLarge
+    invoke: !ref drainTwoHops
+  - name: withinTwoLarge
+    invoke: !ref drainWithinTwo
+  # One page of 100 over three layers: nothing read sequentially, and at most
+  # depth × (limit + 1) rows fetched through the layer-and-key index.
+  - name: assertFindSmall
+    invoke: !ref check
+    inputs:
+      actual:
+        returned: !cel "size(steps.findSmall.result.page.nodes)"
+        sequential: !cel "steps.findSmall.result.read.people.sequential"
+        withinBudget: !cel "steps.findSmall.result.read.people.fetched <= 3 * (100 + 1)"
+      expected: { returned: 100, sequential: 0, withinBudget: true }
+  - name: assertFindSameAtEverySize
+    invoke: !ref check
+    inputs:
+      actual:
+        first: !cel "[steps.findSmallest.result.page.nodes[0].key, steps.findLarge.result.page.nodes[0].key]"
+        returned: !cel "[size(steps.findSmallest.result.page.nodes), size(steps.findLarge.result.page.nodes)]"
+        read: !cel "[steps.findSmallest.result.read.people, steps.findLarge.result.read.people]"
+      expected:
+        first: !cel "[steps.findSmall.result.page.nodes[0].key, steps.findSmall.result.page.nodes[0].key]"
+        returned: [100, 100]
+        read: !cel "[steps.findSmall.result.read.people, steps.findSmall.result.read.people]"
+  # One page of 100 relationships over three layers, at both sizes: nothing read
+  # sequentially from either table, and at most depth × (limit + 1) ×
+  # (1 + 2 × depth) rows fetched from the two together — each relationship row
+  # and, for each of its two endpoints, one node row per layer.
+  - name: assertKnowsPage
+    invoke: !ref check
+    inputs:
+      actual:
+        small:
+          returned: !cel "steps.knowsSmall.result.returned"
+          sequential: !cel "steps.knowsSmall.result.sequential"
+          withinBudget: !cel "steps.knowsSmall.result.fetched <= 3 * (100 + 1) * (1 + 2 * 3)"
+        large:
+          returned: !cel "steps.knowsLarge.result.returned"
+          sequential: !cel "steps.knowsLarge.result.sequential"
+          withinBudget: !cel "steps.knowsLarge.result.fetched <= 3 * (100 + 1) * (1 + 2 * 3)"
+      expected:
+        small: { returned: 100, sequential: 0, withinBudget: true }
+        large: { returned: 100, sequential: 0, withinBudget: true }
+  # Every page at both sizes read nothing sequentially, no later page fetched
+  # more than the first, and the keys are the reach, in order, each once.
+  - name: assertTwoHopsSmall
+    invoke: !ref check
+    inputs:
+      actual:
+        keys: !cel "steps.twoHopsSmall.result.keys"
+        sequential: !cel "steps.twoHopsSmall.result.sequential"
+        laterWithinFirst: !cel "steps.twoHopsSmall.result.laterWithinFirst"
+      expected:
+        keys: [a111, a112, a114, a115, a116, a122, a123, a124, a125, a126, a131, a132, a133, a134, a135, a136, a141, a142, a143, a144, a145, a146, a151, a152, a153, a154, a155, a156]
+        sequential: 0
+        laterWithinFirst: true
+  - name: assertTwoHopsLarge
+    invoke: !ref check
+    inputs:
+      actual:
+        keys: !cel "steps.twoHopsLarge.result.keys"
+        sequential: !cel "steps.twoHopsLarge.result.sequential"
+        laterWithinFirst: !cel "steps.twoHopsLarge.result.laterWithinFirst"
+      expected:
+        keys: [a111, a112, a114, a115, a116, a122, a123, a124, a125, a126, a131, a132, a133, a134, a135, a136, a141, a142, a143, a144, a145, a146, a151, a152, a153, a154, a155, a156]
+        sequential: 0
+        laterWithinFirst: true
+  - name: assertWithinTwoSmall
+    invoke: !ref check
+    inputs:
+      actual:
+        keys: !cel "steps.withinTwoSmall.result.keys"
+        sequential: !cel "steps.withinTwoSmall.result.sequential"
+        laterWithinFirst: !cel "steps.withinTwoSmall.result.laterWithinFirst"
+      expected:
+        keys: [a000, a001, a002, a003, a004, a005, a111, a112, a114, a115, a116, a122, a123, a124, a125, a126, a131, a132, a133, a134, a135, a136, a141, a142, a143, a144, a145, a146, a151, a152, a153, a154, a155, a156]
+        sequential: 0
+        laterWithinFirst: true
+  - name: assertWithinTwoLarge
+    invoke: !ref check
+    inputs:
+      actual:
+        keys: !cel "steps.withinTwoLarge.result.keys"
+        sequential: !cel "steps.withinTwoLarge.result.sequential"
+        laterWithinFirst: !cel "steps.withinTwoLarge.result.laterWithinFirst"
+      expected:
+        keys: [a000, a001, a002, a003, a004, a005, a111, a112, a114, a115, a116, a122, a123, a124, a125, a126, a131, a132, a133, a134, a135, a136, a141, a142, a143, a144, a145, a146, a151, a152, a153, a154, a155, a156]
+        sequential: 0
+        laterWithinFirst: true
+  # The first page fetches the identical rows from each table at both sizes.
+  - name: assertTwoHopsSameAtBothSizes
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.twoHopsLarge.result.first"
+      expected: !cel "steps.twoHopsSmall.result.first"
+  - name: assertWithinTwoSameAtBothSizes
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.withinTwoLarge.result.first"
+      expected: !cel "steps.withinTwoSmall.result.first"

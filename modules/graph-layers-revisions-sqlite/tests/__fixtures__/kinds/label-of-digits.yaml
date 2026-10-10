@@ -1,0 +1,60 @@
+# A label made of digits only would read as a revision number wherever a pin
+# takes either: the input schema refuses it.
+kind: Telo.Application
+metadata:
+  name: LabelOfDigits
+imports:
+  SQLite: ../../../../sqlite
+  Layers: ../../..
+  GraphLayers: ../../../../graph-layers
+  Run: ../../../../run
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref graphLayers, !ref graphChangesets, !ref graphChangesetBases]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Store
+metadata: { name: shared }
+connection: !ref db
+schema: !ref appSchema
+layer: shared
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Run.Sequence
+metadata: { name: label }
+steps:
+  - name: digits
+    invoke: { kind: GraphLayers.LabelRevision, store: !ref shared }
+    inputs: { revision: 1, label: "2024" }

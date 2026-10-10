@@ -1,0 +1,16 @@
+# An internal column renamed from itself.
+kind: Telo.Library
+metadata:
+  name: InternalRenameFromSelf
+imports:
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [documents]
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  slug: { type: text, primaryKey: true }
+internalColumns:
+  layer: { type: text, renamedFrom: layer }

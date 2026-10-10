@@ -1,0 +1,58 @@
+# Each conflict kind reached from the boot targets, with no session open on its
+# store.
+kind: Telo.Application
+metadata:
+  name: OutsideSession
+include:
+  - ../drafted-model.yaml
+imports:
+  GraphLayers: ../../..
+  Layers: ../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../sqlite
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref listNodes
+  - !ref listLinks
+  - !ref decideNode
+  - !ref decideLink
+---
+kind: Run.Sequence
+metadata: { name: listNodes }
+steps:
+  - name: call
+    invoke:
+      kind: GraphLayers.NodeConflicts
+      store: !ref team
+      node: !ref person
+    inputs: {}
+---
+kind: Run.Sequence
+metadata: { name: listLinks }
+steps:
+  - name: call
+    invoke:
+      kind: GraphLayers.RelationshipConflicts
+      store: !ref team
+      relationship: !ref knows
+    inputs: {}
+---
+kind: Run.Sequence
+metadata: { name: decideNode }
+steps:
+  - name: call
+    invoke:
+      kind: GraphLayers.ResolveNodeConflict
+      store: !ref team
+      node: !ref person
+    inputs: { key: a, take: mine }
+---
+kind: Run.Sequence
+metadata: { name: decideLink }
+steps:
+  - name: call
+    invoke:
+      kind: GraphLayers.ResolveRelationshipConflict
+      store: !ref team
+      relationship: !ref knows
+    inputs: { source: a, target: b, take: theirs }

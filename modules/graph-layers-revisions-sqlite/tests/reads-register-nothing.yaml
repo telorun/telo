@@ -1,0 +1,137 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsSqliteReadsRegisterNothing
+  version: 1.0.0
+  description: |
+    A read never writes. On a database no store has written to, listing and
+    reading nodes, listing drafts, listing revisions and listing bases all answer
+    empty and leave the layers table empty: a layer with no row yet holds
+    nothing, at revision 0. The first write
+    is what registers a layer — its own, in the same atomic operation — so a
+    store used only to read works under a role that cannot write.
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  GraphLayers: ../../graph-layers
+  Layers: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref readsRegisterNothing
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref graphLayers, !ref graphChangesets, !ref graphChangesetBases]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Store
+metadata: { name: top }
+connection: !ref db
+schema: !ref appSchema
+layer: top
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Sql.Query
+metadata: { name: layers }
+connection: !ref db
+---
+kind: Graph.FindNodes
+metadata: { name: findPeople }
+store: !ref top
+node: !ref person
+---
+kind: Run.Sequence
+metadata: { name: readsRegisterNothing }
+steps:
+  - name: found
+    invoke: !ref findPeople
+    inputs: {}
+  - name: got
+    try:
+      - name: getAbsent
+        invoke: { kind: Graph.GetNode, store: !ref top, node: !ref person }
+        inputs: { key: a }
+      - name: getUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a node was read from an empty graph" }
+    catch:
+      - name: gotCode
+        value: !cel "error.code"
+  - name: drafts
+    invoke: { kind: GraphLayers.ListDrafts, store: !ref top }
+    inputs: {}
+  - name: revisions
+    invoke: { kind: GraphLayers.ListRevisions, store: !ref top }
+    inputs: {}
+  - name: bases
+    invoke: { kind: GraphLayers.ListBases, store: !ref top }
+    inputs: {}
+  - name: afterReads
+    invoke: !ref layers
+    inputs:
+      sql: "SELECT COUNT(*) AS n FROM graph_layers"
+  # The first write registers the layer it writes, and no other.
+  - name: write
+    invoke: { kind: Graph.CreateNode, store: !ref top, node: !ref person }
+    inputs: { key: a, properties: { name: Alice } }
+  - name: afterWrite
+    invoke: !ref layers
+    inputs:
+      sql: "SELECT name FROM graph_layers ORDER BY name"
+  - name: foundAfterWrite
+    invoke: !ref findPeople
+    inputs: {}
+  - name: assertReadsWroteNothing
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        nodes: !cel "steps.found.result.nodes"
+        get: !cel "steps.gotCode.result"
+        drafts: !cel "steps.drafts.result.drafts"
+        revisions: !cel "steps.revisions.result.revisions"
+        bases: !cel "steps.bases.result.bases"
+        layersAfterReads: !cel "steps.afterReads.result.rows[0].n"
+        layersAfterAWrite: !cel "steps.afterWrite.result.rows.map(r, r.name)"
+        nodesAfterAWrite: !cel "steps.foundAfterWrite.result.nodes.map(n, [n.key, n.origin])"
+      expected:
+        nodes: []
+        get: GRAPH_NODE_NOT_FOUND
+        drafts: []
+        revisions: []
+        bases: []
+        layersAfterReads: 0
+        layersAfterAWrite: [top]
+        nodesAfterAWrite: [[a, top]]

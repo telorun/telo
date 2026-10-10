@@ -1,6 +1,6 @@
 # Graph
 
-A knowledge graph for Telo: typed entities (nodes) and typed, directed links between them (relationships), written, read, filtered and traversed through operations whose inputs and outputs are typed from the declared model. `graph` is backend-neutral — it owns the abstracts, the twelve operations and the store contract. A backend supplies the storage: `graph-sql` keeps the graph in ordinary SQL tables on SQLite or PostgreSQL.
+A knowledge graph for Telo: typed entities (nodes) and typed, directed links between them (relationships), written, read, filtered and traversed through operations whose inputs and outputs are typed from the declared model. `graph` is backend-neutral — it owns the abstracts, the twelve operations and the store contract. A backend supplies the storage: `graph-sql` keeps the graph in ordinary SQL tables on SQLite or PostgreSQL, and [`graph-layers`](../graph-layers/README.md) keeps several graphs as layers built on one another.
 
 ## Why use this
 
@@ -21,13 +21,13 @@ A knowledge graph for Telo: typed entities (nodes) and typed, directed links bet
 | `Graph.UpdateNode` | Invocable | Update a node's properties; `GRAPH_NODE_NOT_FOUND`. |
 | `Graph.DeleteNode` | Invocable | Delete a node and every relationship touching it; `GRAPH_NODE_NOT_FOUND`. |
 | `Graph.GetNode` | Invocable | Read a node by key; `GRAPH_NODE_NOT_FOUND`. |
-| `Graph.FindNodes` | Invocable | List nodes matching a filter, by key, paged. |
+| `Graph.FindNodes` | Invocable | List nodes matching a filter, by key, a page at a time by cursor; `GRAPH_CURSOR_INVALID`. |
 | `Graph.CreateRelationship` | Invocable | Link two nodes; `GRAPH_RELATIONSHIP_EXISTS`, `GRAPH_NODE_NOT_FOUND` (with `data.endpoint`). |
 | `Graph.MergeRelationship` | Invocable | Create or update a link; `GRAPH_NODE_NOT_FOUND`. |
 | `Graph.UpdateRelationship` | Invocable | Update a link's properties; `GRAPH_RELATIONSHIP_NOT_FOUND`. |
 | `Graph.DeleteRelationship` | Invocable | Delete a link; `GRAPH_RELATIONSHIP_NOT_FOUND`. |
-| `Graph.FindRelationships` | Invocable | List links, optionally from a source / to a target, filtered, paged. |
-| `Graph.Traverse` | Invocable | The distinct nodes reached from a start node over a chain of hops; `GRAPH_NODE_NOT_FOUND`. |
+| `Graph.FindRelationships` | Invocable | List links, optionally from a source / to a target, filtered, a page at a time by cursor; `GRAPH_CURSOR_INVALID`. |
+| `Graph.Traverse` | Invocable | The distinct nodes reached from a start node over a chain of hops, a page at a time by cursor; `GRAPH_NODE_NOT_FOUND`, `GRAPH_CURSOR_INVALID`. |
 
 ## Example
 
@@ -58,9 +58,21 @@ steps:
   - name: reach
     invoke: !ref friendsOfFriends
     inputs: { key: alice, where: { gte: { age: 18 } }, limit: 20 }
+  - name: more
+    when: !cel "has(steps.reach.result.next)"
+    invoke: !ref friendsOfFriends
+    inputs:
+      key: alice
+      where: { gte: { age: 18 } }
+      limit: 20
+      cursor: !cel "steps.reach.result.next"
 ```
 
-`steps.reach.result.nodes` is `[{ key, properties }]`, typed from `person`.
+`steps.reach.result.nodes` is `[{ key, properties }]`, typed from `person` (a layered store adds `origin`, the layer each node came from) — one page of at most `limit` (100 when omitted, 1000 at most). `next` is present only when more exist, and is passed back as `cursor`, with the same inputs, to read the page after.
+
+## Runtime
+
+This module requires telo **0.108.0 or newer** (`requires: telo: ">=0.108.0"`): a listing's cursor carries keys in an encoding the runtime first provides in that release. Every backend imports this module, so that is the floor of any graph.
 
 ## Docs
 

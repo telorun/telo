@@ -81,6 +81,8 @@ export type {
   TableReferenceResolver,
 } from "./schema/normalize-table.js";
 export { runSchemaPass } from "./schema/schema-run.js";
-export { assertListedTable, isSqlSchema } from "./schema/sql-schema.js";
-export type { SqlSchema } from "./schema/sql-schema.js";
+export { assertListedTable, isSqlSchema, rendersCurrentInstant } from "./schema/sql-schema.js";
+export type { SqlInstantSchema, SqlSchema } from "./schema/sql-schema.js";
+export { readInt64Column, readTimestampColumn } from "./column-readers.js";
+export { SqlFragments, sqlComparison, sqlWhere } from "./sql-fragments.js";
 export type { PendingReclamation, SchemaRunInput, SchemaRunStatus } from "./schema/schema-run.js";

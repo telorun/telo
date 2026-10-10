@@ -1,0 +1,25 @@
+# A layered node table whose column is renamed from one it still declares.
+kind: Telo.Library
+metadata:
+  name: ColumnRenameSourceDeclared
+imports:
+  Layers: ../../../..
+  SQLite: ../../../../../sqlite
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text }
+  title: { type: text, renamedFrom: name }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people]

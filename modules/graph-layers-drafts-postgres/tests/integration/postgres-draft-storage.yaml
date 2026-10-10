@@ -1,0 +1,178 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersDraftsPostgresDraftStorage
+  version: 1.0.0
+  description: |
+    What the engine's types carry on PostgreSQL. A revision number is a 64-bit
+    integer end to end: with the layer's counter moved past 2^53, the revision a
+    draft opens on and the one it publishes as come back exact, where a double
+    would have rounded them. And rows written through the schema's
+    current-instant expression sort in the order they were written under a plain
+    ORDER BY, within one session and with no pause between them.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Graph: ../../../graph
+  GraphLayers: ../../../graph-layers
+  Layers: ../..
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text }
+indexes:
+  people_by_name: { columns: [name] }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.DraftsTable
+metadata: { name: graphDrafts }
+table: graph_drafts
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_drafts_storage
+ledger: graph_drafts_storage
+tables: [!ref people, !ref knowsTable, !ref graphLayers, !ref graphDrafts]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+nodes: [!ref person]
+relationships: [!ref knows]
+layers: !ref graphLayers
+drafts: !ref graphDrafts
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke: !ref write
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_drafts_storage CASCADE
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: register
+    invoke: { kind: Graph.CreateNode, store: !ref team, node: !ref person }
+    inputs: { key: seed, properties: { name: Seed } }
+  # 2^53: the next revision is the first a double cannot hold.
+  - name: jump
+    invoke: !ref write
+    inputs:
+      sql: UPDATE graph_drafts_storage.graph_layers SET head_revision = 9007199254740992 WHERE name = 'team'
+  - name: outside
+    invoke: { kind: Graph.CreateNode, store: !ref team, node: !ref person }
+    inputs: { key: beyond, properties: { name: Beyond } }
+  - name: open
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref team }
+    inputs: {}
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: third
+          invoke: { kind: Graph.CreateNode, store: !ref team, node: !ref person }
+          inputs: { key: t3, properties: { name: Written first } }
+        - name: first
+          invoke: { kind: Graph.CreateNode, store: !ref team, node: !ref person }
+          inputs: { key: t1, properties: { name: Written second } }
+        - name: second
+          invoke: { kind: Graph.CreateNode, store: !ref team, node: !ref person }
+          inputs: { key: t2, properties: { name: Written third } }
+  - name: listed
+    invoke: { kind: GraphLayers.ListDrafts, store: !ref team }
+    inputs: {}
+  - name: publish
+    invoke: { kind: GraphLayers.Publish, store: !ref team }
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: assertExactPastADouble
+    invoke: !ref check
+    inputs:
+      actual:
+        opened: !cel "steps.open.result.draft.parentRevision == 9007199254740993"
+        listed: !cel "steps.listed.result.drafts[0].parentRevision == 9007199254740993"
+        published: !cel "steps.publish.result.revision.number == 9007199254740994"
+        oneApart: !cel "steps.publish.result.revision.number - steps.open.result.draft.parentRevision"
+        instants: !cel "type(steps.open.result.draft.createdAt) == google.protobuf.Timestamp && steps.open.result.draft.createdAt <= steps.publish.result.revision.publishedAt"
+      expected: { opened: true, listed: true, published: true, oneApart: 1, instants: true }
+  - name: stored
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT p.id, p.graph_revision::text AS revision FROM graph_drafts_storage.people p
+        WHERE p.id IN ('t1', 't2', 't3') ORDER BY p.graph_written_at
+  - name: assertWrittenInOrderAtThatRevision
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.stored.result.rows"
+      expected:
+        - { id: t3, revision: "9007199254740994" }
+        - { id: t1, revision: "9007199254740994" }
+        - { id: t2, revision: "9007199254740994" }

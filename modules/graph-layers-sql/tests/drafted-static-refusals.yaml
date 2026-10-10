@@ -1,0 +1,159 @@
+# The drafted store abstract's rules, each pinned both ways: `telo check` refuses
+# the declaring library, and a consumer whose entry-scoped check is silent fails
+# at creation with the same code. The abstract restates the store rules of the
+# current strategy over two more tables — the bookkeeping pair — and a base must
+# share those as well as the connection and schema. As there, a store's own
+# layer reached deeper than its direct bases is refused at creation only, and a
+# cycle among `bases:` is the analyzer's own refusal.
+kind: Telo.Application
+metadata:
+  name: GraphLayersSqlDraftedStaticRefusals
+  version: 1.0.0
+  description: The drafted store's structural rules, refused statically and at creation.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref bookkeepingNotInSchema
+  - !ref bookkeepingNotInSchemaAtRuntime
+  - !ref tableNotInSchema
+  - !ref tableNotInSchemaAtRuntime
+  - !ref schemaConnectionMismatch
+  - !ref schemaConnectionMismatchAtRuntime
+  - !ref tableShared
+  - !ref tableSharedAtRuntime
+  - !ref baseStoreMismatch
+  - !ref baseStoreMismatchAtRuntime
+  - !ref baseBookkeepingMismatch
+  - !ref baseBookkeepingMismatchAtRuntime
+  - !ref baseLayerDuplicate
+  - !ref baseLayerDuplicateAtRuntime
+  - !ref baseOwnLayerBeneath
+  - !ref baseOwnLayerBeneathAtRuntime
+  - !ref baseCycle
+---
+kind: Assert.Manifest
+metadata: { name: bookkeepingNotInSchema }
+source: ./__fixtures__/drafted-rules/bookkeeping-not-in-schema/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a table its schema does not list in 'tables:'"
+---
+kind: Assert.Manifest
+metadata: { name: bookkeepingNotInSchemaAtRuntime }
+source: ./__fixtures__/drafted-rules/bookkeeping-not-in-schema-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+---
+kind: Assert.Manifest
+metadata: { name: tableNotInSchema }
+source: ./__fixtures__/drafted-rules/table-not-in-schema/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a table its schema does not list in 'tables:'"
+---
+kind: Assert.Manifest
+metadata: { name: tableNotInSchemaAtRuntime }
+source: ./__fixtures__/drafted-rules/table-not-in-schema-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+---
+kind: Assert.Manifest
+metadata: { name: schemaConnectionMismatch }
+source: ./__fixtures__/drafted-rules/schema-connection-mismatch/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a schema on a different connection"
+---
+kind: Assert.Manifest
+metadata: { name: schemaConnectionMismatchAtRuntime }
+source: ./__fixtures__/drafted-rules/schema-connection-mismatch-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH"
+---
+kind: Assert.Manifest
+metadata: { name: tableShared }
+source: ./__fixtures__/drafted-rules/table-shared/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names one table twice among its node and relationship types"
+---
+kind: Assert.Manifest
+metadata: { name: tableSharedAtRuntime }
+source: ./__fixtures__/drafted-rules/table-shared-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_SHARED"
+---
+kind: Assert.Manifest
+metadata: { name: baseStoreMismatch }
+source: ./__fixtures__/drafted-rules/base-store-mismatch/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "lists a base on another connection or another schema"
+---
+kind: Assert.Manifest
+metadata: { name: baseStoreMismatchAtRuntime }
+source: ./__fixtures__/drafted-rules/base-store-mismatch-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_BASE_STORE_MISMATCH"
+---
+kind: Assert.Manifest
+metadata: { name: baseBookkeepingMismatch }
+source: ./__fixtures__/drafted-rules/base-bookkeeping-mismatch/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "keeps its layers or drafts in another table"
+---
+kind: Assert.Manifest
+metadata: { name: baseBookkeepingMismatchAtRuntime }
+source: ./__fixtures__/drafted-rules/base-bookkeeping-mismatch-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_BASE_STORE_MISMATCH"
+---
+kind: Assert.Manifest
+metadata: { name: baseLayerDuplicate }
+source: ./__fixtures__/drafted-rules/base-layer-duplicate/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names the same layer twice among 'bases:'"
+---
+kind: Assert.Manifest
+metadata: { name: baseLayerDuplicateAtRuntime }
+source: ./__fixtures__/drafted-rules/base-layer-duplicate-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_BASE_LAYER_DUPLICATE"
+---
+# The known gap: clean at check, refused at creation.
+kind: Assert.Manifest
+metadata: { name: baseOwnLayerBeneath }
+source: ./__fixtures__/drafted-rules/base-own-layer-beneath/telo.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: baseOwnLayerBeneathAtRuntime }
+source: ./__fixtures__/drafted-rules/base-own-layer-beneath-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_BASE_LAYER_DUPLICATE"
+---
+kind: Assert.Manifest
+metadata: { name: baseCycle }
+source: ./__fixtures__/drafted-rules/base-cycle/telo.yaml
+expect:
+  errors:
+    - code: DEPENDENCY_CYCLE
+      message: "second"

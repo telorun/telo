@@ -1,0 +1,45 @@
+# The exporting library with one mistake of its own: its node type is keyed by a
+# column its table does not declare.
+kind: Telo.Library
+metadata:
+  name: ExportedNodeKeyUnknownColumn
+  version: 1.0.0
+  description: >-
+    Test fixture: people who know people, declared as revisioned tables and
+    graph types and exported as instances for an application to hold.
+imports:
+  Layers: ../../../..
+exports:
+  resources: [people, knowsTable, person, knows]
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+  age: { type: integer }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+  since: { type: integer }
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: idd
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target

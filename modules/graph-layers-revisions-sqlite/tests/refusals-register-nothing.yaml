@@ -1,0 +1,163 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsSqliteRefusalsRegisterNothing
+  version: 1.0.0
+  description: |
+    A layer's row is created only by a call that changes something. On a
+    database no store has written to, labelling a revision, pinning an unknown
+    layer, pinning the store's own layer and removing a pin that is not there
+    each answer their refusal and leave the layers table empty. A pin move that
+    changes the base list is what registers the layer, as its revision 1.
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  GraphLayers: ../../graph-layers
+  Layers: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref refusalsRegisterNothing
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.ChangesetsTable
+metadata: { name: graphChangesets }
+table: graph_changesets
+---
+kind: Layers.ChangesetBasesTable
+metadata: { name: graphChangesetBases }
+table: graph_changeset_bases
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref graphLayers, !ref graphChangesets, !ref graphChangesetBases]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Store
+metadata: { name: top }
+connection: !ref db
+schema: !ref appSchema
+layer: top
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Layers.Store
+metadata: { name: base }
+connection: !ref db
+schema: !ref appSchema
+layer: base
+nodes: [!ref person]
+layers: !ref graphLayers
+changesets: !ref graphChangesets
+changesetBases: !ref graphChangesetBases
+---
+kind: Sql.Query
+metadata: { name: layers }
+connection: !ref db
+---
+kind: Run.Sequence
+metadata: { name: refusalsRegisterNothing }
+steps:
+  - name: label
+    try:
+      - name: labelAttempt
+        invoke: { kind: GraphLayers.LabelRevision, store: !ref top }
+        inputs: { revision: 1, label: first }
+      - name: labelUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "label did not fail" }
+    catch:
+      - name: labelCode
+        value: !cel "error.code"
+  - name: pinUnknown
+    try:
+      - name: pinUnknownAttempt
+        invoke: { kind: GraphLayers.PinBase, store: !ref top }
+        inputs: { bases: [{ layer: nowhere }] }
+      - name: pinUnknownUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "pinUnknown did not fail" }
+    catch:
+      - name: pinUnknownCode
+        value: !cel "error.code"
+  - name: pinOwn
+    try:
+      - name: pinOwnAttempt
+        invoke: { kind: GraphLayers.PinBase, store: !ref top }
+        inputs: { bases: [{ layer: top }] }
+      - name: pinOwnUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "pinOwn did not fail" }
+    catch:
+      - name: pinOwnCode
+        value: !cel "error.code"
+  - name: unpin
+    try:
+      - name: unpinAttempt
+        invoke: { kind: GraphLayers.UnpinBase, store: !ref top }
+        inputs: { layer: base }
+      - name: unpinUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "unpin did not fail" }
+    catch:
+      - name: unpinCode
+        value: !cel "error.code"
+  - name: afterRefusals
+    invoke: !ref layers
+    inputs:
+      sql: "SELECT COUNT(*) AS n FROM graph_layers"
+  # A pin move that changes the base list registers the layer. `base` is
+  # registered first, by a write of its own: only a registered layer is pinned.
+  - name: writeBase
+    invoke: { kind: Graph.CreateNode, store: !ref base, node: !ref person }
+    inputs: { key: a, properties: { name: Alice } }
+  - name: pin
+    invoke: { kind: GraphLayers.PinBase, store: !ref top }
+    inputs: { bases: [{ layer: base }] }
+  - name: afterPin
+    invoke: !ref layers
+    inputs:
+      sql: "SELECT name FROM graph_layers ORDER BY name"
+  - name: revisions
+    invoke: { kind: GraphLayers.ListRevisions, store: !ref top }
+    inputs: {}
+  - name: assertOnlyAChangeRegisters
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        label: !cel "steps.labelCode.result"
+        pinUnknown: !cel "steps.pinUnknownCode.result"
+        pinOwn: !cel "steps.pinOwnCode.result"
+        unpin: !cel "steps.unpinCode.result"
+        layersAfterRefusals: !cel "steps.afterRefusals.result.rows[0].n"
+        layersAfterAPin: !cel "steps.afterPin.result.rows.map(r, r.name)"
+        pinned: !cel "steps.pin.result.bases.map(b, [b.layer, b.revision])"
+        revisionsAfterAPin: !cel "steps.revisions.result.revisions.map(r, r.number)"
+      expected:
+        label: GRAPH_REVISION_NOT_FOUND
+        pinUnknown: GRAPH_LAYER_NOT_FOUND
+        pinOwn: GRAPH_BASE_CYCLE
+        unpin: GRAPH_BASE_NOT_PINNED
+        layersAfterRefusals: 0
+        layersAfterAPin: [base, top]
+        pinned: [[base, 1]]
+        revisionsAfterAPin: [1]

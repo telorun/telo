@@ -1,0 +1,24 @@
+# A value outside the enum the column is typed by.
+kind: Telo.Application
+metadata:
+  name: EnumProperty
+include:
+  - ../layered-model.yaml
+imports:
+  SQLite: ../../../../sqlite
+  Graph: ../../../../graph
+  Layers: ../../..
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref probe
+---
+kind: Run.Sequence
+metadata: { name: probe }
+steps:
+  - name: call
+    invoke:
+      kind: Graph.CreateNode
+      store: !ref team
+      node: !ref person
+    inputs: { key: a, properties: { name: Alice, status: gone } }

@@ -1,0 +1,318 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersDraftsPostgresSessionCost
+  version: 1.0.0
+  description: |
+    What one page of a find costs inside a draft session on PostgreSQL, over a
+    three-layer stack (`top` on `middle` on `base`), read from
+    `pg_stat_xact_user_tables` in the transaction that ran it, after `ANALYZE`.
+    The measurement is the difference between a reading taken before the page
+    and one taken after it, both inside that transaction.
+
+    `base` publishes every person, `middle` republishes every 20th and `top`
+    every 25th. The open draft of `top` restates every 30th, hides every 60th and
+    retracts every 150th — so the page crosses draft rows over published ones,
+    draft rows over nothing of the layer's own, and retractions that let the
+    layers beneath show again. One page of 100, read inside the session from
+    10,000 keys into the listing, reads no row of the node table sequentially
+    and fetches at most 2 × (depth + 1) × (limit + 1) = 808 rows through the
+    layer-state-and-key index. In a session the top layer is two branches —
+    its draft rows, and its published rows minus the keys the draft holds — so
+    a stack of depth 3 reads four ranges; each reads no more than its own
+    first 101 visible winners, and a row found shadowed counts with the row
+    that shadows it. The same page fetches the identical number of rows with
+    60,000 people in `base` and with 240,000 (132 as measured), and some of
+    what it returns comes from the draft.
+
+    The two bookkeeping tables hold a handful of rows, which the planner is
+    free to read whole; the claim is about the table that grows.
+
+    Autovacuum is switched off on the node table so that the counts compared
+    across the run are not moved by a vacuum landing between them.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Layers: ../..
+  Graph: ../../../graph
+  GraphLayers: ../../../graph-layers
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref cost
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.DraftsTable
+metadata: { name: graphDrafts }
+table: graph_drafts
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_drafts_cost
+ledger: graph_drafts_cost
+tables: [!ref people, !ref graphLayers, !ref graphDrafts]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Store
+metadata: { name: base }
+connection: !ref db
+schema: !ref appSchema
+layer: base
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref graphDrafts
+---
+kind: Layers.Store
+metadata: { name: middle }
+connection: !ref db
+schema: !ref appSchema
+layer: middle
+bases: [!ref base]
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref graphDrafts
+---
+kind: Layers.Store
+metadata: { name: top }
+connection: !ref db
+schema: !ref appSchema
+layer: top
+bases: [!ref middle]
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref graphDrafts
+---
+kind: Graph.FindNodes
+metadata: { name: findPeople }
+store: !ref top
+node: !ref person
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke: !ref write
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_drafts_cost CASCADE
+---
+# What this transaction has read from the node table so far.
+kind: Run.Sequence
+metadata: { name: readCounters }
+steps:
+  - name: read
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: >-
+        SELECT seq_tup_read::int AS "sequential", COALESCE(idx_tup_fetch, 0)::int AS "fetched"
+        FROM pg_stat_xact_user_tables
+        WHERE schemaname = 'graph_drafts_cost' AND relname = 'people'
+outputs:
+  sequential: !cel "int(steps.read.result.rows[0].sequential)"
+  fetched: !cel "int(steps.read.result.rows[0].fetched)"
+---
+# People p000001… written straight into the drafted table: every one published
+# by `base`, every 20th by `middle`, every 25th by `top`; and in the open draft
+# of `top` every 30th restated, every 60th removed, every 150th retracted.
+kind: Run.Sequence
+metadata: { name: addPeople }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [from, to]
+    properties:
+      from: { type: integer }
+      to: { type: integer }
+steps:
+  - name: published
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_drafts_cost.people
+          (id, name, graph_layer, graph_state, graph_effect, graph_revision, graph_written_at)
+        SELECT 'p' || lpad(i::text, 6, '0'), l.name || ' ' || i, l.id, 'published', 'stated', 1,
+               clock_timestamp()
+        FROM generate_series($1::int, $2::int) i
+          JOIN graph_drafts_cost.graph_layers l
+            ON l.name = 'base' OR (l.name = 'middle' AND i % 20 = 0) OR (l.name = 'top' AND i % 25 = 0)
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: drafted
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_drafts_cost.people
+          (id, name, graph_layer, graph_state, graph_effect, graph_over, graph_written_at)
+        SELECT 'p' || lpad(i::text, 6, '0'), 'Draft ' || i, l.id, 'draft',
+               CASE WHEN i % 150 = 0 THEN 'retracted' WHEN i % 60 = 0 THEN 'removed' ELSE 'stated' END,
+               CASE WHEN i % 25 = 0 THEN 1 END, clock_timestamp()
+        FROM generate_series($1::int, $2::int) i
+          JOIN graph_drafts_cost.graph_layers l ON l.name = 'top'
+        WHERE i % 30 = 0
+      bindings: [!cel "inputs.from", !cel "inputs.to"]
+  - name: analyze
+    invoke: !ref write
+    inputs:
+      sql: ANALYZE graph_drafts_cost.people
+---
+# Inside one session: ten pages of 1,000 reach 10,000 keys into the listing,
+# then the page of 100 after them is read in a transaction with the counters
+# taken either side of it.
+kind: Run.Sequence
+metadata: { name: measure }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [draft]
+    properties:
+      draft: { type: string }
+steps:
+  - name: session
+    inputs: { draft: !cel "inputs.draft" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: page
+          invoke: !ref findPeople
+          inputs: { limit: 1000 }
+        - name: pages
+          value: !cel "1"
+        - name: advance
+          while: !cel "steps.pages.result < 10"
+          do:
+            - name: page
+              invoke: !ref findPeople
+              inputs: { limit: 1000, cursor: !cel "steps.page.result.next" }
+            - name: pages
+              value: !cel "steps.pages.result + 1"
+        - name: measured
+          inputs: { cursor: !cel "steps.page.result.next" }
+          invoke:
+            kind: Sql.Transaction
+            connection: !ref db
+            inputs: { cursor: !cel "inputs.cursor" }
+            steps:
+              kind: Run.Sequence
+              inputType:
+                kind: Telo.JsonSchema
+                schema:
+                  type: object
+                  required: [cursor]
+                  properties:
+                    cursor: { type: string }
+              steps:
+                - name: before
+                  invoke: !ref readCounters
+                - name: page
+                  invoke: !ref findPeople
+                  inputs: { limit: 100, cursor: !cel "inputs.cursor" }
+                - name: after
+                  invoke: !ref readCounters
+              outputs:
+                keys: !cel "steps.page.result.nodes.map(n, n.key)"
+                origins: !cel "steps.page.result.nodes.map(n, n.origin)"
+                sequential: !cel "steps.after.result.sequential - steps.before.result.sequential"
+                fetched: !cel "steps.after.result.fetched - steps.before.result.fetched"
+outputs:
+  returned: !cel "size(steps.session.result.measured.result.keys)"
+  first: !cel "string(steps.session.result.measured.result.keys[0])"
+  fromDraft: !cel "size(steps.session.result.measured.result.origins.filter(o, o == 'top'))"
+  sequential: !cel "int(steps.session.result.measured.result.sequential)"
+  fetched: !cel "int(steps.session.result.measured.result.fetched)"
+---
+kind: Run.Sequence
+metadata: { name: cost }
+steps:
+  # A layer is registered by its first write — for `base` a draft opened and
+  # discarded, which leaves nothing behind; the draft on `top` is opened
+  # through the store, and the rows are then written beside it.
+  - name: registerBase
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref base }
+    inputs: {}
+  - name: registerBaseDiscarded
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref base }
+    inputs: { draft: !cel "steps.registerBase.result.draft.id" }
+  - name: open
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref top }
+    inputs: {}
+  - name: noAutovacuum
+    invoke: !ref write
+    inputs:
+      sql: ALTER TABLE graph_drafts_cost.people SET (autovacuum_enabled = false)
+  - name: populate
+    invoke: !ref addPeople
+    inputs: { from: 1, to: 60000 }
+  - name: small
+    invoke: !ref measure
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: grow
+    invoke: !ref addPeople
+    inputs: { from: 60001, to: 240000 }
+  - name: large
+    invoke: !ref measure
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: report
+    value:
+      small: !cel "steps.small.result"
+      large: !cel "steps.large.result"
+  - name: assertNoSequentialRead
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.small.result.sequential, steps.large.result.sequential]"
+      expected: [0, 0]
+  - name: assertAFullPage
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.small.result.returned, steps.large.result.returned, steps.small.result.first == steps.large.result.first ? 1 : 0]"
+      expected: [100, 100, 1]
+  - name: assertWithinTheBound
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.small.result.fetched <= 808, steps.large.result.fetched <= 808, steps.small.result.fromDraft > 0]"
+      expected: [true, true, true]
+  - name: assertSameAtBothSizes
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.large.result.fetched - steps.small.result.fetched"
+      expected: 0

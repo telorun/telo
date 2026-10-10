@@ -1,0 +1,1022 @@
+kind: Telo.Library
+metadata:
+  name: GraphLayersCurrentPostgres
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Storage, Data]
+  description: >-
+    Keeps layered knowledge graphs in PostgreSQL with no versioning: every entity
+    type and link type is a table the application declares, shared by all layers,
+    and each layer holds only its current statements. A layer overrides or hides
+    what the layers beneath it state, writes take effect at once, and multi-hop
+    traversals across layers run as one query.
+requires:
+  # The node and relationship kinds write `x-telo-schema-projection-from` on the
+  # kind document, the relationship kind in its object form (`{ from, omit }`).
+  # 0.104.0 checks this file clean but reads neither kind as projecting, so a graph
+  # operation over a layered relationship type is refused at dispatch
+  # (SCHEMA_PROJECTION_FROM_UNRESOLVED / ERR_SCHEMA_PROJECTION_UNRESOLVED).
+  # Verified by execution (`run` of the layered suite) against 0.104.0; 0.105.0
+  # and 0.113.0 run it whole.
+  telo: ">=0.105.0"
+imports:
+  GraphLayersSql: ../graph-layers-sql
+  Postgres: ../postgres
+exports:
+  kinds:
+    - NodeTable
+    - RelationshipTable
+    - Node
+    - Relationship
+    - Store
+---
+# GraphLayersCurrentPostgres.NodeTable — a `Postgres.Table` whose rows are node statements,
+# one per layer and key. The author declares the node's own columns in the
+# engine's vocabulary; `base:` adds the layer bookkeeping as internal columns
+# and the index that makes a key unique within a layer, so none of it reaches a
+# contract. `columns` is forwarded bare: a column typed by a `!ref` to an enum
+# must cross as the reference it is.
+kind: Telo.Definition
+metadata:
+  name: NodeTable
+  description: >-
+    One PostgreSQL table holding a type of graph entity for every layer at once:
+    the application declares the entity's own columns and its key, and the table
+    adds the layer bookkeeping and the index that keeps a key unique within a
+    layer. Created and migrated by the schema that lists it.
+extends: Postgres.Table
+x-telo-schema-projection:
+  entries: /columns
+  key: type
+  nullable: nullable
+  array: array
+  reference:
+    from: values
+    keyword: enum
+    base: { type: string }
+schema:
+  type: object
+  additionalProperties: false
+  required: [table, key, columns]
+  examples:
+    - table: people
+      key: id
+      columns:
+        id: { type: text, nullable: false }
+        name: { type: text }
+  properties:
+    table:
+      title: Table
+      description: The physical table name.
+      type: string
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+    key:
+      title: Key
+      description: >-
+        The column identifying a node within a layer; the table makes it unique
+        together with the layer. Declare it `nullable: false`.
+      type: string
+      minLength: 1
+    columns:
+      title: Columns
+      description: >-
+        The node's own columns, keyed by name: the key and every property. The
+        layer bookkeeping columns are added by the table and never written here:
+        no name may begin `graph_`.
+      type: object
+      minProperties: 1
+      # `graph_` is the table's own: the bookkeeping columns `base:` adds.
+      propertyNames:
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+        not:
+          pattern: "^graph_"
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required:
+          - type
+        not:
+          required:
+            - default
+            - defaultExpression
+        allOf:
+          - if:
+              required:
+                - nullable
+              properties:
+                nullable:
+                  const: true
+              anyOf:
+                - required:
+                    - primaryKey
+                  properties:
+                    primaryKey:
+                      const: true
+                - required:
+                    - identity
+            then: false
+          - if:
+              anyOf:
+                - required:
+                    - primaryKey
+                  properties:
+                    primaryKey:
+                      const: true
+                - required:
+                    - identity
+            then:
+              properties:
+                nullable:
+                  default: false
+            else:
+              properties:
+                nullable:
+                  default: true
+        properties:
+          type:
+            title: Type
+            description: PostgreSQL type — a storage class, or a reference to an enum this schema
+              declares. Parameters are structured fields (`length`, `precision`, `scale`), never
+              spelled into this value, so nothing has to parse a type back apart.
+            oneOf:
+              - title: Storage class
+                type: string
+                enum:
+                  - text
+                  - varchar
+                  - char
+                  - citext
+                  - uuid
+                  - json
+                  - jsonb
+                  - boolean
+                  - smallint
+                  - integer
+                  - bigint
+                  - numeric
+                  - real
+                  - doublePrecision
+                  - date
+                  - time
+                  - timestamp
+                  - timestamptz
+                  - interval
+                  - bytea
+                  - inet
+                  - cidr
+                  - macaddr
+                  - tsvector
+                x-telo-schema-map:
+                  text:
+                    type: string
+                  varchar:
+                    type: string
+                  char:
+                    type: string
+                  citext:
+                    type: string
+                  uuid:
+                    type: string
+                  json: {}
+                  jsonb: {}
+                  boolean:
+                    type: boolean
+                  smallint:
+                    type: integer
+                  integer:
+                    type: integer
+                  bigint:
+                    type: integer
+                  numeric:
+                    type: number
+                  real:
+                    type: number
+                  doublePrecision:
+                    type: number
+                  date:
+                    type: string
+                  time:
+                    type: string
+                  timestamp:
+                    type: string
+                  timestamptz:
+                    type: string
+                  interval:
+                    type: string
+                  bytea:
+                    x-telo-type: Telo.Bytes
+                  inet:
+                    type: string
+                  cidr:
+                    type: string
+                  macaddr:
+                    type: string
+                  tsvector:
+                    type: string
+              - title: Enum type
+                description: "A `!ref` to an enum this schema declares. `use: schema` for the reason a
+                  foreign key's target table takes it: what the reconciler needs is the physical
+                  name, which the declaration carries, so nothing here requires the type to be
+                  constructed first."
+                type: object
+                x-telo-ref:
+                  kind: Postgres.Enum
+                  use: schema
+          length:
+            title: Length
+            description: Character length for `varchar` / `char`.
+            type: integer
+            minimum: 1
+          precision:
+            title: Precision
+            description: Total digits for `numeric`.
+            type: integer
+            minimum: 1
+          scale:
+            title: Scale
+            description: Fractional digits for `numeric`.
+            type: integer
+            minimum: 0
+          array:
+            title: Array
+            description: Declares the column as a one-dimensional array of `type`. Multi-dimensional
+              arrays project as one level.
+            type: boolean
+            default: false
+          nullable:
+            title: Nullable
+            description: Whether the column admits NULL. Omitted, it is false on a primary key or an
+              identity column and true on any other.
+            type: boolean
+          primaryKey:
+            title: Primary Key
+            type: boolean
+            default: false
+          unique:
+            title: Unique
+            type: boolean
+            default: false
+          identity:
+            title: Identity
+            description: Makes the column `GENERATED … AS IDENTITY`. `always` refuses a
+              caller-supplied value; `by default` allows one.
+            type: string
+            enum:
+              - always
+              - by default
+          default:
+            title: Default
+            description: "A typed literal, checkable against the column's own type. Mutually
+              exclusive with `defaultExpression`: nothing can tell `gen_random_uuid` the
+              function from the string by looking at it."
+          defaultExpression:
+            title: Default Expression
+            description: Raw PostgreSQL expression evaluated by the database (`gen_random_uuid()`, `now()`).
+            type: string
+            contentMediaType: application/sql
+            x-telo-widget: code
+          renamedFrom:
+            title: Renamed From
+            description: The column this one supersedes. The pass adds this column, copies the old
+              one into it and tombstones the old one — a native rename would take effect
+              immediately and break the version still running. During the window writes land
+              only in the new column, so a rollback reads stale data.
+            type: string
+    indexes:
+      title: Indexes
+      description: >-
+        Further indexes keyed by name — for a property a filter reads. None may be
+        unique, and none may be named `graph_…`, the prefix of the table's own
+        indexes; an index may name the bookkeeping columns `graph_layer` and
+        `graph_effect`.
+      type: object
+      propertyNames:
+        not:
+          pattern: "^graph_"
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required:
+          - columns
+        properties:
+          columns:
+            title: Columns
+            type: array
+            minItems: 1
+            items:
+              type: string
+          unique:
+            title: Unique
+            type: boolean
+            default: false
+          method:
+            title: Method
+            description: Index method (`btree`, `gin`, `gist`, `hash`, `brin`).
+            type: string
+            enum:
+              - btree
+              - gin
+              - gist
+              - hash
+              - brin
+              - spgist
+          where:
+            title: Where
+            description: Partial-index predicate.
+            type: string
+            contentMediaType: application/sql
+            x-telo-widget: code
+    checks:
+      title: Checks
+      description: >-
+        Named table-level predicates in PostgreSQL's own SQL, keyed by constraint
+        name. A predicate holds for every row, whichever layer states it.
+      type: object
+      propertyNames:
+        pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required:
+          - expression
+        properties:
+          expression:
+            title: Expression
+            description: The predicate, in PostgreSQL's own SQL.
+            type: string
+            minLength: 1
+          validate:
+            title: Validate
+            description: "`deferred` adds the constraint `NOT VALID`, so it is enforced for new rows
+              immediately and the existing ones are scanned on a later pass — which is what
+              keeps adding a constraint to a large table from holding a lock while every row
+              is read."
+            type: string
+            enum:
+              - immediate
+              - deferred
+            default: immediate
+    renamedFrom:
+      title: Renamed From
+      description: The physical table this declaration supersedes, renamed in place.
+      type: string
+  # The engine table's own rules, restated on this kind's fields under the
+  # engine's codes. A kind that maps onto its parent with `base:` has a schema of
+  # its own and inherits no rule, so without these a mistake the engine table
+  # judges only at creation would pass `telo check`. The module's unit test fails when the
+  # engine table gains a rule that is neither restated here nor on its written
+  # exclusion list. The bookkeeping columns `base:` adds are named literally: an
+  # index may name them, and a rename may not take one as its source.
+  x-telo-resource-rules:
+    - condition: !cel >-
+        self.key in self.columns
+          && (!has(self.indexes) || self.indexes.all(i, self.indexes[i].columns.all(c,
+            c in self.columns || c in ['graph_layer', 'graph_effect'])))
+      code: SQL_INDEX_UNKNOWN_COLUMN
+      message: >-
+        names a column this table does not declare, as its 'key' or in an index.
+        The index cannot be created — the table's own index is built on the key.
+    - in: /columns
+      condition: !cel "this.?renamedFrom.orValue('') != key"
+      code: SQL_RENAME_FROM_SELF
+      message: declares renamedFrom itself, which describes no rename.
+    - in: /columns
+      condition: !cel >-
+        !(this.?renamedFrom.orValue('') in self.columns
+          || this.?renamedFrom.orValue('') in ['graph_layer', 'graph_effect'])
+      code: SQL_RENAME_SOURCE_STILL_DECLARED
+      message: >-
+        renames from a column this table also declares. A rename's source is the
+        column being retired, so declaring both would copy one live column into
+        another and retire neither.
+    - condition: !cel >-
+        size(self.columns.filter(c, self.columns[c].?primaryKey.orValue(false))) <= 1
+      code: SQL_COMPOSITE_PRIMARY_KEY
+      message: >-
+        marks more than one column as primaryKey. A composite primary key is not
+        expressible as a per-column flag.
+    - condition: !cel "!has(self.renamedFrom) || self.renamedFrom != self.table"
+      code: SQL_TABLE_RENAME_FROM_SELF
+      message: declares renamedFrom itself, which describes no rename.
+  x-telo-referrer-rules:
+    - referrer: Postgres.Schema
+      peers: /enums
+      condition: !cel >-
+        self.columns.all(c, self.columns[c].type.?name.orValue('') == ''
+          || peers.exists(e, e.metadata.name == self.columns[c].type.name))
+      code: SQL_ENUM_NOT_DECLARED
+      message: >-
+        has a column whose type references an enum this schema does not list in
+        'enums:'. The list is what the ledger records as owned, so an unlisted
+        type is one nothing creates, reclaims or renames — add it to 'enums:'.
+    - referrer: Postgres.Schema
+      peers: /tables
+      condition: !cel >-
+        !has(self.renamedFrom) || !peers.exists(p, p.table == self.renamedFrom)
+      code: SQL_TABLE_RENAME_SOURCE_STILL_DECLARED
+      message: >-
+        renames from a table this schema also declares. A rename's source is the
+        table being retired, so declaring both would rename one live table onto
+        another and retire neither.
+    - referrer: Postgres.Schema
+      peers: /tables
+      condition: !cel >-
+        !has(self.renamedFrom)
+          || !peers.exists(p, p.?renamedFrom.orValue('') == self.renamedFrom)
+      code: SQL_TABLE_RENAME_SOURCE_CLAIMED_TWICE
+      message: >-
+        renames from a table another declaration in this schema also claims. One
+        retired table has one successor, or neither rename can be told from a
+        drop-and-create.
+base:
+  table: !cel "self.table"
+  renamedFrom: !cel "self.renamedFrom"
+  columns: !cel "self.columns"
+  internalColumns:
+    graph_layer: { type: text, nullable: false }
+    graph_effect: { type: text, nullable: false }
+  indexes: !cel >-
+    merge(has(self.indexes) ? self.indexes : {},
+      { 'graph_' + self.table + '_layer_key':
+          { 'columns': ['graph_layer', self.key], 'unique': true } })
+  checks: !cel "self.checks"
+---
+# GraphLayersCurrentPostgres.RelationshipTable — the same arrangement for relationship
+# statements: unique per layer and ordered pair, with a second index leading on
+# the target so a hop followed backwards is as cheap as one followed forwards.
+kind: Telo.Definition
+metadata:
+  name: RelationshipTable
+  description: >-
+    One PostgreSQL table holding a type of graph link for every layer at once: the
+    application declares the link's own columns and its two endpoint columns, and
+    the table adds the layer bookkeeping and the indexes that keep a pair unique
+    within a layer and make a hop cheap in either direction.
+extends: Postgres.Table
+x-telo-schema-projection:
+  entries: /columns
+  key: type
+  nullable: nullable
+  array: array
+  reference:
+    from: values
+    keyword: enum
+    base: { type: string }
+schema:
+  type: object
+  additionalProperties: false
+  required: [table, sourceColumn, targetColumn, columns]
+  examples:
+    - table: knows
+      sourceColumn: source
+      targetColumn: target
+      columns:
+        source: { type: text, nullable: false }
+        target: { type: text, nullable: false }
+  properties:
+    table:
+      title: Table
+      description: The physical table name.
+      type: string
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+    sourceColumn:
+      title: Source Column
+      description: The column holding the source node's key, declared not nullable.
+      type: string
+      minLength: 1
+    targetColumn:
+      title: Target Column
+      description: The column holding the target node's key, declared not nullable.
+      type: string
+      minLength: 1
+    columns:
+      title: Columns
+      description: >-
+        The relationship's own columns, keyed by name: the two endpoint columns
+        and every property. The layer bookkeeping columns are added by the table:
+        no name may begin `graph_`.
+      type: object
+      minProperties: 1
+      # `graph_` is the table's own: the bookkeeping columns `base:` adds.
+      propertyNames:
+        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+        not:
+          pattern: "^graph_"
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required:
+          - type
+        not:
+          required:
+            - default
+            - defaultExpression
+        allOf:
+          - if:
+              required:
+                - nullable
+              properties:
+                nullable:
+                  const: true
+              anyOf:
+                - required:
+                    - primaryKey
+                  properties:
+                    primaryKey:
+                      const: true
+                - required:
+                    - identity
+            then: false
+          - if:
+              anyOf:
+                - required:
+                    - primaryKey
+                  properties:
+                    primaryKey:
+                      const: true
+                - required:
+                    - identity
+            then:
+              properties:
+                nullable:
+                  default: false
+            else:
+              properties:
+                nullable:
+                  default: true
+        properties:
+          type:
+            title: Type
+            description: PostgreSQL type — a storage class, or a reference to an enum this schema
+              declares. Parameters are structured fields (`length`, `precision`, `scale`), never
+              spelled into this value, so nothing has to parse a type back apart.
+            oneOf:
+              - title: Storage class
+                type: string
+                enum:
+                  - text
+                  - varchar
+                  - char
+                  - citext
+                  - uuid
+                  - json
+                  - jsonb
+                  - boolean
+                  - smallint
+                  - integer
+                  - bigint
+                  - numeric
+                  - real
+                  - doublePrecision
+                  - date
+                  - time
+                  - timestamp
+                  - timestamptz
+                  - interval
+                  - bytea
+                  - inet
+                  - cidr
+                  - macaddr
+                  - tsvector
+                x-telo-schema-map:
+                  text:
+                    type: string
+                  varchar:
+                    type: string
+                  char:
+                    type: string
+                  citext:
+                    type: string
+                  uuid:
+                    type: string
+                  json: {}
+                  jsonb: {}
+                  boolean:
+                    type: boolean
+                  smallint:
+                    type: integer
+                  integer:
+                    type: integer
+                  bigint:
+                    type: integer
+                  numeric:
+                    type: number
+                  real:
+                    type: number
+                  doublePrecision:
+                    type: number
+                  date:
+                    type: string
+                  time:
+                    type: string
+                  timestamp:
+                    type: string
+                  timestamptz:
+                    type: string
+                  interval:
+                    type: string
+                  bytea:
+                    x-telo-type: Telo.Bytes
+                  inet:
+                    type: string
+                  cidr:
+                    type: string
+                  macaddr:
+                    type: string
+                  tsvector:
+                    type: string
+              - title: Enum type
+                description: "A `!ref` to an enum this schema declares. `use: schema` for the reason a
+                  foreign key's target table takes it: what the reconciler needs is the physical
+                  name, which the declaration carries, so nothing here requires the type to be
+                  constructed first."
+                type: object
+                x-telo-ref:
+                  kind: Postgres.Enum
+                  use: schema
+          length:
+            title: Length
+            description: Character length for `varchar` / `char`.
+            type: integer
+            minimum: 1
+          precision:
+            title: Precision
+            description: Total digits for `numeric`.
+            type: integer
+            minimum: 1
+          scale:
+            title: Scale
+            description: Fractional digits for `numeric`.
+            type: integer
+            minimum: 0
+          array:
+            title: Array
+            description: Declares the column as a one-dimensional array of `type`. Multi-dimensional
+              arrays project as one level.
+            type: boolean
+            default: false
+          nullable:
+            title: Nullable
+            description: Whether the column admits NULL. Omitted, it is false on a primary key or an
+              identity column and true on any other.
+            type: boolean
+          primaryKey:
+            title: Primary Key
+            type: boolean
+            default: false
+          unique:
+            title: Unique
+            type: boolean
+            default: false
+          identity:
+            title: Identity
+            description: Makes the column `GENERATED … AS IDENTITY`. `always` refuses a
+              caller-supplied value; `by default` allows one.
+            type: string
+            enum:
+              - always
+              - by default
+          default:
+            title: Default
+            description: "A typed literal, checkable against the column's own type. Mutually
+              exclusive with `defaultExpression`: nothing can tell `gen_random_uuid` the
+              function from the string by looking at it."
+          defaultExpression:
+            title: Default Expression
+            description: Raw PostgreSQL expression evaluated by the database (`gen_random_uuid()`, `now()`).
+            type: string
+            contentMediaType: application/sql
+            x-telo-widget: code
+          renamedFrom:
+            title: Renamed From
+            description: The column this one supersedes. The pass adds this column, copies the old
+              one into it and tombstones the old one — a native rename would take effect
+              immediately and break the version still running. During the window writes land
+              only in the new column, so a rollback reads stale data.
+            type: string
+    indexes:
+      title: Indexes
+      description: >-
+        Further indexes keyed by name — for a property a filter reads. None may be
+        unique, and none may be named `graph_…`, the prefix of the table's own
+        indexes; an index may name the bookkeeping columns `graph_layer` and
+        `graph_effect`.
+      type: object
+      propertyNames:
+        not:
+          pattern: "^graph_"
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required:
+          - columns
+        properties:
+          columns:
+            title: Columns
+            type: array
+            minItems: 1
+            items:
+              type: string
+          unique:
+            title: Unique
+            type: boolean
+            default: false
+          method:
+            title: Method
+            description: Index method (`btree`, `gin`, `gist`, `hash`, `brin`).
+            type: string
+            enum:
+              - btree
+              - gin
+              - gist
+              - hash
+              - brin
+              - spgist
+          where:
+            title: Where
+            description: Partial-index predicate.
+            type: string
+            contentMediaType: application/sql
+            x-telo-widget: code
+    checks:
+      title: Checks
+      description: >-
+        Named table-level predicates in PostgreSQL's own SQL, keyed by constraint
+        name. A predicate holds for every row, whichever layer states it.
+      type: object
+      propertyNames:
+        pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required:
+          - expression
+        properties:
+          expression:
+            title: Expression
+            description: The predicate, in PostgreSQL's own SQL.
+            type: string
+            minLength: 1
+          validate:
+            title: Validate
+            description: "`deferred` adds the constraint `NOT VALID`, so it is enforced for new rows
+              immediately and the existing ones are scanned on a later pass — which is what
+              keeps adding a constraint to a large table from holding a lock while every row
+              is read."
+            type: string
+            enum:
+              - immediate
+              - deferred
+            default: immediate
+    renamedFrom:
+      title: Renamed From
+      description: The physical table this declaration supersedes, renamed in place.
+      type: string
+  # The engine table's own rules, restated on this kind's fields under the
+  # engine's codes. A kind that maps onto its parent with `base:` has a schema of
+  # its own and inherits no rule, so without these a mistake the engine table
+  # judges only at creation would pass `telo check`. The module's unit test fails when the
+  # engine table gains a rule that is neither restated here nor on its written
+  # exclusion list. The bookkeeping columns `base:` adds are named literally: an
+  # index may name them, and a rename may not take one as its source.
+  x-telo-resource-rules:
+    - condition: !cel >-
+        self.sourceColumn in self.columns && self.targetColumn in self.columns
+          && self.sourceColumn != self.targetColumn
+          && (!has(self.indexes) || self.indexes.all(i, self.indexes[i].columns.all(c,
+            c in self.columns || c in ['graph_layer', 'graph_effect'])))
+      code: SQL_INDEX_UNKNOWN_COLUMN
+      message: >-
+        names a column this table does not declare — as its 'sourceColumn' or
+        'targetColumn', or in an index — or names one column for both endpoints.
+        The index cannot be created — the table's own indexes are built on the
+        two endpoint columns.
+    - in: /columns
+      condition: !cel "this.?renamedFrom.orValue('') != key"
+      code: SQL_RENAME_FROM_SELF
+      message: declares renamedFrom itself, which describes no rename.
+    - in: /columns
+      condition: !cel >-
+        !(this.?renamedFrom.orValue('') in self.columns
+          || this.?renamedFrom.orValue('') in ['graph_layer', 'graph_effect'])
+      code: SQL_RENAME_SOURCE_STILL_DECLARED
+      message: >-
+        renames from a column this table also declares. A rename's source is the
+        column being retired, so declaring both would copy one live column into
+        another and retire neither.
+    - condition: !cel >-
+        size(self.columns.filter(c, self.columns[c].?primaryKey.orValue(false))) <= 1
+      code: SQL_COMPOSITE_PRIMARY_KEY
+      message: >-
+        marks more than one column as primaryKey. A composite primary key is not
+        expressible as a per-column flag.
+    - condition: !cel "!has(self.renamedFrom) || self.renamedFrom != self.table"
+      code: SQL_TABLE_RENAME_FROM_SELF
+      message: declares renamedFrom itself, which describes no rename.
+  x-telo-referrer-rules:
+    - referrer: Postgres.Schema
+      peers: /enums
+      condition: !cel >-
+        self.columns.all(c, self.columns[c].type.?name.orValue('') == ''
+          || peers.exists(e, e.metadata.name == self.columns[c].type.name))
+      code: SQL_ENUM_NOT_DECLARED
+      message: >-
+        has a column whose type references an enum this schema does not list in
+        'enums:'. The list is what the ledger records as owned, so an unlisted
+        type is one nothing creates, reclaims or renames — add it to 'enums:'.
+    - referrer: Postgres.Schema
+      peers: /tables
+      condition: !cel >-
+        !has(self.renamedFrom) || !peers.exists(p, p.table == self.renamedFrom)
+      code: SQL_TABLE_RENAME_SOURCE_STILL_DECLARED
+      message: >-
+        renames from a table this schema also declares. A rename's source is the
+        table being retired, so declaring both would rename one live table onto
+        another and retire neither.
+    - referrer: Postgres.Schema
+      peers: /tables
+      condition: !cel >-
+        !has(self.renamedFrom)
+          || !peers.exists(p, p.?renamedFrom.orValue('') == self.renamedFrom)
+      code: SQL_TABLE_RENAME_SOURCE_CLAIMED_TWICE
+      message: >-
+        renames from a table another declaration in this schema also claims. One
+        retired table has one successor, or neither rename can be told from a
+        drop-and-create.
+base:
+  table: !cel "self.table"
+  renamedFrom: !cel "self.renamedFrom"
+  columns: !cel "self.columns"
+  internalColumns:
+    graph_layer: { type: text, nullable: false }
+    graph_effect: { type: text, nullable: false }
+  indexes: !cel >-
+    merge(has(self.indexes) ? self.indexes : {},
+      { 'graph_' + self.table + '_layer_pair':
+          { 'columns': ['graph_layer', self.sourceColumn, self.targetColumn], 'unique': true },
+        'graph_' + self.table + '_layer_target':
+          { 'columns': ['graph_layer', self.targetColumn, self.sourceColumn] } })
+  checks: !cel "self.checks"
+---
+kind: Telo.Definition
+metadata:
+  name: Node
+  description: >-
+    One type of graph entity kept in a layered PostgreSQL table: one column carries
+    the identifying key, every other declared column is a property, and each
+    layer may state the same key once.
+capability: Telo.Provider
+extends: GraphLayersSql.Node
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph-layers-current-postgres.mjs&local_path=./nodejs/src/index.ts#Node
+x-telo-schema-projection-from: /table
+schema:
+  type: object
+  required: [table, key]
+  additionalProperties: false
+  examples:
+    - table: !ref people
+      key: id
+  properties:
+    table:
+      title: Table
+      description: The layered table holding the nodes, listed in the PostgreSQL schema.
+      x-telo-ref:
+        kind: Self.NodeTable
+        use: dependency
+    key:
+      title: Key
+      description: The table's own key column.
+      type: string
+      minLength: 1
+---
+kind: Telo.Definition
+metadata:
+  name: Relationship
+  description: >-
+    One type of graph link kept in a layered PostgreSQL table: two columns carry
+    the source and target entities' keys, every other declared column is a
+    property of the link, and each layer may state the same ordered pair once.
+capability: Telo.Provider
+extends: GraphLayersSql.Relationship
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph-layers-current-postgres.mjs&local_path=./nodejs/src/index.ts#Relationship
+x-telo-schema-projection-from: { from: /table, omit: [/sourceColumn, /targetColumn] }
+schema:
+  type: object
+  required: [table, source, target, sourceColumn, targetColumn]
+  additionalProperties: false
+  examples:
+    - table: !ref knowsTable
+      source: !ref person
+      target: !ref person
+      sourceColumn: source
+      targetColumn: target
+  properties:
+    table:
+      title: Table
+      description: The layered table holding the relationships, listed in the PostgreSQL schema.
+      x-telo-ref:
+        kind: Self.RelationshipTable
+        use: dependency
+    source:
+      title: Source
+      description: The node type a relationship starts at.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+    target:
+      title: Target
+      description: The node type a relationship ends at. May be the source's type.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+    sourceColumn:
+      title: Source Column
+      description: The table's own source column.
+      type: string
+      minLength: 1
+    targetColumn:
+      title: Target Column
+      description: The table's own target column.
+      type: string
+      minLength: 1
+---
+# GraphLayersCurrentPostgres.Store — one layer over one PostgreSQL connection. It issues no
+# DDL: every table it names is listed by the `schema` it names, whose own pass
+# creates and migrates them.
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: >-
+    One named layer of a knowledge graph kept in PostgreSQL tables shared with other
+    layers, optionally built on an ordered list of base layers that show through
+    wherever this layer says nothing. Holds only current statements: a write takes
+    effect at once, joins an open transaction, and no history is kept.
+capability: Telo.Provider
+extends: GraphLayersSql.CurrentStore
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph-layers-current-postgres.mjs&local_path=./nodejs/src/index.ts#Store
+schema:
+  type: object
+  required: [connection, schema, layer, nodes]
+  additionalProperties: false
+  examples:
+    - connection: !ref db
+      schema: !ref appSchema
+      layer: team
+      bases: [!ref shared]
+      nodes: [!ref person]
+      relationships: [!ref knows]
+  properties:
+    connection:
+      title: Connection
+      description: The connection every statement runs on.
+      x-telo-ref:
+        kind: Postgres.Connection
+        use: dependency
+    schema:
+      title: Schema
+      description: >-
+        The schema that declares every table this graph uses, on the same
+        connection. It creates and migrates them; the graph issues no DDL.
+      x-telo-ref:
+        kind: Postgres.Schema
+        use: dependency
+    layer:
+      title: Layer
+      description: >-
+        The layer's name, written into every row this store states. Stores naming
+        the same layer over the same tables are the same layer.
+      type: string
+      minLength: 1
+    bases:
+      title: Bases
+      description: >-
+        The layers this one is built on, highest precedence first. The stack is
+        this layer, then each base in order followed by that base's stack; a
+        layer two bases share has one place, the lowest. The first statement
+        found for a key wins.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Store
+          use: dependency
+    nodes:
+      title: Nodes
+      description: The node types this graph holds.
+      type: array
+      minItems: 1
+      items:
+        x-telo-ref:
+          kind: Self.Node
+          use: dependency
+    relationships:
+      title: Relationships
+      description: The relationship types this graph holds.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Relationship
+          use: dependency

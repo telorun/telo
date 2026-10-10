@@ -1,0 +1,650 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersDraftsPostgresCrossesProcesses
+  version: 1.0.0
+  description: |
+    Several processes over one PostgreSQL database, each a child application with
+    a connection pool of its own, where only the database stands between them.
+
+    Two processes opening a draft on one layer get one draft — and when one
+    keeps opening while the other opens and publishes, over and over, no call
+    of either fails: a draft is opened under the layer's row, as it is
+    published. Two processes
+    publishing that same draft create exactly one revision, and both are
+    answered with it. A process publishing a
+    draft while another writes the layer outside any draft leaves either two
+    consecutive revisions or one revision and one GRAPH_DRAFT_STALE — never one
+    revision holding both, and never a lost write. Two processes running the
+    resolution loop over one draft decide every conflict exactly once, the
+    slower of the two seeing GRAPH_CONFLICT_NOT_FOUND. And a publish issued by
+    another process ends a session running here: its next write is refused and
+    the session fails GRAPH_DRAFT_CLOSED.
+
+    A layer has one open draft on this strategy, so two drafts never share a
+    parent; the publish race that exists is between a draft and a write outside
+    it, and that is the one measured.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+include:
+  - ./__fixtures__/cross-process/model.yaml
+imports:
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Layers: ../..
+  Graph: ../../../graph
+  GraphLayers: ../../../graph-layers
+  App: ../../../app
+  Run: ../../../run
+  Timer: ../../../timer
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref register
+  - !ref openerA
+  - !ref openerB
+  - !ref oneDraft
+  - !ref publisherA
+  - !ref publisherB
+  - !ref oneRevision
+  - !ref prepareRace
+  - !ref racingPublisher
+  - !ref racingWriter
+  - !ref raceIsWhole
+  - !ref prepareConflicts
+  - !ref resolverA
+  - !ref resolverB
+  - !ref decidedOnce
+  - !ref closedFromElsewhere
+  - !ref loopingOpener
+  - !ref loopingPublisher
+  - !ref openNeverFails
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Graph.CreateNode
+metadata: { name: topCreatePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.UpdateNode
+metadata: { name: topUpdatePerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: topGetPerson }
+store: !ref top
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: baseGetPerson }
+store: !ref base
+node: !ref person
+---
+kind: GraphLayers.OpenDraft
+metadata: { name: topOpenDraft }
+store: !ref top
+---
+kind: GraphLayers.RebaseDraft
+metadata: { name: topRebase }
+store: !ref top
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke: !ref write
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_drafts_processes CASCADE
+---
+# The layers are registered before any child starts, so the children race on
+# drafts and revisions rather than on a layer's first write.
+kind: Run.Sequence
+metadata: { name: register }
+steps:
+  - name: seed
+    invoke: !ref topCreatePerson
+    inputs: { key: seed, properties: { name: Seed } }
+---
+kind: App.Instance
+metadata: { name: openerA }
+source: ./__fixtures__/cross-process/opener.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+---
+kind: App.Instance
+metadata: { name: openerB }
+source: ./__fixtures__/cross-process/opener.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+---
+kind: Run.Loop
+metadata: { name: openerAExit }
+condition: !cel "resources.openerA.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Loop
+metadata: { name: openerBExit }
+condition: !cel "resources.openerB.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Sequence
+metadata: { name: oneDraft }
+steps:
+  - name: awaitA
+    invoke: !ref openerAExit
+  - name: awaitB
+    invoke: !ref openerBExit
+  - name: drafts
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE published_at IS NULL AND discarded_at IS NULL)::int AS open
+        FROM graph_drafts_processes.graph_drafts
+  - name: assertBothGotOne
+    invoke: !ref check
+    inputs:
+      actual: !cel "[resources.openerA.status.exitCode, resources.openerB.status.exitCode, steps.drafts.result.rows[0].total, steps.drafts.result.rows[0].open]"
+      expected: [0, 0, 1, 1]
+  # Something to publish.
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: create
+          invoke: !ref topCreatePerson
+          inputs: { key: staged, properties: { name: Staged } }
+---
+kind: App.Instance
+metadata: { name: publisherA }
+source: ./__fixtures__/cross-process/publisher.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+---
+kind: App.Instance
+metadata: { name: publisherB }
+source: ./__fixtures__/cross-process/publisher.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+---
+kind: Run.Loop
+metadata: { name: publisherAExit }
+condition: !cel "resources.publisherA.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Loop
+metadata: { name: publisherBExit }
+condition: !cel "resources.publisherB.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Sequence
+metadata: { name: oneRevision }
+steps:
+  - name: awaitA
+    invoke: !ref publisherAExit
+  - name: awaitB
+    invoke: !ref publisherBExit
+  - name: state
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT l.head_revision::int AS head, d.parent_revision::int AS parent, d.revision::int AS revision,
+          (SELECT COUNT(*)::int FROM graph_drafts_processes.people p
+            WHERE p.id = 'staged' AND p.graph_state = 'published') AS published,
+          (SELECT COUNT(*)::int FROM graph_drafts_processes.graph_drafts) AS drafts
+        FROM graph_drafts_processes.graph_layers l
+          JOIN graph_drafts_processes.graph_drafts d ON d.layer_id = l.id
+        WHERE l.name = 'top'
+  # Each publisher exits 0 only when it was answered with the draft's revision.
+  - name: assertExactlyOneRevision
+    invoke: !ref check
+    inputs:
+      actual: !cel "[resources.publisherA.status.exitCode, resources.publisherB.status.exitCode, steps.state.result.rows[0].head - steps.state.result.rows[0].parent, steps.state.result.rows[0].revision - steps.state.result.rows[0].parent, steps.state.result.rows[0].published, steps.state.result.rows[0].drafts]"
+      expected: [0, 0, 1, 1, 1, 1]
+---
+kind: Run.Sequence
+metadata: { name: prepareRace }
+steps:
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref top
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: create
+          invoke: !ref topCreatePerson
+          inputs: { key: race-drafted, properties: { name: Drafted } }
+---
+kind: App.Instance
+metadata: { name: racingPublisher }
+source: ./__fixtures__/cross-process/racing-publisher.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+---
+kind: App.Instance
+metadata: { name: racingWriter }
+source: ./__fixtures__/cross-process/writer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+---
+kind: Run.Loop
+metadata: { name: racingPublisherExit }
+condition: !cel "resources.racingPublisher.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Loop
+metadata: { name: racingWriterExit }
+condition: !cel "resources.racingWriter.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+# Whichever landed first, nothing is lost and nothing is doubled: the outside
+# write is a revision of its own, and the draft is either the revision after it
+# or refused as stale and still open.
+kind: Run.Sequence
+metadata: { name: raceIsWhole }
+steps:
+  - name: awaitPublisher
+    invoke: !ref racingPublisherExit
+  - name: awaitWriter
+    invoke: !ref racingWriterExit
+  - name: state
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT l.head_revision::int AS head, d.parent_revision::int AS parent,
+          (d.published_at IS NOT NULL)::int AS published, COALESCE(d.revision, 0)::int AS revision,
+          (SELECT COUNT(*)::int FROM graph_drafts_processes.people p
+            WHERE p.id = 'race-refused' AND p.name = 'GRAPH_DRAFT_STALE') AS stale,
+          (SELECT COUNT(*)::int FROM graph_drafts_processes.people p
+            WHERE p.id = 'race-outside' AND p.graph_state = 'published') AS outside,
+          (SELECT COUNT(*)::int FROM graph_drafts_processes.people p
+            WHERE p.id = 'race-drafted' AND p.graph_state = 'published') AS drafted
+        FROM graph_drafts_processes.graph_layers l
+          JOIN graph_drafts_processes.graph_drafts d ON d.layer_id = l.id
+        WHERE l.name = 'top' AND d.id = (SELECT id FROM graph_drafts_processes.graph_drafts ORDER BY created_at DESC LIMIT 1)
+  - name: assertNothingLostNothingDoubled
+    invoke: !ref check
+    inputs:
+      actual:
+        exits: !cel "[resources.racingPublisher.status.exitCode, resources.racingWriter.status.exitCode]"
+        outsideWritten: !cel "steps.state.result.rows[0].outside"
+        revisionsPlusRefusals: !cel "steps.state.result.rows[0].head - steps.state.result.rows[0].parent + steps.state.result.rows[0].stale"
+        publishedOrRefused: !cel "steps.state.result.rows[0].published + steps.state.result.rows[0].stale"
+        draftedIffPublished: !cel "steps.state.result.rows[0].drafted == steps.state.result.rows[0].published"
+      expected:
+        exits: [0, 0]
+        outsideWritten: 1
+        revisionsPlusRefusals: 2
+        publishedOrRefused: 1
+        draftedIffPublished: true
+  # Leave no draft open for what follows.
+  - name: reopen
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: close
+    invoke: { kind: GraphLayers.DiscardDraft, store: !ref top }
+    inputs: { draft: !cel "steps.reopen.result.draft.id" }
+---
+# Twelve people both sides change: twelve conflicts once the draft is rebased.
+kind: Run.Sequence
+metadata: { name: prepareConflicts }
+steps:
+  - name: seed
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_drafts_processes.people
+          (id, name, age, graph_layer, graph_state, graph_effect, graph_revision, graph_written_at)
+        SELECT 'c' || lpad(i::text, 2, '0'), 'Orig', 1, l.id, 'published', 'stated', l.head_revision,
+               clock_timestamp()
+        FROM generate_series(1, 12) i, graph_drafts_processes.graph_layers l WHERE l.name = 'top'
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: mine
+    invoke: !ref write
+    inputs:
+      sql: >-
+        INSERT INTO graph_drafts_processes.people
+          (id, name, age, graph_layer, graph_state, graph_effect, graph_over, graph_written_at)
+        SELECT p.id, p.name, 10, p.graph_layer, 'draft', 'stated', p.graph_revision, clock_timestamp()
+        FROM graph_drafts_processes.people p WHERE p.id LIKE 'c__' AND p.graph_state = 'published'
+  - name: theirs
+    invoke: !ref write
+    inputs:
+      sql: >-
+        WITH moved AS (
+          UPDATE graph_drafts_processes.graph_layers SET head_revision = head_revision + 1
+          WHERE name = 'top' RETURNING id, head_revision)
+        UPDATE graph_drafts_processes.people p SET age = 20, graph_revision = moved.head_revision
+        FROM moved WHERE p.graph_layer = moved.id AND p.id LIKE 'c__' AND p.graph_state = 'published'
+  - name: rebase
+    invoke: !ref topRebase
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: assertTwelveConflicts
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.rebase.result.conflicts"
+      expected: 12
+---
+kind: App.Instance
+metadata: { name: resolverA }
+source: ./__fixtures__/cross-process/resolver.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  who: a
+---
+kind: App.Instance
+metadata: { name: resolverB }
+source: ./__fixtures__/cross-process/resolver.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  who: b
+---
+kind: Run.Loop
+metadata: { name: resolverAExit }
+condition: !cel "resources.resolverA.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Loop
+metadata: { name: resolverBExit }
+condition: !cel "resources.resolverB.status.exitCode == null"
+# 60s for a child kernel to boot, work and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Sequence
+metadata: { name: decidedOnce }
+steps:
+  - name: awaitA
+    invoke: !ref resolverAExit
+  - name: awaitB
+    invoke: !ref resolverBExit
+  - name: rows
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT COUNT(*)::int AS decided,
+          COUNT(*) FILTER (WHERE graph_resolution = 'mine' AND graph_resolved_by_type = 'process'
+            AND graph_resolved_by_id IN ('a', 'b'))::int AS recorded,
+          COUNT(*) FILTER (WHERE graph_over = (SELECT head_revision FROM graph_drafts_processes.graph_layers WHERE name = 'top'))::int AS rebased
+        FROM graph_drafts_processes.people WHERE id LIKE 'c__' AND graph_state = 'draft'
+  - name: tallyA
+    invoke: !ref baseGetPerson
+    inputs: { key: tally-a }
+  - name: tallyB
+    invoke: !ref baseGetPerson
+    inputs: { key: tally-b }
+  - name: tallies
+    value:
+      a: !cel "steps.tallyA.result.node.properties.name.split('/').map(n, int(n))"
+      b: !cel "steps.tallyB.result.node.properties.name.split('/').map(n, int(n))"
+  # Each tally is applied / refused as already decided / listed.
+  - name: assertEveryConflictDecidedOnce
+    invoke: !ref check
+    inputs:
+      actual:
+        exits: !cel "[resources.resolverA.status.exitCode, resources.resolverB.status.exitCode]"
+        rows: !cel "steps.rows.result.rows[0]"
+        applied: !cel "steps.tallies.result.a[0] + steps.tallies.result.b[0]"
+        everyAttemptAnswered: !cel "steps.tallies.result.a[0] + steps.tallies.result.a[1] == steps.tallies.result.a[2] && steps.tallies.result.b[0] + steps.tallies.result.b[1] == steps.tallies.result.b[2]"
+        refusedOnlyAsDecided: !cel "steps.tallies.result.a[1] >= 0 && steps.tallies.result.b[1] >= 0"
+      expected:
+        exits: [0, 0]
+        rows: { decided: 12, recorded: 12, rebased: 12 }
+        applied: 12
+        everyAttemptAnswered: true
+        refusedOnlyAsDecided: true
+  - name: reopen
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: publish
+    invoke: { kind: GraphLayers.Publish, store: !ref top }
+    inputs: { draft: !cel "steps.reopen.result.draft.id" }
+---
+# The other process, started by the session's own body and gone when this
+# sequence ends: starting it waits for its work, so the publish has happened.
+kind: Run.Sequence
+metadata: { name: publishElsewhere }
+with:
+  - kind: App.Instance
+    metadata: { name: closer }
+    source: ./__fixtures__/cross-process/publisher.yaml
+    variables:
+      dbHost: !cel "variables.dbHost"
+      dbPort: !cel "variables.dbPort"
+      dbUser: !cel "variables.dbUser"
+      dbPassword: !cel "variables.dbPassword"
+      dbName: !cel "variables.dbName"
+targets:
+  - !ref closer
+steps:
+  - name: done
+    value: true
+---
+kind: Run.Sequence
+metadata: { name: closedFromElsewhere }
+steps:
+  - name: open
+    invoke: !ref topOpenDraft
+    inputs: {}
+  - name: closed
+    try:
+      - name: session
+        inputs: { draft: !cel "steps.open.result.draft.id" }
+        invoke:
+          kind: GraphLayers.DraftSession
+          store: !ref top
+          inputs: { draft: !cel "inputs.draft" }
+          steps:
+            - name: first
+              invoke: !ref topCreatePerson
+              inputs: { key: k1, properties: { name: Before } }
+            - name: elsewhere
+              invoke: !ref publishElsewhere
+            - name: second
+              invoke: !ref topCreatePerson
+              inputs: { key: k2, properties: { name: After } }
+      - name: closedUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "the session outlived its draft" }
+    catch:
+      - name: closedError
+        value:
+          code: !cel "error.code"
+          closedAs: !cel "string(error.data.closedAs)"
+  - name: assertSessionEnded
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.closedError.result"
+      expected: { code: GRAPH_DRAFT_CLOSED, closedAs: published }
+  - name: first
+    invoke: !ref topGetPerson
+    inputs: { key: k1 }
+  - name: second
+    invoke: !ref read
+    inputs:
+      sql: "SELECT COUNT(*)::int AS n FROM graph_drafts_processes.people WHERE id = 'k2'"
+  - name: assertOnlyTheFirstWriteIsPublished
+    invoke: !ref check
+    inputs:
+      actual: !cel "[steps.first.result.node.properties.name, string(steps.second.result.rows[0].n)]"
+      expected: [Before, "0"]
+---
+kind: App.Instance
+metadata: { name: loopingOpener }
+source: ./__fixtures__/cross-process/opener.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  rounds: 200
+---
+kind: Run.Loop
+metadata: { name: loopingOpenerExit }
+condition: !cel "resources.loopingOpener.status.exitCode == null"
+# 120s for a child kernel to boot, open 200 times and exit.
+maxIterations: 6000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: loopingPublisher }
+source: ./__fixtures__/cross-process/opener.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "variables.dbHost"
+  dbPort: !cel "variables.dbPort"
+  dbUser: !cel "variables.dbUser"
+  dbPassword: !cel "variables.dbPassword"
+  dbName: !cel "variables.dbName"
+  rounds: 200
+  publish: true
+---
+kind: Run.Loop
+metadata: { name: loopingPublisherExit }
+condition: !cel "resources.loopingPublisher.status.exitCode == null"
+# 120s for a child kernel to boot, open 200 times and exit.
+maxIterations: 6000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+# One process opens a draft 200 times while the other opens and publishes 200
+# times. Whichever order the database takes them in, every call is answered:
+# an open finds the layer's open draft or makes one, and never falls between a
+# draft closing and the next one opening.
+kind: Run.Sequence
+metadata: { name: openNeverFails }
+steps:
+  - name: awaitOpener
+    invoke: !ref loopingOpenerExit
+  - name: awaitPublisher
+    invoke: !ref loopingPublisherExit
+  - name: drafts
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT COUNT(*) FILTER (WHERE d.published_at IS NULL AND d.discarded_at IS NULL)::int AS open
+        FROM graph_drafts_processes.graph_drafts d
+          JOIN graph_drafts_processes.graph_layers l ON l.id = d.layer_id
+        WHERE l.name = 'top'
+  - name: assertNoCallFailed
+    invoke: !ref check
+    inputs:
+      actual:
+        exits: !cel "[resources.loopingOpener.status.exitCode, resources.loopingPublisher.status.exitCode]"
+        atMostOneOpen: !cel "steps.drafts.result.rows[0].open <= 1"
+      expected:
+        exits: [0, 0]
+        atMostOneOpen: true

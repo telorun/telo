@@ -1,0 +1,24 @@
+# A property the node table does not declare.
+kind: Telo.Application
+metadata:
+  name: MisspelledProperty
+include:
+  - ../layered-model.yaml
+imports:
+  SQLite: ../../../../sqlite
+  Graph: ../../../../graph
+  Layers: ../../..
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref probe
+---
+kind: Run.Sequence
+metadata: { name: probe }
+steps:
+  - name: call
+    invoke:
+      kind: Graph.CreateNode
+      store: !ref team
+      node: !ref person
+    inputs: { key: a, properties: { nmae: Alice } }

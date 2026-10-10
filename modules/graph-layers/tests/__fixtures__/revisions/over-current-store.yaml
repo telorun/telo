@@ -1,0 +1,33 @@
+# The history, pinning and labelling kinds over a store of the current strategy, which keeps neither
+# drafts nor revisions: the `store` slot names the level of the contract the
+# kind needs.
+kind: Telo.Application
+metadata:
+  name: RevisionsOverCurrentStore
+include:
+  - ../layered-model.yaml
+imports:
+  GraphLayers: ../../..
+  Graph: ../../../../graph
+  Layers: ../../../../graph-layers-current-sqlite
+  SQLite: ../../../../sqlite
+---
+kind: GraphLayers.ListRevisions
+metadata: { name: listRevisions }
+store: !ref team
+---
+kind: GraphLayers.PinBase
+metadata: { name: pinBase }
+store: !ref team
+---
+kind: GraphLayers.UnpinBase
+metadata: { name: unpinBase }
+store: !ref team
+---
+kind: GraphLayers.ListBases
+metadata: { name: listBases }
+store: !ref team
+---
+kind: GraphLayers.LabelRevision
+metadata: { name: labelRevision }
+store: !ref team

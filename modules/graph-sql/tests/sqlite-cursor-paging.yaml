@@ -1,0 +1,410 @@
+kind: Telo.Application
+metadata:
+  name: GraphSqlSqliteCursorPaging
+  version: 1.0.0
+  description: |
+    Cursor paging on SQLite. 5,000 people, one of whom knows every one of them:
+    following `next` at 100 a page to the end returns every node key, every
+    relationship pair and every traversal end node exactly once, in order — each
+    compared with what the tables hold. A call naming no `limit` is bounded by
+    the default, and a cursor is refused anywhere but the listing that issued
+    it — another store of the same types included — as is one whose envelope version this runtime does not read.
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  GraphSql: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref otherSchema
+  - !ref populate
+  - !ref drainNodes
+  - !ref drainRelationships
+  - !ref drainTraversal
+  - !ref defaultLimit
+  - !ref refusedCursors
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+  name: { type: text, nullable: false }
+---
+kind: SQLite.Table
+metadata: { name: teams }
+table: teams
+columns:
+  id: { type: text, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: knowsTable }
+table: knows
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+indexes:
+  knowsPair: { columns: [source, target], unique: true }
+  knowsByTarget: { columns: [target, source] }
+foreignKeys:
+  knowsSource:
+    columns: [source]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  knowsTarget:
+    columns: [target]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref teams, !ref knowsTable]
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Node
+metadata: { name: team }
+table: !ref teams
+key: id
+---
+kind: GraphSql.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref person, !ref team]
+relationships: [!ref knows]
+---
+kind: Graph.FindNodes
+metadata: { name: findPeople }
+store: !ref kb
+node: !ref person
+---
+# A second store of another name, listing the same types over its own database.
+kind: SQLite.Connection
+metadata: { name: otherDb }
+file: ":memory:"
+---
+kind: SQLite.Schema
+metadata: { name: otherSchema }
+connection: !ref otherDb
+tables: [!ref people, !ref teams, !ref knowsTable]
+---
+kind: GraphSql.Store
+metadata: { name: otherKb }
+connection: !ref otherDb
+schema: !ref otherSchema
+nodes: [!ref person, !ref team]
+relationships: [!ref knows]
+---
+kind: Graph.FindNodes
+metadata: { name: findPeopleElsewhere }
+store: !ref otherKb
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: findTeams }
+store: !ref kb
+node: !ref team
+---
+kind: Graph.FindRelationships
+metadata: { name: findKnows }
+store: !ref kb
+relationship: !ref knows
+---
+kind: Graph.Traverse
+metadata: { name: acquaintances }
+store: !ref kb
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+# What a drain has gathered so far.
+kind: Run.Value
+metadata: { name: gathered }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [items]
+    properties:
+      items: { type: array }
+value:
+  items: !cel "inputs.items"
+---
+kind: Run.Sequence
+metadata: { name: populate }
+steps:
+  - name: people
+    invoke: !ref write
+    inputs:
+      sql: >-
+        WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+        INSERT INTO people (id, name) SELECT printf('p%05d', i), 'Person ' || i FROM n
+  - name: knows
+    invoke: !ref write
+    inputs:
+      sql: "INSERT INTO knows (source, target) SELECT 'p00001', id FROM people"
+---
+kind: Run.Sequence
+metadata: { name: drainNodes }
+steps:
+  - name: page
+    invoke: !ref findPeople
+    inputs: { limit: 100 }
+  - name: seen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.page.result.nodes.map(n, n.key)"
+  - name: follow
+    while: !cel "has(steps.page.result.next)"
+    do:
+      - name: page
+        invoke: !ref findPeople
+        inputs: { limit: 100, cursor: !cel "steps.page.result.next" }
+      - name: seen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.seen.result.items + steps.page.result.nodes.map(n, n.key)"
+  - name: stored
+    invoke: !ref read
+    inputs:
+      sql: "SELECT id FROM people ORDER BY id"
+  - name: assertEveryKeyOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.seen.result.items"
+      expected: !cel "steps.stored.result.rows.map(r, r.id)"
+  - name: assertFiveThousand
+    invoke: !ref check
+    inputs:
+      actual: !cel "size(steps.seen.result.items)"
+      expected: 5000
+---
+kind: Run.Sequence
+metadata: { name: drainRelationships }
+steps:
+  - name: page
+    invoke: !ref findKnows
+    inputs: { limit: 100 }
+  - name: seen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.page.result.relationships.map(r, [r.source, r.target])"
+  - name: follow
+    while: !cel "has(steps.page.result.next)"
+    do:
+      - name: page
+        invoke: !ref findKnows
+        inputs: { limit: 100, cursor: !cel "steps.page.result.next" }
+      - name: seen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.seen.result.items + steps.page.result.relationships.map(r, [r.source, r.target])"
+  - name: stored
+    invoke: !ref read
+    inputs:
+      sql: "SELECT source, target FROM knows ORDER BY source, target"
+  - name: assertEveryPairOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.seen.result.items"
+      expected: !cel "steps.stored.result.rows.map(r, [r.source, r.target])"
+  - name: assertFiveThousand
+    invoke: !ref check
+    inputs:
+      actual: !cel "size(steps.seen.result.items)"
+      expected: 5000
+  # With an endpoint filter the listing resumes along the other endpoint.
+  - name: toFirst
+    invoke: !ref findKnows
+    inputs: { target: p00042, limit: 1 }
+  - name: assertToFirst
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.toFirst.result"
+      expected: { relationships: [{ source: p00001, target: p00042, properties: {} }] }
+---
+kind: Run.Sequence
+metadata: { name: drainTraversal }
+steps:
+  - name: page
+    invoke: !ref acquaintances
+    inputs: { key: p00001, limit: 100 }
+  - name: seen
+    invoke: !ref gathered
+    inputs:
+      items: !cel "steps.page.result.nodes.map(n, n.key)"
+  - name: follow
+    while: !cel "has(steps.page.result.next)"
+    do:
+      - name: page
+        invoke: !ref acquaintances
+        inputs: { key: p00001, limit: 100, cursor: !cel "steps.page.result.next" }
+      - name: seen
+        invoke: !ref gathered
+        inputs:
+          items: !cel "steps.seen.result.items + steps.page.result.nodes.map(n, n.key)"
+  - name: stored
+    invoke: !ref read
+    inputs:
+      sql: "SELECT target FROM knows WHERE source = 'p00001' ORDER BY target"
+  - name: assertEveryEndNodeOnceInOrder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.seen.result.items"
+      expected: !cel "steps.stored.result.rows.map(r, r.target)"
+  - name: assertFiveThousand
+    invoke: !ref check
+    inputs:
+      actual: !cel "size(steps.seen.result.items)"
+      expected: 5000
+  # A property filter is applied to the end nodes before the page is cut.
+  - name: filtered
+    invoke: !ref acquaintances
+    inputs: { key: p00001, limit: 2, where: { lt: { name: "Person 1001" } } }
+  - name: filteredRest
+    invoke: !ref acquaintances
+    inputs:
+      key: p00001
+      where: { lt: { name: "Person 1001" } }
+      cursor: !cel "steps.filtered.result.next"
+  - name: assertFiltered
+    invoke: !ref check
+    inputs:
+      actual:
+        first: !cel "steps.filtered.result.nodes.map(n, n.key)"
+        rest: !cel "steps.filteredRest.result.nodes.map(n, n.key)"
+        more: !cel "has(steps.filteredRest.result.next)"
+      expected: { first: [p00001, p00010], rest: [p00100, p01000], more: false }
+---
+kind: Run.Sequence
+metadata: { name: defaultLimit }
+steps:
+  - name: unbounded
+    invoke: !ref findPeople
+  - name: assertBounded
+    invoke: !ref check
+    inputs:
+      actual:
+        returned: !cel "size(steps.unbounded.result.nodes)"
+        more: !cel "has(steps.unbounded.result.next)"
+      expected: { returned: 100, more: true }
+---
+kind: Run.Sequence
+metadata: { name: refusedCursors }
+steps:
+  - name: people
+    invoke: !ref findPeople
+    inputs: { limit: 1 }
+  - name: otherOperation
+    try:
+      - name: asRelationships
+        invoke: !ref findKnows
+        inputs: { cursor: !cel "steps.people.result.next" }
+    catch:
+      - name: otherOperationRefused
+        value: !cel "error.code"
+  - name: otherStore
+    try:
+      - name: elsewhere
+        invoke: !ref findPeopleElsewhere
+        inputs: { cursor: !cel "steps.people.result.next" }
+    catch:
+      - name: otherStoreRefused
+        value: !cel "error.code"
+  - name: otherType
+    try:
+      - name: asTeams
+        invoke: !ref findTeams
+        inputs: { cursor: !cel "steps.people.result.next" }
+    catch:
+      - name: otherTypeRefused
+        value: !cel "error.code"
+  - name: otherFilter
+    try:
+      - name: filtered
+        invoke: !ref findPeople
+        inputs:
+          cursor: !cel "steps.people.result.next"
+          where: { eq: { name: Person 7 } }
+    catch:
+      - name: otherFilterRefused
+        value: !cel "error.code"
+  - name: otherStart
+    try:
+      - name: fromFirst
+        invoke: !ref acquaintances
+        inputs: { key: p00001, limit: 1 }
+      - name: fromSecond
+        invoke: !ref acquaintances
+        inputs: { key: p00002, cursor: !cel "steps.fromFirst.result.next" }
+    catch:
+      - name: otherStartRefused
+        value: !cel "error.code"
+  - name: malformed
+    try:
+      - name: garbage
+        invoke: !ref findPeople
+        inputs: { cursor: "not a cursor" }
+    catch:
+      - name: malformedRefused
+        value: !cel "error.code"
+  # A well-formed envelope of version 2: {"v":2,"b":"AAAA…","t":"[[\"s\",\"p00001\"]]"}.
+  - name: laterVersion
+    try:
+      - name: versionTwo
+        invoke: !ref findPeople
+        inputs:
+          cursor: eyJ2IjoyLCJiIjoiQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQSIsInQiOiJbW1wic1wiLFwicDAwMDAxXCJdXSJ9
+    catch:
+      - name: laterVersionRefused
+        value: !cel "error.code"
+  - name: assertRefused
+    invoke: !ref check
+    inputs:
+      actual:
+        otherOperation: !cel "steps.otherOperationRefused.result"
+        otherStore: !cel "steps.otherStoreRefused.result"
+        otherType: !cel "steps.otherTypeRefused.result"
+        otherFilter: !cel "steps.otherFilterRefused.result"
+        otherStart: !cel "steps.otherStartRefused.result"
+        malformed: !cel "steps.malformedRefused.result"
+        laterVersion: !cel "steps.laterVersionRefused.result"
+      expected:
+        otherOperation: GRAPH_CURSOR_INVALID
+        otherStore: GRAPH_CURSOR_INVALID
+        otherType: GRAPH_CURSOR_INVALID
+        otherFilter: GRAPH_CURSOR_INVALID
+        otherStart: GRAPH_CURSOR_INVALID
+        malformed: GRAPH_CURSOR_INVALID
+        laterVersion: GRAPH_CURSOR_INVALID

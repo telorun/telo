@@ -1,0 +1,7 @@
+# Consumes the library beside it; its entry-scoped check does not reach the
+# library's internals, so the engine table's refusal at creation is what remains.
+kind: Telo.Application
+metadata:
+  name: ConsumesLibrary
+imports:
+  Lib: ./column-rename-from-self

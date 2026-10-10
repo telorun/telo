@@ -1,0 +1,78 @@
+# A small drafted graph the fixtures beside it include: people who know people,
+# in a shared layer and a team layer built on it. `status` is an enum column.
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Enum
+metadata: { name: personStatus }
+typeName: person_status
+baseType: text
+values: [active, retired]
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text, nullable: false }
+  status: { type: !ref personStatus }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+  since: { type: integer }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+enums: [!ref personStatus]
+tables: [!ref people, !ref knowsTable, !ref graphLayers, !ref graphDrafts]
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.DraftsTable
+metadata: { name: graphDrafts }
+table: graph_drafts
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Store
+metadata: { name: shared }
+connection: !ref db
+schema: !ref appSchema
+layer: shared
+nodes: [!ref person]
+relationships: [!ref knows]
+layers: !ref graphLayers
+drafts: !ref graphDrafts
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+bases: [!ref shared]
+nodes: [!ref person]
+relationships: [!ref knows]
+layers: !ref graphLayers
+drafts: !ref graphDrafts

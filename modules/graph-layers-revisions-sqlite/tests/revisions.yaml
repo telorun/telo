@@ -1,0 +1,1340 @@
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsSqliteRevisions
+  version: 1.0.0
+  description: |
+    What is this strategy's own, beyond the shared drafting suite. A layer read
+    and written outside any draft behaves as one graph, and every write is a
+    retained revision. Each OpenDraft opens another draft, isolated from its
+    siblings and reading the layer at the revision it was opened on even after
+    a sibling publishes; of two drafts on one parent the first publishes and the
+    second is stale, rebases, and is conflicted only on the keys both changed. A
+    rebase merges three ways, per property: what one side alone changed merges,
+    what both changed alike merges, and a real conflict names the properties
+    that clashed and lists the ancestor. A conflict's token stops matching once
+    any row it was decided from is written again, for each of the five classes.
+    Superseded rows are kept with contiguous revision ranges, the history is
+    listed in both orders and after a number, a read paged across a publish
+    stays on the revision of its first page, and a cursor never crosses a
+    session boundary, another draft or a rebase. A node delete in a draft
+    writes the node's row and one retraction per relationship the layer itself
+    states there. A write joins the caller's transaction, so one rolled back
+    left no revision.
+include:
+  - ./__fixtures__/revisions-model.yaml
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  GraphLayers: ../../graph-layers
+  Layers: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref oneGraph
+  - !ref parallelDrafts
+  - !ref threeWayMerge
+  - !ref staleTokens
+  - !ref history
+  - !ref pinnedReads
+  - !ref cursors
+  - !ref nodeDeleteInDraft
+  - !ref writeJoinsATransaction
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Graph.CreateNode
+metadata: { name: teamCreatePerson }
+store: !ref team
+node: !ref person
+---
+kind: Graph.UpdateNode
+metadata: { name: teamUpdatePerson }
+store: !ref team
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: teamDeletePerson }
+store: !ref team
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: teamGetPerson }
+store: !ref team
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: teamFindPeople }
+store: !ref team
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: archiveCreatePerson }
+store: !ref archive
+node: !ref person
+---
+kind: Graph.UpdateNode
+metadata: { name: archiveUpdatePerson }
+store: !ref archive
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: archiveDeletePerson }
+store: !ref archive
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: archiveGetPerson }
+store: !ref archive
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: archiveFindPeople }
+store: !ref archive
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: pagesCreatePerson }
+store: !ref pages
+node: !ref person
+---
+kind: Graph.UpdateNode
+metadata: { name: pagesUpdatePerson }
+store: !ref pages
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: pagesDeletePerson }
+store: !ref pages
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: pagesGetPerson }
+store: !ref pages
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: pagesFindPeople }
+store: !ref pages
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: plainCreatePerson }
+store: !ref plain
+node: !ref person
+---
+kind: Graph.UpdateNode
+metadata: { name: plainUpdatePerson }
+store: !ref plain
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: plainDeletePerson }
+store: !ref plain
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: plainGetPerson }
+store: !ref plain
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: plainFindPeople }
+store: !ref plain
+node: !ref person
+---
+kind: Graph.MergeNode
+metadata: { name: plainMergePerson }
+store: !ref plain
+node: !ref person
+---
+kind: GraphLayers.RetractNode
+metadata: { name: plainRetractPerson }
+store: !ref plain
+node: !ref person
+---
+kind: Graph.CreateRelationship
+metadata: { name: teamCreateKnows }
+store: !ref team
+relationship: !ref knows
+---
+kind: Graph.UpdateRelationship
+metadata: { name: teamUpdateKnows }
+store: !ref team
+relationship: !ref knows
+---
+kind: Graph.FindRelationships
+metadata: { name: teamFindKnows }
+store: !ref team
+relationship: !ref knows
+---
+kind: Graph.CreateRelationship
+metadata: { name: plainCreateKnows }
+store: !ref plain
+relationship: !ref knows
+---
+kind: Graph.UpdateRelationship
+metadata: { name: plainUpdateKnows }
+store: !ref plain
+relationship: !ref knows
+---
+kind: Graph.FindRelationships
+metadata: { name: plainFindKnows }
+store: !ref plain
+relationship: !ref knows
+---
+kind: Graph.DeleteRelationship
+metadata: { name: plainDeleteKnows }
+store: !ref plain
+relationship: !ref knows
+---
+kind: Graph.Traverse
+metadata: { name: plainReachable }
+store: !ref plain
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+    minHops: 1
+    maxHops: 2
+---
+kind: GraphLayers.OpenDraft
+metadata: { name: teamOpenDraft }
+store: !ref team
+---
+kind: GraphLayers.Publish
+metadata: { name: teamPublish }
+store: !ref team
+---
+kind: GraphLayers.OpenDraft
+metadata: { name: archiveOpenDraft }
+store: !ref archive
+---
+kind: GraphLayers.Publish
+metadata: { name: archivePublish }
+store: !ref archive
+---
+kind: GraphLayers.OpenDraft
+metadata: { name: pagesOpenDraft }
+store: !ref pages
+---
+kind: GraphLayers.Publish
+metadata: { name: pagesPublish }
+store: !ref pages
+---
+kind: GraphLayers.DiscardDraft
+metadata: { name: teamDiscard }
+store: !ref team
+---
+kind: GraphLayers.DiscardDraft
+metadata: { name: pagesDiscard }
+store: !ref pages
+---
+kind: GraphLayers.RebaseDraft
+metadata: { name: teamRebase }
+store: !ref team
+---
+kind: GraphLayers.RebaseDraft
+metadata: { name: pagesRebase }
+store: !ref pages
+---
+kind: GraphLayers.ListDrafts
+metadata: { name: teamListDrafts }
+store: !ref team
+---
+kind: GraphLayers.ListRevisions
+metadata: { name: archiveRevisions }
+store: !ref archive
+---
+kind: GraphLayers.NodeConflicts
+metadata: { name: teamPersonConflicts }
+store: !ref team
+node: !ref person
+---
+kind: GraphLayers.RelationshipConflicts
+metadata: { name: teamKnowsConflicts }
+store: !ref team
+relationship: !ref knows
+---
+kind: GraphLayers.ResolveNodeConflict
+metadata: { name: resolvePerson }
+store: !ref team
+node: !ref person
+---
+kind: GraphLayers.ResolveRelationshipConflict
+metadata: { name: resolveKnows }
+store: !ref team
+relationship: !ref knows
+---
+# A layer outside any draft is one graph: the twelve operations and retract
+# over its published head. The view rule holds — a relationship is in the view
+# only while both endpoints are — and a node delete withdraws the layer's own
+# relationships at it, for good.
+kind: Run.Sequence
+metadata: { name: oneGraph }
+steps:
+  - name: ada
+    invoke: !ref plainCreatePerson
+    inputs: { key: o1, properties: { name: Ada, age: 36 } }
+  - name: assertCreated
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.ada.result.node"
+      expected: { key: o1, properties: { name: Ada, age: 36 }, origin: plain }
+  - name: again
+    try:
+      - name: againAttempt
+        invoke: !ref plainCreatePerson
+        inputs: { key: o1, properties: { name: Twice } }
+      - name: againUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "again did not fail" }
+    catch:
+      - name: againCode
+        value: !cel "error.code"
+  - name: bob
+    invoke: !ref plainMergePerson
+    inputs: { key: o2, properties: { name: Bob } }
+  - name: bobAgain
+    invoke: !ref plainMergePerson
+    inputs: { key: o2, properties: { age: 41 } }
+  - name: cy
+    invoke: !ref plainCreatePerson
+    inputs: { key: o3, properties: { name: Cy } }
+  - name: older
+    invoke: !ref plainUpdatePerson
+    inputs: { key: o1, properties: { age: 37 } }
+  - name: updateAbsent
+    try:
+      - name: updateAbsentAttempt
+        invoke: !ref plainUpdatePerson
+        inputs: { key: o9, properties: { age: 1 } }
+      - name: updateAbsentUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "updateAbsent did not fail" }
+    catch:
+      - name: updateAbsentCode
+        value: !cel "error.code"
+  - name: people
+    invoke: !ref plainFindPeople
+    inputs: { where: { eq: { age: 41 } } }
+  - name: assertNodes
+    invoke: !ref check
+    inputs:
+      actual:
+        again: !cel "steps.againCode.result"
+        updateAbsent: !cel "steps.updateAbsentCode.result"
+        merged: !cel "steps.bobAgain.result.node.properties"
+        found: !cel "steps.people.result.nodes.map(n, n.key + '=' + string(n.properties.age))"
+      expected:
+        again: GRAPH_NODE_EXISTS
+        updateAbsent: GRAPH_NODE_NOT_FOUND
+        merged: { name: Bob, age: 41 }
+        found: ["o2=41"]
+  - name: adaKnowsBob
+    invoke: !ref plainCreateKnows
+    inputs: { source: o1, target: o2, properties: { since: 2001 } }
+  - name: bobKnowsCy
+    invoke: !ref plainCreateKnows
+    inputs: { source: o2, target: o3, properties: { since: 2002 } }
+  - name: danglingLink
+    try:
+      - name: danglingLinkAttempt
+        invoke: !ref plainCreateKnows
+        inputs: { source: o1, target: o9, properties: {} }
+      - name: danglingLinkUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "danglingLink did not fail" }
+    catch:
+      - name: danglingLinkCode
+        value: !cel "error.code"
+  - name: linkAgain
+    try:
+      - name: linkAgainAttempt
+        invoke: !ref plainCreateKnows
+        inputs: { source: o1, target: o2, properties: {} }
+      - name: linkAgainUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "linkAgain did not fail" }
+    catch:
+      - name: linkAgainCode
+        value: !cel "error.code"
+  - name: since
+    invoke: !ref plainUpdateKnows
+    inputs: { source: o1, target: o2, properties: { since: 1999 } }
+  - name: link
+    invoke: !ref plainFindKnows
+    inputs: { source: o1, target: o2 }
+  - name: reached
+    invoke: !ref plainReachable
+    inputs: { key: o1 }
+  - name: inbound
+    invoke: !ref plainFindKnows
+    inputs: { target: o3 }
+  - name: assertLinks
+    invoke: !ref check
+    inputs:
+      actual:
+        dangling: !cel "steps.danglingLinkCode.result"
+        again: !cel "steps.linkAgainCode.result"
+        link: !cel "steps.link.result.relationships"
+        reached: !cel "steps.reached.result.nodes.map(n, n.key)"
+        inbound: !cel "steps.inbound.result.relationships.map(r, r.source)"
+      expected:
+        dangling: GRAPH_NODE_NOT_FOUND
+        again: GRAPH_RELATIONSHIP_EXISTS
+        link: [{ source: o1, target: o2, properties: { since: 1999 }, origin: plain }]
+        reached: [o2, o3]
+        inbound: [o2]
+  # The node goes, and with it the layer's own relationships at it.
+  - name: deleteBob
+    invoke: !ref plainDeletePerson
+    inputs: { key: o2 }
+  - name: afterDelete
+    invoke: !ref plainFindKnows
+    inputs: {}
+  - name: reachedAfter
+    invoke: !ref plainReachable
+    inputs: { key: o1 }
+  - name: bobBack
+    invoke: !ref plainCreatePerson
+    inputs: { key: o2, properties: { name: Bob } }
+  - name: afterReturn
+    invoke: !ref plainFindKnows
+    inputs: {}
+  - name: retract
+    invoke: !ref plainRetractPerson
+    inputs: { key: o3 }
+  - name: retractAgain
+    try:
+      - name: retractAgainAttempt
+        invoke: !ref plainRetractPerson
+        inputs: { key: o3 }
+      - name: retractAgainUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "retractAgain did not fail" }
+    catch:
+      - name: retractAgainCode
+        value: !cel "error.code"
+  - name: gone
+    try:
+      - name: goneAttempt
+        invoke: !ref plainGetPerson
+        inputs: { key: o3 }
+      - name: goneUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "gone did not fail" }
+    catch:
+      - name: goneCode
+        value: !cel "error.code"
+  - name: assertWithdrawn
+    invoke: !ref check
+    inputs:
+      actual:
+        deleted: !cel "steps.deleteBob.result.node.key"
+        links: !cel "size(steps.afterDelete.result.relationships)"
+        reached: !cel "size(steps.reachedAfter.result.nodes)"
+        linksAfterReturn: !cel "size(steps.afterReturn.result.relationships)"
+        retractedToNothing: !cel "!has(steps.retract.result.node)"
+        retractAgain: !cel "steps.retractAgainCode.result"
+        gone: !cel "steps.goneCode.result"
+      expected:
+        deleted: o2
+        links: 0
+        reached: 0
+        linksAfterReturn: 0
+        retractedToNothing: true
+        retractAgain: GRAPH_NODE_NOT_STATED
+        gone: GRAPH_NODE_NOT_FOUND
+---
+# Every OpenDraft opens another draft. Two on one parent are isolated from each
+# other, and a session keeps reading the layer at its draft's parent revision
+# after the sibling publishes. The first to publish wins; the second is stale,
+# rebases, and is conflicted only on the key both changed.
+kind: Run.Sequence
+metadata: { name: parallelDrafts }
+steps:
+  - name: seedOne
+    invoke: !ref teamCreatePerson
+    inputs: { key: p1, properties: { name: Orig, age: 1 } }
+  - name: seedTwo
+    invoke: !ref teamCreatePerson
+    inputs: { key: p2, properties: { name: Orig, age: 2 } }
+  - name: a
+    invoke: !ref teamOpenDraft
+    inputs: { message: first }
+  - name: b
+    invoke: !ref teamOpenDraft
+    inputs: { message: second }
+  - name: listed
+    invoke: !ref teamListDrafts
+    inputs: {}
+  - name: assertTwoDrafts
+    invoke: !ref check
+    inputs:
+      actual:
+        opened: !cel "[steps.a.result.opened, steps.b.result.opened]"
+        distinct: !cel "steps.a.result.draft.id != steps.b.result.draft.id"
+        sameParent: !cel "steps.a.result.draft.parentRevision == steps.b.result.draft.parentRevision"
+        listed: !cel "sort(steps.listed.result.drafts.map(d, d.message))"
+        stale: !cel "steps.listed.result.drafts.map(d, d.stale)"
+      expected:
+        opened: [true, true]
+        distinct: true
+        sameParent: true
+        listed: [first, second]
+        stale: [false, false]
+  - name: inA
+    inputs: { draft: !cel "steps.a.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: rename
+          invoke: !ref teamUpdatePerson
+          inputs: { key: p1, properties: { name: FromA } }
+        - name: add
+          invoke: !ref teamCreatePerson
+          inputs: { key: p3, properties: { name: OnlyA } }
+  - name: inB
+    inputs: { draft: !cel "steps.b.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: sibling
+          invoke: !ref teamGetPerson
+          inputs: { key: p1 }
+        - name: siblingsAdd
+          try:
+            - name: siblingsAddAttempt
+              invoke: !ref teamGetPerson
+              inputs: { key: p3 }
+            - name: siblingsAddUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "siblingsAdd did not fail" }
+          catch:
+            - name: siblingsAddCode
+              value: !cel "error.code"
+
+        - name: rename
+          invoke: !ref teamUpdatePerson
+          inputs: { key: p1, properties: { name: FromB } }
+        - name: older
+          invoke: !ref teamUpdatePerson
+          inputs: { key: p2, properties: { age: 20 } }
+  - name: publishA
+    invoke: !ref teamPublish
+    inputs: { draft: !cel "steps.a.result.draft.id" }
+  - name: stillAtParent
+    inputs: { draft: !cel "steps.b.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: mine
+          invoke: !ref teamGetPerson
+          inputs: { key: p1 }
+        - name: published
+          try:
+            - name: publishedAttempt
+              invoke: !ref teamGetPerson
+              inputs: { key: p3 }
+            - name: publishedUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "published did not fail" }
+          catch:
+            - name: publishedCode
+              value: !cel "error.code"
+
+        - name: all
+          invoke: !ref teamFindPeople
+          inputs: {}
+  - name: outside
+    invoke: !ref teamGetPerson
+    inputs: { key: p3 }
+  - name: assertIsolatedAtParent
+    invoke: !ref check
+    inputs:
+      actual:
+        siblingInB: !cel "steps.inB.result.sibling.result.node.properties.name"
+        siblingsAddInB: !cel "string(steps.inB.result.siblingsAddCode.result)"
+        publishedA: !cel "[steps.publishA.result.changed, steps.publishA.result.revision.number == steps.a.result.draft.parentRevision + 1]"
+        mineAfter: !cel "steps.stillAtParent.result.mine.result.node.properties.name"
+        addAfter: !cel "string(steps.stillAtParent.result.publishedCode.result)"
+        keysAfter: !cel "steps.stillAtParent.result.all.result.nodes.map(n, n.key).filter(k, k.startsWith('p'))"
+        outside: !cel "steps.outside.result.node.properties.name"
+      expected:
+        siblingInB: Orig
+        siblingsAddInB: GRAPH_NODE_NOT_FOUND
+        publishedA: [true, true]
+        mineAfter: FromB
+        addAfter: GRAPH_NODE_NOT_FOUND
+        keysAfter: [p1, p2]
+        outside: OnlyA
+  - name: stale
+    try:
+      - name: staleAttempt
+        invoke: !ref teamPublish
+        inputs: { draft: !cel "steps.b.result.draft.id" }
+      - name: staleUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "stale did not fail" }
+    catch:
+      - name: staleError
+        value:
+          code: !cel "error.code"
+          behind: !cel "error.data.headRevision - error.data.parentRevision"
+  - name: rebase
+    invoke: !ref teamRebase
+    inputs: { draft: !cel "steps.b.result.draft.id" }
+  - name: decide
+    inputs: { draft: !cel "steps.b.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: listed
+          invoke: !ref teamPersonConflicts
+          inputs: {}
+        - name: nowVisible
+          invoke: !ref teamGetPerson
+          inputs: { key: p3 }
+        - name: keep
+          invoke: !ref resolvePerson
+          inputs: { key: p1, take: mine }
+  - name: publishB
+    invoke: !ref teamPublish
+    inputs: { draft: !cel "steps.b.result.draft.id" }
+  - name: one
+    invoke: !ref teamGetPerson
+    inputs: { key: p1 }
+  - name: two
+    invoke: !ref teamGetPerson
+    inputs: { key: p2 }
+  - name: assertSecondRebasedAndPublished
+    invoke: !ref check
+    inputs:
+      actual:
+        stale: !cel "steps.staleError.result"
+        rebase: !cel "[steps.rebase.result.parentRevision == steps.publishA.result.revision.number, steps.rebase.result.conflicts]"
+        conflicts: !cel "steps.decide.result.listed.result.conflicts.map(c, [c.key, c.class, c.properties.join(','), c.mine.name, c.theirs.name, c.base.name])"
+        nowVisible: !cel "steps.decide.result.nowVisible.result.node.properties.name"
+        publishedB: !cel "steps.publishB.result.revision.number == steps.publishA.result.revision.number + 1"
+        one: !cel "steps.one.result.node.properties"
+        two: !cel "steps.two.result.node.properties"
+      expected:
+        stale: { code: GRAPH_DRAFT_STALE, behind: 1 }
+        rebase: [true, 1]
+        conflicts: [[p1, changed-both, name, FromB, FromA, Orig]]
+        nowVisible: OnlyA
+        publishedB: true
+        one: { name: FromB, age: 1 }
+        two: { name: Orig, age: 20 }
+---
+# The merge is three-way, per property, against the row the draft was written
+# over. `t1`: each side changed a different property — merged. `t3`: both made
+# the same change — merged, nothing left to publish. `t2`: both renamed it
+# differently — one conflict naming `name` alone, with the ancestor listed —
+# while the age only the published side changed merges into whichever side is
+# taken. The decision is recorded on the row with who made it.
+kind: Run.Sequence
+metadata: { name: threeWayMerge }
+steps:
+  - name: seedOne
+    invoke: !ref teamCreatePerson
+    inputs: { key: t1, properties: { name: Orig, age: 1 } }
+  - name: seedTwo
+    invoke: !ref teamCreatePerson
+    inputs: { key: t2, properties: { name: Orig, age: 1 } }
+  - name: seedThree
+    invoke: !ref teamCreatePerson
+    inputs: { key: t3, properties: { name: Orig, age: 1 } }
+  - name: open
+    invoke: !ref teamOpenDraft
+    inputs: {}
+  - name: mine
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: age
+          invoke: !ref teamUpdatePerson
+          inputs: { key: t1, properties: { age: 10 } }
+        - name: name
+          invoke: !ref teamUpdatePerson
+          inputs: { key: t2, properties: { name: Mine } }
+        - name: same
+          invoke: !ref teamUpdatePerson
+          inputs: { key: t3, properties: { age: 10 } }
+  - name: theirsOne
+    invoke: !ref teamUpdatePerson
+    inputs: { key: t1, properties: { name: Renamed } }
+  - name: theirsTwo
+    invoke: !ref teamUpdatePerson
+    inputs: { key: t2, properties: { name: Theirs, age: 5 } }
+  - name: theirsThree
+    invoke: !ref teamUpdatePerson
+    inputs: { key: t3, properties: { age: 10 } }
+  - name: rebase
+    invoke: !ref teamRebase
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: decide
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: merged
+          invoke: !ref teamGetPerson
+          inputs: { key: t1 }
+        - name: listed
+          invoke: !ref teamPersonConflicts
+          inputs: {}
+        - name: keep
+          invoke: !ref resolvePerson
+          inputs: { key: t2, take: mine, resolvedBy: { type: user, id: u7 } }
+        - name: left
+          invoke: !ref teamPersonConflicts
+          inputs: {}
+  - name: staged
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT id, graph_resolution AS resolution, graph_resolved_by_type AS by_type,
+          graph_resolved_by_id AS by_id
+        FROM people WHERE id IN ('t1', 't2', 't3') AND graph_from_revision IS NULL ORDER BY id
+  - name: publish
+    invoke: !ref teamPublish
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: two
+    invoke: !ref teamGetPerson
+    inputs: { key: t2 }
+  - name: assertMergedPerProperty
+    invoke: !ref check
+    inputs:
+      actual:
+        rebase: !cel "[steps.rebase.result.merged, steps.rebase.result.conflicts]"
+        merged: !cel "steps.decide.result.merged.result.node.properties"
+        conflicts: !cel "steps.decide.result.listed.result.conflicts.map(c, { 'key': c.key, 'class': c.class, 'properties': c.properties, 'mine': c.mine, 'theirs': c.theirs, 'base': c.base })"
+        kept: !cel "steps.decide.result.keep.result.node.properties"
+        left: !cel "size(steps.decide.result.left.result.conflicts)"
+        staged: !cel "steps.staged.result.rows"
+        published: !cel "steps.two.result.node.properties"
+      expected:
+        rebase: [2, 1]
+        merged: { name: Renamed, age: 10 }
+        conflicts:
+          - key: t2
+            class: changed-both
+            properties: [name]
+            mine: { name: Mine, age: 1 }
+            theirs: { name: Theirs, age: 5 }
+            base: { name: Orig, age: 1 }
+        kept: { name: Mine, age: 5 }
+        left: 0
+        staged:
+          - { id: t1, resolution: null, by_type: null, by_id: null }
+          - { id: t2, resolution: mine, by_type: user, by_id: u7 }
+        published: { name: Mine, age: 5 }
+---
+# A token names a conflict by every row its class was decided from. One draft
+# holds a conflict of each class; the layer then moves under each once more —
+# a published-side row is written again — and every token taken before is
+# refused, while the conflict relisted carries another.
+#   k1 changed-both, k2 changed-removed, k3 removed-changed, k4 added-both,
+#   e1→e2 endpoint-missing (a relationship published at a node the draft deletes).
+kind: Run.Sequence
+metadata: { name: staleTokens }
+steps:
+  - name: seedK1
+    invoke: !ref teamCreatePerson
+    inputs: { key: k1, properties: { name: Orig } }
+  - name: seedK2
+    invoke: !ref teamCreatePerson
+    inputs: { key: k2, properties: { name: Orig } }
+  - name: seedK3
+    invoke: !ref teamCreatePerson
+    inputs: { key: k3, properties: { name: Orig } }
+  - name: seedE1
+    invoke: !ref teamCreatePerson
+    inputs: { key: e1, properties: { name: Orig } }
+  - name: seedE2
+    invoke: !ref teamCreatePerson
+    inputs: { key: e2, properties: { name: Orig } }
+  - name: open
+    invoke: !ref teamOpenDraft
+    inputs: {}
+  - name: mine
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: k1
+          invoke: !ref teamUpdatePerson
+          inputs: { key: k1, properties: { name: Mine } }
+        - name: k2
+          invoke: !ref teamUpdatePerson
+          inputs: { key: k2, properties: { name: Mine } }
+        - name: k3
+          invoke: !ref teamDeletePerson
+          inputs: { key: k3 }
+        - name: k4
+          invoke: !ref teamCreatePerson
+          inputs: { key: k4, properties: { name: Mine } }
+        - name: e1
+          invoke: !ref teamDeletePerson
+          inputs: { key: e1 }
+  - name: theirsK1
+    invoke: !ref teamUpdatePerson
+    inputs: { key: k1, properties: { name: Theirs } }
+  - name: theirsK2
+    invoke: !ref teamDeletePerson
+    inputs: { key: k2 }
+  - name: theirsK3
+    invoke: !ref teamUpdatePerson
+    inputs: { key: k3, properties: { name: Theirs } }
+  - name: theirsK4
+    invoke: !ref teamCreatePerson
+    inputs: { key: k4, properties: { name: Theirs } }
+  - name: theirsLink
+    invoke: !ref teamCreateKnows
+    inputs: { source: e1, target: e2, properties: { since: 1 } }
+  - name: rebase
+    invoke: !ref teamRebase
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: first
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: people
+          invoke: !ref teamPersonConflicts
+          inputs: {}
+        - name: links
+          invoke: !ref teamKnowsConflicts
+          inputs: {}
+  # Every published-side row a class was decided from is written again.
+  - name: againK1
+    invoke: !ref teamUpdatePerson
+    inputs: { key: k1, properties: { name: Again } }
+  - name: againK2
+    invoke: !ref teamCreatePerson
+    inputs: { key: k2, properties: { name: Again } }
+  - name: againK3
+    invoke: !ref teamUpdatePerson
+    inputs: { key: k3, properties: { name: Again } }
+  - name: againK4
+    invoke: !ref teamUpdatePerson
+    inputs: { key: k4, properties: { name: Again } }
+  - name: againLink
+    invoke: !ref teamUpdateKnows
+    inputs: { source: e1, target: e2, properties: { since: 2 } }
+  - name: rebaseAgain
+    invoke: !ref teamRebase
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: second
+    inputs: { draft: !cel "steps.open.result.draft.id", people: !cel "steps.first.result.people.result.conflicts", links: !cel "steps.first.result.links.result.conflicts" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft", people: !cel "inputs.people", links: !cel "inputs.links" }
+      steps:
+        - name: staleK1
+          try:
+            - name: staleK1Attempt
+              invoke: !ref resolvePerson
+              inputs: { key: k1, take: theirs, token: !cel "inputs.people[0].token" }
+            - name: staleK1Unreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "staleK1 did not fail" }
+          catch:
+            - name: staleK1Code
+              value: !cel "error.code"
+        - name: staleK2
+          try:
+            - name: staleK2Attempt
+              invoke: !ref resolvePerson
+              inputs: { key: k2, take: theirs, token: !cel "inputs.people[1].token" }
+            - name: staleK2Unreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "staleK2 did not fail" }
+          catch:
+            - name: staleK2Code
+              value: !cel "error.code"
+        - name: staleK3
+          try:
+            - name: staleK3Attempt
+              invoke: !ref resolvePerson
+              inputs: { key: k3, take: theirs, token: !cel "inputs.people[2].token" }
+            - name: staleK3Unreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "staleK3 did not fail" }
+          catch:
+            - name: staleK3Code
+              value: !cel "error.code"
+        - name: staleK4
+          try:
+            - name: staleK4Attempt
+              invoke: !ref resolvePerson
+              inputs: { key: k4, take: theirs, token: !cel "inputs.people[3].token" }
+            - name: staleK4Unreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "staleK4 did not fail" }
+          catch:
+            - name: staleK4Code
+              value: !cel "error.code"
+        - name: staleLink
+          try:
+            - name: staleLinkAttempt
+              invoke: !ref resolveKnows
+              inputs: { source: e1, target: e2, take: theirs, token: !cel "inputs.links[0].token" }
+            - name: staleLinkUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "staleLink did not fail" }
+          catch:
+            - name: staleLinkCode
+              value: !cel "error.code"
+
+        - name: people
+          invoke: !ref teamPersonConflicts
+          inputs: {}
+        - name: links
+          invoke: !ref teamKnowsConflicts
+          inputs: {}
+        - name: fresh
+          invoke: !ref resolvePerson
+          inputs: { key: k1, take: theirs, token: !cel "steps.people.result.conflicts[0].token" }
+        - name: outcome
+          value:
+            refused: !cel "[steps.staleK1Code.result, steps.staleK2Code.result, steps.staleK3Code.result, steps.staleK4Code.result, steps.staleLinkCode.result]"
+            classes: !cel "steps.people.result.conflicts.map(c, c.key + ' ' + c.class) + steps.links.result.conflicts.map(c, c.source + '>' + c.target + ' ' + c.class)"
+            moved: !cel "[0, 1, 2, 3].map(i, steps.people.result.conflicts[i].token != inputs.people[i].token) + [steps.links.result.conflicts[0].token != inputs.links[0].token]"
+            fresh: !cel "steps.fresh.result.node.properties.name"
+  - name: assertEveryStaleTokenRefused
+    invoke: !ref check
+    inputs:
+      actual:
+        first: !cel "steps.first.result.people.result.conflicts.map(c, c.key + ' ' + c.class) + steps.first.result.links.result.conflicts.map(c, c.source + '>' + c.target + ' ' + c.class)"
+        second: !cel "steps.second.result.outcome.result"
+      expected:
+        first: [k1 changed-both, k2 changed-removed, k3 removed-changed, k4 added-both, e1>e2 endpoint-missing]
+        second:
+          refused: [GRAPH_CONFLICT_NOT_FOUND, GRAPH_CONFLICT_NOT_FOUND, GRAPH_CONFLICT_NOT_FOUND, GRAPH_CONFLICT_NOT_FOUND, GRAPH_CONFLICT_NOT_FOUND]
+          classes: [k1 changed-both, k2 changed-both, k3 removed-changed, k4 added-both, e1>e2 endpoint-missing]
+          moved: [true, true, true, true, true]
+          fresh: Again
+  - name: discard
+    invoke: !ref teamDiscard
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+---
+# Every write outside a draft and every publish is one numbered revision, and
+# the row a revision replaces is kept: after four revisions of one key the
+# table holds four rows for it, their ranges contiguous. The history lists in
+# both orders, after a number, a page at a time; a draft with no change adds
+# nothing to it.
+kind: Run.Sequence
+metadata: { name: history }
+steps:
+  - name: one
+    invoke: !ref archiveCreatePerson
+    inputs: { key: h1, properties: { name: v1 } }
+  - name: two
+    invoke: !ref archiveUpdatePerson
+    inputs: { key: h1, properties: { name: v2 } }
+  - name: open
+    invoke: !ref archiveOpenDraft
+    inputs: {}
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref archive
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: three
+          invoke: !ref archiveUpdatePerson
+          inputs: { key: h1, properties: { name: v3 } }
+  - name: publish
+    invoke: !ref archivePublish
+    inputs: { draft: !cel "steps.open.result.draft.id", message: third, actor: { type: user, id: u1 } }
+  - name: four
+    invoke: !ref archiveUpdatePerson
+    inputs: { key: h1, properties: { name: v4 } }
+  - name: empty
+    invoke: !ref archiveOpenDraft
+    inputs: {}
+  - name: publishEmpty
+    invoke: !ref archivePublish
+    inputs: { draft: !cel "steps.empty.result.draft.id" }
+  - name: versions
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT name, graph_from_revision AS f, graph_to_revision AS t FROM people
+        WHERE id = 'h1' AND graph_layer = (SELECT id FROM graph_layers WHERE name = 'archive')
+        ORDER BY graph_from_revision
+  - name: newest
+    invoke: !ref archiveRevisions
+    inputs: {}
+  - name: oldestAfterOne
+    invoke: !ref archiveRevisions
+    inputs: { order: ascending, after: 1, limit: 2 }
+  - name: oldestAfterOneRest
+    invoke: !ref archiveRevisions
+    inputs: { order: ascending, after: 1, limit: 2, cursor: !cel "steps.oldestAfterOne.result.next" }
+  - name: newestPage
+    invoke: !ref archiveRevisions
+    inputs: { limit: 3 }
+  - name: newestRest
+    invoke: !ref archiveRevisions
+    inputs: { limit: 3, cursor: !cel "steps.newestPage.result.next" }
+  - name: otherOrder
+    try:
+      - name: otherOrderAttempt
+        invoke: !ref archiveRevisions
+        inputs: { order: ascending, limit: 3, cursor: !cel "steps.newestPage.result.next" }
+      - name: otherOrderUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "otherOrder did not fail" }
+    catch:
+      - name: otherOrderCode
+        value: !cel "error.code"
+  - name: assertHistory
+    invoke: !ref check
+    inputs:
+      actual:
+        published: !cel "[steps.publish.result.revision.number, steps.publish.result.changed]"
+        empty: !cel "[steps.publishEmpty.result.revision.number, steps.publishEmpty.result.changed]"
+        versions: !cel "steps.versions.result.rows"
+        newest: !cel "steps.newest.result.revisions.map(r, r.number)"
+        third: !cel "steps.newest.result.revisions[1].message + ' by ' + steps.newest.result.revisions[1].publishedBy.type + '/' + steps.newest.result.revisions[1].publishedBy.id"
+        byStore: !cel "steps.newest.result.revisions[0].publishedBy"
+        noMessage: !cel "has(steps.newest.result.revisions[0].message)"
+        ascending: !cel "[steps.oldestAfterOne.result.revisions.map(r, r.number), steps.oldestAfterOneRest.result.revisions.map(r, r.number)]"
+        ascendingEnds: !cel "has(steps.oldestAfterOneRest.result.next)"
+        descending: !cel "[steps.newestPage.result.revisions.map(r, r.number), steps.newestRest.result.revisions.map(r, r.number)]"
+        otherOrder: !cel "steps.otherOrderCode.result"
+      expected:
+        published: [3, true]
+        empty: [4, false]
+        versions:
+          - { name: v1, f: 1, t: 2 }
+          - { name: v2, f: 2, t: 3 }
+          - { name: v3, f: 3, t: 4 }
+          - { name: v4, f: 4, t: null }
+        newest: [4, 3, 2, 1]
+        third: third by user/u1
+        byStore: { type: store, id: archive }
+        noMessage: false
+        ascending: [[2, 3], [4]]
+        ascendingEnds: false
+        descending: [[4, 3, 2], [1]]
+        otherOrder: GRAPH_CURSOR_INVALID
+---
+# A read outside a session stays on the revision its first page was read at:
+# paged across other callers' writes it returns no key twice, misses none that
+# the revision held, and shows each as that revision had it. A new read starts
+# at the head.
+kind: Run.Sequence
+metadata: { name: pinnedReads }
+steps:
+  - name: seedG1
+    invoke: !ref pagesCreatePerson
+    inputs: { key: g1, properties: { name: Orig } }
+  - name: seedG2
+    invoke: !ref pagesCreatePerson
+    inputs: { key: g2, properties: { name: Orig } }
+  - name: seedG3
+    invoke: !ref pagesCreatePerson
+    inputs: { key: g3, properties: { name: Orig } }
+  - name: seedG4
+    invoke: !ref pagesCreatePerson
+    inputs: { key: g4, properties: { name: Orig } }
+  - name: firstPage
+    invoke: !ref pagesFindPeople
+    inputs: { limit: 2 }
+  - name: change
+    invoke: !ref pagesUpdatePerson
+    inputs: { key: g3, properties: { name: Changed } }
+  - name: remove
+    invoke: !ref pagesDeletePerson
+    inputs: { key: g4 }
+  - name: before
+    invoke: !ref pagesCreatePerson
+    inputs: { key: g0, properties: { name: New } }
+  - name: beyond
+    invoke: !ref pagesCreatePerson
+    inputs: { key: g5, properties: { name: New } }
+  - name: secondPage
+    invoke: !ref pagesFindPeople
+    inputs: { limit: 2, cursor: !cel "steps.firstPage.result.next" }
+  - name: fresh
+    invoke: !ref pagesFindPeople
+    inputs: {}
+  - name: assertOneRevision
+    invoke: !ref check
+    inputs:
+      actual:
+        first: !cel "steps.firstPage.result.nodes.map(n, n.key)"
+        second: !cel "steps.secondPage.result.nodes.map(n, n.key + '=' + n.properties.name)"
+        ends: !cel "has(steps.secondPage.result.next)"
+        fresh: !cel "steps.fresh.result.nodes.map(n, n.key + '=' + n.properties.name)"
+      expected:
+        first: [g1, g2]
+        second: ["g3=Orig", "g4=Orig"]
+        ends: false
+        fresh: ["g0=New", "g1=Orig", "g2=Orig", "g3=Changed", "g5=New"]
+---
+# A cursor is bound to what its listing was read from. One read outside a
+# session is refused inside one and the reverse; one read in a draft is refused
+# in a sibling draft; and one read before a rebase that moved the draft is
+# refused after it.
+kind: Run.Sequence
+metadata: { name: cursors }
+steps:
+  - name: a
+    invoke: !ref pagesOpenDraft
+    inputs: {}
+  - name: b
+    invoke: !ref pagesOpenDraft
+    inputs: {}
+  - name: head
+    invoke: !ref pagesFindPeople
+    inputs: { limit: 1 }
+  - name: inA
+    inputs: { draft: !cel "steps.a.result.draft.id", head: !cel "steps.head.result.next" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref pages
+      inputs: { draft: !cel "inputs.draft", head: !cel "inputs.head" }
+      steps:
+        - name: page
+          invoke: !ref pagesFindPeople
+          inputs: { limit: 1 }
+        - name: follows
+          invoke: !ref pagesFindPeople
+          inputs: { limit: 1, cursor: !cel "steps.page.result.next" }
+        - name: headInside
+          try:
+            - name: headInsideAttempt
+              invoke: !ref pagesFindPeople
+              inputs: { limit: 1, cursor: !cel "inputs.head" }
+            - name: headInsideUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "headInside did not fail" }
+          catch:
+            - name: headInsideCode
+              value: !cel "error.code"
+  - name: insideAtHead
+    try:
+      - name: insideAtHeadAttempt
+        invoke: !ref pagesFindPeople
+        inputs: { limit: 1, cursor: !cel "steps.inA.result.page.result.next" }
+      - name: insideAtHeadUnreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "insideAtHead did not fail" }
+    catch:
+      - name: insideAtHeadCode
+        value: !cel "error.code"
+  - name: inB
+    inputs: { draft: !cel "steps.b.result.draft.id", cursor: !cel "steps.inA.result.page.result.next" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref pages
+      inputs: { draft: !cel "inputs.draft", cursor: !cel "inputs.cursor" }
+      steps:
+        - name: sibling
+          try:
+            - name: siblingAttempt
+              invoke: !ref pagesFindPeople
+              inputs: { limit: 1, cursor: !cel "inputs.cursor" }
+            - name: siblingUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "sibling did not fail" }
+          catch:
+            - name: siblingCode
+              value: !cel "error.code"
+  - name: move
+    invoke: !ref pagesCreatePerson
+    inputs: { key: g6, properties: { name: Moves } }
+  - name: rebase
+    invoke: !ref pagesRebase
+    inputs: { draft: !cel "steps.a.result.draft.id" }
+  - name: afterRebase
+    inputs: { draft: !cel "steps.a.result.draft.id", cursor: !cel "steps.inA.result.page.result.next" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref pages
+      inputs: { draft: !cel "inputs.draft", cursor: !cel "inputs.cursor" }
+      steps:
+        - name: rebased
+          try:
+            - name: rebasedAttempt
+              invoke: !ref pagesFindPeople
+              inputs: { limit: 1, cursor: !cel "inputs.cursor" }
+            - name: rebasedUnreachable
+              throw: { code: ERR_TEST_UNREACHABLE, message: "rebased did not fail" }
+          catch:
+            - name: rebasedCode
+              value: !cel "error.code"
+  - name: assertCursorsBound
+    invoke: !ref check
+    inputs:
+      actual:
+        follows: !cel "size(steps.inA.result.follows.result.nodes)"
+        headInside: !cel "string(steps.inA.result.headInsideCode.result)"
+        insideAtHead: !cel "steps.insideAtHeadCode.result"
+        sibling: !cel "string(steps.inB.result.siblingCode.result)"
+        rebased: !cel "string(steps.afterRebase.result.rebasedCode.result)"
+      expected:
+        follows: 1
+        headInside: GRAPH_CURSOR_INVALID
+        insideAtHead: GRAPH_CURSOR_INVALID
+        sibling: GRAPH_CURSOR_INVALID
+        rebased: GRAPH_CURSOR_INVALID
+  - name: discardA
+    invoke: !ref pagesDiscard
+    inputs: { draft: !cel "steps.a.result.draft.id" }
+  - name: discardB
+    invoke: !ref pagesDiscard
+    inputs: { draft: !cel "steps.b.result.draft.id" }
+---
+# A node delete in a draft writes the node's row and withdraws what the layer
+# itself states at the node: one retraction for each relationship the layer
+# publishes there, and the draft's own unpublished one is simply dropped. Once
+# published, the replaced rows are ended, not removed.
+kind: Run.Sequence
+metadata: { name: nodeDeleteInDraft }
+steps:
+  - name: seedD0
+    invoke: !ref teamCreatePerson
+    inputs: { key: d0, properties: { name: Orig } }
+  - name: seedD1
+    invoke: !ref teamCreatePerson
+    inputs: { key: d1, properties: { name: Orig } }
+  - name: seedD2
+    invoke: !ref teamCreatePerson
+    inputs: { key: d2, properties: { name: Orig } }
+  - name: seedD3
+    invoke: !ref teamCreatePerson
+    inputs: { key: d3, properties: { name: Orig } }
+  - name: out
+    invoke: !ref teamCreateKnows
+    inputs: { source: d0, target: d1, properties: { since: 1 } }
+  - name: inbound
+    invoke: !ref teamCreateKnows
+    inputs: { source: d2, target: d0, properties: { since: 2 } }
+  - name: open
+    invoke: !ref teamOpenDraft
+    inputs: {}
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: own
+          invoke: !ref teamCreateKnows
+          inputs: { source: d0, target: d3, properties: { since: 3 } }
+        - name: delete
+          invoke: !ref teamDeletePerson
+          inputs: { key: d0 }
+        - name: links
+          invoke: !ref teamFindKnows
+          inputs: {}
+  - name: staged
+    invoke: !ref read
+    inputs:
+      sql: !sql >-
+        SELECT 'people' AS tbl, id AS a, '' AS b, graph_effect AS effect FROM people
+          WHERE graph_changeset = (SELECT id FROM graph_changesets WHERE public_id = ${{ steps.open.result.draft.id }})
+        UNION ALL
+        SELECT 'knows', source, target, graph_effect FROM knows
+          WHERE graph_changeset = (SELECT id FROM graph_changesets WHERE public_id = ${{ steps.open.result.draft.id }})
+        ORDER BY 1, 2, 3
+  - name: outsideStill
+    invoke: !ref teamFindKnows
+    inputs: { source: d0 }
+  - name: publish
+    invoke: !ref teamPublish
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+  - name: kept
+    invoke: !ref read
+    inputs:
+      sql: !sql >-
+        SELECT source, target, graph_to_revision = ${{ steps.publish.result.revision.number }} AS ended FROM knows
+        WHERE (source = 'd0' OR target = 'd0') ORDER BY source, target
+  - name: after
+    invoke: !ref teamFindKnows
+    inputs: {}
+  - name: assertWithdrawnInDraft
+    invoke: !ref check
+    inputs:
+      actual:
+        inside: !cel "steps.stage.result.links.result.relationships.filter(r, r.source.startsWith('d'))"
+        staged: !cel "steps.staged.result.rows"
+        outsideStill: !cel "steps.outsideStill.result.relationships.map(r, r.target)"
+        kept: !cel "steps.kept.result.rows"
+        after: !cel "steps.after.result.relationships.filter(r, r.source.startsWith('d'))"
+      expected:
+        inside: []
+        staged:
+          - { tbl: knows, a: d0, b: d1, effect: retracted }
+          - { tbl: knows, a: d2, b: d0, effect: retracted }
+          - { tbl: people, a: d0, b: "", effect: retracted }
+        outsideStill: [d1]
+        kept:
+          - { source: d0, target: d1, ended: 1 }
+          - { source: d2, target: d0, ended: 1 }
+        after: []
+---
+# A write inside the caller's transaction is part of it: the transaction's
+# later failure leaves no row, no revision and no changeset.
+kind: Sql.Transaction
+metadata: { name: writeThenFail }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: write
+      invoke: !ref archiveCreatePerson
+      inputs: { key: x1, properties: { name: Lost } }
+    - name: abort
+      throw: { code: ERR_TEST_ABORT, message: "the caller's transaction fails after the write" }
+---
+kind: Run.Sequence
+metadata: { name: writeJoinsATransaction }
+steps:
+  - name: before
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT l.head_revision AS head,
+          (SELECT COUNT(*) FROM graph_changesets c WHERE c.layer_id = l.id) AS changesets
+        FROM graph_layers l WHERE l.name = 'archive'
+  - name: rolledBack
+    try:
+      - name: attempt
+        invoke: !ref writeThenFail
+        inputs: {}
+    catch:
+      - name: rolledBackCode
+        value: !cel "error.code"
+  - name: after
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT l.head_revision AS head,
+          (SELECT COUNT(*) FROM graph_changesets c WHERE c.layer_id = l.id) AS changesets,
+          (SELECT COUNT(*) FROM people p WHERE p.id = 'x1') AS written
+        FROM graph_layers l WHERE l.name = 'archive'
+  - name: assertNothingWasWritten
+    invoke: !ref check
+    inputs:
+      actual:
+        code: !cel "steps.rolledBackCode.result"
+        head: !cel "steps.after.result.rows[0].head - steps.before.result.rows[0].head"
+        changesets: !cel "steps.after.result.rows[0].changesets - steps.before.result.rows[0].changesets"
+        written: !cel "steps.after.result.rows[0].written"
+      expected: { code: ERR_TEST_ABORT, head: 0, changesets: 0, written: 0 }

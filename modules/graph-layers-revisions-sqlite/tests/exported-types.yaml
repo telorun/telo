@@ -1,0 +1,94 @@
+# The layered rules run over node and relationship types ANOTHER library
+# exported. An application lists that library's tables in its own schema and its
+# types in its own stores, and names them from the graph and lifecycle kinds.
+# The clean application checks with no error and runs. One mistake per rule
+# family that reads through one of those references is then reported by
+# `telo check` under the rule's own message — which a rule that failed to
+# evaluate over an imported type could not do — and refused again at creation.
+# `Assert.Manifest` does not fail on a warning it was not told to expect, so
+# that the clean application raises none (no rule that failed to evaluate, none
+# skipped) is pinned where the rule view is tested, in the analyzer.
+kind: Telo.Application
+metadata:
+  name: GraphLayersRevisionsSqliteExportedTypes
+  version: 1.0.0
+  description: The layered rules, statically and at creation, over types another library exported.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref clean
+  - !ref tableNotInSchema
+  - !ref tableNotInSchemaAtRuntime
+  - !ref typeNotInStore
+  - !ref typeNotInStoreAtRuntime
+  - !ref schemaConnectionMismatch
+  - !ref schemaConnectionMismatchAtRuntime
+  - !ref nodeKeyUnknownColumn
+  - !ref nodeKeyUnknownColumnAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: clean }
+source: ./__fixtures__/exported-types/clean-app.yaml
+expect:
+  errors: []
+  runs: true
+---
+kind: Assert.Manifest
+metadata: { name: tableNotInSchema }
+source: ./__fixtures__/exported-types/table-not-in-schema/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a table its schema does not list in 'tables:'"
+---
+kind: Assert.Manifest
+metadata: { name: tableNotInSchemaAtRuntime }
+source: ./__fixtures__/exported-types/table-not-in-schema-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+---
+kind: Assert.Manifest
+metadata: { name: typeNotInStore }
+source: ./__fixtures__/exported-types/type-not-in-store/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a relationship type its store does not list in 'relationships:'"
+---
+kind: Assert.Manifest
+metadata: { name: typeNotInStoreAtRuntime }
+source: ./__fixtures__/exported-types/type-not-in-store-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+---
+kind: Assert.Manifest
+metadata: { name: schemaConnectionMismatch }
+source: ./__fixtures__/exported-types/schema-connection-mismatch/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a schema on a different connection"
+---
+kind: Assert.Manifest
+metadata: { name: schemaConnectionMismatchAtRuntime }
+source: ./__fixtures__/exported-types/schema-connection-mismatch-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH"
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyUnknownColumn }
+source: ./__fixtures__/exported-types/node-key-unknown-column/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a key column its table does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyUnknownColumnAtRuntime }
+source: ./__fixtures__/exported-types/node-key-unknown-column-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN"

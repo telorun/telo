@@ -1,0 +1,21 @@
+# A drafted store naming its own layer among its bases.
+kind: Telo.Library
+metadata:
+  name: DraftedBaseLayerDuplicate
+include:
+  - ../../drafted-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-drafts-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [bad]
+---
+kind: Layers.Store
+metadata: { name: bad }
+connection: !ref db
+schema: !ref appSchema
+layer: shared
+bases: [!ref shared]
+nodes: [!ref person]
+layers: !ref graphLayers
+drafts: !ref graphDrafts

@@ -1,0 +1,63 @@
+# Every drafting kind over a store of the current strategy, which keeps no
+# drafts: the `store` slot names the level of the contract the kind needs.
+kind: Telo.Application
+metadata:
+  name: DraftingOverCurrentStore
+include:
+  - ../layered-model.yaml
+imports:
+  GraphLayers: ../../..
+  Graph: ../../../../graph
+  Layers: ../../../../graph-layers-current-sqlite
+  SQLite: ../../../../sqlite
+---
+kind: GraphLayers.OpenDraft
+metadata: { name: openDraft }
+store: !ref team
+---
+kind: GraphLayers.DraftSession
+metadata: { name: draftSession }
+store: !ref team
+steps:
+  - name: read
+    invoke:
+      kind: Graph.GetNode
+      store: !ref team
+      node: !ref person
+    inputs: { key: a }
+---
+kind: GraphLayers.Publish
+metadata: { name: publish }
+store: !ref team
+---
+kind: GraphLayers.DiscardDraft
+metadata: { name: discardDraft }
+store: !ref team
+---
+kind: GraphLayers.RebaseDraft
+metadata: { name: rebaseDraft }
+store: !ref team
+---
+kind: GraphLayers.ListDrafts
+metadata: { name: listDrafts }
+store: !ref team
+---
+kind: GraphLayers.NodeConflicts
+metadata: { name: nodeConflicts }
+store: !ref team
+node: !ref person
+---
+kind: GraphLayers.RelationshipConflicts
+metadata: { name: relationshipConflicts }
+store: !ref team
+relationship: !ref knows
+---
+kind: GraphLayers.ResolveNodeConflict
+metadata: { name: resolveNodeConflict }
+store: !ref team
+node: !ref person
+---
+kind: GraphLayers.ResolveRelationshipConflict
+metadata: { name: resolveRelationshipConflict }
+store: !ref team
+relationship: !ref knows

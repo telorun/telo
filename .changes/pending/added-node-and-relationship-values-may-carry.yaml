@@ -1,0 +1,6 @@
+modules:
+  modules/graph: Added
+body: "Node and relationship values may carry origin, the name of the layer a value was
+  resolved from: an optional string on the output of all twelve operations and on the
+  values of the @telorun/graph store interface. A layered store sets it on every value;
+  a plain backend never does, and the member is then absent."

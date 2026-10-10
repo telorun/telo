@@ -1,0 +1,193 @@
+kind: Telo.Application
+metadata:
+  name: DraftedStorageBoots
+  version: 1.0.0
+  description: |
+    Boot 1 — the schema creates each drafted table with the author's columns, the
+    bookkeeping columns the table kind adds and its indexes, and the two
+    bookkeeping tables, whose one-open-draft index is partial and unique. The
+    store then publishes one draft, so the next boot has rows to find intact.
+imports:
+  Sql: ../../../../../sql
+  Postgres: ../../../../../postgres
+  Graph: ../../../../../graph
+  GraphLayers: ../../../../../graph-layers
+  Layers: ../../../..
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+kind: Layers.NodeTable
+metadata: { name: people }
+table: people
+key: id
+columns:
+  id: { type: text, nullable: false }
+  name: { type: text }
+indexes:
+  people_by_name: { columns: [name] }
+---
+kind: Layers.RelationshipTable
+metadata: { name: knowsTable }
+table: knows
+sourceColumn: source
+targetColumn: target
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+---
+kind: Layers.LayersTable
+metadata: { name: graphLayers }
+table: graph_layers
+---
+kind: Layers.DraftsTable
+metadata: { name: graphDrafts }
+table: graph_drafts
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_drafts_boots
+ledger: graph_drafts_boots
+version: !cel "module.version"
+tables: [!ref people, !ref knowsTable, !ref graphLayers, !ref graphDrafts]
+---
+kind: Layers.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: Layers.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: Layers.Store
+metadata: { name: team }
+connection: !ref db
+schema: !ref appSchema
+layer: team
+nodes: [!ref person]
+relationships: [!ref knows]
+layers: !ref graphLayers
+drafts: !ref graphDrafts
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: peopleColumns
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT column_name AS name, data_type AS type, is_nullable AS nullable
+        FROM information_schema.columns
+        WHERE table_schema = 'graph_drafts_boots' AND table_name = 'people' ORDER BY ordinal_position
+  - name: assertPeopleColumns
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.peopleColumns.result.rows"
+      expected:
+        - { name: id, type: text, nullable: "NO" }
+        - { name: name, type: text, nullable: "YES" }
+        - { name: graph_layer, type: uuid, nullable: "NO" }
+        - { name: graph_state, type: text, nullable: "NO" }
+        - { name: graph_effect, type: text, nullable: "NO" }
+        - { name: graph_revision, type: bigint, nullable: "YES" }
+        - { name: graph_over, type: bigint, nullable: "YES" }
+        - { name: graph_written_at, type: timestamp with time zone, nullable: "NO" }
+        - { name: graph_resolution, type: text, nullable: "YES" }
+        - { name: graph_resolved_by_type, type: text, nullable: "YES" }
+        - { name: graph_resolved_by_id, type: text, nullable: "YES" }
+  - name: bookkeepingColumns
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT table_name AS tbl, string_agg(column_name, ',' ORDER BY ordinal_position) AS cols
+        FROM information_schema.columns
+        WHERE table_schema = 'graph_drafts_boots' AND table_name IN ('graph_layers', 'graph_drafts')
+        GROUP BY table_name ORDER BY table_name DESC
+  - name: assertBookkeepingColumns
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.bookkeepingColumns.result.rows"
+      expected:
+        - { tbl: graph_layers, cols: "id,name,head_revision,created_at,created_by_type,created_by_id" }
+        - tbl: graph_drafts
+          cols: "id,public_id,layer_id,parent_revision,message,created_at,created_by_type,created_by_id,published_at,published_by_type,published_by_id,discarded_at,discarded_by_type,discarded_by_id,revision,open_slot"
+  - name: indexes
+    invoke: !ref read
+    inputs:
+      sql: >-
+        SELECT indexname AS name,
+          (indexdef LIKE 'CREATE UNIQUE%')::int AS uniq, (indexdef LIKE '% WHERE %')::int AS partial,
+          substring(indexdef FROM '\((.*?)\)') AS cols
+        FROM pg_indexes
+        WHERE schemaname = 'graph_drafts_boots' AND tablename IN ('people', 'knows', 'graph_drafts')
+          AND indexname IN ('graph_graph_drafts_open', 'graph_knows_layer_pair',
+            'graph_knows_layer_target', 'graph_people_layer_key', 'people_by_name')
+        ORDER BY indexname
+  - name: assertIndexes
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.indexes.result.rows"
+      expected:
+        - { name: graph_graph_drafts_open, uniq: 1, partial: 1, cols: "layer_id, open_slot" }
+        - { name: graph_knows_layer_pair, uniq: 1, partial: 0, cols: "graph_layer, graph_state, source, target" }
+        - { name: graph_knows_layer_target, uniq: 0, partial: 0, cols: "graph_layer, graph_state, target, source" }
+        - { name: graph_people_layer_key, uniq: 1, partial: 0, cols: "graph_layer, graph_state, id" }
+        - { name: people_by_name, uniq: 0, partial: 0, cols: "name" }
+  - name: assertNothingTombstoned
+    invoke: !ref check
+    inputs:
+      actual: !cel "resources.appSchema.status.tombstoned"
+      expected: []
+  - name: assertNothingHeld
+    invoke: !ref check
+    inputs:
+      actual: !cel "resources.appSchema.status.pendingReclamation"
+      expected: []
+  - name: open
+    invoke: { kind: GraphLayers.OpenDraft, store: !ref team }
+    inputs: { message: kept across boots }
+  - name: stage
+    inputs: { draft: !cel "steps.open.result.draft.id" }
+    invoke:
+      kind: GraphLayers.DraftSession
+      store: !ref team
+      inputs: { draft: !cel "inputs.draft" }
+      steps:
+        - name: create
+          invoke: { kind: Graph.CreateNode, store: !ref team, node: !ref person }
+          inputs: { key: kept, properties: { name: Kept } }
+  - name: publish
+    invoke: { kind: GraphLayers.Publish, store: !ref team }
+    inputs: { draft: !cel "steps.open.result.draft.id" }

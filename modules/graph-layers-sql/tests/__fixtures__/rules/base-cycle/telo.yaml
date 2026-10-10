@@ -1,0 +1,27 @@
+# Two stores each built on the other.
+kind: Telo.Library
+metadata:
+  name: BaseCycle
+include:
+  - ../../layered-model.yaml
+imports:
+  Layers: ../../../../../graph-layers-current-sqlite
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [first]
+---
+kind: Layers.Store
+metadata: { name: first }
+connection: !ref db
+schema: !ref appSchema
+layer: first
+bases: [!ref second]
+nodes: [!ref person]
+---
+kind: Layers.Store
+metadata: { name: second }
+connection: !ref db
+schema: !ref appSchema
+layer: second
+bases: [!ref first]
+nodes: [!ref person]

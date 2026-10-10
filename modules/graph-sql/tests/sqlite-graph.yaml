@@ -6,6 +6,8 @@ metadata:
     The graph operation suite on an in-memory SQLite database: every operation and
     every code it throws, the cascade a node deletion runs through the tables'
     foreign keys, a traversal through a cycle, and a rolled-back transaction.
+    Then a merge of a new key, which takes the default of every column it did
+    not give.
 imports:
   Suite:
     source: ./__fixtures__/graph-suite
@@ -19,6 +21,9 @@ imports:
   Sql: ../../sql
   SQLite: ../../sqlite
   GraphSql: ../
+  Graph: ../../graph
+  Run: ../../run
+  Assert: ../../assert
 targets:
   - !ref appSchema
   - !ref Suite.nodeWrites
@@ -29,6 +34,7 @@ targets:
   - !ref Suite.deletions
   - !ref Suite.rollback
   - !ref Suite.computedInputs
+  - !ref mergeDefaults
 ---
 kind: SQLite.Connection
 metadata: { name: db }
@@ -58,6 +64,7 @@ columns:
   since: { type: integer }
 indexes:
   knowsPair: { columns: [source, target], unique: true }
+  knowsByTarget: { columns: [target, source] }
 foreignKeys:
   knowsSource:
     columns: [source]
@@ -77,6 +84,7 @@ columns:
   role: { type: text }
 indexes:
   authoredPair: { columns: [author, document], unique: true }
+  authoredByDocument: { columns: [document, author] }
 foreignKeys:
   authoredAuthor:
     columns: [author]
@@ -87,10 +95,19 @@ foreignKeys:
     references: { table: !ref documents, columns: [id] }
     onDelete: cascade
 ---
+kind: SQLite.Table
+metadata: { name: notes }
+table: notes
+columns:
+  id: { type: text, primaryKey: true }
+  title: { type: text }
+  status: { type: text, nullable: false, default: draft }
+  pages: { type: integer, default: 1 }
+---
 kind: SQLite.Schema
 metadata: { name: appSchema }
 connection: !ref db
-tables: [!ref people, !ref documents, !ref knowsTable, !ref authoredTable]
+tables: [!ref people, !ref documents, !ref knowsTable, !ref authoredTable, !ref notes]
 ---
 kind: GraphSql.Node
 metadata: { name: person }
@@ -122,5 +139,24 @@ kind: GraphSql.Store
 metadata: { name: kb }
 connection: !ref db
 schema: !ref appSchema
-nodes: [!ref person, !ref document]
+nodes: [!ref person, !ref document, !ref note]
 relationships: [!ref knows, !ref authored]
+---
+kind: GraphSql.Node
+metadata: { name: note }
+table: !ref notes
+key: id
+---
+# On a new node a property not given takes its column's default, through a
+# merge as through a create.
+kind: Run.Sequence
+metadata: { name: mergeDefaults }
+steps:
+  - name: mergeNew
+    invoke: { kind: Graph.MergeNode, store: !ref kb, node: !ref note }
+    inputs: { key: n1, properties: { title: New } }
+  - name: mergedNewTakesDefaults
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.mergeNew.result"
+      expected: { node: { key: n1, properties: { title: New, status: draft, pages: 1 } } }
