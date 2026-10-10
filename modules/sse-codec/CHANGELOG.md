@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0 - 2026-10-10
+### Added
+* The `@telorun/sse-codec` code entry exports `readSseRecords(input, owner, bounds?)`, the frame reader `SseCodec.Decoder` runs, so another module's controller parses an event stream by the decoder's rules: one `{ event, data, id?, retry? }` record per dispatched frame, yielded as it completes, with the input returned when the consumer stops early. The 1 MiB bound on an unterminated line always applies; the new optional `bounds.maxFrameBytes` also bounds the payload one frame accumulates across its `data:` lines. Both refusals are `ERR_INVALID_INPUT` naming `owner`. `SseCodec.Decoder` is unchanged: it passes no frame bound.
+
 ## 0.13.0 - 2026-10-08
 ### Added
 * The frame and comment writers are importable by a dependent module's controller as @telorun/sse-codec (sseFrame, sseComment), so a transport writing its own event stream formats frames exactly as the encoder does.
