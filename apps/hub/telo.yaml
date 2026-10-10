@@ -28,7 +28,7 @@
 kind: Telo.Application
 metadata:
   name: TeloHub
-  version: 0.13.0
+  version: 0.13.1
   license: MIT
   description: >-
     Federated discovery hub: tracks registered module refs across transports,
