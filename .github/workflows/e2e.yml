@@ -67,18 +67,53 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Gated on what the hub stack is made of, same reasoning and same shape
+      # as the two jobs below: this job always runs and always reports, and
+      # what it skips is the build and the compose stack.
+      #
+      # The runtime IS in the trigger set here, unlike below: the hub container
+      # mounts this checkout and runs its CLI, so a change to the runtime is a
+      # change to the hub. `modules/` is not — the hub and hub-web pin
+      # PUBLISHED modules. hub-web, the compose files and the command that
+      # drives the stack are not manifests, so they are matched by path beside
+      # what `telo changed` walks.
+      - name: Decide whether the hub changed
+        id: changed
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          run() { echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          [ "$EVENT_NAME" = "pull_request" ] || run
+          git fetch --no-tags origin "$BASE_REF" || true
+          base="origin/$BASE_REF"
+          # FAIL OPEN: only a diff that was taken and an explicit empty
+          # `affected` list skip.
+          changed=$(git diff --name-only "$base...HEAD") || run
+          if grep -qE '^((kernel|analyzer|sdk|templating|cel|cli|apps/hub|apps/hub-web)/|(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|Dockerfile[^/]*|docker-compose[^/]*\.ya?ml|scripts/hub-e2e\.mjs|\.github/workflows/e2e\.yml)$)' <<<"$changed"; then run; fi
+          affected=$(pnpm run --silent telo changed \
+               apps/hub/telo.yaml apps/hub/test-suite-e2e.yaml apps/hub-web/test-suite-e2e.yaml \
+               --base "$base" -o json | jq '.affected | length') || run
+          [ "$affected" = "0" ] || run
+          echo "run=false" >> "$GITHUB_OUTPUT"
+          echo "No hub or runtime changes — skipping the hub e2e suite." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check hub manifest
+        if: steps.changed.outputs.run == 'true'
         run: pnpm run check apps/hub/telo.yaml
 
       # The hub container mounts the checkout and runs its CLI, both for the hub
       # itself and for every origin read. This build is kept as a compile check
       # for the host-side e2e suites.
       - name: Build workspace packages
+        if: steps.changed.outputs.run == 'true'
         run: pnpm -r run build
 
       # On failure the suites' output and the stack's logs are in `e2e-logs/`;
       # `--debug` writes each suite's event log (`.telo.debug.jsonl`) beside it.
       - name: Run hub e2e
+        if: steps.changed.outputs.run == 'true'
         run: pnpm run test:e2e:hub
 
       - name: Upload logs on failure
