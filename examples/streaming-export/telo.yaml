@@ -32,10 +32,10 @@ requires:
   # expression at the in-repo sqlite's `file`.
   telo: ">=0.98.0"
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
-  Multipart: oci://ghcr.io/telorun/multipart@0.3.0#sha256-GE9HIILW1KN6JBnApPJeUQ30KRuJa84U1qYFDUUBF30
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
+  Multipart: oci://ghcr.io/telorun/multipart@0.4.0#sha256-RjPcqJs2rTd4hWLUbQ-SGcqkhYW3GIDCgWbi_bk8kt0
   Ndjson: oci://ghcr.io/telorun/ndjson-codec@0.10.0#sha256-Tag5AgqFTmfBcqmPXHTTphYUfz-ygpVZrG9uF1fKwRE
-  Sse: oci://ghcr.io/telorun/sse-codec@0.13.0#sha256-xNewUQC5N5mmr1Bi0rLQXlIfrJecKLoDhidl_bk0Yew
+  Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4
   Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
   Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
