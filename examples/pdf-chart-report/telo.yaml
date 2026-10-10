@@ -33,13 +33,13 @@ requires:
   # the cause. Forward-declared: 0.82.1 is the release that carries the fix.
   telo: ">=0.82.1"
 imports:
-  SvgChart: ../../modules/svg-chart
-  Font: ../../modules/font
-  PdfMake: ../../modules/pdfmake
-  Collection: ../../modules/collection
-  Fs: ../../modules/fs
-  Run: ../../modules/run
-  Console: ../../modules/console
+  SvgChart: oci://ghcr.io/telorun/svg-chart@0.3.0#sha256-Dv384bDGk8HV_5kUVMaMQGK38LAurkRve54AS1h9d1c
+  Font: oci://ghcr.io/telorun/font@0.3.0#sha256-ReIjSLEuqbFqfGcX7bFGtihU50x7dwld7-ax2UDtXTw
+  PdfMake: oci://ghcr.io/telorun/pdfmake@0.4.0#sha256-gr7OjXBoEjI1X5lL9D9Dg6ekQg5B5Brm_LOze6hYKuY
+  Collection: oci://ghcr.io/telorun/collection@0.9.0#sha256-Fpb3ikCM8ANNwrM6069WEB-QjA3UofvUqMvYrgBW9sw
+  Fs: oci://ghcr.io/telorun/fs@0.13.0#sha256-N1958jBabVz-eFK2L43qLw-AQ3rImZnSfoH2b2KEyiw
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 variables:
   quarter:
     env: QUARTER

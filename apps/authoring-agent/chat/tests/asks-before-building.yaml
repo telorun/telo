@@ -3,13 +3,26 @@ metadata:
   name: ChatAsksBeforeBuilding
   version: 1.0.0
   description: |
-    Live integration test for the chat library's analysis phase: drives the
-    exported ChatHandler with a real OpenAI model on a DELIBERATELY VAGUE
-    request ("build me a todo app" — no surface, no storage, no routes) and
-    asserts the agent asks before it builds. It drains the event stream, then
-    asserts (1) no file was written — a question turn writes nothing, and (2)
-    the reply carries a `telo-questions` block, which is the shape Telo Studio
-    renders as clickable options.
+    Live integration test for the chat library's analysis phase, both halves of
+    it: drives the exported ChatHandler with a real OpenAI model on a
+    DELIBERATELY VAGUE request ("build me a todo app" — no surface, no storage,
+    no routes) and asserts the agent asks before it builds, then answers the
+    questions and asserts it builds instead of asking again.
+
+    The first turn's stream is drained, then asserted: (1) no file was written —
+    a question turn writes nothing, and (2) the reply carries a `telo-questions`
+    block, which is the shape Telo Studio renders as clickable options.
+
+    The second turn is the answers, as an ordinary message. It is asserted: (1)
+    the reply carries no `telo-questions` block, (2) a file was written, and (3)
+    the last check the agent's own tools ran on what it wrote is clean. Asking
+    alone was once all this case pinned, and an agent that answered every reply
+    to its questions by asking them again passed it.
+
+    The answers describe the cheapest application that is still one: a single
+    route returning a literal body, with no store, no auth, no interface and no
+    tests. What is under test is that a build FOLLOWS the answers, and every
+    import and every route beyond the first is turn count this case pays for.
 
     This is the counterpart to authors-manifest.yaml, which sends a FULLY
     SPECIFIED request and asserts the agent writes immediately. The pair is the
@@ -54,9 +67,9 @@ imports:
       # two levels below the repo root.
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
   Fs: ../../../../modules/fs
-  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
-  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
-  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+  Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
 targets:
   # Before ensureWorkspace, which creates the directory this removes.
   - !ref cleanWorkspace
@@ -123,3 +136,53 @@ steps:
               wroteFile: { const: false }
               askedQuestions: { const: true }
             required: [wroteFile, askedQuestions]
+      # The answers. In the user's own words rather than as picks from the
+      # block: which questions a live model asks is not fixed, and these settle
+      # every one it could.
+      - name: answer
+        invoke: !ref Chat.chatStart
+        inputs:
+          conversationId: !cel "steps.conversation.result.conversation.id"
+          idempotencyKey: ""
+          clientIp: test-runner
+          message: |
+            Here are my answers. Keep it as small as possible:
+              - an HTTP API only — no UI, no database, no auth, no tests;
+              - one route: GET /todos returns the literal JSON body
+                [{"id": 1, "text": "Buy milk", "isDone": false}] with status 200;
+              - it listens on a port `http` bound to the PORT env var, default 8080;
+              - write it as the single file `apps/todo/telo.yaml`.
+      - name: readAnswer
+        invoke: !ref Chat.journalSource
+        inputs:
+          key: !cel "steps.answer.result.turnId"
+          fromId: 0
+      - name: drainAnswer
+        invoke:
+          kind: Stream.Collect
+        inputs:
+          input: !cel "steps.readAnswer.result.output"
+      - name: answerReply
+        value: !cel "steps.drainAnswer.result.items.filter(r, r.data.type == 'text-delta').map(r, r.data.delta).join('')"
+      # `checks` is every verdict the write, edit and check tools returned, in
+      # order: the last one is the state the agent left the files in.
+      - name: assertBuilt
+        inputs:
+          askedAgain: !cel "steps.answerReply.result.contains('telo-questions')"
+          wroteFile: !cel "steps.drainAnswer.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name == 'write_file')"
+          lastCheck: !cel >-
+            cel.bind(checks, steps.drainAnswer.result.items.filter(r, r.data.type == 'tool-result'
+                  && has(r.data.toolResult.output) && type(r.data.toolResult.output) == type({})
+                  && 'checkExitCode' in r.data.toolResult.output)
+                .map(r, int(r.data.toolResult.output.checkExitCode)),
+              size(checks) == 0 ? -1 : checks[size(checks) - 1])
+          reply: !cel "steps.answerReply.result.size() > 600 ? steps.answerReply.result.substring(0, 600) : steps.answerReply.result"
+        invoke:
+          kind: Assert.Schema
+          schema:
+            type: object
+            properties:
+              askedAgain: { const: false }
+              wroteFile: { const: true }
+              lastCheck: { const: 0 }
+            required: [askedAgain, wroteFile, lastCheck]

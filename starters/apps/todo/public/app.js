@@ -33,7 +33,15 @@ function render(todos) {
 }
 
 async function load() {
-  render(await json(await fetch(api)));
+  const todos = [];
+  let cursor = null;
+  do {
+    const query = cursor ? `?limit=100&cursor=${encodeURIComponent(cursor)}` : "?limit=100";
+    const page = await json(await fetch(api + query));
+    todos.push(...page.rows);
+    cursor = page.next;
+  } while (cursor);
+  render(todos);
 }
 
 async function add(value) {
@@ -49,7 +57,7 @@ async function toggle(todo) {
   await json(await fetch(`${api}/${todo.id}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ isDone: !todo.isDone }),
+    body: JSON.stringify({ text: todo.text, isDone: !todo.isDone }),
   }));
   await load();
 }

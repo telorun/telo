@@ -20,12 +20,12 @@ metadata:
     honestly claim. `GET /register/status?ref=` is what says when the module is
     actually searchable.
 imports:
-  McpClient: oci://ghcr.io/telorun/mcp-client@0.15.2#sha256-wicFctlATYrfVNE-E0yzAEVdUhj7rHb_omPubvzyLbU
-  Yaml: oci://ghcr.io/telorun/yaml@0.10.3#sha256-xgWF987hJC2tA6q4SP3BUhSzZz2eSbVmVUK4DVOGupk
-  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
-  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
-  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
-  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+  McpClient: oci://ghcr.io/telorun/mcp-client@0.16.0#sha256-uGRA31NI6oUiT8Pr88uBvMqIvCgoG5QLASMIshc7c-A
+  Yaml: oci://ghcr.io/telorun/yaml@0.11.0#sha256-KSC6vlR1yOvXgCUZzj6g4p0r_T-6SfMqQPLR_HQnktk
+  Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
 targets:
   - !ref register_ValidRefSucceeds
   - !ref register_StatusReachesReady

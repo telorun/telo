@@ -7,7 +7,7 @@ metadata:
     keeps the summary call's cap (`maxContextTokens / 8` output tokens) at least
     1 — and its refusal names the variable.
 imports:
-  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
 targets:
   - !ref refusesSmallContext
 ---

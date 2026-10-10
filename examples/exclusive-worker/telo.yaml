@@ -31,15 +31,15 @@ metadata:
     — a lease expires on its own, so a holder that dies frees it rather than
     wedging the queue.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.33.0#sha256-KuqDkp68S_hOl7nZ4WJLOyNAn2M3kmPSMwEaeBJbgSw
-  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
-  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
-  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.11.0#sha256-uL3TNWg-Pn3W3VIgrGhbdVUIE5U-mamF3h0LglLKGaM
-  Lease: oci://ghcr.io/telorun/lease@0.13.0#sha256-HTQ8Fds5O9h15_gsOlVNSgVpGl7Ma3uKJRldfw-lfyI
-  Schedule: oci://ghcr.io/telorun/scheduler@0.9.1#sha256-GKos66CxC3CyRL9GYIsVLKRcwJZjoJYyiLoqaZDqfWM
-  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
-  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
-  Console: oci://ghcr.io/telorun/console@0.18.1#sha256-niku7HENXm7yoj4_rJXfmDVvLc5Kh9iMGRdB6w0fb9w
+  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.14.0#sha256-DY-CKnlGAPmco-fkHRfo6NkxEVwJkwf6YPlo7qbrMG4
+  Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
+  Schedule: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
+  Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref migrate
   - !ref worker

@@ -24,16 +24,16 @@ requires:
   # `resources:` inputs on a library.
   telo: ">=0.83.0"
 imports:
-  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
-  Postgres: oci://ghcr.io/telorun/postgres@0.5.0#sha256-9E683hTHR4FanCOcARsIWhZtRf2F7WF7_9dNHjFeA98
-  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
-  Console: oci://ghcr.io/telorun/console@0.18.1#sha256-niku7HENXm7yoj4_rJXfmDVvLc5Kh9iMGRdB6w0fb9w
-  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  Postgres: oci://ghcr.io/telorun/postgres@0.8.0#sha256-2qXvpdyM4joRXmg3aZCF5b509Ebf8zduXOf1OIDCm6I
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
+  Shell: oci://ghcr.io/telorun/shell@0.13.0#sha256-h4-z6gdCjduwxgU1n7o5eol8RYgsxBCS2iQcxpCV_u0
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
-  Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
-  VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
-  Durable: oci://ghcr.io/telorun/durable-local@0.4.1#sha256-dVL3E0nVgdq_t37WQi0qGox7tsr0OB8GLlW-QIeF0vM
-  Journal: oci://ghcr.io/telorun/durable-journal-postgres@0.6.0#sha256-drrc5sidfp_Z8lrfDe2yFbupxQ7Ercn-Wc8U7ZHoGpk
+  Embedding: oci://ghcr.io/telorun/embedding@0.12.0#sha256-lQqgopkTtGP1RyYmoryM-mr1fv_Ey_xbMZsj3vlLEeM
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.0#sha256-lmCK8i7SQuTRupTSY-s5l89wUwQuikXpjJOxI5vbNwI
+  Durable: oci://ghcr.io/telorun/durable-local@0.5.0#sha256-OYRLiD-tTFJvTaweXET6A6ZWXNb27FStXEcpkq1enc0
+  Journal: oci://ghcr.io/telorun/durable-journal-postgres@0.9.0#sha256-SOJEbHFONpJRlFyG1QWw-U0B975xLrZTza7zVRUn9ww
   Schema:
     source: ./hub-schema.yaml
     resources:

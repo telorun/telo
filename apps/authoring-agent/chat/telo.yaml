@@ -31,29 +31,29 @@ metadata:
     OpenAI key, the model endpoint, the workspace directory and the agent's state
     directory, which holds `agent.sqlite`.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.25.0#sha256-LVYogCt93WpPguMBAawlaq8BrEcXBdvx9te-RUyETGI
-  OpenAI: oci://ghcr.io/telorun/openai@0.10.0#sha256-MJ7COFB83eaoXxxcwQht73QVL8OOCg7aVTwlG6cQKqQ
-  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.20.0#sha256-bZwjcsGQSOQ2sHyovQ-4KI6k3400hhZNr2ta9YE9DMQ
-  Mcp: oci://ghcr.io/telorun/mcp-client@0.15.2#sha256-wicFctlATYrfVNE-E0yzAEVdUhj7rHb_omPubvzyLbU
-  Fs: oci://ghcr.io/telorun/fs@0.12.0#sha256-MnX8KxTIHlJUtyXZgxOxhgJPogC5Fu0pOmm4zw2wj_o
-  TextDiff: oci://ghcr.io/telorun/text-diff@0.2.0#sha256-5KranXgONBjnPShvnSSQtD6b5hpu3GCSIZdjs7r9VQU
-  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
-  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
-  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.19.0#sha256-NR-TsgdlSHwThzTHpx4hwBx8q8Up6pG7Q4eNFy9oURs
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.6.0#sha256-QX55tfsQ3_3hkRtY49CfrB1tCS7y2JaDxth3InhqcmM
-  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
-  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
-  Lease: oci://ghcr.io/telorun/lease@0.13.0#sha256-HTQ8Fds5O9h15_gsOlVNSgVpGl7Ma3uKJRldfw-lfyI
-  KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.7.0#sha256-i1Nen64mCl25XONkoBGRqiTptxBSBA8zBcW6om9autg
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.9.0#sha256-xf5Sl63MYbMSM4GzzRPVNrqbtrxQ27x9cwFKrDCjCEM
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.4#sha256-_E2AqSEEsTotJXiSmk9GBqlnlwW8JRXNJXZWbx-olxY
-  Idempotency: oci://ghcr.io/telorun/idempotency@0.10.0#sha256-PE0WF0dQRTcQvi8UbUNcvEoqBmwgH8xP_l661wTyt70
-  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.11.0#sha256-uL3TNWg-Pn3W3VIgrGhbdVUIE5U-mamF3h0LglLKGaM
-  SecretScan: oci://ghcr.io/telorun/secret-scan@0.2.0#sha256-yyQryveEwAPeuimLzQWZZcRy_8RsnFsZI60S4_yqnBE
-  Log: oci://ghcr.io/telorun/log@0.2.0#sha256-tw2JEt1nLGFT0Y5eynRc-iTPp1aUQ-PE6LZIjQmNYNY
-  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
+  Ai: oci://ghcr.io/telorun/ai@0.27.0#sha256-YuRyAUKvsFQu845vDQkBLUgU9tO4o1V1ZeAsx81510g
+  OpenAI: oci://ghcr.io/telorun/openai@0.12.0#sha256-hKc2_SoJ5vZtMltBiuTFpCu-_POOVKpvl9KJ27iM63s
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.22.0#sha256--pPbtZmctk5SfisUpMj4ZIrir2EL64BQQ7OLB-lskQQ
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.16.0#sha256-uGRA31NI6oUiT8Pr88uBvMqIvCgoG5QLASMIshc7c-A
+  Fs: oci://ghcr.io/telorun/fs@0.13.0#sha256-N1958jBabVz-eFK2L43qLw-AQ3rImZnSfoH2b2KEyiw
+  TextDiff: oci://ghcr.io/telorun/text-diff@0.3.0#sha256-FaVk4PVZVI1-ryRkgdTmN1MNtEP1E8bjAXXl365nSW4
+  Shell: oci://ghcr.io/telorun/shell@0.13.0#sha256-h4-z6gdCjduwxgU1n7o5eol8RYgsxBCS2iQcxpCV_u0
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.0#sha256-hUM8JPvjMJkMUEmXOXNkhvC5QxFe9VIQw_7rAXCuv9Y
+  Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
+  KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.0#sha256-GmMDeJ2eYatJ0_ewaUI6A6bnfkqlphjd4YKWtqZ5d2Y
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.0#sha256-yPwUSVVhRMiqQYQ9cbptorm1cA-HnJW6pLHRZ-8-qPA
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.0#sha256-wHzRZi3uI7c12dRSULXQBO8GRYqhJj6gos6xv6eZj7g
+  Idempotency: oci://ghcr.io/telorun/idempotency@0.11.0#sha256-hd4NvqYA6OioV89wn7SNk7BXrHIFYzv0cNL68Cscgd4
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.14.0#sha256-DY-CKnlGAPmco-fkHRfo6NkxEVwJkwf6YPlo7qbrMG4
+  SecretScan: oci://ghcr.io/telorun/secret-scan@0.3.0#sha256-j5LTmj50zPdy65badRWFTPmICPURIf1n4Q-Iaq6dFSo
+  Log: oci://ghcr.io/telorun/log@0.3.0#sha256-zHq0Vq_G85EDj7Wfbcla8_6hvE4imxgVQoMZsxZwIwE
+  Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
 secrets:
   openaiApiKey:
     type: string
@@ -5309,6 +5309,9 @@ conclusionPrompt: >-
 # What one tool result may put into the context: a file read whole, a module
 # manifest or a command's output would otherwise fill it in one step.
 maxToolResultBytes: !cel "int(variables.maxToolResultBytes)"
+# One tool at a time, in call order: a response's calls build on each other's
+# effects — a file is written, then checked, then run.
+maxParallelTools: 1
 toolProviders:
   - provider: !ref workspaceTools
   - provider: !ref hubTools

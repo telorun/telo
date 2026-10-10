@@ -45,15 +45,15 @@ metadata:
     and the file untouched, and once the directory can be listed the next boot
     confirms it into the turn's summary.
 imports:
-  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
   Fs: ../../../../modules/fs
-  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
-  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
-  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
-  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
-  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
-  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
-  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
+  Shell: oci://ghcr.io/telorun/shell@0.13.0#sha256-h4-z6gdCjduwxgU1n7o5eol8RYgsxBCS2iQcxpCV_u0
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
 variables:
   # This test's own workspace, emptied before each run.
   scratch:

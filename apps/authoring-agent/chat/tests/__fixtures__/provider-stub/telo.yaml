@@ -43,13 +43,13 @@ metadata:
     Every request body is kept, in order, and GET /requests returns them — what
     a test reads to see what the agent sent.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.34.0#sha256-tEXC4neT1MDjYn_AXb_9i-7glgeW6ACSImBVmNzNuQk
-  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.4#sha256-Z1My-TDPdE13s63NSi5rT0Qg0CZf-7tAXbJBRcBGCOQ
-  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
-  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
-  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
-  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
-  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.11.0#sha256-V8zjIxeI89VhzVcKOrOTqLq7AdsNh2n51k2avdcOh-k
+  Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
 ports:
   http:
     env: PORT

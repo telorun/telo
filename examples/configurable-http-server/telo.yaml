@@ -14,8 +14,8 @@ metadata:
     Run, then:
         curl -X POST http://localhost:4444/v1/charge
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.33.0#sha256-KuqDkp68S_hOl7nZ4WJLOyNAn2M3kmPSMwEaeBJbgSw
-  JavaScript: oci://ghcr.io/telorun/javascript@0.13.0#sha256-mC0Ed61_aqEk9IzHyqy-h-dm9LRcENLDIhkhi46cDAw
+  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  JavaScript: oci://ghcr.io/telorun/javascript@0.14.0#sha256-Fh_R8G4kVuI1Wsg0hEa0pucfLN0vHBLrAHDMK9PwxR8
 targets:
   - !ref paymentServer
 ports:
