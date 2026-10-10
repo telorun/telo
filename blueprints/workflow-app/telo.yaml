@@ -8,7 +8,7 @@
 kind: Telo.Library
 metadata:
   name: WorkflowApp
-  version: 0.3.0
+  version: 0.3.1
   license: MIT
   description: >-
     A complete workflow application from one declaration: list the workflows,
