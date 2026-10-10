@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 - 2026-10-10
+### Fixed
+* The canvas decoder moves from 1.0.0 to 1.0.10. An image whose signature is recognised but whose body is corrupt or cut short is now an error the caller can catch, where it ended the whole process: Image.Fit raises ERR_UNSUPPORTED_IMAGE and Image.Overlay raises ERR_INVALID_INPUT. The pdf module stages the same version, since it points every canvas loaded after it in the process at its own decoder file.
+
 ## 0.11.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

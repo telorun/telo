@@ -1,6 +1,6 @@
 {
   "name": "@telorun/blob",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "private": true,
   "description": "Telo blob module — the Blob.Store abstract, the put, get, head and delete operations, and the store contract every backend implements. Never published: the controller ships inside the module artifact as a pkg:telo/local/js bundle, and a backend reaches the contract through the module's exports.code specifier.",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0 - 2026-10-10
+### Added
+* Fs.FileWrite takes a stream of bytes as content, beside text and bytes, and an optional maxBytes (an integer of at least 0; omitted is no limit) that applies to every form. A stream is written as it arrives to a sibling file named .<basename>.<random>.tmp and renamed over the target once it ends, so no reader sees part of it: an existing regular file keeps its permission bits, a symbolic link is written through, and a target that is not a regular file (a FIFO, a device, a socket) is written in place. Text and bytes are written in place as before. Content over maxBytes fails with the declared code ERR_FILE_TOO_LARGE: for text and bytes before the file is opened, with data path, maxBytes and size; for a stream on the chunk that crosses the bound, with data path and maxBytes, the staging file removed and the target keeping its previous content or staying absent. A failure of the stream's source is rethrown as it was raised, with the staging file removed. Because the code is now declared, a route whose handler is an Fs.FileWrite and whose catches list has no catch-all must cover ERR_FILE_TOO_LARGE. A computed content value that is none of the three forms is still refused with ERR_INPUT_INVALID. New docs page: file-write.md.
+
 ## 0.13.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
