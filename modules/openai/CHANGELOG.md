@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0 - 2026-10-10
+### Added
+* Both stream kinds report a tool call's arguments as they are written, as `tool-call-delta` parts under the id the whole `tool-call` then carries; a fragment is held until the call's id and name are known. A streamed tool call the endpoint gives no id now gets a unique generated `call_<uuid>` instead of the positional `call_<index>`, which repeated across the model calls of one run.
+* The chat and responses kinds carry images and documents by bytes or by URL, and report cached and reasoning tokens. An image goes by bytes or by an http(s) uri passed through as written; a file goes by bytes with its name as the filename, and on the responses kinds also by an http(s) uri. A file sent by bytes needs name: one without is refused on all four kinds. A well-formed part the API cannot carry — audio, video, a file by uri on the chat kinds, a file by bytes with no name, any other uri scheme, a model-produced part sent as input — is refused before any request as ERR_CONTENT_UNSUPPORTED, declared on all four kinds with data { partType, scheme? }; the streaming kinds raise it from the call rather than the iteration. Media in a tool result rides the tool result itself on the responses kinds — the output is an array in the tool's own part order, with no placeholder and no user message after it — and the following user message on the chat kinds, as an image did. usage carries cachedPromptTokens and reasoningTokens when the endpoint reports them. Breaking: ERR_INVALID_INPUT is no longer declared or raised by the four model kinds — a part that cannot be sent is ERR_CONTENT_UNSUPPORTED, and a malformed one is the contract's ERR_INPUT_INVALID; on the responses kinds a tool result's media no longer arrives in a separate user message.
+### Fixed
+* A run that ended in plain text no longer has its reasoning replayed as the last item of the next request, where the model continued from it and answered the previous turn again (an agent repeating the question it had just been answered). The reasoning items are now placed immediately before the newest assistant message's output, text included, and dropped when there is no assistant output to precede.
+
 ## 0.11.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
