@@ -112,6 +112,7 @@ import { EditorTabs } from "./EditorTabs";
 import type { TabItem } from "./EditorTabs";
 import { FileEditor } from "./views/FileEditor";
 import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
+import { RegionErrorBoundary } from "./RegionErrorBoundary";
 import { setActiveAnalysis } from "./views/source/provider-state";
 import { useLanguageSession } from "../hooks/useLanguageSession";
 import { LanguageModelsContext } from "../language/language-models-context";
@@ -2154,6 +2155,10 @@ export function Editor() {
       )}
 
       <div className="flex flex-1 overflow-hidden">
+        <RegionErrorBoundary
+          region="sidebar"
+          className="w-64 flex-none border-r border-zinc-200 dark:border-zinc-800"
+        >
         <Sidebar
           workspace={state.workspace}
           activeModulePath={state.activeModulePath}
@@ -2180,6 +2185,7 @@ export function Editor() {
           drawerOpen={navDrawerOpen}
           onDrawerOpenChange={setNavDrawerOpen}
         />
+        </RegionErrorBoundary>
         {!state.workspace ? (
           <AppLifecyclePanel
             onOpen={handleOpen}
@@ -2209,6 +2215,7 @@ export function Editor() {
               </div>
             )}
             <div className="flex min-h-0 flex-1 overflow-hidden">
+              <RegionErrorBoundary region="open tab" resetKey={state.activeTabId}>
               {activeTab?.type === "file" ? (
                 <FileEditor
                   // The epoch re-reads the file after a Cloud update rewrote it.
@@ -2313,11 +2320,19 @@ export function Editor() {
                   </p>
                 </div>
               )}
+              </RegionErrorBoundary>
             </div>
           </div>
         )}
         {/* The panel owns its own width — the user drags it, and it persists. */}
-        {agentVisible && agent.panelOpen && <AgentPanel className="shrink-0" />}
+        {agentVisible && agent.panelOpen && (
+          <RegionErrorBoundary
+            region="agent panel"
+            className="w-80 flex-none border-l border-zinc-200 dark:border-zinc-800"
+          >
+            <AgentPanel className="shrink-0" />
+          </RegionErrorBoundary>
+        )}
       </div>
       <SettingsModal
         open={settingsOpen}

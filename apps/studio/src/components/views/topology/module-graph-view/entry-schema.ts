@@ -1,6 +1,7 @@
 import { collectProperties, selectUnionBranch } from "@telorun/analyzer";
 import { isRecord } from "../../../../lib/utils";
 import { parseConcretePath } from "../../../../lib/concrete-path";
+import { resolveRef } from "../../../../schema-utils";
 
 /**
  * The schema of ONE entry of an ordered array — a boot target, a mount, a
@@ -21,21 +22,10 @@ import { parseConcretePath } from "../../../../lib/concrete-path";
  * mean a variant picker in the form and a second answer to the same question.
  */
 
-/** Follow a document-local `$ref`, or give up.
- *
- *  Giving up rather than throwing: a schema-valued slot carries a `telo:` id the
- *  editor's resolver refuses, and the caller's answer to "cannot resolve" is to
- *  show the host instead — a thrown error from a click handler is not. */
+/** Follow a `$ref` to the schema it names, or give up: the caller's answer to
+ *  "cannot resolve" is to show the host instead. */
 function deref(node: unknown, root: Record<string, unknown>): Record<string, unknown> | undefined {
-  if (!isRecord(node)) return undefined;
-  const ref = node.$ref;
-  if (typeof ref !== "string") return node;
-  if (!ref.startsWith("#/")) return undefined;
-  let resolved: unknown = root;
-  for (const segment of ref.slice(2).split("/")) {
-    if (!isRecord(resolved)) return undefined;
-    resolved = resolved[segment];
-  }
+  const resolved = resolveRef(node, root);
   return isRecord(resolved) ? resolved : undefined;
 }
 

@@ -17,12 +17,14 @@ export function getTopologyRole(schema: unknown): string | null {
  * Resolves a single `$ref` against the root schema.
  * Returns the schema node as-is without recursing into nested `$ref`s.
  * Safe to call on circular schemas — expansion is demand-driven by the caller.
+ *
+ * A reference this cannot follow — a missing target, or a shape another module
+ * declares (`telo://Ui/Node`) — is `undefined`, never a throw: every caller
+ * walks a schema during render, where a throw takes the view down with it.
  */
 export function resolveRef(schema: unknown, root: unknown): unknown {
   if (!isRecord(schema) || typeof schema.$ref !== "string") return schema;
-  if (!schema.$ref.startsWith("#/")) {
-    throw new Error(`Only local $ref is supported for now: ${schema.$ref}`);
-  }
+  if (!schema.$ref.startsWith("#/")) return undefined;
   const path = schema.$ref.replace(/^#\//, "").split("/");
   let node: unknown = root;
   for (const segment of path) {
@@ -243,7 +245,7 @@ export function buildUnclassifiedSchema(
       if (!isRecord(prop)) continue;
       const role = getTopologyRole(prop);
       if (typeof role === "string" && BODY_ROLES.has(role)) continue;
-      properties[name] = resolveRef(prop, root);
+      properties[name] = resolveRef(prop, root) ?? prop;
     }
   }
   return { type: "object", properties };
@@ -282,7 +284,7 @@ export function buildEditableSchema(
       ) {
         continue;
       }
-      editableProps[name] = resolveRef(prop, root);
+      editableProps[name] = resolveRef(prop, root) ?? prop;
     }
   }
 

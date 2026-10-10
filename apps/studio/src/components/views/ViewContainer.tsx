@@ -3,6 +3,7 @@ import { getModuleFiles, summarizeFiles } from "../../diagnostics-aggregate";
 import type { ModuleKind, ViewId } from "../../model";
 import { RunBar, RunDock, useRun } from "../../run";
 import { DiagnosticBadge } from "../diagnostics/DiagnosticBadge";
+import { RegionErrorBoundary } from "../RegionErrorBoundary";
 import { useDiagnosticsState } from "../diagnostics/DiagnosticsContext";
 import { OutlineView } from "./outline/OutlineView";
 import { RunConfigView } from "./run/RunConfigView";
@@ -105,16 +106,23 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
       )}
 
       <div className={`relative flex-1 overflow-hidden ${dockMaximized ? "hidden" : "flex"}`}>
-        {renderedView === "topology" && <TopologyView {...viewProps} />}
-        {renderedView === "outline" && <OutlineView {...viewProps} />}
-        {renderedView === "source" && <SourceView {...viewProps} />}
-        {renderedView === "run" && (
-          <RunConfigView
-            manifest={viewProps.viewData.manifest}
-            environment={viewProps.deployment.activeEnvironment}
-            onSetEnvVars={viewProps.deployment.onSetEnvVars}
-          />
-        )}
+        {/* Per view, so a view that fails leaves the tab strip — and with it
+            the Source view, where the cause is usually fixed — in reach. */}
+        <RegionErrorBoundary
+          region="view"
+          resetKey={`${viewProps.viewData.manifest.filePath}#${renderedView}`}
+        >
+          {renderedView === "topology" && <TopologyView {...viewProps} />}
+          {renderedView === "outline" && <OutlineView {...viewProps} />}
+          {renderedView === "source" && <SourceView {...viewProps} />}
+          {renderedView === "run" && (
+            <RunConfigView
+              manifest={viewProps.viewData.manifest}
+              environment={viewProps.deployment.activeEnvironment}
+              onSetEnvVars={viewProps.deployment.onSetEnvVars}
+            />
+          )}
+        </RegionErrorBoundary>
         {viewProps.readOnly && renderedView && OVERLAY_LOCKED_VIEWS.has(renderedView) && (
           <div
             aria-hidden
@@ -124,11 +132,17 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
       </div>
 
       {appPath && (
-        <RunDock
-          appPath={appPath}
-          editedTelo={viewProps.run.editedTelo}
-          onOpenConfig={openRunTab}
-        />
+        <RegionErrorBoundary
+          region="run dock"
+          resetKey={appPath}
+          className="h-32 flex-none border-t border-zinc-200 dark:border-zinc-800"
+        >
+          <RunDock
+            appPath={appPath}
+            editedTelo={viewProps.run.editedTelo}
+            onOpenConfig={openRunTab}
+          />
+        </RegionErrorBoundary>
       )}
     </div>
   );

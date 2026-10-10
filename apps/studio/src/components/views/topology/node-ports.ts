@@ -67,14 +67,6 @@ function pathLabel(path: string): string {
   return last.replace(/\[\]$/, "").replace(/\{\}$/, "");
 }
 
-function safeResolveRef(node: unknown, root: unknown): unknown {
-  try {
-    return resolveRef(node, root);
-  } catch {
-    return node;
-  }
-}
-
 /** Walks a field-map path through a kind schema, collecting each segment's
  *  `title` (when declared). Descends into `items` for `[]` segments and
  *  `additionalProperties` for the standalone `{}` map segment, resolving `$ref`
@@ -84,18 +76,18 @@ function titlesAlongPath(schema: unknown, path: string): { seg: string; title?: 
   let node: unknown = schema;
   for (const rawSeg of path.split(".")) {
     if (rawSeg === "{}") {
-      const container = safeResolveRef(node, schema);
-      node = isRecord(container) ? safeResolveRef(container.additionalProperties, schema) : undefined;
+      const container = resolveRef(node, schema);
+      node = isRecord(container) ? resolveRef(container.additionalProperties, schema) : undefined;
       continue;
     }
     const isArray = rawSeg.endsWith("[]");
     const seg = rawSeg.replace(/\[\]$/, "");
-    const container = safeResolveRef(node, schema);
+    const container = resolveRef(node, schema);
     const props = isRecord(container) && isRecord(container.properties) ? container.properties : undefined;
-    const propSchema = props ? safeResolveRef(props[seg], schema) : undefined;
+    const propSchema = props ? resolveRef(props[seg], schema) : undefined;
     const title = isRecord(propSchema) && typeof propSchema.title === "string" ? propSchema.title : undefined;
     out.push({ seg, title });
-    node = isRecord(propSchema) ? (isArray ? safeResolveRef(propSchema.items, schema) : propSchema) : undefined;
+    node = isRecord(propSchema) ? (isArray ? resolveRef(propSchema.items, schema) : propSchema) : undefined;
   }
   return out;
 }
