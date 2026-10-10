@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata:
+  name: BlobNonStoreFixture
+  version: 1.0.0
+  description: |
+    Analyzer fixture: a resource that is no store at a `store` slot. Not a
+    runnable test; loaded by tests/static-checks.yaml.
+imports:
+  Blob: ../../../blob
+  Run: ../../../run
+targets:
+  - !ref read
+---
+kind: Run.Value
+metadata: { name: notAStore }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: read }
+steps:
+  - name: head
+    inputs: { key: a }
+    invoke:
+      kind: Blob.Head
+      store: !ref notAStore

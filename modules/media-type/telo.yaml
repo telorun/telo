@@ -1,0 +1,116 @@
+kind: Telo.Library
+metadata:
+  name: MediaType
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Data]
+  description: >-
+    Content sniffing for uploads and files: identifies what a value really is
+    from its leading bytes, by magic number, and reports whether the media type
+    a client declared was contradicted by the content. Recognises PNG, JPEG, GIF,
+    WebP, PDF, ZIP and Office Open XML documents, so an endpoint can validate a
+    file before storing, processing or serving it.
+requires:
+  # The release this module was first checked against; nothing older has read it.
+  telo: ">=0.114.0"
+exports:
+  kinds:
+    - Detector
+---
+# MediaType.Detector — what the bytes are, against what they were declared to be.
+#
+# The recognised set and the window are data: media-types.json at the module
+# root. A type listed there with `signatures` is proven by its own leading
+# bytes; one listed with `container` is vouched for by its container's.
+#
+#   declared                      bytes prove          mediaType                  mislabelled
+#   absent / octet-stream / not   P                    P                          false
+#     a media type
+#   absent / octet-stream / not   nothing              application/octet-stream   false
+#     a media type
+#   D                             D, or D's container  D                          false
+#   D                             another type P       P                          true
+#   D, in the set                 nothing              application/octet-stream   true
+#   D, not in the set             nothing              D                          false
+#
+# It reports and never refuses, so it declares no `throws:` — the caller decides
+# what a mislabelled or unwanted type means. `declared` is whatever a client
+# sent, so it carries no pattern: text that is not a media type is no claim.
+kind: Telo.Definition
+metadata:
+  name: Detector
+  description: >-
+    Reads the first bytes of a value or byte stream and returns its media type,
+    whether the type a client declared was contradicted by the content, and a
+    stream of every input byte unchanged for the next step. Unknown content
+    never fails the call: it is reported as generic binary, or under the
+    declared type when nothing contradicts it.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/media-type.mjs&local_path=./nodejs/src/index.ts#Detector
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [input]
+    examples:
+      - input: !cel "request.body"
+        declared: image/png
+    properties:
+      input:
+        title: Input
+        description: >-
+          The content to identify — bytes held whole, or a stream of bytes (a
+          request body, an uploaded part, a download). At most the first 4,096
+          bytes are read before the call returns.
+        # anyOf, not oneOf: a consumer that does not know a value type reads its
+        # branch as an empty schema matching everything, so under oneOf one value
+        # would match both branches and fail.
+        anyOf:
+          - x-telo-type: Telo.Bytes
+          - x-telo-type:
+              name: Telo.Stream
+              of: Telo.Bytes
+      declared:
+        title: Declared
+        description: >-
+          The media type the content was said to have — a `Content-Type` header,
+          a multipart part's type. Compared lower-cased and without its
+          parameters, so `Text/Plain; charset=utf-8` is `text/plain`. Omitted,
+          `application/octet-stream`, or text that is not a media type at all:
+          nothing was claimed, and the result is what the bytes prove.
+        type: string
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [mediaType, mislabelled, output]
+    properties:
+      mediaType:
+        title: Media type
+        description: >-
+          The resolved media type, as lower-case `type/subtype` with no
+          parameters: what the bytes prove, the declared type when the bytes
+          confirm it or cannot speak to it, or `application/octet-stream`.
+        type: string
+        pattern: "^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$"
+      mislabelled:
+        title: Mislabelled
+        description: >-
+          True when the content contradicts `declared`: the bytes prove another
+          type, or prove nothing where the declared type has a known signature.
+        type: boolean
+      output:
+        title: Output
+        description: >-
+          Every byte of `input`, unchanged and in order, the inspected leading
+          bytes first. Pass it on in place of `input`, which has been read from.
+        x-telo-type:
+          name: Telo.Stream
+          of: Telo.Bytes
+schema:
+  type: object
+  additionalProperties: false

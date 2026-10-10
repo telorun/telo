@@ -606,6 +606,23 @@ of them. A router or server entry sees `error` plus `request.path` / `method` /
 `ip` only — `request.query` / `body` / `params` are typed from a single route's
 `request.schema` and exist only in that route's own list.
 
+No more than `maxBodyBytes` of a request body is ever buffered or handed to a
+handler, and a body is handed on only as far as something asks for it: when
+the response is finished before the body has arrived in full, the connection
+is closed instead of drained, and the little the host still reads while
+closing is discarded. The limit is `Http.Server.maxBodyBytes`
+(default 1048576, 1 MiB) for every mount, replaced for one route by
+`Http.Api.routes[].maxBodyBytes`, larger or smaller. It is an integer of at
+least 1 — nothing switches it off — and it covers streamed and multipart bodies
+as well as JSON, so a route that takes an upload over 1 MiB MUST set its own
+`maxBodyBytes`, beside `request:`. A larger body is answered 413 by the server
+itself, with `{error: {code: ERR_REQUEST_BODY_TOO_LARGE, message, data:
+{maxBodyBytes, contentLength?}}}`. That answer is NOT catchable: no `catches:`
+list sees it, a catch-all included, and an entry naming the code is
+UNDECLARED_THROW_CODE — never write one. A streamed body that crosses the limit
+while the handler reads it cancels the handler; what the handler already wrote
+before that is not undone.
+
 A resource rule reads what its reference slots NAME only when it opts in with
 `resolve: [/<slot>]`: inside the condition each listed slot is the declaration
 it references, one level deep. A referenced `Telo.JsonSchema` is read as the
@@ -1197,10 +1214,11 @@ Three rules follow, all yours to obey when authoring:
     not know the keyword reads that branch as matching anything, so under
     `oneOf` a plain string would match BOTH branches and fail.
 
-        content:                 # Fs.FileWrite — text or bytes
+        content:                 # Fs.FileWrite — text, bytes or a byte stream
           anyOf:
             - type: string
             - x-telo-type: Telo.Bytes
+            - x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
 
   - `x-telo-binary: true` and `x-telo-stream: true` are the OLD spellings. A
     published module may still carry them and the runtime rewrites them on
@@ -1423,6 +1441,46 @@ a multipart body out of the box as raw bytes, so a receiving route needs NO
 straight in. `Multipart.Reader` is the same thing read incrementally — a stream
 of parts, each a stream of bytes — for an upload too large to hold; advancing
 past a part discards its remainder, so skipping one is safe.
+
+Both take three limits as inputs, each an integer of at least 1: `maxPartBytes`
+(one part's content; decoder default 8388608, reader none), `maxParts` (default
+1000 on both) and `maxTotalBytes` (every byte read; decoder default 16777216,
+reader none). Both declare two codes, so a route whose handler is one of them
+must cover both in `catches:` or `telo check` reports UNCOVERED_THROW_CODE:
+`ERR_MULTIPART_MALFORMED`, with `error.data.reason` one of `boundary-missing`,
+`truncated`, `header-malformed`, `header-too-large` (render it 400), and
+`ERR_MULTIPART_LIMIT_EXCEEDED`, with `error.data` `{ limit, max, part?, name? }`
+where `limit` names the input that was exceeded (render it 413). The reader
+raises everything but a missing boundary while its streams are drained. An
+upload route over 1 MiB raises BOTH the route's `maxBodyBytes` and the
+decoder's limits:
+
+    - request:
+        path: /upload
+        method: POST
+        schema:
+          body:
+            x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+      maxBodyBytes: 52428800
+      inputs:
+        input: !cel "request.body"
+        contentType: !cel "request.headers['content-type']"
+        maxPartBytes: 41943040
+        maxTotalBytes: 52428800
+      handler: !ref decodeUpload
+      returns:
+        - status: 204
+      catches:
+        - when: !cel "error.code == 'ERR_MULTIPART_MALFORMED'"
+          status: 400
+          content:
+            application/json:
+              body: { error: !cel "error.data.reason" }
+        - when: !cel "error.code == 'ERR_MULTIPART_LIMIT_EXCEEDED'"
+          status: 413
+          content:
+            application/json:
+              body: { error: !cel "error.data.limit" }
 
 ## User interfaces — the `ui` and `ui-react` modules
 
@@ -1794,6 +1852,20 @@ how you write against them.
     file's bytes, the value `Fs.TreeSnapshot` reports as `hash`. Its `maxBytes`
     input refuses a larger file with `ERR_FILE_TOO_LARGE` BEFORE any of it is
     read; bound every read of a file whose size you do not control.
+  - `Fs.FileWrite` takes `content` in three forms — text (with
+    `encoding: base64` to spell binary out), bytes, or a STREAM of bytes such
+    as a streamed `request.body` — and an optional `maxBytes` (integer of at
+    least 0; omitted is no limit) that applies to all three. Over the limit is
+    `ERR_FILE_TOO_LARGE`, a declared code, so a route whose handler writes a
+    file covers it in `catches:` (render it 413): for text and bytes
+    `error.data` is `{ path, maxBytes, size }` and nothing was touched; for a
+    stream it is `{ path, maxBytes }` and the file keeps its previous content
+    or stays absent. A stream is written to a `.<name>.<random>.tmp` sibling
+    and renamed over the target when it ends, so nothing ever reads half an
+    upload — which needs the DIRECTORY to be writable and makes the target a
+    new file. Text and bytes are written in place. Save an upload with
+    `content: !cel "request.body"` on a route whose body is a byte stream;
+    never drain it into memory first.
   - `Fs.DirectoryListing` pages: `limit` returns at most that many entries, in
     path order, and `nextCursor` — absent on the last page — is passed back as
     `cursor` (with the same `path`, `recursive` and `exclude`) for the next
@@ -1805,6 +1877,144 @@ how you write against them.
     oldLines, newStart, newLines, lines: [{ op: context | added | removed,
     text }] }`. A text over the instance's `maxInputBytes` (262144 for the
     exported one) yields `comparable: false` and nulls, never an error.
+
+## Stored files — the `blob` and `blob-fs` modules
+
+Uploads, attachments and generated files that an application keeps are BLOBS:
+binary content under a key, in a store the manifest names by reference. Import
+`blob` for the operations and a storage module for the store — `blob-fs` keeps
+them under a directory several processes may share:
+
+    kind: BlobFs.Store
+    metadata: { name: attachments }
+    root: !cel "variables.blobRoot"     # a variable typed Telo.HostPath
+    ---
+    kind: Blob.Put
+    metadata: { name: saveAttachment }
+    store: !ref attachments
+
+Four invocables, each configured with the one required field `store`:
+
+  - `Blob.Put` — inputs `key`, `content` (bytes or a stream of bytes),
+    `contentType` (required) and optional `maxBytes`; returns `{ key, size,
+    sha256, contentType }`. It replaces atomically; content over `maxBytes` is
+    `ERR_BLOB_TOO_LARGE` (`error.data` `{ key, maxBytes }`) with NOTHING stored
+    and the previous blob still readable.
+  - `Blob.Get` — inputs `key` and optional `maxBytes`; returns `{ output, size,
+    contentType }`, `output` a stream of bytes to hand to a response body or a
+    decoder. `output` holds nothing until it is first read, so a call that
+    answers from `size` or `contentType` alone leaves nothing open; if the blob
+    is replaced by one of another size or type, or deleted, between the call
+    and the first read, that read fails, and a read that has begun finishes
+    with the blob it began with. `ERR_BLOB_NOT_FOUND` (`{ key }`) for a missing key;
+    `ERR_BLOB_TOO_LARGE` (`{ key, size, maxBytes }`) before any content is read
+    — pass `maxBytes` whenever the bytes will be held in memory.
+  - `Blob.Head` — input `key`; returns `{ size, contentType }` without reading
+    content. `ERR_BLOB_NOT_FOUND` for a missing key.
+  - `Blob.Delete` — input `key`; returns `{ key }`. A missing key SUCCEEDS.
+
+A route whose handler is one of them covers its codes in `catches:` (404 for
+not found, 413 for too large) or `telo check` reports UNCOVERED_THROW_CODE.
+
+A key is a `Blob.Key`: `/`-separated segments, each starting with a letter or
+digit and continuing with letters, digits, `.`, `_` or `-`; 1–512 characters;
+case-sensitive. `../x`, a leading `/` and an empty segment are refused — a
+literal by `telo check`, a computed key with `ERR_INPUT_INVALID`. GENERATE keys
+(`!interpolate "uploads/${{ uuidv4() }}"`) and keep the client's file name in
+your own records; never build a key from text a client sent. There is no
+listing: keep the keys you will need again.
+
+`contentType` on `Blob.Put` is a media type as lower-case `type/subtype` with
+NO parameters (`image/png`, never `text/plain; charset=utf-8`), each side at
+most 127 characters. A request's `content-type` header may carry parameters,
+so do not pass it through unchanged. `Blob.Get` and `Blob.Head` always answer
+in that same form, `application/octet-stream` when the store recorded nothing
+usable. A stream handed to `Blob.Put` or `Fs.FileWrite` must yield BYTES: a
+chunk of anything else fails the call with `ERR_INPUT_INVALID` and nothing is
+stored or written.
+
+## What an upload really is — the `media-type` module
+
+A `content-type` header and a multipart part's type are what the CLIENT said.
+`MediaType.Detector` (import `media-type`, no configuration) reads the content's
+leading bytes and answers what they support:
+
+    - name: sniffed
+      inputs:
+        input: !cel "inputs.content"          # bytes or a stream of bytes
+        declared: !cel "inputs.contentType"   # optional; what the client claimed
+      invoke:
+        kind: MediaType.Detector
+
+It returns `{ mediaType, mislabelled, output }` and NEVER fails on content — it
+declares no error codes, so the manifest refuses:
+
+  - `mediaType` — lower-case `type/subtype` with no parameters, the form
+    `Blob.Put.contentType` requires, so pass it there instead of the header.
+  - `mislabelled` — `true` when the bytes contradict `declared`.
+  - `output` — a stream of EVERY input byte, unchanged. The detector has read
+    the start of a stream handed to it, so every later step reads `output`,
+    never the original stream. At most 4,096 leading bytes are read.
+
+`declared` is compared lower-cased with its parameters dropped, so a raw header
+value (`Text/Plain; charset=utf-8`) may be passed as it is; omitted or
+`application/octet-stream` means nothing was claimed — and so does text that
+is not a media type at all (`png`, an empty string): `declared` NEVER fails the
+call. Only a literal that is not text is CONTRACT_INPUTS_MISMATCH.
+
+The recognised set is closed: `image/png`, `image/jpeg`, `image/gif`,
+`image/webp`, `application/pdf`, `application/zip`, and the Office Open XML
+types for `.docx`, `.xlsx` and `.pptx`, which are vouched for only as far as
+their ZIP container — any ZIP declared as a `.docx` is reported as that type.
+The rule:
+
+  - nothing declared (or not a media type): `mediaType` is what the bytes prove, else
+    `application/octet-stream`; never mislabelled.
+  - declared D and the bytes prove D (or D's container): D, not mislabelled.
+  - declared D and the bytes prove another type P: P, mislabelled.
+  - declared D from the set and the bytes prove nothing:
+    `application/octet-stream`, mislabelled.
+  - declared D outside the set (`text/plain`, `text/csv`) and the bytes prove
+    nothing: D, not mislabelled — the label is unverified, not confirmed.
+
+To accept only some types, refuse in TWO steps, in this order: first `if:`
+`steps.sniffed.result.mislabelled` → `throw:`; then `if:`
+`!(steps.sniffed.result.mediaType in ['image/png', 'image/jpeg'])` → `throw:`.
+
+## Bounding an image — `Image.Fit`
+
+`Image.Fit` (import `image`) scales an image DOWN to fit a box and re-encodes
+it — the step before storing a picture or sending it to a model:
+
+    kind: Image.Fit
+    metadata: { name: thumbnail }
+    format: jpeg          # png (default) | jpeg | webp
+    quality: 85           # 1–100, default 80; ignored for png
+    maxBytes: 10485760    # default 26214400
+    maxPixels: 40000000   # default 40000000; width × height the header declares
+
+Inputs: `image` (BYTES, not a stream — drain a stream with `Octet.Decoder`
+first), required `maxWidth` and `maxHeight` (1–16384), optional `format` /
+`quality` overriding the resource's. Returns `{ image, width, height,
+mediaType }`. It keeps the aspect ratio (4000×3000 into 512×512 is 512×384),
+never enlarges, and ALWAYS re-encodes, so no input metadata (EXIF, location)
+survives. It reads PNG, JPEG, WebP and GIF: an EXIF orientation is applied
+wherever the file carries one (JPEG, WebP, PNG) and the box is measured on the
+upright image; a GIF is taken as stored and an animated one yields its first
+frame. `maxBytes` and `maxPixels` are plain literals on the resource, not
+expressions.
+
+It declares two codes (a route whose handler is an `Image.Fit` covers them in
+`catches:`). A limit, a wrong format and a bad header are judged BEFORE anything
+is decoded:
+
+  - `ERR_IMAGE_TOO_LARGE` — `error.data` `{ limit, max }`, `limit` being
+    `maxBytes` or `maxPixels`. Answer 413.
+  - `ERR_UNSUPPORTED_IMAGE` — not a readable PNG, JPEG, WebP or GIF: a PDF, or
+    an image whose header or body is corrupt or cut short. Answer 415.
+
+A literal `maxWidth` / `maxHeight` / `quality` / `format` outside its range is
+CONTRACT_INPUTS_MISMATCH; a literal limit below 1 is SCHEMA_VIOLATION.
 
 ## Retrying a step
 

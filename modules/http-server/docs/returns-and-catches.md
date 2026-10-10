@@ -206,6 +206,9 @@ routes:
   [Mount guards](mount-guard.md).
 - **Non-`InvokeError` failures are untouched.** A catch entry keys on `error.code`; a plain
   `Error` has none, so those still go to Fastify's default 5xx renderer.
+- **A body over `maxBodyBytes` is not catchable.** Its 413 (`ERR_REQUEST_BODY_TOO_LARGE`) is
+  the server's own answer: no rung of the ladder sees it, a catch-all included, and an entry
+  naming the code is `UNDECLARED_THROW_CODE`. See [Request bodies](request-bodies.md).
 
 ### Coverage
 

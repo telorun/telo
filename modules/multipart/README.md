@@ -62,7 +62,28 @@ Each part takes `content` plus optional `contentType`, `name`, `filename` and `h
 
 `Multipart.Decoder` takes the payload and the media type the sender used, because **the boundary lives in the header, not in the bytes**. A content type with no `boundary=` parameter is an error rather than a payload with zero parts; the two are otherwise indistinguishable to a caller.
 
-Parts come back as a list, each with `content` (bytes), `headers` (lowercase keys), and `contentType` / `name` / `filename` where the part carried them. `maxPartBytes` (8 MiB default) bounds both a single part and the payload as a whole — a part is held whole to be returned, so an unbounded payload would be an unbounded allocation.
+Parts come back as a list, each with `content` (bytes), `headers` (lowercase keys), and `contentType` / `name` / `filename` where the part carried them.
+
+## Limits
+
+Both inbound kinds take three limits, each an integer of at least 1:
+
+| Limit | Counts | `Decoder` default | `Reader` default |
+| --- | --- | --- | --- |
+| `maxPartBytes` | One part's content — not its headers or framing. | 8 MiB | none |
+| `maxParts` | The parts in the payload. | 1000 | 1000 |
+| `maxTotalBytes` | Every byte read: framing, headers and content. | 16 MiB | none |
+
+The decoder holds each part whole to return it, so all three have defaults; the reader holds nothing, so its byte limits apply only when set. A limit stops the read as soon as the bytes read show it is crossed, never after collecting the payload.
+
+## Failures
+
+Both inbound kinds declare two codes a route can map:
+
+- `ERR_MULTIPART_MALFORMED` — `error.data.reason` is `boundary-missing`, `truncated`, `header-malformed` or `header-too-large`.
+- `ERR_MULTIPART_LIMIT_EXCEEDED` — `error.data` is `{ limit, max, part?, name? }`, `limit` naming the input that was exceeded.
+
+A route whose handler is a decoder or a reader must cover both (or declare a catch-all), or `telo check` reports `UNCOVERED_THROW_CODE`. The decoder raises them from the call; the reader raises all but a missing boundary as its streams are drained. Details: [`docs/decoder.md`](docs/decoder.md), [`docs/reader.md`](docs/reader.md).
 
 ## Not a `Codec`
 
@@ -70,8 +91,10 @@ No kind here extends `Codec.Encoder` / `Codec.Decoder`. That contract's input is
 
 ## Reader vs Decoder
 
-`Decoder` buffers and is bounded by `maxPartBytes` (8 MiB); `Reader` streams and is bounded by one chunk. Use `Decoder` for form fields and anything you want as a plain value; use `Reader` for file uploads. Skipping a part in `Reader` is safe — advancing discards the remainder rather than leaving the cursor mid-part.
+`Decoder` buffers and is bounded by its limits (8 MiB a part, 16 MiB in all); `Reader` streams and is bounded by one chunk. Use `Decoder` for form fields and anything you want as a plain value; use `Reader` for file uploads. Skipping a part in `Reader` is safe — advancing discards the remainder rather than leaving the cursor mid-part.
 
 ## Receiving an upload
 
 `Http.Server` accepts a multipart body out of the box, as **raw bytes**, so a route receiving one declares a stream request body and passes it straight to a decoder. Declaring your own `contentTypeParsers` entry for a `multipart/` type still works and takes precedence. See `tests/over-http.yaml`.
+
+The server holds every request body to its own `maxBodyBytes` (1 MiB by default), multipart included, so an upload route over that raises the route's `maxBodyBytes` together with the decoder's limits — see `tests/over-http-limits.yaml`.

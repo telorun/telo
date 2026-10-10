@@ -1,0 +1,34 @@
+# One process of tests/shared-root.yaml: it stores one blob under the root it is
+# given and exits. 150,000 bytes that are not valid UTF-8, so the blob spans
+# several chunks and a text round trip anywhere would change it.
+kind: Telo.Application
+metadata:
+  name: BlobSharedRootWriter
+  version: 1.0.0
+imports:
+  Blob: ../../../blob
+  BlobFs: ../../
+  Run: ../../../run
+variables:
+  root:
+    env: BLOB_SHARED_ROOT
+    type: string
+    x-telo-type: Telo.HostPath
+targets:
+  - !ref write
+---
+kind: BlobFs.Store
+metadata: { name: store }
+root: !cel "variables.root"
+---
+kind: Run.Sequence
+metadata: { name: write }
+steps:
+  - name: put
+    inputs:
+      key: shared/payload.bin
+      content: !cel "bytesFromBase64(range(50000).map(i, 'AP8Q').join(''))"
+      contentType: application/octet-stream
+    invoke:
+      kind: Blob.Put
+      store: !ref store

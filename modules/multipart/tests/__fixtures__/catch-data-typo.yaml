@@ -1,0 +1,39 @@
+kind: Telo.Library
+metadata:
+  name: MultipartCatchDataTypoFixture
+  version: 1.0.0
+imports:
+  Http: ../../../http-server
+  Multipart: ../..
+---
+kind: Multipart.Reader
+metadata: { name: reader }
+---
+# Both codes are covered; `error.data` is typed by each code's declaration, so a
+# field neither declares is refused: `reasn` for `reason`, `maximum` for `max`.
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /upload
+      method: POST
+      schema:
+        body:
+          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+    inputs:
+      input: !cel "request.body"
+      contentType: !cel "request.headers['content-type']"
+    handler: !ref reader
+    returns:
+      - status: 204
+    catches:
+      - when: !cel "error.code == 'ERR_MULTIPART_MALFORMED'"
+        status: 400
+        content:
+          application/json:
+            body: { reason: !cel "error.data.reasn" }
+      - when: !cel "error.code == 'ERR_MULTIPART_LIMIT_EXCEEDED'"
+        status: 413
+        content:
+          application/json:
+            body: { max: !cel "error.data.maximum" }

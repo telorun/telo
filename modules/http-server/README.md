@@ -14,6 +14,7 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 - **Browsable API docs** — `Http.Reference` renders the generated OpenAPI document as an interactive page under a prefix you choose, and a mount's `when:` leaves it out of a production deployment.
 - **Serve a frontend** — `Http.Static` serves a directory of assets (a built SPA, plain HTML) so one application delivers both its API and its UI.
 - **CORS and content-type parsers** — first-class manifest fields; no controller code needed.
+- **Bounded request bodies** — no more than `maxBodyBytes` (1 MiB by default, replaceable per route) of a body, buffered, streamed or multipart, is ever buffered or handed to a handler; a larger one is answered 413 by the server itself, and a body nobody reads to its end is never handed on: its connection is closed rather than drained.
 
 ## Kinds
 
@@ -83,6 +84,7 @@ code: |
 ## Reference
 
 - [`Http.Server` / `Http.Api` returns & catches](docs/returns-and-catches.md) — outcome lists, MIME negotiation, stream mode.
+- [Request bodies](docs/request-bodies.md) — buffered, parsed and streamed bodies, `maxBodyBytes` on the server and per route, the 413 a larger body gets and why no `catches:` entry sees it.
 - [Mount guards](docs/mount-guard.md) — `mounts[].guard`: per-mount inbound checks, their CEL context, ordering against CORS and body parsing, and how a refusal renders.
 - [API reference docs](docs/api-reference.md) — `Http.Reference`, choosing its prefix, and leaving the docs out of production with `when:`.
 - [Serving static files & frontends](docs/static-files.md) — `Http.Static`, `!module-path` and host-path roots, SPA fallback, asset caching.
@@ -275,3 +277,27 @@ Two consequences for an implementer:
 - **One `info` record per request, on completion.** The received-side record is
   `debug`; it exists only so a request that hangs and never completes still
   leaves a trace.
+
+### 7. Request body limit
+
+No more than `maxBodyBytes` of a request body is ever buffered or handed to a handler, and a body is handed on only as far as something asks for it: when the response is finished before the body has arrived in full, the connection is closed instead of drained, and whatever the host still takes off the socket while it closes is discarded.
+The limit is the one in force for the matched route — the route's
+`maxBodyBytes`, else the server's — however the body is delivered. See
+[request bodies](docs/request-bodies.md).
+
+- **A declared length over the limit is refused before anything is read**, and a
+  buffered body when the bytes read pass it; no handler runs.
+- **A streamed body is counted as the handler pulls it.** On the chunk that
+  crosses the limit the implementation cancels the request's own invocation
+  with reason `request-body-too-large`, fails the body stream with that
+  cancellation without delivering the chunk, and answers at once.
+- **The answer is `413` with `Connection: close`** and the
+  `{error: {code, message, data}}` envelope: code `ERR_REQUEST_BODY_TOO_LARGE`,
+  `data: { maxBodyBytes, contentLength? }`. A response that already started is
+  cut off by closing the connection instead.
+- **It is never routed through a `catches:` list**, and nothing the handler
+  returns or throws afterwards is rendered.
+- **A body that is not read to its end is not drained.** Whenever a response is finished while the request body has not arrived in full — whoever wrote the response — it carries `Connection: close` if its headers were not yet sent, and the connection is closed at its end otherwise. While it closes, the implementation may discard a bounded amount of the remainder — independent of the body's size and of `maxBodyBytes`, at most 8 MiB on Node — and none of it is buffered or handed on. A body that had arrived in full keeps the connection. No `413` is sent for a body nobody pulled.
+- **Known host gap.** Under Bun the close does not happen: the remainder of an unread or over-limit body is read to its end and discarded, still never buffered or handed on.
+- **The request span ends `rejected`** with `error.type`
+  `ERR_REQUEST_BODY_TOO_LARGE`.

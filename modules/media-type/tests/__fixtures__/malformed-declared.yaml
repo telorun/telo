@@ -1,0 +1,22 @@
+kind: Telo.Application
+metadata:
+  name: MediaTypeMalformedDeclaredFixture
+  version: 1.0.0
+  description: |
+    Analyzer fixture: a literal `declared` that is not text. Not a
+    runnable test; loaded by tests/static-checks.yaml.
+imports:
+  MediaType: ../../
+  Run: ../../../run
+targets:
+  - !ref malformed
+---
+kind: MediaType.Detector
+metadata: { name: detect }
+---
+kind: Run.Sequence
+metadata: { name: malformed }
+steps:
+  - name: notText
+    inputs: { input: !cel "bytes('x')", declared: 42 }
+    invoke: !ref detect

@@ -7,7 +7,8 @@ metadata:
     (clipped, not rejected) onto a 120×80 Image.Blank canvas and asserts the
     output is a PNG with unchanged dimensions. Further sequences assert that
     a zero-width shape and undecodable bytes raise ERR_INVALID_INPUT, and
-    that an `image` that is not bytes is refused with ERR_INPUT_INVALID.
+    that an `image` that is not bytes is refused with ERR_INPUT_INVALID. A PNG
+    cut short after its header is an ERR_INVALID_INPUT decode failure too.
 imports:
   Image: ../
   JS: ../../javascript
@@ -18,6 +19,7 @@ targets:
   - !ref testZeroWidthShape
   - !ref testUndecodableBytes
   - !ref testNonBytesImage
+  - !ref testTruncatedImage
 ---
 kind: Image.Blank
 metadata: { name: canvas }
@@ -181,3 +183,25 @@ steps:
       actual: !cel "has(steps.caught)"
       expected: true
     invoke: { kind: Assert.Equals }
+---
+# A real PNG header with most of its body missing: the decoder is reached and
+# rejects it.
+kind: Run.Sequence
+metadata: { name: testTruncatedImage }
+steps:
+  - name: tryTruncated
+    try:
+      - name: truncated
+        inputs:
+          image: !include-bytes ./__fixtures__/truncated.png
+          shapes:
+            - { x: 0, y: 0, width: 5, height: 5 }
+        invoke: !ref draw
+      - name: truncatedAccepted
+        throw: { code: NOT_REFUSED, message: the call was expected to fail }
+    catch:
+      - name: assertTruncated
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_INPUT
+        invoke: { kind: Assert.Equals }

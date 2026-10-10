@@ -1,8 +1,9 @@
 # Image
 
-Draw labelled rectangles onto an image. The visualization half of
-vision-grounding loops: render a document or frame, let a model propose
-bounding boxes, draw them, let it look again.
+Fit an image into a box, and draw labelled rectangles onto one. Two jobs that
+meet in a vision pipeline: bound a picture before it is stored or sent to a
+model, and visualise what the model proposed — render a document or frame, let
+it propose bounding boxes, draw them, let it look again.
 
 ## Why use this
 
@@ -12,9 +13,14 @@ bounding boxes, draw them, let it look again.
 - **One coordinate space with the pdf module** — pixels, top-left origin,
   matching what `Pdf.Rasterizer` reports and `Pdf.FormFields` consumes, so
   boxes flow between rendering, preview, and field placement untranslated.
+- **Bounded before decoding** — `Image.Fit` judges a file's length and the
+  pixel size its header declares before any decoder runs, so a small upload
+  claiming to be 30000×30000 is refused, not decoded. What it returns is
+  always re-encoded: turned upright by its EXIF orientation, and carrying no
+  metadata. A corrupt or truncated image is `ERR_UNSUPPORTED_IMAGE`.
 - **Bytes in, bytes out** — every image slot is declared as bytes
-  (`Telo.Bytes`: PNG, JPEG, or WebP in; the same set out, chosen via
-  `format`), composing with `S3.Get`/`S3.Put`, `Octet.Decoder`, and HTTP
+  (`Telo.Bytes`: PNG, JPEG, or WebP in — and GIF for `Image.Fit`; PNG, JPEG or
+  WebP out, chosen via `format`), composing with `S3.Get`/`S3.Put`, `Octet.Decoder`, and HTTP
   bodies without touching the filesystem. An `image` argument comes from a
   byte-producing resource, an `!include-bytes` embed, or base64url text;
   anything else is refused before the controller runs — `telo check` reports
@@ -27,6 +33,7 @@ bounding boxes, draw them, let it look again.
 | --- | --- |
 | `Image.Blank` | Produce a solid-color canvas as image bytes (png/jpeg/webp) — pipeline seed or hermetic test fixture. |
 | `Image.Overlay` | Draw labelled rectangles onto an image; returns annotated bytes (png/jpeg/webp) plus dimensions. |
+| [`Image.Fit`](docs/fit.md) | Scale an image down to fit a maximum width and height, never enlarging, and re-encode it (png/jpeg/webp); refuses an oversized file or pixel count before decoding. |
 
 ## Example
 

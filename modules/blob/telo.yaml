@@ -1,0 +1,405 @@
+kind: Telo.Library
+metadata:
+  name: Blob
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Storage]
+  description: >-
+    Object storage behind one contract: save, read, inspect and delete binary
+    content — uploads, attachments, generated files — addressed by path-like keys
+    and carrying a media type. Content streams in and out under byte limits and
+    is replaced atomically, with its size and SHA-256 digest reported on save, so
+    an application stays independent of where its files are kept.
+requires:
+  # The release this module was first checked against; nothing older has read it.
+  telo: ">=0.114.0"
+exports:
+  kinds:
+    - Store
+    - Put
+    - Get
+    - Head
+    - Delete
+  resources:
+    - Key
+  # The entry point a backend's controller bundle resolves `@telorun/blob` to:
+  # the store contract the operations call. Optional for a backend — a store is
+  # recognised by its methods, never by having imported this.
+  code:
+    - specifier: "@telorun/blob"
+      format: js
+      path: ./nodejs/blob.mjs
+      source: ./nodejs/src/index.ts
+---
+# Blob.Store — where blobs are kept. A Telo.Provider: a configured store, named
+# by the four operations through `store:`. Normative contract:
+# docs/store-contract.md.
+#
+#   put(key, content, { contentType }, ctx)  → resolves once stored; a source
+#                                              failure is rethrown, nothing stored
+#   get(key, ctx)                             → found { size, contentType, content } | absent
+#   head(key, ctx)                            → found { size, contentType } | absent
+#   delete(key, ctx)                          → resolves; a missing key is not a failure
+#
+# A store stores: it knows no byte bound and computes nothing. The operation
+# kinds below count, hash, bound and raise every code, once for every backend,
+# and release a put's source — a store never does. A `get` leaves nothing open:
+# its content opens the read at its first pull.
+# The abstract declares no schema — what a store needs to be configured with is
+# each backend's own.
+kind: Telo.Abstract
+metadata:
+  name: Store
+  description: >-
+    A configured place where binary objects are kept under path-like keys, each
+    with its media type and size. It holds any valid key, replaces an object in
+    one atomic step so a reader sees the old content or the new and never a
+    mixture, stores nothing from a write that fails or exceeds its limit, and
+    removes an object idempotently.
+capability: Telo.Provider
+---
+# Blob.Key — the name a blob is stored under. `/`-separated segments, each
+# starting with a letter or digit and continuing with letters, digits, `.`, `_`
+# or `-`. Case-sensitive: `A` and `a` are two keys. A segment can therefore
+# never be empty, `.` or `..`, and a key never starts or ends with `/`.
+kind: Telo.JsonSchema
+metadata:
+  name: Key
+schema:
+  type: string
+  description: >-
+    The name a blob is stored under: `/`-separated segments of letters, digits,
+    `.`, `_` and `-`, each starting with a letter or digit, 1–512 characters in
+    all. Case-sensitive.
+  minLength: 1
+  maxLength: 512
+  pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$"
+  examples:
+    - attachments/2026/report.pdf
+---
+kind: Telo.Definition
+metadata:
+  name: Put
+  description: >-
+    Saves binary content under a key, replacing whatever was there in one atomic
+    step. Takes bytes or a byte stream, the content's media type and an optional
+    size limit; returns the key, the stored size, its SHA-256 digest and the
+    media type. Content over the limit is refused with nothing stored and the
+    previous object still readable.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/blob.mjs&local_path=./nodejs/src/index.ts#Put
+throws:
+  codes:
+    ERR_BLOB_TOO_LARGE:
+      description: >-
+        The content is larger than the call's `maxBytes`. Nothing was stored,
+        and a blob already under the key is unchanged. A stream is refused on
+        the chunk that crosses the bound, so its full size is never learned.
+      data:
+        type: object
+        additionalProperties: false
+        required: [key, maxBytes]
+        properties:
+          key:
+            type: string
+            description: The key that was to be written.
+          maxBytes:
+            type: integer
+            description: The call's bound.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key, content, contentType]
+    examples:
+      - key: attachments/2026/report.pdf
+        content: !cel "request.body"
+        contentType: application/pdf
+        maxBytes: 10485760
+    properties:
+      key:
+        title: Key
+        description: The key to store the content under.
+        $ref: "telo://Self/Key"
+      content:
+        title: Content
+        description: >-
+          What to store — bytes handed over by a byte-producing resource, or a
+          stream of bytes (a request body, a download) stored as it arrives.
+        # anyOf, not oneOf: a consumer that does not know a value type reads its
+        # branch as an empty schema matching everything, so under oneOf one value
+        # would match both branches and fail.
+        anyOf:
+          - x-telo-type: Telo.Bytes
+          - x-telo-type:
+              name: Telo.Stream
+              of: Telo.Bytes
+      contentType:
+        title: Content type
+        description: >-
+          The content's media type, as lower-case `type/subtype` with no
+          parameters (`image/png`, never `text/plain; charset=utf-8`). Stored
+          with the blob and returned when it is read.
+        type: string
+        pattern: "^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$"
+      maxBytes:
+        title: Max bytes
+        description: >-
+          The most content bytes this call stores. Larger content fails with
+          `ERR_BLOB_TOO_LARGE` and nothing is stored. Omitted: no limit.
+        type: integer
+        minimum: 0
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key, size, sha256, contentType]
+    properties:
+      key:
+        title: Key
+        description: The key the content was stored under.
+        $ref: "telo://Self/Key"
+      size:
+        title: Size
+        description: Content bytes stored.
+        type: integer
+      sha256:
+        title: SHA-256
+        description: Lower-case hex SHA-256 digest of the stored content.
+        type: string
+        pattern: "^[0-9a-f]{64}$"
+      contentType:
+        title: Content type
+        description: The media type the blob was stored with.
+        type: string
+        pattern: "^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$"
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store the blob is kept in.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+  examples:
+    - store: !ref attachments
+---
+kind: Telo.Definition
+metadata:
+  name: Get
+  description: >-
+    Reads the object stored under a key as a byte stream, together with its size
+    and media type. A missing key is reported as not found. An optional size
+    limit refuses a larger object before any of its content is read, so a caller
+    with a memory or response budget never starts a download it cannot finish.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/blob.mjs&local_path=./nodejs/src/index.ts#Get
+throws:
+  codes:
+    ERR_BLOB_NOT_FOUND:
+      description: No blob is stored under the key.
+      data:
+        type: object
+        additionalProperties: false
+        required: [key]
+        properties:
+          key:
+            type: string
+            description: The key that was asked for.
+    ERR_BLOB_TOO_LARGE:
+      description: >-
+        The stored blob is larger than the call's `maxBytes`. Raised from its
+        stored size, before any of its content is read.
+      data:
+        type: object
+        additionalProperties: false
+        required: [key, size, maxBytes]
+        properties:
+          key:
+            type: string
+            description: The key that was asked for.
+          size:
+            type: integer
+            description: The stored blob's size in bytes.
+          maxBytes:
+            type: integer
+            description: The call's bound.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key]
+    examples:
+      - key: attachments/2026/report.pdf
+        maxBytes: 10485760
+    properties:
+      key:
+        title: Key
+        description: The key to read.
+        $ref: "telo://Self/Key"
+      maxBytes:
+        title: Max bytes
+        description: >-
+          The largest blob this call reads. A larger one fails with
+          `ERR_BLOB_TOO_LARGE` before its content is read. Omitted: no limit.
+        type: integer
+        minimum: 0
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output, size, contentType]
+    properties:
+      output:
+        title: Output
+        description: The blob's content, read as it is consumed.
+        x-telo-type:
+          name: Telo.Stream
+          of: Telo.Bytes
+      size:
+        title: Size
+        description: The blob's size in bytes.
+        type: integer
+      contentType:
+        title: Content type
+        description: The media type the blob was stored with.
+        type: string
+        pattern: "^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$"
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store the blob is kept in.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+  examples:
+    - store: !ref attachments
+---
+kind: Telo.Definition
+metadata:
+  name: Head
+  description: >-
+    Reports the size and media type of the object stored under a key without
+    reading its content — for checking that it exists, enforcing a quota, or
+    setting response headers before streaming it. A missing key is reported as
+    not found, so existence is one call with no download behind it.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/blob.mjs&local_path=./nodejs/src/index.ts#Head
+throws:
+  codes:
+    ERR_BLOB_NOT_FOUND:
+      description: No blob is stored under the key.
+      data:
+        type: object
+        additionalProperties: false
+        required: [key]
+        properties:
+          key:
+            type: string
+            description: The key that was asked for.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key]
+    examples:
+      - key: attachments/2026/report.pdf
+    properties:
+      key:
+        title: Key
+        description: The key to inspect.
+        $ref: "telo://Self/Key"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [size, contentType]
+    properties:
+      size:
+        title: Size
+        description: The blob's size in bytes.
+        type: integer
+      contentType:
+        title: Content type
+        description: The media type the blob was stored with.
+        type: string
+        pattern: "^[a-z0-9][a-z0-9!#$&^_.+-]{0,126}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}$"
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store the blob is kept in.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+  examples:
+    - store: !ref attachments
+---
+kind: Telo.Definition
+metadata:
+  name: Delete
+  description: >-
+    Removes the object stored under a key and returns the key. Deleting a key
+    that holds nothing succeeds, so a cleanup step can be retried, run twice, or
+    race another without special handling, and a caller never has to check
+    whether the object exists before removing it.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/blob.mjs&local_path=./nodejs/src/index.ts#Delete
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key]
+    examples:
+      - key: attachments/2026/report.pdf
+    properties:
+      key:
+        title: Key
+        description: The key to remove.
+        $ref: "telo://Self/Key"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key]
+    properties:
+      key:
+        title: Key
+        description: The key that was removed, or that held nothing.
+        $ref: "telo://Self/Key"
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store the blob is kept in.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+  examples:
+    - store: !ref attachments

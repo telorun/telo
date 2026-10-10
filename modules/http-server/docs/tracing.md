@@ -35,12 +35,18 @@ what received the request.
 | Outcome | When |
 | --- | --- |
 | `cancelled` | The connection closed before the response completed. |
-| `rejected` | A coded error decided the response: a guard's refusal, a route's or the not-found handler's throw — rendered by any `catches:` rung or by the built-in 500 envelope — or a request that failed validation (`error.type` `ERR_INPUT_INVALID`, a 400). |
+| `rejected` | A coded error decided the response: a guard's refusal, a route's or the not-found handler's throw — rendered by any `catches:` rung or by the built-in 500 envelope — a request that failed validation (`error.type` `ERR_INPUT_INVALID`, a 400), or a body over `maxBodyBytes` (`error.type` `ERR_REQUEST_BODY_TOO_LARGE`, a 413). |
 | `failed` | An uncoded error reached the framework, which answered 500. |
 | `ok` | Anything else — including a 404 with no not-found handler and a 4xx a `returns:` entry chose. |
 
 An uncoded error the framework answers with a 4xx of its own (an unsupported
-media type, a body over the size limit) is `rejected`.
+media type) is `rejected`.
+
+A body over the limit is `rejected` however it was delivered — buffered, streamed
+or multipart — and whatever followed: the refusal of a streamed body cancels the
+request's invocation, yet the span reports the refusal, not `cancelled`, and it
+does so even when a response that had already started left the server no way to
+send the 413. See [Request bodies](request-bodies.md).
 
 ## What a trace looks like
 

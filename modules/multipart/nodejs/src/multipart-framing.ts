@@ -1,13 +1,14 @@
 /**
  * The framing rules all three kinds share.
  *
- * Encoder, Decoder and Reader ship as three separate bundles, so this file is
- * inlined into each — the same way a shared workspace library is. It exists
+ * Encoder, Decoder and Reader are one bundle and share this file. It exists
  * because the alternative was three copies of the byte search, two of the header
  * parser and two of the Content-Disposition reader, and a fix applied to one of
  * them: the Decoder accepted bare-LF framing while the Reader did not, so the two
  * halves of one module disagreed about which payloads were valid.
  */
+
+import { malformed } from "./multipart-errors.js";
 
 /** The framing's line break. A payload MUST be written with it; a payload may be
  *  READ with bare LF, because hand-rolled clients emit it and every other server
@@ -54,14 +55,15 @@ export function concat(chunks: Uint8Array[]): Uint8Array {
 /** The `boundary=` parameter of a multipart media type, quoted or bare. */
 export function boundaryOf(contentType: unknown, who: string): string {
   if (typeof contentType !== "string" || contentType.length === 0) {
-    throw new Error(`${who}: 'contentType' is required — it carries the boundary.`);
+    throw malformed(who, "boundary-missing", "'contentType' is required — it carries the boundary.");
   }
   const match = /;\s*boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(contentType);
   const boundary = match?.[1] ?? match?.[2];
   if (!boundary) {
-    throw new Error(
-      `${who}: '${contentType}' declares no boundary, and nothing in the payload ` +
-        `identifies where parts begin.`,
+    throw malformed(
+      who,
+      "boundary-missing",
+      `'${contentType}' declares no boundary, and nothing in the payload identifies where parts begin.`,
     );
   }
   return boundary;
@@ -109,13 +111,22 @@ export function trimTrailingBreak(chunk: Uint8Array): Uint8Array {
   return end === chunk.length ? chunk : chunk.subarray(0, end);
 }
 
-/** Header lines to a lowercase-keyed map. A line with no colon is skipped rather
- *  than guessed at — a continuation line is not a header of its own. */
-export function parseHeaders(text: string): Record<string, string> {
+/** Header lines to a lowercase-keyed map. A folded continuation line (one opening
+ *  with a space or tab) is skipped — it is not a header of its own. Any other
+ *  line that is not `name: value` is refused rather than guessed at: it is what
+ *  a delimiter read as a header looks like, when a part has no blank line. */
+export function parseHeaders(text: string, who: string): Record<string, string> {
   const headers: Record<string, string> = {};
   for (const line of text.split(/\r?\n/)) {
+    if (line.length === 0 || line[0] === " " || line[0] === "\t") continue;
     const at = line.indexOf(":");
-    if (at <= 0) continue;
+    if (at <= 0) {
+      throw malformed(
+        who,
+        "header-malformed",
+        "a part's header block holds a line that is not 'name: value' — a part must separate its headers from its content with a blank line.",
+      );
+    }
     headers[line.slice(0, at).trim().toLowerCase()] = line.slice(at + 1).trim();
   }
   return headers;

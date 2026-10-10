@@ -28,6 +28,7 @@ import {
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
 import { requestBag } from "./request-binding.js";
+import { requestBodyRefused } from "./request-body-limit.js";
 import { requestValidationEnvelope, type RequestLocation } from "./request-validation-envelope.js";
 
 const HttpApiRouteManifest = Type.Object({
@@ -43,6 +44,7 @@ const HttpApiRouteManifest = Type.Object({
       }),
     ),
   }),
+  maxBodyBytes: Type.Optional(Type.Integer({ minimum: 1 })),
   handler: Type.Optional(Type.Unsafe<KindRef<Invocable>>(Ref("telo#Invocable"))),
   inputs: Type.Optional(Type.Record(Type.String(), Type.Any())),
   returns: Type.Array(ReturnEntry),
@@ -162,6 +164,8 @@ export class HttpServerApi implements ResourceInstance {
       method: route.request.method as any,
       url: translatedPath,
       schema,
+      // Replaces the server's `maxBodyBytes` for this route, larger or smaller.
+      ...(route.maxBodyBytes === undefined ? {} : { bodyLimit: Number(route.maxBodyBytes) }),
       handler: async (request: FastifyRequest, reply: FastifyReply) => {
         if (!requestScope) {
           // Dispatching without one would root a trace of its own, detached from
@@ -240,6 +244,8 @@ export class HttpServerApi implements ResourceInstance {
               )
             : undefined;
         } catch (err) {
+          // The server already answered 413; nothing the handler did is rendered.
+          if (requestBodyRefused(trace.context)) return reply;
           if (isCancellationError(err)) {
             trace.reject(err);
             if (!reply.sent) reply.code(499).send();
@@ -266,6 +272,7 @@ export class HttpServerApi implements ResourceInstance {
           if (await dispatchCatches(this.manifest.catches, ...dispatchArgs)) return;
           throw err;
         }
+        if (requestBodyRefused(trace.context)) return reply;
 
         return dispatchReturns(
           route.returns,
@@ -359,8 +366,9 @@ function joinMountPath(prefix: string, path: string): string {
 
 /**
  * Wraps an incoming request's raw body as a `Stream<Uint8Array>`. Requires a
- * stream content-type parser (`contentTypeParsers[].stream`) for the request's
- * Content-Type — only then is `request.body` the undrained payload stream.
+ * stream content-type parser (`contentTypeParsers[].stream`, or the built-in
+ * multipart one) for the request's Content-Type — only then is `request.body`
+ * the undrained payload, counted against the body limit as it is pulled.
  * Without one, Fastify has already consumed the socket to build a string/object
  * body, so `request.raw` is drained; fail fast with an actionable error rather
  * than yield an empty stream or hang.
@@ -371,7 +379,7 @@ function toByteStream(request: FastifyRequest): Stream<Uint8Array> {
     const contentType = (request.headers["content-type"] as string | undefined) ?? "(none)";
     throw new InvokeError(
       "ERR_REQUEST_BODY_NOT_STREAMED",
-      `Route declares an x-telo-stream request body, but the body for content-type ` +
+      `Route declares a Telo.Stream request body, but the body for content-type ` +
         `"${contentType}" arrived parsed, not streamed. Register a raw stream parser on ` +
         `the Http.Server: contentTypeParsers: [{ contentType: "${contentType}", stream: true }].`,
     );

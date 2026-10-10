@@ -35,7 +35,7 @@ kind: Run.Sequence
 metadata: { name: testContentGuard }
 steps:
   # `dyn(...)` hides the value's type from `telo check`, which would refuse a map
-  # at a byte slot, so the input contract is what must catch it at dispatch.
+  # at a byte slot, so the refusal has to happen at dispatch.
   - name: rejectsNonBytesFromCel
     try:
       - name: invoke
@@ -47,8 +47,8 @@ steps:
     catch:
       - name: assert
         inputs:
-          # Rejected by the input CONTRACT, not the controller: the annotation makes
-          # the byte slot checkable, so the dispatch never reaches fs code.
+          # Refused under the input contract's code. The stream branch is a live
+          # value the contract never inspects, so the controller makes the refusal.
           actual: !cel "error.code"
           expected: ERR_INPUT_INVALID
         invoke: !ref Assert.equals

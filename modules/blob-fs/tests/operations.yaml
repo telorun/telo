@@ -1,0 +1,294 @@
+kind: Telo.Application
+metadata:
+  name: BlobFsOperations
+  version: 1.0.0
+  description: |
+    The four blob operations over a directory store: a stream and a run of bytes
+    are stored and read back with their size, digest and media type; a put
+    replaces; keys that differ only by case, a key that is a prefix of another
+    and a 512-character key each hold their own blob; a put or a get over its
+    bound, a missing key and a computed key outside the grammar are each refused
+    by code; delete is idempotent.
+imports:
+  Blob: ../../blob
+  BlobFs: ../
+  Fs: ../../fs
+  Octet: ../../octet-codec
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  fixturesDir:
+    env: BLOB_FS_OPERATIONS_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: modules/blob-fs/tests/__fixtures__
+targets:
+  - !ref test
+---
+kind: BlobFs.Store
+metadata: { name: store }
+root: !cel "variables.fixturesDir.joinPath('scratch-operations')"
+---
+kind: Blob.Put
+metadata: { name: put }
+store: !ref store
+---
+kind: Blob.Get
+metadata: { name: get }
+store: !ref store
+---
+kind: Blob.Head
+metadata: { name: head }
+store: !ref store
+---
+kind: Blob.Delete
+metadata: { name: delete }
+store: !ref store
+---
+kind: Fs.FileRemoval
+metadata: { name: remove }
+cwd: !cel "variables.fixturesDir"
+---
+# Reads a blob whole: what it holds as text, with its size and media type.
+kind: Run.Sequence
+metadata: { name: load }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [key]
+    properties:
+      key: { type: string }
+steps:
+  - name: found
+    inputs: { key: !cel "inputs.key" }
+    invoke: !ref get
+  - name: drained
+    inputs: { input: !cel "steps.found.result.output" }
+    invoke:
+      kind: Octet.Decoder
+outputs:
+  text: !cel "string(steps.drained.result.bytes)"
+  size: !cel "steps.found.result.size"
+  contentType: !cel "steps.found.result.contentType"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: reset
+    try:
+      - name: doReset
+        inputs: { path: scratch-operations, recursive: true }
+        invoke: !ref remove
+    catch:
+      # Only a scratch directory that is already absent is tolerated.
+      - name: nothingToRemove
+        inputs:
+          actual: !cel "error.message.endsWith('(ENOENT)')"
+          expected: true
+        invoke: !ref Assert.equals
+
+  # A stream in, a stream out.
+  - name: source
+    inputs:
+      items: !cel "[bytes('hello '), bytes('world')]"
+    invoke:
+      kind: Stream.Of
+  - name: stored
+    inputs:
+      key: docs/hello.txt
+      content: !cel "steps.source.result.output"
+      contentType: text/plain
+    invoke: !ref put
+  - name: loaded
+    inputs: { key: docs/hello.txt }
+    invoke: !ref load
+  - name: inspected
+    inputs: { key: docs/hello.txt }
+    invoke: !ref head
+  - name: assertRoundTrip
+    inputs:
+      actual:
+        stored: !cel "steps.stored.result"
+        loaded: !cel "steps.loaded.result"
+        inspected: !cel "steps.inspected.result"
+      expected:
+        stored:
+          key: docs/hello.txt
+          size: !cel "11"
+          sha256: !cel "sha256('hello world')"
+          contentType: text/plain
+        loaded: { text: hello world, size: !cel "11", contentType: text/plain }
+        inspected: { size: !cel "11", contentType: text/plain }
+    invoke: !ref Assert.equals
+
+  # Bytes held whole replace the blob, media type included.
+  - name: replaced
+    inputs:
+      key: docs/hello.txt
+      content: !cel "bytes('second')"
+      contentType: application/octet-stream
+    invoke: !ref put
+  - name: reloaded
+    inputs: { key: docs/hello.txt }
+    invoke: !ref load
+  - name: assertReplaced
+    inputs:
+      actual: !cel "steps.reloaded.result"
+      expected: { text: second, size: !cel "6", contentType: application/octet-stream }
+    invoke: !ref Assert.equals
+
+  # Four keys a filesystem could confuse — a key and a longer one beneath it,
+  # two that differ by case, and one of the full 512 characters — all written
+  # before any is read.
+  - name: longKey
+    value: !cel "range(512).map(i, 'k').join('')"
+  - name: putA
+    inputs: { key: a, content: !cel "bytes('in a')", contentType: text/plain }
+    invoke: !ref put
+  - name: putAB
+    inputs: { key: a/b, content: !cel "bytes('in a/b')", contentType: text/plain }
+    invoke: !ref put
+  - name: putUpperA
+    inputs: { key: A, content: !cel "bytes('in A')", contentType: text/plain }
+    invoke: !ref put
+  - name: putLong
+    inputs:
+      key: !cel "steps.longKey.result"
+      content: !cel "bytes('in the long key')"
+      contentType: text/plain
+    invoke: !ref put
+  - name: loadA
+    inputs: { key: a }
+    invoke: !ref load
+  - name: loadAB
+    inputs: { key: a/b }
+    invoke: !ref load
+  - name: loadUpperA
+    inputs: { key: A }
+    invoke: !ref load
+  - name: loadLong
+    inputs: { key: !cel "steps.longKey.result" }
+    invoke: !ref load
+  - name: assertKeysApart
+    inputs:
+      actual:
+        - !cel "steps.loadA.result.text"
+        - !cel "steps.loadAB.result.text"
+        - !cel "steps.loadUpperA.result.text"
+        - !cel "steps.loadLong.result.text"
+        - !cel "steps.putLong.result.key == steps.longKey.result"
+      expected: [in a, in a/b, in A, in the long key, true]
+    invoke: !ref Assert.equals
+
+  # Thirty bytes against a bound of twenty-five: nothing is stored, and the blob
+  # already under the key is still the one read.
+  - name: oversized
+    inputs:
+      items: !cel "[bytes('0123456789'), bytes('0123456789'), bytes('0123456789')]"
+    invoke:
+      kind: Stream.Of
+  - name: putTooLarge
+    try:
+      - name: putOver
+        inputs:
+          key: docs/hello.txt
+          content: !cel "steps.oversized.result.output"
+          contentType: text/plain
+          maxBytes: 25
+        invoke: !ref put
+      - name: putAccepted
+        throw: { code: NOT_REFUSED, message: content over `maxBytes` was stored }
+    catch:
+      - name: assertPutRefused
+        inputs:
+          actual: { code: !cel "error.code", data: !cel "error.data" }
+          expected:
+            code: ERR_BLOB_TOO_LARGE
+            data: { key: docs/hello.txt, maxBytes: !cel "25" }
+        invoke: !ref Assert.equals
+  - name: afterRefusal
+    inputs: { key: docs/hello.txt }
+    invoke: !ref load
+  - name: assertPreviousKept
+    inputs:
+      actual: !cel "steps.afterRefusal.result"
+      expected: { text: second, size: !cel "6", contentType: application/octet-stream }
+    invoke: !ref Assert.equals
+
+  # The stored blob is six bytes.
+  - name: getTooLarge
+    try:
+      - name: getOver
+        inputs: { key: docs/hello.txt, maxBytes: 5 }
+        invoke: !ref get
+      - name: getAccepted
+        throw: { code: NOT_REFUSED, message: a blob over `maxBytes` was read }
+    catch:
+      - name: assertGetRefused
+        inputs:
+          actual: { code: !cel "error.code", data: !cel "error.data" }
+          expected:
+            code: ERR_BLOB_TOO_LARGE
+            data: { key: docs/hello.txt, size: !cel "6", maxBytes: !cel "5" }
+        invoke: !ref Assert.equals
+
+  # A literal `../x` is refused by `telo check` (static-checks.yaml); a computed
+  # one reaches the input contract.
+  - name: computedKey
+    try:
+      - name: headOutside
+        inputs: { key: !cel "'../' + 'x'" }
+        invoke: !ref head
+      - name: keyAccepted
+        throw: { code: NOT_REFUSED, message: a key outside the grammar was accepted }
+    catch:
+      - name: assertKeyRefused
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INPUT_INVALID
+        invoke: !ref Assert.equals
+
+  - name: deleted
+    inputs: { key: docs/hello.txt }
+    invoke: !ref delete
+  - name: deletedAgain
+    inputs: { key: docs/hello.txt }
+    invoke: !ref delete
+  - name: headMissing
+    try:
+      - name: headGone
+        inputs: { key: docs/hello.txt }
+        invoke: !ref head
+      - name: headFound
+        throw: { code: NOT_REFUSED, message: a deleted blob was found }
+    catch:
+      - name: assertHeadMissing
+        inputs:
+          actual: { code: !cel "error.code", data: !cel "error.data" }
+          expected: { code: ERR_BLOB_NOT_FOUND, data: { key: docs/hello.txt } }
+        invoke: !ref Assert.equals
+  - name: getMissing
+    try:
+      - name: getGone
+        inputs: { key: docs/hello.txt }
+        invoke: !ref get
+      - name: getFound
+        throw: { code: NOT_REFUSED, message: a deleted blob was read }
+    catch:
+      - name: assertGetMissing
+        inputs:
+          actual:
+            code: !cel "error.code"
+            data: !cel "error.data"
+            deleted: [!cel "steps.deleted.result", !cel "steps.deletedAgain.result"]
+          expected:
+            code: ERR_BLOB_NOT_FOUND
+            data: { key: docs/hello.txt }
+            deleted: [{ key: docs/hello.txt }, { key: docs/hello.txt }]
+        invoke: !ref Assert.equals
+
+  - name: cleanup
+    inputs: { path: scratch-operations, recursive: true }
+    invoke: !ref remove

@@ -1,0 +1,143 @@
+kind: Telo.Application
+metadata:
+  name: ImageFitTest
+  version: 1.0.0
+  description: |
+    Image.Fit through its contract: a 4000×3000 JPEG fitted into 512×512 comes
+    back 512×384; a 100×100 image is not enlarged and is re-encoded in the
+    format the call asks for; a JPEG, a WebP and a PNG stored on their side are
+    each measured upright; a
+    PNG whose header declares 30000×30000 is refused by code with the limit in
+    its data; a PDF is unsupported.
+imports:
+  Image: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testFit
+  - !ref testRefusals
+---
+kind: Image.Blank
+metadata: { name: canvas }
+---
+kind: Image.Fit
+metadata: { name: fit }
+---
+kind: Run.Sequence
+metadata: { name: testFit }
+steps:
+  - name: photo
+    inputs: { width: 4000, height: 3000, format: jpeg }
+    invoke: !ref canvas
+  - name: fitted
+    inputs:
+      image: !cel "steps.photo.result.image"
+      maxWidth: 512
+      maxHeight: 512
+    invoke: !ref fit
+  - name: assertFitted
+    inputs:
+      actual:
+        width: !cel "steps.fitted.result.width"
+        height: !cel "steps.fitted.result.height"
+        mediaType: !cel "steps.fitted.result.mediaType"
+      expected: { width: !cel "512", height: !cel "384", mediaType: image/png }
+    invoke: { kind: Assert.Equals }
+
+  - name: small
+    inputs: { width: 100, height: 100 }
+    invoke: !ref canvas
+  - name: kept
+    inputs:
+      image: !cel "steps.small.result.image"
+      maxWidth: 512
+      maxHeight: 512
+      format: jpeg
+      quality: 60
+    invoke: !ref fit
+  - name: assertKept
+    inputs:
+      actual:
+        width: !cel "steps.kept.result.width"
+        height: !cel "steps.kept.result.height"
+        mediaType: !cel "steps.kept.result.mediaType"
+      expected: { width: !cel "100", height: !cel "100", mediaType: image/jpeg }
+    invoke: { kind: Assert.Equals }
+
+  # Stored 40×20 with EXIF orientation 6, so upright it is 20×40 and the
+  # width is the side that binds.
+  - name: turned
+    inputs:
+      image: !include-bytes ./__fixtures__/orientation-6.jpg
+      maxWidth: 10
+      maxHeight: 40
+    invoke: !ref fit
+  - name: assertTurned
+    inputs:
+      actual:
+        width: !cel "steps.turned.result.width"
+        height: !cel "steps.turned.result.height"
+      expected: { width: !cel "10", height: !cel "20" }
+    invoke: { kind: Assert.Equals }
+
+  # The same picture and tag in a WebP's EXIF chunk and in a PNG's eXIf chunk.
+  - name: turnedWebp
+    inputs:
+      image: !include-bytes ./__fixtures__/orientation-6.webp
+      maxWidth: 10
+      maxHeight: 40
+    invoke: !ref fit
+  - name: turnedPng
+    inputs:
+      image: !include-bytes ./__fixtures__/orientation-6.png
+      maxWidth: 10
+      maxHeight: 40
+    invoke: !ref fit
+  - name: assertTurnedOthers
+    inputs:
+      actual:
+        webp: { width: !cel "steps.turnedWebp.result.width", height: !cel "steps.turnedWebp.result.height" }
+        png: { width: !cel "steps.turnedPng.result.width", height: !cel "steps.turnedPng.result.height" }
+      expected:
+        webp: { width: !cel "10", height: !cel "20" }
+        png: { width: !cel "10", height: !cel "20" }
+    invoke: { kind: Assert.Equals }
+---
+kind: Run.Sequence
+metadata: { name: testRefusals }
+steps:
+  - name: tryHuge
+    try:
+      - name: huge
+        inputs:
+          image: !include-bytes ./__fixtures__/declares-30000x30000.png
+          maxWidth: 512
+          maxHeight: 512
+        invoke: !ref fit
+      - name: hugeAccepted
+        throw: { code: NOT_REFUSED, message: the call was expected to fail }
+    catch:
+      - name: assertHuge
+        inputs:
+          actual: { code: !cel "error.code", data: !cel "error.data" }
+          expected:
+            code: ERR_IMAGE_TOO_LARGE
+            data: { limit: maxPixels, max: !cel "40000000" }
+        invoke: { kind: Assert.Equals }
+
+  - name: tryPdf
+    try:
+      - name: pdf
+        inputs:
+          image: !cel "bytes('%PDF-1.7 1 0 obj')"
+          maxWidth: 512
+          maxHeight: 512
+        invoke: !ref fit
+      - name: pdfAccepted
+        throw: { code: NOT_REFUSED, message: the call was expected to fail }
+    catch:
+      - name: assertPdf
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_UNSUPPORTED_IMAGE
+        invoke: { kind: Assert.Equals }

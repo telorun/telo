@@ -107,7 +107,7 @@ class ImageOverlay implements ResourceInstance<OverlayInputs, OverlayOutputs> {
       ctx.fillText(shape.label, x + LABEL_PADDING, y + LABEL_PADDING);
     }
 
-    const { image, mediaType } = encodeCanvas(canvas, inputs, this.resource, label);
+    const { image, mediaType } = await encodeCanvas(canvas, inputs, this.resource, label);
     return { image, width, height, mediaType };
   }
 

@@ -1,0 +1,57 @@
+kind: Telo.Application
+metadata:
+  name: BlobMalformedKeyFixture
+  version: 1.0.0
+  description: |
+    Analyzer fixture: literal keys and a literal media type outside their
+    grammar. Not a runnable test; loaded by tests/static-checks.yaml.
+imports:
+  Blob: ../../../blob
+  BlobFs: ../../
+  Run: ../../../run
+variables:
+  root:
+    env: BLOB_FS_FIXTURE_ROOT
+    type: string
+    x-telo-type: Telo.HostPath
+    default: modules/blob-fs/tests/__fixtures__/scratch-static
+targets:
+  - !ref malformed
+---
+kind: BlobFs.Store
+metadata: { name: store }
+root: !cel "variables.root"
+---
+kind: Blob.Head
+metadata: { name: head }
+store: !ref store
+---
+kind: Blob.Put
+metadata: { name: put }
+store: !ref store
+---
+kind: Run.Sequence
+metadata: { name: malformed }
+steps:
+  - name: parentSegment
+    inputs: { key: ../x }
+    invoke: !ref head
+  - name: emptySegment
+    inputs: { key: a//b }
+    invoke: !ref head
+  - name: leadingSlash
+    inputs: { key: /a }
+    invoke: !ref head
+  - name: parameters
+    inputs:
+      key: a
+      content: !cel "bytes('x')"
+      contentType: text/plain; charset=utf-8
+    invoke: !ref put
+  # 128 characters before the `/`: one over what either side may hold.
+  - name: longType
+    inputs:
+      key: a
+      content: !cel "bytes('x')"
+      contentType: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/x
+    invoke: !ref put

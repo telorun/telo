@@ -19,6 +19,7 @@ import {
   toPlainJson,
   SEVERITY,
   severityForLevel,
+  type CancellationSource,
   type Invocable,
   type SpanOutcome,
   type KindRef,
@@ -34,8 +35,23 @@ import Fastify, {
   type FastifyRequest,
   type FastifyServerOptions,
 } from "fastify";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Socket } from "node:net";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
 import { requestBag } from "./request-binding.js";
+import {
+  boundedRequestBody,
+  declaredContentLength,
+  DEFAULT_MAX_BODY_BYTES,
+  isRequestBodyOverLimit,
+  REQUEST_BODY_TOO_LARGE_REASON,
+  requestBodyArrived,
+  requestBodyCancellation,
+  RequestBodyOverLimit,
+  requestBodyRefused,
+  requestBodyTooLarge,
+  requestBodyTooLargeEnvelope,
+} from "./request-body-limit.js";
 import { createFastifyTeloLogger, LISTEN_SUPERSEDED } from "./fastify-telo-logger.js";
 import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
 import {
@@ -100,6 +116,7 @@ type HttpServerResource = RuntimeResource & {
   baseUrl?: string;
   trustForwardedHeaders?: boolean;
   trustProxy?: boolean | number;
+  maxBodyBytes?: number;
   cors?: CorsOptions;
   contentTypeParsers?: Array<{ contentType: string; parser?: Invocable; stream?: boolean }>;
   openapi?: {
@@ -116,6 +133,16 @@ type HttpServerResource = RuntimeResource & {
     returns?: ReturnEntry[];
     catches?: CatchEntry[];
   };
+};
+
+/** What the server holds for one request from its first hook on. */
+type RequestIntake = {
+  reply: FastifyReply;
+  cancellation: CancellationSource;
+  /** Bytes of a streamed body handed on so far. */
+  bodyPulled: number;
+  /** Set once the server refused the body; it then decides the span. */
+  refusal?: InvokeError;
 };
 
 type ResolvedHandler = {
@@ -140,6 +167,7 @@ class HttpServer implements ResourceInstance {
   private readonly resolvedNotFoundHandler: ResolvedHandler | null;
   private readonly resolvedGuards: WeakMap<HttpMount, ResolvedGuard>;
   private readonly requestTraces = new WeakMap<FastifyRequest, RequestTrace>();
+  private readonly requestIntakes = new WeakMap<FastifyRequest, RequestIntake>();
   private readonly requestScope: RequestScope<FastifyRequest> = {
     forRequest: (request) => {
       const trace = this.requestTraces.get(request);
@@ -213,6 +241,7 @@ class HttpServer implements ResourceInstance {
       // the log controller carries the same switch.
       logController: new LogController({ disableRequestLogging: true }),
       trustProxy,
+      bodyLimit: Number(resource.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES),
       // `removeAdditional: false` overrides Fastify's default, which STRIPS a
       // property the schema does not declare. A request body declaring
       // `additionalProperties: false` then answered 201 with the undeclared
@@ -327,12 +356,25 @@ class HttpServer implements ResourceInstance {
           : { inbound: { traceparent, ...(tracestate === undefined ? {} : { tracestate }) } }),
       });
       let decidedBy: { error: unknown } | undefined;
+      const intake: RequestIntake = { reply, cancellation, bodyPulled: 0 };
+      this.requestIntakes.set(request, intake);
+      // Node detaches the response's socket before this listener runs.
+      const socket = request.raw.socket;
+      lingerOverUnreadBody(socket, request.raw, () => requestBodyArrived(request.raw, intake.bodyPulled));
+      reply.raw.once("finish", () => {
+        if (!requestBodyArrived(request.raw, intake.bodyPulled)) closeConnection(reply.raw, socket);
+      });
       // Attached before the first await, so a disconnect during the open is seen.
       reply.raw.on("close", () => {
         const completed = reply.raw.writableEnded;
         if (completed) cancellation.dispose();
         else cancellation.cancel("client-disconnect");
-        const { outcome, attributes } = requestOutcome(completed, reply, decidedBy);
+        const { outcome, attributes } = requestOutcome(
+          completed,
+          reply,
+          decidedBy,
+          intake.refusal,
+        );
         opening
           .then((span) => span.settle(outcome, { attributes }))
           .catch((err) => {
@@ -445,8 +487,8 @@ class HttpServer implements ResourceInstance {
    *
    * Registered as RAW BYTES rather than a string, because that is what a
    * multipart body is: decoding it as text corrupts every binary part, and the
-   * parts are the point. The handler receives the undrained request stream, which
-   * `Multipart.Decoder` consumes.
+   * parts are the point. The handler receives the undrained request body, counted
+   * against the body limit as it is pulled, which `Multipart.Decoder` consumes.
    *
    * Registered UNCONDITIONALLY, as a regex. Fastify keys a duplicate on the exact
    * string (or the regex's `toString()`) and consults its string parsers before
@@ -457,9 +499,104 @@ class HttpServer implements ResourceInstance {
    * `form-data` would silently restore the 415 for `related` and `mixed`.
    */
   private installDefaultMultipartParser(): void {
-    this.app.addContentTypeParser(/^multipart\//, (_req, payload, done) => {
-      done(null, payload);
+    this.app.addContentTypeParser(/^multipart\//, this.streamedBody);
+  }
+
+  /**
+   * The raw parser behind every streamed body: the undrained request, held to the
+   * matched route's body limit. A declared length over the limit is refused before
+   * anything is read; a chunked one is counted as the handler pulls it.
+   */
+  private readonly streamedBody = (
+    request: FastifyRequest,
+    payload: IncomingMessage,
+    done: (error: Error | null, body?: unknown) => void,
+  ): void => {
+    const maxBodyBytes = request.routeOptions.bodyLimit;
+    const contentLength = declaredContentLength(request.headers["content-length"]);
+    if (contentLength !== undefined && contentLength > maxBodyBytes) {
+      done(new RequestBodyOverLimit());
+      return;
+    }
+    const intake = this.intakeOf(request);
+    done(
+      null,
+      boundedRequestBody(unreadRequestBody(payload, intake), maxBodyBytes, () => {
+        this.refuseStreamedBody(intake, requestBodyTooLarge(maxBodyBytes, contentLength));
+        return requestBodyCancellation();
+      }),
+    );
+  };
+
+  private intakeOf(request: FastifyRequest): RequestIntake {
+    const intake = this.requestIntakes.get(request);
+    if (!intake) {
+      throw new RuntimeError(
+        "ERR_HTTP_REQUEST_SCOPE_MISSING",
+        `Http.Server[${this.resource.metadata.name}] opened no request scope for ${request.method} ${request.url}`,
+      );
+    }
+    return intake;
+  }
+
+  /**
+   * A streamed body crossed its limit while a handler was reading it: the
+   * request's own invocation is cancelled and the 413 is written at once, on the
+   * raw response, so the reply is sent before the handler settles and nothing it
+   * returns or throws afterwards is rendered. A response that already began
+   * cannot carry a status any more, so its connection is closed instead.
+   */
+  private refuseStreamedBody(intake: RequestIntake, refusal: InvokeError): void {
+    intake.refusal = refusal;
+    intake.cancellation.cancel(REQUEST_BODY_TOO_LARGE_REASON);
+    const { reply } = intake;
+    const raw = reply.raw;
+    if (raw.headersSent) {
+      raw.destroy();
+      return;
+    }
+    const body = JSON.stringify(requestBodyTooLargeEnvelope(refusal));
+    for (const [name, value] of Object.entries(reply.getHeaders())) {
+      if (value !== undefined) raw.setHeader(name, value);
+    }
+    raw.statusCode = 413;
+    raw.setHeader("content-type", "application/json; charset=utf-8");
+    raw.setHeader("content-length", Buffer.byteLength(body));
+    raw.setHeader("connection", "close");
+    raw.end(body);
+  }
+
+  /** The same 413 for a body refused before any handler ran: a declared length
+   *  over the limit, or a buffered body that drained past it. */
+  private answerBodyTooLarge(request: FastifyRequest, reply: FastifyReply) {
+    const refusal = requestBodyTooLarge(
+      request.routeOptions.bodyLimit,
+      declaredContentLength(request.headers["content-length"]),
+    );
+    this.intakeOf(request).refusal = refusal;
+    reply.code(413);
+    reply.header("Content-Type", "application/json; charset=utf-8");
+    reply.header("Connection", "close");
+    return reply.send(requestBodyTooLargeEnvelope(refusal));
+  }
+
+  /**
+   * A response written while its request's body has not fully arrived says the
+   * connection closes. The remainder is not drained: what the host still takes
+   * off the socket while it closes is discarded, so the connection cannot carry
+   * another request. Decided here for every response,
+   * whoever wrote it; one whose headers went out earlier is closed at its end
+   * by the request's `finish` listener.
+   */
+  private installUnreadBodyClose(): void {
+    this.app.addHook("onSend", (request, reply, payload, done) => {
+      if (!this.bodyArrived(request)) reply.header("Connection", "close");
+      done();
     });
+  }
+
+  private bodyArrived(request: FastifyRequest): boolean {
+    return requestBodyArrived(request.raw, this.requestIntakes.get(request)?.bodyPulled ?? 0);
   }
 
   private async setupPlugins() {
@@ -467,17 +604,16 @@ class HttpServer implements ResourceInstance {
     // plain form — RFC 3339 text for a timestamp, `"5400s"` for a duration,
     // base64url for bytes — whether or not the route declares a response schema.
     this.installRequestSpan();
+    this.installUnreadBodyClose();
     this.app.addHook("preSerialization", async (_request, _reply, payload) => toPlainJson(payload));
     this.installRequestLogging();
     this.installDefaultMultipartParser();
     for (const { contentType, parser, stream } of this.resource.contentTypeParsers ?? []) {
       if (stream) {
-        // Raw passthrough: omit `parseAs` so Fastify hands the handler the
-        // undrained request stream. The matching route wraps `request.body`
-        // in a `Stream<Uint8Array>`. No buffering, no AJV — see http-api-controller.
-        this.app.addContentTypeParser(contentType, (_req, payload, done) => {
-          done(null, payload);
-        });
+        // Raw passthrough: no `parseAs`, so nothing is buffered and AJV never
+        // sees the body. The matching route wraps `request.body` in a
+        // `Stream<Uint8Array>` — see http-api-controller.
+        this.app.addContentTypeParser(contentType, this.streamedBody);
       } else if (parser) {
         this.app.addContentTypeParser(
           contentType,
@@ -543,6 +679,8 @@ class HttpServer implements ResourceInstance {
     // A non-InvokeError has no `error.code` for a `when:` to key on, so the
     // validation mapping and Fastify's own default keep answering for those.
     this.app.setErrorHandler(async (error, request, reply) => {
+      // The server's own answer, ahead of every `catches:` list.
+      if (isRequestBodyOverLimit(error)) return this.answerBodyTooLarge(request, reply);
       const mappedError = convertFastifyValidationError(error);
       if (mappedError) {
         this.reportDecidingError(
@@ -710,6 +848,7 @@ class HttpServer implements ResourceInstance {
             ctx: trace.context,
           });
         } catch (err) {
+          if (requestBodyRefused(trace.context)) return reply;
           if (!isInvokeError(err)) throw err;
           trace.reject(err);
           // The not-found handler's own entries first; anything they decline
@@ -727,6 +866,7 @@ class HttpServer implements ResourceInstance {
           if (!rendered) throw err;
           return;
         }
+        if (requestBodyRefused(trace.context)) return reply;
 
         if (handler.returns) {
           return dispatchReturns(
@@ -910,7 +1050,8 @@ function singleHeader(value: string | string[] | undefined): string | undefined 
 }
 
 /**
- * How a request's span ends. `cancelled` when the connection closed before the
+ * How a request's span ends. `rejected` by the server's own refusal of the body,
+ * whatever followed it; `cancelled` when the connection closed before the
  * response completed; otherwise by the error that decided the response, if any:
  * a coded one is a refusal (`rejected`), an uncoded one a `failed` 5xx — or a
  * `rejected` 4xx when the framework answered it (an unsupported media type) —
@@ -920,10 +1061,14 @@ function requestOutcome(
   completed: boolean,
   reply: FastifyReply,
   decidedBy: { error: unknown } | undefined,
+  refusal: InvokeError | undefined,
 ): { outcome: SpanOutcome; attributes: Record<string, unknown> } {
   const attributes: Record<string, unknown> = reply.raw.headersSent
     ? { "http.response.status_code": reply.raw.statusCode }
     : {};
+  if (refusal) {
+    return { outcome: "rejected", attributes: { ...attributes, "error.type": errorTypeOf(refusal) } };
+  }
   if (!completed) return { outcome: "cancelled", attributes };
   if (!decidedBy) return { outcome: "ok", attributes };
   const { error } = decidedBy;
@@ -939,4 +1084,82 @@ function normalizeHeaders(headers: FastifyRequest["headers"]): Record<string, un
     normalized[key.toLowerCase()] = value;
   }
   return normalized;
+}
+
+/**
+ * The undrained request as a byte source that survives an early stop.
+ *
+ * Releasing the request's own iterator destroys the request, and what that does
+ * to a response not yet written is the host's to decide: Node keeps the socket,
+ * Bun's `node:http` closes it with an empty 200 — so a handler that stopped
+ * reading (a refused part, a limit of its own) could not answer there. Releasing
+ * this source leaves the request alone; what becomes of the unread remainder is
+ * decided when the response is written.
+ */
+function unreadRequestBody(
+  payload: IncomingMessage,
+  intake: RequestIntake,
+): AsyncIterable<Uint8Array> {
+  return {
+    [Symbol.asyncIterator]() {
+      const chunks = payload[Symbol.asyncIterator]() as AsyncIterator<Uint8Array>;
+      return {
+        next: async () => {
+          const pulled = await chunks.next();
+          if (!pulled.done) intake.bodyPulled += pulled.value.byteLength;
+          return pulled;
+        },
+        return: async () => ({ done: true, value: undefined }),
+      };
+    },
+  };
+}
+
+/** How long a connection is held, unread, after a response that leaves request
+ *  body on the wire. */
+const UNREAD_BODY_LINGER_MS = 1000;
+
+const closesAtOnce = new WeakMap<Socket, () => void>();
+
+/**
+ * Closing a socket that still holds unread request body makes the kernel reset
+ * the connection, and a reset discards a response the client has not read yet
+ * (macOS and Windows lose it every time). So when the host ends such a
+ * connection, reading stops, the response is flushed with a FIN and the socket
+ * is destroyed only after a short hold. Bun's socket has no `destroySoon`, and
+ * its server calls none.
+ */
+function lingerOverUnreadBody(
+  socket: Socket,
+  request: IncomingMessage,
+  bodyArrived: () => boolean,
+): void {
+  if (typeof socket.destroySoon !== "function") return;
+  const atOnce = closesAtOnce.get(socket) ?? socket.destroySoon.bind(socket);
+  closesAtOnce.set(socket, atOnce);
+  socket.destroySoon = () => {
+    if (bodyArrived()) return atOnce();
+    // A request nobody consumed is being dumped by the host, which restarts
+    // the socket as it reads; it is stopped again each time.
+    const stopReading = () => {
+      request.pause();
+      socket.pause();
+    };
+    socket.on("resume", stopReading);
+    stopReading();
+    socket.end();
+    const hold = setTimeout(() => socket.destroy(), UNREAD_BODY_LINGER_MS);
+    hold.unref();
+    socket.once("close", () => clearTimeout(hold));
+  };
+}
+
+/** Ends a connection whose response is written while request body is still on
+ *  the wire; what the host reads of it while closing is discarded. A response
+ *  that announced the close is left to the host. */
+function closeConnection(raw: ServerResponse, socket: Socket): void {
+  if (String(raw.getHeader("connection")).toLowerCase() === "close") return;
+  // As Node's own server ends a connection: not every host's socket has `destroySoon`.
+  if (typeof socket.destroySoon === "function") socket.destroySoon();
+  else socket.end();
 }

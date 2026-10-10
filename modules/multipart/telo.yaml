@@ -141,12 +141,63 @@ metadata:
   name: Decoder
   description: >-
     Splits a received multipart payload back into its parts, reading the boundary
-    from the media type the sender supplied. Each part comes back with its headers,
-    its field and file name where present, and its content as bytes. Parts are
-    returned in the order they appeared.
+    from the media type the sender supplied. Each part comes back in order with its
+    headers, field and file name, and content as bytes. Limits on part size, part
+    count and total bytes bound the upload, and a malformed or oversized payload
+    fails with a distinct code.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#DecoderController
+throws:
+  codes:
+    ERR_MULTIPART_MALFORMED:
+      description: >-
+        The payload is not well-formed multipart. `error.data.reason`
+        says how: `boundary-missing` (the media type carries no `boundary=`
+        parameter), `truncated` (the payload ends before its closing boundary),
+        `header-malformed` (a part's header block holds a line that is not
+        `name: value`, as when a part has no blank line before its content) or
+        `header-too-large` (a part's header block passes 64 KiB with no blank
+        line).
+      data:
+        type: object
+        additionalProperties: false
+        required: [reason]
+        properties:
+          reason:
+            type: string
+            enum: [boundary-missing, truncated, header-malformed, header-too-large]
+            description: What is wrong with the payload.
+    ERR_MULTIPART_LIMIT_EXCEEDED:
+      description: >-
+        The payload crossed one of the call's limits. Raised as soon as
+        the bytes read show it, never after collecting the payload: reading
+        stops within a chunk of `maxTotalBytes`.
+        `error.data.limit` names the input that was exceeded and `max` its
+        value; `part` is the zero-based position of the part concerned, and
+        `name` its form field name when it declared one.
+      data:
+        type: object
+        additionalProperties: false
+        required: [limit, max]
+        properties:
+          limit:
+            type: string
+            enum: [maxPartBytes, maxParts, maxTotalBytes]
+            description: The input whose value was exceeded.
+          max:
+            type: integer
+            description: That input's value for this call.
+          part:
+            type: integer
+            description: >-
+              Zero-based position of the part the limit was met at. Absent for
+              `maxTotalBytes`.
+          name:
+            type: string
+            description: >-
+              The form field name of that part, when `maxPartBytes` was exceeded
+              by a part that declared one.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -170,9 +221,24 @@ inputType:
         minimum: 1
         default: 8388608
         description: >-
-          Largest single part accepted, in bytes. A part is held whole to be
-          returned, so an unbounded payload is an unbounded allocation; a part over
-          the limit fails the decode rather than growing the buffer.
+          Largest content one part may hold, in bytes — its headers and the
+          framing around it are not counted. A part is held whole to be
+          returned, so a larger one fails the decode rather than growing the buffer.
+      maxParts:
+        type: integer
+        minimum: 1
+        default: 1000
+        description: >-
+          Most parts the payload may hold. One more fails with
+          `ERR_MULTIPART_LIMIT_EXCEEDED` before its headers are read.
+      maxTotalBytes:
+        type: integer
+        minimum: 1
+        default: 16777216
+        description: >-
+          Most bytes read from `input`, counting everything — framing, headers,
+          preamble and content. What bounds the decode as a
+          whole, since many parts under `maxPartBytes` are as large as one over it.
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -211,8 +277,12 @@ schema:
 # Multipart.Reader — the incremental counterpart to Decoder.
 #
 # Decoder buffers, which is right for a form's small fields and wrong for a file
-# upload: `maxPartBytes` caps what a server can accept, and raising it only moves
+# upload: its limits cap what a server can accept, and raising them only moves
 # the allocation. This reads a stream of parts, each a stream of bytes.
+#
+# Its codes are declared like the decoder's, but only a missing boundary rejects
+# the call: everything else is found while the returned streams are drained, so
+# it surfaces wherever they are read.
 #
 # The usual objection to that shape is that the source is single-pass, so a
 # consumer that skips a part reads nothing from the next one — a silent
@@ -224,15 +294,66 @@ kind: Telo.Definition
 metadata:
   name: Reader
   description: >-
-    Reads a received multipart payload incrementally: a stream of parts, each with
-    its own stream of bytes. For uploads too large to hold in memory, where
-    collecting every part whole is not an option. Parts arrive in order, and moving
-    to the next one discards any of the current one left unread, so a consumer that
-    only wants headers is not obliged to drain the body. Memory is bounded by one
-    chunk regardless of how large a part is.
+    Reads a multipart payload incrementally: a stream of parts in order, each
+    with its own stream of bytes, for uploads too large to hold in memory.
+    Moving to the next part discards the rest of the current one. Optional limits
+    bound part size, part count and total bytes; a malformed or oversized payload
+    fails the stream with a distinct code.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#ReaderController
+throws:
+  codes:
+    ERR_MULTIPART_MALFORMED:
+      description: >-
+        The payload is not well-formed multipart, raised as the stream is
+        drained. `error.data.reason`
+        says how: `boundary-missing` (the media type carries no `boundary=`
+        parameter), `truncated` (the payload ends before its closing boundary),
+        `header-malformed` (a part's header block holds a line that is not
+        `name: value`, as when a part has no blank line before its content) or
+        `header-too-large` (a part's header block passes 64 KiB with no blank
+        line).
+      data:
+        type: object
+        additionalProperties: false
+        required: [reason]
+        properties:
+          reason:
+            type: string
+            enum: [boundary-missing, truncated, header-malformed, header-too-large]
+            description: What is wrong with the payload.
+    ERR_MULTIPART_LIMIT_EXCEEDED:
+      description: >-
+        The payload crossed one of the call's limits, raised as the stream is
+        drained. Raised as soon as
+        the bytes read show it, never after collecting the payload: reading
+        stops within a chunk of `maxTotalBytes`.
+        `error.data.limit` names the input that was exceeded and `max` its
+        value; `part` is the zero-based position of the part concerned, and
+        `name` its form field name when it declared one.
+      data:
+        type: object
+        additionalProperties: false
+        required: [limit, max]
+        properties:
+          limit:
+            type: string
+            enum: [maxPartBytes, maxParts, maxTotalBytes]
+            description: The input whose value was exceeded.
+          max:
+            type: integer
+            description: That input's value for this call.
+          part:
+            type: integer
+            description: >-
+              Zero-based position of the part the limit was met at. Absent for
+              `maxTotalBytes`.
+          name:
+            type: string
+            description: >-
+              The form field name of that part, when `maxPartBytes` was exceeded
+              by a part that declared one.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -251,6 +372,26 @@ inputType:
           The media type the sender used, carrying the boundary. A value with no
           `boundary=` parameter is an error, since nothing in the bytes identifies
           where parts begin.
+      maxPartBytes:
+        type: integer
+        minimum: 1
+        description: >-
+          Largest content one part may hold, in bytes — its headers and the
+          framing around it are not counted. Omitted: no limit, since a
+          part is streamed and never held. Counted whether the part is read or skipped.
+      maxParts:
+        type: integer
+        minimum: 1
+        default: 1000
+        description: >-
+          Most parts the payload may hold. One more fails with
+          `ERR_MULTIPART_LIMIT_EXCEEDED` before its headers are read.
+      maxTotalBytes:
+        type: integer
+        minimum: 1
+        description: >-
+          Most bytes read from `input`, counting everything — framing, headers,
+          preamble and content. Omitted: no limit.
 outputType:
   kind: Telo.JsonSchema
   schema:

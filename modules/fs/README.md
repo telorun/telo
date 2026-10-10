@@ -2,9 +2,10 @@
 
 `fs` — local filesystem access for a running Telo app. Read, write, edit,
 list, create, and remove files and directories on the host the kernel runs on,
-via Node `fs/promises`. Buffered (small files), UTF-8 text by default, with a
-base64 escape hatch for binary and a raw-bytes path for writing what another
-resource produced.
+via Node `fs/promises`. Reads are buffered (small files); UTF-8 text by default,
+with a base64 escape hatch for binary, a raw-bytes path for writing what another
+resource produced, and a byte-stream path for saving an upload without holding
+it in memory.
 
 ## Kinds
 
@@ -14,8 +15,11 @@ All are `Telo.Invocable` — invoke them from a `Run.Sequence` or wrap them as
 - **[`Fs.File`](docs/file.md)** — read a file. `{ path, encoding?, maxBytes? }` →
   `{ content, size, sha256 }`. `sha256` is the digest of the file's bytes;
   `maxBytes` refuses a larger file with `ERR_FILE_TOO_LARGE` before reading it.
-- **`Fs.FileWrite`** — write a file whole. `{ path, content, encoding?,
-  createParents? }` → `{ bytesWritten }`.
+- **[`Fs.FileWrite`](docs/file-write.md)** — write a file whole. `{ path, content,
+  encoding?, createParents?, maxBytes? }` → `{ bytesWritten }`. `content` is text,
+  bytes or a stream of bytes; a stream is staged beside the target and renamed
+  over it, so no reader sees part of it. `maxBytes` refuses larger content with
+  `ERR_FILE_TOO_LARGE` and leaves the file as it was.
 - **`Fs.FileEdit`** — edit a file in place by exact string replacement.
   `{ path, oldString, newString, replaceAll? }` → `{ replacements }`. Fails when
   `oldString` is absent, or matches more than once without `replaceAll` — never
@@ -116,13 +120,19 @@ file embedded with `!include-bytes`. A string at `content` is always text, so
     invoke: !ref SaveImage
 ```
 
+`Fs.FileWrite` alone also accepts a **stream of bytes** — a streamed request body,
+a download — and writes it as it arrives, staged in a sibling file and renamed
+over the target once it ends. What that changes about the file on disk is in
+[docs/file-write.md](docs/file-write.md).
+
 ## Errors
 
 Errors are surfaced, never swallowed. A missing file (`ENOENT`), a permission
 failure (`EACCES`), and the like raise an actionable error naming the offending
 path and code; an `Fs.FileEdit` with an absent or ambiguous `oldString` fails
 rather than silently doing nothing. `Fs.File` raises the catchable code
-`ERR_FILE_TOO_LARGE` for a file over the call's `maxBytes`. A path
+`ERR_FILE_TOO_LARGE` for a file over the call's `maxBytes`, and `Fs.FileWrite`
+raises it for content over its own. A path
 `Fs.TreeSnapshot` was asked for and did not find is not an error — it is
 reported in `missing`.
 

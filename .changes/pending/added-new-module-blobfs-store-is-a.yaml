@@ -1,0 +1,17 @@
+modules:
+  modules/blob-fs: Added
+body: "New module. BlobFs.Store is a Blob.Store over a directory, with one required
+  field, root (a host path, evaluated at creation). Each blob is one file at
+  <root>/<h[0..2]>/<h[2..4]>/<h[4..64]>, h being the lower-case hex SHA-256 of the key,
+  holding one UTF-8 JSON header line with v, key and contentType (at most 4096 bytes,
+  newline included) followed by the content; a blob's size is the file's length minus
+  the header's. A put writes <root>/.tmp/<random>, flushes it and renames it into place
+  as the single commit, so readers in any process sharing the root see whole blobs only,
+  concurrent puts to one key leave one whole blob, and a put whose source fails or
+  passes maxBytes leaves the previous blob untouched and no temporary file. A get leaves
+  no file open: the file is opened when the content is first read, and that read fails
+  if the blob was meanwhile replaced by one of another size or media type, or deleted.
+  After a store's first successful put, and then at most once an hour, entries of
+  <root>/.tmp/ not modified for 24 hours are removed; a put whose staging file was
+  removed that way fails at its commit with an error saying so, nothing stored. Delete
+  unlinks the file. Any valid key is held, whatever its length, depth or letter case."

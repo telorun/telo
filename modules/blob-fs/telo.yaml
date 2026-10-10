@@ -1,0 +1,60 @@
+kind: Telo.Library
+metadata:
+  name: BlobFs
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Storage]
+  description: >-
+    Object storage on a local or mounted directory: uploads, attachments and
+    generated files kept as plain files under one root, each with its media type.
+    Several processes or replicas sharing the directory read each other's writes,
+    and a write is committed by a single rename, so a crash or a failed upload
+    never leaves a half-written object behind.
+requires:
+  # The release this module was first checked against; nothing older has read it.
+  telo: ">=0.114.0"
+imports:
+  Blob: ../blob
+exports:
+  kinds:
+    - Store
+---
+# BlobFs.Store — a Blob.Store over a directory. Layout and file format are
+# specified in docs/store.md:
+#
+#   <root>/<h[0..2]>/<h[2..4]>/<h[4..64]>   one file per blob, h = sha256(key) in hex
+#   <root>/.tmp/<random>                    a blob being written
+#
+# A file is one JSON header line (`{"v":1,"key":…,"contentType":…}`) and then the
+# content. The rename out of `.tmp/` is the only commit.
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: >-
+    Keeps binary objects as files beneath one root directory, each holding its
+    key and media type beside the content. A write is staged, flushed to disk
+    and renamed into place, so readers in any process sharing the directory see
+    whole objects only, concurrent writes of one key leave exactly one, and
+    abandoned partial uploads are cleaned up after a day.
+capability: Telo.Provider
+extends: Blob.Store
+controllers:
+  - pkg:telo/local/js?path=./nodejs/blob-fs.mjs&local_path=./nodejs/src/index.ts#Store
+schema:
+  type: object
+  additionalProperties: false
+  required: [root]
+  properties:
+    root:
+      title: Root
+      description: >-
+        Absolute directory the blobs are kept under, created on the first write.
+        Every process given the same directory shares one store. It comes from
+        a variable declared `x-telo-type: Telo.HostPath`; nothing else should
+        write inside it.
+      type: string
+      x-telo-type: Telo.HostPath
+      x-telo-eval: compile
+  examples:
+    - root: !cel "variables.blobRoot"
