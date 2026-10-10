@@ -45,6 +45,7 @@ import {
   type CompletionResult,
   type FinishReason,
   type Message,
+  type SystemPrompt,
   type ToolApproval,
   type ToolCall,
   type Usage,
@@ -69,7 +70,7 @@ import {
 interface AiAgentResource extends StepBudgetConfig {
   metadata: { name: string; module?: string };
   model: AiModelInstance;
-  system?: string;
+  system?: SystemPrompt;
   options?: Record<string, unknown>;
   onToolError?: "feedback" | "throw";
   maxToolResultBytes?: number | bigint;
@@ -81,7 +82,7 @@ interface AiAgentResource extends StepBudgetConfig {
 interface AiAgentInputs {
   prompt?: string;
   messages?: Message[];
-  system?: string;
+  system?: SystemPrompt;
   options?: Record<string, unknown>;
   context?: Record<string, unknown>;
   /** The caller's decisions on the calls `messages` leaves pending. */

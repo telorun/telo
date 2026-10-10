@@ -1,4 +1,5 @@
-import { InvokeError } from "@telorun/sdk";
+import { modelFailureFromError, modelResponseInvalid } from "@telorun/ai";
+import type { InvokeContext } from "@telorun/sdk";
 
 /**
  * SSE frame reading, shared by both dialects' streaming halves.
@@ -38,6 +39,7 @@ const MAX_FRAME_BYTES = 1 << 20;
 export async function* parseSseData(
   body: AsyncIterable<Uint8Array>,
   operation: string,
+  ctx?: InvokeContext,
 ): AsyncGenerator<string> {
   const decoder = new TextDecoder();
   let buffer = "";
@@ -53,14 +55,13 @@ export async function* parseSseData(
   };
 
   const overrun = (what: string, limit: number): never => {
-    throw new InvokeError(
-      "ERR_OPENAI_REQUEST_FAILED",
+    throw modelResponseInvalid(
       `${operation}: ${what} exceeded ${limit} bytes. The peer is not sending Server-Sent Events.`,
     );
   };
 
-  for await (const chunk of body) {
-    buffer += decoder.decode(chunk as Uint8Array, { stream: true });
+  for await (const chunk of bodyChunks(body, operation, ctx)) {
+    buffer += decoder.decode(chunk, { stream: true });
     let nl: number;
     while ((nl = buffer.indexOf("\n")) !== -1) {
       const line = buffer.slice(0, nl);
@@ -88,6 +89,63 @@ export async function* parseSseData(
   // frame; the transport's end is as good a terminator as the blank line.
   const last = frame();
   if (last !== null) yield last;
+}
+
+/**
+ * The body's chunks, with a read that breaks raised as what it is. A body that
+ * breaks after a success status is the same fact as one that ends early — an
+ * answer that cannot be read to its end — unless the caller cancelled, which
+ * stays a cancellation. Stopping early returns the source, so the transport is
+ * told nobody is reading.
+ */
+async function* bodyChunks(
+  body: AsyncIterable<Uint8Array>,
+  operation: string,
+  ctx: InvokeContext | undefined,
+): AsyncGenerator<Uint8Array> {
+  const source = body[Symbol.asyncIterator]();
+  let finished = false;
+  try {
+    while (true) {
+      let step: IteratorResult<Uint8Array>;
+      try {
+        step = await source.next();
+      } catch (err) {
+        finished = true;
+        throw modelFailureFromError(err, ctx, (broke) =>
+          modelResponseInvalid(
+            `${operation}: the response body broke before the answer was complete. ` +
+              `${broke instanceof Error ? broke.message : String(broke)}`,
+            { cause: broke },
+          ),
+        );
+      }
+      if (step.done) {
+        finished = true;
+        return;
+      }
+      yield step.value as Uint8Array;
+    }
+  } finally {
+    if (!finished) await source.return?.();
+  }
+}
+
+/**
+ * One frame's payload as the JSON object both dialects send. A frame that is not
+ * one is an answer that cannot be read.
+ */
+export function parseFrame(data: string, operation: string): Record<string, unknown> {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(data);
+  } catch (err) {
+    throw modelResponseInvalid(`${operation}: a stream frame is not JSON.`, { cause: err });
+  }
+  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
+    throw modelResponseInvalid(`${operation}: a stream frame is not a JSON object.`);
+  }
+  return decoded as Record<string, unknown>;
 }
 
 /**

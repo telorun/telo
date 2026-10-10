@@ -1,0 +1,44 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicConfigSchema
+  version: 1.0.0
+  description: |
+    `Anthropic.MessagesModel`'s configuration is closed, and each way of breaking
+    it is refused where it is written — by `telo check` and again at load: a
+    model with no `maxTokens` (the API has no default), an `options` bag naming
+    what the call itself decides or the token cap the `maxTokens` field already
+    holds, a cache lifetime the API does not offer, and a field the kind does
+    not declare.
+
+    A bag that is computed is out of the static check's sight, and is refused
+    when the resource is created.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref refused
+  - !ref computedRefused
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/config-refused.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Anthropic.MessagesModel/uncapped: / is missing required property 'maxTokens'"
+    - code: SCHEMA_VIOLATION
+      message: "Anthropic.MessagesModel/structural: /options/toolChoice is not allowed here"
+    - code: SCHEMA_VIOLATION
+      message: "Anthropic.MessagesModel/lifetime: /cacheLifetime must be equal to one of the allowed values (5m | 1h)"
+    - code: SCHEMA_VIOLATION
+      message: "Anthropic.MessagesModel/undeclared: / must NOT have additional properties ('thinking' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Anthropic.MessagesModel/twoCaps: /options/maxTokens is not allowed here"
+    - code: SCHEMA_VIOLATION
+      message: "Anthropic.MessagesModel/twoCapsSnake: /options/max_tokens is not allowed here"
+  runFails: "Manifest validation failed"
+---
+kind: Assert.Manifest
+metadata: { name: computedRefused }
+source: ./__fixtures__/config-computed-options.yaml
+expect:
+  runFails: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED"

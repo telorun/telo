@@ -8,6 +8,33 @@ export {
   isTextPart,
 } from "./content.js";
 export { redact } from "./redact.js";
+export {
+  MODEL_FAILURE_CODES,
+  modelAccessDenied,
+  modelContentRefused,
+  modelContentUnsupported,
+  modelContextTooLong,
+  modelFailureFromError,
+  modelFailureFromStatus,
+  modelInvalidReference,
+  modelQuotaExceeded,
+  modelRateLimited,
+  modelRequestRejected,
+  modelResponseInvalid,
+  modelTimeout,
+  modelToolArgumentsInvalid,
+  modelUnavailable,
+  modelUnreachable,
+  retryAfterSeconds,
+} from "./model-failure.js";
+export type {
+  ModelContentUnsupportedData,
+  ModelFailureCode,
+  ModelFailureOptions,
+  ModelRetryData,
+  ModelStatusData,
+  ModelToolArgumentsInvalidData,
+} from "./model-failure.js";
 
 // Controller entry points. Each kind's `controllers:` candidate selects one of
 // these by PURL fragment, so the whole module is one bundle and its shared

@@ -1,5 +1,10 @@
-import type { ContentPart, MediaPart } from "@telorun/ai";
-import { InvokeError } from "@telorun/sdk";
+import {
+  modelContentUnsupported,
+  modelToolArgumentsInvalid,
+  type ContentPart,
+  type MediaPart,
+} from "@telorun/ai";
+import type { InvokeError } from "@telorun/sdk";
 
 /**
  * Message-content translation shared by both dialects.
@@ -45,12 +50,12 @@ export function contentUnsupported(
   takes: string,
   scheme?: string,
 ): InvokeError {
-  const mediaType = "mediaType" in part ? ` of media type '${part.mediaType}'` : "";
+  const mediaType = "mediaType" in part ? part.mediaType : undefined;
+  const ofType = mediaType === undefined ? "" : ` of media type '${mediaType}'`;
   const carriage = scheme === undefined ? "" : ` by a '${scheme}:' URI`;
-  return new InvokeError(
-    "ERR_CONTENT_UNSUPPORTED",
-    `${label}: a '${part.type}' content part${mediaType} cannot be sent${carriage}. ${takes}`,
-    { partType: part.type, ...(scheme === undefined ? {} : { scheme }) },
+  return modelContentUnsupported(
+    `${label}: a '${part.type}' content part${ofType} cannot be sent${carriage}. ${takes}`,
+    { partType: part.type, scheme, mediaType },
   );
 }
 
@@ -74,6 +79,21 @@ export function remoteUrl(
 }
 
 /**
+ * A tool call's `arguments` member as the JSON text it arrives as, `undefined`
+ * when the call carries none. Anything else there is raised, never read as a
+ * call with no arguments.
+ */
+export function toolArgumentsText(raw: unknown, toolName: string): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === "string") return raw;
+  throw modelToolArgumentsInvalid(
+    `OpenAI tool call '${toolName}' returned arguments that are not a JSON string: ` +
+      `${JSON.stringify(raw)}`,
+    { tool: toolName },
+  );
+}
+
+/**
  * Read a model's tool-call arguments, which arrive as a JSON string.
  *
  * Raises under a DECLARED code rather than a bare `Error`: this is reachable
@@ -82,24 +102,20 @@ export function remoteUrl(
  * surfaced rather than hidden behind an empty object — an empty-args call and a
  * broken-args call are different events.
  */
-export function parseToolArguments(
-  raw: string | undefined,
-  toolName: string,
-): Record<string, unknown> {
+export function parseToolArguments(given: unknown, toolName: string): Record<string, unknown> {
+  const raw = toolArgumentsText(given, toolName);
   if (!raw || raw.trim() === "") return {};
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new InvokeError(
-      "ERR_OPENAI_INVALID_TOOL_ARGUMENTS",
+    throw modelToolArgumentsInvalid(
       `OpenAI tool call '${toolName}' returned arguments that are not JSON: ${raw}`,
       { tool: toolName },
     );
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new InvokeError(
-      "ERR_OPENAI_INVALID_TOOL_ARGUMENTS",
+    throw modelToolArgumentsInvalid(
       `OpenAI tool call '${toolName}' arguments were not a JSON object: ${raw}`,
       { tool: toolName },
     );

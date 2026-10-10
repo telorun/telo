@@ -16,8 +16,10 @@ import type {
 } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
 import {
+  callLabel,
+  decodeAnswer,
+  failedResponse,
   isSuccess,
-  openAiFailure,
   sendOpenAi,
   type HttpRequestInstance,
   type OpenAiCall,
@@ -181,10 +183,13 @@ class OpenaiImageModelInstance implements ResourceInstance, AiImageModelInstance
       if (refusal) {
         return { images: [], finishReason: refusal.reason, text: refusal.message };
       }
-      throw openAiFailure(this.resource.metadata.name, OPERATION, response);
+      throw failedResponse(callLabel(OPERATION, this.resource.metadata.name), response);
     }
 
-    const data = response.body as OpenAiImageResponse;
+    const data: OpenAiImageResponse = decodeAnswer(
+      callLabel(OPERATION, this.resource.metadata.name),
+      response,
+    );
     const items = data.data ?? [];
     const mediaType = outputMediaType(params);
     const dimensions = requestedDimensions(params);

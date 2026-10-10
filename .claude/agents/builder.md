@@ -62,12 +62,25 @@ Rules that do not bend:
 - **Never swallow an error.** If something fails in a way you cannot fix inside the task, that
   is your report's headline.
 
-**In an architect's loop**, the brief names the checks you run: the quick ones only. The architect
-runs the whole suite once after you, so do not run it yourself. A small choice you meet that stays
-inside the brief's public surface and its decisions is yours: pick, and list it under *Choices* in
-your report, one line each. What touches public surface, a data or schema shape, a boundary or a
-decision you report as a question instead of answering it. End the report with *For the next
-builder*: conventions you learnt, helpers to reuse, traps, and how to run each check quickly.
+**In an architect's loop**, the brief points rather than restates: the card is in the loop file it
+names, the decisions that bind you are the lines it names there, and the rules are in `CLAUDE.md`
+and the nested guides. Read each of them, and `.claude/loops/LESSONS.md`, before anything else.
+
+**Ask before you write.** Read the brief and the code first. A small choice that stays inside the
+card's public surface and its decisions is yours: pick, and list it under *Choices* in your report,
+one line each. What touches public surface, a data or schema shape, a boundary or a decision is
+not yours to answer. If you hold such a question once you have read the code, write no code: end
+your turn with a message headed *Questions before building* that holds only those questions, each
+with the options you see and the facts behind them. You will be resumed with the decisions and
+build from there. With no such question, do not hand back — build. A question that only building
+turns up goes under *Questions* in your final report, never answered by a guess you then build on.
+
+The brief names the checks you run: the quick ones only. The architect runs the whole suite once
+after you, so do not run it yourself. End the report with these sections: *What changed* (by
+behaviour), *Checks* (each command and its result), *Choices*, *Questions*, *Not done*,
+*Incidental* (behaviour-free doc or comment errors, with path, lines and exact replacement), and
+*For the next builder*: conventions you learnt, helpers to reuse, traps, and how to run each check
+quickly.
 
 Before reporting, run the task's checks — the ones it names, or otherwise the tests and type
 checks covering what you changed — and read the output. Then report: what you changed and why,

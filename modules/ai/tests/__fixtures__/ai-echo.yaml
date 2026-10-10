@@ -99,6 +99,7 @@ schema:
         completionTokens: { type: integer, minimum: 0 }
         totalTokens: { type: integer, minimum: 0 }
         cachedPromptTokens: { type: integer, minimum: 0 }
+        cacheWritePromptTokens: { type: integer, minimum: 0 }
         reasoningTokens: { type: integer, minimum: 0 }
       required: [ promptTokens, completionTokens, totalTokens ]
       additionalProperties: false
@@ -156,6 +157,7 @@ schema:
         completionTokens: { type: integer, minimum: 0 }
         totalTokens: { type: integer, minimum: 0 }
         cachedPromptTokens: { type: integer, minimum: 0 }
+        cacheWritePromptTokens: { type: integer, minimum: 0 }
         reasoningTokens: { type: integer, minimum: 0 }
       required: [ promptTokens, completionTokens, totalTokens ]
       additionalProperties: false

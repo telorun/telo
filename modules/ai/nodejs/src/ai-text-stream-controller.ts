@@ -6,7 +6,7 @@ import type {
 } from "@telorun/sdk";
 import { InvokeError, Stream } from "@telorun/sdk";
 import { reportStreamUsage, stampStreamUsage } from "./usage.js";
-import type { AiModelStreamInstance, Message, StreamPart } from "./types.js";
+import type { AiModelStreamInstance, Message, StreamPart, SystemPrompt } from "./types.js";
 
 /**
  * Shape of the Ai.TextStream manifest after Phase 5 ref injection.
@@ -16,14 +16,14 @@ import type { AiModelStreamInstance, Message, StreamPart } from "./types.js";
 interface AiTextStreamResource {
   metadata: { name: string; module?: string };
   model: AiModelStreamInstance;
-  system?: string;
+  system?: SystemPrompt;
   options?: Record<string, unknown>;
 }
 
 interface AiTextStreamInputs {
   prompt?: string;
   messages?: Message[];
-  system?: string;
+  system?: SystemPrompt;
   options?: Record<string, unknown>;
 }
 

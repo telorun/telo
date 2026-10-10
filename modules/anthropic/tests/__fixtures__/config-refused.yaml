@@ -1,0 +1,64 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicConfigRefused
+  version: 1.0.0
+  description: Fixture — six `Anthropic.MessagesModel` resources, each breaking the kind's closed configuration in one way.
+imports:
+  Anthropic: ../../
+  Http: ../../../http-client
+---
+kind: Http.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:1/v1
+---
+kind: Http.Request
+metadata: { name: request }
+client: !ref client
+---
+# The API has no default token cap, so the kind requires one.
+kind: Anthropic.MessagesModel
+metadata: { name: uncapped }
+model: claude-test
+request: !ref request
+---
+# An option may not name what the call itself decides.
+kind: Anthropic.MessagesModel
+metadata: { name: structural }
+model: claude-test
+request: !ref request
+maxTokens: 256
+options:
+  temperature: 0.2
+  toolChoice: { type: any }
+---
+kind: Anthropic.MessagesModel
+metadata: { name: lifetime }
+model: claude-test
+request: !ref request
+maxTokens: 256
+cacheLifetime: 2h
+---
+# Thinking is turned on through `options`; there is no field for it.
+kind: Anthropic.MessagesModel
+metadata: { name: undeclared }
+model: claude-test
+request: !ref request
+maxTokens: 256
+thinking: { type: enabled, budget_tokens: 1024 }
+---
+# The token cap has one home on a resource: the field.
+kind: Anthropic.MessagesModel
+metadata: { name: twoCaps }
+model: claude-test
+request: !ref request
+maxTokens: 256
+options:
+  maxTokens: 16000
+---
+kind: Anthropic.MessagesModel
+metadata: { name: twoCapsSnake }
+model: claude-test
+request: !ref request
+maxTokens: 256
+options:
+  max_tokens: 16000

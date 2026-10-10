@@ -67,6 +67,8 @@ model: !ref Gpt4o
 system: "Summarize concisely."
 ```
 
+The model and its client are the only provider-specific documents. Providers in the standard library: [`openai`](../openai/README.md) (OpenAI and every OpenAI-compatible endpoint) and [`anthropic`](../anthropic/README.md) (Claude, over the Messages API). Swap one for the other and the `Ai.Text` above is unchanged, as is any `catches:` written against [the model failure codes](#catching-a-models-errors).
+
 ## Reference
 
 - [`Ai.Model`](docs/ai-model.md) — provider contract and implementation walkthrough.
@@ -134,18 +136,56 @@ messages:
       - { type: image, mediaType: image/png, uri: "https://example.com/chart.png" }
 ```
 
-**Shape and capability are separate.** What a part must carry is declared once, in `Ai.ContentPart`, and enforced by the contract of every kind that takes a message: a malformed literal is `CONTRACT_INPUTS_MISMATCH` under `telo check`, at the key at fault, and a malformed computed value is `ERR_INPUT_INVALID` at dispatch. Whether a given model can *carry* a well-formed part is the provider's answer, raised under a code the provider declares before it sends anything. A `uri` is passed to the model as written; nothing here fetches it. See [Modality lives in the parts](docs/ai-model.md#modality-lives-in-the-parts).
+**Shape and capability are separate.** What a part must carry is declared once, in `Ai.ContentPart`, and enforced by the contract of every kind that takes a message: a malformed literal is `CONTRACT_INPUTS_MISMATCH` under `telo check`, at the key at fault, and a malformed computed value is `ERR_INPUT_INVALID` at dispatch. Whether a given model can *carry* a well-formed part is the provider's answer: one it cannot is refused as `ERR_MODEL_CONTENT_UNSUPPORTED` before anything is sent. A `uri` is passed to the model as written; nothing here fetches it. See [Modality lives in the parts](docs/ai-model.md#modality-lives-in-the-parts).
 
 ## Usage
 
-Every completion returns `usage`: `promptTokens`, `completionTokens`, `totalTokens`, and the provider-neutral `unit` / `total` that let one consumer sum spend across modalities. When the model reports them it also carries `cachedPromptTokens` — the part of `promptTokens` read from a cache — and `reasoningTokens` — the part of `completionTokens` spent reasoning. Each is present only when reported: absent means the model did not say, which is not zero. An agent sums both across its model calls; `Ai.AgentStream` also reports them per call on each `step-finish`.
+Every completion returns `usage`: `promptTokens`, `completionTokens`, `totalTokens`, and the provider-neutral `unit` / `total` that let one consumer sum spend across modalities. `promptTokens` is the whole prompt. When the model reports them it also carries `cachedPromptTokens` — the part of `promptTokens` read from a cache — `cacheWritePromptTokens` — the part written to one on this call — and `reasoningTokens` — the part of `completionTokens` spent reasoning. Each is present only when reported: absent means the model did not say, which is not zero. An agent sums each across its model calls; `Ai.AgentStream` also reports them per call on each `step-finish`.
+
+## Prompt caching
+
+A content part a caller sends — text, image, audio, video or file — may carry `cacheBreakpoint: true`: the request from its start through that part, the tools and the system prompt before it included, is a prefix you expect to send again unchanged. It is a **hint**. A model that caches on its own ignores it, one that takes a limited number honours the last ones in request order, and the answer is the same either way; no breakpoint ever raises an error. How long an entry lives is the provider kind's setting, not the part's.
+
+`system` — on `Ai.Text`, `Ai.TextStream`, `Ai.Agent` and `Ai.AgentStream`, as the resource's field and as a call's input — is a string, or a non-empty list of text parts when the prompt should carry a breakpoint. In the resource's field a text part is exactly `{ type: text, text, cacheBreakpoint? }` and any other key is refused; a call's `system` input takes a text part as a message does. An agent's largest stable prefix is its tools plus its system prompt, which a breakpoint on a later user message does not cover:
+
+```yaml
+kind: Ai.Agent
+metadata: { name: assistant }
+model: !ref model
+system:
+  - { type: text, text: !include-text ./prompts/assistant.md, cacheBreakpoint: true }
+```
+
+A breakpoint on a part a model produces (`tool-call`, `reasoning`, `citation`, `refusal`) and a misspelled key are refused by `telo check` where they are written. What a call cached is reported in its [usage](#usage).
 
 ## Catching a model's errors
 
-`Ai.Text`, `Ai.TextStream`, `Ai.Agent`, `Ai.AgentStream` and `Ai.Buffered` each declare `throws: { inherit: true }`: whatever the model they hold throws escapes them unchanged, so the model's declared codes are part of the operation's own throw union. Two things follow:
+**Every model raises the same failures.** `Ai.Model` and `Ai.ModelStream` declare one list, and every provider's kinds restate it and raise nothing else — so a `catches:` written against these codes holds whichever provider is behind the model, including a model a library is merely handed (`resources: { model: { kind: Ai.Model } }`).
 
-- A `catch:` step or a route's `catches:` over one of these may name a code the **model** declares and read its declared `error.data`.
-- `telo check` holds a `catches:` list to the whole union. A list that names some codes and has no catch-all is `UNCOVERED_THROW_CODE`, listing the operation's remaining codes *and its model's*.
+| Code | Meaning | `error.data` | Try again? |
+| --- | --- | --- | --- |
+| `ERR_MODEL_ACCESS_DENIED` | The credential was refused, or has no permission for the model. | `status?` | no |
+| `ERR_MODEL_RATE_LIMITED` | The endpoint asked the caller to slow down. | `status?`, `retryAfterSeconds?` | yes |
+| `ERR_MODEL_QUOTA_EXCEEDED` | The account's credit or plan is exhausted. | `status?` | no |
+| `ERR_MODEL_UNAVAILABLE` | The provider is overloaded or failing on its side, including a failure it reported after the answer began. | `status?`, `retryAfterSeconds?` | yes |
+| `ERR_MODEL_TIMEOUT` | No complete response in time; whether the request ran is unknown. | `status?` | yes |
+| `ERR_MODEL_UNREACHABLE` | Nothing answered: refused connection, unresolved host name, failed handshake. | — | yes |
+| `ERR_MODEL_CONTEXT_TOO_LONG` | The input exceeds the context window or the endpoint's request size limit. | `status?` | not with that input |
+| `ERR_MODEL_CONTENT_REFUSED` | The endpoint rejected the request on content-policy grounds. | `status?` | no |
+| `ERR_MODEL_REQUEST_REJECTED` | The endpoint refused the request as one it cannot serve, the provider refused it before sending, the request could not be built, or it failed in a way nothing else here names (`cause` holds the original). | `status?` | no |
+| `ERR_MODEL_CONTENT_UNSUPPORTED` | A well-formed content part this endpoint cannot carry; raised before anything is sent. | `partType`, `scheme?`, `mediaType?` | no |
+| `ERR_MODEL_TOOL_ARGUMENTS_INVALID` | The model asked for a tool with arguments that are not a JSON object. | `tool` | yes |
+| `ERR_MODEL_RESPONSE_INVALID` | The endpoint reported success but the answer cannot be read: it is not the dialect's answer, a member of it has the wrong shape, or it could not be read for any other reason (`cause` holds the original). | — | yes |
+| `ERR_INVALID_REFERENCE` | A resource the model depends on did not resolve to a live instance. | — | no |
+
+The code is the retry contract; there is no separate "retryable" flag and nothing here retries — the request's own `retry:` policy is the one retrying layer. `status` is present only when an HTTP response carried the failure, and `retryAfterSeconds` only when the endpoint named a wait in a standard `Retry-After` header. A model's own refusal *given as its answer* is not a failure: it arrives as a `refusal` part with `finishReason: content-filter`. A cancelled call (`ERR_INVOKE_CANCELLED`) is never reported as one of these.
+
+`Ai.Text`, `Ai.TextStream`, `Ai.Agent`, `Ai.AgentStream` and `Ai.Buffered` each declare `throws: { inherit: true }`: whatever the model they hold throws escapes them unchanged, so the model's codes are part of the operation's own throw union. Two things follow:
+
+- A `catch:` step or a route's `catches:` over one of these may name a model code and read its declared `error.data`; a misspelled member (`error.data.staus`) is `CEL_UNKNOWN_FIELD`.
+- `telo check` holds a `catches:` list to the whole union. A list that names some codes and has no catch-all is `UNCOVERED_THROW_CODE`, listing the operation's remaining codes *and its model's*; a code no model raises is `UNDECLARED_THROW_CODE`.
+
+**Writing a provider:** a kind that extends either abstract restates all thirteen codes in its own `throws:` and may declare none outside the list — one that does is refused by `telo check` (`THROWS_NOT_SUBSTITUTABLE`) and when it is loaded. See [Failures: one list for every model](docs/ai-model.md#failures-one-list-for-every-model).
 
 For a streaming operation, a request the model refuses outright fails the call — before any byte of the response — so a `mode: stream` route's `catches:` still renders it. See [`Ai.Text` → Errors](docs/ai-text.md#errors) for a worked route.
 

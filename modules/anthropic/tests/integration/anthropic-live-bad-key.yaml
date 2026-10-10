@@ -1,0 +1,82 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicLiveBadKey
+  version: 1.0.0
+  description: |
+    Live Messages API test of a refused credential: a key the endpoint does not
+    know is `ERR_MODEL_ACCESS_DENIED` carrying the status, raised by the call
+    under `Anthropic.MessagesModel` and by the read under
+    `Anthropic.MessagesModelStream`. Sends no valid key, and still skips when
+    ANTHROPIC_API_KEY is unset, so a checkout with no key makes no vendor call.
+secrets:
+  anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" }
+imports:
+  Anthropic: ../../
+  Http: ../../../http-client
+  Stream: ../../../stream
+  Run: ../../../run
+  Assert: ../../../assert
+targets:
+  - !ref liveBadKey
+---
+kind: Http.Request
+metadata: { name: badKeyRequest }
+client:
+  kind: Http.Client
+  baseUrl: https://api.anthropic.com/v1
+  timeout: 60000
+  credential:
+    kind: Http.ApiKeyHeader
+    header: x-api-key
+    key: sk-ant-not-a-key
+---
+kind: Anthropic.MessagesModel
+metadata: { name: refused }
+model: claude-haiku-4-5
+request: !ref badKeyRequest
+maxTokens: 16
+---
+kind: Anthropic.MessagesModelStream
+metadata: { name: refusedStream }
+model: claude-haiku-4-5
+request: !ref badKeyRequest
+maxTokens: 16
+---
+kind: Run.Sequence
+metadata: { name: liveBadKey }
+steps:
+  - name: guardEnv
+    if: !cel "secrets.anthropicApiKey != ''"
+    then:
+      - name: buffered
+        try:
+          - name: bufferedCall
+            inputs: { messages: [{ role: user, content: hello }] }
+            invoke: !ref refused
+          - name: bufferedUnreachable
+            throw: { code: TEST_FAILED, message: a key the endpoint does not know was answered }
+        catch:
+          - name: bufferedSeen
+            value: { code: !cel "error.code", data: !cel "error.data" }
+      - name: open
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref refusedStream
+      - name: streamed
+        try:
+          - name: streamedParts
+            inputs: { input: !cel "steps.open.result.output" }
+            invoke: { kind: Stream.Collect }
+          - name: streamedUnreachable
+            throw: { code: TEST_FAILED, message: a key the endpoint does not know was answered }
+        catch:
+          - name: streamedSeen
+            value: { code: !cel "error.code", data: !cel "error.data" }
+      - name: assertRefused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            buffered: !cel "steps.bufferedSeen.result"
+            streamed: !cel "steps.streamedSeen.result"
+          expected:
+            buffered: { code: ERR_MODEL_ACCESS_DENIED, data: { status: 401 } }
+            streamed: { code: ERR_MODEL_ACCESS_DENIED, data: { status: 401 } }

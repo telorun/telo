@@ -3,15 +3,15 @@ metadata:
   name: OpenaiFailureCarriesMessage
   version: 1.0.0
   description: |
-    A refused request is ONE error code with the provider's own words in it,
-    whatever the account's transport settings — so a `catches:` written against
-    this module's declared union holds:
+    A refused request is the SAME neutral code with the provider's own words in
+    it, whatever the account's transport settings — so a `catches:` written
+    against the model's declared failures holds:
 
       - a streamed call answered 4xx surfaces the body's `error.message`, which
         `Http.Request` hands over as an unread stream under `responseType: stream`;
       - a client declaring `throwOnHttpError: true` makes the transport raise
-        `ERR_HTTP_STATUS` first, and the provider re-raises it as its own code
-        rather than letting a code the module never declared escape.
+        `ERR_HTTP_STATUS` first, and the provider classifies that from the status
+        and body it carries rather than letting a transport code escape.
 
     Offline: a local server answers 400 with a provider-shaped body.
 imports:
@@ -109,8 +109,8 @@ steps:
           actual:
             code: !cel "error.code"
             carriesMessage: !cel "error.message.contains('does not exist')"
-            status: !cel "error.data.status"
-          expected: { code: ERR_OPENAI_REQUEST_FAILED, carriesMessage: true, status: 400 }
+            data: !cel "error.data"
+          expected: { code: ERR_MODEL_REQUEST_REJECTED, carriesMessage: true, data: { status: 400 } }
         invoke:
           kind: Assert.Equals
   - name: throwing
@@ -129,7 +129,7 @@ steps:
           actual:
             code: !cel "error.code"
             carriesMessage: !cel "error.message.contains('does not exist')"
-            status: !cel "error.data.status"
-          expected: { code: ERR_OPENAI_REQUEST_FAILED, carriesMessage: true, status: 400 }
+            data: !cel "error.data"
+          expected: { code: ERR_MODEL_REQUEST_REJECTED, carriesMessage: true, data: { status: 400 } }
         invoke:
           kind: Assert.Equals

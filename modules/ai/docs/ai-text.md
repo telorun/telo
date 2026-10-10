@@ -50,7 +50,7 @@ options:
 | Field     | Type   | Required | Purpose                                                                              |
 | --------- | ------ | -------- | ------------------------------------------------------------------------------------ |
 | `model`   | ref    | yes      | Reference to any `Ai.Model` implementation. Typed `x-telo-ref: Self.Model`.      |
-| `system`  | string | no       | Default system prompt. Runtime `inputs.system` wins when set.                        |
+| `system`  | string or text parts | no | Default system prompt — a string, or a non-empty list of text parts when one marks a [prompt-cache breakpoint](../README.md#prompt-caching). Runtime `inputs.system` wins when set. In this field a text part is exactly `{ type: text, text, cacheBreakpoint? }`; any other key is refused. |
 | `options` | object | no       | Resource-level option defaults. Merged beneath `inputs.options` (downstream wins).   |
 
 The `model` field uses identity-form `x-telo-ref` because the schema is part of `@telorun/ai`'s public surface — it must resolve regardless of who imports it. (`extends`, by contrast, uses alias-form because it's evaluated in the declaring file's own import scope. See `kernel/docs/inheritance.md`.)
@@ -61,7 +61,7 @@ The `model` field uses identity-form `x-telo-ref` because the schema is part of 
 | ---------- | ------ | ------------------------------ | ------------------------------------------------------------------ |
 | `prompt`   | string | exactly one of prompt/messages | Shorthand; wraps to `messages: [{role: "user", content: prompt}]`. |
 | `messages` | array  | exactly one of prompt/messages | Full turns, each `{role, content}`; `content` is a string or [content parts](./ai-model.md#modality-lives-in-the-parts). |
-| `system`   | string | no                             | Runtime system override. Wins over manifest `system`.              |
+| `system`   | string or text parts | no                 | Runtime system override, in either form. Wins over manifest `system`. A text part here is read as a message's is. |
 | `options`  | object | no                             | Per-call option overrides.                                         |
 
 Validation comes from two places. The **shape** of the call — each message's fields, and what every content part must carry — is the declared input type's: a malformed literal is `CONTRACT_INPUTS_MISMATCH` under `telo check`, a malformed computed value `ERR_INPUT_INVALID` at dispatch. What the shape cannot state is `ERR_INVALID_INPUT`: both `prompt` and `messages`, neither, an empty message list, or a `tool` turn.
@@ -89,6 +89,7 @@ Whether the model can take a given part is the model's to say — see [Errors](#
     completionTokens: number;
     totalTokens: number;
     cachedPromptTokens?: number; // the part of promptTokens read from a cache
+    cacheWritePromptTokens?: number; // the part of promptTokens written to a cache
     reasoningTokens?: number;    // the part of completionTokens spent reasoning
     unit: string;                // "tokens"
     total: number;
@@ -97,34 +98,39 @@ Whether the model can take a given part is the model's to say — see [Errors](#
 }
 ```
 
-`cachedPromptTokens` and `reasoningTokens` are present when the model reports them and absent otherwise; absent is not zero.
+`promptTokens` is the whole prompt. `cachedPromptTokens`, `cacheWritePromptTokens` and `reasoningTokens` are present when the model reports them and absent otherwise; absent is not zero.
 
 The model's answer is held to `Ai.Model`'s declared output by the kernel (`ERR_OUTPUT_INVALID`); a token count that is not a representable integer is `ERR_CONTRACT_VIOLATION`.
 
 ## Errors
 
-`Ai.Text` throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION` — **and whatever its model throws**, unchanged. The kind declares `throws: { inherit: true }`, so the model's declared codes are part of this resource's own throw union: a `catch:` step or a route's `catches:` may name them, and `telo check` asks for every one to be covered.
+`Ai.Text` throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION` — **and whatever its model throws**, unchanged. The kind declares `throws: { inherit: true }`, so the model's codes are part of this resource's own throw union: a `catch:` step or a route's `catches:` may name them, and `telo check` asks for every one to be covered. Every model raises the same [thirteen codes](../README.md#catching-a-models-errors), whichever provider it is, so the list below holds when the model is swapped.
 
 ```yaml
 routes:
   - request: { path: /describe, method: POST }
-    handler: !ref Describer          # an Ai.Text over an OpenAI.ChatModel
+    handler: !ref Describer          # an Ai.Text over any model
     inputs:
       messages: !cel "request.body.messages"
     returns:
       - status: 200
         content: { application/json: { body: { text: !cel "result.text" } } }
     catches:
-      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+      - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
         status: 422
         content:
           application/json:
             body: { unsupported: !cel "error.data.partType" }
+      - when: !cel "error.code == 'ERR_MODEL_RATE_LIMITED'"
+        status: 429
+        content:
+          application/json:
+            body: { retryAfterSeconds: !cel "has(error.data.retryAfterSeconds) ? error.data.retryAfterSeconds : 0" }
       - status: 502    # every other code the operation and its model declare
         content: { application/json: { body: { code: !cel "error.code" } } }
 ```
 
-A list that names some of the codes and has no catch-all is `UNCOVERED_THROW_CODE`, listing what is left — the model's codes included.
+A list that names some of the codes and has no catch-all is `UNCOVERED_THROW_CODE`, listing what is left — the model's codes included. An entry naming a code no model raises is `UNDECLARED_THROW_CODE`.
 
 ## Option layering
 

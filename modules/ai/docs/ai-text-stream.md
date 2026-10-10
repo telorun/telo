@@ -50,7 +50,7 @@ system: "You are a helpful assistant."
 | Field     | Type   | Required | Purpose                                                                                            |
 | --------- | ------ | -------- | -------------------------------------------------------------------------------------------------- |
 | `model`   | ref    | yes      | Reference to any `Ai.Model` implementation. Typed `x-telo-ref: Self.Model`.                    |
-| `system`  | string | no       | Default system prompt. Runtime `inputs.system` wins when set.                                      |
+| `system`  | string or text parts | no | Default system prompt — a string, or a non-empty list of text parts when one marks a [prompt-cache breakpoint](../README.md#prompt-caching). Runtime `inputs.system` wins when set. In this field a text part is exactly `{ type: text, text, cacheBreakpoint? }`; any other key is refused. |
 | `options` | object | no       | Resource-level option defaults. Merged beneath `inputs.options` (downstream wins).                 |
 
 ## Invocation inputs
@@ -59,7 +59,7 @@ Identical to [Ai.Text](./ai-text.md): `prompt` (shorthand) **or** `messages` (fu
 
 ## Errors
 
-Like `Ai.Text`, this kind declares `throws: { inherit: true }`: its model's declared codes are part of its own throw union, so a `catch:` step or a route's `catches:` may name them (see [Ai.Text → Errors](./ai-text.md#errors)). *When* a failure arrives decides who can answer it:
+Like `Ai.Text`, this kind declares `throws: { inherit: true }`: its model's codes — the same [thirteen](../README.md#catching-a-models-errors) for every provider — are part of its own throw union, so a `catch:` step or a route's `catches:` may name them (see [Ai.Text → Errors](./ai-text.md#errors)). *When* a failure arrives decides who can answer it:
 
 - **The call makes the model call.** What the model refuses that call with — a content part it cannot carry, for one — rejects **this call**, unchanged. In a `mode: stream` route nothing has been sent yet, so `catches:` renders it.
 - **Anything later rejects the iteration** — the endpoint refusing the request, or a failure during generation. The response is already under way, so the encoder frames it in-band and `catches:` cannot.

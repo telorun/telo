@@ -6,6 +6,7 @@ import {
   type MediaPart,
   type MessageContent,
 } from "@telorun/ai";
+import { modelResponseInvalid } from "@telorun/ai";
 import type {
   AiModelInstance,
   AiModelStreamInstance,
@@ -27,8 +28,25 @@ import type {
 } from "@telorun/sdk";
 import { Stream } from "@telorun/sdk";
 import { mergeOptions, toChatResponseFormat, toOpenAiParams } from "./openai-params.js";
-import { callOpenAi, type HttpRequestInstance } from "./openai-endpoint.js";
-import { parseSseData } from "./openai-sse.js";
+import {
+  isRecord,
+  numberLeaf,
+  objectList,
+  objectMember,
+  textLeaf,
+  type Members,
+} from "./openai-answer-shape.js";
+import {
+  readingParts,
+  building,
+  callLabel,
+  callOpenAi,
+  openOpenAiStream,
+  reading,
+  type HttpRequestInstance,
+} from "./openai-endpoint.js";
+import { reportedFailure, vendorErrorOf } from "./openai-failure.js";
+import { parseFrame, parseSseData } from "./openai-sse.js";
 import {
   contentUnsupported,
   dataUrl,
@@ -36,6 +54,7 @@ import {
   OUTPUT_ONLY,
   parseToolArguments,
   remoteUrl,
+  toolArgumentsText,
 } from "./openai-message-parts.js";
 
 /**
@@ -65,46 +84,14 @@ interface OpenaiResource {
   options?: Record<string, unknown>;
 }
 
-// --- OpenAI wire shapes (only the fields this controller reads) ---
+// --- OpenAI wire shapes ---
 
+/** A tool call as this controller SENDS one back in an assistant message. What
+ *  the endpoint answers with is read member by member, as untrusted. */
 interface OpenAiToolCall {
   id: string;
   type?: string;
   function: { name: string; arguments: string };
-}
-
-interface OpenAiUsage {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  total_tokens?: number;
-  prompt_tokens_details?: { cached_tokens?: number } | null;
-  completion_tokens_details?: { reasoning_tokens?: number } | null;
-}
-
-interface OpenAiChatResponse {
-  choices?: Array<{
-    message?: { content?: string | null; tool_calls?: OpenAiToolCall[] };
-    finish_reason?: string | null;
-  }>;
-  usage?: OpenAiUsage;
-}
-
-/** A tool-call fragment in a streaming `delta`. OpenAI splits one tool call across
- *  many chunks keyed by `index`: the first carries `id` and `function.name`, later
- *  ones append `function.arguments` string fragments. A compatible endpoint may
- *  send the id late, or never. */
-interface OpenAiToolCallDelta {
-  index: number;
-  id?: string;
-  function?: { name?: string; arguments?: string };
-}
-
-interface OpenAiStreamChunk {
-  choices?: Array<{
-    delta?: { content?: string; tool_calls?: OpenAiToolCallDelta[] };
-    finish_reason?: string | null;
-  }>;
-  usage?: OpenAiUsage;
 }
 
 const OPENAI_FINISH_TO_AI: Record<string, FinishReason> = {
@@ -115,23 +102,27 @@ const OPENAI_FINISH_TO_AI: Record<string, FinishReason> = {
   content_filter: "content-filter",
 };
 
-function mapFinishReason(fr: string | null | undefined): FinishReason {
-  if (!fr) return "other";
-  return OPENAI_FINISH_TO_AI[fr] ?? "other";
+function mapFinishReason(reason: unknown): FinishReason {
+  const said = textLeaf(reason);
+  if (!said) return "other";
+  return OPENAI_FINISH_TO_AI[said] ?? "other";
 }
 
 /** The two breakdowns are carried only when the endpoint reports them: absent
  *  means "not said", which a compatible endpoint that omits the detail objects
- *  must not have turned into a zero. */
-function mapUsage(u: OpenAiUsage | undefined): Usage {
-  const cached = u?.prompt_tokens_details?.cached_tokens;
-  const reasoning = u?.completion_tokens_details?.reasoning_tokens;
+ *  must not have turned into a zero. A figure that is not a number says nothing. */
+function mapUsage(reported: unknown): Usage {
+  const usage = isRecord(reported) ? reported : {};
+  const details = (member: string): Members =>
+    isRecord(usage[member]) ? (usage[member] as Members) : {};
+  const cached = numberLeaf(details("prompt_tokens_details").cached_tokens);
+  const reasoning = numberLeaf(details("completion_tokens_details").reasoning_tokens);
   return {
-    promptTokens: u?.prompt_tokens ?? 0,
-    completionTokens: u?.completion_tokens ?? 0,
-    totalTokens: u?.total_tokens ?? 0,
-    ...(typeof cached === "number" ? { cachedPromptTokens: cached } : {}),
-    ...(typeof reasoning === "number" ? { reasoningTokens: reasoning } : {}),
+    promptTokens: numberLeaf(usage.prompt_tokens) ?? 0,
+    completionTokens: numberLeaf(usage.completion_tokens) ?? 0,
+    totalTokens: numberLeaf(usage.total_tokens) ?? 0,
+    ...(cached === undefined ? {} : { cachedPromptTokens: cached }),
+    ...(reasoning === undefined ? {} : { reasoningTokens: reasoning }),
   };
 }
 
@@ -284,13 +275,49 @@ function buildTools(defs: ToolDefinition[] | undefined): unknown[] | undefined {
   }));
 }
 
-function parseToolCalls(tcs: OpenAiToolCall[] | undefined): ToolCall[] {
-  if (!tcs || tcs.length === 0) return [];
-  return tcs.map((tc) => ({
-    id: tc.id,
-    name: tc.function.name,
-    arguments: parseToolArguments(tc.function.arguments, tc.function.name),
-  }));
+const TOOL_CALLS = "choices[0].message.tool_calls";
+
+/** The calls a buffered answer asks for. Each names its function in an object
+ *  of its own; a call without one cannot be read. */
+function parseToolCalls(given: unknown, label: string): ToolCall[] {
+  return (objectList(given, TOOL_CALLS, label) ?? []).map((call) => {
+    const fn = objectMember(call.function, `${TOOL_CALLS}[].function`, label);
+    if (!fn) {
+      throw modelResponseInvalid(
+        `${label}: the endpoint sent a tool call with no '${TOOL_CALLS}[].function'.`,
+      );
+    }
+    const name = textLeaf(fn.name) ?? "";
+    return {
+      // An id that is not text is read as one the endpoint never sent.
+      id: textLeaf(call.id) as string,
+      name,
+      arguments: parseToolArguments(fn.arguments, name || "(unnamed)"),
+    };
+  });
+}
+
+/** A buffered answer. One with no message is not an empty answer: reporting it
+ *  as one would hand the caller blank text under a clean finish. */
+function readCompletion(data: Members, label: string): CompletionResult {
+  const choice = objectList(data.choices, "choices", label)?.[0];
+  const message = objectMember(choice?.message, "choices[0].message", label);
+  if (!choice || !message) {
+    throw modelResponseInvalid(
+      `${label}: the endpoint's answer carries no 'choices[0].message'.`,
+    );
+  }
+  const toolCalls = parseToolCalls(message.tool_calls, label);
+  const text = textLeaf(message.content) ?? "";
+  return {
+    // The parts are the whole answer; `text` is their text concatenated,
+    // carried beside them because that is what most consumers want.
+    content: text === "" ? [] : [{ type: "text", text }],
+    text,
+    usage: mapUsage(data.usage),
+    finishReason: mapFinishReason(choice.finish_reason),
+    ...(toolCalls.length > 0 ? { toolCalls } : {}),
+  };
 }
 
 /** What the two kinds share: the endpoint, the request translation, and the
@@ -337,25 +364,17 @@ abstract class OpenaiBase {
 
 class OpenaiModelInstance extends OpenaiBase implements ResourceInstance, AiModelInstance {
   async invoke(input: ModelInvokeInput, ctx?: InvokeContext): Promise<CompletionResult> {
-    const data = (await callOpenAi(
+    const operation = "OpenAI chat completion";
+    const label = callLabel(operation, this.resource.metadata.name);
+    const body = building(label, ctx, () => this.buildBody(input, false));
+    const data = await callOpenAi(
       this.resource.request,
       this.resource.metadata.name,
-      "OpenAI chat completion",
-      { path: "/chat/completions", body: this.buildBody(input, false) },
+      operation,
+      { path: "/chat/completions", body },
       ctx,
-    )) as OpenAiChatResponse;
-    const choice = data.choices?.[0];
-    const toolCalls = parseToolCalls(choice?.message?.tool_calls);
-    const text = choice?.message?.content ?? "";
-    return {
-      // The parts are the whole answer; `text` is their text concatenated,
-      // carried beside them because that is what most consumers want.
-      content: text === "" ? [] : [{ type: "text", text }],
-      text,
-      usage: mapUsage(data.usage),
-      finishReason: mapFinishReason(choice?.finish_reason),
-      ...(toolCalls.length > 0 ? { toolCalls } : {}),
-    };
+    );
+    return reading(label, ctx, () => readCompletion(data, label));
   }
 }
 
@@ -367,74 +386,109 @@ class OpenaiModelStreamInstance
     // Built here rather than when the stream is first read: a part this dialect
     // cannot carry fails the CALL, and only the endpoint's own failures reject
     // the iteration.
-    return { output: new Stream(this.parts(this.buildBody(input, true), ctx)) };
+    const operation = callLabel("OpenAI chat stream", this.resource.metadata.name);
+    const body = building(operation, ctx, () => this.buildBody(input, true));
+    return { output: new Stream(this.parts(body, operation, ctx)) };
   }
 
   private async *parts(
     requestBody: Record<string, unknown>,
+    operation: string,
     ctx?: InvokeContext,
   ): AsyncIterable<StreamPart> {
-      // A refused request FAILS — the status check lives in `callOpenAi`, which
-      // reads the provider's own message out of the body. The parts already
-      // emitted still reach the consumer when a failure comes later.
-      const body = await callOpenAi(
-        this.resource.request,
-        this.resource.metadata.name,
-        "OpenAI chat stream",
-        { path: "/chat/completions", body: requestBody, stream: true },
-        ctx,
-      );
+    // A refused request FAILS — the status is judged at the endpoint boundary,
+    // which reads the vendor's own error out of the body. The parts already
+    // emitted still reach the consumer when a failure comes later.
+    const body = await openOpenAiStream(
+      this.resource.request,
+      this.resource.metadata.name,
+      "OpenAI chat stream",
+      { path: "/chat/completions", body: requestBody },
+      ctx,
+    );
+    yield* readingParts(operation, ctx, this.read(body, operation, ctx));
+  }
 
-      let usage: Usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-      let finishReason: FinishReason = "stop";
-      // Tool calls arrive as fragments across chunks keyed by index; accumulate id,
-      // name, and the concatenated arguments string, then assemble at the finish
-      // boundary (arguments are only valid JSON once fully joined). `held` is the
-      // argument text not yet reported as a delta: nothing is reported for a
-      // call before its id and name are known.
-      const toolAcc = new Map<number, StreamedToolCall>();
-      for await (const data of parseSseData(
-        body as AsyncIterable<Uint8Array>,
-        `OpenAI chat stream "${this.resource.metadata.name}"`,
-      )) {
-        if (data === "[DONE]") break;
-        const chunk = JSON.parse(data) as OpenAiStreamChunk;
-        const choice = chunk.choices?.[0];
-        if (choice?.delta?.content) yield { type: "text-delta", delta: choice.delta.content };
-        for (const tc of choice?.delta?.tool_calls ?? []) {
-          const entry = toolAcc.get(tc.index) ?? { id: "", name: "", args: "", held: "" };
-          if (tc.id) entry.id = tc.id;
-          if (tc.function?.name) entry.name = tc.function.name;
-          if (tc.function?.arguments) {
-            entry.args += tc.function.arguments;
-            entry.held += tc.function.arguments;
-          }
-          toolAcc.set(tc.index, entry);
-          if (entry.id && entry.name) yield* releaseHeld(entry);
+  private async *read(
+    body: AsyncIterable<Uint8Array>,
+    operation: string,
+    ctx?: InvokeContext,
+  ): AsyncGenerator<StreamPart> {
+    let usage: Usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    // What the endpoint said ended the answer. A stream that reaches `[DONE]`
+    // without saying finishes `other`, never `stop`: nothing declared it a
+    // clean stop.
+    let finishReason: FinishReason | undefined;
+    let done = false;
+    // Tool calls arrive as fragments across chunks keyed by index; accumulate id,
+    // name, and the concatenated arguments string, then assemble at the finish
+    // boundary (arguments are only valid JSON once fully joined). `held` is the
+    // argument text not yet reported as a delta: nothing is reported for a
+    // call before its id and name are known.
+    // A compatible endpoint may leave the index out; such fragments are one call.
+    const toolAcc = new Map<number | undefined, StreamedToolCall>();
+    for await (const data of parseSseData(body, operation, ctx)) {
+      if (data === "[DONE]") {
+        done = true;
+        break;
+      }
+      const chunk = parseFrame(data, operation);
+      // A failure reported inside the stream wins over anything beside it.
+      const failed = vendorErrorOf(chunk);
+      if (failed) throw reportedFailure(operation, "the endpoint failed mid-stream", failed);
+      const choice = objectList(chunk.choices, "choices", operation)?.[0];
+      const delta = objectMember(choice?.delta, "choices[0].delta", operation);
+      const content = textLeaf(delta?.content);
+      if (content) yield { type: "text-delta", delta: content };
+      // A fragment of a tool call: the first carries the id and the function's
+      // name, later ones append to its arguments. The id may come late, or never.
+      for (const tc of objectList(delta?.tool_calls, DELTA_TOOL_CALLS, operation) ?? []) {
+        const fn = objectMember(tc.function, `${DELTA_TOOL_CALLS}[].function`, operation);
+        const index = numberLeaf(tc.index);
+        const entry = toolAcc.get(index) ?? { id: "", name: "", args: "", held: "" };
+        entry.id = textLeaf(tc.id) || entry.id;
+        entry.name = textLeaf(fn?.name) || entry.name;
+        const fragment = toolArgumentsText(fn?.arguments, entry.name || "(unnamed)");
+        if (fragment) {
+          entry.args += fragment;
+          entry.held += fragment;
         }
-        if (choice?.finish_reason) finishReason = mapFinishReason(choice.finish_reason);
-        if (chunk.usage) usage = mapUsage(chunk.usage);
+        toolAcc.set(index, entry);
+        if (entry.id && entry.name) yield* releaseHeld(entry);
       }
-      // Emit one assembled tool-call part per accumulated index, in index order,
-      // before the terminal finish. A call the endpoint never named gets an id
-      // minted here — unique, where a positional one would repeat on the next
-      // model call of the same run — and whatever is still held goes out under
-      // it, immediately ahead of the call.
-      for (const [, entry] of [...toolAcc.entries()].sort((a, b) => a[0] - b[0])) {
-        entry.id ||= `call_${randomUUID()}`;
-        yield* releaseHeld(entry);
-        yield {
-          type: "tool-call",
-          toolCall: {
-            id: entry.id,
-            name: entry.name,
-            arguments: parseToolArguments(entry.args, entry.name),
-          },
-        };
-      }
-    yield { type: "finish", usage, finishReason };
+      if (textLeaf(choice?.finish_reason)) finishReason = mapFinishReason(choice?.finish_reason);
+      if (isRecord(chunk.usage)) usage = mapUsage(chunk.usage);
+    }
+    // The bytes ran out with neither a finish reason nor the end sentinel — a
+    // cut connection, a proxy that closed. Reporting `finish` here would render
+    // an interrupted answer as a clean stop.
+    if (!done && finishReason === undefined) {
+      throw modelResponseInvalid(
+        `${operation}: the stream ended without a finish reason or '[DONE]', so the answer is incomplete.`,
+      );
+    }
+    // Emit one assembled tool-call part per accumulated index, in index order,
+    // before the terminal finish. A call the endpoint never named gets an id
+    // minted here — unique, where a positional one would repeat on the next
+    // model call of the same run — and whatever is still held goes out under
+    // it, immediately ahead of the call.
+    for (const [, entry] of [...toolAcc.entries()].sort((a, b) => (a[0] ?? 0) - (b[0] ?? 0))) {
+      entry.id ||= `call_${randomUUID()}`;
+      yield* releaseHeld(entry);
+      yield {
+        type: "tool-call",
+        toolCall: {
+          id: entry.id,
+          name: entry.name,
+          arguments: parseToolArguments(entry.args, entry.name),
+        },
+      };
+    }
+    yield { type: "finish", usage, finishReason: finishReason ?? "other" };
   }
 }
+
+const DELTA_TOOL_CALLS = "choices[0].delta.tool_calls";
 
 /** One streamed call being assembled. */
 interface StreamedToolCall {

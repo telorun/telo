@@ -5,7 +5,7 @@ import type { AiModelStreamInstance, FinishReason, Message, StreamPart } from "@
 /**
  * Test-support Invocable that consumes an `Ai.Model.stream(...)` and collects its output.
  * Exists because the primary consumer of `stream()` — a future `Ai.Stream` kind — isn't
- * part of v1 (see model-and-completion plan §12). Without this, stream-contract tests
+ * part of v1. Without this, stream-contract tests
  * would need to pass the live instance into a JS.Script, and ordinary JS sandbox inputs
  * don't carry prototype methods from a provider's class-based controller.
  *

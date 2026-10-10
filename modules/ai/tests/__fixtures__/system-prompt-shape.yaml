@@ -1,0 +1,172 @@
+# A `system` that is not a system prompt, one defect each, in both places an
+# operation takes one: the resource's own field and a call's input. Then a part a
+# model produces carrying a cache breakpoint. `telo check` refuses every one
+# where it is written.
+kind: Telo.Application
+metadata:
+  name: SystemPromptShape
+imports:
+  Ai: ../../
+  AiEcho: ./ai-echo.yaml
+  Run: ../../../run
+targets:
+  - !ref malformedCalls
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+---
+kind: AiEcho.EchoModelStream
+metadata: { name: echoStream }
+---
+kind: Ai.Text
+metadata: { name: text }
+model: !ref echo
+---
+kind: Ai.Text
+metadata: { name: textToolCall }
+model: !ref echo
+system: [{ type: tool-call, toolCall: { id: c1, name: lookup, arguments: {} } }]
+---
+kind: Ai.Text
+metadata: { name: textEmpty }
+model: !ref echo
+system: []
+---
+kind: Ai.Text
+metadata: { name: textTypo }
+model: !ref echo
+system: [{ type: text, text: be terse, cacheBreakpiont: true }]
+---
+kind: Ai.TextStream
+metadata: { name: textStream }
+model: !ref echoStream
+---
+kind: Ai.TextStream
+metadata: { name: textStreamToolCall }
+model: !ref echoStream
+system: [{ type: tool-call, toolCall: { id: c1, name: lookup, arguments: {} } }]
+---
+kind: Ai.TextStream
+metadata: { name: textStreamEmpty }
+model: !ref echoStream
+system: []
+---
+kind: Ai.TextStream
+metadata: { name: textStreamTypo }
+model: !ref echoStream
+system: [{ type: text, text: be terse, cacheBreakpiont: true }]
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model: !ref echo
+---
+kind: Ai.Agent
+metadata: { name: agentToolCall }
+model: !ref echo
+system: [{ type: tool-call, toolCall: { id: c1, name: lookup, arguments: {} } }]
+---
+kind: Ai.Agent
+metadata: { name: agentEmpty }
+model: !ref echo
+system: []
+---
+kind: Ai.Agent
+metadata: { name: agentTypo }
+model: !ref echo
+system: [{ type: text, text: be terse, cacheBreakpiont: true }]
+---
+kind: Ai.AgentStream
+metadata: { name: agentStream }
+model: !ref echoStream
+---
+kind: Ai.AgentStream
+metadata: { name: agentStreamToolCall }
+model: !ref echoStream
+system: [{ type: tool-call, toolCall: { id: c1, name: lookup, arguments: {} } }]
+---
+kind: Ai.AgentStream
+metadata: { name: agentStreamEmpty }
+model: !ref echoStream
+system: []
+---
+kind: Ai.AgentStream
+metadata: { name: agentStreamTypo }
+model: !ref echoStream
+system: [{ type: text, text: be terse, cacheBreakpiont: true }]
+---
+kind: Run.Sequence
+metadata: { name: malformedCalls }
+steps:
+  - name: textToolCall
+    invoke: !ref text
+    inputs:
+      prompt: hello
+      system: [{ type: tool-call, toolCall: { id: c1, name: lookup, arguments: {} } }]
+  - name: textEmpty
+    invoke: !ref text
+    inputs:
+      prompt: hello
+      system: []
+  - name: textTypo
+    invoke: !ref text
+    inputs:
+      prompt: hello
+      system: [{ type: text, text: be terse, cacheBreakpiont: true }]
+  - name: textStreamToolCall
+    invoke: !ref textStream
+    inputs:
+      prompt: hello
+      system: [{ type: tool-call, toolCall: { id: c1, name: lookup, arguments: {} } }]
+  - name: textStreamEmpty
+    invoke: !ref textStream
+    inputs:
+      prompt: hello
+      system: []
+  - name: textStreamTypo
+    invoke: !ref textStream
+    inputs:
+      prompt: hello
+      system: [{ type: text, text: be terse, cacheBreakpiont: true }]
+  - name: agentToolCall
+    invoke: !ref agent
+    inputs:
+      prompt: hello
+      system: [{ type: tool-call, toolCall: { id: c1, name: lookup, arguments: {} } }]
+  - name: agentEmpty
+    invoke: !ref agent
+    inputs:
+      prompt: hello
+      system: []
+  - name: agentTypo
+    invoke: !ref agent
+    inputs:
+      prompt: hello
+      system: [{ type: text, text: be terse, cacheBreakpiont: true }]
+  - name: agentStreamToolCall
+    invoke: !ref agentStream
+    inputs:
+      prompt: hello
+      system: [{ type: tool-call, toolCall: { id: c1, name: lookup, arguments: {} } }]
+  - name: agentStreamEmpty
+    invoke: !ref agentStream
+    inputs:
+      prompt: hello
+      system: []
+  - name: agentStreamTypo
+    invoke: !ref agentStream
+    inputs:
+      prompt: hello
+      system: [{ type: text, text: be terse, cacheBreakpiont: true }]
+  - name: markedToolCall
+    invoke: !ref echo
+    inputs:
+      messages:
+        - role: assistant
+          content:
+            - { type: tool-call, toolCall: { id: c1, name: lookup, arguments: {} }, cacheBreakpoint: true }
+  - name: markedReasoning
+    invoke: !ref echo
+    inputs:
+      messages:
+        - role: assistant
+          content: [{ type: reasoning, text: thinking, cacheBreakpoint: true }]

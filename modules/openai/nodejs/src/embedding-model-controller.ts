@@ -53,12 +53,12 @@ class OpenaiEmbeddingModel implements ResourceInstance, EmbeddingModel {
       ...(this.resource.options ?? {}),
       ...(request.options ?? {}),
     };
-    const data = (await callOpenAi(
+    const data: OpenAiEmbeddingResponse = await callOpenAi(
       this.resource.request,
       this.resource.metadata.name,
       "OpenAI embeddings",
       { path: "/embeddings", body },
-    )) as OpenAiEmbeddingResponse;
+    );
     const embeddings = (data.data ?? []).map((d) => d.embedding ?? []);
     if (embeddings.length !== request.texts.length) {
       throw new Error(

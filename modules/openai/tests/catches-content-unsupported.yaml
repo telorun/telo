@@ -7,12 +7,12 @@ metadata:
     whether the route's handler is the model itself, a text operation over it, a
     streaming agent over the streaming model, or a buffered model folded out of
     the streaming one. Each operation passes its model's codes on, so every
-    route's `catches:` may name `ERR_CONTENT_UNSUPPORTED` and read its declared
+    route's `catches:` may name `ERR_MODEL_CONTENT_UNSUPPORTED` and read its declared
     `error.data`; with no catch-all beside it, the model's other codes are
     reported uncovered.
 
     The models point at a port nothing listens on: a request leaving any of them
-    would fail as `ERR_OPENAI_REQUEST_FAILED` and render the catch-all's 500.
+    would fail as `ERR_MODEL_UNREACHABLE` and render the catch-all's 500.
 imports:
   OpenAI: ../
   Ai: ../../ai
@@ -28,21 +28,20 @@ targets:
 kind: Assert.Manifest
 metadata: { name: uncoveredWithoutCatchAll }
 source: ./__fixtures__/catches-without-catch-all.yaml
-# One finding per route. The model alone leaves three codes uncovered
-# (`ERR_OPENAI_REQUEST_FAILED`, `ERR_OPENAI_INVALID_TOOL_ARGUMENTS`,
-# `ERR_INVALID_REFERENCE`); each operation's count is its own codes plus those.
+# One finding per route. The model alone leaves twelve of its thirteen codes
+# uncovered; each operation's count is its own codes plus those.
 expect:
   errors:
     - code: UNCOVERED_THROW_CODE
-      message: "handler `!ref chat` can throw 3 codes"
+      message: "handler `!ref chat` can throw 12 codes"
     - code: UNCOVERED_THROW_CODE
-      message: "handler `!ref text` can throw 5 codes"
+      message: "handler `!ref text` can throw 14 codes"
     - code: UNCOVERED_THROW_CODE
-      message: "handler `!ref agentStream` can throw 10 codes"
+      message: "handler `!ref agentStream` can throw 19 codes"
     - code: UNCOVERED_THROW_CODE
-      message: "handler `!ref buffered` can throw 3 codes"
+      message: "handler `!ref buffered` can throw 12 codes"
     - code: UNCOVERED_THROW_CODE
-      message: "'ERR_OPENAI_INVALID_TOOL_ARGUMENTS', 'ERR_OPENAI_REQUEST_FAILED'"
+      message: "'ERR_MODEL_TOOL_ARGUMENTS_INVALID', 'ERR_MODEL_UNAVAILABLE', 'ERR_MODEL_UNREACHABLE'"
 ---
 kind: HttpClient.Client
 metadata: { name: unreachable }
@@ -87,7 +86,7 @@ routes:
       - status: 200
         content: { application/json: { body: { text: !cel "result.text" } } }
     catches:
-      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+      - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
         status: 422
         content: { application/json: { body: { via: model, partType: !cel "error.data.partType" } } }
       - status: 500
@@ -102,7 +101,7 @@ routes:
       - status: 200
         content: { application/json: { body: { text: !cel "result.text" } } }
     catches:
-      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+      - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
         status: 422
         content: { application/json: { body: { via: text, partType: !cel "error.data.partType" } } }
       - status: 500
@@ -120,7 +119,7 @@ routes:
           application/x-ndjson:
             encoder: { kind: Ndjson.Encoder }
     catches:
-      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+      - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
         status: 422
         content:
           application/json:
@@ -140,7 +139,7 @@ routes:
       - status: 200
         content: { application/json: { body: { text: !cel "result.text" } } }
     catches:
-      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+      - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
         status: 422
         content: { application/json: { body: { via: buffered, partType: !cel "error.data.partType" } } }
       - status: 500

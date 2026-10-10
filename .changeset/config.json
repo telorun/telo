@@ -23,6 +23,7 @@
     "@telorun/ai",
     "@telorun/ai-fixtures",
     "@telorun/ai-mcp-build",
+    "@telorun/anthropic-build",
     "@telorun/app-build",
     "@telorun/assert-build",
     "@telorun/benchmark-build",

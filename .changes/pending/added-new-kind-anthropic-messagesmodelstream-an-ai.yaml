@@ -1,0 +1,22 @@
+modules:
+  modules/anthropic: Added
+body: "New kind `Anthropic.MessagesModelStream`, an `Ai.ModelStream` over the Messages
+  API's event stream, with the configuration, request translation and thirteen failure
+  codes of `Anthropic.MessagesModel`. Parts arrive in contract order: `text-delta` and
+  `reasoning-delta` as they are written, `tool-call-delta` fragments under the call's
+  own id and name from the first one, the whole `tool-call`, one `provider-state` when
+  the answer holds thinking to carry, then one `finish` with usage and the finish
+  reason. The request is sent when the stream is first read, so a stream nobody reads
+  contacts nothing and a consumer that stops reading cancels the transport. What the
+  request alone decides — an unsupported content part, a `responseFormat`, a structural
+  option — rejects the call before anything is sent; everything the endpoint does
+  rejects the iteration: a refused status by status and error type, an `error` event by
+  its type, and a frame that is not a JSON object, a line or frame over 1 MiB, a body
+  that breaks, or a stream ending with neither a stop reason nor `message_stop`, as
+  `ERR_MODEL_RESPONSE_INVALID`. The answer is complete on the `message_delta` carrying
+  its stop reason or on `message_stop`; a block still open then is closed, a tool call
+  only when its arguments are whole JSON. In both kinds a tool call carries the
+  endpoint's id, and one the endpoint returned with no id gets a minted `call_<uuid>`,
+  which is also the id in the carried `providerState`; no call leaves either kind with
+  an empty id. The module imports `sse-codec`, whose frame reader the stream kind reads
+  through."

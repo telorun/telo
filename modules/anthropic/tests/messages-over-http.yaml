@@ -1,0 +1,322 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicMessagesOverHttp
+  version: 1.0.0
+  description: |
+    `Anthropic.MessagesModel` through a real `Http.Request`, where the transport
+    and the client's credential are part of the answer:
+
+      - the server answers only a request carrying the client's `x-api-key` and
+        the controller's `anthropic-version`, and echoes the body and the
+        `anthropic-beta` header it received — so the request an agent with a
+        marked system prompt makes is asserted as the endpoint saw it, cache
+        breakpoints at the configured lifetime included;
+      - the three input figures the endpoint reports come back as one prompt
+        count with its two cache shares;
+      - a wrong key is `ERR_MODEL_ACCESS_DENIED`, a 429 carrying `Retry-After`
+        `ERR_MODEL_RATE_LIMITED` with the wait, a 529 `ERR_MODEL_UNAVAILABLE`, a
+        200 whose body is cut short `ERR_MODEL_RESPONSE_INVALID`, and an endpoint
+        nothing listens on `ERR_MODEL_UNREACHABLE`.
+
+    Offline: a local server scripted by model id.
+imports:
+  Anthropic: ../
+  Ai: ../../ai
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.ApiKeyHeader
+metadata: { name: goodKey }
+header: x-api-key
+key: test-key
+---
+kind: Http.Client
+metadata: { name: echoClient }
+baseUrl: http://localhost:8960/echo/v1
+credential: !ref goodKey
+---
+kind: Http.Request
+metadata: { name: echoRequest }
+client: !ref echoClient
+---
+kind: Http.Request
+metadata: { name: wrongKeyRequest }
+client:
+  kind: Http.Client
+  baseUrl: http://localhost:8960/echo/v1
+  credential:
+    kind: Http.ApiKeyHeader
+    header: x-api-key
+    key: wrong-key
+---
+kind: Http.Request
+metadata: { name: scriptedRequest }
+client:
+  kind: Http.Client
+  baseUrl: http://localhost:8960/v1
+  credential: !ref goodKey
+---
+kind: Http.Request
+metadata: { name: nobodyRequest }
+client:
+  kind: Http.Client
+  baseUrl: http://127.0.0.1:1/v1
+  credential: !ref goodKey
+---
+kind: Anthropic.MessagesModel
+metadata: { name: echo }
+model: claude-test
+request: !ref echoRequest
+maxTokens: 256
+cacheLifetime: 1h
+betas: [beta-one-2025-01-01, beta-two-2025-02-02]
+options:
+  temperature: 0.2
+---
+kind: Anthropic.MessagesModel
+metadata: { name: wrongKey }
+model: claude-test
+request: !ref wrongKeyRequest
+maxTokens: 256
+---
+kind: Anthropic.MessagesModel
+metadata: { name: limited }
+model: claude-limited
+request: !ref scriptedRequest
+maxTokens: 256
+---
+kind: Anthropic.MessagesModel
+metadata: { name: overloaded }
+model: claude-overloaded
+request: !ref scriptedRequest
+maxTokens: 256
+---
+kind: Anthropic.MessagesModel
+metadata: { name: cut }
+model: claude-cut
+request: !ref scriptedRequest
+maxTokens: 256
+---
+kind: Anthropic.MessagesModel
+metadata: { name: nobody }
+model: claude-test
+request: !ref nobodyRequest
+maxTokens: 256
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model: !ref echo
+system:
+  - { type: text, text: You are terse., cacheBreakpoint: true }
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+kind: Run.Value
+metadata: { name: marked }
+value:
+  messages:
+    - role: user
+      content:
+        - { type: text, text: describe this, cacheBreakpoint: true }
+        - { type: image, mediaType: image/png, data: aGk= }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: EchoApi }
+    routes:
+      - request:
+          path: /messages
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          # The account and the dialect are checked where an endpoint checks them.
+          - status: 200
+            when: !cel >-
+              'x-api-key' in request.headers && request.headers['x-api-key'] == 'test-key' &&
+              'anthropic-version' in request.headers && request.headers['anthropic-version'] == '2023-06-01'
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  type: message
+                  role: assistant
+                  content:
+                    - type: text
+                      text: !cel "json({'beta': request.headers['anthropic-beta'], 'body': request.body})"
+                  stop_reason: end_turn
+                  usage:
+                    input_tokens: 5
+                    cache_read_input_tokens: 20
+                    cache_creation_input_tokens: 30
+                    output_tokens: 3
+          - status: 401
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  type: error
+                  error: { type: authentication_error, message: invalid x-api-key }
+  # The scripted failures live under their own mount: a route serializes every
+  # answer of one status with one schema, so the cut text body cannot share a
+  # route with the echoing object one.
+  - kind: Server.Api
+    metadata: { name: ScriptedApi }
+    routes:
+      - request:
+          path: /messages
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 429
+            when: !cel "request.body.model == 'claude-limited'"
+            headers:
+              Retry-After: "7"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  type: error
+                  error: { type: rate_limit_error, message: slow down }
+          - status: 529
+            when: !cel "request.body.model == 'claude-overloaded'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  type: error
+                  error: { type: overloaded_error, message: Overloaded }
+          - status: 200
+            content:
+              text/plain:
+                schema: { type: string }
+                body: '{"type": "message", "content": [{"ty'
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 8960
+    baseUrl: http://localhost:8960
+    openapi:
+      info: { title: Fake Messages API, version: 1.0.0 }
+    mounts:
+      - path: /echo/v1
+        mount: !ref EchoApi
+      - path: /v1
+        mount: !ref ScriptedApi
+targets:
+  - !ref FakeServer
+steps:
+  - name: marks
+    invoke: !ref marked
+  - name: viaAgent
+    inputs: !cel "steps.marks.result"
+    invoke: !ref agent
+  - name: assertRequest
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        sent: !cel "parseJson(steps.viaAgent.result.text)"
+        usage: !cel "steps.viaAgent.result.usage"
+      expected:
+        sent:
+          beta: beta-one-2025-01-01,beta-two-2025-02-02
+          body:
+            model: claude-test
+            max_tokens: 256
+            system:
+              - type: text
+                text: You are terse.
+                cache_control: { type: ephemeral, ttl: 1h }
+            messages:
+              - role: user
+                content:
+                  - type: text
+                    text: describe this
+                    cache_control: { type: ephemeral, ttl: 1h }
+                  - type: image
+                    source: { type: base64, media_type: image/png, data: aGk= }
+            temperature: 0.2
+        usage:
+          promptTokens: 55
+          completionTokens: 3
+          totalTokens: 58
+          cachedPromptTokens: 20
+          cacheWritePromptTokens: 30
+          unit: tokens
+          total: 58
+
+  - name: refusedKey
+    try:
+      - name: wrongKeyCall
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref wrongKey
+      - name: wrongKeyUnreachable
+        throw: { code: TEST_FAILED, message: a wrong key was answered }
+    catch:
+      - name: wrongKeySeen
+        value: { code: !cel "error.code", data: !cel "error.data" }
+  - name: rateLimited
+    try:
+      - name: limitedCall
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref limited
+      - name: limitedUnreachable
+        throw: { code: TEST_FAILED, message: the rate-limited call did not raise }
+    catch:
+      - name: limitedSeen
+        value: { code: !cel "error.code", data: !cel "error.data" }
+  - name: overloadedEndpoint
+    try:
+      - name: overloadedCall
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref overloaded
+      - name: overloadedUnreachable
+        throw: { code: TEST_FAILED, message: the overloaded call did not raise }
+    catch:
+      - name: overloadedSeen
+        value: { code: !cel "error.code", data: !cel "error.data" }
+  - name: cutBody
+    try:
+      - name: cutCall
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref cut
+      - name: cutUnreachable
+        throw: { code: TEST_FAILED, message: a cut body was read as an answer }
+    catch:
+      - name: cutSeen
+        value: !cel "error.code"
+  - name: nobodyListens
+    try:
+      - name: nobodyCall
+        inputs: { messages: [{ role: user, content: hello }] }
+        invoke: !ref nobody
+      - name: nobodyUnreachable
+        throw: { code: TEST_FAILED, message: a call to nothing answered }
+    catch:
+      - name: nobodySeen
+        value: !cel "error.code"
+  - name: assertFailures
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        wrongKey: !cel "steps.wrongKeySeen.result"
+        rateLimited: !cel "steps.limitedSeen.result"
+        overloaded: !cel "steps.overloadedSeen.result"
+        cut: !cel "steps.cutSeen.result"
+        nobody: !cel "steps.nobodySeen.result"
+      expected:
+        wrongKey: { code: ERR_MODEL_ACCESS_DENIED, data: { status: 401 } }
+        rateLimited: { code: ERR_MODEL_RATE_LIMITED, data: { status: 429, retryAfterSeconds: 7 } }
+        overloaded: { code: ERR_MODEL_UNAVAILABLE, data: { status: 529 } }
+        cut: ERR_MODEL_RESPONSE_INVALID
+        nobody: ERR_MODEL_UNREACHABLE

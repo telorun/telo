@@ -1,0 +1,83 @@
+kind: Telo.Application
+metadata:
+  name: SystemPromptShapeTest
+  version: 1.0.0
+  description: |
+    `system` is a string or a non-empty list of text parts, and a cache
+    breakpoint is legal only on a part a caller sends. Both are declared once and
+    judged where a manifest writes them, from an application that imports the
+    module: on each of the four operations, in the resource's own field and in a
+    call's input, a list holding a part that is not text, an empty list and a
+    misspelled `cacheBreakpoint` are each refused; so is a breakpoint on a part a
+    model produces. A string, a marked list of text parts and marked text, image,
+    audio, video and file parts check clean.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref malformedRefused
+  - !ref wellFormedAccepted
+---
+kind: Assert.Manifest
+metadata: { name: malformedRefused }
+source: ./__fixtures__/system-prompt-shape.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ai.Text/textToolCall: /system must be string"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.Text/textEmpty: /system must NOT have fewer than 1 items"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.Text/textTypo: /system/0 must NOT have additional properties ('cacheBreakpiont' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.TextStream/textStreamToolCall: /system must be string"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.TextStream/textStreamEmpty: /system must NOT have fewer than 1 items"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.TextStream/textStreamTypo: /system/0 must NOT have additional properties ('cacheBreakpiont' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.Agent/agentToolCall: /system must be string"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.Agent/agentEmpty: /system must NOT have fewer than 1 items"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.Agent/agentTypo: /system/0 must NOT have additional properties ('cacheBreakpiont' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.AgentStream/agentStreamToolCall: /system must be string"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.AgentStream/agentStreamEmpty: /system must NOT have fewer than 1 items"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.AgentStream/agentStreamTypo: /system/0 must NOT have additional properties ('cacheBreakpiont' is not allowed)"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[0].inputs.system' do not satisfy text's declared inputType: /system must be string"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[1].inputs.system' do not satisfy text's declared inputType: /system must NOT have fewer than 1 items"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[2].inputs.system[0]' do not satisfy text's declared inputType: /system/0 must NOT have additional properties ('cacheBreakpiont' is not allowed)"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[3].inputs.system' do not satisfy textStream's declared inputType: /system must be string"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[4].inputs.system' do not satisfy textStream's declared inputType: /system must NOT have fewer than 1 items"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[5].inputs.system[0]' do not satisfy textStream's declared inputType: /system/0 must NOT have additional properties ('cacheBreakpiont' is not allowed)"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[6].inputs.system' do not satisfy agent's declared inputType: /system must be string"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[7].inputs.system' do not satisfy agent's declared inputType: /system must NOT have fewer than 1 items"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[8].inputs.system[0]' do not satisfy agent's declared inputType: /system/0 must NOT have additional properties ('cacheBreakpiont' is not allowed)"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[9].inputs.system' do not satisfy agentStream's declared inputType: /system must be string"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[10].inputs.system' do not satisfy agentStream's declared inputType: /system must NOT have fewer than 1 items"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[11].inputs.system[0]' do not satisfy agentStream's declared inputType: /system/0 must NOT have additional properties ('cacheBreakpiont' is not allowed)"
+    # A part a model produces: the finding is on the key.
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[12].inputs.messages[0].content[0].cacheBreakpoint' do not satisfy echo's declared inputType: /messages/0/content/0/cacheBreakpoint is not allowed here"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "steps[13].inputs.messages[0].content[0].cacheBreakpoint' do not satisfy echo's declared inputType: /messages/0/content/0/cacheBreakpoint is not allowed here"
+---
+kind: Assert.Manifest
+metadata: { name: wellFormedAccepted }
+source: ./__fixtures__/system-prompt-accepted.yaml
+expect:
+  errors: []

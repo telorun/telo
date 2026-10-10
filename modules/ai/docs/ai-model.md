@@ -198,7 +198,9 @@ For a media part:
 - `mediaType` is the IANA media type (`image/png`, `application/pdf`).
 - `name` is the part's file name (`report.pdf`), for a model that shows or needs one.
 
-A part carries nothing else: there is no per-part provider directive.
+A part a caller sends may also carry `cacheBreakpoint` (see
+[Prompt-cache breakpoints](#prompt-cache-breakpoints)). It carries nothing else: there
+is no per-part provider directive.
 
 ```yaml
 messages:
@@ -227,8 +229,9 @@ part's shape by hand.
 **Can this model carry it?** Only the provider knows. A well-formed part its endpoint
 cannot take — audio on a text-and-vision API, a document by reference where only bytes
 are accepted, a `uri` scheme the endpoint could never reach — is refused by the
-provider **under a code it declares**, before it sends anything, with a message naming
-the part type, its media type and what the endpoint takes instead. See the provider's
+provider as **`ERR_MODEL_CONTENT_UNSUPPORTED`**, before it sends anything, with
+`data: { partType, scheme?, mediaType? }` and a message naming what the endpoint takes
+instead. See the provider's
 own documentation for which parts it carries.
 
 If you implement a provider:
@@ -240,9 +243,121 @@ If you implement a provider:
 - Refuse while **building** the request, in `invoke` itself — for a streaming model
   too, before the stream is returned (see
   [When a streaming call fails](#when-a-streaming-call-fails)).
-- Declare the code in your kind's `throws:`, with the `data` a caller may read. Every
-  operation here passes its model's codes on (see
-  [Catching a model's errors](../README.md#catching-a-models-errors)).
+- Raise it with `modelContentUnsupported` from `@telorun/ai`, so the code and its
+  `data` are the declared ones (see
+  [Failures: one list for every model](#failures-one-list-for-every-model)).
+
+### Prompt-cache breakpoints
+
+`cacheBreakpoint: true` on a `text`, `image`, `audio`, `video` or `file` part means: the
+request from its start through this part — the tools and system prompt before it
+included — is a prefix the caller expects to send again unchanged. `false` is the same
+as absent. The shape forbids the key on the parts a model produces, and
+`isContentPart` agrees, so a tool result carrying a marked part is still carried as
+parts.
+
+It is a hint, and a provider owes it exactly this:
+
+- An endpoint that caches on its own: drop the marker and send nothing for it.
+- An endpoint that takes at most N breakpoints: honour the **last** N in request order
+  and drop the earlier ones.
+- Never raise an error for a breakpoint, and never let one change the answer.
+- How long an entry lives is your kind's own setting, never the part's.
+
+The system prompt arrives as an ordinary `system` message whose content is a string or
+text parts; a marker there covers the tools and the prompt. Report what a call wrote
+to a cache as `cacheWritePromptTokens` (see [Usage](#usage-two-shapes-and-who-fills-them)).
+
+## Failures: one list for every model
+
+`Ai.Model` and `Ai.ModelStream` declare the **same thirteen codes**, and that list is a
+ceiling:
+
+| Code | Meaning | `error.data` | Try again? |
+| --- | --- | --- | --- |
+| `ERR_MODEL_ACCESS_DENIED` | The credential was refused, or has no permission for the model. | `status?` | no |
+| `ERR_MODEL_RATE_LIMITED` | The endpoint asked the caller to slow down. | `status?`, `retryAfterSeconds?` | yes |
+| `ERR_MODEL_QUOTA_EXCEEDED` | The account's credit or plan is exhausted. | `status?` | no |
+| `ERR_MODEL_UNAVAILABLE` | The provider is overloaded or failing on its side, including a failure it reported after the answer began. | `status?`, `retryAfterSeconds?` | yes |
+| `ERR_MODEL_TIMEOUT` | No complete response in time; whether the request ran is unknown. | `status?` | yes |
+| `ERR_MODEL_UNREACHABLE` | Nothing answered: refused connection, unresolved host name, failed handshake. | — | yes |
+| `ERR_MODEL_CONTEXT_TOO_LONG` | The input exceeds the context window or the endpoint's request size limit. | `status?` | not with that input |
+| `ERR_MODEL_CONTENT_REFUSED` | The endpoint rejected the request on content-policy grounds. | `status?` | no |
+| `ERR_MODEL_REQUEST_REJECTED` | The endpoint refused the request as one it cannot serve, the provider refused it before sending, the request could not be built, or it failed in a way nothing else here names (`cause` holds the original). | `status?` | no |
+| `ERR_MODEL_CONTENT_UNSUPPORTED` | A well-formed content part this endpoint cannot carry; raised before anything is sent. | `partType`, `scheme?`, `mediaType?` | no |
+| `ERR_MODEL_TOOL_ARGUMENTS_INVALID` | The model asked for a tool with arguments that are not a JSON object. | `tool` | yes |
+| `ERR_MODEL_RESPONSE_INVALID` | The endpoint reported success but the answer cannot be read: it is not the dialect's answer, a member of it has the wrong shape, or it could not be read for any other reason (`cause` holds the original). | — | yes |
+| `ERR_INVALID_REFERENCE` | A resource the model depends on did not resolve to a live instance. | — | no |
+
+`status` is an integer, present only when an HTTP response carried the failure.
+`retryAfterSeconds` is a non-negative integer read from a standard `Retry-After` header
+and rounded up; it is carried on a rate limit and on an unavailable endpoint, and never
+from a vendor's own reset header.
+
+If you implement a provider:
+
+- **Restate all thirteen codes** in each kind's `throws:`, with the same `data`, not the
+  subset you raise. A kind with no `throws:` is read as throwing nothing, and a
+  `catches:` naming a code one provider lacks would stop two providers being
+  interchangeable. A code outside the list is refused (`THROWS_NOT_SUBSTITUTABLE` under
+  `telo check`, `ERR_THROWS_NOT_SUBSTITUTABLE` when the kind is loaded).
+- **Raise nothing else.** No vendor code, no transport code, no uncoded error. A model's
+  own refusal given as its answer is data — a `refusal` part and
+  `finishReason: content-filter` — not `ERR_MODEL_CONTENT_REFUSED`, which is the
+  endpoint rejecting the request.
+- **Pass every error of a call through `modelFailureFromError`** — one that rejects a
+  stream's iteration included. It lets what is not a model failure pass unchanged: a
+  cancellation (`ERR_INVOKE_CANCELLED`, also when the transport reports a bare abort), a
+  durable suspension (`ERR_DURABLE_SUSPENDED`), the kernel's contract errors
+  (`ERR_INPUT_INVALID`, `ERR_OUTPUT_INVALID`, `ERR_CONTRACT_UNRESOLVABLE`,
+  `ERR_SCHEMA_PROJECTION_UNRESOLVED`, `ERR_FUNCTION_FAILED`, `ERR_PREDICATE_NOT_BOOLEAN`)
+  and a failure that is already one of the thirteen. Everything else is yours to name,
+  in the function you hand it. Do not test for any of these yourself.
+- **Give that function one default per phase.** Until a success response is in hand —
+  building the request, replaying carried state, the request call — an error you cannot
+  name is `ERR_MODEL_REQUEST_REJECTED`, not something retryable: a model call is not
+  known to be unsent. From a success response in hand to the returned answer or the
+  terminal `finish` part it is `ERR_MODEL_RESPONSE_INVALID`. Say what could not be done
+  ("the request could not be built", "the answer could not be read") and quote the
+  original's message; do not say whose fault it was.
+- **Keep the original as `cause`** on every failure you re-code, and keep its code out
+  of `data`.
+- **Decode the answer yourself.** Ask your transport for the body as text (or as a
+  stream) and read your dialect from it, so an answer that is empty, not JSON, or
+  missing what your dialect requires is `ERR_MODEL_RESPONSE_INVALID` rather than an
+  empty completion — as is a malformed or oversized stream frame, a body that breaks
+  mid-stream, and a stream that ends before its terminal event.
+- **Read a decoded answer as untrusted.** Whatever you walk or index must have its
+  shape when it is present — a list of objects, or an object — and one that does not is
+  `ERR_MODEL_RESPONSE_INVALID` naming the member. A text, id, name, count or reason of
+  the wrong type is absent: never copy it into an answer or a part. The exception is a
+  tool call's arguments, which are `ERR_MODEL_TOOL_ARGUMENTS_INVALID` when they are
+  present in the wrong form, never a call with no arguments.
+- **Read your vendor's error object wherever it turns up** — a failed response, a
+  success body, a stream frame — in one order: a specific vendor name first (it wins
+  over the status), then the status rows when a response carried the failure, then the
+  error's family only when no status did, then `ERR_MODEL_UNAVAILABLE`.
+
+`@telorun/ai` exports what that takes:
+
+| Export | What it is |
+| --- | --- |
+| `modelAccessDenied`, `modelRateLimited`, `modelQuotaExceeded`, `modelUnavailable`, `modelTimeout`, `modelContextTooLong`, `modelContentRefused`, `modelRequestRejected` | `(message, data?, { cause }?)` — `data` is `{ status? }`, plus `retryAfterSeconds?` on the rate-limited and unavailable ones. |
+| `modelContentUnsupported` | `(message, { partType, scheme?, mediaType? }, { cause }?)` |
+| `modelToolArgumentsInvalid` | `(message, { tool }, { cause }?)` |
+| `modelUnreachable`, `modelResponseInvalid`, `modelInvalidReference` | `(message, { cause }?)` — these carry no data; the last builds `ERR_INVALID_REFERENCE`. |
+| `modelFailureFromStatus(status, message, { retryAfter?, cause }?)` | The status rows every provider shares: 401/403 access denied, 402 quota, 429 rate limited, 408/504 timeout, 413 context too long, any other 4xx request rejected, 5xx unavailable. A status outside those classes, or none, is request rejected. `retryAfter` is the header's text. |
+| `retryAfterSeconds(text)` | The one reader of `Retry-After`: delta-seconds rounded up, an HTTP date as seconds from now, anything else absent. |
+| `modelFailureFromError(err, ctx, otherwise)` | What an error leaving a model kind is raised as; returns it, first match wins. (1) The call's cancellation signal is aborted, or `err` is a structured cancellation: the cancellation — a structured one unchanged, a raw abort as `ERR_INVOKE_CANCELLED` with it as `cause`. (2) `ERR_DURABLE_SUSPENDED`: unchanged. (3) A contract error of the dispatch: unchanged. (4) One of `MODEL_FAILURE_CODES`: unchanged. (5) Anything else: `otherwise(err)`, called once, which returns a failure built with one of the constructors above, `err` as its `cause`. |
+| `MODEL_FAILURE_CODES` | The thirteen names. |
+
+`modelFailureFromError` holds only the rows that name no vendor and no transport. What
+your transport raises — a refused status, a network failure, a credential that could not
+be applied — is your module's own to read, inside `otherwise`, since only your module
+knows which transport it chose.
+
+Keep a unit test in your module that reads both manifests and fails when a kind's code
+set or `data` differs from the abstract's.
 
 ## When a streaming call fails
 
@@ -275,7 +390,7 @@ carrying the error's `code` when it has one.
 ```ts
 async *parts(input) {
   for await (const chunk of upstream) {
-    if (chunk.error) throw new InvokeError("ERR_PROVIDER_FAILED", chunk.error.message);
+    if (chunk.error) throw modelUnavailable(chunk.error.message);
     yield { type: "text-delta", delta: chunk.text };
   }
   yield { type: "finish", usage, finishReason: "stop" };
@@ -290,10 +405,13 @@ Renaming one is a breaking change with nothing in this repo to catch it.
 
 ## Usage: two shapes, and who fills them
 
-A provider reports the **token triple** (`Ai.TokenUsage`), plus two breakdowns of it
+A provider reports the **token triple** (`Ai.TokenUsage`), plus three breakdowns of it
 when its endpoint gives them: `cachedPromptTokens`, the part of `promptTokens` read
-from a cache, and `reasoningTokens`, the part of `completionTokens` spent reasoning.
-Each is a share of the count it belongs to, never an addition to it. Report one only
+from a cache; `cacheWritePromptTokens`, the part written to one on this call; and
+`reasoningTokens`, the part of `completionTokens` spent reasoning. Each is a share of
+the count it belongs to, never an addition to it: `promptTokens` is the whole prompt,
+so an endpoint that reports its cached and cache-written input separately has them
+added in. Report one only
 when the endpoint reports it — **absent means "not said", which is not zero** — and an
 operation carries it through unchanged; an agent sums it across its calls, leaving it
 absent when no call reported it.

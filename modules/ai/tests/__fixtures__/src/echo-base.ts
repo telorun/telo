@@ -55,6 +55,7 @@ export interface EchoResource {
     completionTokens: number;
     totalTokens: number;
     cachedPromptTokens?: number;
+    cacheWritePromptTokens?: number;
     reasoningTokens?: number;
   };
 }

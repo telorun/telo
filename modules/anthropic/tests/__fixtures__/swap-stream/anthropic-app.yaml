@@ -1,0 +1,41 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicStreamingAssistant
+  version: 1.0.0
+  description: The shared streaming assistant over an Anthropic model. Differs from its sibling only in the provider import, the model document and the client document.
+include:
+  - ./assistant.yaml
+imports:
+  Ai: ../../../../ai
+  Http: ../../../../http-server
+  HttpClient: ../../../../http-client
+  Ndjson: ../../../../ndjson-codec
+  Run: ../../../../run
+  Stream: ../../../../stream
+  Anthropic: ../../../
+variables:
+  endpoint:
+    env: MODEL_ENDPOINT
+    type: string
+    default: http://127.0.0.1:1/v1
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8919
+targets:
+  - !ref server
+---
+kind: Anthropic.MessagesModelStream
+metadata: { name: model }
+model: claude-test
+request: !ref modelRequest
+maxTokens: 256
+---
+kind: HttpClient.Client
+metadata: { name: modelClient }
+baseUrl: !cel "variables.endpoint"
+credential:
+  kind: HttpClient.ApiKeyHeader
+  header: x-api-key
+  key: test-key

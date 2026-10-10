@@ -1,0 +1,36 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiAssistant
+  version: 1.0.0
+  description: The shared assistant over an OpenAI model. Differs from its sibling only in the provider import, the model document and the client document.
+include:
+  - ./assistant.yaml
+imports:
+  Ai: ../../../../ai
+  Http: ../../../../http-server
+  HttpClient: ../../../../http-client
+  OpenAI: ../../../../openai
+variables:
+  endpoint:
+    env: MODEL_ENDPOINT
+    type: string
+    default: http://127.0.0.1:1/v1
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8916
+targets:
+  - !ref server
+---
+kind: OpenAI.ChatModel
+metadata: { name: model }
+model: gpt-test
+request: !ref modelRequest
+---
+kind: HttpClient.Client
+metadata: { name: modelClient }
+baseUrl: !cel "variables.endpoint"
+credential:
+  kind: HttpClient.BearerToken
+  token: test-key

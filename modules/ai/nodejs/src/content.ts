@@ -15,7 +15,17 @@
  * recognise the contract accepts.
  */
 
-export type TextPart = { type: "text"; text: string };
+/** Marks the request from its start through this part as a prefix the caller
+ *  expects to send again unchanged. A hint: a provider may honour fewer than it
+ *  is given, or none, and the answer is the same either way. Legal on the parts a
+ *  caller sends (text and media), never on the ones a model produces. */
+export type CacheMarker = { cacheBreakpoint?: boolean };
+
+export type TextPart = { type: "text"; text: string } & CacheMarker;
+
+/** A system prompt: plain text, or text parts when one of them carries a cache
+ *  breakpoint. The module's `SystemPrompt` shape. */
+export type SystemPrompt = string | TextPart[];
 
 /** How a media part carries its content: the bytes, or a reference to them. */
 export type MediaCarriage =
@@ -29,7 +39,8 @@ export type MediaPart = {
   mediaType: string;
   /** The part's file name, where it has one. */
   name?: string;
-} & MediaCarriage;
+} & MediaCarriage &
+  CacheMarker;
 
 export type ImagePart = MediaPart & { type: "image" };
 
@@ -86,6 +97,7 @@ export const DECLARED_KEYS: Record<string, (v: unknown) => boolean> = {
     typeof v.name === "string" &&
     isRecord(v.arguments),
   citation: isRecord,
+  cacheBreakpoint: (v) => typeof v === "boolean",
 };
 
 /** No key outside the declared set, and every key present holding what it may. */
@@ -118,18 +130,27 @@ export function isContentPart(v: unknown): v is ContentPart {
   if (!isRecord(v) || !holdsDeclaredKeys(v)) return false;
   switch (v.type) {
     case "text":
-    case "reasoning":
-    case "refusal":
       return v.text !== undefined;
     case "image":
     case "audio":
     case "video":
     case "file":
       return isMediaPart(v);
+    default:
+      // A part a model produces carries no cache breakpoint.
+      return v.cacheBreakpoint === undefined && isOutputPart(v);
+  }
+}
+
+function isOutputPart(part: Record<string, unknown>): boolean {
+  switch (part.type) {
+    case "reasoning":
+    case "refusal":
+      return part.text !== undefined;
     case "citation":
-      return v.citation !== undefined;
+      return part.citation !== undefined;
     case "tool-call":
-      return v.toolCall !== undefined;
+      return part.toolCall !== undefined;
     default:
       return false;
   }

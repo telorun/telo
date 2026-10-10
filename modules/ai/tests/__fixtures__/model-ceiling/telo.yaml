@@ -1,0 +1,7 @@
+# An application importing a provider whose kinds break the model abstracts'
+# failure ceiling: it cannot start.
+kind: Telo.Application
+metadata:
+  name: VendorModelsApp
+imports:
+  Vendor: ./lib

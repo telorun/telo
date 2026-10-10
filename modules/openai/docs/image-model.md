@@ -53,7 +53,7 @@ model: !ref Painter
 | `request` | `!ref` | yes | The `Http.Request` every call goes through. Its client carries the base URL (`https://api.openai.com/v1`, Azure, a gateway) and the credential. |
 | `options` | object | no | camelCase image request params (`size`, `quality`, `n`, `outputFormat`, `background`, …), normalized to snake_case. Merged beneath `Ai.Image`'s options and its per-call inputs. |
 
-Nothing here holds a key: auth is the client's credential, and the 401 re-acquire-and-retry `http-client` owns is inherited. A non-2xx answer that is not a content refusal raises `ERR_OPENAI_REQUEST_FAILED` with the endpoint's own message.
+Nothing here holds a key: auth is the client's credential, and the 401 re-acquire-and-retry `http-client` owns is inherited. A non-2xx answer that is not a content refusal raises one of the [model failure codes](../README.md#errors) with the endpoint's own message — `ERR_MODEL_ACCESS_DENIED` for a refused key, `ERR_MODEL_RATE_LIMITED` for a rate limit, and so on. This kind is a provider and declares no `throws:`, so the codes are not part of a caller's checked union. The request is asked for its body as text, so a `success:` / `retryOn:` rule on it sees `body` undecoded.
 
 ## Endpoint routing
 

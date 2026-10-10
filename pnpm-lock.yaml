@@ -756,6 +756,34 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  modules/anthropic/nodejs:
+    dependencies:
+      '@telorun/ai':
+        specifier: workspace:*
+        version: link:../../ai/nodejs
+      '@telorun/sse-codec':
+        specifier: workspace:*
+        version: link:../../sse-codec/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+
   modules/app/nodejs:
     devDependencies:
       '@telorun/sdk':
@@ -1853,6 +1881,9 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   modules/otlp/nodejs:
     devDependencies:

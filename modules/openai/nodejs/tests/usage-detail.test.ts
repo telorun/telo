@@ -14,7 +14,7 @@ const MESSAGES = [{ role: "user" as const, content: "hi" }];
 const json = (body: unknown) => ({
   status: 200,
   headers: { "content-type": "application/json" },
-  body,
+  body: JSON.stringify(body),
 });
 
 const sse = (frames: unknown[]) => ({

@@ -11,7 +11,15 @@
 import type { InvokeContext } from "@telorun/sdk";
 import type { ContentPart, MessageContent } from "./content.js";
 
-export type { ContentPart, ImagePart, MediaPart, MessageContent, TextPart } from "./content.js";
+export type {
+  CacheMarker,
+  ContentPart,
+  ImagePart,
+  MediaPart,
+  MessageContent,
+  SystemPrompt,
+  TextPart,
+} from "./content.js";
 
 /** Message roles supported by the core contract. `tool` carries a tool-call result
  *  back to the model (paired with `toolCallId`). */
@@ -64,7 +72,9 @@ export interface UsageQuantity {
   details?: Record<string, unknown>;
 }
 
-/** Token usage counts returned by every completion.
+/** Token usage counts returned by every completion. `promptTokens` is the whole
+ *  prompt: the cached and the cache-written shares are parts of it, never added
+ *  to it.
  *
  *  `unit` / `total` are the provider-neutral half shared with `UsageQuantity`, so
  *  one consumer totals spend across text and image calls. They are stamped by the
@@ -78,6 +88,9 @@ export interface Usage {
   /** The part of `promptTokens` read from a cache. Absent when the endpoint does
    *  not report it — which is not zero. */
   cachedPromptTokens?: number;
+  /** The part of `promptTokens` written to a cache on this call. Absent when the
+   *  endpoint does not report it — which is not zero. */
+  cacheWritePromptTokens?: number;
   /** The part of `completionTokens` spent reasoning. Absent when the endpoint does
    *  not report it — which is not zero. */
   reasoningTokens?: number;

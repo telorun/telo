@@ -1,0 +1,70 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicLiveText
+  version: 1.0.0
+  description: |
+    Live Messages API test of `Anthropic.MessagesModel`: one complete answer
+    through `Ai.Text`, with its usage and finish reason. Skips silently when
+    ANTHROPIC_API_KEY is unset.
+secrets:
+  anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" }
+imports:
+  Anthropic: ../../
+  Http: ../../../http-client
+  Ai: ../../../ai
+  Run: ../../../run
+  Assert: ../../../assert
+targets:
+  - !ref liveText
+---
+# The account: base URL and credential in one place.
+kind: Http.Client
+metadata: { name: anthropicClient }
+baseUrl: https://api.anthropic.com/v1
+timeout: 120000
+credential:
+  kind: Http.ApiKeyHeader
+  header: x-api-key
+  key: !cel "secrets.anthropicApiKey"
+---
+kind: Http.Request
+metadata: { name: anthropicRequest }
+client: !ref anthropicClient
+---
+kind: Anthropic.MessagesModel
+metadata: { name: live }
+model: claude-haiku-4-5
+request: !ref anthropicRequest
+maxTokens: 64
+options:
+  temperature: 0
+---
+kind: Ai.Text
+metadata: { name: text }
+model: !ref live
+---
+kind: Run.Sequence
+metadata: { name: liveText }
+steps:
+  - name: guardEnv
+    if: !cel "secrets.anthropicApiKey != ''"
+    then:
+      - name: answer
+        inputs:
+          prompt: "Reply with the single word: pong"
+        invoke: !ref text
+      - name: assertAnswer
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            saysPong: !cel "steps.answer.result.text.lowerAscii().contains('pong')"
+            finishReason: !cel "steps.answer.result.finishReason"
+            countsPrompt: !cel "steps.answer.result.usage.promptTokens > 0"
+            countsCompletion: !cel "steps.answer.result.usage.completionTokens > 0"
+            totalIsTheSum: !cel "steps.answer.result.usage.totalTokens == steps.answer.result.usage.promptTokens + steps.answer.result.usage.completionTokens"
+          expected:
+            saysPong: true
+            finishReason: stop
+            countsPrompt: true
+            countsCompletion: true
+            totalIsTheSum: true
