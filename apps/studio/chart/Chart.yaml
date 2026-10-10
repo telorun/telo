@@ -6,8 +6,8 @@ type: application
 # `scripts/stamp-chart-version.mjs` from the changesets Version PR and checked on
 # every PR: the chart deploys exactly one image, `ghcr.io/telorun/studio-web`,
 # tagged with that version.
-version: 0.26.3
-appVersion: "0.26.3"
+version: 0.26.4
+appVersion: "0.26.4"
 keywords:
   - telo
   - studio

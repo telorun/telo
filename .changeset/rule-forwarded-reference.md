@@ -1,5 +1,0 @@
----
-"@telorun/analyzer": patch
----
-
-**A resource rule runs over a declaration another module exported.** A rule's `resolve:` (and a referrer rule's `peers:`) binds the declarations a resource's reference slots name, and a rule then reads members of the references those declarations hold in turn (`n.table.name`). For a local declaration such a reference is `{ kind, name, alias? }`; for one a library exported it was still the `!ref` tag its author wrote, because the pass that rewrites references does not walk a dependency's declaration. So the rule failed to evaluate — `RESOURCE_RULE_INVALID`, "no such key", a warning anchored at the import — and every violation it would have found went unreported until boot. A bound declaration that is a dependency's is now read with each reference it writes resolved in the scope of the module that declared it, in the same form; a reference that resolves to nothing there is left as written. An application listing node types, tables or any other instances a library exported in its own resources is now checked by the rules that read through them.
