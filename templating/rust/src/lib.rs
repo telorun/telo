@@ -2,8 +2,8 @@
 //!
 //! Mirrors the half of `templating/nodejs` the kernel depends on to read a
 //! manifest: the tagged-sentinel shape and the YAML tag configuration. The CEL
-//! engine that fills out the Node package has no Rust counterpart yet, and this
-//! crate is where it will land.
+//! engine the Node package's tag engines run on is `telorun-cel` (`cel/rust`);
+//! this crate is the tag layer that will depend on it, and does not yet.
 
 pub mod engines;
 pub mod sentinel;

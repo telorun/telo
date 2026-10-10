@@ -102,7 +102,7 @@ and would ask you to assert things about kernels you have never run.
 packages — `@telorun/sdk`, `@telorun/cel`, `@telorun/templating`, `@telorun/analyzer`, `@telorun/kernel`,
 `@telorun/cli`, `@telorun/ide-support` and `@telorun/language-server` — are released
 together at one version, and their Rust twins (`telo-kernel`, `telo-cli`,
-`telo-analyzer`, `telo-templating`, the CEL value domain's `telorun-cel-value`, and the
+`telo-analyzer`, `telo-templating`, the CEL engine's `telorun-cel` and `telorun-cel-value`, and the
 SDK's `telorun-sdk`, `telorun-sdk-core` and `telorun-sdk-macros`) carry the same number. So `>=0.100.0` means telo 0.100.0 whichever
 of them you look at: the CLI you verify with, the kernel that loads the module, and the
 editor engine checking it as you type.

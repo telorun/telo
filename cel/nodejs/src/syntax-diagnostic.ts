@@ -4,9 +4,12 @@
  * A syntax diagnostic is DATA, never a thrown error and never a sentence a
  * consumer re-derives: it carries a code from the closed set below, the range of
  * the offending text, and a message for a reader. Parsing reports **at most one**
- * — the first thing it could not read — because the text after it is no longer
- * trustworthy and a cascade of guesses is what makes a half-typed expression
- * unusable in an editor. Everything the parser could read is still in the tree.
+ * — the first thing it could not read, in source order — because the text after it
+ * is no longer trustworthy and a cascade of guesses is what makes a half-typed
+ * expression unusable in an editor. Everything the parser could read is still in
+ * the tree.
+ *
+ * Every range lies within the source and splits no character.
  */
 
 export type CelSyntaxCode =
@@ -50,10 +53,8 @@ export interface CelSyntaxDiagnostic {
 }
 
 /**
- * Collects the first diagnostic and ignores every later one.
- *
- * Shared by the lexer and the parser so that "the first thing that could not be
- * read" is one fact rather than two components' opinions of it.
+ * Collects the first diagnostic reported to it and ignores every later one. The lexer
+ * and the parser each hold one, and `firstInSourceOrder` decides between the two.
  */
 export class FirstSyntaxDiagnostic {
   private held: CelSyntaxDiagnostic | undefined;
@@ -62,11 +63,22 @@ export class FirstSyntaxDiagnostic {
     this.held ??= { code, message, range: [start, end] };
   }
 
-  get reported(): boolean {
-    return this.held !== undefined;
+  get first(): CelSyntaxDiagnostic | undefined {
+    return this.held;
   }
+}
 
-  list(): readonly CelSyntaxDiagnostic[] {
-    return this.held ? [this.held] : [];
-  }
+/**
+ * The one diagnostic of a read whose lexer stopped at `cut`, the offset where the text
+ * it could not read begins. The parser read the source cut there, so what it reports
+ * before the cut came first; from the cut on, the unreadable text is the cause.
+ */
+export function firstInSourceOrder(
+  lexed: CelSyntaxDiagnostic | undefined,
+  parsed: CelSyntaxDiagnostic | undefined,
+  cut: number,
+): readonly CelSyntaxDiagnostic[] {
+  if (lexed && parsed) return [parsed.range[0] < cut ? parsed : lexed];
+  const only = lexed ?? parsed;
+  return only ? [only] : [];
 }

@@ -1,13 +1,14 @@
 //! The CEL value domain: what a value is, the invariants it holds and the text it is
-//! written as — `cel/nodejs`'s value-domain files, without an engine behind them.
+//! written as — `cel/nodejs`'s value-domain files. The engine crate, `telorun-cel`
+//! (`cel/rust`), stands on this one.
 //!
 //! Two rules hold for every file here: no dependency of any kind, and no host
 //! vocabulary — a host's own type reaches the domain as a [`CelHostValue`] carrying a
 //! name the host chose.
 //!
 //! Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the
-//! syntax tree or the zone database lives in the engine crate's file of the same name,
-//! and each header here lists those.
+//! syntax tree or the zone database belongs to the engine crate's file of the same
+//! name, which does not exist yet, and each header here lists those.
 //!
 //! - `cel_value.rs`       — `cel-value.ts`
 //! - `cel_map_value.rs`   — `cel-map-value.ts`

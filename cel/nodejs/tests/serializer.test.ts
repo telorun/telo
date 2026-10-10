@@ -123,4 +123,20 @@ describe("the serializer", () => {
     expect(written).toBe("-(1)");
     expect(treesEqual(parseSyntax(written).root, negated)).toBe(true);
   });
+
+  it("parenthesizes the number a negated chain begins with, which would read back folded", () => {
+    // Each source is its own written text, and reads back to an equal tree.
+    const sources = ["-(1).a", "-(1)[0]", "-(1).f()", "-(1.5).a", "-(0).a", "-(1).a[0].f().b", "-(-1).a", "-1u.a"];
+    for (const source of sources) {
+      const parsed = parseSyntax(source);
+      expect(parsed.diagnostics, source).toEqual([]);
+      const written = serializeTree(parsed.root);
+      expect(written).toBe(source);
+      const reread = parseSyntax(written);
+      expect(reread.diagnostics, written).toEqual([]);
+      expect(treesEqual(parsed.root, reread.root), source).toBe(true);
+    }
+    // The minus reaches only what the operand's text begins with.
+    expect(serializeTree(parseSyntax("-a[1].b(2)").root)).toBe("-a[1].b(2)");
+  });
 });

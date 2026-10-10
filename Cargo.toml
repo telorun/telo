@@ -4,6 +4,7 @@ members = [
     "kernel/nodejs/tests/napi-echo",
     "kernel/nodejs/tests/napi-controller-errors",
     "tests/__fixtures__/rust-functions/rust",
+    "cel/rust",
     "cel/rust/value",
     "sdk/rust",
     "sdk/rust/core",

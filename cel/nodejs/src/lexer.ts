@@ -6,22 +6,34 @@
  * a `bigint` — so nothing downstream re-reads source text to learn a value.
  *
  * It stops at the first thing it cannot read, reporting one diagnostic and ending
- * the token stream there. The parser then builds whatever the tokens before it
- * support, which is what leaves a half-typed expression usable.
+ * the token stream where that text begins. The parser then reads every token before
+ * it, exactly as it would read the source cut there, which is what leaves a
+ * half-typed expression usable.
  *
- * Three readings are deliberate, each pinned by the conformance vectors:
+ * The readings that are deliberate:
  *
- * - **Only a single-letter prefix** introduces a string: `r`, `R`, `b`, `B`. `br'x'`
- *   is the identifier `br` followed by a string, which no expression admits.
- * - **A raw string still lets a backslash take the next character with it**, keeping
+ * - **The bytes marker comes first.** `r` and `R` make a string raw, `b` and `B` make
+ *   it bytes, and `br`, `bR`, `Br` and `BR` are raw bytes. `rb'x'` is the name `rb`
+ *   beside a string, which no expression admits.
+ * - **A raw literal still lets a backslash take the next character with it**, keeping
  *   both as written, so `r'\''` is a backslash and a quote rather than an unclosed
- *   string.
+ *   string. The one character it does not take is a line feed in a single-line
+ *   literal: the backslash is content and the line feed ends the literal unclosed, so
+ *   no single-line literal of any form holds a line feed. A backslash that ends the
+ *   source is content too.
  * - **A bytes literal holds the UTF-8 of its text.** `b'ÿ'` is `0xC3 0xBF`, two bytes,
  *   and an escape (`\xff`, `\303`) is the one byte it names. cel-spec's own answer, and
  *   the only reading under which `b'ÿ' == b'\303\277'` — a row — holds.
+ * - **A double may begin with its point**: `.5` is one literal.
  *
- * A number never begins with `.`: `.5` is a dot and a number, and no expression
- * admits that either.
+ * **Every range lies within the source and splits no character.** A character outside
+ * the basic plane is reported whole, over its two code units, and an escape is ranged
+ * as it is written — the backslash, its marker and the digits actually there — never
+ * by the width it should have had.
+ *
+ * One reading is recorded as interim rather than intended: a carriage return is
+ * content in a single-line literal and in a quoted member name. cel-spec ends a
+ * single-line literal at one.
  */
 
 import { wordReading } from "./reserved-words.js";
@@ -144,8 +156,11 @@ export class Lexer {
         tokens.push(this.eof());
         return tokens;
       }
+      const start = this.at;
       const token = this.next();
       if (!token) {
+        // The stream ends where the unreadable text begins, as the cut source would.
+        this.at = start;
         tokens.push(this.eof());
         return tokens;
       }
@@ -194,14 +209,19 @@ export class Lexer {
       this.at = start + 1;
       return { type: "punct", start, end: this.at, text: ch };
     }
+    const character = this.characterAt(start);
     this.diagnostics.report(
       "unexpected_character",
-      `unexpected character ${JSON.stringify(ch)}`,
+      `unexpected character ${JSON.stringify(character)}`,
       start,
-      start + 1,
+      start + character.length,
     );
-    this.at = start;
     return undefined;
+  }
+
+  /** The whole character at an offset: both code units of one outside the basic plane. */
+  private characterAt(at: number): string {
+    return String.fromCodePoint(this.source.codePointAt(at)!);
   }
 
   /**
@@ -349,7 +369,10 @@ export class Lexer {
     return undefined;
   }
 
-  /** A raw literal: a backslash takes the next character with it, both kept as written. */
+  /**
+   * A raw literal: a backslash takes the next character with it, both kept as written —
+   * except a line feed in a single-line literal, which ends it.
+   */
   private scanRaw(
     from: number,
     terminator: string,
@@ -363,7 +386,7 @@ export class Lexer {
       if (source.startsWith(terminator, at)) return { units, end: at + terminator.length };
       const ch = source[at]!;
       if (!triple && ch === "\n") break;
-      if (ch === "\\" && at + 1 < source.length) {
+      if (ch === "\\" && at + 1 < source.length && (triple || source[at + 1] !== "\n")) {
         units.push(0x5c);
         at += 1 + this.literalCharacter(at + 1, bytes, units);
         continue;
@@ -439,31 +462,41 @@ export class Lexer {
       return this.readUnicodeEscape(at, ch === "u" ? 4 : 8, units);
     }
     if (isOctalDigit(ch)) return this.readOctalEscape(at, units);
+    const character = this.characterAt(at + 1);
     this.diagnostics.report(
       "invalid_escape_sequence",
-      `\\${ch} is not an escape sequence`,
+      `\\${character} is not an escape sequence`,
       at,
-      at + 2,
+      at + 1 + character.length,
     );
     return undefined;
   }
 
+  /** Where the digits an escape wrote end: the run `admits` takes from `from`, up to `width`. */
+  private writtenDigitsEnd(from: number, width: number, admits: (ch: string) => boolean): number {
+    let end = from;
+    while (end < from + width && end < this.source.length && admits(this.source[end]!)) end += 1;
+    return end;
+  }
+
   private readHexEscape(at: number, units: number[]): number | undefined {
-    const digits = this.source.slice(at + 2, at + 4);
-    if (digits.length < 2 || !isHexDigit(digits[0]!) || !isHexDigit(digits[1]!)) {
-      this.diagnostics.report("invalid_hex_escape", "a \\x escape takes two hexadecimal digits", at, at + 4);
+    const end = this.writtenDigitsEnd(at + 2, 2, isHexDigit);
+    if (end < at + 4) {
+      this.diagnostics.report("invalid_hex_escape", "a \\x escape takes two hexadecimal digits", at, end);
       return undefined;
     }
+    const digits = this.source.slice(at + 2, end);
     units.push(Number.parseInt(digits, 16));
     return at + 4;
   }
 
   private readOctalEscape(at: number, units: number[]): number | undefined {
-    const digits = this.source.slice(at + 1, at + 4);
-    if (digits.length < 3 || ![...digits].every(isOctalDigit)) {
-      this.diagnostics.report("invalid_octal_escape", "an octal escape takes three octal digits", at, at + 4);
+    const end = this.writtenDigitsEnd(at + 1, 3, isOctalDigit);
+    if (end < at + 4) {
+      this.diagnostics.report("invalid_octal_escape", "an octal escape takes three octal digits", at, end);
       return undefined;
     }
+    const digits = this.source.slice(at + 1, end);
     const value = Number.parseInt(digits, 8);
     if (value > 0xff) {
       this.diagnostics.report("octal_escape_out_of_range", `\\${digits} is above 255`, at, at + 4);
@@ -474,18 +507,18 @@ export class Lexer {
   }
 
   private readUnicodeEscape(at: number, width: number, units: number[]): number | undefined {
-    const digits = this.source.slice(at + 2, at + 2 + width);
-    if (digits.length < width || ![...digits].every(isHexDigit)) {
+    const end = this.writtenDigitsEnd(at + 2, width, isHexDigit);
+    if (end < at + 2 + width) {
       this.diagnostics.report(
         "invalid_unicode_escape",
         `a \\${width === 4 ? "u" : "U"} escape takes ${width} hexadecimal digits`,
         at,
-        at + 2 + width,
+        end,
       );
       return undefined;
     }
+    const digits = this.source.slice(at + 2, end);
     const point = Number.parseInt(digits, 16);
-    const end = at + 2 + width;
     if (point > 0x10ffff) {
       this.diagnostics.report("invalid_unicode_escape", `U+${digits} is not a code point`, at, end);
       return undefined;

@@ -2,7 +2,7 @@
 
 The CEL value domain for Rust: every value an expression can hold, the invariants each one keeps, and the text each is written as. It is the Rust half of the value-domain files of `@telorun/cel` (`cel/nodejs`), and it answers as they answer — the same acceptances, refusals, codes, messages and written text.
 
-It holds values and nothing that computes with them. Equality (`==`), ordering, arithmetic, time zones and reading a literal out of a syntax tree belong to the engine crate that will stand on this one.
+It holds values and nothing that computes with them. Equality (`==`), ordering, arithmetic, time zones and reading a literal out of a syntax tree belong to the engine crate that stands on this one, `telorun-cel` (`cel/rust`), which today holds the front end — the reader, the namespace pass, the writer and the tree queries — and none of those yet.
 
 ## The two rules
 
@@ -13,14 +13,14 @@ The crate is `publish = false`, licensed MIT, and carries `@telorun/cel`'s versi
 
 ## Files
 
-Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the syntax tree or the zone database lives in the engine crate's file of the same name; one that describes a JavaScript representation has no twin.
+Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the syntax tree or the zone database belongs to the engine crate's file of the same name, which does not exist yet; one that describes a JavaScript representation has no twin.
 
 | File | Twins | Public items | Node exports elsewhere |
 |---|---|---|---|
-| `cel_value.rs` | `cel-value.ts` | `CelValue`, `CelTimestamp`, `CelDuration`, `CelMap`, `CelMapKey`, `CelRecord`, `CelTypeValue`, `CelOptional`, `CelError`, `CelEvaluationCode`, `CelHostValue`, `ReservedTypeName`, `SourceRange`, `CEL_VALUE_KEYS`, `CEL_EVALUATION_CODES`, `cel_type_value`, `cel_none`, `cel_some`, `cel_error`, `cel_type_name_of` | Engine half: `literalValue`. No twin: the brand symbol and the `isCel*` predicates (the variant is the identity), `celUint` (it is `CelValue::Uint`), `isThenable` / `asyncValueRefused` (no Rust value can be awaited) |
+| `cel_value.rs` | `cel-value.ts` | `CelValue`, `CelTimestamp`, `CelDuration`, `CelMap`, `CelMapKey`, `CelRecord`, `CelTypeValue`, `CelOptional`, `CelError`, `CelEvaluationCode`, `CelHostValue`, `ReservedTypeName`, `SourceRange`, `CEL_VALUE_KEYS`, `CEL_EVALUATION_CODES`, `cel_type_value`, `cel_none`, `cel_some`, `cel_error`, `cel_type_name_of` | Engine half, not yet written: `literalValue`. No twin: the brand symbol and the `isCel*` predicates (the variant is the identity), `celUint` (it is `CelValue::Uint`), `isThenable` / `asyncValueRefused` (no Rust value can be awaited) |
 | `cel_map_value.rs` | `cel-map-value.ts` | `cel_map_from_entries`, `cel_map_keys`, `map_key_identity` | No twin: `celMapOf` (the empty map is `CelMap::default()`) |
 | `duration_value.rs` | `duration-value.ts` | `cel_duration_from_nanos`, `duration_out_of_range`, `duration_nanos`, `parse_duration`, `duration_nanos_from_text`, `format_duration`, `DurationField`, `duration_field`, `MAX_DURATION_NANOS`, `MIN_DURATION_NANOS`, and `CelDuration`'s carrier constructors | — |
-| `timestamp_value.rs` | `timestamp-value.ts` | `cel_timestamp`, `cel_timestamp_from_millis`, `timestamp_nanos`, `parse_timestamp`, `format_timestamp`, `MIN_TIMESTAMP_SECONDS`, `MAX_TIMESTAMP_SECONDS`, `CelTimestamp`'s carrier constructors, and the civil calendar: `CivilFields`, `utc_fields`, `seconds_from_fields`, `days_from_civil`, `civil_from_days`, `days_in_month`, `is_leap_year` | Engine half: `zonedFields`, `timestampField`, `TimestampField` — a getter reads a field in a zone, and the zone database is a dependency |
+| `timestamp_value.rs` | `timestamp-value.ts` | `cel_timestamp`, `cel_timestamp_from_millis`, `timestamp_nanos`, `parse_timestamp`, `format_timestamp`, `MIN_TIMESTAMP_SECONDS`, `MAX_TIMESTAMP_SECONDS`, `CelTimestamp`'s carrier constructors, and the civil calendar: `CivilFields`, `utc_fields`, `seconds_from_fields`, `days_from_civil`, `civil_from_days`, `days_in_month`, `is_leap_year` | Engine half, not yet written: `zonedFields`, `timestampField`, `TimestampField` — a getter reads a field in a zone, and the zone database is a dependency |
 | `value_text.rs` | `value-text.ts` | `text_to_bytes`, `bytes_to_text`, `double_text`, and two items Node calls its host for: `es_number` (ECMAScript's `Number::toString`) and `json_quote` (a string as `JSON.stringify` quotes one) | — |
 
 `value-equality.ts` and `integer-arithmetic.ts` have no file here: both are operator semantics, and the engine crate owns them. The integer limits (`MAX_INT`, `MIN_INT`, `MAX_UINT`) are not declared either — an int is an `i64` and a uint a `u64`, so the range is the type.
@@ -131,7 +131,7 @@ The civil calendar is public for the engine's zoned getters to build on: `utc_fi
 
 - `code` is a `CelEvaluationCode`: a closed enum of the sixteen codes every engine names, listed in one order by `CEL_EVALUATION_CODES` and written by `as_str()` (`no_such_key`, `invalid_conversion`, …). A code is never derived from a message. `async_value_unsupported` is in the set although no Rust value can raise it, because the set is one vocabulary across engines.
 - `message` is what `Display` writes, alone.
-- `range` is an optional `SourceRange`: a `[start, end)` pair of UTF-16 code-unit offsets into the expression's source. No function here knows where in a source it was called from, so each answers an error with no range; the engine attaches one with `CelError::with_range`.
+- `range` is an optional `SourceRange`: a `[start, end)` pair of UTF-16 code-unit offsets into the expression's source. No function here knows where in a source it was called from, so each answers an error with no range; the engine crate attaches one with `CelError::with_range` where it evaluates, which it does not yet.
 - No function of this crate answers `Ok` holding an `Error` variant.
 
 ## Tests
