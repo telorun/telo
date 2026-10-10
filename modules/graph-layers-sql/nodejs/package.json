@@ -1,6 +1,6 @@
 {
   "name": "@telorun/graph-layers-sql",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Telo graph-layers-sql module — the SQL family's shared half of a layered knowledge graph: the layered node, relationship and store abstracts' controllers, written against the Sql contracts and never an engine.",
   "license": "MIT",

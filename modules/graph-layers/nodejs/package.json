@@ -1,6 +1,6 @@
 {
   "name": "@telorun/graph-layers",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Telo graph-layers module — the layered, drafted and revisioned store abstracts, the retract, drafting and history operations, and the store contracts every strategy module implements.",
   "license": "MIT",

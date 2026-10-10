@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.0 - 2026-10-10
+### Added
+* The primer covers knowledge graphs: declaring a graph over plain tables with graph-sql and its twelve operations, cursor paging and the PostgreSQL key-type limit; layered graphs and their three strategies - current, drafts and revisions - with declared storage, drafts and sessions, conflicts and their resolution, pinned stacks, labels and upgrades; and what holds on every strategy: concurrent writes to one key take effect in some order, a write that changes nothing is no revision, a read never writes, and the store itself is recorded as the actor store.
+* The primer covers Ui.Action — its input and output models, its URL contract and the lists it draws from the answer — a table's rowActions and how their inputs are checked, list properties in forms, link-formatted values, and the x-telo-context-element-from-item annotation.
+
 ## 0.20.0 - 2026-10-08
 ### Added
 * The primer covers a template body forwarding a path that continues past a reference slot into the resource it names, and a rule's resolve: reading a referenced Telo.JsonSchema with its extends: parents folded in.

@@ -1,7 +1,0 @@
-modules:
-  modules/openai: Added
-body: Both stream kinds report a tool call's arguments as they are written, as
-  `tool-call-delta` parts under the id the whole `tool-call` then carries; a fragment is
-  held until the call's id and name are known. A streamed tool call the endpoint gives
-  no id now gets a unique generated `call_<uuid>` instead of the positional
-  `call_<index>`, which repeated across the model calls of one run.
