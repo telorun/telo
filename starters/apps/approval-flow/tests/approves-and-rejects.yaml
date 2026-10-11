@@ -1,0 +1,332 @@
+kind: Telo.Application
+metadata:
+  name: ApprovalFlowStarterTest
+  version: 1.0.0
+  description: >-
+    Runs the starter through each path a request can take: approved by the rule,
+    approved by a reviewer, rejected by a reviewer, rejected by the deadline —
+    then reads the ledger through the list its page draws from, and the page
+    itself.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  Timer: ../../../../modules/timer
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+# Resolved against the working directory, so the journal path built from it is
+# absolute — which is what the child's host-path variable accepts from a caller.
+variables:
+  scratchDir:
+    env: APPROVAL_FLOW_TEST_SCRATCH_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo
+targets:
+  - !ref test
+---
+# Polls a request until it reaches `status`. The run is started detached, so a
+# submission answers before the request has settled anywhere.
+kind: Run.Sequence
+metadata: { name: waitFor }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id, status]
+    properties:
+      id: { type: string }
+      status: { type: string }
+steps:
+  - name: read
+    invoke: !ref readRequest
+    inputs: { id: !cel "inputs.id" }
+  - name: poll
+    while: !cel "steps.read.result.body.status != inputs.status"
+    do:
+      - name: pause
+        invoke: { kind: Timer.Delay }
+        inputs: { duration: "100ms", value: {} }
+      - name: read
+        invoke: !ref readRequest
+        inputs: { id: !cel "inputs.id" }
+outputs:
+  body: !cel "steps.read.result.body"
+---
+kind: Run.Sequence
+metadata: { name: readRequest }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id]
+    properties:
+      id: { type: string }
+steps:
+  - name: get
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:8112/api/requests/' + inputs.id"
+      method: GET
+outputs:
+  body: !cel "steps.get.result.body"
+---
+# A decision as the page sends it: the request named in the body.
+kind: Run.Sequence
+metadata: { name: decide }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [verdict, body]
+    properties:
+      verdict: { type: string, enum: [approve, reject] }
+      body:
+        type: object
+        required: [id]
+        properties:
+          id: { type: string }
+          decidedBy: { type: string }
+          note: { type: string }
+steps:
+  - name: post
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:8112/api/' + inputs.verdict"
+      method: POST
+      body: !cel "inputs.body"
+outputs:
+  status: !cel "steps.post.result.status"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8112
+    variables:
+      journal: !cel "variables.scratchDir.joinPath('approval-flow-test-' + string(nowMillis()))"
+      # The ledger file outlives the test; its rows are picked out by request id.
+      ledgerFile: !cel "variables.scratchDir.joinPath('approval-flow-test.db')"
+      # Short enough to watch one lapse, long enough for the reviewed paths.
+      reviewDeadline: 3s
+targets:
+  - !ref app
+steps:
+  # Under the limit: approved by the rule, with no reviewer.
+  - name: small
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8112/api/requests
+      method: POST
+      body: { requester: ada, item: cables, amountCents: 5000, costCenter: eng }
+  # No polling: a request the rule approves is settled when its submission answers.
+  - name: smallDone
+    invoke: !ref readRequest
+    inputs: { id: !cel "steps.small.result.body.id" }
+  - name: verifySmall
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.smallDone.result.body"
+      expected:
+        id: !cel "steps.small.result.body.id"
+        status: completed
+        decision: { approved: true, decidedBy: policy, note: "" }
+
+  # Over the limit: waits for a reviewer, then is approved.
+  - name: large
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8112/api/requests
+      method: POST
+      body: { requester: ada, item: laptop, amountCents: 250000, costCenter: eng }
+  - name: largePending
+    invoke: !ref waitFor
+    inputs: { id: !cel "steps.large.result.body.id", status: pending }
+  # While it waits it is in the list the page's first table reads.
+  - name: waiting
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:8112/api/requests
+      method: GET
+      query: { status: pending, limit: "100" }
+  - name: approve
+    invoke: !ref decide
+    inputs:
+      verdict: approve
+      body: { id: !cel "steps.large.result.body.id", decidedBy: grace, note: ok }
+  # No polling here either: a decision answers once the request has settled.
+  - name: largeDone
+    invoke: !ref readRequest
+    inputs: { id: !cel "steps.large.result.body.id" }
+  - name: verifyApproved
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        waiting: !cel "steps.waiting.result.body.rows.exists(r, r.id == steps.large.result.body.id && r.item == 'laptop')"
+        approve: !cel "steps.approve.result.status"
+        decision: !cel "steps.largeDone.result.body.decision"
+      expected:
+        waiting: true
+        approve: 200
+        decision: { approved: true, decidedBy: grace, note: ok }
+
+  # Deciding again: nothing is waiting any more.
+  - name: approveAgain
+    invoke: !ref decide
+    inputs:
+      verdict: reject
+      body: { id: !cel "steps.large.result.body.id", decidedBy: grace }
+
+  # Over the limit, rejected.
+  - name: rejected
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8112/api/requests
+      method: POST
+      body: { requester: bob, item: chair, amountCents: 90000, costCenter: sales }
+  - name: rejectedPending
+    invoke: !ref waitFor
+    inputs: { id: !cel "steps.rejected.result.body.id", status: pending }
+  # As a row's button sends it: the id alone, signed with the caller's address.
+  - name: reject
+    invoke: !ref decide
+    inputs:
+      verdict: reject
+      body: { id: !cel "steps.rejected.result.body.id" }
+  - name: rejectedDone
+    invoke: !ref waitFor
+    inputs: { id: !cel "steps.rejected.result.body.id", status: completed }
+
+  # Nobody decides: the deadline rejects it.
+  - name: ignored
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8112/api/requests
+      method: POST
+      body: { requester: eve, item: monitor, amountCents: 40000, costCenter: eng }
+  - name: ignoredDone
+    invoke: !ref waitFor
+    inputs: { id: !cel "steps.ignored.result.body.id", status: completed }
+
+  # Operations buys under its own, higher limit without review.
+  - name: consumables
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8112/api/requests
+      method: POST
+      body: { requester: dan, item: toner, amountCents: 40000, costCenter: ops }
+  - name: consumablesDone
+    invoke: !ref waitFor
+    inputs: { id: !cel "steps.consumables.result.body.id", status: completed }
+
+  - name: badSubmit
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8112/api/requests
+      method: POST
+      body: { requester: ada }
+  - name: unknown
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8112/api/requests/nope
+      method: GET
+  - name: badCursor
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8112/api/requests
+      method: GET
+      query: { cursor: later }
+
+  - name: verifyRest
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        approveAgain: !cel "steps.approveAgain.result.status"
+        rejected: !cel "steps.rejectedDone.result.body.decision"
+        expired: !cel "steps.ignoredDone.result.body.decision"
+        badSubmit: !cel "steps.badSubmit.result.status"
+        unknown: !cel "steps.unknown.result.status"
+        badCursor: !cel "steps.badCursor.result.status"
+      expected:
+        approveAgain: 409
+        rejected: { approved: false, decidedBy: reviewer@127.0.0.1, note: "" }
+        expired: { approved: false, decidedBy: deadline, note: No decision before the deadline. }
+        badSubmit: 400
+        unknown: 404
+        badCursor: 400
+
+  # The ledger, read a page at a time the way the page's second table does.
+  # The file outlives the test, so this run's rows are picked out by id.
+  - name: first
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:8112/api/requests
+      method: GET
+      query: { limit: "2" }
+  - name: second
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:8112/api/requests
+      method: GET
+      query: { limit: "3", cursor: !cel "steps.first.result.body.next" }
+  - name: newest
+    value: !cel "steps.first.result.body.rows + steps.second.result.body.rows"
+  - name: stillWaiting
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:8112/api/requests
+      method: GET
+      query: { status: pending, limit: "100" }
+  - name: verifyLedger
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        pageSizes: !cel "[size(steps.first.result.body.rows), size(steps.second.result.body.rows)]"
+        totalCoversThisRun: !cel "steps.first.result.body.total >= 5"
+        rows: !cel >-
+          [steps.small.result.body.id, steps.rejected.result.body.id, steps.large.result.body.id,
+            steps.ignored.result.body.id, steps.consumables.result.body.id]
+            .map(id, steps.newest.result.filter(r, r.id == id).map(r, r.item + ' ' + r.status + ' ' + r.decidedBy))
+        waiting: !cel >-
+          size(steps.stillWaiting.result.body.rows.filter(r, r.id in [
+            steps.small.result.body.id, steps.large.result.body.id, steps.rejected.result.body.id,
+            steps.ignored.result.body.id, steps.consumables.result.body.id]))
+      expected:
+        pageSizes: [2, 3]
+        totalCoversThisRun: true
+        rows:
+          - [cables approved policy]
+          - [chair rejected reviewer@127.0.0.1]
+          - [laptop approved grace]
+          - [monitor rejected deadline]
+          - [toner approved policy]
+        waiting: 0
+
+  # The page: served, and holding the two tables, the first with its form and
+  # its two decisions.
+  - name: shell
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: "http://127.0.0.1:8112/", method: GET }
+  - name: page
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:8112/_telo/ui/page
+      method: GET
+      query: { path: / }
+  - name: tables
+    value: !cel "steps.page.result.body.children.filter(c, c.type == 'table')"
+  - name: verifyPage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        shell: !cel "steps.shell.result.status"
+        tables: !cel "steps.tables.result.map(t, [t.basePath, size(t.rowActions)])"
+        form: !cel "steps.tables.result[0].create.form.fields.map(f, f.label)"
+      expected:
+        shell: 200
+        tables:
+          - [/api/requests, 2]
+          - [/api/requests, 0]
+        form: [Requester, Item, Amount (cents), Cost center]

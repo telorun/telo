@@ -1,0 +1,121 @@
+kind: Telo.Application
+metadata:
+  name: NotesApp
+  version: 1.0.0
+  description: >-
+    An application built on the repository library the way an importer would
+    build one: it supplies the database file, runs the library's migration, and
+    serves routes whose handlers are the library's exported operations.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  Notes:
+    source: ../..
+    variables:
+      dbFile: !cel "variables.dbFile"
+targets:
+  - !ref Notes.migrate
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8201
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: notes.db
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref routes
+---
+kind: Http.Api
+metadata: { name: routes }
+routes:
+  - request:
+      path: /notes
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [ title ]
+          properties:
+            title: { type: string }
+            body: { type: string }
+    handler: !ref Notes.createNote
+    inputs:
+      data:
+        title: !cel "request.body.title"
+        body: !cel "has(request.body.body) ? request.body.body : ''"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body:
+              created: !cel "result.rowCount"
+
+  - request:
+      path: /notes
+      method: GET
+      schema:
+        query:
+          type: object
+          required: [ title ]
+          properties:
+            title: { type: string }
+    handler: !ref Notes.findNotes
+    inputs:
+      filters:
+        title: !cel "request.query.title"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.rows.map(n, {'title': n.title, 'body': n.body, 'pinned': n.pinned})"
+
+  - request:
+      path: /notes/pin
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [ title ]
+          properties:
+            title: { type: string }
+    handler: !ref Notes.updateNote
+    inputs:
+      data:
+        pinned: 1
+      filters:
+        title: !cel "request.body.title"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              pinned: !cel "result.rowCount"
+
+  - request:
+      path: /notes
+      method: DELETE
+      schema:
+        query:
+          type: object
+          required: [ title ]
+          properties:
+            title: { type: string }
+    handler: !ref Notes.deleteNote
+    inputs:
+      filters:
+        title: !cel "request.query.title"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              deleted: !cel "result.rowCount"

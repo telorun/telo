@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Brain, ChevronDown, CircleStop, ListTree, Play, RotateCw, ScrollText, TriangleAlert } from "lucide-react";
-import { describeTurnError, splitAgentText } from "@/agent";
+import { describeTurnError, messageCopyText, splitAgentText } from "@/agent";
 import type { AssistantMessage, AssistantPart, ChatMessage, TurnError, UserMessage } from "@/agent";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -11,6 +11,7 @@ import { Message, MessageContent, MessageResponse } from "@/components/ai-elemen
 import { Loader } from "@/components/ai-elements/loader";
 import { QuestionCard } from "./QuestionCard";
 import { MessageActions, type MessageActionHandlers } from "./MessageActions";
+import { MessageAttachments } from "./MessageAttachments";
 import { ToolCard, toolFailed } from "./ToolCard";
 
 export interface MessageBlockProps {
@@ -41,29 +42,33 @@ export function MessageBlock({ message, ...props }: MessageBlockProps) {
 
 function UserMessageBlock({ message, actions }: { message: UserMessage; actions?: MessageActionHandlers }) {
   const [editing, setEditing] = useState<string | null>(null);
+  const attachments = message.attachments ?? [];
   return (
     <Message from="user">
       <MessageContent className={cn(editing !== null && "w-full")}>
         {editing === null ? (
-          <div className="whitespace-pre-wrap">{message.text}</div>
+          message.text && <div className="whitespace-pre-wrap">{message.text}</div>
         ) : (
           <EditResend
             text={editing}
+            // The files go again with the edit, so they alone are a message.
+            allowEmpty={attachments.length > 0}
             onChange={setEditing}
             onCancel={() => setEditing(null)}
             onSend={() => {
               const text = editing.trim();
-              if (!text) return;
+              if (!text && attachments.length === 0) return;
               setEditing(null);
               actions?.onEditResend?.(text);
             }}
           />
         )}
+        {attachments.length > 0 && <MessageAttachments attachments={attachments} />}
       </MessageContent>
       {actions && editing === null && (
         <MessageActions
           {...actions}
-          copyText={message.text}
+          copyText={messageCopyText(message)}
           onEdit={actions.onEditResend ? () => setEditing(message.text) : undefined}
           className="justify-end"
         />
@@ -74,11 +79,13 @@ function UserMessageBlock({ message, actions }: { message: UserMessage; actions?
 
 function EditResend({
   text,
+  allowEmpty,
   onChange,
   onCancel,
   onSend,
 }: {
   text: string;
+  allowEmpty: boolean;
   onChange: (text: string) => void;
   onCancel: () => void;
   onSend: () => void;
@@ -104,7 +111,7 @@ function EditResend({
         <Button variant="ghost" size="xs" onClick={onCancel}>
           Cancel
         </Button>
-        <Button size="xs" onClick={onSend} disabled={!text.trim()}>
+        <Button size="xs" onClick={onSend} disabled={!allowEmpty && !text.trim()}>
           Send
         </Button>
       </div>

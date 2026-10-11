@@ -6,6 +6,7 @@ import {
   Minimize2,
   Play,
   RotateCw,
+  Sparkles,
   TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,6 +18,8 @@ import { RunOutput } from "./RunOutput";
 import { RunStatusChip } from "./RunStatusChip";
 import { describeTeloAlignment, staleRunVersion, teloAlignment } from "../telo-alignment";
 import { useElapsed } from "./use-elapsed";
+import { explainRunFailurePrompt, useAgentCompose } from "../../agent";
+import { FAILURE_OUTPUT_CHARS, describeRunFailure, outputTail } from "../run-failure";
 
 /** Vertical space the views above keep while the dock is dragged. */
 const MIN_VIEW_HEIGHT = 120;
@@ -24,6 +27,8 @@ const MIN_VIEW_HEIGHT = 120;
 interface RunDockProps {
   /** The Application whose runs this dock shows. */
   appPath: string;
+  /** That Application's name, for a question put to the agent about its run. */
+  appName?: string;
   /** The telo version that Application's module is edited against right now. */
   editedTelo?: string;
   /** Switch the module pane to its Variables tab — where a blocker's fix lives. */
@@ -34,7 +39,7 @@ interface RunDockProps {
  *  It sits UNDER the module's view tabs rather than over them, which is what
  *  keeps a run legible as this application running instead of a mode the window
  *  entered. Renders nothing until the app has something to show. */
-export function RunDock({ appPath, editedTelo, onOpenConfig }: RunDockProps) {
+export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockProps) {
   const {
     selectedRunForApp,
     liveRunForApp,
@@ -45,7 +50,9 @@ export function RunDock({ appPath, editedTelo, onOpenConfig }: RunDockProps) {
     setDockOpen,
     setDockHeight,
     setDockMaximized,
+    getTerminal,
   } = useRun();
+  const agentCompose = useAgentCompose();
 
   const run = selectedRunForApp(appPath);
   const live = liveRunForApp(appPath);
@@ -105,6 +112,24 @@ export function RunDock({ appPath, editedTelo, onOpenConfig }: RunDockProps) {
   useEffect(() => () => endDragRef.current(), []);
 
   if (!dockHasContent(appPath)) return null;
+
+  const failure = run && !blocker && !starting ? describeRunFailure(run) : null;
+  const explainFailure =
+    run && failure && agentCompose
+      ? () => {
+          const output = run.hasTerminal
+            ? (getTerminal(run.id)?.tail(FAILURE_OUTPUT_CHARS * 4) ?? "")
+            : run.lines.map((line) => line.text).join("\n");
+          agentCompose.compose(
+            explainRunFailurePrompt({
+              application: appName ?? agentCompose.workspaceFile(appPath),
+              file: agentCompose.workspaceFile(appPath),
+              failure,
+              output: outputTail(output),
+            }),
+          );
+        }
+      : null;
 
   const headline = blocker
     ? blocker.kind === "missing-config"
@@ -175,6 +200,12 @@ export function RunDock({ appPath, editedTelo, onOpenConfig }: RunDockProps) {
         {run && <RunTeloVersions run={run} />}
         {run && <StaleRunVersion run={run} editedTelo={editedTelo} />}
         <div className="flex-1" />
+        {explainFailure && (
+          <Button size="sm" variant="ghost" onClick={explainFailure} title="Ask the agent to explain this failure">
+            <Sparkles size={13} aria-hidden />
+            Explain this failure
+          </Button>
+        )}
         {run && <WatchControls run={run} />}
         <Button
           variant="ghost"

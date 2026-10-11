@@ -1,0 +1,129 @@
+kind: Telo.Library
+metadata:
+  name: AuditLog
+  version: 1.0.0
+  description: |
+    A library that owns no database: it is handed its importer's connection
+    and keeps an audit trail on it. `resources:` is the third kind of library
+    input, beside `variables:` and `secrets:` — the INSTANCES a library requires
+    from whoever imports it, constrained by kind and borrowed, never owned.
+
+        imports:
+          Audit:
+            source: ./audit-log
+            resources:
+              connection: !ref db
+
+    Sharing the connection is the point, not a convenience. An importer that
+    calls `Audit.record` inside its own `Sql.Transaction` gets the audit row in
+    the same transaction as the change it describes — both commit or neither
+    does. A library that opened a connection of its own could not promise that.
+
+    It is also what keeps the library backend-neutral: it names `Sql.Connection`,
+    the abstract every engine implements, so the same file works over SQLite or
+    Postgres. The importer adds `install` to its `targets`, after its own
+    migration, and calls `record` and `recent`.
+imports:
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+resources:
+  connection:
+    kind: Sql.Connection
+    description: The database the audit trail is written to — the importer's own.
+exports:
+  resources:
+    - install
+    - record
+    - recent
+---
+# Inside the library the input is an ordinary name: `!ref connection` resolves
+# exactly as it would for a resource declared here.
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref connection
+---
+# Plain SQL every engine accepts, so the library needs no engine's table kind.
+kind: Run.Sequence
+metadata: { name: install }
+steps:
+  - name: createTable
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id TEXT PRIMARY KEY,
+          at TEXT NOT NULL,
+          actor TEXT NOT NULL,
+          action TEXT NOT NULL,
+          subject TEXT NOT NULL
+        )
+      bindings: []
+---
+kind: Run.Sequence
+metadata: { name: record }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ actor, action, subject ]
+    properties:
+      actor: { type: string, minLength: 1, description: Who did it. }
+      action: { type: string, minLength: 1, description: "What was done, e.g. order.created." }
+      subject: { type: string, minLength: 1, description: What it was done to. }
+steps:
+  - name: entry
+    value:
+      id: !cel "uuidv7()"
+      at: !cel "nowIso()"
+  - name: insert
+    invoke: !ref exec
+    inputs:
+      sql: "INSERT INTO audit_log (id, at, actor, action, subject) VALUES (?, ?, ?, ?, ?)"
+      bindings:
+        - !cel "steps.entry.result.id"
+        - !cel "steps.entry.result.at"
+        - !cel "inputs.actor"
+        - !cel "inputs.action"
+        - !cel "inputs.subject"
+outputs:
+  id: !cel "steps.entry.result.id"
+---
+kind: Run.Sequence
+metadata: { name: recent }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      limit: { type: integer, minimum: 1, maximum: 500, default: 50 }
+steps:
+  - name: found
+    invoke:
+      kind: Sql.Query
+      connection: !ref connection
+      outputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ rows ]
+          properties:
+            rows:
+              type: array
+              items:
+                type: object
+                required: [ id, at, actor, action, subject ]
+                properties:
+                  id: { type: string }
+                  at: { type: string }
+                  actor: { type: string }
+                  action: { type: string }
+                  subject: { type: string }
+    inputs:
+      # A time-ordered id, so the newest entry is the largest one.
+      sql: "SELECT id, at, actor, action, subject FROM audit_log ORDER BY id DESC LIMIT ?"
+      bindings:
+        - !cel "inputs.limit"
+outputs:
+  entries: !cel "steps.found.result.rows"

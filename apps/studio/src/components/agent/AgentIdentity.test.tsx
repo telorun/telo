@@ -66,7 +66,7 @@ describe("agent identity", () => {
     };
     expect(text(<UnsupportedFeatures identity={partial} />)).toBe(
       "Not supported by this agent:Retry, edit & resend, delete from hereBranching a conversation" +
-        "Diffs of what a turn changedReverting a turn's changesA summary of each turnContinuing after the step limit",
+        "Diffs of what a turn changedReverting a turn's changesA summary of each turnContinuing after the step limitFile attachments",
     );
     expect(text(<UnsupportedFeatures identity={{ state: "unavailable" }} />)).toContain(
       "Conversation list, search and export",

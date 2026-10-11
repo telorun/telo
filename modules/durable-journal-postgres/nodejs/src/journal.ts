@@ -497,6 +497,7 @@ class PostgresJournalController {
       dueAt?: number;
       inputs?: unknown;
       inputsCodecVersion?: number;
+      claim?: { holder: string; ttlMs: number };
     },
   ): Promise<{ admitted: boolean; existing?: RunRecord }> {
     await this.ready();
@@ -506,8 +507,9 @@ class PostgresJournalController {
     // duplicate start slips through — which on this store, unlike the file one,
     // there is no excuse for.
     const inserted = await this.executeOutsideTransaction<{ run: string }>(
-      `INSERT INTO ${this.#runs} (run, status, due_at, inputs, inputs_codec_version)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO ${this.#runs}
+         (run, status, due_at, inputs, inputs_codec_version, claim_holder, claim_until)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (run) DO NOTHING
        RETURNING run`,
       [
@@ -516,6 +518,9 @@ class PostgresJournalController {
         init?.dueAt ?? null,
         encodeOptional(init?.inputs),
         init?.inputsCodecVersion ?? null,
+        // Claimed in the insert, so the row never exists unclaimed.
+        init?.claim?.holder ?? null,
+        init?.claim ? Date.now() + init.claim.ttlMs : null,
       ],
     );
     if (inserted.rows.length > 0) return { admitted: true };

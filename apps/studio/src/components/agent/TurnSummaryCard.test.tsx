@@ -71,7 +71,7 @@ function editorHolding(hash: string) {
     snapshot: async () => new Map([["app/telo.yaml", hash]]),
     readFile: async () => "",
     applyChanges,
-    editorFile: () => null,
+    editorFile: () => null, workspaceFile: () => null,
   };
   return { bridge, applyChanges };
 }
@@ -286,7 +286,7 @@ describe("the turn summary card", () => {
     const applyChanges = vi.fn<WorkspaceBridge["applyChanges"]>(async (writes, deletes) => {
       for (const path of deletes) held.delete(path);
     });
-    renderPanel({ snapshot: async () => new Map(held), readFile: async () => "", applyChanges, editorFile: () => null });
+    renderPanel({ snapshot: async () => new Map(held), readFile: async () => "", applyChanges, editorFile: () => null, workspaceFile: () => null });
 
     await userEvent.click(await screen.findByRole("button", { name: "Revert" }));
     await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Revert" }));

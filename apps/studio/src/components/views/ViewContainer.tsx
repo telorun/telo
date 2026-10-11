@@ -139,6 +139,7 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
         >
           <RunDock
             appPath={appPath}
+            appName={viewProps.viewData.manifest.metadata.name}
             editedTelo={viewProps.run.editedTelo}
             onOpenConfig={openRunTab}
           />

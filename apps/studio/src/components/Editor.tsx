@@ -25,6 +25,7 @@ import {
   loadWorkspace,
   noopAdapter,
   normalizePath,
+  hasNoWorkspaceModules,
   isWorkspaceModule,
   persistWorkspaceModule,
   rebuildManifestFromDocuments,
@@ -73,7 +74,7 @@ import {
   type SyncedFiles,
 } from "../run";
 import type { RunnerCapabilities, RunnerTerms } from "../run";
-import { useAgent } from "../agent";
+import { isFocusComposerShortcut, useAgent } from "../agent";
 import { useCloud } from "../cloud/context";
 import { cloudProjectIdOf, cloudWorkspaceRoot } from "../cloud/working-copy-adapter";
 import { findWorkingCopy } from "../cloud/working-copy-index";
@@ -84,6 +85,7 @@ import { sessionWorkspace } from "../agent/agent-workspace";
 import { AGENT_APP_NAME } from "../agent/launch";
 import { editorWorkspaceBridge } from "./editor-workspace-bridge";
 import { AgentPanel } from "./agent/AgentPanel";
+import { EmptyWorkspacePanel } from "./EmptyWorkspacePanel";
 import { saveDeploymentsForWorkspace } from "../storage-deployments";
 import { findMissingRequiredEnv } from "./views/run/declared-env";
 import { buildModuleViewData } from "../view-data";
@@ -406,6 +408,24 @@ export function Editor() {
   const agentVisible =
     cloudLock !== "viewer" &&
     (agentSupported || coResidentAgentName !== null || agent.overrideUrl.trim() !== "");
+  // Every way into the composer is offered exactly where the panel's toggle is.
+  const { setPanelAvailable: setAgentPanelAvailable, focusComposer: focusAgentComposer } = agent;
+  useEffect(() => {
+    setAgentPanelAvailable(agentVisible);
+    return () => setAgentPanelAvailable(false);
+  }, [agentVisible, setAgentPanelAvailable]);
+  useEffect(() => {
+    if (!agentVisible) return;
+    // Captured: the source view's editor would otherwise see the key first.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!isFocusComposerShortcut(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      focusAgentComposer();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [agentVisible, focusAgentComposer]);
 
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Host-lifetime cache for per-library zone-export derivation. Owned here, not
@@ -1041,6 +1061,24 @@ export function Editor() {
     return opening.catch((err: unknown) =>
       setError(err instanceof Error ? err.message : String(err)),
     );
+  }
+
+  // A request typed with no workspace open: the browser workspace is opened
+  // and the request is its conversation's next message.
+  async function buildInBrowserWorkspace(request: string): Promise<boolean> {
+    try {
+      await openBrowserWorkspace();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return false;
+    }
+    agent.sendOnOpen(request);
+    return true;
+  }
+
+  async function buildInOpenWorkspace(request: string): Promise<boolean> {
+    agent.sendOnOpen(request);
+    return true;
   }
 
   // The active module as Cloud names it: the directory of its `telo.yaml`
@@ -2192,6 +2230,7 @@ export function Editor() {
             onStartFromStarter={() => setCreateModuleKind("Application")}
             openMode={openMode}
             recentRootDir={persistedHint?.rootDir}
+            onBuild={agentVisible ? buildInBrowserWorkspace : undefined}
           />
         ) : (
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -2307,13 +2346,16 @@ export function Editor() {
                       },
                     }}
                   />
+              ) : hasNoWorkspaceModules(state.workspace) ? (
+                <EmptyWorkspacePanel
+                  onBuild={agentVisible ? buildInOpenWorkspace : undefined}
+                  onStartFromStarter={
+                    editingPaused === null ? () => setCreateModuleKind("Application") : undefined
+                  }
+                />
               ) : (
                 <div className="flex flex-1 flex-col items-center justify-center gap-2 bg-zinc-50 px-6 text-center dark:bg-zinc-900">
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    {state.workspace.modules.size === 0
-                      ? "This workspace has no modules yet"
-                      : "Nothing open"}
-                  </p>
+                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Nothing open</p>
                   <p className="max-w-sm text-xs text-zinc-500 dark:text-zinc-500">
                     Open a file from the Explorer, or pick an Application or Library from the
                     sidebar.

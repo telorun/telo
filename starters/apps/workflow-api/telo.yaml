@@ -1,0 +1,243 @@
+kind: Telo.Application
+metadata:
+  name: WorkflowApi
+  version: 1.0.0
+  categories: [ Transport, Reliability ]
+  description: |
+    Business workflows served as endpoints, built on the WorkflowApp blueprint:
+    you write the workflows — a path, the steps, the response — and the server,
+    the router and the OpenAPI document come from the blueprint. It is imported,
+    not copied, so its fixes arrive by bumping one line.
+
+    Two workflows over one shared calculation:
+
+      - `POST /orders/quote` prices a basket: a subtotal, a discount picked by a
+        `switch` on the customer's tier, and a shipping rule
+      - `POST /orders` runs the same quote as a step, refuses an order over the
+        limit with a thrown code the route renders as a 422, then charges with a
+        `retry:` — the payment stand-in fails twice before it succeeds, and the
+        answer says how many attempts it took
+
+    Run, then:
+        curl -s -XPOST localhost:8101/orders/quote -H 'content-type: application/json' \
+          -d '{"tier":"gold","items":[{"price":1200,"quantity":2},{"price":500,"quantity":1}]}'
+        curl -s -XPOST localhost:8101/orders -H 'content-type: application/json' \
+          -d '{"tier":"standard","items":[{"price":1200,"quantity":2}]}'
+imports:
+  WorkflowApp: oci://ghcr.io/telorun/blueprints/workflow-app@0.3.1#sha256-q2pP5tZO1wla1vphQGkNqc2KcN8oVuem5aQ-f8DaYwc
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Cache: oci://ghcr.io/telorun/cache@0.13.0#sha256-m85mbpiAnfwojpzTTF9I1yZeTF6KDLlCPEtadghO3nc
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.0#sha256-yPwUSVVhRMiqQYQ9cbptorm1cA-HnJW6pLHRZ-8-qPA
+targets:
+  - !ref app
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8101
+variables:
+  orderLimitCents:
+    env: ORDER_LIMIT_CENTS
+    arg: order-limit
+    type: integer
+    minimum: 1
+    default: 500000
+    description: The largest order total accepted without a manual review.
+  freeShippingFromCents:
+    env: FREE_SHIPPING_FROM_CENTS
+    type: integer
+    minimum: 0
+    default: 5000
+---
+# What the calculation takes. The routes below validate the request body
+# against a stricter copy of this shape before a workflow runs.
+kind: Telo.JsonSchema
+metadata: { name: Basket }
+schema:
+  type: object
+  additionalProperties: false
+  required: [ tier, items ]
+  properties:
+    tier: { type: string }
+    items:
+      type: array
+      items:
+        type: object
+        required: [ price, quantity ]
+        properties:
+          price: { type: integer }
+          quantity: { type: integer }
+---
+# The shared calculation: a named resource, because two workflows run it.
+kind: Run.Sequence
+metadata: { name: quote }
+inputType: !ref Basket
+steps:
+  # `sum` is a double; `int(...)` brings it into the integer domain the rest of
+  # the arithmetic is written in.
+  - name: subtotal
+    value: !cel "int(sum(inputs.items.map(i, i.price * i.quantity)))"
+  - name: discountPercent
+    switch: !cel "inputs.tier"
+    cases:
+      gold:
+        - name: percent
+          value: !cel "15"
+      silver:
+        - name: percent
+          value: !cel "5"
+    default:
+      - name: percent
+        value: !cel "0"
+  - name: discount
+    value: !cel "steps.subtotal.result * steps.percent.result / 100"
+  - name: shipping
+    value: !cel "steps.subtotal.result - steps.discount.result >= variables.freeShippingFromCents ? 0 : 700"
+outputs:
+  subtotal: !cel "steps.subtotal.result"
+  discount: !cel "steps.discount.result"
+  shipping: !cel "steps.shipping.result"
+  total: !cel "steps.subtotal.result - steps.discount.result + steps.shipping.result"
+---
+kind: CacheMemory.Store
+metadata: { name: attempts }
+---
+# Stands in for a payment provider that is briefly unavailable: the first two
+# attempts at an order fail, the third succeeds. Replace it with the request to
+# yours — the `retry:` on the step that calls it stays as it is.
+kind: Run.Sequence
+metadata: { name: charge }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ orderId, amount ]
+    properties:
+      orderId: { type: string }
+      amount: { type: integer }
+steps:
+  - name: seen
+    invoke:
+      kind: Cache.Lookup
+      store: !ref attempts
+    inputs:
+      key: !cel "inputs.orderId"
+  - name: attempt
+    value: !cel "(steps.seen.result.state == 'miss' ? 0 : int(steps.seen.result.value)) + 1"
+  - name: count
+    invoke:
+      kind: Cache.Entry
+      store: !ref attempts
+      ttl: 1m
+    inputs:
+      key: !cel "inputs.orderId"
+      value: !cel "steps.attempt.result"
+  - name: unavailable
+    if: !cel "steps.attempt.result < 3"
+    then:
+      - name: fail
+        throw:
+          code: ERR_PAYMENT_UNAVAILABLE
+          message: the payment provider did not answer
+outputs:
+  attempts: !cel "steps.attempt.result"
+  charged: !cel "inputs.amount"
+---
+kind: WorkflowApp.App
+metadata: { name: app }
+port: !cel "ports.http"
+title: Orders
+workflows:
+  - request:
+      path: /orders/quote
+      method: POST
+      schema:
+        # Refused with a 400 before any step runs. Anchored, so the second
+        # workflow validates the very same shape.
+        body: &basket
+          type: object
+          additionalProperties: false
+          required: [ tier, items ]
+          properties:
+            tier: { type: string, enum: [ standard, silver, gold ] }
+            items:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                additionalProperties: false
+                required: [ price, quantity ]
+                properties:
+                  price: { type: integer, minimum: 0, description: Unit price in cents. }
+                  quantity: { type: integer, minimum: 1 }
+    inputs:
+      tier: !cel "request.body.tier"
+      items: !cel "request.body.items"
+    handler: !ref quote
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  - request:
+      path: /orders
+      method: POST
+      schema:
+        body: *basket
+    inputs:
+      tier: !cel "request.body.tier"
+      items: !cel "request.body.items"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref Basket
+      steps:
+        - name: priced
+          invoke: !ref quote
+          inputs:
+            tier: !cel "inputs.tier"
+            items: !cel "inputs.items"
+        - name: overLimit
+          if: !cel "steps.priced.result.total > variables.orderLimitCents"
+          then:
+            - name: refuse
+              throw:
+                code: ERR_ORDER_OVER_LIMIT
+                message: !cel "'orders over ' + string(variables.orderLimitCents) + ' cents need a manual review'"
+        - name: order
+          value:
+            id: !cel "'ord_' + replace(uuidv4(), '-', '')"
+        # Three tries, a short pause between them. A step that still fails
+        # after the last one throws its own code, which the route renders.
+        - name: paid
+          invoke: !ref charge
+          inputs:
+            orderId: !cel "steps.order.result.id"
+            amount: !cel "steps.priced.result.total"
+          retry:
+            attempts: 3
+            delay: 50ms
+      outputs:
+        id: !cel "steps.order.result.id"
+        total: !cel "steps.priced.result.total"
+        paymentAttempts: !cel "steps.paid.result.attempts"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - when: !cel "error.code == 'ERR_ORDER_OVER_LIMIT'"
+        status: 422
+        content:
+          application/json:
+            body:
+              error: order_over_limit
+              message: !cel "error.message"
+      - status: 502
+        content:
+          application/json:
+            body:
+              error: payment_failed
+              code: !cel "error.code"

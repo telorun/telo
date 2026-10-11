@@ -3,84 +3,163 @@ metadata:
   name: WebhookReceiverStarterTest
   version: 1.0.0
   description: >-
-    Runs the starter and delivers the same event twice. Being safe to redeliver is
-    the starter's whole subject: the second delivery is recognised rather than
-    recorded again, and a call without the shared secret is refused.
+    Sends the starter one delivery twice, waits for the background pass to
+    process it, then stops the receiver, starts it again over the same database
+    and sends the delivery a third time. Still being a replay after the restart
+    is the claim the starter makes about where its idempotency records live.
 imports:
   App: ../../../../modules/app
   Run: ../../../../modules/run
+  Timer: ../../../../modules/timer
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
+variables:
+  scratchDir:
+    env: WEBHOOK_RECEIVER_TEST_SCRATCH_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo
 targets:
   - !ref test
 ---
+kind: HttpClient.Client
+metadata: { name: provider }
+baseUrl: http://127.0.0.1:8047
+credential:
+  kind: HttpClient.BearerToken
+  token: local-dev-token
+---
+kind: HttpClient.Request
+metadata: { name: send }
+client: !ref provider
+---
+kind: Telo.JsonSchema
+metadata: { name: Delivery }
+schema:
+  type: object
+  additionalProperties: false
+  required: [ deliveryId ]
+  properties:
+    deliveryId: { type: string }
+---
 kind: Run.Sequence
 metadata: { name: test }
+steps:
+  # Both halves share one database file, which outlives the test — so the
+  # delivery is identified freshly on every run, and each half looks only at it.
+  - name: run
+    value:
+      deliveryId: !cel "'delivery-' + uuidv4()"
+  - name: first
+    invoke: !ref beforeRestart
+    inputs: !cel "steps.run.result"
+  - name: second
+    invoke: !ref afterRestart
+    inputs: !cel "steps.run.result"
+---
+kind: Run.Sequence
+metadata: { name: beforeRestart }
+inputType: !ref Delivery
 with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
     ports:
       http: 8047
+    variables:
+      dbFile: !cel "variables.scratchDir.joinPath('webhook-receiver-test.db')"
+      sweepEvery: 200ms
 targets:
   - !ref app
 steps:
-  # The starter keeps its claims in a database file that outlives the test, so
-  # the delivery is identified freshly on every run — a fixed id would read as
-  # "replayed" the second time this test runs on the same machine.
-  - name: delivery
-    value:
-      id: !cel "'delivery-' + uuidv4()"
-
   - name: first
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8047/webhooks/events
-      method: POST
-      headers:
-        authorization: Bearer local-dev-token
+    invoke: !ref send
     inputs:
+      url: /webhooks/events
+      method: POST
       body:
-        deliveryId: !cel "steps.delivery.result.id"
+        deliveryId: !cel "inputs.deliveryId"
         subject: order.created
         payload: { orderId: 1 }
   - name: redelivery
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8047/webhooks/events
-      method: POST
-      headers:
-        authorization: Bearer local-dev-token
+    invoke: !ref send
     inputs:
+      url: /webhooks/events
+      method: POST
       body:
-        deliveryId: !cel "steps.delivery.result.id"
+        deliveryId: !cel "inputs.deliveryId"
         subject: order.created
         payload: { orderId: 1 }
+  # No token at all, and a body the schema would refuse: the guard answers
+  # first, so this is a 401 and not a 400.
   - name: unauthorized
     invoke:
       kind: HttpClient.Request
       url: http://127.0.0.1:8047/webhooks/events
       method: POST
-      headers:
-        authorization: Bearer wrong-token
+      body: { nonsense: true }
+  - name: letTheSweeperRun
+    invoke: { kind: Timer.Delay }
     inputs:
-      body:
-        deliveryId: !cel "'delivery-' + uuidv4()"
-        subject: order.created
-        payload: { orderId: 2 }
-
+      duration: 1s
+  - name: listed
+    invoke: !ref send
+    inputs:
+      url: /webhooks/events
+      method: GET
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        first: !cel "steps.first.result.body.state"
+        first: !cel "steps.first.result.body"
         firstStatus: !cel "steps.first.result.status"
-        again: !cel "steps.redelivery.result.body.state"
+        again: !cel "steps.redelivery.result.body"
         againStatus: !cel "steps.redelivery.result.status"
         unauthorized: !cel "steps.unauthorized.result.status"
+        stored: !cel "steps.listed.result.body.filter(e, e.deliveryId == inputs.deliveryId).map(e, [e.deliveryId, e.subject, e.status])"
       expected:
-        first: fresh
+        first: { subject: order.created, state: fresh }
         firstStatus: 202
-        again: replayed
+        again: { subject: order.created, state: replayed }
         againStatus: 202
         unauthorized: 401
+        stored:
+          - [ !cel "inputs.deliveryId", order.created, processed ]
+---
+kind: Run.Sequence
+metadata: { name: afterRestart }
+inputType: !ref Delivery
+with:
+  - kind: App.Instance
+    metadata: { name: restarted }
+    source: ../telo.yaml
+    ports:
+      http: 8047
+    variables:
+      dbFile: !cel "variables.scratchDir.joinPath('webhook-receiver-test.db')"
+targets:
+  - !ref restarted
+steps:
+  - name: third
+    invoke: !ref send
+    inputs:
+      url: /webhooks/events
+      method: POST
+      body:
+        deliveryId: !cel "inputs.deliveryId"
+        subject: order.created
+        payload: { orderId: 1 }
+  - name: listed
+    invoke: !ref send
+    inputs:
+      url: /webhooks/events
+      method: GET
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        third: !cel "steps.third.result.body"
+        stored: !cel "size(steps.listed.result.body.filter(e, e.deliveryId == inputs.deliveryId))"
+      expected:
+        third: { subject: order.created, state: replayed }
+        stored: 1

@@ -61,7 +61,7 @@ function reverted(page: RecordsPage, paths: string[], over: Record<string, Answe
     // What it is given is the workspace's copy, which holds each path as before.
     for (const write of writes) held.set(write.path, `b-${write.path}`);
   });
-  const bridge: WorkspaceBridge = { snapshot, readFile: async () => "", applyChanges, editorFile: () => null };
+  const bridge: WorkspaceBridge = { snapshot, readFile: async () => "", applyChanges, editorFile: () => null, workspaceFile: () => null };
   return { fetchMock, routes, snapshot, applyChanges, bridge };
 }
 

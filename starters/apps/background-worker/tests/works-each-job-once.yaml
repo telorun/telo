@@ -1,0 +1,192 @@
+kind: Telo.Application
+metadata:
+  name: BackgroundWorkerStarterTest
+  version: 1.0.0
+  description: >-
+    Runs two replicas of the starter over one queue, gives them six jobs and one
+    that cannot succeed, and waits for the queue to settle. The guarantees the
+    starter exists for are then counted from the outside: each good job was
+    attempted exactly once however many replicas were ticking, and the bad one
+    used its attempts and was parked instead of being retried for ever.
+
+    The replicas start one at a time, in nested scopes: booting both at once has
+    them run their first migration against the same SQLite file in the same
+    instant, which is a race about starting a SQLite-backed application twice
+    over rather than about the lease this test is for.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  Timer: ../../../../modules/timer
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+variables:
+  # Anchored at the working directory, as the starter's own `dbFile` is: a value
+  # supplied by name must already be an absolute host path.
+  dbFile:
+    env: BACKGROUND_WORKER_TEST_DB
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo/background-worker-test.db
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: replicaA }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8105
+---
+kind: Run.Sequence
+metadata: { name: enqueue }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ payload ]
+    properties:
+      payload: { type: string }
+steps:
+  - name: post
+    invoke: !ref replicaA
+    inputs:
+      url: /api/jobs
+      method: POST
+      body:
+        payload: !cel "inputs.payload"
+outputs:
+  status: !cel "steps.post.result.status"
+  # The answer carries the queue, newest first: the job just made leads it.
+  leads: !cel "steps.post.result.body.jobs[0].id == steps.post.result.body.id"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: workerA }
+    source: ../telo.yaml
+    ports: { http: 8105 }
+    variables:
+      instanceId: a
+      dbFile: !cel "variables.dbFile"
+      tickEvery: 150ms
+      maxAttempts: 3
+targets:
+  - !ref workerA
+steps:
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 300ms
+  - name: withSecondReplica
+    invoke: !ref secondReplica
+---
+kind: Run.Sequence
+metadata: { name: secondReplica }
+with:
+  - kind: App.Instance
+    metadata: { name: workerB }
+    source: ../telo.yaml
+    ports: { http: 8115 }
+    variables:
+      instanceId: b
+      dbFile: !cel "variables.dbFile"
+      tickEvery: 150ms
+      maxAttempts: 3
+targets:
+  - !ref workerB
+steps:
+  # The queue file outlives the test, so this run's jobs carry a tag of their
+  # own and only they are counted.
+  - name: run
+    value:
+      tag: !cel "'t' + replace(uuidv4(), '-', '')"
+  - name: good
+    invoke:
+      kind: Run.Iteration
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ tag ]
+          properties:
+            tag: { type: string }
+      collection: !cel "range(6)"
+      steps:
+        - name: one
+          invoke: !ref enqueue
+          inputs:
+            payload: !cel "'invoice-' + string(item) + '-' + inputs.tag"
+    inputs:
+      tag: !cel "steps.run.result.tag"
+  - name: bad
+    invoke: !ref enqueue
+    inputs:
+      payload: !cel "'fail-' + steps.run.result.tag"
+  - name: empty
+    invoke: !ref replicaA
+    inputs:
+      url: /api/jobs
+      method: POST
+      body: { payload: "" }
+
+  - name: jobs
+    invoke: !ref replicaA
+    inputs: { url: /api/jobs, method: GET }
+  - name: untilSettled
+    while: !cel "steps.jobs.result.body.exists(j, j.payload.endsWith(steps.run.result.tag) && j.status == 'pending')"
+    do:
+      - name: pause
+        invoke: { kind: Timer.Delay }
+        inputs: { duration: 200ms }
+      - name: jobs
+        invoke: !ref replicaA
+        inputs: { url: /api/jobs, method: GET }
+
+  - name: other
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8115/api/status
+      method: GET
+  - name: shell
+    invoke: !ref replicaA
+    inputs: { url: /, method: GET }
+  - name: page
+    invoke: !ref replicaA
+    inputs:
+      url: /_telo/ui/page
+      method: GET
+      query: { path: / }
+  - name: mine
+    value: !cel "steps.jobs.result.body.filter(j, j.payload.endsWith(steps.run.result.tag))"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        accepted: !cel "steps.bad.result.status"
+        answeredWithQueue: !cel "steps.bad.result.leads"
+        page: !cel "steps.page.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.path, c.fields.map(f, f.label)])"
+        pageTitle: !cel "steps.shell.result.status"
+        empty: !cel "steps.empty.result.status"
+        otherReplica: !cel "steps.other.result.body.me"
+        # Done once each: a job two replicas had both worked would show two attempts.
+        good: !cel "steps.mine.result.filter(j, j.payload.startsWith('invoice-')).map(j, [j.status, j.attempts])"
+        bad: !cel "steps.mine.result.filter(j, j.payload.startsWith('fail-')).map(j, [j.status, j.attempts, j.lastError])"
+      expected:
+        accepted: 202
+        answeredWithQueue: true
+        page:
+          - [ Enqueue, /api/jobs, [ Payload ] ]
+          - [ Refresh, /api/jobs/recent, [] ]
+        pageTitle: 200
+        empty: 400
+        otherReplica: b
+        good:
+          - [ done, 1 ]
+          - [ done, 1 ]
+          - [ done, 1 ]
+          - [ done, 1 ]
+          - [ done, 1 ]
+          - [ done, 1 ]
+        bad:
+          - [ failed, 3, !cel "'ERR_JOB_REFUSED: cannot process fail-' + steps.run.result.tag" ]

@@ -2,33 +2,43 @@ kind: Telo.Application
 metadata:
   name: WebhookReceiver
   version: 1.0.0
+  categories: [ Transport, Reliability, Scheduling ]
   description: |
-    An inbound webhook endpoint that is safe to redeliver. Providers retry until
-    they get a 2xx, so the same delivery arrives more than once:
-    `Idempotency.Once` claims the delivery id, runs the body at most once, and
-    replays the stored result for every retry. The reply reports `fresh` or
-    `replayed`, so the behaviour is visible from the outside.
+    An inbound webhook endpoint that survives what webhooks actually do to you:
+    redelivery, bursts, and work that must not block the response.
 
-    The shared-secret check is a step, not middleware — it throws a code the
-    route renders as a 401, and `telo check` refuses a route that leaves a code
-    the handler can throw unrendered.
+      - redelivery: providers retry until they get a 2xx, so the same delivery
+        arrives more than once. `Idempotency.Once` claims the delivery id, runs
+        the body at most once and replays the stored result for every retry —
+        the reply says `fresh` or `replayed`, so it is visible from outside
+      - claims that outlive a restart: they are rows in the same database, so a
+        redelivery after a deploy is still a replay
+      - a fast 202: the handler only records the event; a `Schedule.Interval`
+        drains pending events in the background
+      - a shared secret checked by a mount `guard:` before the body is read
+      - `GET /webhooks/events` to see what arrived and what was processed
 
     Run, then send the same delivery twice:
         curl -s -XPOST localhost:8047/webhooks/events \
           -H 'content-type: application/json' \
           -H 'authorization: Bearer local-dev-token' \
           -d '{"deliveryId":"dlv_1","subject":"user.created","payload":{"id":42}}'
-    The first reply says "fresh", the second "replayed" — and one row exists.
+        curl -s localhost:8047/webhooks/events -H 'authorization: Bearer local-dev-token'
+    The first reply says "fresh", the second "replayed" — one row exists, and a
+    moment later it is "processed".
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
   Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
   Idempotency: oci://ghcr.io/telorun/idempotency@0.11.0#sha256-hd4NvqYA6OioV89wn7SNk7BXrHIFYzv0cNL68Cscgd4
-  KvStore: oci://ghcr.io/telorun/kv-store-memory@0.8.0#sha256-GmMDeJ2eYatJ0_ewaUI6A6bnfkqlphjd4YKWtqZ5d2Y
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.14.0#sha256-DY-CKnlGAPmco-fkHRfo6NkxEVwJkwf6YPlo7qbrMG4
+  Schedule: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref migrate
   - !ref server
+  - !ref sweeper
 ports:
   http:
     env: PORT
@@ -42,9 +52,16 @@ secrets:
 variables:
   dbFile:
     env: DB_FILE
+    arg: db-file
     type: string
     x-telo-type: Telo.HostPath
     default: events.db
+  sweepEvery:
+    env: SWEEP_EVERY
+    arg: sweep-every
+    type: string
+    default: "2s"
+    description: How often pending events are processed.
 ---
 kind: SQLite.Connection
 metadata: { name: db }
@@ -57,7 +74,9 @@ columns:
   delivery_id: { type: text, primaryKey: true }
   subject: { type: text, nullable: false }
   payload: { type: text, nullable: false }
+  status: { type: text, nullable: false, default: pending }
   received_at: { type: text, nullable: false, defaultExpression: "datetime('now')" }
+  processed_at: { type: text }
 ---
 kind: SQLite.Schema
 metadata: { name: migrate }
@@ -65,14 +84,13 @@ connection: !ref db
 tables:
   - !ref events
 ---
-# Where the idempotency claims live. Swap this one line for kv-store-redis and
-# the guarantee survives a restart and spans every replica.
-kind: KvStore.Store
+# Where the idempotency claims live: a table in the same database, so they
+# survive a restart. Swap this one resource for kv-store-redis to share them
+# between replicas that do not share a database.
+kind: KvStoreSql.Store
 metadata: { name: claims }
----
-kind: Sql.Command
-metadata: { name: exec }
 connection: !ref db
+table: webhook_claims
 ---
 # The body that must run at most once per delivery id.
 kind: Run.Sequence
@@ -88,7 +106,9 @@ inputType:
       payload: { type: object, additionalProperties: true }
 steps:
   - name: insert
-    invoke: !ref exec
+    invoke:
+      kind: Sql.Command
+      connection: !ref db
     inputs:
       sql: "INSERT INTO events (delivery_id, subject, payload) VALUES (?, ?, ?)"
       bindings:
@@ -107,37 +127,67 @@ claimTtl: "30s"
 ttl: "24h"
 invoke: !ref recordEvent
 ---
+# The slow half, off the request path. `RETURNING` hands back exactly the rows
+# this pass claimed, so what is reported is what was done.
 kind: Run.Sequence
-metadata: { name: handleDelivery }
+metadata: { name: processPending }
+steps:
+  - name: processed
+    invoke:
+      kind: Sql.Query
+      connection: !ref db
+      outputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ rows ]
+          properties:
+            rows:
+              type: array
+              items:
+                type: object
+                required: [ deliveryId, subject ]
+                properties:
+                  deliveryId: { type: string }
+                  subject: { type: string }
+    inputs:
+      sql: >-
+        UPDATE events SET status = 'processed', processed_at = datetime('now')
+        WHERE status = 'pending' RETURNING delivery_id AS "deliveryId", subject
+      bindings: []
+  - name: report
+    if: !cel "size(steps.processed.result.rows) > 0"
+    then:
+      - name: say
+        invoke: !ref Console.writeLine
+        inputs:
+          output: !cel >-
+            '{green ✔} processed ' +
+            steps.processed.result.rows.map(r, r.subject + ' (' + r.deliveryId + ')').join(', ')
+---
+kind: Schedule.Interval
+metadata: { name: sweeper }
+every: !cel "variables.sweepEvery"
+invoke: !ref processPending
+---
+kind: Run.Sequence
+metadata: { name: requireToken }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    required: [ token, deliveryId, subject, payload ]
+    additionalProperties: false
+    required: [ authorization ]
     properties:
-      token: { type: string }
-      deliveryId: { type: string }
-      subject: { type: string }
-      payload: { type: object, additionalProperties: true }
+      authorization: { type: string, x-telo-sensitive: true }
 steps:
-  - name: rejectUnknownSender
-    if: !cel "inputs.token != 'Bearer ' + secrets.webhookToken"
+  - name: check
+    if: !cel "inputs.authorization != 'Bearer ' + secrets.webhookToken"
     then:
       - name: deny
         throw:
           code: ERR_WEBHOOK_UNAUTHORIZED
           message: bad or missing webhook token
-  - name: record
-    invoke: !ref recordEventOnce
-    inputs:
-      key: !cel "inputs.deliveryId"
-      inputs:
-        deliveryId: !cel "inputs.deliveryId"
-        subject: !cel "inputs.subject"
-        payload: !cel "inputs.payload"
-outputs:
-  state: !cel "steps.record.result.state"
-  subject: !cel "steps.record.result.result.subject"
 ---
 kind: Http.Api
 metadata: { name: webhookRoutes }
@@ -146,11 +196,6 @@ routes:
       path: /events
       method: POST
       schema:
-        headers:
-          type: object
-          required: [ authorization ]
-          properties:
-            authorization: { type: string }
         body:
           type: object
           additionalProperties: false
@@ -159,28 +204,23 @@ routes:
             deliveryId: { type: string, minLength: 1 }
             subject: { type: string, minLength: 1 }
             payload: { type: object, additionalProperties: true }
-    handler: !ref handleDelivery
+    handler: !ref recordEventOnce
     inputs:
-      token: !cel "request.headers.authorization"
-      deliveryId: !cel "request.body.deliveryId"
-      subject: !cel "request.body.subject"
-      payload: !cel "request.body.payload"
+      key: !cel "request.body.deliveryId"
+      inputs:
+        deliveryId: !cel "request.body.deliveryId"
+        subject: !cel "request.body.subject"
+        payload: !cel "request.body.payload"
     returns:
       # 202, not 200: the delivery is accepted and recorded, and anything slower
-      # than that belongs off the request path.
+      # than that happens off the request path.
       - status: 202
         content:
           application/json:
             body:
-              subject: !cel "result.subject"
+              subject: !cel "result.result.subject"
               state: !cel "result.state"
     catches:
-      - when: !cel "error.code == 'ERR_WEBHOOK_UNAUTHORIZED'"
-        status: 401
-        content:
-          application/json:
-            body:
-              error: unauthorized
       # The claim lapsed mid-flight, so the delivery is not recorded as done. A
       # 5xx is the honest answer: it tells the provider to send it again.
       - when: !cel "error.code == 'ERR_CLAIM_LOST'"
@@ -196,6 +236,39 @@ routes:
           application/json:
             body:
               error: !cel "error.code"
+
+  - request:
+      path: /events
+      method: GET
+    handler:
+      kind: Sql.Query
+      connection: !ref db
+      outputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ rows ]
+          properties:
+            rows:
+              type: array
+              items:
+                type: object
+                required: [ deliveryId, subject, status, receivedAt ]
+                properties:
+                  deliveryId: { type: string }
+                  subject: { type: string }
+                  status: { type: string }
+                  receivedAt: { type: string }
+    inputs:
+      sql: >-
+        SELECT delivery_id AS "deliveryId", subject, status, received_at AS "receivedAt"
+        FROM events ORDER BY received_at DESC, delivery_id LIMIT 50
+      bindings: []
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.rows"
 ---
 kind: Http.Server
 metadata: { name: server }
@@ -207,3 +280,16 @@ openapi:
 mounts:
   - path: /webhooks
     mount: !ref webhookRoutes
+    # The sender is checked once, here, before the body is read — so an
+    # unauthenticated request with a malformed body is still a 401.
+    guard:
+      invoke: !ref requireToken
+      inputs:
+        authorization: !cel "'authorization' in request.headers ? string(request.headers['authorization']) : ''"
+      catches:
+        - when: !cel "error.code == 'ERR_WEBHOOK_UNAUTHORIZED'"
+          status: 401
+          content:
+            application/json:
+              body:
+                error: unauthorized

@@ -1,4 +1,7 @@
 import type { DiagnosticSeverity, NormalizedDiagnostic } from "@telorun/ide-support";
+import { Sparkles } from "lucide-react";
+import { fixDiagnosticPrompt, useAgentCompose } from "../../agent";
+import { Button } from "../ui/button";
 import {
   SEVERITY_CHIP_CLASS,
   SEVERITY_LABEL,
@@ -11,6 +14,8 @@ import {
 export interface FieldDiagnostic {
   segments: string[];
   diagnostic: NormalizedDiagnostic;
+  /** The file the diagnostic is in — what "Fix with AI" names. */
+  filePath?: string;
 }
 
 /**
@@ -110,10 +115,13 @@ export function SeverityDot({
  * beside the field it is about.
  */
 export function FieldDiagnostics({ diagnostics }: { diagnostics: FieldDiagnostic[] }) {
+  const agent = useAgentCompose();
   if (diagnostics.length === 0) return null;
   return (
     <div className="flex flex-col gap-1">
-      {diagnostics.map((d, i) => (
+      {diagnostics.map((d, i) => {
+        const { filePath } = d;
+        return (
         <div
           key={`${d.diagnostic.code}-${i}`}
           className="flex flex-col gap-0.5 rounded border border-zinc-200 bg-zinc-50 p-1.5 dark:border-zinc-800 dark:bg-zinc-900/60"
@@ -129,12 +137,34 @@ export function FieldDiagnostics({ diagnostics }: { diagnostics: FieldDiagnostic
                 {d.diagnostic.code}
               </span>
             )}
+            {agent && filePath !== undefined && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="ml-auto h-5 px-1 text-[10px]"
+                onClick={() =>
+                  agent.compose(
+                    fixDiagnosticPrompt({
+                      code: d.diagnostic.code,
+                      file: agent.workspaceFile(filePath),
+                      line: d.diagnostic.range.start.line + 1,
+                      message: d.diagnostic.message,
+                    }),
+                  )
+                }
+              >
+                <Sparkles />
+                Fix with AI
+              </Button>
+            )}
           </div>
           <span className="text-[11px] leading-4 text-zinc-700 dark:text-zinc-300">
             {d.diagnostic.message}
           </span>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

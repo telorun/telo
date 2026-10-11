@@ -1,0 +1,89 @@
+kind: Telo.Application
+metadata:
+  name: ConsoleIoStarterTest
+  version: 1.0.0
+  description: >-
+    Holds the starter's whole conversation: answers its question, runs each
+    command, sends one it does not know, and leaves. A starter is copied
+    verbatim, so the loop it ships has to survive a wrong command as well as a
+    right one.
+imports:
+  App: ../../../../modules/app
+  Channel: ../../../../modules/channel
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref app
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: app }
+source: ../telo.yaml
+# It blocks on its first prompt, so its targets never all finish dispatching.
+awaitStart: false
+---
+kind: Channel.ReadUntil
+metadata: { name: read }
+channel: !ref app
+timeout: "10s"
+---
+kind: Channel.SendLine
+metadata: { name: send }
+channel: !ref app
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: question
+    invoke: !ref read
+    inputs: { until: "What's your name? " }
+  - name: answer
+    invoke: !ref send
+    inputs: { text: Ada }
+  - name: greeting
+    invoke: !ref read
+    inputs: { until: "\n> " }
+
+  - name: sendShout
+    invoke: !ref send
+    inputs: { text: shout hello there }
+  - name: shouted
+    invoke: !ref read
+    inputs: { until: "\n> " }
+
+  - name: sendCount
+    invoke: !ref send
+    inputs: { text: count one two  three }
+  - name: counted
+    invoke: !ref read
+    inputs: { until: "\n> " }
+
+  - name: sendUnknown
+    invoke: !ref send
+    inputs: { text: dance }
+  - name: unknown
+    invoke: !ref read
+    inputs: { until: "\n> " }
+
+  - name: sendQuit
+    invoke: !ref send
+    inputs: { text: quit }
+  - name: farewell
+    invoke: !ref read
+    inputs: { until: "\n" }
+
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        greeting: !cel "steps.greeting.result.text"
+        shouted: !cel "steps.shouted.result.text"
+        counted: !cel "steps.counted.result.text"
+        unknown: !cel "steps.unknown.result.text"
+        farewell: !cel "steps.farewell.result.text"
+      expected:
+        greeting: "Hello, Ada! Type help for commands.\n> "
+        shouted: "HELLO THERE!\n> "
+        counted: "3 words, 14 characters\n> "
+        unknown: "unknown command: dance — try help\n> "
+        farewell: "Goodbye, Ada.\n"

@@ -1,6 +1,8 @@
 import type { RecordsPage } from "./records";
 import type {
   AgentIdentityState,
+  Attachment,
+  AttachmentLimits,
   Conversation,
   ConversationPage,
   TreeFile,
@@ -57,6 +59,8 @@ export interface TurnRefused {
   activeTurnId?: string;
   /** `ERR_TURN_NOT_CONTINUABLE`: `finished`, `aborted` or `superseded`. */
   reason?: string;
+  /** `ERR_TOO_MANY_ATTACHMENTS`: the most files one message may name. */
+  max?: number;
 }
 export type StartTurnOutcome = StartTurnResult | TurnRefused;
 
@@ -97,6 +101,7 @@ function refusal(res: Response, body: Record<string, unknown>, what: string): Tu
     retryAfter: typeof body.retryAfter === "number" ? body.retryAfter : undefined,
     activeTurnId: typeof body.activeTurnId === "string" ? body.activeTurnId : undefined,
     reason: typeof body.reason === "string" ? body.reason : undefined,
+    max: typeof body.max === "number" ? body.max : undefined,
   };
 }
 
@@ -121,6 +126,8 @@ export class AgentRequestError extends Error {
     readonly code?: string,
     readonly revision?: number,
     readonly activeTurnId?: string,
+    /** The refusal's other fields (`maxBytes`, `max`, `mediaType`, `accepted`, …). */
+    readonly details: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -141,6 +148,12 @@ async function requestError(res: Response, what: string): Promise<AgentRequestEr
   } catch {
     body = {};
   }
+  // The server's own refusals arrive in an envelope: `{ error: { code, message, data } }`.
+  const envelope = body.error && typeof body.error === "object" ? (body.error as Record<string, unknown>) : null;
+  if (envelope) {
+    const data = envelope.data && typeof envelope.data === "object" ? (envelope.data as Record<string, unknown>) : {};
+    body = { ...data, code: envelope.code, message: envelope.message };
+  }
   const code = typeof body.code === "string" ? body.code : undefined;
   const said =
     res.status === 401
@@ -156,7 +169,20 @@ async function requestError(res: Response, what: string): Promise<AgentRequestEr
     code,
     typeof body.revision === "number" ? body.revision : undefined,
     typeof body.activeTurnId === "string" ? body.activeTurnId : undefined,
+    body,
   );
+}
+
+/** The capability document's `attachments`, when it is one. */
+function readAttachmentLimits(value: unknown): AttachmentLimits | null {
+  const limits = value as Partial<AttachmentLimits> | null | undefined;
+  if (!limits || typeof limits.maxBytes !== "number" || typeof limits.maxPerMessage !== "number") return null;
+  if (!Array.isArray(limits.mediaTypes)) return null;
+  return {
+    maxBytes: limits.maxBytes,
+    maxPerMessage: limits.maxPerMessage,
+    mediaTypes: limits.mediaTypes.filter((t): t is string => typeof t === "string"),
+  };
 }
 
 /** A conversation as the wire carries it, or a named failure when it is not one. */
@@ -221,6 +247,7 @@ export class AgentClient {
     const body = await readBody(res, "GET /capabilities");
     const agent = (body.agent ?? {}) as Record<string, unknown>;
     const prompt = (body.prompt ?? {}) as Record<string, unknown>;
+    const attachments = readAttachmentLimits(body.attachments);
     return {
       state: "known",
       identity: {
@@ -232,6 +259,7 @@ export class AgentClient {
           ? { features: body.features.filter((f): f is string => typeof f === "string") }
           : {}),
         ...(typeof body.manifestRuns === "boolean" ? { manifestRuns: body.manifestRuns } : {}),
+        ...(attachments ? { attachments } : {}),
       },
     };
   }
@@ -351,11 +379,11 @@ export class AgentClient {
    * earlier copy of this very request). A resend after a failed turn is a new
    * call, so a new attempt with a key of its own.
    */
-  async startTurn(conversationId: string, message: string): Promise<StartTurnOutcome> {
+  async startTurn(conversationId: string, message: string, attachments: string[] = []): Promise<StartTurnOutcome> {
     const init = this.init({
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
-      body: JSON.stringify({ conversationId, message }),
+      body: JSON.stringify({ conversationId, message, ...(attachments.length > 0 ? { attachments } : {}) }),
     });
     for (let attempt = 0; ; attempt++) {
       const res = await fetchRetrying(this.url("/chat"), init);
@@ -372,6 +400,40 @@ export class AgentClient {
       }
       return refusal(res, body, "POST /chat");
     }
+  }
+
+  /** POST /conversations/{id}/attachments, one multipart part named `file`
+   *  declared as `mediaType` → 201, the upload. A refusal is an
+   *  `AgentRequestError` carrying its code and the limit it names. */
+  async uploadAttachment(conversationId: string, file: Blob, name: string, mediaType: string): Promise<Attachment> {
+    const what = `POST /conversations/${conversationId}/attachments`;
+    const body = new FormData();
+    body.append("file", new File([file], name, { type: mediaType }));
+    const res = await fetchRetrying(
+      this.url(`/conversations/${encodeURIComponent(conversationId)}/attachments`),
+      this.init({ method: "POST", body }),
+    );
+    if (res.status !== 201) throw await requestError(res, what);
+    const uploaded = await readBody(res, what);
+    if (typeof uploaded.id !== "string") throw new Error(`${what} succeeded but returned no id.`);
+    return {
+      id: uploaded.id,
+      name: typeof uploaded.name === "string" ? uploaded.name : name,
+      mediaType: typeof uploaded.mediaType === "string" ? uploaded.mediaType : mediaType,
+      size: typeof uploaded.size === "number" ? uploaded.size : file.size,
+    };
+  }
+
+  /** GET /conversations/{id}/attachments/{attachmentId} → the bytes. The route
+   *  answers `application/octet-stream` whatever the file is; the caller knows
+   *  its type from the record. */
+  async attachmentBytes(conversationId: string, attachmentId: string): Promise<Blob> {
+    const res = await fetchRetrying(
+      this.url(`/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(attachmentId)}`),
+      this.init(),
+    );
+    if (!res.ok) throw await requestError(res, `GET /conversations/${conversationId}/attachments/${attachmentId}`);
+    return res.blob();
   }
 
   /** POST /chat/{turnId}/abort, no body → whether a running attempt was

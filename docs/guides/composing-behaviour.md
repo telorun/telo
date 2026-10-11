@@ -246,7 +246,7 @@ says more about intent and is easier to read:
 | `Run.Loop` | Repeat a body while a condition holds or up to `maxIterations`, seeing the iteration count and previous result. |
 | `Run.Detach` | Dispatch something in the background and return immediately — off the caller's response path. |
 
-Full field schemas for each are on the [hub](https://hub.telo.run/?q=Run.Sequence).
+Full field schemas for each are on the [hub](https://hub.telo.run/module/oci/ghcr.io/telorun/run/).
 
 ## When to reach for a script instead
 

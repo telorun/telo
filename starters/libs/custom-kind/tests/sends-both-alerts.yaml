@@ -1,0 +1,100 @@
+kind: Telo.Application
+metadata:
+  name: CustomKindLibraryStarterTest
+  version: 1.0.0
+  description: >-
+    Runs an application that declares one resource of each kind the library
+    defines, against a receiver that answers 200 only to the request each kind
+    is supposed to send. A webhook must arrive with its standing header and the
+    caller's payload; a pager alert must arrive as the full event envelope, with
+    the library's configured source inside it.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  Http: ../../../../modules/http-server
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Api
+    metadata: { name: receiver }
+    routes:
+      - request:
+          path: /chat
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler:
+          kind: Run.Value
+          value: {}
+        returns:
+          - status: 200
+            when: !cel "request.headers['x-team'] == 'billing' && request.body.text == 'disk almost full'"
+            content:
+              application/json:
+                body: { ok: true }
+          - status: 400
+            content:
+              application/json:
+                body: { ok: false }
+      - request:
+          path: /pager
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler:
+          kind: Run.Value
+          value: {}
+        returns:
+          - status: 202
+            when: !cel >-
+              request.body.routing_key == 'key-123' && request.body.event_action == 'trigger' &&
+              request.body.payload.summary == 'database is down' &&
+              request.body.payload.severity == 'critical' && request.body.payload.source == 'billing'
+            content:
+              application/json:
+                body: { status: success }
+          - status: 400
+            content:
+              application/json:
+                body: { status: invalid event }
+  - kind: Http.Server
+    metadata: { name: receiverServer }
+    port: 8072
+    mounts:
+      - path: /
+        mount: !ref receiver
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ./__fixtures__/alerting-app.yaml
+    ports:
+      http: 8203
+    variables:
+      receiverUrl: http://127.0.0.1:8072
+targets:
+  - !ref receiverServer
+  - !ref app
+steps:
+  - name: chat
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8203/chat
+      method: POST
+  - name: page
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8203/page
+      method: POST
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        chat: !cel "steps.chat.result.body"
+        page: !cel "steps.page.result.body"
+      expected:
+        chat: { status: 200 }
+        page: { status: 202 }

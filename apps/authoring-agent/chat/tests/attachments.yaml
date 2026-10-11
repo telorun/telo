@@ -1,0 +1,363 @@
+kind: Telo.Application
+metadata:
+  name: ChatAttachments
+  version: 1.0.0
+  description: |
+    Files attached to a message, offline against the provider stub. An image
+    and a text file are uploaded to a conversation and named by a turn: the
+    turn's first record keeps what each is, the model receives the image as an
+    image and the text file as its text, and the image reads back byte for
+    byte. A message of one long text file alone is a turn: the model receives
+    the file cut at `maxToolResultBytes` characters with a marker, and the
+    conversation is named from the file's name. Refused, storing nothing: a third file past the conversation's limit,
+    content that contradicts its declared type, a type the agent does not take,
+    a file past `maxAttachmentBytes`, and a turn naming another conversation's
+    upload. A branch holds its own copy, so deleting the source removes the
+    source's bytes and leaves the branch's readable.
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: stub-key
+    variables:
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state')"
+      modelEndpoint: http://127.0.0.1:18555/v1
+      maxAttachmentBytes: 2000
+      maxToolResultBytes: 1200
+      maxConversationAttachments: 2
+  App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
+  Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  Multipart: oci://ghcr.io/telorun/multipart@0.4.0#sha256-RjPcqJs2rTd4hWLUbQ-SGcqkhYW3GIDCgWbi_bk8kt0
+  Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
+  Blob: oci://ghcr.io/telorun/blob@0.2.0#sha256-UgFwVFoZWZ_s8GWHIi-0qJB8K82CZ5gSQN0HZaqpc58
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.2.0#sha256-_DxXaUEsakpFyEif4SKQc1QesAcTFOpnXBW9AjIyUbo
+variables:
+  scratch:
+    env: CHAT_TEST_ATTACHMENTS_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/attachments
+targets:
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref test
+---
+# The directory the library keeps its uploads in, read here to see what a
+# removal left on disk.
+kind: BlobFs.Store
+metadata: { name: stored }
+root: !cel "variables.scratch.joinPath('state').joinPath('attachments')"
+---
+kind: Blob.Head
+metadata: { name: head }
+store: !ref stored
+---
+# One upload, as a client sends it: a multipart body holding one `file` part.
+kind: Run.Sequence
+metadata: { name: upload }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, filename, contentType, content]
+    properties:
+      conversationId: { type: string }
+      filename: { type: string }
+      contentType: { type: string }
+      content: {}
+steps:
+  - name: body
+    invoke: { kind: Multipart.Encoder }
+    inputs:
+      parts:
+        - name: file
+          filename: !cel "inputs.filename"
+          contentType: !cel "inputs.contentType"
+          content: !cel "inputs.content"
+  - name: stored
+    invoke: !ref Chat.storeAttachment
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      input: !cel "steps.body.result.output"
+      contentType: !cel "steps.body.result.contentType"
+outputs:
+  attachment: !cel "steps.stored.result.attachment"
+---
+# An upload's bytes as the library serves them, as base64.
+kind: Run.Sequence
+metadata: { name: download }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, attachmentId]
+    properties:
+      conversationId: { type: string }
+      attachmentId: { type: string }
+steps:
+  - name: read
+    invoke: !ref Chat.readAttachment
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      attachmentId: !cel "inputs.attachmentId"
+  - name: bytes
+    invoke: { kind: Octet.Decoder }
+    inputs:
+      input: !cel "steps.read.result.output"
+outputs:
+  base64: !cel "bytesToBase64(steps.bytes.result.bytes)"
+  mediaType: !cel "steps.read.result.mediaType"
+  name: !cel "steps.read.result.name"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18555 }
+targets: [ !ref stub ]
+steps:
+  # A 1×1 PNG, 70 bytes.
+  - name: png
+    value: iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==
+  - name: a
+    invoke: !ref Chat.createConversation
+  - name: b
+    invoke: !ref Chat.createConversation
+  - name: image
+    invoke: !ref upload
+    inputs:
+      conversationId: !cel "steps.a.result.conversation.id"
+      filename: shot.png
+      contentType: image/png
+      content: !cel "bytesFromBase64(steps.png.result)"
+  # A client's directory is not part of the name.
+  - name: notes
+    invoke: !ref upload
+    inputs:
+      conversationId: !cel "steps.a.result.conversation.id"
+      filename: docs/notes.txt
+      contentType: text/plain
+      content: hello attachment
+  # ── refusals: each stores nothing ──────────────────────────────────────────
+  - name: pastLimit
+    try:
+      - name: third
+        invoke: !ref upload
+        inputs:
+          conversationId: !cel "steps.a.result.conversation.id"
+          filename: more.txt
+          contentType: text/plain
+          content: one too many
+    catch:
+      - name: limit
+        value: !cel "error.code"
+  - name: wrongLabel
+    try:
+      - name: jpeg
+        invoke: !ref upload
+        inputs:
+          conversationId: !cel "steps.b.result.conversation.id"
+          filename: shot.jpg
+          contentType: image/jpeg
+          content: !cel "bytesFromBase64(steps.png.result)"
+    catch:
+      - name: mislabelled
+        value: !cel "error.code"
+  # The first bytes of a ZIP archive.
+  - name: wrongType
+    try:
+      - name: zip
+        invoke: !ref upload
+        inputs:
+          conversationId: !cel "steps.b.result.conversation.id"
+          filename: bundle.zip
+          contentType: application/zip
+          content: !cel "bytesFromBase64('UEsDBAoAAAAAAA==')"
+    catch:
+      - name: unaccepted
+        value: !cel "error.code"
+  - name: tooBig
+    try:
+      - name: big
+        invoke: !ref upload
+        inputs:
+          conversationId: !cel "steps.b.result.conversation.id"
+          filename: big.txt
+          contentType: text/plain
+          content: !cel "join(range(3000).map(i, 'x'), '')"
+    catch:
+      - name: tooLarge
+        value: !cel "error.code"
+  # Another conversation's upload is not this one's.
+  - name: foreign
+    try:
+      - name: borrowed
+        invoke: !ref Chat.chatStart
+        inputs:
+          conversationId: !cel "steps.b.result.conversation.id"
+          idempotencyKey: ""
+          clientIp: test-runner
+          message: look
+          attachments: !cel "[steps.image.result.attachment.id]"
+    catch:
+      - name: notFound
+        value: !cel "error.code"
+  # ── a turn carrying both ───────────────────────────────────────────────────
+  - name: start
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "steps.a.result.conversation.id"
+      idempotencyKey: ""
+      clientIp: test-runner
+      message: look at these
+      attachments: !cel "[steps.image.result.attachment.id, steps.notes.result.attachment.id]"
+  - name: read
+    invoke: !ref Chat.journalSource
+    inputs:
+      key: !cel "steps.start.result.turnId"
+      fromId: 0
+  - name: drain
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.read.result.output"
+  - name: sent
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:18555/requests
+  # The turn's own model call: the last request that is not a naming call.
+  - name: request
+    value: !cel >-
+      cel.bind(own, steps.sent.result.body.requests.filter(r,
+          !(has(r.instructions) && string(r.instructions).startsWith('You name conversations'))),
+        json(own[size(own) - 1]))
+  - name: back
+    invoke: !ref download
+    inputs:
+      conversationId: !cel "steps.a.result.conversation.id"
+      attachmentId: !cel "steps.image.result.attachment.id"
+  # ── files alone, one of them longer than the model is given ────────────────
+  - name: long
+    invoke: !ref upload
+    inputs:
+      conversationId: !cel "steps.b.result.conversation.id"
+      filename: long.txt
+      contentType: text/plain
+      content: !cel "join(range(1500).map(i, 'y'), '')"
+  - name: filesOnly
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "steps.b.result.conversation.id"
+      idempotencyKey: ""
+      clientIp: test-runner
+      message: ""
+      attachments: !cel "[steps.long.result.attachment.id]"
+  - name: readFilesOnly
+    invoke: !ref Chat.journalSource
+    inputs:
+      key: !cel "steps.filesOnly.result.turnId"
+      fromId: 0
+  - name: drainFilesOnly
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.readFilesOnly.result.output"
+  - name: sentFilesOnly
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:18555/requests
+  # That turn's two calls: the naming call, then its own.
+  - name: filesOnlyRequests
+    value: !cel >-
+      cel.bind(all, steps.sentFilesOnly.result.body.requests,
+        [json(all[size(all) - 2]), json(all[size(all) - 1])])
+  # ── a branch holds its own copy ────────────────────────────────────────────
+  - name: branch
+    invoke: !ref Chat.branchConversation
+    inputs:
+      conversationId: !cel "steps.a.result.conversation.id"
+      throughTurnId: !cel "steps.start.result.turnId"
+  - name: deleteSource
+    invoke: !ref Chat.deleteConversation
+    inputs:
+      conversationId: !cel "steps.a.result.conversation.id"
+  - name: sourceBytes
+    try:
+      - name: sourceHead
+        invoke: !ref head
+        inputs:
+          key: !cel "steps.a.result.conversation.id + '/' + steps.image.result.attachment.id"
+    catch:
+      - name: sourceGone
+        value: !cel "error.code"
+  - name: copied
+    invoke: !ref download
+    inputs:
+      conversationId: !cel "steps.branch.result.conversation.id"
+      attachmentId: !cel "steps.image.result.attachment.id"
+  - name: deleteBranch
+    invoke: !ref Chat.deleteConversation
+    inputs:
+      conversationId: !cel "steps.branch.result.conversation.id"
+  - name: branchBytes
+    try:
+      - name: branchHead
+        invoke: !ref head
+        inputs:
+          key: !cel "steps.branch.result.conversation.id + '/' + steps.image.result.attachment.id"
+    catch:
+      - name: branchGone
+        value: !cel "error.code"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        image: !cel >-
+          [steps.image.result.attachment.name, steps.image.result.attachment.mediaType,
+           string(steps.image.result.attachment.size)]
+        notes: !cel "[steps.notes.result.attachment.name, steps.notes.result.attachment.mediaType]"
+        refusals: !cel >-
+          [steps.limit.result, steps.mislabelled.result, steps.unaccepted.result,
+           steps.tooLarge.result, steps.notFound.result]
+        lead: !cel >-
+          cel.bind(lead, steps.drain.result.items[0].data,
+            [lead.type, lead.content] + lead.attachments.map(a, a.id + ' ' + a.name + ' ' + a.mediaType))
+        modelGotImage: !cel "steps.request.result.contains('data:image/png;base64,' + steps.png.result)"
+        modelGotText: !cel >-
+          steps.request.result.contains('ATTACHED FILE notes.txt (text/plain):\\nhello attachment')
+        readBack: !cel "[steps.back.result.base64 == steps.png.result, steps.back.result.mediaType, steps.back.result.name]"
+        filesOnly: !cel >-
+          [steps.drainFilesOnly.result.items.exists(r, r.data.type == 'finish'),
+           steps.filesOnlyRequests.result[0].contains('Attached files: long.txt'),
+           steps.filesOnlyRequests.result[1].contains(join(range(1200).map(i, 'y'), '')
+             + '\\n[truncated: 300 of 1500 characters cut; an attached text file passes at most 1200 characters to the model]'),
+           steps.filesOnlyRequests.result[1].contains(join(range(1201).map(i, 'y'), ''))]
+        afterSourceDelete: !cel "[steps.sourceGone.result, steps.copied.result.base64 == steps.png.result]"
+        afterBranchDelete: !cel "steps.branchGone.result"
+      expected:
+        image: [shot.png, image/png, "70"]
+        notes: [notes.txt, text/plain]
+        refusals:
+          - ERR_ATTACHMENT_LIMIT
+          - ERR_ATTACHMENT_MISLABELLED
+          - ERR_ATTACHMENT_TYPE_NOT_ACCEPTED
+          - ERR_BLOB_TOO_LARGE
+          - ERR_ATTACHMENT_NOT_FOUND
+        lead: !cel >-
+          ['user-message', 'look at these',
+           steps.image.result.attachment.id + ' shot.png image/png',
+           steps.notes.result.attachment.id + ' notes.txt text/plain']
+        modelGotImage: true
+        modelGotText: true
+        readBack: [true, image/png, shot.png]
+        filesOnly: [true, true, true, false]
+        afterSourceDelete: [ERR_BLOB_NOT_FOUND, true]
+        afterBranchDelete: ERR_BLOB_NOT_FOUND

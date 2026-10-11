@@ -3,20 +3,45 @@ metadata:
   name: HelloApiLibrary
   version: 1.0.0
   description: |
-    A reusable `Telo.Library` that defines a single `HelloApi` (`Http.Api`) plus
-    the `SayHello` handler it dispatches to. Importers receive `HelloApi` under
-    their chosen alias and can mount it on any `Http.Server` — define the route
-    once, mount it on as many paths/servers as you like.
+    A reusable piece of HTTP API: the routes, their request and response
+    schemas and the handlers behind them, exported as one `Http.Api` instance
+    an importer mounts on its own server at whatever path it likes.
+
+    It is configured by its importer through `variables:` — the greeting word
+    and the name of the service it reports — and those are the library's whole
+    public contract: an importer cannot reach the handlers, only the exported
+    `api`.
+
+    Each import is its own instance, so one application can mount the library
+    twice with different configuration:
+
+        imports:
+          English: { source: ./hello-api, variables: { service: shop } }
+          Spanish: { source: ./hello-api, variables: { service: shop, greeting: Hola } }
+        ...
+        mounts:
+          - { path: /en, mount: !ref English.api }
+          - { path: /es, mount: !ref Spanish.api }
+variables:
+  service:
+    type: string
+    minLength: 1
+    description: Name of the service this API is mounted in, reported by `/info`.
+  greeting:
+    type: string
+    minLength: 1
+    default: Hello
+    description: The word `/hello` greets with.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
 exports:
   resources:
-    - helloApi
+    - api
 ---
 kind: Http.Api
 metadata:
-  name: helloApi
+  name: api
 routes:
   - request:
       path: /hello
@@ -24,13 +49,14 @@ routes:
       schema:
         query:
           type: object
+          required: [ name ]
           properties:
-            name:
-              type: string
-          required: [ "name" ]
+            name: { type: string, minLength: 1, maxLength: 80 }
+            shout: { type: boolean, default: false }
     handler: !ref sayHello
     inputs:
       name: !cel "request.query.name"
+      shout: !cel "has(request.query.shout) ? request.query.shout : false"
     returns:
       - status: 200
         content:
@@ -42,18 +68,61 @@ routes:
               required: [ greeting ]
               additionalProperties: false
             body:
-              greeting: !cel "'Hello ' + result.message + '!'"
+              greeting: !cel "result.message"
+    # The handler's one refusal, rendered for the caller.
+    catches:
+      - status: 422
+        content:
+          application/json:
+            body:
+              error: name_refused
+              message: !cel "error.message"
+
+  - request:
+      path: /info
+      method: GET
+    handler:
+      kind: Run.Value
+      value:
+        service: !cel "variables.service"
+        greeting: !cel "variables.greeting"
+    inputs: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                service: { type: string }
+                greeting: { type: string }
+              required: [ service, greeting ]
+              additionalProperties: false
+            body: !cel "result"
 ---
-kind: Run.Value
+# Not exported, so it is the library's own: an importer sees the route, never
+# the handler, and this can be rewritten without breaking one.
+kind: Run.Sequence
 metadata:
   name: sayHello
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
+    additionalProperties: false
+    required: [ name, shout ]
     properties:
       name: { type: string }
-    required: [ "name" ]
-    additionalProperties: false
-value:
-  message: !cel "inputs.name"
+      shout: { type: boolean }
+steps:
+  - name: digitsOnly
+    if: !cel "regexExtract(inputs.name, '^[0-9]+$') != ''"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_NAME_REFUSED
+          message: a name is not a number
+  - name: line
+    value: !cel "variables.greeting + ', ' + inputs.name + '!'"
+outputs:
+  message: !cel "inputs.shout ? upper(steps.line.result) : steps.line.result"

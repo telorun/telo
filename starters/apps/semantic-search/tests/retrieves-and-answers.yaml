@@ -1,0 +1,261 @@
+kind: Telo.Application
+metadata:
+  name: SemanticSearchStarterTest
+  version: 1.0.0
+  description: >-
+    Runs the starter over a stand-in for the embedding and chat provider, so no
+    key is needed. The stand-in embeds a text by which topic words it contains,
+    which makes "nearest" predictable: a question about releases must retrieve
+    the release passage, a document added over HTTP must become findable, a
+    deleted one must stop being found, and a question about nothing indexed must
+    be answered without the model being asked. It then asks the declared page
+    for itself: each form must be built from the shape its route validates, and
+    post to that route.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  Http: ../../../../modules/http-server
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8114
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Api
+    metadata: { name: fakeOpenAi }
+    routes:
+      # One axis per topic, and a last one for a text about none of them — so
+      # an unrelated question is orthogonal to every document.
+      - request:
+          path: /embeddings
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler:
+          kind: Run.Value
+          value: {}
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  data: !cel >-
+                    request.body.input.map(t, lower(string(t))).map(t, [
+                      (t.contains('release') || t.contains('redeploy')) ? 1.0 : 0.0,
+                      (t.contains('migration') || t.contains('column')) ? 1.0 : 0.0,
+                      (t.contains('on-call') || t.contains('escalat')) ? 1.0 : 0.0,
+                      (t.contains('backup') || t.contains('restore')) ? 1.0 : 0.0,
+                      t.contains('vpn') ? 1.0 : 0.0
+                    ]).map(v, {'embedding': v + [sum(v) == 0.0 ? 1.0 : 0.0]})
+                  usage: { prompt_tokens: 1, total_tokens: 1 }
+      - request:
+          path: /chat/completions
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler:
+          kind: Run.Value
+          value: {}
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  choices:
+                    - message:
+                        role: assistant
+                        content: !cel >-
+                          'model ' + string(request.body.model) + ' answered: ' +
+                          split(json(request.body.messages), 'Question: ')[1].split('"')[0]
+                      finish_reason: stop
+                  usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+  - kind: Http.Server
+    metadata: { name: provider }
+    port: 8070
+    mounts:
+      - path: /v1
+        mount: !ref fakeOpenAi
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8114
+    variables:
+      openaiBaseUrl: http://127.0.0.1:8070/v1
+      answerModel: test-model
+      dimensions: 6
+    secrets:
+      openaiApiKey: not-a-real-key
+targets:
+  - !ref provider
+  - !ref app
+steps:
+  - name: search
+    invoke: !ref call
+    inputs:
+      url: /api/search
+      method: POST
+      body: { q: how do I undo a bad release }
+  - name: ask
+    invoke: !ref call
+    inputs:
+      url: /api/ask
+      method: POST
+      body: { q: what about database migrations }
+  - name: unrelated
+    invoke: !ref call
+    inputs:
+      url: /api/ask
+      method: POST
+      body: { q: what is for lunch }
+  - name: noQuestion
+    invoke: !ref call
+    inputs:
+      url: /api/search
+      method: POST
+      body: { q: "" }
+  - name: verifyRetrieval
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        searchStatus: !cel "steps.search.result.status"
+        found: !cel "steps.search.result.body.matches.map(m, m.id)"
+        answer: !cel "steps.ask.result.body.answer"
+        reply: !cel "steps.ask.result.body.reply"
+        sources: !cel "steps.ask.result.body.sources.map(m, m.id)"
+        unrelated: !cel "steps.unrelated.result.body"
+        # The refusal names the field, which is what lets the page show it there.
+        noQuestion:
+          status: !cel "steps.noQuestion.result.status"
+          error: !cel "steps.noQuestion.result.body.error"
+          fields: !cel "steps.noQuestion.result.body.details.map(d, d.path)"
+      expected:
+        searchStatus: 200
+        found: [ releases ]
+        answer: "model test-model answered: what about database migrations"
+        reply: [ { answer: "model test-model answered: what about database migrations" } ]
+        sources: [ migrations ]
+        unrelated:
+          answer: I could not find anything about that in the indexed documents.
+          sources: []
+          reply: [ { answer: I could not find anything about that in the indexed documents. } ]
+        noQuestion:
+          status: 400
+          error: ValidationError
+          fields: [ q ]
+
+  - name: beforeIndexing
+    invoke: !ref call
+    inputs:
+      url: /api/search
+      method: POST
+      body: { q: vpn }
+  - name: index
+    invoke: !ref call
+    inputs:
+      url: /api/documents
+      method: POST
+      # No id, as the page sends it: one is derived from the title.
+      body:
+        title: VPN access!
+        text: Request VPN access from the IT desk; it is granted per project.
+  - name: afterIndexing
+    invoke: !ref call
+    inputs:
+      url: /api/search
+      method: POST
+      body: { q: vpn }
+  - name: remove
+    invoke: !ref call
+    inputs:
+      url: /api/documents/doc-vpn-access
+      method: DELETE
+  - name: removeAgain
+    invoke: !ref call
+    inputs:
+      url: /api/documents/doc-vpn-access
+      method: DELETE
+  - name: afterRemoval
+    invoke: !ref call
+    inputs:
+      url: /api/search
+      method: POST
+      body: { q: vpn }
+  - name: verifyIndexing
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        before: !cel "steps.beforeIndexing.result.body"
+        index: !cel "steps.index.result.status"
+        indexed: !cel "steps.index.result.body"
+        after: !cel "steps.afterIndexing.result.body.matches.map(m, [m.id, m.title])"
+        remove: !cel "steps.remove.result.status"
+        removeAgain: !cel "steps.removeAgain.result.status"
+        afterRemoval: !cel "steps.afterRemoval.result.body"
+      expected:
+        before: { matches: [] }
+        index: 201
+        indexed: { indexed: [ { id: doc-vpn-access } ] }
+        after: [ [ doc-vpn-access, VPN access! ] ]
+        remove: 204
+        removeAgain: 404
+        afterRemoval: { matches: [] }
+
+  # The frontend is declared, not written: the shell and each page document
+  # come from the UiReact.App in the same manifest.
+  - name: shell
+    invoke: !ref call
+    inputs: { url: /, method: GET }
+  - name: askPage
+    invoke: !ref call
+    inputs:
+      url: /_telo/ui/page
+      method: GET
+      query: { path: / }
+  - name: searchPage
+    invoke: !ref call
+    inputs:
+      url: /_telo/ui/page
+      method: GET
+      query: { path: /search }
+  - name: documentsPage
+    invoke: !ref call
+    inputs:
+      url: /_telo/ui/page
+      method: GET
+      query: { path: /documents }
+  - name: verifyUi
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        shell: !cel "steps.shell.result.status"
+        ask: !cel "steps.askPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'lists': c.lists.map(l, l.columns.map(col, col.header))})"
+        search: !cel "steps.searchPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'lists': c.lists.map(l, l.columns.map(col, col.header))})"
+        documents: !cel "steps.documentsPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'lists': c.lists.map(l, l.columns.map(col, col.header))})"
+      expected:
+        shell: 200
+        ask:
+          - path: /api/ask
+            label: Ask
+            fields: [ Question ]
+            lists: [ [ Answer ], [ Title, Score ] ]
+        search:
+          - path: /api/search
+            label: Search
+            fields: [ Question ]
+            lists: [ [ Title, Document, Score ] ]
+        documents:
+          - path: /api/documents
+            label: Index
+            fields: [ Title, Text ]
+            lists: [ [ Indexed ] ]

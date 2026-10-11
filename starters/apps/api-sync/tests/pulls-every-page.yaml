@@ -1,0 +1,193 @@
+kind: Telo.Application
+metadata:
+  name: ApiSyncStarterTest
+  version: 1.0.0
+  description: >-
+    Runs the starter against a stand-in upstream that serves three posts over
+    two pages and then an empty one. The sync at boot must have followed every
+    page; a second sync must change nothing; the copy must be served from the
+    cache the second time it is asked for; and the manual trigger must be
+    refused once its rate limit is spent.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  Http: ../../../../modules/http-server
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+variables:
+  scratchDir:
+    env: API_SYNC_TEST_SCRATCH_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8116
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Api
+    metadata: { name: fakeUpstream }
+    routes:
+      - request:
+          path: /posts
+          method: GET
+          schema:
+            query:
+              type: object
+              required: [ _page, _limit ]
+              properties:
+                _page: { type: integer }
+                _limit: { type: integer }
+        handler:
+          kind: Run.Value
+          value: {}
+        returns:
+          - status: 200
+            when: !cel "request.query._page == 1"
+            content:
+              application/json:
+                schema: { type: array }
+                body:
+                  - { userId: 1, id: 1, title: first, body: one }
+                  - { userId: 1, id: 2, title: second, body: two }
+          - status: 200
+            when: !cel "request.query._page == 2"
+            content:
+              application/json:
+                schema: { type: array }
+                body:
+                  - { userId: 2, id: 3, title: third, body: three }
+          - status: 200
+            content:
+              application/json:
+                schema: { type: array }
+                body: []
+  - kind: Http.Server
+    metadata: { name: upstream }
+    port: 8071
+    mounts:
+      - path: /
+        mount: !ref fakeUpstream
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8116
+    variables:
+      upstreamBaseUrl: http://127.0.0.1:8071
+      pageSize: 2
+      manualSyncsPerMinute: 1
+      # Long enough that only the boot sync and this test's own trigger run.
+      syncEvery: 1h
+      dbFile: !cel "variables.scratchDir.joinPath('api-sync-test-' + string(nowMillis()) + '.db')"
+targets:
+  - !ref upstream
+  - !ref app
+steps:
+  - name: afterBoot
+    invoke: !ref call
+    inputs: { url: /api/status, method: GET }
+  - name: all
+    invoke: !ref call
+    inputs: { url: /api/posts, method: GET }
+  - name: allAgain
+    invoke: !ref call
+    inputs: { url: /api/posts, method: GET }
+  - name: oneUser
+    invoke: !ref call
+    inputs:
+      url: /api/posts
+      method: GET
+      query: { userId: "2" }
+  - name: verifyBootSync
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        runs: !cel "steps.afterBoot.result.body.runs.map(r, [r.outcome, r.pages, r.records])"
+        all: !cel "steps.all.result.body"
+        firstRead: !cel "steps.all.result.headers['x-cache']"
+        secondRead: !cel "steps.allAgain.result.headers['x-cache']"
+        oneUser: !cel "steps.oneUser.result.body.map(p, p.id)"
+      expected:
+        runs: [ [ ok, 2, 3 ] ]
+        all:
+          - { id: 1, userId: 1, title: first }
+          - { id: 2, userId: 1, title: second }
+          - { id: 3, userId: 2, title: third }
+        firstRead: miss
+        secondRead: fresh
+        oneUser: [ 3 ]
+
+  - name: manual
+    invoke: !ref call
+    inputs: { url: /api/sync, method: POST }
+  - name: tooSoon
+    invoke: !ref call
+    inputs: { url: /api/sync, method: POST }
+  - name: afterManual
+    invoke: !ref call
+    inputs: { url: /api/status, method: GET }
+  - name: stillThree
+    invoke: !ref call
+    inputs:
+      url: /api/posts
+      method: GET
+      query: { userId: "1" }
+  - name: search
+    invoke: !ref call
+    inputs:
+      url: /api/posts/search
+      method: POST
+      body: { userId: 2 }
+  - name: badSearch
+    invoke: !ref call
+    inputs:
+      url: /api/posts/search
+      method: POST
+      body: { userId: 0 }
+  - name: syncPage
+    invoke: !ref call
+    inputs:
+      url: /_telo/ui/page
+      method: GET
+      query: { path: / }
+  - name: postsPage
+    invoke: !ref call
+    inputs:
+      url: /_telo/ui/page
+      method: GET
+      query: { path: /posts }
+  - name: verifyManualSync
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        manualStatus: !cel "steps.manual.result.status"
+        manual: !cel "[steps.manual.result.body.pages, steps.manual.result.body.records]"
+        # What the page draws under its button: the runs, newest first.
+        answeredRuns: !cel "steps.manual.result.body.runs.map(r, r.outcome)"
+        search: !cel "steps.search.result.body"
+        badSearch: !cel "steps.badSearch.result.status"
+        uiSync: !cel "steps.syncPage.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.path, size(c.fields)])"
+        uiPosts: !cel "steps.postsPage.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.path, c.fields.map(f, f.label)])"
+        tooSoon: !cel "steps.tooSoon.result.status"
+        runs: !cel "size(steps.afterManual.result.body.runs)"
+        userOne: !cel "steps.stillThree.result.body.map(p, p.id)"
+      expected:
+        manualStatus: 200
+        manual: [ 2, 3 ]
+        tooSoon: 429
+        # The refused trigger did not run a sync.
+        runs: 2
+        userOne: [ 1, 2 ]
+        answeredRuns: [ ok, ok ]
+        search: { posts: [ { id: 3, userId: 2, title: third } ] }
+        badSearch: 400
+        uiSync: [ [ Sync now, /api/sync, 0 ] ]
+        uiPosts: [ [ Find posts, /api/posts/search, [ User id ] ] ]

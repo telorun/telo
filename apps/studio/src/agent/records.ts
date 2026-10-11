@@ -2,6 +2,7 @@ import { appendDelta, appendToolCall, settleToolCall } from "./assistant-parts";
 import type {
   AgentStreamPart,
   AssistantMessage,
+  Attachment,
   ChatMessage,
   CheckDiagnostic,
   DiffHunk,
@@ -66,6 +67,23 @@ export function toolOutputFields(result: ToolResult | undefined): {
   };
 }
 
+/** A `user-message` record's attachments, as the bubble shows them. */
+function recordAttachments(value: unknown): Attachment[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry: Partial<Attachment> | null) =>
+    entry && typeof entry.id === "string" && typeof entry.name === "string"
+      ? [
+          {
+            id: entry.id,
+            name: entry.name,
+            mediaType: typeof entry.mediaType === "string" ? entry.mediaType : "",
+            size: typeof entry.size === "number" ? entry.size : 0,
+          },
+        ]
+      : [],
+  );
+}
+
 function withAssistant(
   messages: ChatMessage[],
   turnId: string,
@@ -98,12 +116,14 @@ function fold(messages: ChatMessage[], turnId: string, record: JournalRecord): C
     case "user-message": {
       const text = typeof (part as { content?: unknown }).content === "string" ? (part as { content: string }).content : "";
       const userId = userMessageId(turnId);
+      const attachments = recordAttachments((part as { attachments?: unknown }).attachments);
+      const files = attachments.length > 0 ? { attachments } : {};
       if (messages.some((m) => m.id === userId)) {
-        return messages.map((m) => (m.id === userId && m.role === "user" ? { ...m, text } : m));
+        return messages.map((m) => (m.id === userId && m.role === "user" ? { ...m, text, ...files } : m));
       }
       return [
         ...messages,
-        { id: userId, role: "user", text },
+        { id: userId, role: "user", text, ...files },
         { id: turnId, role: "assistant", parts: [], pending: true },
       ];
     }

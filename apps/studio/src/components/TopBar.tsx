@@ -10,6 +10,7 @@ import {
   Undo2,
 } from "lucide-react";
 import type { ParsedManifest, Workspace } from "../model";
+import { FOCUS_COMPOSER_LABEL } from "../agent";
 import { type ThemePreference, useColorModeControls } from "../theme/color-mode";
 import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
 import { DiagnosticBadge } from "./diagnostics/DiagnosticBadge";
@@ -132,7 +133,8 @@ export function TopBar({
             variant={chatOpen ? "secondary" : "ghost"}
             size="sm"
             onClick={onToggleChat}
-            title="Authoring agent"
+            title={`Authoring agent — ${FOCUS_COMPOSER_LABEL} opens it and focuses the composer`}
+            aria-label="Authoring agent"
           >
             <MessageSquare className="size-4" />
           </Button>

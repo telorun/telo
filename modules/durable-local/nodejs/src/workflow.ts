@@ -72,7 +72,9 @@ export class WorkflowController {
     // executed before it was durably recorded would be unrecoverable if the
     // process died in between; recording first is what lets recovery find a run
     // with no progress and replay it.
-    const admission = await journal.admitRun(runId);
+    const admission = await journal.admitRun(runId, {
+      claim: { holder: this.#holder, ttlMs: CLAIM_TTL_MS },
+    });
     if (!admission.admitted) {
       const existing = admission.existing;
       if ((this.resource.onConflict ?? "attach") === "reject") {
@@ -117,13 +119,10 @@ export class WorkflowController {
         return { runId, attached: true, status: existing?.status ?? "running" };
       }
     } else if (!(await journal.claimRun(runId, this.#holder, CLAIM_TTL_MS))) {
-      // A FRESH admission still claims, and skipping it was a race with the
-      // recovery path rather than a missing nicety: an admitted run is recorded
-      // `running`, which is exactly what a poller looks for, so between the
-      // admission and the body finishing its first step the resumer could take
-      // the run and execute a second copy of it. Admit-before-execute is what
-      // makes a run recoverable; the claim is what says it does not need
-      // recovering yet.
+      // The admission above already carried the claim, so a poller never sees
+      // this run unclaimed. This second claim is for a journal that admits
+      // without reading `claim`: it renews ours on one that did, and is the
+      // only claim on one that did not.
       //
       // Losing this race means another process admitted the same id in the
       // window — the `attach` answer, reached by a different route.

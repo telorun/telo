@@ -37,6 +37,8 @@ export interface Operation {
   label: string;
   /** The input model. */
   schema: JsonSchema;
+  /** The fields its form shows, read when something shows them. */
+  fields(): { property: string; label: string }[];
   drawsLists: boolean;
 }
 
@@ -96,17 +98,19 @@ class Action implements ResourceInstance, ActionInstance {
   }
 
   operation(): Operation {
+    const schema = modelSchema(this.resource.inputModel, this.ctx, this.owner, "inputModel");
     return {
       path: this.resource.source.path,
       label: this.resource.label,
-      schema: modelSchema(this.resource.inputModel, this.ctx, this.owner, "inputModel"),
+      schema,
+      fields: () => actionFields(schema, this.resource.fields ?? undefined, this.owner),
       drawsLists: (this.resource.lists ?? []).length > 0,
     };
   }
 
   async provide(): Promise<Provided> {
     const resource = this.resource;
-    const { path, label, schema } = this.operation();
+    const { path, label, schema, fields } = this.operation();
     const reader = { ctx: this.ctx, owner: this.owner };
     const answer =
       resource.outputModel == null
@@ -141,7 +145,7 @@ class Action implements ResourceInstance, ActionInstance {
       schema,
       path,
       label,
-      fields: actionFields(schema, resource.fields ?? undefined, this.owner),
+      fields: fields(),
       lists,
     };
     return { node, assets: [] };

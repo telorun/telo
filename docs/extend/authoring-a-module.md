@@ -45,7 +45,7 @@ metadata:
   repository: https://github.com/telorun/telo
   homepage: https://telo.run/modules/console
   license: Apache-2.0
-  documentation: https://hub.telo.run/?q=Console.WriteLine
+  documentation: https://hub.telo.run/module/oci/ghcr.io/telorun/console/
 ```
 
 These are purely descriptive. Nothing resolves, fetches, caches, or publishes by them — a module's location is its ref, never its metadata — so they are safe to change without affecting how anyone imports the module.

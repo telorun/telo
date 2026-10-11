@@ -16,4 +16,4 @@ export * as result from "./result.js";
 export * as cancel from "./cancel.js";
 export * as schedule from "./schedule.js";
 export * as resume from "./resume.js";
-export type { DurableJournal, JournalEntry, ParkRecord, RunRecord } from "./journal.js";
+export type { DurableJournal, JournalEntry, ParkRecord, RunClaim, RunRecord } from "./journal.js";

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { transcriptFromTurns } from "../records";
 import { exportJson, exportMarkdown, type ConversationExport } from "../transcript-export";
+import { messageCopyText } from "../turn-actions";
 import type { Conversation, TurnRecords } from "../types";
 
 const conversation: Conversation = {
@@ -136,5 +137,36 @@ describe("conversation export", () => {
     expect(md.slice(md.indexOf("## You"))).toBe(
       "## You\n\ngo on\n\n## Agent\n\nTurn failed: ERR_CONTEXT_COMPACTION_FAILED — Compacting failed\n",
     );
+  });
+
+  it("a message's attachments: on its bubble from the record, by name in Markdown, and by name on Copy", () => {
+    const attached: TurnRecords = {
+      turnId: "t9",
+      status: "finished",
+      error: null,
+      records: [
+        {
+          id: 1,
+          data: {
+            type: "user-message",
+            content: "use this",
+            attachments: [{ id: "a1", name: "telo.yaml", mediaType: "application/yaml", size: 23, sha256: "ab" }],
+            model: "m",
+          },
+        },
+        { id: 2, data: { type: "finish", finishReason: "stop" } },
+      ],
+    };
+
+    const [user] = transcriptFromTurns([attached]);
+    expect(user).toMatchObject({
+      text: "use this",
+      attachments: [{ id: "a1", name: "telo.yaml", mediaType: "application/yaml", size: 23 }],
+    });
+    expect(exportMarkdown(conversation, [attached])).toContain(
+      "## You\n\nuse this\n\n- Attached: telo.yaml (application/yaml, 23 B)\n\n## Agent",
+    );
+    expect(user.role === "user" && messageCopyText(user)).toBe("use this\n[attached: telo.yaml]");
+    expect(transcriptFromTurns(turns)[0]).not.toHaveProperty("attachments");
   });
 });

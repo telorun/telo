@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { turnsFrom, useAgent } from "@/agent";
+import { turnsFrom, useAgent, type Attachment } from "@/agent";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,8 +13,8 @@ import {
 
 type TurnAction =
   | { kind: "delete"; turnId: string }
-  | { kind: "retry"; turnId: string; text: string }
-  | { kind: "edit"; turnId: string; text: string };
+  | { kind: "retry"; turnId: string; text: string; attachments: Attachment[] }
+  | { kind: "edit"; turnId: string; text: string; attachments: Attachment[] };
 
 function turns(n: number): string {
   return n === 1 ? "1 turn" : `${n} turns`;
@@ -28,8 +28,9 @@ function turns(n: number): string {
  */
 export function useTurnActions(): {
   deleteFrom: (turnId: string) => void;
-  retry: (turnId: string, text: string) => void;
-  editResend: (turnId: string, text: string) => void;
+  /** Both send the files the original message carried again, by their ids. */
+  retry: (turnId: string, text: string, attachments: Attachment[]) => void;
+  editResend: (turnId: string, text: string, attachments: Attachment[]) => void;
   dialog: ReactNode;
 } {
   const agent = useAgent();
@@ -42,7 +43,7 @@ export function useTurnActions(): {
     const outcome =
       action.kind === "delete"
         ? await agent.truncateFrom(action.turnId)
-        : await agent.resendFrom(action.turnId, action.text);
+        : await agent.resendFrom(action.turnId, action.text, action.attachments);
     if (outcome === "changed") setReask(action);
   };
 
@@ -99,8 +100,8 @@ export function useTurnActions(): {
 
   return {
     deleteFrom: (turnId) => request({ kind: "delete", turnId }),
-    retry: (turnId, text) => request({ kind: "retry", turnId, text }),
-    editResend: (turnId, text) => request({ kind: "edit", turnId, text }),
+    retry: (turnId, text, attachments) => request({ kind: "retry", turnId, text, attachments }),
+    editResend: (turnId, text, attachments) => request({ kind: "edit", turnId, text, attachments }),
     dialog,
   };
 }

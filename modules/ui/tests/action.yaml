@@ -12,8 +12,9 @@ metadata:
     carries an empty list of lists, and one over a model with no properties is
     a bare button. A form over the same model enters the same properties. An
     action placed on a page is the page's node. A table carries each row
-    action as the action's path and label with the row's inputs, and its
-    question only when one is asked.
+    action as the action's path and label with the row's inputs, its question
+    only when one is asked, and — where it prompts — the input model with the
+    action's fields the row does not bind.
 imports:
   Ui: ../
   Probe: ./__fixtures__/probe
@@ -130,6 +131,7 @@ schema:
   properties:
     id: { type: integer }
     status: { type: string }
+    reason: { type: string, title: Reason }
 ---
 kind: Ui.Action
 metadata:
@@ -163,6 +165,11 @@ rowActions:
     inputs:
       name: !cel "row.name"
     confirm: Rename it?
+  # Asks for what the row does not bind: of `id`, `status` and `reason`, the last two.
+  - action: !ref archive
+    inputs:
+      id: !cel "row.id"
+    prompt: true
 ---
 kind: Run.Sequence
 metadata:
@@ -254,3 +261,19 @@ steps:
             inputs:
               name: { root: row, path: [name] }
             confirm: Rename it?
+          - path: /api/todos/archive
+            label: Archive
+            inputs:
+              id: { root: row, path: [id] }
+            prompt:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [id]
+                properties:
+                  id: { type: integer }
+                  status: { type: string }
+                  reason: { type: string, title: Reason }
+              fields:
+                - { property: status, label: status }
+                - { property: reason, label: Reason }

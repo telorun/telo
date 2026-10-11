@@ -16,9 +16,16 @@ import { buildRemoteImportPlan, createVirtualWorkspaceAdapter } from "./remote";
 // anywhere.
 // ---------------------------------------------------------------------------
 
-/** Base URL the gallery loads from when `settings.startersBaseUrl` is unset. */
+const STARTERS_URL_FROM_ENV = (import.meta.env as Record<string, string | undefined>)
+  .VITE_TELO_STARTERS_URL;
+
+/** Base URL the gallery loads from when `settings.startersBaseUrl` is unset:
+ *  the published starters, overridable via env for local development against
+ *  a checkout's own. */
 export const DEFAULT_STARTERS_BASE_URL =
-  "https://raw.githubusercontent.com/telorun/telo/refs/heads/main/starters";
+  STARTERS_URL_FROM_ENV && STARTERS_URL_FROM_ENV.trim() !== ""
+    ? STARTERS_URL_FROM_ENV.trim()
+    : "https://raw.githubusercontent.com/telorun/telo/refs/heads/main/starters";
 
 export type StarterCategory = "app" | "library";
 

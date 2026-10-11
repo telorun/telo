@@ -308,13 +308,15 @@ interface ConfirmationProps {
   busy?: boolean;
   /** Why the last confirmation was refused. */
   failure?: ErrorSpec;
+  /** What is entered before confirming, drawn under the question. */
+  children?: ReactNode;
   onConfirm: () => void;
   onClose: () => void;
 }
 
 /** A question that interrupts: only Escape or one of its two buttons answers
  *  it, and confirming leaves it open for whoever asked to close. */
-export function Confirmation({ title, description, confirm, danger = true, cancel = "Cancel", busy = false, failure, onConfirm, onClose }: ConfirmationProps) {
+export function Confirmation({ title, description, confirm, danger = true, cancel = "Cancel", busy = false, failure, children, onConfirm, onClose }: ConfirmationProps) {
   const heading = <AlertDialog.Title data-telo-part="surface-title">{title}</AlertDialog.Title>;
   return (
     <AlertDialog.Root open onOpenChange={(open) => !open && onClose()}>
@@ -332,6 +334,7 @@ export function Confirmation({ title, description, confirm, danger = true, cance
               <AlertDialog.Description data-telo-part="surface-description">{description}</AlertDialog.Description>
             </div>
           )}
+          {children}
           {failure && <ErrorNode error={failure} />}
           <div data-telo-part="form-actions">
             <AlertDialog.Cancel data-telo-part="cancel">{cancel}</AlertDialog.Cancel>

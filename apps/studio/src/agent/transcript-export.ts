@@ -1,5 +1,6 @@
 import { transcriptFromTurns } from "./records";
-import type { AgentIdentity, AssistantMessage, Conversation, FileChange, TurnRecords } from "./types";
+import { formatBytes } from "./attachment-rules";
+import type { AgentIdentity, AssistantMessage, Conversation, FileChange, TurnRecords, UserMessage } from "./types";
 
 /**
  * A conversation exported by the client, composed from `GET /conversations/{id}`
@@ -115,11 +116,14 @@ export function exportMarkdown(conversation: Conversation, turns: TurnRecords[])
     ].join(" · "),
   ];
   for (const turn of turns) {
-    const [user, reply] = transcriptFromTurns([turn]).reduce<[string | undefined, AssistantMessage | undefined]>(
-      ([u, a], m) => (m.role === "user" ? [m.text, a] : [u, m]),
+    const [user, reply] = transcriptFromTurns([turn]).reduce<[UserMessage | undefined, AssistantMessage | undefined]>(
+      ([u, a], m) => (m.role === "user" ? [m, a] : [u, m]),
       [undefined, undefined],
     );
-    blocks.push("## You", user ?? "");
+    blocks.push("## You", user?.text ?? "");
+    if (user?.attachments?.length) {
+      blocks.push(user.attachments.map((a) => `- Attached: ${a.name} (${a.mediaType}, ${formatBytes(a.size)})`).join("\n"));
+    }
     blocks.push("## Agent", ...agentSection(reply, turn), ...changesSection(turn));
   }
   return blocks.join("\n\n") + "\n";

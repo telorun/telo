@@ -30,7 +30,8 @@ import { PickCanvas } from "./views/pick-canvas";
 import { DetailYamlPane } from "./DetailYamlPane";
 import { ExtractInlineDialog } from "./ExtractInlineDialog";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
-import { FileOutput, X } from "lucide-react";
+import { FileOutput, Sparkles, X } from "lucide-react";
+import { askAboutResourcePrompt, useAgentCompose } from "../agent";
 
 type DetailMode = "form" | "yaml";
 
@@ -408,6 +409,7 @@ export function DetailPanel({
   // Hooks must run unconditionally — keep them above the early return below.
   const diagState = useDiagnosticsState();
   const filePaths = useActiveFilePaths();
+  const agentCompose = useAgentCompose();
 
   if (!resource) return null;
 
@@ -427,6 +429,7 @@ export function DetailPanel({
   const resourceSchema = resourceKind?.schema;
   const resourceTopology = resourceKind?.topology;
   const detailSummary = summarizeResource(diagState, filePaths, resource.name);
+  const resourceFile = resource.sourceFile ?? viewData?.manifest.filePath;
 
   // Diagnostics for the form currently shown — each analyzer path is relative
   // to the resource root, so strip the form's pointer-scope prefix and keep the
@@ -436,12 +439,12 @@ export function DetailPanel({
     if (!selectionContext) return [];
     const scope = toSegments(selectionContext.pointer);
     const out: FieldDiagnostic[] = [];
-    for (const { diagnostic } of detailSummary?.diagnostics ?? []) {
+    for (const { diagnostic, filePath } of detailSummary?.diagnostics ?? []) {
       const path = (diagnostic.data as { path?: string } | undefined)?.path;
       if (!path) continue;
       const segments = toSegments(path);
       if (!startsWith(segments, scope)) continue;
-      out.push({ segments: segments.slice(scope.length), diagnostic });
+      out.push({ segments: segments.slice(scope.length), diagnostic, filePath });
     }
     return out;
   })();
@@ -491,6 +494,25 @@ export function DetailPanel({
             </button>
           )}
           <DiagnosticBadge summary={detailSummary} size="md" stopPropagation={false} />
+          {agentCompose && resourceFile !== undefined && (
+            <button
+              type="button"
+              onClick={() =>
+                agentCompose.compose(
+                  askAboutResourcePrompt({
+                    kind: resource.kind,
+                    name: resource.name,
+                    file: agentCompose.workspaceFile(resourceFile),
+                  }),
+                )
+              }
+              title="Ask the agent about this resource"
+              className="flex shrink-0 items-center gap-1 rounded border border-zinc-200 px-1.5 py-0.5 text-xs text-zinc-600 hover:border-indigo-300 hover:text-indigo-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-indigo-700 dark:hover:text-indigo-300"
+            >
+              <Sparkles className="size-3" />
+              Ask AI
+            </button>
+          )}
         </div>
         <Tabs
           value={mode}

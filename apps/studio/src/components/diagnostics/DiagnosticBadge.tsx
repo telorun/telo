@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import type { DiagnosticsSummary } from "../../diagnostics-aggregate";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { DiagnosticPopoverContent } from "./DiagnosticPopoverContent";
@@ -28,6 +28,7 @@ export function DiagnosticBadge({
   stopPropagation = true,
 }: Props) {
   const ctx = useDiagnosticsContext();
+  const [open, setOpen] = useState(false);
   if (!summary) return null;
 
   const handleStop = stopPropagation
@@ -38,7 +39,7 @@ export function DiagnosticBadge({
     : {};
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -59,6 +60,7 @@ export function DiagnosticBadge({
         <DiagnosticPopoverContent
           diagnostics={summary.diagnostics}
           onNavigate={ctx?.navigate}
+          onSentToAgent={() => setOpen(false)}
         />
       </PopoverContent>
     </Popover>

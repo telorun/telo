@@ -162,6 +162,12 @@ export interface RunRecord {
  * passes different shapes (a `Map` on one, a plain object on the other) while
  * behaving exactly as documented.
  */
+/** Who takes a run, and for how long before the claim lapses. */
+export interface RunClaim {
+  holder: string;
+  ttlMs: number;
+}
+
 export interface DurableJournal {
   /**
    * Record the run BEFORE anything executes, returning whether this caller
@@ -171,6 +177,12 @@ export interface DurableJournal {
    * executes before it is durably recorded is unrecoverable if the process dies
    * in between, while recording first is what lets recovery find a run with no
    * progress and replay it.
+   *
+   * `claim` makes the admitted run its admitter's from the moment it exists: a
+   * run recorded `running` is what {@link dueRuns} returns, so one admitted
+   * unclaimed can be taken by a poller before its starter claims it, and is
+   * then executed without the starter's inputs. A run that was not admitted is
+   * left exactly as it was.
    */
   admitRun(
     run: string,
@@ -179,6 +191,7 @@ export interface DurableJournal {
       dueAt?: number;
       inputs?: unknown;
       inputsCodecVersion?: number;
+      claim?: RunClaim;
     },
   ): Promise<{ admitted: boolean; existing?: RunRecord }>;
   /** This run's current record, or undefined if it was never admitted. */

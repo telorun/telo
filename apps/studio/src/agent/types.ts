@@ -6,7 +6,7 @@
 // from GET /conversations/{id}/records. Kept loose where the wire shape is
 // provider-defined; only the fields the panel reads are typed.
 export type AgentStreamPart =
-  | { type: "user-message"; content: string; model?: string }
+  | { type: "user-message"; content: string; attachments?: Attachment[]; model?: string }
   | { type: "text-delta"; delta: string }
   // The model's own summary of its thinking, streamed ahead of the answer. Only
   // ever a PRÉCIS: the reasoning itself comes back encrypted and is replayed
@@ -37,6 +37,23 @@ export type AgentStreamPart =
   // with neither, a title that was not applied, which changes nothing.
   | { type: "conversation-title"; title?: string; error?: TurnError; model?: string; usage?: Usage }
   | { type: string; [k: string]: unknown };
+
+/** A file uploaded to a conversation, as its upload answers and as the turn's
+ *  `user-message` record keeps it. */
+export interface Attachment {
+  id: string;
+  name: string;
+  mediaType: string;
+  size: number;
+}
+
+/** What an upload may be, from the capability document. */
+export interface AttachmentLimits {
+  maxBytes: number;
+  maxPerMessage: number;
+  /** Accepted media types; `type/*` stands for every subtype. */
+  mediaTypes: string[];
+}
 
 /** One journaled record: its id within the turn and the part it carries. */
 export interface JournalRecord {
@@ -200,6 +217,8 @@ export interface UserMessage {
   id: string;
   role: "user";
   text: string;
+  /** The files sent with the message; absent when none. */
+  attachments?: Attachment[];
   /** Shown before the agent admitted its turn: no turn of the agent's yet. */
   local?: boolean;
 }
@@ -305,6 +324,8 @@ export interface AgentIdentity {
   features?: string[];
   /** Whether the agent may run manifests and their tests; absent = unknown. */
   manifestRuns?: boolean;
+  /** What an upload may be; absent from an agent that takes none. */
+  attachments?: AttachmentLimits;
 }
 
 /** A conversation as the agent reports it. `revision` moves with every change
@@ -352,4 +373,7 @@ export interface WorkspaceBridge {
    *  null when it names none: an absolute path, a URL, one that leaves the
    *  workspace. The one place an agent's path becomes an editor's. */
   editorFile(path: string): string | null;
+  /** The inverse: the workspace-relative path of an editor file, or null for a
+   *  file outside the workspace. */
+  workspaceFile(editorPath: string): string | null;
 }

@@ -118,6 +118,8 @@ lists:
 
 [A row action](table.md#row-actions) sends the same request, its body built
 from the row instead of a form: each input the entry binds, a path that
-resolves to nothing left out. Any 2xx reloads every table over the same
+resolves to nothing left out — and, where the entry declares `prompt`, each
+field its dialog entered. Any 2xx reloads every table over the same
 `source.basePath` on the page, and the body is not read. Any other answer is
-shown to the viewer and nothing reloads.
+shown to the viewer and nothing reloads; a 400 to an entry that prompts is
+shown on its dialog's fields, as a form's is.

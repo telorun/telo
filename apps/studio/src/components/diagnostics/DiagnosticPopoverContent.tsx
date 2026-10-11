@@ -1,12 +1,17 @@
 import { useState } from "react";
+import { Sparkles } from "lucide-react";
 import { DiagnosticSeverity, type Range } from "@telorun/analyzer";
 import { SEVERITY_CHIP_CLASS, SEVERITY_LABEL } from "./severity";
 import type { LocatedDiagnostic } from "../../diagnostics-aggregate";
 import { Button } from "../ui/button";
+import { fixDiagnosticPrompt, useAgentCompose } from "../../agent";
 
 interface Props {
   diagnostics: LocatedDiagnostic[];
   onNavigate?: (filePath: string, range?: Range) => void;
+  /** Called once a diagnostic was handed to the agent's composer — the popover
+   *  closes, since at phone width it would cover the panel that just opened. */
+  onSentToAgent?: () => void;
 }
 
 function basename(path: string): string {
@@ -35,11 +40,14 @@ function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) 
 function DiagnosticBlock({
   located,
   onNavigate,
+  onSentToAgent,
 }: {
   located: LocatedDiagnostic;
   onNavigate?: (filePath: string, range?: Range) => void;
+  onSentToAgent?: () => void;
 }) {
   const { filePath, diagnostic: d } = located;
+  const agent = useAgentCompose();
   const sevLabel = SEVERITY_LABEL[d.severity];
   const fieldPath =
     typeof (d.data as { path?: unknown } | undefined)?.path === "string"
@@ -70,7 +78,28 @@ function DiagnosticBlock({
       {fieldPath && (
         <div className="font-mono text-[0.7rem] text-muted-foreground">at {fieldPath}</div>
       )}
-      <div className="flex items-center justify-end gap-1">
+      <div className="flex flex-wrap items-center justify-end gap-1">
+        {agent && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={() => {
+              agent.compose(
+                fixDiagnosticPrompt({
+                  code: d.code,
+                  file: agent.workspaceFile(filePath),
+                  line: d.range.start.line + 1,
+                  message: d.message,
+                }),
+              );
+              onSentToAgent?.();
+            }}
+          >
+            <Sparkles />
+            Fix with AI
+          </Button>
+        )}
         {onNavigate && (
           <Button
             type="button"
@@ -97,12 +126,12 @@ function formatAll(diagnostics: LocatedDiagnostic[]): string {
     .join("\n\n");
 }
 
-export function DiagnosticPopoverContent({ diagnostics, onNavigate }: Props) {
+export function DiagnosticPopoverContent({ diagnostics, onNavigate, onSentToAgent }: Props) {
   return (
     <div className="flex max-h-[60vh] flex-col gap-3 overflow-auto">
       {diagnostics.map((l, i) => (
         <div key={i} className={i > 0 ? "border-t border-border/60 pt-3" : undefined}>
-          <DiagnosticBlock located={l} onNavigate={onNavigate} />
+          <DiagnosticBlock located={l} onNavigate={onNavigate} onSentToAgent={onSentToAgent} />
         </div>
       ))}
       {diagnostics.length > 1 && (

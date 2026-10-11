@@ -6,7 +6,12 @@ import type {
   ParsedResource,
   Workspace,
 } from "../model";
-import { canonicalizeSchemaRefs, getAvailableKinds, getImportedConfig } from "./queries";
+import {
+  canonicalizeSchemaRefs,
+  getAvailableKinds,
+  getImportedConfig,
+  hasNoWorkspaceModules,
+} from "./queries";
 
 function library(
   filePath: string,
@@ -291,5 +296,21 @@ describe("getImportedConfig", () => {
       { name: "Missing", source: "oci://example/x@1", importKind: "oci" },
     ];
     expect(getImportedConfig(workspace, manifest).size).toBe(0);
+  });
+});
+
+describe("hasNoWorkspaceModules", () => {
+  it("is true for a workspace holding only the imports a deleted module left loaded", () => {
+    const { workspace } = consumer([library("oci://ghcr.io/telorun/console@0.9.0/telo.yaml", "console")]);
+    expect(hasNoWorkspaceModules(workspace)).toBe(true);
+    expect(hasNoWorkspaceModules({ ...workspace, modules: new Map() })).toBe(true);
+  });
+
+  it("is false once the workspace directory holds a module", () => {
+    const { workspace } = consumer([
+      library("oci://ghcr.io/telorun/console@0.9.0/telo.yaml", "console"),
+      library("/ws/libs/notes/telo.yaml", "notes"),
+    ]);
+    expect(hasNoWorkspaceModules(workspace)).toBe(false);
   });
 });

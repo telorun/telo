@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 
-import { AgentProvider, useAgent } from "@/agent";
+import { AgentProvider, STARTER_PROMPTS, useAgent } from "@/agent";
 import type { RecordsPage } from "@/agent/records";
 import {
   CONVERSATION,
@@ -358,5 +358,141 @@ describe("AgentPanel with an agent that predates conversations", () => {
     for (const name of ["Retry", "Branch", "Edit & resend", "Delete from here"]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
+  });
+});
+
+describe("the composer", () => {
+  const composer = () => screen.findByRole<HTMLTextAreaElement>("textbox", { name: "Message the agent" });
+  const runningTurn = (): RecordsPage => {
+    const turn = finishedTurn("t1", "build it");
+    return { turns: [{ ...turn, status: "running", records: turn.records.slice(0, 2) }], next: null };
+  };
+
+  it("sends on Cmd/Ctrl+Enter, and says so on its button", async () => {
+    const fetchMock = stubAgent(twoTurns(), { "POST /chat": { status: 200, body: { turnId: "t3" } } });
+    renderPanel();
+    await screen.findByText("second");
+    expect(screen.getByRole("button", { name: "Send" }).title).toMatch(/Enter or (Ctrl\+|⌘)Enter/);
+
+    await userEvent.type(await composer(), "add a route{Control>}{Enter}{/Control}");
+
+    await waitFor(() => expect(requestsMade(fetchMock)).toContain("POST /chat"));
+    expect((await composer()).value).toBe("");
+  });
+
+  it("stays usable while a turn runs: Enter queues, Edit brings the queued message back, Esc stops the turn", async () => {
+    const fetchMock = stubAgent(runningTurn(), { "POST /chat/t1/abort": { status: 200, body: { cancelled: true } } });
+    renderPanel();
+    await waitFor(() => expect(FakeEventStream.opened).toHaveLength(1));
+    expect((await composer()).disabled).toBe(false);
+
+    await userEvent.type(await composer(), "then add tests{Enter}");
+
+    const queued = await screen.findByRole("group", { name: "Queued message" });
+    expect(within(queued).getByText("then add tests")).toBeTruthy();
+    expect(requestsMade(fetchMock)).not.toContain("POST /chat");
+
+    await userEvent.click(within(queued).getByRole("button", { name: "Edit" }));
+    expect(screen.queryByRole("group", { name: "Queued message" })).toBeNull();
+    expect((await composer()).value).toBe("then add tests");
+
+    await userEvent.type(await composer(), "{Escape}");
+    await waitFor(() => expect(requestsMade(fetchMock)).toContain("POST /chat/t1/abort"));
+  });
+
+  it("an empty conversation offers starter prompts and the agent's own capabilities; a starter fills the composer", async () => {
+    const fetchMock = stubAgent(
+      { turns: [], next: null },
+      {
+        "GET /capabilities": capabilities({ auth: "none" }),
+        [conversationRoute]: { status: 200, body: conversation() },
+      },
+    );
+    renderPanel();
+
+    expect(
+      await screen.findByText("This agent can run manifests and their tests, and accepts requests without a token."),
+    ).toBeTruthy();
+    await userEvent.type(await composer(), "half a thought");
+    await userEvent.click(await screen.findByRole("button", { name: STARTER_PROMPTS[1].label }));
+
+    expect((await composer()).value).toBe(STARTER_PROMPTS[1].prompt);
+    expect(requestsMade(fetchMock)).not.toContain("POST /chat");
+  });
+});
+
+describe("attachments in the panel", () => {
+  const limits = { maxBytes: 1048576, maxPerMessage: 10, mediaTypes: ["image/png", "application/yaml", "text/*"] };
+  const serving = (): Record<string, Answer> => ({
+    "GET /capabilities": capabilities({
+      features: ["conversations", "conversation-truncation", "attachments"],
+      attachments: limits,
+    }),
+    [conversationRoute]: { status: 200, body: conversation({ revision: 3 }) },
+    [`POST /conversations/${CONVERSATION}/attachments`]: {
+      status: 201,
+      body: { id: "a9", name: "notes.txt", mediaType: "text/plain", size: 5 },
+    },
+  });
+  const notes = () => new File(["hello"], "notes.txt", { type: "text/plain" });
+  const chips = () => screen.findByRole("list", { name: "Attached files" });
+
+  it("takes a picked, a pasted and a dropped file as chips with name and size, and Remove drops one", async () => {
+    stubAgent(twoTurns(), serving());
+    renderPanel();
+    await waitFor(() => expect(screen.getByRole<HTMLButtonElement>("button", { name: "Attach files" }).disabled).toBe(false));
+
+    await userEvent.upload(screen.getByLabelText("Files to attach"), notes());
+    await waitFor(async () => expect(within(await chips()).getByText("5 B")).toBeTruthy());
+    expect(within(await chips()).getByText("notes.txt")).toBeTruthy();
+
+    const composer = screen.getByRole("textbox", { name: "Message the agent" });
+    fireEvent.paste(composer, { clipboardData: { files: [notes()] } });
+    await waitFor(async () => expect(within(await chips()).getAllByRole("listitem")).toHaveLength(2));
+
+    const transfer = { types: ["Files"], files: [notes()] };
+    fireEvent.dragEnter(composer, { dataTransfer: transfer });
+    expect(screen.getByRole("status").textContent).toBe("Drop files to attach");
+    fireEvent.drop(composer, { dataTransfer: transfer });
+    expect(screen.queryByRole("status")).toBeNull();
+    await waitFor(async () => expect(within(await chips()).getAllByRole("listitem")).toHaveLength(3));
+
+    await userEvent.click(within(await chips()).getAllByRole("button", { name: "Remove notes.txt" })[0]);
+    expect(within(await chips()).getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("shows a message's attachments from its record, and Retry sends their ids again", async () => {
+    const page = twoTurns();
+    (page.turns[1].records[0].data as { attachments?: unknown }).attachments = [
+      { id: "a1", name: "telo.yaml", mediaType: "application/yaml", size: 23, sha256: "ab" },
+    ];
+    const fetchMock = stubAgent(page, {
+      ...serving(),
+      [truncateRoute]: { status: 200, body: { removedTurns: 1, conversation: conversation({ revision: 4 }) } },
+      "POST /chat": { status: 200, body: { turnId: "t3" } },
+    });
+    renderPanel();
+
+    const listed = await screen.findByRole("list", { name: "Attachments" });
+    expect(within(listed).getByText("telo.yaml · 23 B")).toBeTruthy();
+
+    await userEvent.click((await screen.findAllByRole("button", { name: "Retry" }))[1]);
+
+    await waitFor(() => expect(requestsMade(fetchMock)).toContain("POST /chat"));
+    const [, chat] = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith("/chat") && init?.method === "POST")!;
+    expect(JSON.parse(String(chat?.body))).toEqual({ conversationId: CONVERSATION, message: "second", attachments: ["a1"] });
+  });
+
+  it("shows the attach button disabled, with the reason, without the feature", async () => {
+    stubAgent(twoTurns(), { "GET /capabilities": capabilities(), [conversationRoute]: { status: 200, body: conversation() } });
+    renderPanel();
+    await screen.findByText("second");
+    await screen.findByRole("button", { name: /Build a server/ });
+
+    const attach = screen.getByRole<HTMLButtonElement>("button", { name: "Attach files" });
+    expect([attach.disabled, attach.title]).toEqual([true, "This agent does not accept file attachments"]);
+    const composer = screen.getByRole("textbox", { name: "Message the agent" });
+    fireEvent.dragEnter(composer, { dataTransfer: { types: ["Files"], files: [notes()] } });
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

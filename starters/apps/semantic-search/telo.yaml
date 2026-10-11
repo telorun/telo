@@ -1,0 +1,567 @@
+kind: Telo.Application
+metadata:
+  name: SemanticSearch
+  version: 1.0.0
+  categories: [ AI, Storage, Transport ]
+  description: |
+    Retrieval-augmented answering over your own documents: embed them, find
+    the passages nearest to a question, and hand those to the model as context.
+
+      - a page at `/` to ask, search and add documents — declared in this
+        manifest, over the same shapes the API validates, with no frontend code
+      - `POST /api/documents` indexes a document; a few are indexed at boot so
+        there is something to ask about straight away
+      - `POST /api/search` returns the nearest passages with their scores — look
+        here first, because a wrong answer is usually wrong retrieval
+      - `POST /api/ask` answers from those passages and names its sources; when
+        nothing scores above `MIN_SCORE` it says so instead of asking the model
+      - `DELETE /api/documents/{id}` removes one from the index
+
+    Indexing and asking embed differently on purpose: `Embedding.Passage` wraps
+    what you index, `Embedding.Query` what you ask. And the index never embeds —
+    `VectorStore.Match` takes a vector — so the store and the embedding provider
+    are swapped independently. The index here lives in the process; point the
+    same `Record` / `Match` pair at vector-store-pgvector to keep it.
+
+    Set your OpenAI key in the environment (or a sibling dotenv file):
+        OPENAI_API_KEY=sk-...
+    Run, then open http://localhost:8104, or:
+        curl -s -XPOST localhost:8104/api/search -H 'content-type: application/json' \
+          -d '{"q":"database migrations"}'
+        curl -s -XPOST localhost:8104/api/ask -H 'content-type: application/json' \
+          -d '{"q":"how do I roll back a bad release"}'
+        curl -s -XPOST localhost:8104/api/documents -H 'content-type: application/json' \
+          -d '{"title":"VPN access","text":"Request VPN access from the IT desk; it is granted per project."}'
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
+  Ui: oci://ghcr.io/telorun/ui@0.3.0#sha256-Xp_vAsCGcbXDo6rqK9A-xEnCbqSksPlG-q_jziF83LU
+  UiReact: oci://ghcr.io/telorun/ui-react@0.4.0#sha256-Maz-ACXHNqymhG283guc_wYMIrM_FKWKfGOxRdZ7TBw
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  OpenAI: oci://ghcr.io/telorun/openai@0.12.0#sha256-hKc2_SoJ5vZtMltBiuTFpCu-_POOVKpvl9KJ27iM63s
+  Ai: oci://ghcr.io/telorun/ai@0.27.0#sha256-YuRyAUKvsFQu845vDQkBLUgU9tO4o1V1ZeAsx81510g
+  Embedding: oci://ghcr.io/telorun/embedding@0.12.0#sha256-lQqgopkTtGP1RyYmoryM-mr1fv_Ey_xbMZsj3vlLEeM
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.0#sha256-lmCK8i7SQuTRupTSY-s5l89wUwQuikXpjJOxI5vbNwI
+  VectorStoreMemory: oci://ghcr.io/telorun/vector-store-memory@0.9.0#sha256-PqPtow3ErXNfkKn4RAYtZBEPYUnSG2rgEoHncVuCwnA
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
+targets:
+  - !ref indexCorpus
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8104
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+variables:
+  openaiBaseUrl:
+    env: OPENAI_BASE_URL
+    type: string
+    default: https://api.openai.com/v1
+    description: Any OpenAI-compatible endpoint.
+  embeddingModel:
+    env: EMBEDDING_MODEL
+    type: string
+    default: text-embedding-3-small
+  answerModel:
+    env: ANSWER_MODEL
+    arg: { flag: model, short: m }
+    type: string
+    default: gpt-4o-mini
+  dimensions:
+    env: EMBEDDING_DIMENSIONS
+    type: integer
+    minimum: 1
+    default: 512
+    description: Vector length. The index refuses a vector of any other length.
+  minScore:
+    env: MIN_SCORE
+    type: number
+    default: 0.2
+    description: Passages scoring below this are not used as context.
+---
+# The account: base URL and credential on the client, so neither model kind
+# carries a key and both inherit the 401 re-acquire-and-retry.
+kind: HttpClient.BearerToken
+metadata: { name: openaiKey }
+token: !cel "secrets.openaiApiKey"
+---
+kind: HttpClient.Client
+metadata: { name: openaiClient }
+baseUrl: !cel "variables.openaiBaseUrl"
+credential: !ref openaiKey
+---
+kind: HttpClient.Request
+metadata: { name: openaiRequest }
+client: !ref openaiClient
+---
+kind: OpenAI.EmbeddingModel
+metadata: { name: embedder }
+model: !cel "variables.embeddingModel"
+request: !ref openaiRequest
+dimensions: !cel "variables.dimensions"
+---
+kind: OpenAI.ChatModel
+metadata: { name: answerModel }
+model: !cel "variables.answerModel"
+request: !ref openaiRequest
+---
+# `dimensions` is pinned to what the embedding model produces, so a mismatched
+# vector is rejected at the write rather than silently ranked against vectors it
+# has nothing to do with.
+kind: VectorStoreMemory.Store
+metadata: { name: knowledgeBase }
+metric: cosine
+dimensions: !cel "variables.dimensions"
+---
+# The corpus. Real deployments read this from a database, a bucket or a crawl —
+# a few are inline here so there is something to ask about before you add your own.
+kind: Run.Value
+metadata: { name: corpus }
+value:
+  - id: releases
+    title: Rolling back a release
+    text: >-
+      Every deployment is tagged with the release version it shipped. To roll
+      back, redeploy the previous tag; the schema is designed to tolerate the
+      last two releases at once, so a rollback never needs a database change.
+  - id: migrations
+    title: Database migrations
+    text: >-
+      Schema changes are declared, not scripted. A removed column is recorded
+      and kept for a grace window rather than dropped, so a rollback still finds
+      its data. Renames copy the values across and keep the old column until the
+      window expires.
+  - id: oncall
+    title: On-call escalation
+    text: >-
+      The primary on-call responds within fifteen minutes. If a page is not
+      acknowledged, it escalates to the secondary, then to the engineering
+      manager. Anything customer-visible is escalated immediately regardless of
+      acknowledgement.
+  - id: backups
+    title: Backups and restores
+    text: >-
+      Backups run nightly and are kept for thirty days. A restore is practised
+      quarterly against a scratch database; an untested backup is treated as no
+      backup at all.
+---
+kind: Embedding.Passage
+metadata: { name: embedPassages }
+model: !ref embedder
+---
+kind: Embedding.Query
+metadata: { name: embedQuery }
+model: !ref embedder
+---
+kind: VectorStore.Record
+metadata: { name: indexRecords }
+store: !ref knowledgeBase
+---
+kind: VectorStore.Match
+metadata: { name: findNearest }
+store: !ref knowledgeBase
+topK: 3
+---
+# Indexing: embed every passage in ONE batched call, then write the vectors
+# with the text alongside them as metadata — so a match carries what it matched,
+# and answering needs no second lookup. A document indexed again under the same
+# id replaces the one before.
+kind: Run.Sequence
+metadata: { name: indexDocuments }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ documents ]
+    properties:
+      documents:
+        type: array
+        items:
+          type: object
+          required: [ id, title, text ]
+          properties:
+            id: { type: string }
+            title: { type: string }
+            text: { type: string }
+steps:
+  - name: vectors
+    invoke: !ref embedPassages
+    inputs:
+      input: !cel >-
+        inputs.documents.map(d, d.title + '\n' + d.text)
+  - name: store
+    invoke: !ref indexRecords
+    inputs:
+      # Zipped by position: the embedder returns one vector per input, in input
+      # order, so `enumerate` pairs each document with the vector at its index.
+      items: !cel >-
+        enumerate(inputs.documents).map(e,
+          {
+            'id': e.value.id,
+            'vector': steps.vectors.result.embeddings[e.index],
+            'metadata': { 'title': e.value.title, 'text': e.value.text }
+          })
+outputs:
+  ids: !cel "steps.store.result.ids"
+  dimensions: !cel "steps.vectors.result.dimensions"
+---
+kind: Run.Sequence
+metadata: { name: indexCorpus }
+steps:
+  - name: docs
+    invoke: !ref corpus
+    inputs: {}
+  - name: indexed
+    invoke: !ref indexDocuments
+    inputs:
+      documents: !cel "steps.docs.result"
+  - name: say
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel >-
+        '{green ✔} indexed ' + string(size(steps.indexed.result.ids)) +
+        ' passages at ' + string(steps.indexed.result.dimensions) + ' dimensions'
+---
+# Retrieval on its own, so it can be inspected without a model in the way.
+# What scores below the threshold is left out: a passage that is merely the
+# least irrelevant one is not context.
+kind: Run.Sequence
+metadata: { name: search }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ q ]
+    additionalProperties: false
+    properties:
+      q: { type: string }
+steps:
+  - name: queryVector
+    invoke: !ref embedQuery
+    inputs:
+      input: !cel "inputs.q"
+  - name: nearest
+    invoke: !ref findNearest
+    inputs:
+      vector: !cel "steps.queryVector.result.embeddings[0]"
+  - name: relevant
+    value: !cel "steps.nearest.result.matches.filter(m, m.score >= variables.minScore)"
+outputs:
+  matches: !cel >-
+    steps.relevant.result.map(m,
+      { 'id': m.id, 'score': m.score, 'title': m.metadata.title })
+  passages: !cel "steps.relevant.result.map(m, m.metadata.text)"
+---
+kind: Ai.Text
+metadata: { name: answerFromContext }
+model: !ref answerModel
+system: >-
+  Answer using only the context provided. If the context does not contain the
+  answer, say so plainly rather than guessing. Keep it to two sentences.
+---
+kind: Run.Sequence
+metadata: { name: ask }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ q ]
+    additionalProperties: false
+    properties:
+      q: { type: string }
+steps:
+  - name: retrieved
+    invoke: !ref search
+    inputs:
+      q: !cel "inputs.q"
+  # Nothing relevant was found, so there is nothing to answer from — and no
+  # reason to pay for a model call that could only guess.
+  - name: answered
+    if: !cel "size(steps.retrieved.result.passages) == 0"
+    then:
+      - name: reply
+        value: I could not find anything about that in the indexed documents.
+    else:
+      # The whole of "augmented generation": the retrieved passages are the
+      # prompt's context, and the instruction not to go beyond them is on the
+      # resource.
+      - name: generated
+        invoke: !ref answerFromContext
+        inputs:
+          prompt: !cel >-
+            'Context:\n' + steps.retrieved.result.passages.join('\n\n') +
+            '\n\nQuestion: ' + inputs.q
+      - name: reply
+        value: !cel "steps.generated.result.text"
+outputs:
+  answer: !cel "steps.reply.result"
+  sources: !cel "steps.retrieved.result.matches"
+  # The same answer as a one-row list: a page draws tables, so this is what
+  # the page shows it from.
+  reply:
+    - answer: !cel "steps.reply.result"
+---
+# The shapes the page and the API share. Each route below validates its body
+# against the same shape the page's form is built from, and each action reads
+# its lists from the same shape the route answers with — so the page cannot
+# send what the API refuses, or draw what it does not return.
+kind: Telo.JsonSchema
+metadata: { name: Question }
+schema:
+  type: object
+  additionalProperties: false
+  required: [ q ]
+  properties:
+    q: { type: string, title: Question, minLength: 1 }
+---
+kind: Telo.JsonSchema
+metadata: { name: Matches }
+schema:
+  type: object
+  required: [ matches ]
+  properties:
+    matches:
+      type: array
+      items:
+        type: object
+        required: [ id, title, score ]
+        properties:
+          id: { type: string, title: Document }
+          title: { type: string, title: Title }
+          score: { type: number, title: Score }
+---
+kind: Telo.JsonSchema
+metadata: { name: Answer }
+schema:
+  type: object
+  required: [ answer, sources, reply ]
+  properties:
+    answer: { type: string }
+    sources:
+      type: array
+      items:
+        type: object
+        required: [ id, title, score ]
+        properties:
+          id: { type: string, title: Document }
+          title: { type: string, title: Title }
+          score: { type: number, title: Score }
+    reply:
+      type: array
+      items:
+        type: object
+        required: [ answer ]
+        properties:
+          answer: { type: string, title: Answer }
+---
+kind: Telo.JsonSchema
+metadata: { name: Document }
+schema:
+  type: object
+  additionalProperties: false
+  required: [ title, text ]
+  properties:
+    id: { type: string, title: Id, minLength: 1 }
+    title: { type: string, title: Title, minLength: 1 }
+    text: { type: string, title: Text, minLength: 1 }
+---
+kind: Telo.JsonSchema
+metadata: { name: Indexed }
+schema:
+  type: object
+  required: [ indexed ]
+  properties:
+    indexed:
+      type: array
+      items:
+        type: object
+        required: [ id ]
+        properties:
+          id: { type: string, title: Indexed }
+---
+kind: Http.Api
+metadata: { name: searchRoutes }
+routes:
+  - request:
+      path: /search
+      method: POST
+      schema:
+        body: &question
+          type: object
+          additionalProperties: false
+          required: [ q ]
+          properties:
+            q: { type: string, minLength: 1 }
+    handler: !ref search
+    inputs:
+      q: !cel "request.body.q"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              matches: !cel "result.matches"
+    catches: &providerFailure
+      # `telo check` knows what the handler can throw — here, everything the
+      # embedding and the model declare — and refuses a route that leaves a
+      # code unrendered. A provider outage is a 502 rather than an unhandled 500.
+      - status: 502
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"
+
+  - request:
+      path: /ask
+      method: POST
+      schema:
+        body: *question
+    handler: !ref ask
+    inputs:
+      q: !cel "request.body.q"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches: *providerFailure
+
+  - request:
+      path: /documents
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ title, text ]
+          properties:
+            id: { type: string, minLength: 1 }
+            title: { type: string, minLength: 1 }
+            text: { type: string, minLength: 1 }
+    handler: !ref indexDocuments
+    # The id is optional: left out, it is derived from the title, so adding a
+    # document under a title already used replaces the one before.
+    inputs:
+      documents:
+        - id: !cel >-
+            has(request.body.id) ? request.body.id
+              : 'doc-' + trimSuffix(trimPrefix(regexReplace(lower(request.body.title), '[^a-z0-9]+', '-'), '-'), '-')
+          title: !cel "request.body.title"
+          text: !cel "request.body.text"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body:
+              indexed: !cel "result.ids.map(id, {'id': id})"
+    catches: *providerFailure
+
+  - request:
+      path: /documents/{id}
+      method: DELETE
+      schema:
+        params:
+          type: object
+          required: [ id ]
+          properties:
+            id: { type: string }
+    handler:
+      kind: VectorStore.Removal
+      store: !ref knowledgeBase
+    inputs:
+      ids:
+        - !cel "request.params.id"
+    returns:
+      - status: 404
+        when: !cel "result.removed == 0"
+        content:
+          application/json:
+            body:
+              error: not_found
+      - status: 204
+---
+# The whole frontend. An action is a form built from its input shape, a button
+# that sends one POST, and tables drawn from what comes back. What crosses to
+# the browser is this description, never generated code.
+kind: UiReact.App
+metadata: { name: ui }
+title: Semantic search
+lang: en
+pages:
+  - path: /
+    title: Ask
+    children:
+      - { type: text, text: "Ask your documents", style: heading }
+      - { type: text, text: "Answered only from the passages retrieved for the question.", style: muted }
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel: !ref Question
+          outputModel: !ref Answer
+          source: { path: /api/ask }
+          label: Ask
+          lists:
+            - rows: !cel "result.reply"
+              columns:
+                - value: !cel "row.answer"
+            - heading: Sources
+              rows: !cel "result.sources"
+              columns:
+                - value: !cel "row.title"
+                - value: !cel "row.score"
+  - path: /search
+    title: Search
+    children:
+      - { type: text, text: "Search by meaning", style: heading }
+      - { type: text, text: "The passages nearest to a query, with their scores — retrieval on its own.", style: muted }
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel: !ref Question
+          outputModel: !ref Matches
+          source: { path: /api/search }
+          label: Search
+          lists:
+            - rows: !cel "result.matches"
+              columns:
+                - value: !cel "row.title"
+                - value: !cel "row.id"
+                - value: !cel "row.score"
+  - path: /documents
+    title: Add a document
+    children:
+      - { type: text, text: "Add a document", style: heading }
+      - { type: text, text: "Indexed at once; adding one under a title already used replaces it.", style: muted }
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel: !ref Document
+          outputModel: !ref Indexed
+          source: { path: /api/documents }
+          label: Index
+          # The form shows these two only; the id is left for the API to derive.
+          fields:
+            - { property: title }
+            - { property: text }
+          lists:
+            - rows: !cel "result.indexed"
+              columns:
+                - value: !cel "row.id"
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Semantic search
+    version: 1.0.0
+mounts:
+  - path: /api
+    mount: !ref searchRoutes
+  - path: /
+    mount: !ref ui

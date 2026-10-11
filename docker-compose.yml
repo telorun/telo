@@ -21,6 +21,7 @@ services:
           - storage.telo.localhost
           - runner.telo.localhost
           - pages.telo.localhost
+          - starters.telo.localhost
   hub:
     image: telorun/hub:${DOCKER_TAG:-latest}
     build:
@@ -119,9 +120,29 @@ services:
       # routes `*.telo.localhost:8060` to the matching compose service, and
       # any `*.localhost` hostname resolves to 127.0.0.1 in the browser.
       VITE_TELO_RUNNER_URL: http://runner.telo.localhost:${PROXY_PORT:-8060}
+      # The starter gallery of this checkout (the `starters` service), not the
+      # published one; a source set in Studio's settings still wins.
+      VITE_TELO_STARTERS_URL: http://starters.telo.localhost:${PROXY_PORT:-8060}
     depends_on:
       runner:
         condition: service_healthy
+
+  # The checkout's `starters/` directory over HTTP with CORS, for the studio's
+  # starter gallery. Reached through the proxy at
+  # http://starters.telo.localhost:8060 (see Caddyfile).
+  starters:
+    image: node:24-slim
+    command: ["/telo/node_modules/.bin/bun", "/telo/cli/nodejs/bin/telo.ts", "./starters/serve.yaml"]
+    init: true
+    # The host user, so the module cache written into the checkout is never
+    # root-owned.
+    user: ${UID:-1000}:${GID:-1000}
+    volumes:
+      - .:/telo
+    working_dir: /telo
+    environment:
+      STARTERS_HOST: 0.0.0.0
+      HOME: /tmp
 
   hub-web:
     image: telorun/hub-web:${DOCKER_TAG:-latest}

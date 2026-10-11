@@ -65,6 +65,8 @@ Recording the value rather than a checksum is deliberate. Checksum-and-detect is
 
 The run is recorded **before** anything executes. That ordering is what makes recovery possible at all: a process that dies between the two leaves a run with no progress, which the resumer finds and replays.
 
+It is recorded already claimed by the process that started it, so a resumer polling at that moment does not take a run that is just starting. The claim lapses if that process dies, and the resumer takes the run then.
+
 ## The resumer is recovery, not scheduling
 
 A start does its own first execution in the process that received it, so the resumer does not balance work across machines — it picks up runs whose process died. Routing every start through its poll interval would put seconds of latency on a request-triggered run for no gain in recovery.

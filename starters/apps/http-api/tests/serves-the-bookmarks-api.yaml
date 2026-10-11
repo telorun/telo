@@ -1,0 +1,206 @@
+kind: Telo.Application
+metadata:
+  name: HttpApiStarterTest
+  version: 1.0.0
+  description: >-
+    Runs the starter and uses it the way a client would: without a token, with
+    one, past the write limit, and against a bookmark that is not there. A
+    starter is copied verbatim, so each thing its description promises — the
+    guard, the 429, the 404, the open probe — is asserted from the outside.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: api }
+baseUrl: http://127.0.0.1:8847
+credential:
+  kind: HttpClient.BearerToken
+  token: local-dev-token
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref api
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8847
+    # Two writes a minute, so the third one this test sends is the refused one.
+    variables:
+      writeLimit: 2
+targets:
+  - !ref app
+steps:
+  - name: health
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8847/healthz
+      method: GET
+  - name: anonymous
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8847/v1/bookmarks
+      method: GET
+  - name: verifyGuard
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        health: !cel "steps.health.result.status"
+        healthBody: !cel "steps.health.result.body"
+        anonymous: !cel "steps.anonymous.result.status"
+        anonymousBody: !cel "steps.anonymous.result.body.error"
+      expected:
+        health: 200
+        healthBody: { status: ok }
+        anonymous: 401
+        anonymousBody: unauthenticated
+
+  # The database file outlives the test, so the bookmark is tagged freshly on
+  # every run and the list is asked for that tag alone.
+  - name: subject
+    value:
+      tag: !cel "'t' + replace(uuidv4(), '-', '')"
+
+  - name: create
+    invoke: !ref call
+    inputs:
+      url: /v1/bookmarks
+      method: POST
+      body:
+        url: https://telo.run
+        title: Telo
+        tag: !cel "steps.subject.result.tag"
+  - name: verifyCreated
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.create.result.status"
+        url: !cel "steps.create.result.body.url"
+        title: !cel "steps.create.result.body.title"
+        tag: !cel "steps.create.result.body.tag"
+        keyed: !cel "steps.create.result.body.id > 0"
+        stamped: !cel "size(steps.create.result.body.createdAt) > 0"
+      expected:
+        status: 201
+        url: https://telo.run
+        title: Telo
+        tag: !cel "steps.subject.result.tag"
+        keyed: true
+        stamped: true
+
+  - name: list
+    invoke: !ref call
+    inputs:
+      url: /v1/bookmarks
+      method: GET
+      query:
+        tag: !cel "steps.subject.result.tag"
+  - name: read
+    invoke: !ref call
+    inputs:
+      url: !cel "'/v1/bookmarks/' + string(steps.create.result.body.id)"
+      method: GET
+  - name: verifyRead
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        listStatus: !cel "steps.list.result.status"
+        listed: !cel "steps.list.result.body.map(b, b.id)"
+        readStatus: !cel "steps.read.result.status"
+        read: !cel "steps.read.result.body"
+      expected:
+        listStatus: 200
+        listed: [ !cel "steps.create.result.body.id" ]
+        readStatus: 200
+        read: !cel "steps.create.result.body"
+
+  # The body schema refuses this one before the handler — and so before the
+  # rate limit — is reached.
+  - name: notAUrl
+    invoke: !ref call
+    inputs:
+      url: /v1/bookmarks
+      method: POST
+      body:
+        url: telo.run
+        title: Telo
+  - name: second
+    invoke: !ref call
+    inputs:
+      url: /v1/bookmarks
+      method: POST
+      body:
+        url: https://telo.run/docs
+        title: Docs
+        tag: !cel "steps.subject.result.tag"
+  - name: third
+    invoke: !ref call
+    inputs:
+      url: /v1/bookmarks
+      method: POST
+      body:
+        url: https://telo.run/blog
+        title: Blog
+        tag: !cel "steps.subject.result.tag"
+  - name: afterLimit
+    invoke: !ref call
+    inputs:
+      url: /v1/bookmarks
+      method: GET
+      query:
+        tag: !cel "steps.subject.result.tag"
+  - name: verifyLimit
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        notAUrl: !cel "steps.notAUrl.result.status"
+        second: !cel "steps.second.result.status"
+        third: !cel "steps.third.result.status"
+        thirdBody: !cel "steps.third.result.body"
+        retryAfter: !cel "int(steps.third.result.headers['retry-after']) > 0"
+        stored: !cel "size(steps.afterLimit.result.body)"
+      expected:
+        notAUrl: 400
+        second: 201
+        third: 429
+        thirdBody: { error: rate_limited }
+        retryAfter: true
+        stored: 2
+
+  - name: remove
+    invoke: !ref call
+    inputs:
+      url: !cel "'/v1/bookmarks/' + string(steps.create.result.body.id)"
+      method: DELETE
+  - name: gone
+    invoke: !ref call
+    inputs:
+      url: !cel "'/v1/bookmarks/' + string(steps.create.result.body.id)"
+      method: GET
+  - name: removeAgain
+    invoke: !ref call
+    inputs:
+      url: !cel "'/v1/bookmarks/' + string(steps.create.result.body.id)"
+      method: DELETE
+  - name: verifyRemoved
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        removed: !cel "steps.remove.result.status"
+        gone: !cel "steps.gone.result.status"
+        goneBody: !cel "steps.gone.result.body.error"
+        removeAgain: !cel "steps.removeAgain.result.status"
+      expected:
+        removed: 204
+        gone: 404
+        goneBody: not_found
+        removeAgain: 404

@@ -4,13 +4,14 @@ metadata:
   version: 1.0.0
   description: >-
     Runs the starter and calls it the way an assistant would: list the tools, add
-    a note, then find it again by searching. The round trip is the point — the
-    handlers know nothing about MCP, so a tool that stops reaching its handler is
-    only visible from this side.
+    a note, find it by searching, read it, delete it — and then ask for it again,
+    which is where the two kinds of failure show. The same handler is also asked
+    over REST, and both transports are tried without the token.
 imports:
   App: ../../../../modules/app
   Run: ../../../../modules/run
   McpClient: ../../../../modules/mcp-client
+  HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
 targets:
   - !ref test
@@ -19,6 +20,8 @@ kind: McpClient.HttpClient
 metadata: { name: assistant }
 url: http://127.0.0.1:8067/mcp
 clientInfo: { name: starter-test, version: 1.0.0 }
+headers:
+  authorization: Bearer local-dev-token
 ---
 kind: McpClient.ToolsList
 metadata: { name: listTools }
@@ -53,7 +56,7 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "sort(steps.tools.result.tools.map(tool, tool.name))"
-      expected: [add_note, search_notes]
+      expected: [add_note, delete_note, get_note, search_notes]
 
   - name: add
     inputs:
@@ -73,3 +76,118 @@ steps:
     inputs:
       actual: !cel "steps.search.result.content[0].text"
       value: !cel "steps.subject.result.title"
+
+  # `Saved note #<id>` is all the tool says, so the id is read out of it.
+  - name: saved
+    value:
+      id: !cel "int(regexExtract(steps.add.result.content[0].text, '[0-9]+'))"
+  - name: read
+    inputs:
+      name: get_note
+      arguments:
+        id: !cel "steps.saved.result.id"
+    invoke: !ref callTool
+  - name: overRest
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8067/api/notes
+      method: GET
+      headers:
+        authorization: Bearer local-dev-token
+    inputs:
+      query:
+        q: !cel "steps.subject.result.title"
+  - name: verifyRead
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        read: !cel "steps.read.result.content[0].text"
+        structured: !cel "steps.search.result.structuredContent"
+        restStatus: !cel "steps.overRest.result.status"
+        rest: !cel "steps.overRest.result.body"
+      expected:
+        read: !cel >-
+          steps.subject.result.title + '\n\n' + "a note written by the starter's test"
+        structured:
+          notes:
+            - id: !cel "steps.saved.result.id"
+              title: !cel "steps.subject.result.title"
+        restStatus: 200
+        rest:
+          - id: !cel "steps.saved.result.id"
+            title: !cel "steps.subject.result.title"
+            body: a note written by the starter's test
+
+  - name: remove
+    inputs:
+      name: delete_note
+      arguments:
+        id: !cel "steps.saved.result.id"
+    invoke: !ref callTool
+
+  # Gone now. Reading it is a soft failure the tool reports in words; deleting
+  # it again is a throw the server answers with a JSON-RPC error.
+  - name: readGone
+    try:
+      - name: readGoneCall
+        inputs:
+          name: get_note
+          arguments:
+            id: !cel "steps.saved.result.id"
+        invoke: !ref callTool
+    catch:
+      - name: readGoneFailure
+        value:
+          code: !cel "error.code"
+          message: !cel "error.message"
+  - name: removeGone
+    try:
+      - name: removeGoneCall
+        inputs:
+          name: delete_note
+          arguments:
+            id: !cel "steps.saved.result.id"
+        invoke: !ref callTool
+    catch:
+      - name: removeGoneFailure
+        value:
+          code: !cel "error.code"
+          message: !cel "error.message"
+  - name: verifyFailures
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        removed: !cel "steps.remove.result.content[0].text"
+        readGone: !cel "steps.readGoneFailure.result"
+        removeGone: !cel "steps.removeGoneFailure.result"
+      expected:
+        removed: !cel "'Deleted note #' + string(steps.saved.result.id)"
+        readGone:
+          code: ERR_MCP_TOOL_ERROR
+          message: "MCP tool call returned isError: true"
+        removeGone:
+          code: ERR_MCP_JSON_RPC_ERROR
+          message: !cel "'MCP server returned JSON-RPC error -32010: no note #' + string(steps.saved.result.id)"
+
+  - name: restWithoutToken
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8067/api/notes
+      method: GET
+  - name: mcpWithoutToken
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8067/mcp
+      method: POST
+      headers:
+        accept: application/json, text/event-stream
+      body: { jsonrpc: "2.0", id: 1, method: tools/list }
+  - name: verifyGuard
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        rest: !cel "steps.restWithoutToken.result.status"
+        mcp: !cel "steps.mcpWithoutToken.result.status"
+      expected:
+        rest: 401
+        mcp: 401

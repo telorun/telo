@@ -19,25 +19,15 @@ Each item states what happens today, what should happen instead, and how you wou
 
 ### C. Attachments and multimodality
 
-**C1 — Files and images in the chat.**
-*Before:* `POST /chat` takes `{ conversationId, message }`, both strings.
-*After:* `POST /attachments` accepts a multipart upload, stores the bytes under `.telo-agent/attachments/<id>`, and returns `{ id, name, mediaType, size }`. `POST /chat` takes `attachments: [id]`; the user message is journaled as content *parts* — text plus image/file parts — and images ride into the model as image parts. `GET /attachments/{id}` serves them back for the transcript. `MAX_ATTACHMENT_BYTES` (default 10MB) and a media-type allowlist bound it; a rejected upload says which limit it hit. Attachments are removed with their conversation, by the same removal that deletes its turns and checkpoints.
-*Verify:* paste a screenshot of a failing run into the composer and the agent describes what is in it; reload the page and the thumbnail is still in the transcript, served from the agent rather than from browser memory; deleting the conversation removes its attachment files from disk.
-
 **C2 — Text-only attachments become workspace files.**
-*Before:* n/a.
-*After:* an uploaded `.yaml`, `.csv`, `.json`, `.md` or `.sql` is offered a second destination: "attach to the message" or "add to the workspace at `<path>`". The second writes through the ordinary workspace sync, so the agent reads it with `read_file` and it is part of the project rather than a chat artifact.
+*Before:* a text file dropped on the composer is attached to the message, where no tool and no manifest can read it by name.
+*After:* a dropped `.yaml`, `.csv`, `.json`, `.md` or `.sql` is offered a second destination beside attaching it: "add to the workspace at `<path>`". That writes through the ordinary workspace sync, so the agent reads it with `read_file` and it is part of the project rather than a chat artifact.
 *Verify:* upload a CSV of sample rows, choose "add to the workspace", and the agent's next manifest reads that path.
 
 **C3 — Binary-safe workspace sync.**
 *Before:* the editor pushes and pulls file contents as text only; a PNG in the workspace round-trips through the sync corrupted. (The underlying file primitives already speak base64; the routes and the client do not.)
 *After:* `GET /workspace/file` takes `encoding=base64`, the tree sync's write entries carry the `encoding` the change set already declares, and the editor chooses per file by media type. The editor's own workspace adapters gain a bytes path alongside the text one.
 *Verify:* put an image in the workspace, run a turn, and its hash is unchanged on both sides; a manifest serving it still serves the same bytes.
-
-**C4 — Composer input for all of it.**
-*Before:* a textarea.
-*After:* drag-and-drop onto the panel, paste of an image from the clipboard, a file picker button, per-attachment chips with size and a remove control, and an upload progress state. Rejected files say why inline.
-*Verify:* drag three files in, remove one, send, and exactly two arrive.
 
 ---
 
@@ -107,17 +97,11 @@ Editor tools are **always advertised**, because a tool list is fixed at load. Th
 
 ### E. Chat UX
 
-**E2 — Composer.** Attachments (C4), the **@** menu (D6), **/** commands (`/run`, `/check`, `/tests`, `/explain`, `/revert`, `/new`, `/model`), a draft persisted per conversation, Shift+Enter for a newline (already), Cmd/Ctrl+Enter to send, Esc to stop, Cmd/Ctrl+K to focus the panel from anywhere, and a **queued message** — typing while a turn runs queues it and sends it when the turn ends rather than disabling the box.
-*Verify:* type during a turn, walk away, and the queued message goes at `finish` with its own bubble; reload mid-draft and the text is still there.
+**E2 — Composer.** The **@** menu (D6) and **/** commands (`/run`, `/check`, `/tests`, `/explain`, `/revert`, `/new`, `/model`).
+*Verify:* `/check` starts a check turn without the user typing the request; text that names no command is sent as it is.
 
 **E5 — Status, cost and failure.** A footer line showing the turn's tokens and the conversation's total, with the operator's remaining budget when the agent reports one (`GET /usage`); a "reconnecting…" banner with automatic re-attach and backoff instead of an error that needs a click; a distinct state for "at capacity" with the retry-after counted down; a badge on the panel toggle and a desktop notification (Tauri) when a turn finishes while the panel is closed or the window is unfocused.
 *Verify:* pull the network for ten seconds mid-turn and the transcript completes by itself; the notification fires only when the window is not focused.
-
-**E6 — Entry points across the editor.** "Ask AI" on a canvas node and in the detail panel, "Fix with AI" on a diagnostic (sending the code, the location and the line), "Explain this run failure" on a failed run, "Generate tests for this library" on a library, "Describe this workspace" on an empty one. Each opens the panel with a prepared message the user can edit before sending — never an auto-sent turn.
-*Verify:* "Fix with AI" on a real diagnostic produces a message naming the code and the file, and the user can still change it before it goes.
-
-**E7 — Empty state and onboarding.** The empty panel offers four starter prompts drawn from the template catalog and one line on what the agent may do in this deployment (read from `GET /capabilities`: can it run manifests? is there an editor toolset? is it unauthenticated?).
-*Verify:* a fresh workspace shows starters that actually build; an agent with runs disabled says so before the user asks for tests.
 
 **E8 — The plan block.** The agent emits a `telo-plan` fenced block — a checklist of steps with states — at the start of a multi-file build and re-emits it as steps complete; Studio renders the latest one as a live checklist pinned at the top of the turn, and falls back to showing it as text in a client that does not parse it. Same rationale as the question block: it rides the reply text, so no client is required to understand it.
 *Verify:* a four-file build shows four items ticking off, and a plain-text client shows a readable list.
@@ -164,16 +148,14 @@ Editor tools are **always advertised**, because a tool list is fixed at load. Th
 **F8 — Provider resilience.** The HTTP client already retries a transient edge. Added: a `MODEL_FALLBACK` list — on a provider error that survives retries, the turn continues on the next model, and the transcript records the switch.
 *Verify:* with a bad primary model id, a turn still completes and the record names both models.
 
-**F9 — Evaluation and feedback.** The e2e suite grows to a scenario set covering each capability — resume after a kill, an editor tool round-trip, an attachment, a revert, a refusal, a compaction, a concluded step budget — run nightly in CI against a real key, with pass rates tracked over time. From its first nightly run the scenario set also records the `edit_file` "absent or not unique" retry rate as a tracked series. Per-turn thumbs up/down in the panel writes a `feedback` row with the turn id, and "Report this turn" bundles the transcript, the capability document and the workspace hashes into one JSON file to attach to an issue.
+**F9 — Evaluation and feedback.** The e2e suite grows to a scenario set covering each capability — resume after a kill, an editor tool round-trip, a revert, a refusal, a compaction, a concluded step budget — run nightly in CI against a real key, with pass rates tracked over time. From its first nightly run the scenario set also records the `edit_file` "absent or not unique" retry rate as a tracked series. Per-turn thumbs up/down in the panel writes a `feedback` row with the turn id, and "Report this turn" bundles the transcript, the capability document and the workspace hashes into one JSON file to attach to an issue.
 *Verify:* the nightly job reports a pass count per scenario, and a thumbs-down is retrievable by turn id.
 
 ---
 
 ### G. Operations
 
-**G1 — Configuration.** New variables, all defaulted so a bare `telo run` still works: `MODELS`, `MODEL_FALLBACK`, `ACCEPT_CALLER_KEY`, `ALLOWED_MODEL_ENDPOINTS`, `MAX_ATTACHMENT_BYTES`, `CLIENT_TOOL_TIMEOUT_MS`. Existing ones keep their meanings, with one change: `OPENAI_API_KEY` stops being required, because a BYO-only deployment has none. The capability document gains the bounds a client needs before it calls: `limits: { maxAttachmentBytes, maxContextTokens, runTimeoutMs, clientToolTimeoutMs }`, each read from the deployment's own variable.
-
-**G3 — What is stored, and how to remove it.** Attachments join what the state directory already holds (conversations, the journal, checkpoints): `DELETE /conversations/{id}` removes every trace of one, retention removes the rest on a schedule, and the README states this plainly for an operator who must answer the question.
+**G1 — Configuration.** New variables, all defaulted so a bare `telo run` still works: `MODELS`, `MODEL_FALLBACK`, `ACCEPT_CALLER_KEY`, `ALLOWED_MODEL_ENDPOINTS`, `CLIENT_TOOL_TIMEOUT_MS`. Existing ones keep their meanings, with one change: `OPENAI_API_KEY` stops being required, because a BYO-only deployment has none. The capability document gains the bounds a client needs before it calls: `limits: { maxContextTokens, runTimeoutMs, clientToolTimeoutMs }`, each read from the deployment's own variable.
 
 ---
 
@@ -246,7 +228,6 @@ Stated once each; the body does not repeat them.
 - **The wait is a stdlib rendezvous primitive, not a handler polling a store.** "Wait on a key with a deadline and cancellation, resolved by a separate deliver" is needed by every webhook, approval and human-in-the-loop flow. It exists today only in durable form, which needs a replayed region. Polling would add latency to every call and silently assume one process. It lives in a new `rendezvous` module rather than in `durable`, which would carry non-durable semantics into a replay seam, or on `KvStore.Store`, which cannot wake anyone.
 - **Editor tools are always advertised and degrade to an error result** when no client declared them, because a tool provider's list is fixed at load and a per-turn tool set would mean a resource per client shape.
 - **Effectful editor tools are gated by an approval mode in the client**, not by an operator switch: the operator's switch (`ALLOW_MANIFEST_RUNS`) decides whether code may run at all, while approval decides whether *this* action happens now.
-- **Attachments live under the agent's state directory**, not in the user's file tree; a file the user wants in the project is added explicitly (C2).
 - **The memory file is `AGENTS.md` at the workspace root**, visible and editable, because a memory the user cannot read is one they cannot correct.
 - **The `telo-plan` block rides the reply text**, like `telo-questions`, so no client is obliged to parse it.
 - **Model and effort are client-selectable from an operator-advertised list**, and provider state is dropped when the model changes.
@@ -271,8 +252,8 @@ Two stdlib and language prerequisites are designed in plans of their own, in the
 
 1. **Bring your own key** — H1–H8, once the per-invocation scope configuration plan has shipped, along with the tool-listing cache H1 needs in the MCP tool provider.
 2. **Editor tools** — D0 first, then D1–D3, then D4, D5, D7; E9 lands with D0.
-3. **Attachments** — C1–C4, G3.
-4. **Context and composer** — D6, E2, E5–E8, E10, E11.
+3. **Attachments** — C2, C3.
+4. **Context and composer** — D6, E2, E5, E8, E10, E11.
 5. **Agent capability** — F1–F4, F6–F9.
 
 Stages 1 and 2 are independent of each other; either can go first when its prerequisite lands. Stages 3–5 depend on neither prerequisite.
@@ -284,7 +265,6 @@ Stages 1 and 2 are independent of each other; either can go first when its prere
 - **A client that answers a tool before its handler waits** — the value is held and handed over when the handler opens. It is not an error, and the client needs no retry.
 - **Two concurrent turns whose provider gave no call ids** — fallback ids are globally unique, so neither turn's editor result can reach the other's handler.
 - **No editor at all (an agent driven by another client)** — editor tools fail fast and the agent works as it does today.
-- **An attachment referenced by a deleted conversation** — deletion removes attachment files with the turns and checkpoints; a removal a crash cut short is finished by the retention pass.
 - **A binary file in the workspace during sync** — media type decides the encoding on both sides; hashes are over bytes, so a wrongly-encoded round trip is a hash mismatch rather than silent corruption.
 - **Provider state after a model switch** — dropped; a replayed reasoning chain from another model is not a chain.
 - **Provider state after a KEY switch** — dropped for the same reason and by the same rule: the encrypted reasoning a provider returns is scoped to the account that obtained it, so replaying one key's chain under another's fails at the provider rather than degrading.
@@ -297,12 +277,11 @@ Stages 1 and 2 are independent of each other; either can go first when its prere
 
 - The system primer (`chat/primer.md`) is updated in the same change as each capability it can use: the editor tool vocabulary and when to reach for it, the tool-output-is-data stance, `ERR_NO_EDITOR_ATTACHED` / `ERR_EDITOR_TIMEOUT` / `ERR_TOOL_DENIED` / `ERR_MODEL_ENDPOINT_NOT_ALLOWED` and what to do about each, the `telo-plan` block, the memory file and the verification pass. It also gains the authoring rule H1 creates: a `with:`-scoped resource may read the enclosing invocation's `inputs`, and that — not an invented per-call credential field on a kind — is how a per-request credential, endpoint or tenant value is carried.
 - **The agent's own floor.** The language obligations of H belong to the per-invocation scope configuration plan: both halves, diagnostics, agreement rows, docs, and adoption by the stdlib. This plan owns only the adopter's floor. The chat library and its application doc read `inputs` inside a `with:` block, so each declares `requires: telo:` at the release that carries the rule, **verified by execution**: the previous published CLI must reject the file with the block stripped, and report `MODULE_REQUIRES_NEWER_RUNTIME` with it present.
-- The agent's README grows the new routes, the new environment variables (`ACCEPT_CALLER_KEY`, `ALLOWED_MODEL_ENDPOINTS`, the now-optional operator key, and the rest of G1), the `x-telo-model-key` header, the capability document's new fields and `features`, and the attachment part of the data-retention statement; Studio's package guide gains the editor-tool mechanism, the approval model and the credential-store seam.
+- The agent's README grows the new routes, the new environment variables (`ACCEPT_CALLER_KEY`, `ALLOWED_MODEL_ENDPOINTS`, the now-optional operator key, and the rest of G1), the `x-telo-model-key` header, and the capability document's new fields and `features`; Studio's package guide gains the editor-tool mechanism, the approval model and the credential-store seam.
 - Module changes take a `telo release` fragment each:
   - `ai`'s tool-call binding (D0): the call's id and name readable in a tool's `inputs:` mapping, beside `arguments` and `context`. The binding is new vocabulary on `Ai.Tools`' own schema, delivered in `ai`'s artifact, so `ai` needs no floor for it. The agent, which writes it, declares its own.
   - `ai-mcp`'s cached tool listing (H1).
   - The hub's docs tools (F1).
-  - Any `fs` or `http-server` surface a route needs.
 
   The rendezvous primitive carries its own fragments in its own plan. Nothing in `ai`'s contracts, `openai`, `http-client` or the runner contract changes for H. That is a claim to check at the end, not an assumption to carry. The agent app and Studio take their own version bumps; published `@telorun/*` packages touched on the Studio side take a changeset, the analyzer and kernel included.
 - The e2e suite (F9) grows one case per capability, and the agent-editor contract gets a case in the editor's own tests for each new route.

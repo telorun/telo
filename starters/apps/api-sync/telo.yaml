@@ -1,0 +1,573 @@
+kind: Telo.Application
+metadata:
+  name: ApiSync
+  version: 1.0.0
+  categories: [ Transport, Reliability, Performance, Scheduling ]
+  description: |
+    Keeping a local copy of somebody else's API: pull it page by page on a
+    schedule, upsert what came back, and serve your own readers from the copy
+    instead of from the upstream.
+
+      - the upstream is one `HttpClient.Client`: base URL, timeout and the retry
+        policy live there, so every request through it backs off the same way
+      - pages are followed with a `while` until one comes back empty, bounded by
+        `MAX_PAGES` so a misbehaving upstream cannot loop for ever
+      - rows are upserted by the upstream's own id, so syncing twice changes
+        nothing, and every run is recorded with what it did or why it failed
+      - three triggers onto one sync: at boot, every `SYNC_EVERY`, and
+        `POST /api/sync` — which is rate limited, since it is the one a person
+        can hammer
+      - `GET /api/posts` is answered from the copy through a short-lived cache;
+        the `x-cache` header says whether the database was asked
+      - a page at `/` to sync now, see how the last runs went and look posts up
+        — declared in this manifest, with no frontend code
+
+    The default upstream is the public JSONPlaceholder API. Run, then open
+    http://localhost:8106, or:
+        curl -s localhost:8106/api/status
+        curl -si 'localhost:8106/api/posts?userId=1' | head -20
+        curl -s -XPOST localhost:8106/api/sync
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
+  Ui: oci://ghcr.io/telorun/ui@0.3.0#sha256-Xp_vAsCGcbXDo6rqK9A-xEnCbqSksPlG-q_jziF83LU
+  UiReact: oci://ghcr.io/telorun/ui-react@0.4.0#sha256-Maz-ACXHNqymhG283guc_wYMIrM_FKWKfGOxRdZ7TBw
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  Cache: oci://ghcr.io/telorun/cache@0.13.0#sha256-m85mbpiAnfwojpzTTF9I1yZeTF6KDLlCPEtadghO3nc
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.0#sha256-yPwUSVVhRMiqQYQ9cbptorm1cA-HnJW6pLHRZ-8-qPA
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.0#sha256-wHzRZi3uI7c12dRSULXQBO8GRYqhJj6gos6xv6eZj7g
+  Schedule: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
+targets:
+  - !ref migrate
+  - name: firstSync
+    invoke: !ref recordedSync
+    when: !cel "variables.syncAtBoot"
+  - !ref server
+  - !ref poller
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8106
+variables:
+  upstreamBaseUrl:
+    env: UPSTREAM_BASE_URL
+    arg: upstream
+    type: string
+    default: https://jsonplaceholder.typicode.com
+  pageSize:
+    env: PAGE_SIZE
+    type: integer
+    minimum: 1
+    default: 25
+  maxPages:
+    env: MAX_PAGES
+    type: integer
+    minimum: 1
+    default: 10
+    description: The most pages one sync follows.
+  syncEvery:
+    env: SYNC_EVERY
+    arg: sync-every
+    type: string
+    default: "15m"
+  syncAtBoot:
+    env: SYNC_AT_BOOT
+    type: boolean
+    default: true
+  manualSyncsPerMinute:
+    env: MANUAL_SYNCS_PER_MINUTE
+    type: integer
+    minimum: 1
+    default: 2
+  dbFile:
+    env: DB_FILE
+    arg: db-file
+    type: string
+    x-telo-type: Telo.HostPath
+    default: api-sync.db
+---
+# The upstream, described once. Backoff is a property of the API being called
+# rather than of one call, so it lives here: a 429 or a 5xx is tried again, and
+# a `Retry-After` the upstream sends is honoured.
+kind: HttpClient.Client
+metadata: { name: upstream }
+baseUrl: !cel "variables.upstreamBaseUrl"
+headers:
+  accept: application/json
+timeout: 10000
+retry:
+  attempts: 3
+  initialDelay: 250
+  maxDelay: 5000
+  honorRetryAfter: true
+---
+# A failed response throws, so a sync never stores an error page as data.
+kind: HttpClient.Request
+metadata: { name: fetchPage }
+client: !ref upstream
+throwOnHttpError: true
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: posts }
+table: posts
+columns:
+  id: { type: integer, primaryKey: true }
+  user_id: { type: integer, nullable: false }
+  title: { type: text, nullable: false }
+  body: { type: text, nullable: false }
+  synced_at: { type: text, nullable: false }
+---
+kind: SQLite.Table
+metadata: { name: syncRuns }
+table: sync_runs
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  finished_at: { type: text, nullable: false }
+  outcome: { type: text, nullable: false }
+  pages: { type: integer, nullable: false, default: 0 }
+  records: { type: integer, nullable: false, default: 0 }
+  detail: { type: text, nullable: false, default: "" }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables:
+  - !ref posts
+  - !ref syncRuns
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+# One page into the table. The upstream's id is the key, so a row seen before
+# is updated in place and a second sync of the same data changes nothing.
+kind: Run.Iteration
+metadata: { name: upsertPosts }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ posts ]
+    properties:
+      posts:
+        type: array
+        items:
+          type: object
+          required: [ id, userId, title, body ]
+          properties:
+            id: { type: integer }
+            userId: { type: integer }
+            title: { type: string }
+            body: { type: string }
+collection: !cel "inputs.posts"
+steps:
+  - name: upsert
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO posts (id, user_id, title, body, synced_at) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (id) DO UPDATE SET
+          user_id = excluded.user_id, title = excluded.title,
+          body = excluded.body, synced_at = excluded.synced_at
+      bindings:
+        - !cel "item.id"
+        - !cel "item.userId"
+        - !cel "item.title"
+        - !cel "item.body"
+        - !cel "nowIso()"
+---
+# The pull itself: ask for a page, store it, ask for the next, until one comes
+# back empty or the page bound is reached.
+kind: Run.Sequence
+metadata: { name: sync }
+steps:
+  - name: page
+    value: !cel "1"
+  - name: records
+    value: !cel "0"
+  - name: fetched
+    invoke: !ref fetchPage
+    inputs:
+      url: /posts
+      method: GET
+      query:
+        _page: !cel "string(steps.page.result)"
+        _limit: !cel "string(variables.pageSize)"
+  - name: pages
+    while: !cel "size(steps.fetched.result.body) > 0 && steps.page.result <= variables.maxPages"
+    do:
+      - name: stored
+        invoke: !ref upsertPosts
+        inputs:
+          posts: !cel "steps.fetched.result.body"
+      - name: records
+        value: !cel "steps.records.result + size(steps.fetched.result.body)"
+      - name: page
+        value: !cel "steps.page.result + 1"
+      - name: fetched
+        invoke: !ref fetchPage
+        inputs:
+          url: /posts
+          method: GET
+          query:
+            _page: !cel "string(steps.page.result)"
+            _limit: !cel "string(variables.pageSize)"
+outputs:
+  pages: !cel "steps.page.result - 1"
+  records: !cel "steps.records.result"
+---
+# What every trigger runs: the sync, and a row saying how it went.
+kind: Run.Sequence
+metadata: { name: recordedSync }
+steps:
+  - name: attempt
+    try:
+      - name: pulled
+        invoke: !ref sync
+      - name: recordSuccess
+        invoke: !ref exec
+        inputs:
+          sql: "INSERT INTO sync_runs (finished_at, outcome, pages, records) VALUES (?, 'ok', ?, ?)"
+          bindings:
+            - !cel "nowIso()"
+            - !cel "steps.pulled.result.pages"
+            - !cel "steps.pulled.result.records"
+      - name: say
+        invoke: !ref Console.writeLine
+        inputs:
+          output: !cel >-
+            '{green ✔} synced ' + string(steps.pulled.result.records) + ' posts in ' +
+            string(steps.pulled.result.pages) + ' pages'
+    catch:
+      - name: recordFailure
+        invoke: !ref exec
+        inputs:
+          sql: "INSERT INTO sync_runs (finished_at, outcome, detail) VALUES (?, 'failed', ?)"
+          bindings:
+            - !cel "nowIso()"
+            - !cel "error.code + ': ' + error.message"
+      - name: rethrow
+        throw:
+          code: ERR_SYNC_FAILED
+          message: !cel "error.code + ': ' + error.message"
+outputs:
+  pages: !cel "steps.pulled.result.pages"
+  records: !cel "steps.pulled.result.records"
+---
+kind: Schedule.Interval
+metadata: { name: poller }
+every: !cel "variables.syncEvery"
+invoke: !ref recordedSync
+---
+# Counters and cached lists share one in-process store. Swap it for cache-redis
+# and both are shared by every replica.
+kind: CacheMemory.Store
+metadata: { name: memory }
+---
+kind: RateLimit.Guard
+metadata: { name: manualSyncLimit }
+store: !ref memory
+limit: !cel "variables.manualSyncsPerMinute"
+window: "60s"
+---
+kind: Sql.Query
+metadata: { name: recentRuns }
+connection: !ref db
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ rows ]
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          required: [ finishedAt, outcome, pages, records, detail ]
+          properties:
+            finishedAt: { type: string }
+            outcome: { type: string }
+            pages: { type: integer }
+            records: { type: integer }
+            detail: { type: string }
+---
+kind: Run.Sequence
+metadata: { name: syncOnDemand }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ client ]
+    properties:
+      client: { type: string }
+steps:
+  - name: limit
+    invoke: !ref manualSyncLimit
+    inputs:
+      key: !cel "inputs.client"
+  - name: run
+    if: !cel "steps.limit.result.allowed"
+    then:
+      - name: synced
+        invoke: !ref recordedSync
+  - name: history
+    invoke: !ref recentRuns
+    inputs:
+      sql: >-
+        SELECT finished_at AS "finishedAt", outcome, pages, records, detail
+        FROM sync_runs ORDER BY id DESC LIMIT 5
+      bindings: []
+outputs:
+  allowed: !cel "steps.limit.result.allowed"
+  retryAfter: !cel "steps.limit.result.retryAfter"
+  pages: !cel "steps.limit.result.allowed ? steps.synced.result.pages : 0"
+  records: !cel "steps.limit.result.allowed ? steps.synced.result.records : 0"
+  runs: !cel "steps.history.result.rows"
+---
+kind: Sql.Query
+metadata: { name: listPosts }
+connection: !ref db
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ rows ]
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          required: [ id, userId, title ]
+          properties:
+            id: { type: integer }
+            userId: { type: integer }
+            title: { type: string }
+---
+# Read-through: a fresh entry is served without touching the database, and a
+# miss runs the query and remembers what it returned. A list is at most this
+# stale after a sync.
+kind: Cache.View
+metadata: { name: cachedPosts }
+store: !ref memory
+invoke: !ref listPosts
+ttl: "5s"
+---
+kind: Http.Api
+metadata: { name: syncRoutes }
+routes:
+  - request:
+      path: /posts
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            userId: { type: integer, minimum: 1 }
+    handler: !ref cachedPosts
+    # Everything here is forwarded to the query on a miss; `key` is what the
+    # cache files the answer under, so each user's list is its own entry.
+    inputs:
+      key: !cel "'posts:' + (has(request.query.userId) ? string(request.query.userId) : 'all')"
+      sql: >-
+        SELECT id, user_id AS "userId", title FROM posts
+        WHERE (? = 0 OR user_id = ?) ORDER BY id LIMIT 100
+      bindings:
+        - !cel "has(request.query.userId) ? request.query.userId : 0"
+        - !cel "has(request.query.userId) ? request.query.userId : 0"
+    returns:
+      - status: 200
+        headers:
+          x-cache: !cel "result.state"
+        content:
+          application/json:
+            body: !cel "result.value.rows"
+
+  - request:
+      path: /sync
+      method: POST
+    handler: !ref syncOnDemand
+    inputs:
+      client: !cel "request.ip"
+    returns:
+      - status: 429
+        when: !cel "!result.allowed"
+        headers:
+          Retry-After: !cel "string(result.retryAfter)"
+        content:
+          application/json:
+            body:
+              error: rate_limited
+      - status: 200
+        content:
+          application/json:
+            body:
+              pages: !cel "result.pages"
+              records: !cel "result.records"
+              runs: !cel "result.runs"
+    # The upstream stayed down through every retry: say so as a gateway error.
+    catches:
+      - status: 502
+        content:
+          application/json:
+            body:
+              error: upstream_failed
+              message: !cel "error.message"
+
+  # The same lookup as an operation a page can run: a button sends a POST, and
+  # a search is not worth caching.
+  - request:
+      path: /posts/search
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          properties:
+            userId: { type: integer, minimum: 1 }
+    handler: !ref listPosts
+    inputs:
+      sql: >-
+        SELECT id, user_id AS "userId", title FROM posts
+        WHERE (? = 0 OR user_id = ?) ORDER BY id LIMIT 100
+      bindings:
+        - !cel "has(request.body.userId) ? request.body.userId : 0"
+        - !cel "has(request.body.userId) ? request.body.userId : 0"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              posts: !cel "result.rows"
+
+  - request:
+      path: /status
+      method: GET
+    handler: !ref recentRuns
+    inputs:
+      sql: >-
+        SELECT finished_at AS "finishedAt", outcome, pages, records, detail
+        FROM sync_runs ORDER BY id DESC LIMIT 5
+      bindings: []
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              upstream: !cel "variables.upstreamBaseUrl"
+              runs: !cel "result.rows"
+---
+# The shapes the page and the API share: each form is built from the shape its
+# route validates, and each table is drawn from the shape its route answers.
+kind: Telo.JsonSchema
+metadata: { name: SyncResult }
+schema:
+  type: object
+  required: [ runs ]
+  properties:
+    runs:
+      type: array
+      items:
+        type: object
+        required: [ finishedAt, outcome, pages, records, detail ]
+        properties:
+          finishedAt: { type: string, title: Finished }
+          outcome: { type: string, title: Outcome }
+          pages: { type: integer, title: Pages }
+          records: { type: integer, title: Records }
+          detail: { type: string, title: Detail }
+---
+kind: Telo.JsonSchema
+metadata: { name: PostSearch }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    userId: { type: integer, title: User id, minimum: 1 }
+---
+kind: Telo.JsonSchema
+metadata: { name: PostList }
+schema:
+  type: object
+  required: [ posts ]
+  properties:
+    posts:
+      type: array
+      items:
+        type: object
+        required: [ id, userId, title ]
+        properties:
+          id: { type: integer, title: Post }
+          userId: { type: integer, title: User }
+          title: { type: string, title: Title }
+---
+# The whole frontend: a button that syncs and shows how the last runs went, and
+# a form that looks posts up in the local copy.
+kind: UiReact.App
+metadata: { name: ui }
+title: API sync
+lang: en
+pages:
+  - path: /
+    title: Sync
+    children:
+      - { type: text, text: "Sync now", style: heading }
+      - { type: text, text: "Pulls every page from the upstream and upserts it. Rate limited: a second press too soon is refused.", style: muted }
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel:
+            kind: Telo.JsonSchema
+            schema: { type: object, additionalProperties: false, properties: {} }
+          outputModel: !ref SyncResult
+          source: { path: /api/sync }
+          label: Sync now
+          lists:
+            - heading: Last runs
+              rows: !cel "result.runs"
+              columns:
+                - value: !cel "row.finishedAt"
+                - value: !cel "row.outcome"
+                - value: !cel "row.pages"
+                - value: !cel "row.records"
+                - value: !cel "row.detail"
+  - path: /posts
+    title: Posts
+    children:
+      - { type: text, text: "Posts in the local copy", style: heading }
+      - { type: text, text: "Leave the user empty to list every user's posts.", style: muted }
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel: !ref PostSearch
+          outputModel: !ref PostList
+          source: { path: /api/posts/search }
+          label: Find posts
+          lists:
+            - rows: !cel "result.posts"
+              columns:
+                - value: !cel "row.id"
+                - value: !cel "row.userId"
+                - value: !cel "row.title"
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: API sync
+    version: 1.0.0
+mounts:
+  - path: /api
+    mount: !ref syncRoutes
+  - path: /
+    mount: !ref ui

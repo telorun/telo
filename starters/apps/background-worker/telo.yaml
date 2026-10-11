@@ -1,0 +1,453 @@
+kind: Telo.Application
+metadata:
+  name: BackgroundWorker
+  version: 1.0.0
+  categories: [ Coordination, Reliability, Scheduling ]
+  description: |
+    A job queue and the worker that drains it, safe to run as several replicas.
+
+      - `POST /api/jobs` enqueues and answers at once; `GET /api/jobs` shows
+        every job and who did it; `GET /api/status` sums the queue up
+      - a page at `/` to enqueue a job and watch the queue — declared in this
+        manifest, with no frontend code
+      - a `Schedule.Interval` ticks on every replica, and each tick asks for the
+        same lease before touching the queue: one replica is inside the work at
+        a time, the others are told who holds it and skip. Nothing is elected —
+        exclusion is a resource (`Lease.Critical`) around a body that knows
+        nothing about it
+      - a job that fails is tried again on a later tick, and after
+        `MAX_ATTEMPTS` it is parked as `failed` with its last error, so one bad
+        job cannot wedge the queue
+      - a replica that dies holding the lease frees it after `LEASE_TTL`
+
+    The lease lives in the database the replicas share, which is what makes it
+    mean anything: point `DB_FILE` at one file (or the connection at Postgres)
+    and the same manifest coordinates across processes and machines.
+
+    Run three replicas, each in its own terminal:
+        INSTANCE_ID=a PORT=8105 telo .
+        INSTANCE_ID=b PORT=8115 telo .
+        INSTANCE_ID=c PORT=8125 telo .
+    Then open http://localhost:8105, or give them work and watch who takes it:
+        curl -s -XPOST localhost:8105/api/jobs -H 'content-type: application/json' -d '{"payload":"invoice-1001"}'
+        curl -s -XPOST localhost:8105/api/jobs -H 'content-type: application/json' -d '{"payload":"fail-this-one"}'
+        curl -s localhost:8105/api/jobs
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
+  Ui: oci://ghcr.io/telorun/ui@0.3.0#sha256-Xp_vAsCGcbXDo6rqK9A-xEnCbqSksPlG-q_jziF83LU
+  UiReact: oci://ghcr.io/telorun/ui-react@0.4.0#sha256-Maz-ACXHNqymhG283guc_wYMIrM_FKWKfGOxRdZ7TBw
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.14.0#sha256-DY-CKnlGAPmco-fkHRfo6NkxEVwJkwf6YPlo7qbrMG4
+  Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
+  Schedule: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
+  Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
+targets:
+  - !ref migrate
+  - !ref worker
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8105
+variables:
+  instanceId:
+    env: INSTANCE_ID
+    arg: instance-id
+    type: string
+    default: a
+    description: Names this replica in the lease and on every job it does.
+  dbFile:
+    env: DB_FILE
+    arg: db-file
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./worker-queue.db
+    description: The queue every replica shares.
+  tickEvery:
+    env: TICK_EVERY
+    type: string
+    default: "1s"
+  batchSize:
+    env: BATCH_SIZE
+    type: integer
+    minimum: 1
+    default: 5
+    description: How many jobs one tick takes.
+  maxAttempts:
+    env: MAX_ATTEMPTS
+    type: integer
+    minimum: 1
+    default: 3
+  leaseTtl:
+    env: LEASE_TTL
+    type: string
+    default: "30s"
+    description: >-
+      Set it above a batch's worst case, or a slow run loses the lease while it
+      is still working.
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: jobs }
+table: jobs
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  payload: { type: text, nullable: false }
+  status: { type: text, nullable: false, default: pending }
+  attempts: { type: integer, nullable: false, default: 0 }
+  last_error: { type: text }
+  worked_by: { type: text }
+  worked_at: { type: text }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables:
+  - !ref jobs
+---
+# The lease lives in the database, so a second process sees the same claim. This
+# one resource is what decides how far exclusion reaches.
+kind: KvStoreSql.Store
+metadata: { name: leases }
+connection: !ref db
+table: telo_leases
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+# Stands in for the real work — an upstream call, a render, a payment. It takes
+# a moment, and a payload starting with `fail` fails, so the retry path can be
+# watched. Replace it; everything around it stays.
+kind: Run.Sequence
+metadata: { name: doWork }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ payload ]
+    properties:
+      payload: { type: string }
+steps:
+  - name: takeTime
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: "100ms"
+      value: {}
+  - name: broken
+    if: !cel "inputs.payload.startsWith('fail')"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_JOB_REFUSED
+          message: !cel "'cannot process ' + inputs.payload"
+---
+# One job, whichever way it ends: done, back to pending for another attempt, or
+# parked as failed once it has used its attempts.
+kind: Run.Iteration
+metadata: { name: processBatch }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ jobs ]
+    properties:
+      jobs:
+        type: array
+        items:
+          type: object
+          required: [ id, payload, attempts ]
+          properties:
+            id: { type: integer }
+            payload: { type: string }
+            attempts: { type: integer }
+collection: !cel "inputs.jobs"
+steps:
+  - name: attempt
+    try:
+      - name: work
+        invoke: !ref doWork
+        inputs:
+          payload: !cel "item.payload"
+      - name: markDone
+        invoke: !ref exec
+        inputs:
+          sql: >-
+            UPDATE jobs SET status = 'done', attempts = attempts + 1, last_error = NULL,
+              worked_by = ?, worked_at = datetime('now') WHERE id = ?
+          bindings:
+            - !cel "variables.instanceId"
+            - !cel "item.id"
+    catch:
+      - name: markFailed
+        invoke: !ref exec
+        inputs:
+          sql: >-
+            UPDATE jobs SET status = ?, attempts = attempts + 1, last_error = ?,
+              worked_by = ?, worked_at = datetime('now') WHERE id = ?
+          bindings:
+            - !cel "item.attempts + 1 >= variables.maxAttempts ? 'failed' : 'pending'"
+            - !cel "error.code + ': ' + error.message"
+            - !cel "variables.instanceId"
+            - !cel "item.id"
+---
+# Read, work, then write — the gap between the read and the write is exactly
+# what two replicas must not be inside at once. Nothing here mentions a lease,
+# which is what lets the same body run unguarded in a single-replica deployment.
+kind: Run.Sequence
+metadata: { name: drainQueue }
+steps:
+  - name: claim
+    invoke: !ref query
+    inputs:
+      sql: "SELECT id, payload, attempts FROM jobs WHERE status = 'pending' ORDER BY id LIMIT ?"
+      bindings:
+        - !cel "variables.batchSize"
+  - name: work
+    if: !cel "size(steps.claim.result.rows) > 0"
+    then:
+      - name: batch
+        invoke: !ref processBatch
+        inputs:
+          jobs: !cel "steps.claim.result.rows"
+      - name: say
+        invoke: !ref Console.writeLine
+        inputs:
+          output: !cel >-
+            '{green ✔} ' + variables.instanceId + ' worked ' +
+            steps.claim.result.rows.map(r, r.payload).join(', ')
+---
+kind: Lease.Critical
+metadata: { name: drainExclusively }
+store: !ref leases
+ttl: !cel "variables.leaseTtl"
+invoke: !ref drainQueue
+---
+# What every replica fires. Losing the lease is not an error: `acquired: false`
+# is the normal outcome for every replica but one, and that tick does nothing.
+kind: Schedule.Interval
+metadata: { name: worker }
+every: !cel "variables.tickEvery"
+invoke: !ref drainExclusively
+inputs:
+  key: drain-queue
+  holder: !cel "variables.instanceId"
+  inputs: {}
+---
+kind: Sql.Query
+metadata: { name: listJobs }
+connection: !ref db
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ rows ]
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          required: [ id, payload, status, attempts ]
+          properties:
+            id: { type: integer }
+            payload: { type: string }
+            status: { type: string }
+            attempts: { type: integer }
+            lastError: { type: [ string, "null" ] }
+            workedBy: { type: [ string, "null" ] }
+---
+# Enqueue, and answer with the queue as it now stands — which is what the page
+# draws under its form.
+kind: Run.Sequence
+metadata: { name: enqueue }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ payload ]
+    properties:
+      payload: { type: string }
+steps:
+  # `RETURNING` makes the insert a read, so the caller gets the job's id.
+  - name: inserted
+    invoke: !ref query
+    inputs:
+      sql: "INSERT INTO jobs (payload) VALUES (?) RETURNING id, status"
+      bindings:
+        - !cel "inputs.payload"
+  - name: queue
+    invoke: !ref listJobs
+    inputs:
+      sql: >-
+        SELECT id, payload, status, attempts, last_error AS "lastError", worked_by AS "workedBy"
+        FROM jobs ORDER BY id DESC LIMIT 100
+      bindings: []
+outputs:
+  id: !cel "int(steps.inserted.result.rows[0].id)"
+  status: !cel "string(steps.inserted.result.rows[0].status)"
+  jobs: !cel "steps.queue.result.rows"
+---
+# The shapes the page and the API share.
+kind: Telo.JsonSchema
+metadata: { name: NewJob }
+schema:
+  type: object
+  additionalProperties: false
+  required: [ payload ]
+  properties:
+    payload: { type: string, title: Payload, minLength: 1 }
+---
+kind: Telo.JsonSchema
+metadata: { name: Queue }
+schema:
+  type: object
+  required: [ jobs ]
+  properties:
+    jobs:
+      type: array
+      items:
+        type: object
+        required: [ id, payload, status, attempts ]
+        properties:
+          id: { type: integer, title: Job }
+          payload: { type: string, title: Payload }
+          status: { type: string, title: Status }
+          attempts: { type: integer, title: Attempts }
+          lastError: { type: [ string, "null" ], title: Last error }
+          workedBy: { type: [ string, "null" ], title: Worked by }
+---
+kind: Http.Api
+metadata: { name: queueRoutes }
+routes:
+  - request:
+      path: /jobs
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ payload ]
+          properties:
+            payload: { type: string, minLength: 1 }
+    handler: !ref enqueue
+    inputs:
+      payload: !cel "request.body.payload"
+    returns:
+      # 202: accepted and queued, not done.
+      - status: 202
+        content:
+          application/json:
+            body: !cel "result"
+
+  - request:
+      path: /jobs
+      method: GET
+    handler: !ref listJobs
+    inputs: &queueQuery
+      sql: >-
+        SELECT id, payload, status, attempts, last_error AS "lastError", worked_by AS "workedBy"
+        FROM jobs ORDER BY id DESC LIMIT 100
+      bindings: []
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.rows"
+
+  # The same list as an operation a page can run: a button sends a POST.
+  - request:
+      path: /jobs/recent
+      method: POST
+    handler: !ref listJobs
+    inputs: *queueQuery
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              jobs: !cel "result.rows"
+
+  - request:
+      path: /status
+      method: GET
+    handler: !ref query
+    inputs:
+      sql: "SELECT status, COUNT(*) AS jobs FROM jobs GROUP BY status ORDER BY status"
+      bindings: []
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              me: !cel "variables.instanceId"
+              queue: !cel "result.rows"
+---
+# The whole frontend: a form that enqueues, a button that refreshes, and the
+# queue each draws from what its route answers.
+kind: UiReact.App
+metadata: { name: ui }
+title: !cel "'Worker ' + variables.instanceId"
+lang: en
+pages:
+  - path: /
+    title: Queue
+    children:
+      - { type: text, text: "Enqueue a job", style: heading }
+      - { type: text, text: "A payload starting with fail is refused by the worker, tried again, and parked as failed.", style: muted }
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel: !ref NewJob
+          outputModel: !ref Queue
+          source: { path: /api/jobs }
+          label: Enqueue
+          lists:
+            - heading: Queue
+              rows: !cel "result.jobs"
+              columns: &jobColumns
+                - value: !cel "row.id"
+                - value: !cel "row.payload"
+                - value: !cel "row.status"
+                - value: !cel "row.attempts"
+                - value: !cel "row.workedBy"
+                - value: !cel "row.lastError"
+      - { type: text, text: "Watch it drain", style: heading }
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel:
+            kind: Telo.JsonSchema
+            schema: { type: object, additionalProperties: false, properties: {} }
+          outputModel: !ref Queue
+          source: { path: /api/jobs/recent }
+          label: Refresh
+          lists:
+            - rows: !cel "result.jobs"
+              columns: *jobColumns
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Background worker
+    version: 1.0.0
+mounts:
+  - path: /api
+    mount: !ref queueRoutes
+  - path: /
+    mount: !ref ui

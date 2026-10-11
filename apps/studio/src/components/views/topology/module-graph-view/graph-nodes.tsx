@@ -24,6 +24,7 @@ import {
   Filter,
   CopyMinus,
   Import,
+  Sparkles,
 } from "lucide-react";
 import { summarizeResource } from "../../../../diagnostics-aggregate";
 import { CREATE_REF_OPTION_PREFIX } from "../../../resource-schema-form/ref-candidates";
@@ -121,6 +122,9 @@ export interface GraphBoxData extends Record<string, unknown> {
   /** Start this resource at boot, or stop starting it. Absent where it may not
    *  be a boot target, or where the module root cannot be written. */
   onToggleBoot?: () => void;
+  /** Put a question about this resource into the agent's composer. Absent
+   *  where no agent panel is offered. */
+  onAskAgent?: () => void;
   /** Zone regions this box OPENS, as `attribute → reason` — what it guarantees
    *  about everything its body reaches. */
   zones?: { site: string; attributes: Readonly<Record<string, string>> }[];
@@ -404,7 +408,7 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
     </div>
   );
 
-  if (!data.onToggleBoot) return box;
+  if (!data.onToggleBoot && !data.onAskAgent) return box;
   const markers = data.boot ?? [];
   const label =
     markers.length === 0
@@ -418,10 +422,18 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
       {/* Portalled, and React still bubbles its clicks through the box — which
           would open the resource under the menu. */}
       <ContextMenuContent data-no-open className="w-48" onClick={(e) => e.stopPropagation()}>
-        <ContextMenuItem className="text-xs" onSelect={data.onToggleBoot}>
-          {markers.length > 0 ? <PowerOff /> : <Power />}
-          {label}
-        </ContextMenuItem>
+        {data.onToggleBoot && (
+          <ContextMenuItem className="text-xs" onSelect={data.onToggleBoot}>
+            {markers.length > 0 ? <PowerOff /> : <Power />}
+            {label}
+          </ContextMenuItem>
+        )}
+        {data.onAskAgent && (
+          <ContextMenuItem className="text-xs" onSelect={data.onAskAgent}>
+            <Sparkles />
+            Ask AI
+          </ContextMenuItem>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );
