@@ -3,33 +3,33 @@
 # `telo release verify` reconciles it against the registry.
 modules:
   apps/authoring-agent:
-    version: 0.22.0
+    version: 0.22.1
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-UHRPM2MHat2GjWdk2nmN_o8XRm0Zc7LBn1kwbBJIaV4
+      image: sha256-TBARdeBEE94KS5AtNAZwEnIAAnIkWk6ouBfTNifQi6U
   apps/hub:
-    version: 0.13.1
+    version: 0.13.2
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-gCS1YJtt7vRTzBBh59EIAZtFOwywhcijkgYmh27mBW0
+      image: sha256-OP5QjOC5EQXkTQuuAqFiRiLYxwd1Y0eH-hcwljUIv7I
   blueprints/agent-app:
-    version: 0.3.1
+    version: 0.3.2
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-MLBwjfNFxyOnEPI6lpLSvHS-CFvlcDsc-cdv_xrYCUQ
+      manifest: sha256-WR9N3gKuf-6JoP4pF8Nyj2IpGX5OXJ70tlj7jXKaAzw
   blueprints/approval-app:
-    version: 0.3.1
+    version: 0.3.2
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-725RFwXDNuXKp2jtfLOd42pKa0e_jrEObxxWiMU2iQ8
+      manifest: sha256-vP-lINbmUJnAD1iSpwEsYG50v6VYKvVMP1ObD70bNvE
   blueprints/workflow-app:
-    version: 0.3.1
+    version: 0.3.2
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-fOMu73-JS8M3Y7aCQTxU1xMCPvj9zkiVti2BAwBaFx4
+      manifest: sha256-7zzOr2fHpx0B1S7ce1mIJ16k3-plY5HF3QydEaIqI7g
   modules/ai:
     version: 0.28.0
     registry: oci://ghcr.io/telorun
@@ -402,12 +402,12 @@ modules:
       controller/js: sha256-eaZgEt3-oTW3aKkrY2R8R7ZHN19sE6DF6PIBMJhV-ZU
       manifest: sha256-Kn3uGeL-Wy18Fs7ktH5ZfpyorJeHZe9hxD3C3sW2Y0g
   modules/mcp-server:
-    version: 0.18.0
+    version: 0.19.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-MlNg96aRYGcKjnxfQkbkiMuj8yCz9awkUCV5TQ5Um8k
-      manifest: sha256-k_3uEY_TN7xcRmnWyLzolCM4m6QhIVaMZttZ3fVyQec
+      controller/js: sha256-lumzPjZMf7hlMOd6W3Ya72ioIb1pJGdvtpiLkJu5JmQ
+      manifest: sha256-3CNKSB6iR9hmu_rQhf6EctR33YKCmPeoQYyI_4OcdMk
   modules/media-type:
     version: 0.2.0
     registry: oci://ghcr.io/telorun
