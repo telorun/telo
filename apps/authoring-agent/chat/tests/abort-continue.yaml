@@ -21,7 +21,7 @@ imports:
   App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
   Fs: ../../../../modules/fs
   HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
-  Sse: oci://ghcr.io/telorun/sse-codec@0.13.0#sha256-xNewUQC5N5mmr1Bi0rLQXlIfrJecKLoDhidl_bk0Yew
+  Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4
   Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
   Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
@@ -440,12 +440,12 @@ steps:
               markCleared: !cel "steps.markCleared.result.rows[0].cleared"
               again: [ !cel "steps.continueFinished.result.status", !cel "steps.continueFinished.result.body.reason" ]
             expected:
-              firstAttempt: [user-message, conversation-title, ERR_OPENAI_REQUEST_FAILED]
+              firstAttempt: [user-message, conversation-title, ERR_MODEL_REQUEST_REJECTED]
               continued: 200
               turnId: !cel "steps.refused.result.turnId"
               fromId: !cel >-
                 steps.beforeContinue.result.turns[0].records[size(steps.beforeContinue.result.turns[0].records) - 1].id
-              failure: ERR_OPENAI_REQUEST_FAILED
+              failure: ERR_MODEL_REQUEST_REJECTED
               nextRecord: [ !cel "steps.refusedEvents.result.frames[1].id + 1", turn-continued ]
               note: true
               ended: finish
@@ -521,5 +521,5 @@ steps:
     inputs:
       actual: !cel >-
         steps.sent.result.body.requests.exists(r,
-          json(r).contains('STUB_FAIL_ONCE') && json(r).contains('TURN CONTINUED: the previous attempt at this turn was interrupted by ERR_OPENAI_REQUEST_FAILED'))
+          json(r).contains('STUB_FAIL_ONCE') && json(r).contains('TURN CONTINUED: the previous attempt at this turn was interrupted by ERR_MODEL_REQUEST_REJECTED'))
       expected: true

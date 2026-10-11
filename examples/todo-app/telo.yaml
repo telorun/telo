@@ -16,12 +16,12 @@ metadata:
 # copy. They become pinned `oci://` refs, like every other example's, once they
 # are released.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
   Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
-  Crud: oci://ghcr.io/telorun/crud@0.25.0#sha256-_SY6ZTspZ69ECauO1F9pxA-veKlbirov2i9RQoo14gI
+  Crud: oci://ghcr.io/telorun/crud@0.26.0#sha256-6QhGLwE7wRFRUJoOjtNveov8xzl8BWWPD9QaF2cRiZg
   Ui: oci://ghcr.io/telorun/ui@0.3.0#sha256-Xp_vAsCGcbXDo6rqK9A-xEnCbqSksPlG-q_jziF83LU
-  UiReact: oci://ghcr.io/telorun/ui-react@0.3.0#sha256-dkjcaac-m0fBqkGIGYBCr0qLox_ADJkkxb4rq1dtIXY
+  UiReact: oci://ghcr.io/telorun/ui-react@0.4.0#sha256-Maz-ACXHNqymhG283guc_wYMIrM_FKWKfGOxRdZ7TBw
 targets:
   - !ref migrate
   - !ref server
