@@ -29,8 +29,8 @@ metadata:
         JOB_CRON='*/10 * * * * *' telo .
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
-  Ui: oci://ghcr.io/telorun/ui@0.3.0#sha256-Xp_vAsCGcbXDo6rqK9A-xEnCbqSksPlG-q_jziF83LU
-  UiReact: oci://ghcr.io/telorun/ui-react@0.4.0#sha256-Maz-ACXHNqymhG283guc_wYMIrM_FKWKfGOxRdZ7TBw
+  Ui: oci://ghcr.io/telorun/ui@0.4.0#sha256-9hNZj-hzEkskbX-GgG3eabew02lvQIjMbAHILQ7ca3U
+  UiReact: oci://ghcr.io/telorun/ui-react@0.5.0#sha256-xyuX5J_vK5o817qrpjNTlhi3TerS7dxPqisDyNTl4WA
   Schedule: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
   Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
   KvStore: oci://ghcr.io/telorun/kv-store-memory@0.8.0#sha256-GmMDeJ2eYatJ0_ewaUI6A6bnfkqlphjd4YKWtqZ5d2Y

@@ -23,7 +23,7 @@ imports:
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
   Shell: oci://ghcr.io/telorun/shell@0.13.0#sha256-h4-z6gdCjduwxgU1n7o5eol8RYgsxBCS2iQcxpCV_u0
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.0#sha256-wHzRZi3uI7c12dRSULXQBO8GRYqhJj6gos6xv6eZj7g
-  Durable: oci://ghcr.io/telorun/durable-local@0.5.0#sha256-OYRLiD-tTFJvTaweXET6A6ZWXNb27FStXEcpkq1enc0
+  Durable: oci://ghcr.io/telorun/durable-local@0.5.1#sha256-2zh8d4sURSCk3aYbZ-VyED-LuOD6-LsXCbKszuTROC4
   Schema:
     source: ./hub-schema.yaml
     resources:
