@@ -1,7 +1,0 @@
-modules:
-  modules/ui: Added
-  modules/ui-react: Added
-body: "A table's row action can ask for more before it runs: 'prompt: true' on a
-  'rowActions' entry opens its confirmation with the action's fields the row does not
-  bind (a reason, a note), checks them against the input model, sends them with the
-  row's values, and shows a 400 on the field it names."

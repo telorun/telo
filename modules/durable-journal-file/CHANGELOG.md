@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1 - 2026-10-11
+### Fixed
+* A run is recorded already claimed by the process that starts it. Before, a resumer polling while a run was being started could take it first and execute it without its inputs, which left the run stuck as running and refused every later delivery to it.
+
 ## 0.6.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
