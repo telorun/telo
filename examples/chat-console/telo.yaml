@@ -12,9 +12,9 @@ metadata:
         OPENAI_API_KEY=sk-...
     The CLI loads `.env.local` from the manifest's directory automatically.
 imports:
-  OpenAI: oci://ghcr.io/telorun/openai@0.12.0#sha256-hKc2_SoJ5vZtMltBiuTFpCu-_POOVKpvl9KJ27iM63s
+  OpenAI: oci://ghcr.io/telorun/openai@0.13.0#sha256-Tt9DaH254A972an-WTH_mtJOy9HAuUuH_SK1_bfOvHM
   Http: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
-  Ai: oci://ghcr.io/telorun/ai@0.27.0#sha256-YuRyAUKvsFQu845vDQkBLUgU9tO4o1V1ZeAsx81510g
+  Ai: oci://ghcr.io/telorun/ai@0.28.0#sha256-zpi3w-6zWjD3HGhxoMJKItuFM4ELZa-NTVHOtFacRII
   RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
   PlainText: oci://ghcr.io/telorun/plain-text-codec@0.11.0#sha256-V8zjIxeI89VhzVcKOrOTqLq7AdsNh2n51k2avdcOh-k
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw

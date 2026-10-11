@@ -31,7 +31,7 @@ imports:
   App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
   Fs: ../../../../modules/fs
   HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
-  Sse: oci://ghcr.io/telorun/sse-codec@0.13.0#sha256-xNewUQC5N5mmr1Bi0rLQXlIfrJecKLoDhidl_bk0Yew
+  Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4
   Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
   Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
