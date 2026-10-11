@@ -18,10 +18,20 @@ import {
   type ProjectRole,
 } from "./api";
 import { cloudBackend } from "./backend";
+import {
+  filesDigest,
+  readBrowserWorkspaceFiles,
+  removeBrowserWorkspaceFiles,
+} from "./browser-workspace-files";
 import { repositoryRefusalMessage } from "./refusal-messages";
-import type { CloudSessionState } from "./session";
+import type { CloudIdentity, CloudSessionState } from "./session";
 import { readSnapshotTar } from "./snapshot-tar";
-import { CommitLimitError, type PathChange, type PreparedUpdate } from "./working-copy";
+import {
+  CommitLimitError,
+  ImportPathError,
+  type PathChange,
+  type PreparedUpdate,
+} from "./working-copy";
 import { cloudProjectIdOf, cloudWorkspaceRoot } from "./working-copy-adapter";
 import {
   findWorkingCopy,
@@ -35,6 +45,8 @@ import {
   type WorkingCopyEntry,
 } from "./working-copy-index";
 import { onWorkingCopyWrite, workingCopyOf } from "./working-copy-store";
+import { readTeloVersionSetting, writeTeloVersionSetting } from "../language/language-storage";
+import { VIRTUAL_WORKSPACE_ROOT } from "../loader/remote";
 
 /** How often the branch head is read while a Cloud project is open. */
 const HEAD_POLL_MS = 30_000;
@@ -74,6 +86,12 @@ export interface ActiveCloudProject {
 
 export type CloudActionResult = { ok: true } | { ok: false; message: string };
 
+export type BrowserWorkspaceCopyResult =
+  | { status: "copied" }
+  /** Paths the project already holds, which the copy would replace. */
+  | { status: "confirm"; overwrites: string[] }
+  | { status: "refused"; message: string };
+
 interface CloudContextValue {
   session: CloudSessionState | { status: "loading" };
   api: CloudApi;
@@ -98,6 +116,18 @@ interface CloudContextValue {
   registerHost(host: CloudHost | null): void;
   setActiveRoot(rootDir: string | null): void;
   openProject(project: CloudProject): Promise<CloudActionResult>;
+  /** Copies the browser-stored workspace's files into the project's working
+   *  copy and opens it. Nothing is committed. Paths the project already holds
+   *  are replaced only when listed in `confirmedOverwrites`. */
+  copyBrowserWorkspace(
+    project: CloudProject,
+    confirmedOverwrites: readonly string[],
+  ): Promise<BrowserWorkspaceCopyResult>;
+  /** Set once a copied browser workspace is committed and still as it was
+   *  copied: the project its files now live in. */
+  browserWorkspaceRemoval: { projectName: string } | null;
+  removeBrowserWorkspace(): void;
+  keepBrowserWorkspace(): void;
 
   active: ActiveCloudProject | null;
   /** Why the open Cloud project cannot be edited right now, if it cannot. */
@@ -158,6 +188,8 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   const [filesEpoch, setFilesEpoch] = useState(0);
   const [signOutPrompt, setSignOutPrompt] = useState<CloudContextValue["signOutPrompt"]>(null);
   const [foreignCopies, setForeignCopies] = useState<WorkingCopyEntry[] | null>(null);
+  const [browserWorkspaceRemoval, setBrowserWorkspaceRemoval] =
+    useState<CloudContextValue["browserWorkspaceRemoval"]>(null);
   const [orphanedCopies, setOrphanedCopies] = useState<OrphanedWorkingCopy[] | null>(() => {
     const orphaned = loadOrphanedWorkingCopies();
     return orphaned.length > 0 ? orphaned : null;
@@ -378,6 +410,38 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     [api],
   );
 
+  /** One working copy per project on a device: an existing one is reused. */
+  const ensureWorkingCopy = useCallback(
+    async (project: CloudProject, identity: CloudIdentity): Promise<"reused" | "seeded"> => {
+      const existing = findWorkingCopy(project.id);
+      if (existing && (await workingCopyOf(project.id).exists())) {
+        putWorkingCopy({
+          ...existing,
+          projectName: project.name,
+          role: project.effectiveRole,
+        });
+        return "reused";
+      }
+      const repository = await repositoryOf(project.id);
+      const head = (await api.getHead(project.id, repository.defaultBranch))!.head;
+      const snapshot = await snapshotAt(project.id, head.commit);
+      await serialized(() =>
+        workingCopyOf(project.id).seed(repository.defaultBranch, head.commit, snapshot),
+      );
+      putWorkingCopy({
+        userId: identity.user.id,
+        orgId: identity.org.id,
+        projectId: project.id,
+        projectName: project.name,
+        role: project.effectiveRole,
+        branch: repository.defaultBranch,
+        baseCommit: head.commit,
+      });
+      return "seeded";
+    },
+    [api, repositoryOf, serialized, snapshotAt],
+  );
+
   const openProject = useCallback(
     async (project: CloudProject): Promise<CloudActionResult> => {
       const current = sessionRef.current;
@@ -386,39 +450,88 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         return { ok: false, message: "Sign in to Telo Cloud first." };
       }
       try {
-        const existing = findWorkingCopy(project.id);
-        if (existing && (await workingCopyOf(project.id).exists())) {
-          // One working copy per project on a device: reopening reuses it.
-          putWorkingCopy({
-            ...existing,
-            projectName: project.name,
-            role: project.effectiveRole,
-          });
-        } else {
-          const repository = await repositoryOf(project.id);
-          const head = (await api.getHead(project.id, repository.defaultBranch))!.head;
-          const snapshot = await snapshotAt(project.id, head.commit);
-          await serialized(() =>
-            workingCopyOf(project.id).seed(repository.defaultBranch, head.commit, snapshot),
-          );
-          putWorkingCopy({
-            userId: current.identity.user.id,
-            orgId: current.identity.org.id,
-            projectId: project.id,
-            projectName: project.name,
-            role: project.effectiveRole,
-            branch: repository.defaultBranch,
-            baseCommit: head.commit,
-          });
-        }
+        await ensureWorkingCopy(project, current.identity);
         await host.open(cloudWorkspaceRoot(project.id));
         return { ok: true };
       } catch (err) {
         return { ok: false, message: repositoryRefusalMessage(err) };
       }
     },
-    [api, repositoryOf, serialized, snapshotAt],
+    [ensureWorkingCopy],
   );
+
+  const copyBrowserWorkspace = useCallback(
+    async (
+      project: CloudProject,
+      confirmedOverwrites: readonly string[],
+    ): Promise<BrowserWorkspaceCopyResult> => {
+      const refused = (message: string): BrowserWorkspaceCopyResult => ({
+        status: "refused",
+        message,
+      });
+      const current = sessionRef.current;
+      const host = hostRef.current;
+      if (current.status !== "signedIn" || !host) return refused("Sign in to Telo Cloud first.");
+      if (project.effectiveRole === "viewer") {
+        return refused(`You can only read ${project.name}, so nothing can be copied into it.`);
+      }
+      try {
+        const files = readBrowserWorkspaceFiles();
+        if (files.length === 0) return refused("The browser workspace holds no files to copy.");
+        const repository = await repositoryOf(project.id);
+        const copy = workingCopyOf(project.id);
+        if ((await ensureWorkingCopy(project, current.identity)) === "reused") {
+          // Clean, so discarding afterwards undoes exactly this copy.
+          if ((await serialized(() => copy.changes())).length > 0) {
+            return refused(
+              `${project.name} has uncommitted changes on this device. Commit or discard them, then copy again.`,
+            );
+          }
+          // On its branch head, so what the copy replaces is what git holds now.
+          const { branch, baseCommit } = findWorkingCopy(project.id)!;
+          const head = (await api.getHead(project.id, branch))!.head;
+          if (head.commit !== null && head.commit !== baseCommit) {
+            const snapshot = await snapshotAt(project.id, head.commit);
+            await serialized(() => copy.seed(branch, head.commit, snapshot));
+            updateWorkingCopy(project.id, (entry) => ({
+              ...entry,
+              baseCommit: head.commit,
+              pendingCommit: undefined,
+            }));
+          }
+        }
+
+        const prepared = await serialized(() => copy.prepareImport(files, repository.limits));
+        if (prepared.overwrites.some((path) => !confirmedOverwrites.includes(path))) {
+          return { status: "confirm", overwrites: prepared.overwrites };
+        }
+        await serialized(() => copy.applyImport(prepared));
+        if (prepared.files.length > 0) {
+          const digest = await filesDigest(files);
+          updateWorkingCopy(project.id, (entry) => ({ ...entry, browserImport: { digest } }));
+        }
+        // The files mean what they meant: checked against the same telo version.
+        const pin = readTeloVersionSetting(VIRTUAL_WORKSPACE_ROOT);
+        if (pin !== "auto") writeTeloVersionSetting(cloudWorkspaceRoot(project.id), pin);
+        await host.open(cloudWorkspaceRoot(project.id));
+        return { status: "copied" };
+      } catch (err) {
+        return refused(
+          err instanceof CommitLimitError || err instanceof ImportPathError
+            ? err.message
+            : repositoryRefusalMessage(err),
+        );
+      }
+    },
+    [api, ensureWorkingCopy, repositoryOf, serialized, snapshotAt],
+  );
+
+  const removeBrowserWorkspace = useCallback(() => {
+    removeBrowserWorkspaceFiles();
+    setBrowserWorkspaceRemoval(null);
+  }, []);
+
+  const keepBrowserWorkspace = useCallback(() => setBrowserWorkspaceRemoval(null), []);
 
   // ---------------------------------------------------------------------------
   // Update: bring the working copy onto the branch head
@@ -647,12 +760,19 @@ export function CloudProvider({ children }: { children: ReactNode }) {
       try {
         const result = await api.commit(projectId, request, key);
         await serialized(() => copy.recordCommit(result.commit, prepared));
+        const copied = findWorkingCopy(projectId)?.browserImport;
         updateWorkingCopy(projectId, (entry) => ({
           ...entry,
           branch,
           baseCommit: result.commit,
           pendingCommit: undefined,
+          browserImport: undefined,
         }));
+        // The copied files are in git now. The browser's copy is offered for
+        // removal only while it is still what was copied.
+        if (copied && (await filesDigest(readBrowserWorkspaceFiles())) === copied.digest) {
+          setBrowserWorkspaceRemoval({ projectName: current.name });
+        }
         patchActive(projectId, {
           branch,
           baseCommit: result.commit,
@@ -722,6 +842,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     () =>
       operate("discarding", async (current) => {
         await serialized(() => workingCopyOf(current.projectId).discard());
+        updateWorkingCopy(current.projectId, (entry) => ({ ...entry, browserImport: undefined }));
         setFilesEpoch((epoch) => epoch + 1);
         await hostRef.current?.reload();
         await scanChanges(current.projectId);
@@ -821,6 +942,10 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     registerHost,
     setActiveRoot,
     openProject,
+    copyBrowserWorkspace,
+    browserWorkspaceRemoval,
+    removeBrowserWorkspace,
+    keepBrowserWorkspace,
     active,
     editingLock,
     filesEpoch,

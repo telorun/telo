@@ -3,6 +3,16 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useCloud } from "../../cloud/context";
 import { repositoryRefusalMessage } from "../../cloud/refusal-messages";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -161,6 +171,24 @@ export function CloudProjectBar({ activeModule, onOpenManifest }: CloudProjectBa
 
       <CommitDialog open={commitOpen} onOpenChange={setCommitOpen} />
       <ConflictDialog />
+      <AlertDialog open={cloud.browserWorkspaceRemoval !== null}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove the browser workspace?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The files you copied from the browser workspace are now committed to{" "}
+              {cloud.browserWorkspaceRemoval?.projectName}. The browser workspace still holds its
+              own copy of them on this device.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cloud.keepBrowserWorkspace}>Keep it</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={cloud.removeBrowserWorkspace}>
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <PublishedModulesDialog open={modulesOpen} onOpenChange={setModulesOpen} />
       <PublishDialog
         target={publishing}

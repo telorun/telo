@@ -173,8 +173,12 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
         className={`h-1 shrink-0 ${dock.maximized ? "" : "cursor-row-resize hover:bg-blue-400/60"}`}
         aria-hidden
       />
-      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-zinc-200 px-3 dark:border-zinc-800">
-        <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">{headline}</span>
+      {/* Wraps: a pane too narrow for one row gives the facts and the actions
+          rows of their own instead of pushing the actions off the pane. */}
+      <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-zinc-200 px-3 py-1 dark:border-zinc-800">
+        <span className="whitespace-nowrap text-xs font-medium text-zinc-600 dark:text-zinc-300">
+          {headline}
+        </span>
         {run && !blocker && !starting && <RunStatusChip status={run.status} />}
         {elapsed && (
           <span className="tabular-nums text-xs text-zinc-500 dark:text-zinc-400">{elapsed}</span>
@@ -192,39 +196,40 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
           </a>
         )}
         {run?.status.kind === "starting" && run.progress && (
-          <span className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+          <span className="min-w-0 truncate text-xs text-zinc-500 dark:text-zinc-400">
             {run.progress.message}
           </span>
         )}
         {run && <RunGenerations runs={run.runs} />}
         {run && <RunTeloVersions run={run} />}
         {run && <StaleRunVersion run={run} editedTelo={editedTelo} />}
-        <div className="flex-1" />
-        {explainFailure && (
-          <Button size="sm" variant="ghost" onClick={explainFailure} title="Ask the agent to explain this failure">
-            <Sparkles size={13} aria-hidden />
-            Explain this failure
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          {explainFailure && (
+            <Button size="sm" variant="ghost" onClick={explainFailure} title="Ask the agent to explain this failure">
+              <Sparkles size={13} aria-hidden />
+              Explain this failure
+            </Button>
+          )}
+          {run && <WatchControls run={run} />}
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={() => setDockMaximized(appPath, !dock.maximized)}
+            title={dock.maximized ? "Restore" : "Maximize"}
+            aria-label={dock.maximized ? "Restore output" : "Maximize output"}
+          >
+            {dock.maximized ? <Minimize2 /> : <Maximize2 />}
           </Button>
-        )}
-        {run && <WatchControls run={run} />}
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={() => setDockMaximized(appPath, !dock.maximized)}
-          title={dock.maximized ? "Restore" : "Maximize"}
-          aria-label={dock.maximized ? "Restore output" : "Maximize output"}
-        >
-          {dock.maximized ? <Minimize2 /> : <Maximize2 />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={() => setDockOpen(appPath, false)}
-          title="Hide output"
-          aria-label="Hide output"
-        >
-          <ChevronDown />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={() => setDockOpen(appPath, false)}
+            title="Hide output"
+            aria-label="Hide output"
+          >
+            <ChevronDown />
+          </Button>
+        </div>
       </div>
       <RunOutput appPath={appPath} onOpenConfig={onOpenConfig} />
     </div>
@@ -376,7 +381,7 @@ function WatchControls({ run }: { run: RunRecord }) {
   };
 
   const note = problem ? (
-    <span className="max-w-64 truncate text-[11px] text-red-600 dark:text-red-400" title={problem}>
+    <span className="min-w-0 max-w-64 truncate text-[11px] text-red-600 dark:text-red-400" title={problem}>
       {problem}
     </span>
   ) : null;
