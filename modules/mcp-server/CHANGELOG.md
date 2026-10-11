@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.0 - 2026-10-11
+### Added
+* Resources and prompts are served. A server listing Mcp.Resources bundles answers resources/list, resources/templates/list and resources/read (fixed URIs first, then URI templates in declared order, whose variables reach the entry as request.params; an unknown URI is JSON-RPC -32002). A server listing Mcp.Prompts bundles answers prompts/list and prompts/get (an unknown name or a missing required argument is -32602 before the handler runs). A bytes value at a resource's blob, or at an image, audio or embedded-resource block of a prompt message, is sent as standard base64. Each capability is advertised only when a bundle of that kind is listed, and ERR_MCP_V2_NOT_IMPLEMENTED is gone. A resource entry must declare exactly one of uri and uriTemplate, a template must close every brace and name a variable in it, and a tool name, resource URI or prompt name may not be empty. A tool name, resource URI or prompt name declared twice, in one bundle or across the bundles of one server, is now reported by telo check (RESOURCE_RULE_VIOLATED with rule MCP_TOOL_DUPLICATE, MCP_RESOURCE_DUPLICATE or MCP_PROMPT_DUPLICATE) and refused at boot; an HTTP endpoint used to refuse a duplicate tool only on its first request.
+
 ## 0.18.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
