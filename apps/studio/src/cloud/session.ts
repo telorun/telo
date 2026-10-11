@@ -23,7 +23,9 @@ export type CloudSessionState =
  *  switch are full-page navigations, so those promises never settle there. */
 export interface CloudSessionSource {
   read(): Promise<CloudSessionState>;
-  signIn(): Promise<CloudSessionState>;
+  /** `orgId` names the organization to sign in to; only the web build, which
+   *  is the only one a link reaches, is ever given one. */
+  signIn(orgId?: string): Promise<CloudSessionState>;
   switchOrganization(): Promise<CloudSessionState>;
   signOut(): Promise<void>;
 }

@@ -104,6 +104,9 @@ export interface UseWorkspaceLifecycleParams {
   settings: AppSettings;
   persistedHint: PersistedEditorState | null;
   setError: (error: string | null) => void;
+  /** Holds the silent restore of the last workspace back while something else
+   *  is deciding what opens (a Telo Cloud project link). */
+  restoreDeferred: boolean;
 }
 
 export interface WorkspaceLifecycle {
@@ -161,6 +164,7 @@ export function useWorkspaceLifecycle({
   settings,
   persistedHint,
   setError,
+  restoreDeferred,
 }: UseWorkspaceLifecycleParams): WorkspaceLifecycle {
   const [loading, setLoading] = useState(false);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
@@ -355,6 +359,7 @@ export function useWorkspaceLifecycle({
   // FSA can't silently re-attach — user sees the recent rootDir hint instead.
   useEffect(() => {
     if (autoRestoredRef.current) return;
+    if (restoreDeferred) return;
     if (!persistedHint?.rootDir) return;
     if (state.workspace) return;
     autoRestoredRef.current = true;
@@ -366,7 +371,7 @@ export function useWorkspaceLifecycle({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persistedHint, state.workspace, settings, setState]);
+  }, [persistedHint, state.workspace, settings, setState, restoreDeferred]);
 
   // Rebuild the raw file tree when the workspace root changes (open / restore /
   // remote-import). Keyed on rootDir, not the workspace object, so the common

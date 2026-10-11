@@ -1,0 +1,4 @@
+modules:
+  modules/crud: Fixed
+body: The README's application example no longer binds its server to 127.0.0.1, which
+  made it unreachable in a container or a runner session.

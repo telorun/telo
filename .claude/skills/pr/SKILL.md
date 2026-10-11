@@ -5,12 +5,26 @@ argument-hint: nothing (every change in the working tree), or which part of the 
 ---
 
 The user has a change in the working tree and is away. You carry it to "a green PR", alone. The
-user's invocation is the authorization for this skill's staging, commit, push, amend and
-force-push — for this change and this branch only. Merging is never yours.
+user's invocation is the authorization for this skill's branch creation, staging, commit, rebase
+onto `origin/main`, push, amend and force-push — for this change and its branch only. Merging is
+never yours.
 
 ## 1. Establish the change
 
-- **The branch is the current one.** Refuse to start on `main`: say so and stop.
+- **The branch is the current one only when it fits the change.** It fits when its name describes
+  this change and it holds no other work. It does not fit when:
+  - it is `main`;
+  - its name is about something else;
+  - a pull request from it was already merged or closed (`gh pr list --head <branch> --state all`)
+    — a branch whose work has landed is finished, whatever it is called.
+
+  When it does not fit, create one named for the change and carry the working tree onto it:
+  `git fetch origin main`, then `git switch -c <type>/<short-kebab-name> origin/main`. If git
+  refuses because the working tree does not apply there, or the current branch holds commits that
+  are neither on `origin/main` nor part of this change, stop and report: the change cannot be
+  separated from that work without guessing. The report names the branch you created and why the
+  old one did not fit. An open pull request from the current branch for this same work is the
+  branch fitting — the commit joins it, and no second pull request is opened.
 - **Without an argument naming a scope, the change is everything in the working tree:** staged,
   unstaged and untracked alike. Stage all of it (`git add -A`). What is already staged says
   nothing about what the user meant to leave out. With a clean tree, say so and stop.
@@ -50,7 +64,17 @@ force-push — for this change and this branch only. Merging is never yours.
   the staged change. Working files that rode along do not shape the subject; they name the commit
   only when they are all of it (`chore(claude): …`, `docs(plans): …`). Add **no** `Co-Authored-By`
   footer.
-- **Push** with `git push -u origin <branch>`.
+- **Bring the branch up to date with `origin/main` before every push** — the first one, and each
+  force-push after it. `git fetch origin main`, then `git rebase origin/main`; a branch that
+  already contains `origin/main`'s head needs nothing. A pull request that is behind `main` is
+  tested against code that no longer exists, and one that conflicts cannot be merged at all.
+  - **A conflict whose resolution is not in doubt** (both sides added different entries to the
+    same list, a lockfile to regenerate with `pnpm install`) is resolved, and the report says
+    which files. Re-run what the conflicted files' tests cover before pushing.
+  - **Any other conflict:** `git rebase --abort`, then stop and report the files and the two
+    sides. Never pick a side to get past it.
+- **Push** with `git push -u origin <branch>`; once the branch has been rebased after a push,
+  `git push --force-with-lease origin <branch>`.
 - **Open the PR** against `main` with `gh pr create`. The body is:
   - what the change does, stated as behaviour;
   - when working files rode along with a named scope, one closing line saying so (`Also carries
@@ -71,8 +95,8 @@ force-push — for this change and this branch only. Merging is never yours.
   sleep 600; while true; do out=$(gh pr checks <n> 2>&1); if echo "$out" | grep -qE "\bpending\b|\bqueued\b|in_progress"; then sleep 60; else echo "$out"; break; fi; done
   ```- **A failing check:** read its log with `gh run view --log-failed` and find the cause.
   - **A fix inside this change:** make it, re-run the failing suite locally, then
-    `git commit --amend --no-edit` (still no footer) and
-    `git push --force-with-lease origin <branch>`. **Never add a new commit** to fix CI. Then
+    `git commit --amend --no-edit` (still no footer), bring the branch up to date with
+    `origin/main` as in step 2, and `git push --force-with-lease origin <branch>`. **Never add a new commit** to fix CI. Then
     restart the watch from the 10-minute first poll.
   - **A flaky test** — one that fails, then passes on a re-run of the same commit, whether or not
     this change touched it — is fixed in this PR, not re-run until it happens to pass. Find why it
@@ -87,12 +111,17 @@ force-push — for this change and this branch only. Merging is never yours.
     with its log line; do not fix other code to get green.
   - **The same check failing after three amend rounds:** stop and report. Grinding is not
     progress.
-- **Stop once every check is green**, skipped ones included.
+- **A pull request that reports conflicts with `main`, or falls behind it while its checks run,**
+  is brought up to date as in step 2 and force-pushed with lease; then restart the watch.
+- **Stop once every check is green**, skipped ones included, and the pull request has no conflict
+  with `main`.
 
 ## Report
 
 End with one message:
 - the PR URL;
+- the branch, and when you created it, why the one you started on did not fit;
+- each rebase onto `origin/main` that changed the branch, and any conflict you resolved;
 - when you staged the scope yourself, the files you staged, the working files that rode along,
   and the changed files you left out;
 - each CI round (what failed, what you amended);
@@ -108,4 +137,6 @@ A stop for any other reason gets the same message, saying where it stopped and w
 - Leave a changed working file (`CLAUDE.md`, `.claude/`, `plans/`) uncommitted.
 - Guess a file into or out of a named scope.
 - Add a new commit to fix CI; amend instead.
+- Push a branch that does not contain `origin/main`'s head.
+- Commit onto a branch whose pull request has already been merged or closed.
 - Use `git stash`, or look through commit history to decide anything.
