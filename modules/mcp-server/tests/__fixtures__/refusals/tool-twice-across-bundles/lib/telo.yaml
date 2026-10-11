@@ -1,0 +1,51 @@
+# `telo check` reports this here; a consumer's check sees nothing, so there the
+# resource refuses itself when the application boots.
+kind: Telo.Library
+metadata:
+  name: McpToolTwiceAcrossBundles
+  version: 1.0.0
+  description: Test fixture exporting an HTTP endpoint whose two tools bundles share an entry.
+imports:
+  Mcp: ../../../../../
+  Run: ../../../../../../run
+exports:
+  resources: [server]
+---
+kind: Run.Value
+metadata: { name: answer }
+value:
+  text: ok
+---
+kind: Mcp.Tools
+metadata: { name: First }
+entries:
+  - name: ping
+    argumentsSchema: { type: object }
+    handler: !ref answer
+    inputs: {}
+    result:
+      content:
+        - { type: text, text: ok }
+---
+kind: Mcp.Tools
+metadata: { name: Second }
+entries:
+  - name: ping
+    argumentsSchema: { type: object }
+    handler: !ref answer
+    inputs: {}
+    result:
+      content:
+        - { type: text, text: ok }
+  - name: pong
+    argumentsSchema: { type: object }
+    handler: !ref answer
+    inputs: {}
+    result:
+      content:
+        - { type: text, text: ok }
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: server }
+serverInfo: { name: fixture, version: 1.0.0 }
+tools: [ !ref First, !ref Second ]

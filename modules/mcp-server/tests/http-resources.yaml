@@ -1,0 +1,277 @@
+kind: Telo.Application
+metadata:
+  name: McpHttpResourcesTest
+  version: 1.0.0
+  description: |
+    A server with a resources bundle lists its fixed URIs and its templates
+    apart, reads a fixed URI ahead of a template that also matches it, reads a
+    templated one — the first declared template that matches — with the
+    template's variable reaching the handler, sends bytes as standard base64, answers an unknown URI
+    with -32002, maps a thrown code through `catches:`, and advertises the
+    resources capability without the prompts one.
+imports:
+  Mcp: ../
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets: [ !ref testRun ]
+---
+kind: HttpClient.Request
+metadata: { name: rpc }
+inputs:
+  url: http://127.0.0.1:8966/mcp
+  method: POST
+  headers:
+    content-type: application/json
+    accept: application/json, text/event-stream
+  responseType: text
+---
+kind: Run.Value
+metadata: { name: readConfig }
+value:
+  text: "mode=test"
+---
+kind: Run.Value
+metadata: { name: readForecast }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [city]
+    properties:
+      city: { type: string }
+value:
+  text: !cel "'Sunny in ' + inputs.city"
+---
+kind: Run.Value
+metadata: { name: readFallback }
+value:
+  text: fallback
+---
+kind: Run.Value
+metadata: { name: readLogo }
+value:
+  data: !cel "b'hello'"
+---
+kind: Run.Sequence
+metadata: { name: readLocked }
+throws:
+  - code: locked
+steps:
+  - name: bail
+    throw:
+      code: locked
+      message: "the vault is locked"
+---
+kind: Mcp.Resources
+metadata: { name: AppResources }
+entries:
+  - uri: config://app
+    name: App config
+    description: Current configuration.
+    mimeType: text/plain
+    handler: !ref readConfig
+    inputs: {}
+    result:
+      contents:
+        - uri: !cel "request.uri"
+          mimeType: text/plain
+          text: !cel "result.text"
+  - uriTemplate: weather://{city}/forecast
+    name: Forecast
+    mimeType: text/plain
+    handler: !ref readForecast
+    inputs:
+      city: !cel "string(request.params.city)"
+    result:
+      contents:
+        - uri: !cel "request.uri"
+          text: !cel "result.text"
+  # Both also match URIs an earlier entry serves; the earlier entry wins.
+  - uriTemplate: weather://{city}/{report}
+    name: Any report
+    handler: !ref readFallback
+    inputs: {}
+    result:
+      contents:
+        - uri: !cel "request.uri"
+          text: !cel "result.text + ':' + string(request.params.report)"
+  - uriTemplate: config://{section}
+    name: Config section
+    handler: !ref readFallback
+    inputs: {}
+    result:
+      contents:
+        - uri: !cel "request.uri"
+          text: !cel "result.text + ':' + string(request.params.section)"
+  - uri: asset://logo
+    name: Logo
+    mimeType: application/octet-stream
+    handler: !ref readLogo
+    inputs: {}
+    result:
+      contents:
+        - uri: !cel "request.uri"
+          mimeType: application/octet-stream
+          blob: !cel "result.data"
+  - uri: vault://secret
+    name: Secret
+    handler: !ref readLocked
+    inputs: {}
+    result:
+      contents: []
+    catches:
+      - code: locked
+        error:
+          code: -32050
+          message: !cel "error.message"
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: mcpHttp }
+serverInfo: { name: telo-test-resources, version: 1.0.0 }
+resources: [ !ref AppResources ]
+---
+kind: Run.Sequence
+metadata: { name: testRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8966
+    baseUrl: http://127.0.0.1:8966
+    mounts:
+      - { path: /mcp, mount: !ref mcpHttp }
+targets: [ !ref Server ]
+steps:
+  - name: initialize
+    invoke: !ref rpc
+    inputs:
+      body:
+        jsonrpc: "2.0"
+        id: 1
+        method: initialize
+        params:
+          protocolVersion: "2024-11-05"
+          capabilities: {}
+          clientInfo: { name: telo-test, version: 1.0.0 }
+  - name: assertCapabilities
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.initialize.result.body.split('data: ')[1]).result.capabilities"
+      expected: { tools: {}, resources: {} }
+
+  - name: list
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 2, method: resources/list }
+  - name: assertList
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.list.result.body.split('data: ')[1]).result.resources"
+      expected:
+        - uri: config://app
+          name: App config
+          description: Current configuration.
+          mimeType: text/plain
+        - uri: asset://logo
+          name: Logo
+          mimeType: application/octet-stream
+        - uri: vault://secret
+          name: Secret
+
+  - name: listTemplates
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 3, method: resources/templates/list }
+  - name: assertTemplates
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.listTemplates.result.body.split('data: ')[1]).result.resourceTemplates"
+      expected:
+        - uriTemplate: weather://{city}/forecast
+          name: Forecast
+          mimeType: text/plain
+        - uriTemplate: weather://{city}/{report}
+          name: Any report
+        - uriTemplate: config://{section}
+          name: Config section
+
+  - name: readFixed
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 4, method: resources/read, params: { uri: config://app } }
+  - name: assertFixed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.readFixed.result.body.split('data: ')[1]).result.contents"
+      expected:
+        - uri: config://app
+          mimeType: text/plain
+          text: mode=test
+
+  - name: readTemplated
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 5, method: resources/read, params: { uri: weather://Oslo/forecast } }
+  - name: assertTemplated
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.readTemplated.result.body.split('data: ')[1]).result.contents"
+      expected:
+        - uri: weather://Oslo/forecast
+          text: Sunny in Oslo
+
+  - name: readSecondTemplate
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 20, method: resources/read, params: { uri: weather://Oslo/tides } }
+  - name: readConfigSection
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 21, method: resources/read, params: { uri: config://limits } }
+  - name: assertLaterTemplates
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        tides: !cel "parseJson(steps.readSecondTemplate.result.body.split('data: ')[1]).result.contents[0].text"
+        limits: !cel "parseJson(steps.readConfigSection.result.body.split('data: ')[1]).result.contents[0].text"
+      expected: { tides: "fallback:tides", limits: "fallback:limits" }
+
+  - name: readBytes
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 6, method: resources/read, params: { uri: asset://logo } }
+  - name: assertBytes
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.readBytes.result.body.split('data: ')[1]).result.contents[0].blob"
+      expected: aGVsbG8=
+
+  - name: readUnknown
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 7, method: resources/read, params: { uri: nowhere://x } }
+  - name: assertUnknown
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        isNotFound: !cel "parseJson(steps.readUnknown.result.body.split('data: ')[1]).error.code == -32002.0"
+        message: !cel "parseJson(steps.readUnknown.result.body.split('data: ')[1]).error.message"
+      expected:
+        isNotFound: true
+        message: "Mcp: resource 'nowhere://x' not found"
+
+  - name: readLocked
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 8, method: resources/read, params: { uri: vault://secret } }
+  - name: assertLocked
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        isMapped: !cel "parseJson(steps.readLocked.result.body.split('data: ')[1]).error.code == -32050.0"
+        message: !cel "parseJson(steps.readLocked.result.body.split('data: ')[1]).error.message"
+      expected:
+        isMapped: true
+        message: the vault is locked

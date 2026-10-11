@@ -26,8 +26,8 @@ instructions: |                              # optional — primer for the clien
   Free-form text surfaced on `initialize`.
 stateful: false                              # optional — default false (stateless)
 tools: [<Mcp.Tools bundle names>]
-resources: [<Mcp.Resources bundle names>]   # v2 runtime
-prompts: [<Mcp.Prompts bundle names>]       # v2 runtime
+resources: [<Mcp.Resources bundle names>]
+prompts: [<Mcp.Prompts bundle names>]
 ```
 
 `serverInfo` is a CEL slot, so the advertised version can come from the module's
@@ -142,7 +142,7 @@ tools) needs none of those; stateless is the right default.
 
 - **No idle session GC** (stateful only). Sessions live until `Http.Server` closes. Long-running endpoints will accumulate sessions over time. Idle expiry / max-sessions cap is v2 work.
 - **No auth.** Authentication is the host `Http.Server`'s concern (CORS, reverse-proxy auth, future Telo middleware kinds).
-- **No `resources` / `prompts` runtime.** Bundles are accepted but must be empty.
+- **No resource subscriptions or `listChanged` notifications.** The tool, resource and prompt listings are fixed at boot.
 
 ## Soft vs hard failures
 

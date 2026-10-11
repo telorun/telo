@@ -82,5 +82,6 @@ serverInfo: { name: my-mcp, version: 1.0.0 }
 tools: [WeatherTools, DatabaseTools]   # entries from both bundles are merged
 ```
 
-Duplicate `name` across bundles → init-time error naming both bundles. Same
-bundle referenced twice → init-time error.
+A `name` declared twice — in one bundle, by two bundles of one transport, or by
+one bundle listed twice — is reported by `telo check` (`RESOURCE_RULE_VIOLATED`,
+rule `MCP_TOOL_DUPLICATE`) and refused at boot with `ERR_MCP_TOOLS_DUPLICATE`.

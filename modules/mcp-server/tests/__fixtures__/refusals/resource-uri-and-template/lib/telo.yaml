@@ -1,0 +1,29 @@
+# `telo check` reports this here; a consumer's check sees nothing, so there the
+# resource refuses itself when the application boots.
+kind: Telo.Library
+metadata:
+  name: McpResourceUriAndTemplate
+  version: 1.0.0
+  description: Test fixture exporting a resource entry declaring both a URI and a template.
+imports:
+  Mcp: ../../../../../
+  Run: ../../../../../../run
+exports:
+  resources: [First]
+---
+kind: Run.Value
+metadata: { name: answer }
+value:
+  text: ok
+---
+kind: Mcp.Resources
+metadata: { name: First }
+entries:
+  - uri: note://a
+    uriTemplate: note://{id}
+    name: Entry
+    handler: !ref answer
+    inputs: {}
+    result:
+      contents:
+        - { uri: "note://a", text: ok }

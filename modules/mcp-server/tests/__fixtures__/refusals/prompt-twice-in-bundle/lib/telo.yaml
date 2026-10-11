@@ -1,0 +1,33 @@
+# `telo check` reports this here; a consumer's check sees nothing, so there the
+# resource refuses itself when the application boots.
+kind: Telo.Library
+metadata:
+  name: McpPromptTwiceInBundle
+  version: 1.0.0
+  description: Test fixture exporting a prompt bundle declaring one entry twice.
+imports:
+  Mcp: ../../../../../
+  Run: ../../../../../../run
+exports:
+  resources: [First]
+---
+kind: Run.Value
+metadata: { name: answer }
+value:
+  text: ok
+---
+kind: Mcp.Prompts
+metadata: { name: First }
+entries:
+  - name: greet
+    handler: !ref answer
+    inputs: {}
+    result:
+      messages:
+        - { role: user, content: { type: text, text: ok } }
+  - name: greet
+    handler: !ref answer
+    inputs: {}
+    result:
+      messages:
+        - { role: user, content: { type: text, text: ok } }

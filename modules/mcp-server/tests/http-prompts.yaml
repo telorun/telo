@@ -1,0 +1,256 @@
+kind: Telo.Application
+metadata:
+  name: McpHttpPromptsTest
+  version: 1.0.0
+  description: |
+    A server with a prompts bundle lists each prompt with its arguments, renders
+    one from the arguments a client supplies, refuses an unknown name and a
+    missing required argument with -32602 before the handler runs, sends bytes
+    in a message as standard base64, maps a thrown code through `catches:`, and advertises the prompts capability without the
+    resources one.
+imports:
+  Mcp: ../
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets: [ !ref testRun ]
+---
+kind: HttpClient.Request
+metadata: { name: rpc }
+inputs:
+  url: http://127.0.0.1:8967/mcp
+  method: POST
+  headers:
+    content-type: application/json
+    accept: application/json, text/event-stream
+  responseType: text
+---
+kind: Run.Value
+metadata: { name: renderReview }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [language]
+    properties:
+      language: { type: string }
+      focus: { type: string }
+value:
+  text: !cel "'Review this ' + inputs.language + ' code for ' + inputs.focus + '.'"
+---
+kind: Run.Value
+metadata: { name: renderPixel }
+value:
+  data: !cel "b'\\xff\\xfe'"
+---
+kind: Run.Sequence
+metadata: { name: renderRetired }
+throws:
+  - code: retired
+steps:
+  - name: bail
+    throw:
+      code: retired
+      message: "this prompt was retired"
+---
+kind: Mcp.Prompts
+metadata: { name: AppPrompts }
+entries:
+  - name: code_review
+    description: Asks for a review of a piece of code.
+    arguments:
+      - name: language
+        description: Language the code is written in.
+        required: true
+      - name: focus
+    handler: !ref renderReview
+    inputs:
+      language: !cel "request.arguments.language"
+      focus: !cel "request.arguments.?focus.orValue('correctness')"
+    result:
+      description: Code review
+      messages:
+        - role: user
+          content:
+            type: text
+            text: !cel "result.text"
+  - name: toString
+    arguments:
+      - name: toString
+        required: true
+    handler: !ref renderPixel
+    inputs: {}
+    result:
+      messages:
+        - role: user
+          content:
+            type: image
+            mimeType: image/png
+            data: !cel "result.data"
+        - role: user
+          content:
+            type: resource
+            resource:
+              uri: asset://pixel
+              blob: !cel "result.data"
+  - name: retired
+    handler: !ref renderRetired
+    inputs: {}
+    result:
+      messages: []
+    catches:
+      - code: retired
+        error:
+          code: -32051
+          message: !cel "error.message"
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: mcpHttp }
+serverInfo: { name: telo-test-prompts, version: 1.0.0 }
+prompts: [ !ref AppPrompts ]
+---
+kind: Run.Sequence
+metadata: { name: testRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8967
+    baseUrl: http://127.0.0.1:8967
+    mounts:
+      - { path: /mcp, mount: !ref mcpHttp }
+targets: [ !ref Server ]
+steps:
+  - name: initialize
+    invoke: !ref rpc
+    inputs:
+      body:
+        jsonrpc: "2.0"
+        id: 1
+        method: initialize
+        params:
+          protocolVersion: "2024-11-05"
+          capabilities: {}
+          clientInfo: { name: telo-test, version: 1.0.0 }
+  - name: assertCapabilities
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.initialize.result.body.split('data: ')[1]).result.capabilities"
+      expected: { tools: {}, prompts: {} }
+
+  - name: list
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 2, method: prompts/list }
+  - name: assertList
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.list.result.body.split('data: ')[1]).result.prompts"
+      expected:
+        - name: code_review
+          description: Asks for a review of a piece of code.
+          arguments:
+            - name: language
+              description: Language the code is written in.
+              required: true
+            - name: focus
+        - name: toString
+          arguments:
+            - name: toString
+              required: true
+        - name: retired
+          arguments: []
+
+  - name: get
+    invoke: !ref rpc
+    inputs:
+      body:
+        jsonrpc: "2.0"
+        id: 3
+        method: prompts/get
+        params: { name: code_review, arguments: { language: Rust } }
+  - name: assertGet
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.get.result.body.split('data: ')[1]).result"
+      expected:
+        description: Code review
+        messages:
+          - role: user
+            content:
+              type: text
+              text: Review this Rust code for correctness.
+
+  - name: getMissingArgument
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 4, method: prompts/get, params: { name: code_review } }
+  - name: assertMissingArgument
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        isInvalidParams: !cel "parseJson(steps.getMissingArgument.result.body.split('data: ')[1]).error.code == -32602.0"
+        message: !cel "parseJson(steps.getMissingArgument.result.body.split('data: ')[1]).error.message"
+      expected:
+        isInvalidParams: true
+        message: "Mcp: prompt 'code_review' is missing required argument 'language'"
+
+  # An argument named like an inherited member is still missing when not sent.
+  - name: getInheritedName
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 10, method: prompts/get, params: { name: toString } }
+  - name: assertInheritedName
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.getInheritedName.result.body.split('data: ')[1]).error.code == -32602.0"
+      expected: true
+
+  - name: getBytes
+    invoke: !ref rpc
+    inputs:
+      body:
+        jsonrpc: "2.0"
+        id: 11
+        method: prompts/get
+        params: { name: toString, arguments: { toString: x } }
+  - name: assertBytes
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.getBytes.result.body.split('data: ')[1]).result.messages"
+      expected:
+        - role: user
+          content: { type: image, mimeType: image/png, data: "//4=" }
+        - role: user
+          content:
+            type: resource
+            resource: { uri: asset://pixel, blob: "//4=" }
+
+  - name: getUnknown
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 5, method: prompts/get, params: { name: nope } }
+  - name: assertUnknown
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        isInvalidParams: !cel "parseJson(steps.getUnknown.result.body.split('data: ')[1]).error.code == -32602.0"
+        message: !cel "parseJson(steps.getUnknown.result.body.split('data: ')[1]).error.message"
+      expected:
+        isInvalidParams: true
+        message: "Mcp: unknown prompt 'nope'"
+
+  - name: getRetired
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 6, method: prompts/get, params: { name: retired } }
+  - name: assertRetired
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        isMapped: !cel "parseJson(steps.getRetired.result.body.split('data: ')[1]).error.code == -32051.0"
+        message: !cel "parseJson(steps.getRetired.result.body.split('data: ')[1]).error.message"
+      expected:
+        isMapped: true
+        message: this prompt was retired

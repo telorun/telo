@@ -12,8 +12,13 @@ import {
 } from "@telorun/sdk";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
-import { buildServer, type SessionContext, type ServerInfo } from "./registry.js";
-import { asToolsBundle, type McpToolsBundle } from "./tools-controller.js";
+import {
+  buildServer,
+  type Bundles,
+  resolveBundles,
+  type SessionContext,
+  type ServerInfo,
+} from "./registry.js";
 
 interface HttpEndpointManifest {
   kind: string;
@@ -42,7 +47,7 @@ export async function register(_ctx: ControllerContext): Promise<void> {}
 
 export class McpHttpEndpoint {
   private readonly sessions = new Map<string, SessionRecord>();
-  private toolsBundles: McpToolsBundle[] = [];
+  private bundles: Bundles = { tools: [], resources: [], prompts: [] };
 
   constructor(
     private readonly resource: HttpEndpointManifest,
@@ -50,14 +55,9 @@ export class McpHttpEndpoint {
   ) {}
 
   async init() {
-    if ((this.resource.resources ?? []).length > 0 || (this.resource.prompts ?? []).length > 0) {
-      throw new RuntimeError(
-        "ERR_MCP_V2_NOT_IMPLEMENTED",
-        `${this.resource.kind}[${this.resource.metadata.name}]: resources/prompts are schema-only in v1; runtime dispatch is v2 work`,
-      );
-    }
-    this.toolsBundles = (this.resource.tools ?? []).map((ref) =>
-      asToolsBundle(ref, `${this.resource.kind}[${this.resource.metadata.name}]`),
+    this.bundles = resolveBundles(
+      this.resource,
+      `${this.resource.kind}[${this.resource.metadata.name}]`,
     );
   }
 
@@ -195,7 +195,7 @@ export class McpHttpEndpoint {
     record.server = buildServer({
       serverInfo: this.resource.serverInfo,
       instructions: this.resource.instructions,
-      toolsBundles: this.toolsBundles,
+      bundles: this.bundles,
       sessionResolver: () => sessionContext,
       dispatchContext: (requestId) => {
         const context = record.dispatchContexts.get(requestId);
