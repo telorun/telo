@@ -1,0 +1,634 @@
+kind: Telo.Application
+metadata:
+  name: ApprovalFlow
+  version: 1.0.0
+  categories: [ Reliability, Coordination, Transport ]
+  description: |
+    A human-in-the-loop process with the reviewer's page beside it: purchase
+    requests that are approved by a rule when they are small and otherwise wait
+    for a reviewer — for days if need be, across restarts.
+
+      - a page at `/` to submit a request, see what is waiting and approve or
+        reject it — declared in this manifest, with no frontend code
+      - `POST /api/requests` submits; under `AUTO_APPROVE_BELOW_CENTS` it is
+        approved at once, with no reviewer
+      - `POST /api/approve` and `/api/reject` deliver the decision for the
+        request named in the body
+      - `GET /api/requests` lists them, `GET /api/requests/{id}` tracks one:
+        `running`, `pending`, `completed`
+      - a request nobody decides is rejected when `REVIEW_DEADLINE` runs out
+      - every request is a row in a SQLite ledger, written so that running the
+        same step twice changes nothing — a durable run may replay a step
+
+    The wait is a durable workflow recorded in a file journal: the rule's
+    verdict and the reviewer's answer are part of the record, so a restart
+    while a request waits continues at the wait. Change `NewRequest` for what a
+    request carries, the rule on the submit route, and the `act` step for what
+    happens after the decision.
+
+    Run, then open http://localhost:8102, or:
+        curl -s -XPOST localhost:8102/api/requests -H 'content-type: application/json' \
+          -d '{"requester":"ada","item":"standing desk","amountCents":64000,"costCenter":"eng"}'
+        # → {"id":"<id>","status":"running"}
+        curl -s 'localhost:8102/api/requests?status=pending'
+        curl -s -XPOST localhost:8102/api/approve -H 'content-type: application/json' \
+          -d '{"id":"<id>","decidedBy":"grace","note":"ok"}'
+        curl -s localhost:8102/api/requests/<id>              # completed, approved
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
+  Ui: oci://ghcr.io/telorun/ui@0.3.0#sha256-Xp_vAsCGcbXDo6rqK9A-xEnCbqSksPlG-q_jziF83LU
+  UiReact: oci://ghcr.io/telorun/ui-react@0.4.0#sha256-Maz-ACXHNqymhG283guc_wYMIrM_FKWKfGOxRdZ7TBw
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
+  DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.0#sha256-OYRLiD-tTFJvTaweXET6A6ZWXNb27FStXEcpkq1enc0
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.6.0#sha256-RD0WUotw6eiUZBKgBVd7IzJi95D6Jvk5Anmmzw6QfLo
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
+targets:
+  - !ref migrate
+  - !ref resumer
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8102
+variables:
+  journal:
+    env: APPROVALS_JOURNAL
+    arg: journal
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/approvals
+    description: Directory the requests and their progress are recorded in.
+  ledgerFile:
+    env: LEDGER_FILE
+    arg: ledger-file
+    type: string
+    x-telo-type: Telo.HostPath
+    default: purchases.db
+  reviewDeadline:
+    env: REVIEW_DEADLINE
+    arg: review-deadline
+    type: string
+    default: 168h
+    description: How long a request waits for a reviewer before it is rejected.
+  autoApproveBelowCents:
+    env: AUTO_APPROVE_BELOW_CENTS
+    type: integer
+    minimum: 0
+    default: 10000
+    description: A request under this amount needs no reviewer.
+---
+kind: SQLite.Connection
+metadata: { name: ledger }
+file: !cel "variables.ledgerFile"
+---
+kind: SQLite.Table
+metadata: { name: requests }
+table: requests
+columns:
+  id: { type: text, primaryKey: true }
+  requester: { type: text, nullable: false }
+  item: { type: text, nullable: false }
+  amount_cents: { type: integer, nullable: false }
+  cost_center: { type: text, nullable: false }
+  status: { type: text, nullable: false, default: pending }
+  decided_by: { type: text, nullable: false, default: "" }
+  note: { type: text, nullable: false, default: "" }
+  submitted_at: { type: text, nullable: false, defaultExpression: "datetime('now')" }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref ledger
+tables:
+  - !ref requests
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref ledger
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journal"
+---
+# The reviewer's answer. Approving and rejecting deliver to this one wait; the
+# payload says which.
+kind: Durable.Await
+metadata: { name: decision }
+token: !cel "'approval:' + inputs.id"
+timeout: !cel "variables.reviewDeadline"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ approved, decidedBy, note ]
+    additionalProperties: false
+    properties:
+      approved: { type: boolean }
+      decidedBy: { type: string }
+      note: { type: string }
+---
+# One request, from submission to what follows the decision. The branch and the
+# answer are recorded, so a restart while a request waits continues at the wait
+# instead of starting over.
+kind: DurableLocal.Workflow
+metadata: { name: process }
+journal: !ref journal
+runId: !cel "inputs.id"
+inputs:
+  id: !cel "inputs.id"
+  request: !cel "inputs.request"
+  autoApproved: !cel "inputs.autoApproved"
+steps:
+  - name: review
+    if: !cel "inputs.autoApproved"
+    then:
+      - name: automatic
+        value: { approved: true, decidedBy: policy, note: "" }
+    else:
+      - name: reviewed
+        try:
+          - name: answer
+            invoke: !ref decision
+            inputs:
+              id: !cel "inputs.id"
+        catch:
+          - name: expired
+            value: { approved: false, decidedBy: deadline, note: No decision before the deadline. }
+  - name: decision
+    value: !cel >-
+      has(steps.automatic) ? steps.automatic.result
+      : has(steps.answer) ? steps.answer.result
+      : steps.expired.result
+  # Only a row still pending is written, so a replayed step changes nothing.
+  - name: record
+    invoke: !ref exec
+    inputs:
+      sql: "UPDATE requests SET status = ?, decided_by = ?, note = ? WHERE id = ? AND status = 'pending'"
+      bindings:
+        - !cel "steps.decision.result.approved ? 'approved' : 'rejected'"
+        - !cel "steps.decision.result.decidedBy"
+        - !cel "steps.decision.result.note"
+        - !cel "inputs.id"
+  # What follows the decision — an order placed, a requester told. Replace the
+  # two branches; everything around them stays.
+  - name: act
+    if: !cel "steps.decision.result.approved"
+    then:
+      - name: order
+        invoke: !ref Console.writeLine
+        inputs:
+          output: !cel >-
+            '{green ordered} ' + inputs.request.item + ' for ' + inputs.request.requester +
+            ' (' + string(inputs.request.amountCents) + ' cents), approved by ' +
+            steps.decision.result.decidedBy
+    else:
+      - name: notify
+        invoke: !ref Console.writeLine
+        inputs:
+          output: !cel >-
+            '{red rejected} ' + inputs.request.requester + "'s request for " + inputs.request.item +
+            ': ' + steps.decision.result.note
+---
+# Continues requests whose process stopped, and picks each one up again once
+# its decision is delivered.
+kind: DurableLocal.Resumer
+metadata: { name: resumer }
+workflow: !ref process
+interval: 500ms
+---
+# Delivers a decision and answers once the request has settled, so the page
+# that sent it reloads a ledger that already holds the outcome.
+kind: Run.Sequence
+metadata: { name: decide }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ id, approved, decidedBy, note ]
+    properties:
+      id: { type: string }
+      approved: { type: boolean }
+      decidedBy: { type: string }
+      note: { type: string }
+steps:
+  - name: deliver
+    invoke:
+      kind: DurableLocal.Deliver
+      journal: !ref journal
+      await: !ref decision
+      token: !cel "'approval:' + inputs.id"
+      payload:
+        approved: !cel "inputs.approved"
+        decidedBy: !cel "inputs.decidedBy"
+        note: !cel "inputs.note"
+    inputs:
+      id: !cel "inputs.id"
+      approved: !cel "inputs.approved"
+      decidedBy: !cel "inputs.decidedBy"
+      note: !cel "inputs.note"
+  - name: settle
+    if: !cel "steps.deliver.result.delivered"
+    then:
+      - name: outcome
+        invoke:
+          kind: DurableLocal.Result
+          journal: !ref journal
+          wait: 10s
+        inputs:
+          run: !cel "inputs.id"
+outputs:
+  delivered: !cel "steps.deliver.result.delivered"
+---
+# One page of the ledger, newest first, as the page's tables read it.
+kind: Run.Sequence
+metadata: { name: listRequests }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ status, limit, offset ]
+    properties:
+      status: { type: string }
+      limit: { type: integer }
+      offset: { type: integer }
+steps:
+  - name: page
+    invoke:
+      kind: Sql.Query
+      connection: !ref ledger
+      outputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ rows ]
+          properties:
+            rows:
+              type: array
+              items:
+                type: object
+                required: [ id, requester, item, amountCents, costCenter, status, decidedBy, note, submittedAt ]
+                properties:
+                  id: { type: string }
+                  requester: { type: string }
+                  item: { type: string }
+                  amountCents: { type: integer }
+                  costCenter: { type: string }
+                  status: { type: string }
+                  decidedBy: { type: string }
+                  note: { type: string }
+                  submittedAt: { type: string }
+    inputs:
+      sql: >-
+        SELECT id, requester, item, amount_cents AS "amountCents", cost_center AS "costCenter",
+          status, decided_by AS "decidedBy", note, submitted_at AS "submittedAt"
+        FROM requests WHERE (? = '' OR status = ?)
+        ORDER BY submitted_at DESC, id LIMIT ? OFFSET ?
+      bindings:
+        - !cel "inputs.status"
+        - !cel "inputs.status"
+        - !cel "inputs.limit"
+        - !cel "inputs.offset"
+  - name: count
+    invoke:
+      kind: Sql.Query
+      connection: !ref ledger
+    inputs:
+      sql: "SELECT COUNT(*) AS total FROM requests WHERE (? = '' OR status = ?)"
+      bindings:
+        - !cel "inputs.status"
+        - !cel "inputs.status"
+  - name: total
+    value: !cel "int(steps.count.result.rows[0].total)"
+outputs:
+  rows: !cel "steps.page.result.rows"
+  total: !cel "steps.total.result"
+  next: !cel "inputs.offset + inputs.limit < steps.total.result ? dyn(string(inputs.offset + inputs.limit)) : null"
+---
+# The shapes the page and the API share: what is submitted, a row of the
+# ledger, and a decision.
+kind: Telo.JsonSchema
+metadata: { name: NewRequest }
+schema:
+  type: object
+  additionalProperties: false
+  required: [ requester, item, amountCents, costCenter ]
+  properties:
+    requester: { type: string, title: Requester, minLength: 1 }
+    item: { type: string, title: Item, minLength: 1 }
+    amountCents: { type: integer, title: Amount (cents), minimum: 1 }
+    costCenter: { type: string, title: Cost center, enum: [ eng, ops, sales ] }
+---
+kind: Telo.JsonSchema
+metadata: { name: PurchaseRequest }
+extends: NewRequest
+schema:
+  type: object
+  required: [ id, status, decidedBy, note, submittedAt ]
+  properties:
+    id: { type: string, title: Request }
+    status: { type: string, title: Status, enum: [ pending, approved, rejected ] }
+    decidedBy: { type: string, title: Decided by }
+    note: { type: string, title: Note }
+    submittedAt: { type: string, title: Submitted }
+---
+kind: Telo.JsonSchema
+metadata: { name: Decision }
+schema:
+  type: object
+  additionalProperties: false
+  required: [ id ]
+  properties:
+    id: { type: string }
+    decidedBy: { type: string, minLength: 1 }
+    note: { type: string }
+---
+kind: Http.Api
+metadata: { name: api }
+catches:
+  - status: 400
+    when: !cel "error.code == 'ERR_DURABLE_PAYLOAD_INVALID'"
+    content:
+      application/json:
+        body:
+          error: !cel "error.code"
+          message: !cel "error.message"
+routes:
+  - request:
+      path: /requests
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ requester, item, amountCents, costCenter ]
+          properties:
+            requester: { type: string, minLength: 1 }
+            item: { type: string, minLength: 1 }
+            amountCents: { type: integer, minimum: 1 }
+            costCenter: { type: string, enum: [ eng, ops, sales ] }
+    summary: Submit a request for approval.
+    inputs:
+      request: !cel "request.body"
+      # The rule: small purchases need nobody, and operations buys consumables freely.
+      autoApproved: !cel >-
+        request.body.amountCents < variables.autoApproveBelowCents ||
+        (request.body.costCenter == 'ops' && request.body.amountCents < 50000)
+    # The run is dispatched detached, so a request that waits answers at once;
+    # one the rule approves is waited for, so its row is settled when it answers.
+    handler:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ request, autoApproved ]
+          properties:
+            request:
+              type: object
+              required: [ requester, item, amountCents, costCenter ]
+              properties:
+                requester: { type: string }
+                item: { type: string }
+                amountCents: { type: integer }
+                costCenter: { type: string }
+            autoApproved: { type: boolean }
+      steps:
+        - name: id
+          value: !cel "uuidv4()"
+        - name: record
+          invoke: !ref exec
+          inputs:
+            sql: "INSERT INTO requests (id, requester, item, amount_cents, cost_center) VALUES (?, ?, ?, ?, ?)"
+            bindings:
+              - !cel "steps.id.result"
+              - !cel "inputs.request.requester"
+              - !cel "inputs.request.item"
+              - !cel "inputs.request.amountCents"
+              - !cel "inputs.request.costCenter"
+        - name: start
+          invoke: !ref process
+          inputs:
+            id: !cel "steps.id.result"
+            request: !cel "inputs.request"
+            autoApproved: !cel "inputs.autoApproved"
+        - name: settle
+          if: !cel "inputs.autoApproved"
+          then:
+            - name: outcome
+              invoke:
+                kind: DurableLocal.Result
+                journal: !ref journal
+                wait: 10s
+              inputs:
+                run: !cel "steps.id.result"
+      outputs:
+        id: !cel "steps.id.result"
+        status: !cel "steps.start.result.status"
+    returns:
+      - status: 202
+        content:
+          application/json:
+            body: !cel "result"
+
+  # The list the page's tables read: `{ rows, total, next }`, one page at a time.
+  - request:
+      path: /requests
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            status: { type: string, enum: [ pending, approved, rejected ] }
+            limit: { type: integer, minimum: 1, maximum: 100 }
+            cursor: { type: string, pattern: "^[0-9]+$" }
+    summary: The requests, newest first, optionally only those in one status.
+    handler: !ref listRequests
+    inputs:
+      status: !cel "has(request.query.status) ? request.query.status : ''"
+      limit: !cel "has(request.query.limit) ? request.query.limit : 25"
+      offset: !cel "has(request.query.cursor) ? int(request.query.cursor) : 0"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  - request:
+      path: /requests/{id}
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [ id ]
+          properties:
+            id: { type: string }
+    summary: Where a request stands, and its decision once there is one.
+    inputs:
+      run: !cel "request.params.id"
+    handler:
+      kind: DurableLocal.Result
+      journal: !ref journal
+    returns:
+      - status: 404
+        when: !cel "result.status == 'unknown'"
+        content:
+          application/json:
+            body: { error: No such request. }
+      - status: 200
+        content:
+          application/json:
+            body:
+              id: !cel "result.run"
+              status: !cel "result.status == 'parked' ? 'pending' : result.status"
+              decision: !cel >-
+                result.status == 'completed'
+                  ? result.result.steps.decision.result
+                  : null
+
+  # A page can only post a record to a fixed address, so the request is named
+  # in the body. A decision with no name on it is signed with the caller's address.
+  - request:
+      path: /approve
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ id ]
+          properties:
+            id: { type: string }
+            decidedBy: { type: string, minLength: 1 }
+            note: { type: string }
+    summary: Approve a pending request.
+    handler: !ref decide
+    inputs:
+      id: !cel "request.body.id"
+      approved: true
+      decidedBy: !cel "has(request.body.decidedBy) ? request.body.decidedBy : 'reviewer@' + request.ip"
+      note: !cel "has(request.body.note) ? request.body.note : ''"
+    returns:
+      # A request nobody is waiting on — unknown, or already decided.
+      - status: 409
+        when: !cel "!result.delivered"
+        content:
+          application/json:
+            body: { error: The request is not waiting for a decision. }
+      - status: 200
+        content:
+          application/json:
+            body: { delivered: true }
+
+  - request:
+      path: /reject
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ id ]
+          properties:
+            id: { type: string }
+            decidedBy: { type: string, minLength: 1 }
+            note: { type: string }
+    summary: Reject a pending request.
+    handler: !ref decide
+    inputs:
+      id: !cel "request.body.id"
+      approved: false
+      decidedBy: !cel "has(request.body.decidedBy) ? request.body.decidedBy : 'reviewer@' + request.ip"
+      note: !cel "has(request.body.note) ? request.body.note : ''"
+    returns:
+      - status: 409
+        when: !cel "!result.delivered"
+        content:
+          application/json:
+            body: { error: The request is not waiting for a decision. }
+      - status: 200
+        content:
+          application/json:
+            body: { delivered: true }
+---
+# What the list accepts: one status, and no sorting.
+kind: Ui.Collection
+metadata: { name: requestList }
+query:
+  filters:
+    - { property: status, operator: eq }
+  sort: []
+---
+# The whole frontend: the requests waiting, each with its two decisions and a
+# form to submit another, and under it the ledger.
+kind: UiReact.App
+metadata: { name: ui }
+title: Purchase requests
+lang: en
+pages:
+  - path: /
+    title: Requests
+    children:
+      - { type: text, text: "Waiting for review", style: heading }
+      - { type: text, text: "A request under the limit is approved by the rule and never waits here.", style: muted }
+      - type: composite
+        ref:
+          kind: Ui.Table
+          model: !ref PurchaseRequest
+          collection: !ref requestList
+          source:
+            basePath: /api/requests
+            filters: { status: pending }
+          columns:
+            - value: !cel "row.requester"
+            - value: !cel "row.item"
+            - value: !cel "row.amountCents"
+            - value: !cel "row.costCenter"
+            - value: !cel "row.submittedAt"
+          create:
+            form: { kind: Ui.Form, model: !ref NewRequest, source: { basePath: /api/requests } }
+          rowActions:
+            - action:
+                kind: Ui.Action
+                inputModel: !ref Decision
+                source: { path: /api/approve }
+                label: Approve
+              inputs:
+                id: !cel "row.id"
+            - action:
+                kind: Ui.Action
+                inputModel: !ref Decision
+                source: { path: /api/reject }
+                label: Reject
+              inputs:
+                id: !cel "row.id"
+              confirm: Reject this request?
+      - { type: text, text: "Every request", style: heading }
+      - type: composite
+        ref:
+          kind: Ui.Table
+          model: !ref PurchaseRequest
+          collection: !ref requestList
+          source: { basePath: /api/requests }
+          columns:
+            - value: !cel "row.item"
+            - value: !cel "row.requester"
+            - value: !cel "row.amountCents"
+            - value: !cel "row.status"
+            - value: !cel "row.decidedBy"
+            - value: !cel "row.note"
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Purchase requests
+    version: 1.0.0
+mounts:
+  - path: /api
+    mount: !ref api
+  - path: /
+    mount: !ref ui

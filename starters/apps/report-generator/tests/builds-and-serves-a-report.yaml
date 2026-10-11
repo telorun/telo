@@ -1,0 +1,123 @@
+kind: Telo.Application
+metadata:
+  name: ReportGeneratorStarterTest
+  version: 1.0.0
+  description: >-
+    Runs the starter, which builds a report at boot, then asks for another over
+    HTTP and reads both files back. The chain is a query, a rollup, two charts,
+    two stored files and an index row — a break anywhere shows up as a page
+    without its chart, a total that does not add up, or a download that is not
+    there, and each of those is asserted. The declared page is asked for too:
+    its buttons must post to the routes that answer with what they draw.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+variables:
+  scratchDir:
+    env: REPORT_GENERATOR_TEST_SCRATCH_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8117
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8117
+    variables:
+      title: Quarterly sales
+      dbFile: !cel "variables.scratchDir.joinPath('report-generator-test-' + string(nowMillis()) + '.db')"
+      reportsDir: !cel "variables.scratchDir.joinPath('report-generator-test-' + string(nowMillis()))"
+targets:
+  - !ref app
+steps:
+  - name: atBoot
+    invoke: !ref call
+    inputs: { url: /api/reports, method: GET }
+  - name: build
+    invoke: !ref call
+    inputs: { url: /api/reports, method: POST }
+  - name: listed
+    invoke: !ref call
+    inputs: { url: /api/reports, method: GET }
+  - name: page
+    invoke: !ref call
+    inputs:
+      url: !cel "steps.build.result.body.reports[0].html"
+      method: GET
+  - name: csv
+    invoke: !ref call
+    inputs:
+      url: !cel "steps.build.result.body.reports[0].csv"
+      method: GET
+  - name: latest
+    invoke: !ref call
+    inputs: { url: /api/reports/latest/csv, method: GET }
+  - name: missing
+    invoke: !ref call
+    inputs: { url: /api/reports/never-built, method: GET }
+  - name: recent
+    invoke: !ref call
+    inputs: { url: /api/reports/recent, method: POST }
+  - name: uiPage
+    invoke: !ref call
+    inputs:
+      url: /_telo/ui/page
+      method: GET
+      query: { path: / }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        builtAtBoot: !cel "size(steps.atBoot.result.body)"
+        build: !cel "steps.build.result.status"
+        total: !cel "steps.build.result.body.total"
+        listed: !cel "steps.listed.result.body.map(r, r.total)"
+        newestFirst: !cel "steps.listed.result.body[0].name == steps.build.result.body.name"
+        pageStatus: !cel "steps.page.result.status"
+        pageType: !cel "steps.page.result.headers['content-type'].startsWith('text/html')"
+        titled: !cel "steps.page.result.body.contains('<h1>Quarterly sales</h1>')"
+        charts: !cel "size(split(steps.page.result.body, '<svg')) - 1"
+        totalRow: !cel "steps.page.result.body.contains('$1,737,000')"
+        csv: !cel "steps.csv.result.body"
+        latestIsNewest: !cel "steps.latest.result.body == steps.csv.result.body"
+        missing: !cel "steps.missing.result.status"
+        # What the page's buttons draw: the build answers with the list
+        # including the report it just made, newest first.
+        answered: !cel "steps.build.result.body.reports.map(r, r.name == steps.build.result.body.name)"
+        recent: !cel "steps.recent.result.body.reports == steps.build.result.body.reports"
+        uiTitle: !cel "steps.uiPage.result.body.title"
+        uiActions: !cel "steps.uiPage.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.path, c.lists[0].columns.map(col, col.header)])"
+      expected:
+        answered: [ true, false ]
+        recent: true
+        uiTitle: Reports
+        uiActions:
+          - [ Build report, /api/reports, [ Built, Total, Page, CSV ] ]
+          - [ Show reports, /api/reports/recent, [ Built, Total, Page, CSV ] ]
+        builtAtBoot: 1
+        build: 201
+        total: 1737000
+        listed: [ 1737000, 1737000 ]
+        newestFirst: true
+        pageStatus: 200
+        pageType: true
+        titled: true
+        charts: 2
+        totalRow: true
+        csv: "region,channel,revenue\nAPAC,Direct,295000\nAPAC,Partner,120500\nEMEA,Direct,508000\nEMEA,Partner,233500\nNorth,Direct,412000\nNorth,Partner,168000\n"
+        latestIsNewest: true
+        missing: 404

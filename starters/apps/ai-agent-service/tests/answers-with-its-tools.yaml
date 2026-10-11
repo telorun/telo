@@ -1,0 +1,185 @@
+kind: Telo.Application
+metadata:
+  name: AiAgentServiceStarterTest
+  version: 1.0.0
+  description: >-
+    Talks to the starter over a stand-in for the model provider, so no key is
+    needed. The stand-in asks for a tool when the message mentions an order and
+    answers from the tool's result — which is what shows the starter's two SQL
+    tools reach their tables, that each conversation keeps its own history, and
+    that an empty message is refused.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  Http: ../../../../modules/http-server
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+variables:
+  scratchDir:
+    env: AI_AGENT_SERVICE_TEST_SCRATCH_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8113
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  # What the model would be: it reads the last message it was sent.
+  - kind: Http.Api
+    metadata: { name: fakeOpenAi }
+    routes:
+      - request:
+          path: /chat/completions
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler:
+          kind: Run.Value
+          value: {}
+        returns:
+          # A tool has just answered: reply from what it said.
+          - status: 200
+            when: !cel "request.body.messages[size(request.body.messages) - 1].role == 'tool'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  choices:
+                    - message:
+                        role: assistant
+                        content: !cel "'The tool said ' + string(request.body.messages[size(request.body.messages) - 1].content)"
+                      finish_reason: stop
+                  usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+          - status: 200
+            when: !cel "string(request.body.messages[size(request.body.messages) - 1].content).contains('broken')"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  choices:
+                    - message:
+                        role: assistant
+                        content: null
+                        tool_calls:
+                          - id: call-2
+                            type: function
+                            function:
+                              name: open_ticket
+                              arguments: '{"orderId":"A-1001","summary":"arrived broken"}'
+                      finish_reason: tool_calls
+                  usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+          - status: 200
+            when: !cel "string(request.body.messages[size(request.body.messages) - 1].content).contains('order')"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  choices:
+                    - message:
+                        role: assistant
+                        content: null
+                        tool_calls:
+                          - id: call-1
+                            type: function
+                            function:
+                              name: order_status
+                              arguments: '{"orderId":"A-1001"}'
+                      finish_reason: tool_calls
+                  usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  choices:
+                    - message:
+                        role: assistant
+                        content: !cel >-
+                          'You said: ' + string(request.body.messages[size(request.body.messages) - 1].content) +
+                          ' (' + string(size(request.body.messages)) + ' messages, ' +
+                          string(size(request.body.tools)) + ' tools, model ' + string(request.body.model) + ')'
+                      finish_reason: stop
+                  usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+  - kind: Http.Server
+    metadata: { name: provider }
+    port: 8069
+    mounts:
+      - path: /v1
+        mount: !ref fakeOpenAi
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8113
+    variables:
+      model: test-model
+      openaiBaseUrl: http://127.0.0.1:8069/v1
+      history: !cel "variables.scratchDir.joinPath('ai-agent-service-test-' + string(nowMillis()) + '.sqlite')"
+      shopFile: !cel "variables.scratchDir.joinPath('ai-agent-service-test-shop-' + string(nowMillis()) + '.db')"
+    secrets:
+      openaiApiKey: not-a-real-key
+targets:
+  - !ref provider
+  - !ref app
+steps:
+  - name: hello
+    invoke: !ref call
+    inputs:
+      url: /conversations/ada/messages
+      method: POST
+      body: { message: hello }
+  - name: whereIsIt
+    invoke: !ref call
+    inputs:
+      url: /conversations/ada/messages
+      method: POST
+      body: { message: where is my order }
+  - name: itIsBroken
+    invoke: !ref call
+    inputs:
+      url: /conversations/ada/messages
+      method: POST
+      body: { message: it arrived broken }
+  - name: other
+    invoke: !ref call
+    inputs:
+      url: /conversations/bob/messages
+      method: POST
+      body: { message: hi }
+  - name: history
+    invoke: !ref call
+    inputs:
+      url: /conversations/ada/messages
+      method: GET
+  - name: empty
+    invoke: !ref call
+    inputs:
+      url: /conversations/ada/messages
+      method: POST
+      body: { message: "" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        hello: !cel "steps.hello.result.body"
+        whereIsIt: !cel "steps.whereIsIt.result.body"
+        itIsBroken: !cel "steps.itIsBroken.result.body"
+        other: !cel "steps.other.result.body"
+        history: !cel "steps.history.result.body.messages.map(m, m.role)"
+        empty: !cel "steps.empty.result.status"
+      # Each count includes the system prompt the agent sends first.
+      expected:
+        hello: { reply: "You said: hello (2 messages, 2 tools, model test-model)" }
+        whereIsIt: { reply: "The tool said {\"id\":\"A-1001\",\"status\":\"shipped\",\"expectedOn\":\"2026-11-03\"}" }
+        itIsBroken: { reply: "The tool said {\"ticket\":1}" }
+        other: { reply: "You said: hi (2 messages, 2 tools, model test-model)" }
+        history: [ user, assistant, user, assistant, user, assistant ]
+        empty: 400

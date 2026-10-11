@@ -35,3 +35,7 @@ http://*.run.telo.localhost:8060 {
 http://pages.telo.localhost:8060 {
 	reverse_proxy pages:3000
 }
+
+http://starters.telo.localhost:8060 {
+	reverse_proxy starters:8787
+}

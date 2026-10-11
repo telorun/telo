@@ -48,6 +48,9 @@ export const LOCAL_PREFIXES = {
   agentChat: "telo-studio:agent:chat:",
   /** The workspace's last-opened agent conversation, `{ id }`. */
   agentConv: "telo-studio:agent:conv:",
+  /** The agent composer's unsent text and queued message. The tail is
+   *  `conversation:<id>`, or `workspace:<root>` before a conversation exists. */
+  agentComposer: "telo-studio:agent:composer:v1:",
   /** The `telo.version` setting, one per workspace root. */
   teloVersion: "telo-studio:telo-version:v1:",
   /** Auto resolutions of each module's telo version, one entry per workspace root. */

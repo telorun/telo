@@ -1,7 +1,20 @@
-export { AgentProvider, CONTINUE_MESSAGE, CONVERSATION_POLL_MS, useAgent } from "./context";
-export type { ConversationDownload, TurnActionOutcome } from "./context";
+export { AgentProvider, CONTINUE_MESSAGE, CONVERSATION_POLL_MS, useAgent, useAgentCompose } from "./context";
+export type { AgentCompose, ConversationDownload, TurnActionOutcome } from "./context";
+export { composerHold, hasMessage } from "./composer";
+export type { ComposerAttachment, ComposerState } from "./composer";
+export { formatBytes, isImageType } from "./attachment-rules";
+export { FOCUS_COMPOSER_LABEL, MOD_KEY_LABEL, isFocusComposerShortcut } from "./composer-shortcuts";
+export {
+  askAboutResourcePrompt,
+  explainRunFailurePrompt,
+  fixDiagnosticPrompt,
+  selectionPrompt,
+} from "./prepared-prompts";
+export { capabilityLine } from "./capability-line";
+export { STARTER_PROMPTS } from "./starter-prompts";
+export type { StarterPrompt } from "./starter-prompts";
 export { unsupportedFeatures } from "./agent-features";
-export { turnIds, turnRequest, turnsFrom } from "./turn-actions";
+export { messageCopyText, turnAttachments, turnIds, turnRequest, turnsFrom } from "./turn-actions";
 export { turnOfUserMessage } from "./records";
 export type {
   AgentIdentity,
@@ -9,6 +22,8 @@ export type {
   AgentStatus,
   AssistantMessage,
   AssistantPart,
+  Attachment,
+  AttachmentLimits,
   ChatMessage,
   CheckDiagnostic,
   Conversation,

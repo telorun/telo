@@ -201,3 +201,42 @@ describe("AgentClient.workspaceTree", () => {
     await expect(client.workspaceTree()).resolves.toEqual([]);
   });
 });
+
+describe("AgentClient attachments", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reads the capability document's limits, and a refusal in the server's own envelope by its code", async () => {
+    const limits = { maxBytes: 1024, maxPerMessage: 10, mediaTypes: ["image/png", "text/*"] };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json(200, { agent: {}, prompt: {}, auth: "none", features: ["attachments"], attachments: limits }))
+      .mockResolvedValueOnce(
+        json(413, { error: { code: "ERR_REQUEST_BODY_TOO_LARGE", message: "body too large", data: { maxBytes: 1024 } } }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new AgentClient("http://agent.test", "secret");
+
+    expect(await client.capabilities()).toMatchObject({ state: "known", identity: { attachments: limits } });
+    await expect(client.uploadAttachment(CONVERSATION, new Blob(["x"]), "a.png", "image/png")).rejects.toMatchObject({
+      status: 413,
+      code: "ERR_REQUEST_BODY_TOO_LARGE",
+      details: { maxBytes: 1024 },
+    });
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe(`http://agent.test/conversations/${CONVERSATION}/attachments`);
+    expect(init.headers).toEqual({ authorization: "Bearer secret" });
+  });
+
+  it("reads an attachment's bytes with the bearer token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("bytes", { headers: { "content-type": "application/octet-stream" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const blob = await new AgentClient("http://agent.test", "secret").attachmentBytes(CONVERSATION, "a1");
+
+    expect(blob.size).toBe(5);
+    expect(fetchMock.mock.calls[0]).toEqual([
+      `http://agent.test/conversations/${CONVERSATION}/attachments/a1`,
+      { headers: { authorization: "Bearer secret" } },
+    ]);
+  });
+});

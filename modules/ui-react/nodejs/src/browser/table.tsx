@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Pencil, Plus, Trash2 } from "lucide-react";
-import { Fragment, useContext, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { Fragment, useContext, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { requestAction } from "./action.js";
 import { resolveBinding, ruleStyle, styleAttribute, type Binding, type StyleRule } from "./bindings.js";
 import { fetchPage, send, type CollectionPage, type Param } from "./collection.js";
@@ -11,8 +11,9 @@ import { ErrorNode, Loading, Node, type SpecNode } from "./nodes.js";
 import { openValue } from "./open-address.js";
 import { FilterContext, RendererContext, RowContext } from "./renderer-context.js";
 import { Confirmation, Surface, type SurfaceSpec } from "./surface.js";
-import { refusalOf } from "./record-fields.js";
+import { enteredRecord, enteredValues, fieldFindings, Fields, refusalOf, type EnteredValues, type Field } from "./record-fields.js";
 import { errorSpec, responseError, UiError, type ErrorSpec } from "./ui-error.js";
+import type { JsonSchema } from "./validation.js";
 import { Presented } from "./value-cell.js";
 
 interface Column {
@@ -33,6 +34,8 @@ interface RowAction {
   inputs: Record<string, Binding>;
   /** The question asked before it runs. */
   confirm?: string;
+  /** What its dialog enters before it runs, as fields of the input model. */
+  prompt?: { schema: JsonSchema; fields: Field[] };
 }
 
 /** A row action that was pressed: being asked about, being sent, or refused. */
@@ -43,6 +46,10 @@ interface Pressed {
   open: boolean;
   busy: boolean;
   failure?: ErrorSpec;
+  /** What its prompt's fields hold, and what was refused of them. */
+  values: EnteredValues;
+  fieldErrors: Record<string, string>;
+  formError?: string;
 }
 
 /** The record a row action sends: each input it binds, a path that leads to
@@ -153,6 +160,7 @@ export function Table({ node }: { node: SpecNode }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteFailure, setDeleteFailure] = useState<ErrorSpec>();
   const [pressed, setPressed] = useState<Pressed>();
+  const promptId = useId();
   // The row write in flight. Read on the press itself, which can arrive before
   // the disabled buttons are drawn.
   const writing = useRef<"action" | "delete" | undefined>(undefined);
@@ -273,19 +281,30 @@ export function Table({ node }: { node: SpecNode }) {
   /** Send a row's action, unless a row write of this table is in flight. A
    *  refusal is shown in its confirmation, which opens for it when no question
    *  was asked; the grid and its rows are as they were. */
-  const act = async (action: RowAction, row: Row, open: boolean) => {
+  const act = async (action: RowAction, row: Row, open: boolean, values: EnteredValues = {}) => {
     if (writing.current) return;
+    const asked = action.prompt?.fields ?? [];
+    const held = { action, row, values, fieldErrors: {} };
+    // What the dialog entered, with the row's own values over it.
+    const record = { ...(action.prompt ? enteredRecord(action.prompt.schema, asked, values) : {}), ...boundRecord(action, row) };
+    const invalid = action.prompt ? fieldFindings(action.prompt.schema, asked, record) : {};
+    if (Object.keys(invalid).length > 0) return setPressed({ ...held, open: true, busy: false, fieldErrors: invalid });
     writing.current = "action";
-    setPressed({ action, row, open, busy: true });
+    setPressed({ ...held, open, busy: true });
     try {
-      const response = await requestAction(host, action.path, boundRecord(action, row));
+      const response = await requestAction(host, action.path, record);
       if (response.status === 400) {
-        const { other } = refusalOf(await response.json(), []);
+        const { byField, other } = refusalOf(await response.json(), asked);
+        // A prompt shows a refusal as a form does: on its fields, and under them.
+        if (action.prompt) {
+          setPressed({ ...held, open: true, busy: false, fieldErrors: byField, ...(other.length > 0 ? { formError: other.join(" ") } : {}) });
+          return;
+        }
         throw new UiError("ERR_UI_REQUEST_FAILED", `The request was refused: ${other.join(" ")}`);
       }
       if (!response.ok) throw await responseError(response);
     } catch (error) {
-      setPressed({ action, row, open: true, busy: false, failure: errorSpec(error, "ERR_UI_REQUEST_FAILED") });
+      setPressed({ ...held, open: true, busy: false, failure: errorSpec(error, "ERR_UI_REQUEST_FAILED") });
       return;
     } finally {
       writing.current = undefined;
@@ -295,8 +314,9 @@ export function Table({ node }: { node: SpecNode }) {
   };
   const press = (action: RowAction, row: Row) => {
     if (writing.current) return;
-    if (action.confirm === undefined) void act(action, row, false);
-    else setPressed({ action, row, open: true, busy: false });
+    if (action.confirm === undefined && action.prompt === undefined) return void act(action, row, false);
+    const values = action.prompt ? enteredValues(action.prompt.schema, action.prompt.fields) : {};
+    setPressed({ action, row, open: true, busy: false, values, fieldErrors: {} });
   };
   const acting = pressed?.busy === true;
 
@@ -460,9 +480,35 @@ export function Table({ node }: { node: SpecNode }) {
           danger={false}
           busy={pressed.busy}
           failure={pressed.failure}
-          onConfirm={() => act(pressed.action, pressed.row, true)}
+          onConfirm={() => act(pressed.action, pressed.row, true, pressed.values)}
           onClose={() => pressed.busy || setPressed(undefined)}
-        />
+        >
+          {pressed.action.prompt && (
+            <form
+              data-telo-part="form"
+              autoComplete="off"
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                void act(pressed.action, pressed.row, true, pressed.values);
+              }}
+            >
+              <Fields
+                id={promptId}
+                schema={pressed.action.prompt.schema}
+                fields={pressed.action.prompt.fields}
+                values={pressed.values}
+                errors={pressed.fieldErrors}
+                onChange={(property, next) => setPressed((current) => current && { ...current, values: { ...current.values, [property]: next } })}
+              />
+              {pressed.formError && (
+                <div data-telo-part="form-error" role="alert">
+                  {pressed.formError}
+                </div>
+              )}
+            </form>
+          )}
+        </Confirmation>
       )}
       {removing && (
         <Confirmation

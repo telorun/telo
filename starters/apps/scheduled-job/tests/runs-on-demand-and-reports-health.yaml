@@ -3,23 +3,28 @@ metadata:
   name: ScheduledJobStarterTest
   version: 1.0.0
   description: >-
-    Runs the starter and triggers the job through its on-demand route. Two
-    triggers onto one declaration is what the starter teaches — a cron schedule
-    and an HTTP call reaching the same resource — and the route is the half a test
-    can reach without waiting for a clock.
+    Runs the starter and fires its job over HTTP — the trigger a test can reach
+    without waiting for a clock — then reads the run back from the history. A
+    second copy is pointed at a directory that does not exist, which is what
+    shows a failed run is recorded and reported rather than lost.
 imports:
   App: ../../../../modules/app
   Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
 variables:
-  # Anchored at the working directory, as the starter's own `scanPath` is: a
+  # Anchored at the working directory, as the starter's own host paths are: a
   # value supplied by name must already be an absolute host path.
   scanPath:
     env: SCHEDULED_JOB_TEST_SCAN_PATH
     type: string
     x-telo-type: Telo.HostPath
     default: ./starters/apps/scheduled-job
+  scratchDir:
+    env: SCHEDULED_JOB_TEST_SCRATCH_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo
 targets:
   - !ref test
 ---
@@ -32,22 +37,38 @@ with:
     ports:
       http: 8046
     variables:
-      # A cron that will not fire during the test, so what the job route reports
-      # is this test's own trigger and nothing else.
-      jobCron: "0 3 1 1 *"
+      # The schedule is switched off, so every run in the history is one this
+      # test triggered.
+      scheduleEnabled: false
       scanPath: !cel "variables.scanPath"
+      dbFile: !cel "variables.scratchDir.joinPath('scheduled-job-test-' + string(nowMillis()) + '.db')"
 targets:
   - !ref app
 steps:
   - name: health
     invoke:
       kind: HttpClient.Request
-      url: http://127.0.0.1:8046/healthz
+      url: http://127.0.0.1:8046/api/healthz
       method: GET
   - name: run
     invoke:
       kind: HttpClient.Request
-      url: http://127.0.0.1:8046/run
+      url: http://127.0.0.1:8046/api/run
+      method: POST
+  - name: runs
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8046/api/runs
+      method: GET
+  - name: page
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8046/_telo/ui/page?path=/
+      method: GET
+  - name: again
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8046/api/runs/recent
       method: POST
   - name: verify
     invoke: { kind: Assert.Equals }
@@ -58,7 +79,60 @@ steps:
         # The job scans a directory that exists, so it counts at least the
         # starter's own manifest.
         scannedSomething: !cel "steps.run.result.body.files > 0"
+        history: !cel "steps.runs.result.body.map(r, r.outcome)"
+        recorded: !cel "parseJson(steps.runs.result.body[0].detail).files == steps.run.result.body.files"
+        # The run answers with the history including itself, which is what the
+        # page draws under its button.
+        answered: !cel "steps.run.result.body.runs.map(r, r.outcome)"
+        page: !cel "steps.page.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.path, size(c.fields)])"
+        again: !cel "steps.again.result.body.runs.map(r, r.outcome)"
       expected:
         healthStatus: 200
         runStatus: 200
         scannedSomething: true
+        history: [ ok ]
+        recorded: true
+        answered: [ ok ]
+        page:
+          - [ Run now, /api/run, 0 ]
+          - [ Show history, /api/runs/recent, 0 ]
+        again: [ ok ]
+  - name: withBrokenJob
+    invoke: !ref brokenJob
+---
+kind: Run.Sequence
+metadata: { name: brokenJob }
+with:
+  - kind: App.Instance
+    metadata: { name: broken }
+    source: ../telo.yaml
+    ports:
+      http: 8056
+    variables:
+      scheduleEnabled: false
+      scanPath: !cel "variables.scratchDir.joinPath('no-such-directory-' + string(nowMillis()))"
+      dbFile: !cel "variables.scratchDir.joinPath('scheduled-job-test-broken-' + string(nowMillis()) + '.db')"
+targets:
+  - !ref broken
+steps:
+  - name: run
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8056/api/run
+      method: POST
+  - name: runs
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8056/api/runs
+      method: GET
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        runStatus: !cel "steps.run.result.status"
+        error: !cel "steps.run.result.body.error"
+        history: !cel "steps.runs.result.body.map(r, r.outcome)"
+      expected:
+        runStatus: 500
+        error: ERR_JOB_FAILED
+        history: [ failed ]

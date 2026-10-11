@@ -2,14 +2,27 @@ kind: Telo.Application
 metadata:
   name: AiAgentConsole
   version: 1.0.0
+  categories: [ AI ]
   description: |
-    Interactive REPL backed by an `Ai.Agent`. Each turn the agent may call a
-    weather tool (`get_weather`, an `Http.Request` to open-meteo) before
-    answering. The conversation is persisted in sqlite so each turn sees prior
-    history and the chat survives restart. Type `/exit` to leave.
+    An interactive chat in the terminal, backed by an `Ai.Agent` that calls
+    tools before it answers:
+
+      - two tools: `get_weather` is an HTTP request to open-meteo, `current_time`
+        is a plain value — a tool is any resource, described for the model
+      - memory: the conversation is stored in SQLite, so every turn sees the
+        history and the chat survives a restart
+      - commands: `/history` counts what is remembered, `/clear` forgets it,
+        `/exit` leaves
+      - a provider failure is printed and the chat goes on, instead of ending it
+      - the model and the endpoint are inputs, so the same manifest talks to any
+        OpenAI-compatible server
 
     Set your OpenAI key in a sibling `.env.local`:
         OPENAI_API_KEY=sk-...
+    Then:
+        telo .
+        telo . --model gpt-4o
+        OPENAI_BASE_URL=http://localhost:11434/v1 telo . --model llama3.2
 imports:
   OpenAI: oci://ghcr.io/telorun/openai@0.12.0#sha256-hKc2_SoJ5vZtMltBiuTFpCu-_POOVKpvl9KJ27iM63s
   Ai: oci://ghcr.io/telorun/ai@0.27.0#sha256-YuRyAUKvsFQu845vDQkBLUgU9tO4o1V1ZeAsx81510g
@@ -26,8 +39,24 @@ secrets:
     env: OPENAI_API_KEY
     type: string
 variables:
+  model:
+    env: OPENAI_MODEL
+    arg: { flag: model, short: m }
+    type: string
+    default: gpt-4o-mini
+    description: The chat model to ask.
+  openaiBaseUrl:
+    env: OPENAI_BASE_URL
+    type: string
+    default: https://api.openai.com/v1
+    description: Any OpenAI-compatible endpoint.
+  weatherBaseUrl:
+    env: WEATHER_BASE_URL
+    type: string
+    default: https://api.open-meteo.com
   historyFile:
     env: HISTORY_FILE
+    arg: history-file
     type: string
     x-telo-type: Telo.HostPath
     default: tmp/agent-history.sqlite
@@ -59,7 +88,7 @@ token: !cel "secrets.openaiApiKey"
 ---
 kind: Http.Client
 metadata: { name: openaiClient }
-baseUrl: https://api.openai.com/v1
+baseUrl: !cel "variables.openaiBaseUrl"
 credential: !ref openaiKey
 ---
 kind: Http.Request
@@ -67,13 +96,13 @@ metadata: { name: openaiRequest }
 client: !ref openaiClient
 ---
 kind: OpenAI.ChatModel
-metadata: { name: gpt4oMini }
-model: gpt-4o-mini
+metadata: { name: chatModel }
+model: !cel "variables.model"
 request: !ref openaiRequest
 ---
 kind: Http.Client
 metadata: { name: openMeteo }
-baseUrl: https://api.open-meteo.com
+baseUrl: !cel "variables.weatherBaseUrl"
 ---
 kind: Http.Request
 metadata: { name: getWeather }
@@ -81,7 +110,7 @@ client: !ref openMeteo
 throwOnHttpError: true
 ---
 kind: Ai.Tools
-metadata: { name: weatherTools }
+metadata: { name: assistantTools }
 tools:
   - tool: !ref getWeather
     name: get_weather
@@ -96,21 +125,90 @@ tools:
     inputs:
       url: /v1/forecast
       method: GET
+      # A query string is text, so the numbers the model produced are written out.
       query:
-        latitude: !cel "arguments.latitude"
-        longitude: !cel "arguments.longitude"
+        latitude: !cel "string(arguments.latitude)"
+        longitude: !cel "string(arguments.longitude)"
         current_weather: "true"
     result: !cel "result.body"
+  # A tool need not reach the network: any invocable will do.
+  - tool:
+      kind: Run.Value
+      value:
+        utc: !cel "nowIso()"
+    name: current_time
+    description: The current date and time, in UTC.
+    parameters:
+      type: object
+      additionalProperties: false
+      properties: {}
 ---
 kind: Ai.Agent
 metadata: { name: assistant }
-model: !ref gpt4oMini
+model: !ref chatModel
 system: |
   You are a helpful CLI assistant. Use the available tools when they help answer;
   don't guess at facts you can look up. Keep replies brief.
 maxSteps: 6
 toolProviders:
-  - provider: !ref weatherTools
+  - provider: !ref assistantTools
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref chatDb
+---
+kind: Sql.Query
+metadata: { name: readHistory }
+connection: !ref chatDb
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ rows ]
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          required: [ role, content ]
+          properties:
+            role: { type: string }
+            content: { type: string }
+---
+# One turn: remember what was said, ask with the whole history, remember the
+# answer. A failure leaves the question stored, so asking again retries it.
+kind: Run.Sequence
+metadata: { name: turn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ message ]
+    properties:
+      message: { type: string }
+steps:
+  - name: insertUser
+    invoke: !ref exec
+    inputs:
+      sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
+      bindings: [ "user", !cel "inputs.message" ]
+  - name: history
+    invoke: !ref readHistory
+    inputs:
+      sql: "SELECT role, content FROM messages ORDER BY id ASC"
+      bindings: []
+  - name: ask
+    invoke: !ref assistant
+    inputs:
+      messages: !cel "steps.history.result.rows"
+  - name: insertAssistant
+    invoke: !ref exec
+    inputs:
+      sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
+      bindings: [ "assistant", !cel "steps.ask.result.text" ]
+outputs:
+  text: !cel "steps.ask.result.text"
 ---
 kind: Run.Sequence
 metadata: { name: chatLoop }
@@ -120,36 +218,47 @@ steps:
     inputs:
       prompt: "{cyan.bold you} › "
   - name: converse
-    while: !cel "steps.read.result.value != '/exit'"
+    while: !cel "trim(steps.read.result.value) != '/exit'"
     do:
-      - name: insertUser
-        inputs:
-          sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: [ "user", !cel "steps.read.result.value" ]
-        invoke:
-          kind: Sql.Command
-          connection: !ref chatDb
-      - name: readHistory
-        inputs:
-          sql: "SELECT role, content FROM messages ORDER BY id ASC"
-        invoke:
-          kind: Sql.Query
-          connection: !ref chatDb
-      - name: ask
-        invoke: !ref assistant
-        inputs:
-          messages: !cel "steps.readHistory.result.rows"
-      - name: print
-        invoke: !ref Console.writeLine
-        inputs:
-          output: !cel "'{magenta.bold ai}  › ' + steps.ask.result.text"
-      - name: insertAssistant
-        inputs:
-          sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: [ "assistant", !cel "steps.ask.result.text" ]
-        invoke:
-          kind: Sql.Command
-          connection: !ref chatDb
+      - name: command
+        switch: !cel "trim(steps.read.result.value)"
+        cases:
+          /clear:
+            - name: forget
+              invoke: !ref exec
+              inputs:
+                sql: "DELETE FROM messages"
+                bindings: []
+            - name: forgotten
+              invoke: !ref Console.writeLine
+              inputs:
+                output: !cel "'{dim forgot ' + string(steps.forget.result.rowCount) + ' messages}'"
+          /history:
+            - name: remembered
+              invoke: !ref readHistory
+              inputs:
+                sql: "SELECT role, content FROM messages ORDER BY id ASC"
+                bindings: []
+            - name: counted
+              invoke: !ref Console.writeLine
+              inputs:
+                output: !cel "'{dim ' + string(size(steps.remembered.result.rows)) + ' messages remembered}'"
+        default:
+          - name: exchange
+            try:
+              - name: reply
+                invoke: !ref turn
+                inputs:
+                  message: !cel "trim(steps.read.result.value)"
+              - name: print
+                invoke: !ref Console.writeLine
+                inputs:
+                  output: !cel "'{magenta.bold ai}  › ' + steps.reply.result.text"
+            catch:
+              - name: failed
+                invoke: !ref Console.writeLine
+                inputs:
+                  output: !cel "'{red error} › ' + error.code + ': ' + error.message"
       - name: read
         invoke: !ref Console.readLine
         inputs:

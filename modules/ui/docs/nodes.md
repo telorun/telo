@@ -106,9 +106,11 @@ so two renderers cannot disagree about them and none carries a table of its
 own.
 
 A `table` node always carries `rowActions`, an empty list when the table
-declares none. An entry is `{ path, label, inputs, confirm? }`: `path` and
-`label` are the action's, `inputs` maps each input property to a binding, and
-`confirm` is present exactly when the entry asks a question.
+declares none. An entry is `{ path, label, inputs, confirm?, prompt? }`: `path`
+and `label` are the action's, `inputs` maps each input property to a binding,
+`confirm` is present exactly when the entry asks a question, and `prompt` —
+`{ schema, fields }`, the action's input model and the fields its dialog
+enters — exactly when the entry declares `prompt: true`.
 
 An `action` node is `{ schema, path, label, fields, lists }`, all five present:
 the input model, where the record is sent, the button's text, one

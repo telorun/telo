@@ -65,86 +65,85 @@ export function resolveNamespaces(root: CelNode, namespaces: readonly string[]):
   // answers without walking. Every site with no module names takes this path, which is why
   // it is worth stating rather than leaving to the structural sharing below.
   if (namespaces.length === 0) return root;
-  const resolved = mapChildren(root, (child) => resolveNamespaces(child, namespaces));
-  if (resolved.kind !== "receiverCall") return resolved;
-  const receiver = resolved.receiver;
-  // An absolute name denotes a value the environment declares, never a namespace: a
-  // namespaced call has exactly one spelling, and `.Alias.fn(x)` is not it.
-  if (receiver.kind !== "ident" || receiver.absolute || !namespaces.includes(receiver.name)) {
-    return resolved;
-  }
-  return {
-    kind: "qcall",
-    namespace: receiver.name,
-    namespaceRange: receiver.range,
-    name: resolved.name,
-    nameRange: resolved.nameRange,
-    args: resolved.args,
-    range: resolved.range,
-  };
+  return resolveNode(root, namespaces);
 }
 
-/** Rebuilds a node from its mapped children, returning the original when none moved. */
-function mapChildren(node: CelNode, map: (child: CelNode) => CelNode): CelNode {
+// One frame per tree level, with no callback between a node and its child: the tallest tree
+// a read leaves is seven times `maxDepth`, and a frame per helper overflowed the stack on it.
+function resolveNode(node: CelNode, namespaces: readonly string[]): CelNode {
   switch (node.kind) {
     case "literal":
     case "ident":
     case "unparsed":
       return node;
     case "list": {
-      let moved = false;
-      const elements = node.elements.map((element) => {
-        const value = map(element.value);
-        if (value === element.value) return element;
-        moved = true;
-        return { ...element, value };
-      });
-      return moved ? { ...node, elements } : node;
+      let elements: (typeof node.elements)[number][] | undefined;
+      for (let at = 0; at < node.elements.length; at++) {
+        const element = node.elements[at]!;
+        const value = resolveNode(element.value, namespaces);
+        if (value === element.value) continue;
+        elements ??= node.elements.slice();
+        elements[at] = { ...element, value };
+      }
+      return elements ? { ...node, elements } : node;
     }
     case "map": {
-      let moved = false;
-      const entries: CelMapEntry[] = node.entries.map((entry) => {
-        const key = map(entry.key);
-        const value = map(entry.value);
-        if (key === entry.key && value === entry.value) return entry;
-        moved = true;
-        return { ...entry, key, value };
-      });
-      return moved ? { ...node, entries } : node;
+      let entries: CelMapEntry[] | undefined;
+      for (let at = 0; at < node.entries.length; at++) {
+        const entry = node.entries[at]!;
+        const key = resolveNode(entry.key, namespaces);
+        const value = resolveNode(entry.value, namespaces);
+        if (key === entry.key && value === entry.value) continue;
+        entries ??= node.entries.slice();
+        entries[at] = { ...entry, key, value };
+      }
+      return entries ? { ...node, entries } : node;
     }
     case "select": {
-      const operand = map(node.operand);
+      const operand = resolveNode(node.operand, namespaces);
       return operand === node.operand ? node : { ...node, operand };
     }
     case "index": {
-      const operand = map(node.operand);
-      const index = map(node.index);
+      const operand = resolveNode(node.operand, namespaces);
+      const index = resolveNode(node.index, namespaces);
       return operand === node.operand && index === node.index ? node : { ...node, operand, index };
     }
     case "call":
     case "qcall": {
-      const args = mapList(node.args, map);
+      const args = resolveList(node.args, namespaces);
       return args ? { ...node, args } : node;
     }
     case "receiverCall": {
-      const receiver = map(node.receiver);
-      const args = mapList(node.args, map);
-      if (receiver === node.receiver && !args) return node;
-      return { ...node, receiver, args: args ?? node.args };
+      const receiver = resolveNode(node.receiver, namespaces);
+      const args = resolveList(node.args, namespaces) ?? node.args;
+      // An absolute name denotes a value the environment declares, never a namespace: a
+      // namespaced call has exactly one spelling, and `.Alias.fn(x)` is not it.
+      if (receiver.kind === "ident" && !receiver.absolute && namespaces.includes(receiver.name)) {
+        return {
+          kind: "qcall",
+          namespace: receiver.name,
+          namespaceRange: receiver.range,
+          name: node.name,
+          nameRange: node.nameRange,
+          args,
+          range: node.range,
+        };
+      }
+      return receiver === node.receiver && args === node.args ? node : { ...node, receiver, args };
     }
     case "unary": {
-      const operand = map(node.operand);
+      const operand = resolveNode(node.operand, namespaces);
       return operand === node.operand ? node : { ...node, operand };
     }
     case "binary": {
-      const left = map(node.left);
-      const right = map(node.right);
+      const left = resolveNode(node.left, namespaces);
+      const right = resolveNode(node.right, namespaces);
       return left === node.left && right === node.right ? node : { ...node, left, right };
     }
     case "conditional": {
-      const condition = map(node.condition);
-      const whenTrue = map(node.whenTrue);
-      const whenFalse = map(node.whenFalse);
+      const condition = resolveNode(node.condition, namespaces);
+      const whenTrue = resolveNode(node.whenTrue, namespaces);
+      const whenFalse = resolveNode(node.whenFalse, namespaces);
       return condition === node.condition && whenTrue === node.whenTrue && whenFalse === node.whenFalse
         ? node
         : { ...node, condition, whenTrue, whenFalse };
@@ -152,16 +151,14 @@ function mapChildren(node: CelNode, map: (child: CelNode) => CelNode): CelNode {
   }
 }
 
-/** The mapped list, or nothing when every element is the one it started as. */
-function mapList(
-  nodes: readonly CelNode[],
-  map: (child: CelNode) => CelNode,
-): readonly CelNode[] | undefined {
-  let moved = false;
-  const mapped = nodes.map((node) => {
-    const next = map(node);
-    if (next !== node) moved = true;
-    return next;
-  });
-  return moved ? mapped : undefined;
+/** The resolved list, or nothing when every element is the one it started as. */
+function resolveList(nodes: readonly CelNode[], namespaces: readonly string[]): readonly CelNode[] | undefined {
+  let resolved: CelNode[] | undefined;
+  for (let at = 0; at < nodes.length; at++) {
+    const next = resolveNode(nodes[at]!, namespaces);
+    if (next === nodes[at]) continue;
+    resolved ??= nodes.slice();
+    resolved[at] = next;
+  }
+  return resolved;
 }

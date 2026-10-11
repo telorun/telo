@@ -167,6 +167,8 @@ inputType:
     properties:
       key: { type: string }
 steps:
+  # By revision, a draft's row last: row ids written in one millisecond do not
+  # order by when they were written.
   - name: rows
     invoke: !ref read
     inputs:
@@ -177,7 +179,8 @@ steps:
           (SELECT bl.name FROM people b JOIN graph_layers bl ON bl.id = b.graph_layer
             WHERE b.graph_row = p.graph_beneath) AS beneath
         FROM people p JOIN graph_layers l ON l.id = p.graph_layer
-        WHERE l.name = 'team' AND p.id = ? ORDER BY p.graph_row
+        WHERE l.name = 'team' AND p.id = ?
+        ORDER BY p.graph_from_revision IS NULL, p.graph_from_revision
       bindings: [!cel "inputs.key"]
 outputs:
   rows: !cel "steps.rows.result.rows"

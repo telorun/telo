@@ -155,6 +155,11 @@ and delete.
 - An entry with `confirm` asks first, in the confirmation a delete uses: the
   question is its title and its button carries the action's label. Cancel or
   Escape sends nothing.
+- An entry with `prompt` opens that confirmation on the press with its fields
+  under the title, each the control a form derives for the property. Its
+  button sends what the fields hold together with the row's bound record;
+  Enter in a field does the same. A value the input model refuses marks its
+  field and nothing is sent. What was entered is kept until the dialog closes.
 - Once the operation succeeds its answer is not read, the confirmation closes,
   and every table on the page over the same `source.basePath` reloads the page
   of rows it was showing.
@@ -163,7 +168,9 @@ and delete.
   titled with the action's label: its button sends the record again, and
   Cancel dismisses it. A 401 is `ERR_UI_UNAUTHORIZED`, a 403
   `ERR_UI_FORBIDDEN`, and anything else `ERR_UI_REQUEST_FAILED` — a 400 with
-  every detail of its envelope in the message.
+  every detail of its envelope in the message. An entry with `prompt` shows a
+  400 as a form does instead: each detail naming one of its fields on that
+  field, every other under the fields.
 
 ## Forms
 

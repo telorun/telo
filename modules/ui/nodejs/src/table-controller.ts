@@ -42,6 +42,7 @@ interface RowActionConfig {
   action: unknown;
   inputs: Record<string, Binding>;
   confirm?: string;
+  prompt?: boolean;
 }
 
 /** Why a row's inputs cannot make a record of the action's input model: a key
@@ -216,6 +217,15 @@ class Table implements ResourceInstance {
         label: operation.label,
         inputs: entry.inputs,
         ...(entry.confirm != null ? { confirm: entry.confirm } : {}),
+        // The row's inputs are sent as bound; the dialog enters the rest.
+        ...(entry.prompt === true
+          ? {
+              prompt: {
+                schema: operation.schema,
+                fields: operation.fields().filter((field) => !Object.hasOwn(entry.inputs, field.property)),
+              },
+            }
+          : {}),
       });
     }
     const create = await opener(resource.create, "create");

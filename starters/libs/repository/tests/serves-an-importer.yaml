@@ -1,0 +1,97 @@
+kind: Telo.Application
+metadata:
+  name: RepositoryLibraryStarterTest
+  version: 1.0.0
+  description: >-
+    Runs an application that imports the library and walks a note through every
+    exported operation: created, found, updated, deleted, gone. A library is
+    only ever reached through an importer, so that is what is run.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+variables:
+  scratchDir:
+    env: REPOSITORY_LIBRARY_TEST_SCRATCH_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8201
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ./__fixtures__/notes-app.yaml
+    ports:
+      http: 8201
+    variables:
+      dbFile: !cel "variables.scratchDir.joinPath('repository-library-test-' + string(nowMillis()) + '.db')"
+targets:
+  - !ref app
+steps:
+  - name: create
+    invoke: !ref call
+    inputs:
+      url: /notes
+      method: POST
+      body: { title: groceries, body: milk and bread }
+  - name: found
+    invoke: !ref call
+    inputs:
+      url: /notes
+      method: GET
+      query: { title: groceries }
+  - name: pin
+    invoke: !ref call
+    inputs:
+      url: /notes/pin
+      method: POST
+      body: { title: groceries }
+  - name: pinned
+    invoke: !ref call
+    inputs:
+      url: /notes
+      method: GET
+      query: { title: groceries }
+  - name: remove
+    invoke: !ref call
+    inputs:
+      url: /notes
+      method: DELETE
+      query: { title: groceries }
+  - name: gone
+    invoke: !ref call
+    inputs:
+      url: /notes
+      method: GET
+      query: { title: groceries }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        create: !cel "steps.create.result.status"
+        created: !cel "steps.create.result.body"
+        found: !cel "steps.found.result.body"
+        pin: !cel "steps.pin.result.body"
+        pinned: !cel "steps.pinned.result.body.map(n, n.pinned)"
+        remove: !cel "steps.remove.result.body"
+        gone: !cel "steps.gone.result.body"
+      expected:
+        create: 201
+        created: { created: 1 }
+        # A new note is not pinned: the column's default says so.
+        found: [ { title: groceries, body: milk and bread, pinned: 0 } ]
+        pin: { pinned: 1 }
+        pinned: [ 1 ]
+        remove: { deleted: 1 }
+        gone: []

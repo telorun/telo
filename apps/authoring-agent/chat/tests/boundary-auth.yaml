@@ -69,6 +69,8 @@ collection:
   - { method: DELETE, path: /conversations/c }
   - { method: DELETE, path: /conversations/c/turns }
   - { method: POST, path: /conversations/c/branch }
+  - { method: POST, path: /conversations/c/attachments }
+  - { method: GET, path: /conversations/c/attachments/a }
   - { method: GET, path: /workspace }
   - { method: POST, path: /workspace }
   - { method: GET, path: "/workspace/file?path=notes.txt" }
@@ -274,6 +276,8 @@ steps:
                 - { route: DELETE /conversations/c, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: DELETE /conversations/c/turns, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: POST /conversations/c/branch, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: POST /conversations/c/attachments, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: GET /conversations/c/attachments/a, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: GET /workspace, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: POST /workspace, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: "GET /workspace/file?path=notes.txt", status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
@@ -296,6 +300,9 @@ steps:
                 - { route: DELETE /conversations/c, status: 404, code: ERR_CONVERSATION_NOT_FOUND, challenge: null }
                 - { route: DELETE /conversations/c/turns, status: 400, code: null, challenge: null }
                 - { route: POST /conversations/c/branch, status: 400, code: null, challenge: null }
+                # Not multipart: the server refuses a body the route cannot stream before the route runs.
+                - { route: POST /conversations/c/attachments, status: 500, code: null, challenge: null }
+                - { route: GET /conversations/c/attachments/a, status: 404, code: ERR_CONVERSATION_NOT_FOUND, challenge: null }
                 - { route: GET /workspace, status: 200, code: null, challenge: null }
                 - { route: POST /workspace, status: 400, code: null, challenge: null }
                 - { route: "GET /workspace/file?path=notes.txt", status: 200, code: null, challenge: null }
@@ -308,16 +315,16 @@ steps:
               health: [ 200, { status: up } ]
               guardedCapabilities:
                 auth: bearer
-                features: [conversations, conversation-truncation, conversation-branching, turn-changes, turn-revert, turn-summary, turn-conclusion]
+                features: [conversations, conversation-truncation, conversation-branching, turn-changes, turn-revert, turn-summary, turn-conclusion, attachments]
                 manifestRuns: true
               guardedReady: [ 200, { ready: true, reasons: [] } ]
               openCapabilities:
                 agent: { name: AuthoringAgent, versioned: true }
                 prompt: { id: !cel "sha256(steps.primer.result.content)" }
                 auth: none
-                features: [conversations, conversation-truncation, conversation-branching, turn-changes, turn-revert, turn-summary, turn-conclusion]
+                features: [conversations, conversation-truncation, conversation-branching, turn-changes, turn-revert, turn-summary, turn-conclusion, attachments]
                 manifestRuns: false
-                keys: [agent, auth, features, manifestRuns, prompt]
+                keys: [agent, attachments, auth, features, manifestRuns, prompt]
               # Fixed messages: the probe's own error, which names a path on the
               # host, is not in the unguarded answer.
               openReady:

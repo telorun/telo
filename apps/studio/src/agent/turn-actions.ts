@@ -1,5 +1,5 @@
 import { userMessageId } from "./records";
-import type { ChatMessage } from "./types";
+import type { Attachment, ChatMessage } from "./types";
 
 /**
  * The transcript read as the agent's turns, for the actions that remove or copy
@@ -33,3 +33,15 @@ export function turnRequest(messages: ChatMessage[], turnId: string): string | n
   return user?.role === "user" ? user.text : null;
 }
 
+
+/** The files that message carried — what a Retry or an Edit & resend sends again. */
+export function turnAttachments(messages: ChatMessage[], turnId: string): Attachment[] {
+  const user = messages.find((m) => m.id === userMessageId(turnId));
+  return user?.role === "user" ? (user.attachments ?? []) : [];
+}
+
+/** A user message as Copy takes it: its text, then the names of its files. */
+export function messageCopyText(message: { text: string; attachments?: Attachment[] }): string {
+  const names = (message.attachments ?? []).map((a) => `[attached: ${a.name}]`);
+  return [message.text, ...names].filter((line) => line !== "").join("\n");
+}

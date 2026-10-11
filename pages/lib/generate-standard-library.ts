@@ -77,8 +77,8 @@ function renderRow(entry: ModuleEntry): string {
   const kinds = entry.kinds.length
     ? entry.kinds.map((k) => `\`${k}\``).join(", ")
     : "—";
-  const search = `${HUB}/?q=${encodeURIComponent(entry.dir)}`;
-  return `| [\`${entry.dir}\`](${search}) | ${kinds} | ${entry.summary} |`;
+  const modulePage = `${HUB}/module/${OCI_BASE.replace("://", "/")}/${encodeURIComponent(entry.dir)}/`;
+  return `| [\`${entry.dir}\`](${modulePage}) | ${kinds} | ${entry.summary} |`;
 }
 
 export function generateStandardLibrary(modulesRoot: string, outFile: string): void {

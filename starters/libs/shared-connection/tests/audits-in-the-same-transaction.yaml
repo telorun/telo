@@ -1,0 +1,87 @@
+kind: Telo.Application
+metadata:
+  name: SharedConnectionLibraryStarterTest
+  version: 1.0.0
+  description: >-
+    Runs an application that hands its one database connection to the library.
+    A placed order must leave an order row and an audit entry; a refused one
+    must leave neither — the audit entry was written before the refusal, so its
+    absence afterwards is the proof that the library wrote on the importer's
+    connection, inside the importer's transaction.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+variables:
+  scratchDir:
+    env: SHARED_CONNECTION_LIBRARY_TEST_SCRATCH_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8205
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ./__fixtures__/orders-app.yaml
+    ports:
+      http: 8205
+    variables:
+      dbFile: !cel "variables.scratchDir.joinPath('shared-connection-library-test-' + string(nowMillis()) + '.db')"
+targets:
+  - !ref app
+steps:
+  - name: placed
+    invoke: !ref call
+    inputs:
+      url: /orders
+      method: POST
+      body: { actor: ada, item: keyboard, quantity: 2 }
+  - name: refused
+    invoke: !ref call
+    inputs:
+      url: /orders
+      method: POST
+      body: { actor: bob, item: nothing, quantity: 0 }
+  - name: placedAgain
+    invoke: !ref call
+    inputs:
+      url: /orders
+      method: POST
+      body: { actor: grace, item: monitor, quantity: 1 }
+  - name: orders
+    invoke: !ref call
+    inputs: { url: /orders, method: GET }
+  - name: audit
+    invoke: !ref call
+    inputs: { url: /audit, method: GET }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        placed: !cel "steps.placed.result.status"
+        refused: !cel "steps.refused.result.status"
+        refusedBody: !cel "steps.refused.result.body"
+        orders: !cel "steps.orders.result.body"
+        audit: !cel "steps.audit.result.body"
+      expected:
+        placed: 201
+        refused: 422
+        refusedBody: { error: ERR_EMPTY_ORDER }
+        orders:
+          - { item: keyboard, quantity: 2 }
+          - { item: monitor, quantity: 1 }
+        # Newest first, and nothing about the refused order.
+        audit:
+          - [ grace, order.created, monitor ]
+          - [ ada, order.created, keyboard ]

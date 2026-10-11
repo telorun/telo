@@ -53,7 +53,9 @@ imports:
       maxToolResultBytes: !cel "variables.maxToolResultBytes"
       maxCheckpointBytes: !cel "variables.maxCheckpointBytes"
       maxCheckpointFiles: !cel "variables.maxCheckpointFiles"
-  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+      maxAttachmentBytes: !cel "variables.maxAttachmentBytes"
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
+  Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
   Sse: oci://ghcr.io/telorun/sse-codec@0.13.0#sha256-xNewUQC5N5mmr1Bi0rLQXlIfrJecKLoDhidl_bk0Yew
   Scheduler: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
@@ -139,6 +141,13 @@ variables:
     type: integer
     minimum: 1
     default: 1000
+  # The largest file a client may attach to a message. A larger upload is
+  # refused and stores nothing.
+  maxAttachmentBytes:
+    env: MAX_ATTACHMENT_BYTES
+    type: integer
+    minimum: 1
+    default: 10485760
   # How hard the model thinks before each turn. Bound to an env var because it
   # is the dial an operator turns per deployment: it trades answer quality
   # against latency and spend on every turn of every tool loop, and `minimal`
@@ -298,10 +307,19 @@ routes:
               type: string
               description: The user's message.
               examples: [ "Add an HTTP health endpoint." ]
+            attachments:
+              type: array
+              items: { type: string }
+              description: >-
+                Ids of files uploaded to this conversation (POST
+                /conversations/{id}/attachments) that the message carries. An
+                image or a PDF reaches the model as itself, a text file as its
+                text.
     handler: !ref Chat.chatStart
     inputs:
       conversationId: !cel "request.body.conversationId"
       message: !cel "request.body.message"
+      attachments: !cel "has(request.body.attachments) ? request.body.attachments : []"
       clientIp: !cel "request.ip"
       idempotencyKey: !cel "'idempotency-key' in request.headers ? request.headers['idempotency-key'] : ''"
     returns:
@@ -334,6 +352,23 @@ routes:
             body:
               error: !cel "error.message"
               code: ERR_CONVERSATION_ARCHIVED
+      # A named attachment is not one of this conversation's — no turn started.
+      - when: !cel "error.code == 'ERR_ATTACHMENT_NOT_FOUND'"
+        status: 422
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_ATTACHMENT_NOT_FOUND
+              attachmentIds: !cel "error.data.attachmentIds"
+      - when: !cel "error.code == 'ERR_TOO_MANY_ATTACHMENTS'"
+        status: 422
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_TOO_MANY_ATTACHMENTS
+              max: !cel "error.data.max"
       # Per-IP throttle — no turn started.
       - when: !cel "error.code == 'ERR_RATE_LIMITED'"
         status: 429
@@ -1120,6 +1155,155 @@ routes:
             body:
               error: !cel "error.message"
               code: !cel "error.code"
+  # Attach a file to a conversation: one multipart part named `file`, read as
+  # it arrives. The answer is what a later POST /chat names in `attachments`.
+  # A body past the route's limit is the server's own 413
+  # ERR_REQUEST_BODY_TOO_LARGE; a file past MAX_ATTACHMENT_BYTES inside a
+  # smaller body is 413 ERR_ATTACHMENT_TOO_LARGE. A refused upload stores
+  # nothing.
+  - request:
+      path: /conversations/{id}/attachments
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string }
+        body:
+          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+    # The file, plus room for the part's headers and the boundaries around it.
+    maxBodyBytes: !cel "int(variables.maxAttachmentBytes) + 65536"
+    handler: !ref Chat.storeAttachment
+    inputs:
+      conversationId: !cel "request.params.id"
+      input: !cel "request.body"
+      contentType: !cel "'content-type' in request.headers ? request.headers['content-type'] : ''"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result.attachment"
+    catches:
+      - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_REMOVED
+      - when: !cel "error.code == 'ERR_CONVERSATION_ARCHIVED'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_ARCHIVED
+      - when: !cel "error.code == 'ERR_ATTACHMENT_LIMIT'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_ATTACHMENT_LIMIT
+              max: !cel "error.data.max"
+      - when: !cel "error.code == 'ERR_BLOB_TOO_LARGE'"
+        status: 413
+        content:
+          application/json:
+            body:
+              error: !cel "'The file is larger than ' + string(error.data.maxBytes) + ' bytes, the most one attachment may be.'"
+              code: ERR_ATTACHMENT_TOO_LARGE
+              maxBytes: !cel "error.data.maxBytes"
+      - when: !cel "error.code == 'ERR_ATTACHMENT_MISLABELLED'"
+        status: 415
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_ATTACHMENT_MISLABELLED
+              mediaType: !cel "error.data.mediaType"
+      - when: !cel "error.code == 'ERR_ATTACHMENT_TYPE_NOT_ACCEPTED'"
+        status: 415
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_ATTACHMENT_TYPE_NOT_ACCEPTED
+              mediaType: !cel "error.data.mediaType"
+              accepted: !cel "error.data.accepted"
+      # Not multipart, more than one part, or no part named `file`.
+      - when: !cel "error.code in ['ERR_ATTACHMENT_MISSING', 'ERR_MULTIPART_MALFORMED', 'ERR_MULTIPART_LIMIT_EXCEEDED']"
+        status: 400
+        content:
+          application/json:
+            body:
+              error: An upload is a multipart/form-data body holding one part named `file`.
+              code: ERR_ATTACHMENT_MISSING
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: !cel "error.code"
+  # An attachment's bytes, for a client drawing the transcript. Always
+  # `application/octet-stream`: what the file is — name, media type, size — is
+  # on the upload's answer and on the turn's `user-message` record.
+  - request:
+      path: /conversations/{id}/attachments/{attachmentId}
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [id, attachmentId]
+          properties:
+            id: { type: string }
+            attachmentId: { type: string }
+    handler: !ref Chat.readAttachment
+    inputs:
+      conversationId: !cel "request.params.id"
+      attachmentId: !cel "request.params.attachmentId"
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/octet-stream:
+            encoder: { kind: Octet.Encoder }
+    catches:
+      - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_REMOVED
+      - when: !cel "error.code == 'ERR_ATTACHMENT_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_ATTACHMENT_NOT_FOUND
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: !cel "error.code"
   # Whole-workspace sync. GET returns a content-hash tree studio diffs
   # against its own files; POST applies an explicit write/delete change set;
   # GET /workspace/file returns one file's contents.
@@ -1253,7 +1437,8 @@ routes:
               # routes, their refusals on POST /chat, export), the truncation
               # and branch routes, a turn's changes and its revert, the
               # `summary` on the records route, and a spent step budget ending
-              # in a wrap-up reply. A client ignores an entry it does not know.
+              # in a wrap-up reply, and files attached to a message. A client
+              # ignores an entry it does not know.
               features:
                 - conversations
                 - conversation-truncation
@@ -1262,7 +1447,15 @@ routes:
                 - turn-revert
                 - turn-summary
                 - turn-conclusion
+                - attachments
               manifestRuns: !cel "variables.allowManifestRuns"
+              # What an upload may be, so a client refuses a file before sending
+              # it: the largest size, how many one message may carry, and the
+              # media types taken (`type/*` is every subtype).
+              attachments:
+                maxBytes: !cel "int(variables.maxAttachmentBytes)"
+                maxPerMessage: !cel "Chat.messageAttachmentLimit()"
+                mediaTypes: !cel "Chat.attachmentTypes()"
 ---
 # Liveness and readiness, for an orchestrator's probes: never guarded, since a
 # probe carries no credential.

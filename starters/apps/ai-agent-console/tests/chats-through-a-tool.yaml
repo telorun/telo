@@ -1,0 +1,210 @@
+kind: Telo.Application
+metadata:
+  name: AiAgentConsoleStarterTest
+  version: 1.0.0
+  description: >-
+    Chats with the starter over a stand-in for the model provider and the
+    weather service, so no key is needed. The stand-in asks for the weather tool
+    when the question mentions weather and answers from the tool's result, which
+    is what shows the tool loop, the stored history and the three commands all
+    work end to end — and that a provider failure leaves the chat running.
+imports:
+  App: ../../../../modules/app
+  Channel: ../../../../modules/channel
+  Run: ../../../../modules/run
+  Http: ../../../../modules/http-server
+  Assert: ../../../../modules/assert
+variables:
+  scratchDir:
+    env: AI_AGENT_CONSOLE_TEST_SCRATCH_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo
+targets:
+  - !ref test
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+# What the model would be: it reads the last message it was sent.
+kind: Http.Api
+metadata: { name: fakeOpenAi }
+routes:
+  - request:
+      path: /chat/completions
+      method: POST
+      schema:
+        body: { type: object, additionalProperties: true }
+    handler: !ref noop
+    returns:
+      - status: 500
+        when: !cel "string(request.body.messages[size(request.body.messages) - 1].content).contains('break')"
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+            body:
+              error: { message: the provider is down, type: server_error }
+      # A tool has just answered: reply from what it said.
+      - status: 200
+        when: !cel "request.body.messages[size(request.body.messages) - 1].role == 'tool'"
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+            body:
+              choices:
+                - message:
+                    role: assistant
+                    content: !cel "'The tool said ' + string(request.body.messages[size(request.body.messages) - 1].content)"
+                  finish_reason: stop
+              usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+      - status: 200
+        when: !cel "string(request.body.messages[size(request.body.messages) - 1].content).contains('weather')"
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+            body:
+              choices:
+                - message:
+                    role: assistant
+                    content: null
+                    tool_calls:
+                      - id: call-1
+                        type: function
+                        function:
+                          name: get_weather
+                          arguments: '{"latitude":52.2,"longitude":21.0}'
+                  finish_reason: tool_calls
+              usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+      - status: 200
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+            body:
+              choices:
+                - message:
+                    role: assistant
+                    content: !cel >-
+                      'You said: ' + string(request.body.messages[size(request.body.messages) - 1].content) +
+                      ' (' + string(size(request.body.messages)) + ' messages, model ' + string(request.body.model) + ')'
+                  finish_reason: stop
+              usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+---
+kind: Http.Api
+metadata: { name: fakeWeather }
+routes:
+  - request:
+      path: /v1/forecast
+      method: GET
+    handler: !ref noop
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+            body:
+              current_weather: { temperature: 17 }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: provider }
+    port: 8068
+    mounts:
+      - path: /openai/v1
+        mount: !ref fakeOpenAi
+      - path: /weather
+        mount: !ref fakeWeather
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    variables:
+      model: test-model
+      openaiBaseUrl: http://127.0.0.1:8068/openai/v1
+      weatherBaseUrl: http://127.0.0.1:8068/weather
+      historyFile: !cel "variables.scratchDir.joinPath('ai-agent-console-test-' + string(nowMillis()) + '.sqlite')"
+    secrets:
+      openaiApiKey: not-a-real-key
+    # It blocks on its first prompt, so its targets never all finish dispatching.
+    awaitStart: false
+  - kind: Channel.ReadUntil
+    metadata: { name: read }
+    channel: !ref app
+    timeout: "15s"
+  - kind: Channel.SendLine
+    metadata: { name: send }
+    channel: !ref app
+targets:
+  - !ref provider
+  - !ref app
+steps:
+  - name: firstPrompt
+    invoke: !ref read
+    inputs: { until: "you › " }
+
+  - name: sayHello
+    invoke: !ref send
+    inputs: { text: hello }
+  - name: hello
+    invoke: !ref read
+    inputs: { until: "you › " }
+
+  - name: askWeather
+    invoke: !ref send
+    inputs: { text: what is the weather in Warsaw }
+  - name: weather
+    invoke: !ref read
+    inputs: { until: "you › " }
+
+  - name: askHistory
+    invoke: !ref send
+    inputs: { text: /history }
+  - name: history
+    invoke: !ref read
+    inputs: { until: "you › " }
+
+  - name: sayBreak
+    invoke: !ref send
+    inputs: { text: break please }
+  - name: broken
+    invoke: !ref read
+    inputs: { until: "you › " }
+
+  - name: sendClear
+    invoke: !ref send
+    inputs: { text: /clear }
+  - name: cleared
+    invoke: !ref read
+    inputs: { until: "you › " }
+
+  - name: sayAgain
+    invoke: !ref send
+    inputs: { text: again }
+  - name: again
+    invoke: !ref read
+    inputs: { until: "you › " }
+
+  - name: sendExit
+    invoke: !ref send
+    inputs: { text: /exit }
+
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        hello: !cel "steps.hello.result.text"
+        weather: !cel "steps.weather.result.text"
+        history: !cel "steps.history.result.text"
+        brokenIsReported: !cel "steps.broken.result.text.startsWith('error › ')"
+        cleared: !cel "steps.cleared.result.text"
+        again: !cel "steps.again.result.text"
+      # Each count includes the system prompt the agent sends first.
+      expected:
+        hello: "ai  › You said: hello (2 messages, model test-model)\nyou › "
+        weather: "ai  › The tool said {\"current_weather\":{\"temperature\":17}}\nyou › "
+        history: "4 messages remembered\nyou › "
+        brokenIsReported: true
+        # Four from the two exchanges, and the question the provider failed on.
+        cleared: "forgot 5 messages\nyou › "
+        again: "ai  › You said: again (2 messages, model test-model)\nyou › "

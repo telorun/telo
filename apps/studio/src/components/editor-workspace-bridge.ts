@@ -73,5 +73,12 @@ export function editorWorkspaceBridge({
       }
       return inside.length === 0 ? null : abs(inside.join("/"));
     },
+    workspaceFile(editorPath) {
+      const root = rootDir.replace(/[\\/]+$/, "");
+      if (!editorPath.startsWith(root)) return null;
+      const rest = editorPath.slice(root.length);
+      if (!/^[\\/]./.test(rest)) return null;
+      return rest.slice(1).replace(/\\/g, "/");
+    },
   };
 }

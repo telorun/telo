@@ -1,0 +1,36 @@
+kind: Telo.Application
+metadata:
+  name: GreeterApp
+  version: 1.0.0
+  description: >-
+    An application that mounts the library twice, each import configured
+    differently — the shape the library's description promises works.
+imports:
+  # Published, like the library's own: importing the workspace copy beside the
+  # library's published one is refused with DUPLICATE_IMPORT_ALIAS.
+  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  English:
+    source: ../..
+    variables:
+      service: greeter
+  Spanish:
+    source: ../..
+    variables:
+      service: greeter
+      greeting: Hola
+targets:
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8202
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+mounts:
+  - path: /en
+    mount: !ref English.api
+  - path: /es
+    mount: !ref Spanish.api

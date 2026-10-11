@@ -17,6 +17,7 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { askAboutResourcePrompt, useAgentCompose } from "../../../../agent";
 import { isRecord } from "../../../../lib/utils";
 import { readConcretePath } from "../../../../lib/concrete-path";
 import { resolveRef } from "../../../../schema-utils";
@@ -193,6 +194,7 @@ export function ModuleGraphView({
   bootWritable = true,
   onOpenTemplate,
 }: TopologyViewProps) {
+  const agentCompose = useAgentCompose();
   /**
    * Which edges are selected.
    *
@@ -714,6 +716,11 @@ export function ModuleGraphView({
         rowCountByArray[row.array] = (rowCountByArray[row.array] ?? 0) + 1;
       }
       const isMirror = mirrorOf.has(node.id);
+      // Asked about only where this module declares it: that is the file named.
+      const declaredHere = viewData.manifest.resources.find(
+        (r) => r.name === node.name && r.kind === node.kind,
+      );
+      const declaredFile = declaredHere ? (declaredHere.sourceFile ?? viewData.manifest.filePath) : undefined;
       const boot = isMirror ? undefined : bootMarkersById.get(node.id);
       const bootToggle =
         !isMirror &&
@@ -725,6 +732,18 @@ export function ModuleGraphView({
         ...(isMirror ? { mirror: true } : {}),
         ...(boot ? { boot } : {}),
         ...(bootToggle ? { onToggleBoot: () => toggleBoot(node) } : {}),
+        ...(agentCompose && !isMirror && declaredFile !== undefined
+          ? {
+              onAskAgent: () =>
+                agentCompose.compose(
+                  askAboutResourcePrompt({
+                    kind: node.kind,
+                    name: node.name,
+                    file: agentCompose.workspaceFile(declaredFile),
+                  }),
+                ),
+            }
+          : {}),
         ...(mirrored?.fanIn.get(node.id) ? { fanIn: mirrored.fanIn.get(node.id) } : {}),
         depth: placed.depth,
         owned: (layout.ownedBy.get(node.id) ?? []).length,
@@ -925,6 +944,7 @@ export function ModuleGraphView({
     bootEditable,
     refResolver,
     toggleBoot,
+    agentCompose,
   ]);
 
 

@@ -1,0 +1,553 @@
+kind: Telo.Application
+metadata:
+  name: ReportGenerator
+  version: 1.0.0
+  categories: [ Visualization, Data, Storage, Scheduling ]
+  description: |
+    A report built from rows: query the orders, roll them up, draw two charts,
+    lay the lot out as one self-contained HTML page, keep it, and serve it.
+
+      - `Collection.GroupBy` does the rollup in CEL, so the report's shape is
+        readable in the manifest rather than buried in a GROUP BY
+      - the same rows are drawn twice — a donut by region, stacked bars by
+        channel — because a chart takes flat rows and maps them with
+        expressions typed against the declared row shape, so a misspelled
+        column is a `telo check` error rather than an empty picture
+      - the page and a CSV of the same numbers are stored as blobs; the store
+        is one resource, so files on disk today is object storage tomorrow
+      - three ways to get one built: at boot, on `REPORT_CRON`, and
+        `POST /api/reports`
+      - `GET /api/reports` lists what has been built; `GET /api/reports/{name}`
+        and `GET /api/reports/{name}/csv` hand a report back
+      - a page at `/` with a "Build report" button and links to every report —
+        declared in this manifest, with no frontend code
+
+    Run, then open http://localhost:8107, or:
+        curl -s localhost:8107/api/reports
+        curl -s -XPOST localhost:8107/api/reports
+        curl -s localhost:8107/api/reports/latest/csv
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
+  Ui: oci://ghcr.io/telorun/ui@0.3.0#sha256-Xp_vAsCGcbXDo6rqK9A-xEnCbqSksPlG-q_jziF83LU
+  UiReact: oci://ghcr.io/telorun/ui-react@0.4.0#sha256-Maz-ACXHNqymhG283guc_wYMIrM_FKWKfGOxRdZ7TBw
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  Collection: oci://ghcr.io/telorun/collection@0.9.0#sha256-Fpb3ikCM8ANNwrM6069WEB-QjA3UofvUqMvYrgBW9sw
+  SvgChart: oci://ghcr.io/telorun/svg-chart@0.3.0#sha256-Dv384bDGk8HV_5kUVMaMQGK38LAurkRve54AS1h9d1c
+  Blob: oci://ghcr.io/telorun/blob@0.2.0#sha256-UgFwVFoZWZ_s8GWHIi-0qJB8K82CZ5gSQN0HZaqpc58
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.2.0#sha256-_DxXaUEsakpFyEif4SKQc1QesAcTFOpnXBW9AjIyUbo
+  Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
+  Schedule: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
+targets:
+  - !ref migrate
+  - name: firstReport
+    invoke: !ref buildReport
+    when: !cel "variables.buildAtBoot"
+  - !ref server
+  - !ref nightly
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8107
+variables:
+  title:
+    env: REPORT_TITLE
+    arg: title
+    type: string
+    default: Sales report
+  reportCron:
+    env: REPORT_CRON
+    arg: cron
+    type: string
+    default: "0 6 * * *"
+  buildAtBoot:
+    env: BUILD_AT_BOOT
+    type: boolean
+    default: true
+  dbFile:
+    env: DB_FILE
+    arg: db-file
+    type: string
+    x-telo-type: Telo.HostPath
+    default: sales.db
+  reportsDir:
+    env: REPORTS_DIR
+    arg: reports-dir
+    type: string
+    x-telo-type: Telo.HostPath
+    default: reports
+    description: Where built reports are kept.
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: orders }
+table: orders
+columns:
+  id: { type: integer, primaryKey: true }
+  region: { type: text, nullable: false }
+  channel: { type: text, nullable: false }
+  revenue: { type: integer, nullable: false }
+---
+# What has been built: the index the listing and the downloads read.
+kind: SQLite.Table
+metadata: { name: reports }
+table: reports
+columns:
+  name: { type: text, primaryKey: true }
+  built_at: { type: text, nullable: false }
+  total: { type: integer, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables:
+  - !ref orders
+  - !ref reports
+# Seed rows are data, not shape, so they stay imperative. They stand in for
+# wherever the rows really come from — your own tables, an API, a CSV.
+migrations:
+  0001_seed_orders:
+    statements:
+      - >-
+        INSERT OR IGNORE INTO orders (id, region, channel, revenue) VALUES
+          (1, 'North', 'Direct', 412000), (2, 'North', 'Partner', 168000),
+          (3, 'EMEA', 'Direct', 508000), (4, 'EMEA', 'Partner', 233500),
+          (5, 'APAC', 'Direct', 295000), (6, 'APAC', 'Partner', 120500)
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+# The row shape, declared once and referenced by both charts.
+kind: Telo.JsonSchema
+metadata: { name: SalesRows }
+schema:
+  type: object
+  required: [ rows ]
+  additionalProperties: false
+  properties:
+    rows:
+      type: array
+      items:
+        type: object
+        required: [ region, channel, revenue ]
+        properties:
+          region: { type: string }
+          channel: { type: string }
+          revenue: { type: number }
+---
+kind: Telo.JsonSchema
+metadata: { name: RegionTotals }
+schema:
+  type: object
+  required: [ rows ]
+  additionalProperties: false
+  properties:
+    rows:
+      type: array
+      items:
+        type: object
+        required: [ region, revenue ]
+        properties:
+          region: { type: string }
+          revenue: { type: number }
+---
+# One row per region. A donut draws one slice per category and the orders
+# carry two rows per region, so they are rolled up first.
+kind: Collection.GroupBy
+metadata: { name: totalByRegion }
+collection: !cel "inputs.rows"
+key:
+  region: !cel "item.region"
+aggregate:
+  revenue: !cel "sum(group.map(r, r.revenue))"
+orderBy:
+  - by: !cel "row.revenue"
+    descending: true
+---
+kind: SvgChart.Donut
+metadata: { name: revenueByRegion }
+inputType: !ref RegionTotals
+rows: !cel "inputs.rows"
+category: !cel "row.region"
+value: !cel "row.revenue"
+title: Revenue by region
+description: Share of revenue contributed by each region.
+innerRadius: 0.62
+width: 480
+height: 260
+legend: { placement: right, title: Region }
+labels: { format: "{percent}" }
+---
+# The same rows, split by channel instead — one bar per (region, channel)
+# pair, stacked so each column reads as a region's total.
+kind: SvgChart.Bar
+metadata: { name: revenueByChannel }
+inputType: !ref SalesRows
+rows: !cel "inputs.rows"
+title: Revenue by channel
+description: Direct and partner revenue per region.
+x: { value: !cel "row.region", scale: band, title: Region }
+y: { value: !cel "row.revenue", title: Revenue, tickFormat: "$.2s" }
+series: !cel "row.channel"
+stacked: true
+gridlines: { y: true }
+width: 480
+height: 260
+legend: { placement: bottom, title: Channel }
+---
+# Files beneath one directory. Every operation names the store through this
+# one resource, so moving reports to object storage is a change to it alone.
+kind: BlobFs.Store
+metadata: { name: reportStore }
+root: !cel "variables.reportsDir"
+---
+kind: Blob.Put
+metadata: { name: saveBlob }
+store: !ref reportStore
+---
+kind: Run.Sequence
+metadata: { name: buildReport }
+steps:
+  - name: sales
+    invoke: !ref query
+    inputs:
+      sql: "SELECT region, channel, revenue FROM orders ORDER BY region, channel"
+      bindings: []
+  - name: byRegion
+    invoke: !ref totalByRegion
+    inputs:
+      rows: !cel "steps.sales.result.rows"
+  - name: regionChart
+    invoke: !ref revenueByRegion
+    inputs:
+      rows: !cel "steps.byRegion.result.rows"
+  - name: channelChart
+    invoke: !ref revenueByChannel
+    inputs:
+      rows: !cel "steps.sales.result.rows"
+  - name: report
+    value:
+      name: !cel "replace(replace(nowIso(), ':', '-'), '.', '-')"
+      total: !cel "int(sum(steps.sales.result.rows.map(r, r.revenue)))"
+
+  # One self-contained page: the charts are markup, so they go straight in.
+  - name: page
+    invoke: !ref saveBlob
+    inputs:
+      key: !cel "'reports/' + steps.report.result.name + '.html'"
+      contentType: text/html
+      content: !cel >-
+        bytes(
+          '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>' + variables.title + '</title>' +
+          '<style>body{font:15px/1.5 system-ui,sans-serif;max-width:60rem;margin:2rem auto;padding:0 1rem;color:#1f2937}' +
+          'h1{color:#0072B2}.charts{display:flex;flex-wrap:wrap;gap:1.5rem}table{border-collapse:collapse;margin-top:1.5rem}' +
+          'th,td{padding:.4rem 1rem;border-bottom:1px solid #d1d5db;text-align:left}td.n,th.n{text-align:right}' +
+          'tfoot td{font-weight:700;color:#0072B2}</style></head><body>' +
+          '<h1>' + variables.title + '</h1><p>Built ' + nowIso() + '</p>' +
+          '<div class="charts">' + steps.regionChart.result.svg + steps.channelChart.result.svg + '</div>' +
+          '<table><thead><tr><th>Region</th><th>Channel</th><th class="n">Revenue</th></tr></thead><tbody>' +
+          steps.sales.result.rows.map(r,
+            '<tr><td>' + r.region + '</td><td>' + r.channel + '</td><td class="n">$' + format(r.revenue, ',') + '</td></tr>'
+          ).join('') +
+          '</tbody><tfoot><tr><td>Total</td><td></td><td class="n">$' + format(steps.report.result.total, ',') +
+          '</td></tr></tfoot></table></body></html>'
+        )
+  - name: csv
+    invoke: !ref saveBlob
+    inputs:
+      key: !cel "'reports/' + steps.report.result.name + '.csv'"
+      contentType: text/csv
+      content: !cel >-
+        bytes(
+          'region,channel,revenue\n' +
+          steps.sales.result.rows.map(r, r.region + ',' + r.channel + ',' + string(r.revenue)).join('\n') + '\n'
+        )
+  - name: index
+    invoke: !ref exec
+    inputs:
+      sql: "INSERT INTO reports (name, built_at, total) VALUES (?, ?, ?)"
+      bindings:
+        - !cel "steps.report.result.name"
+        - !cel "nowIso()"
+        - !cel "steps.report.result.total"
+  - name: say
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel >-
+        '{green ✔} built report ' + steps.report.result.name + ' — ' +
+        string(steps.page.result.size) + ' bytes of HTML, ' + string(steps.csv.result.size) + ' of CSV'
+outputs:
+  name: !cel "steps.report.result.name"
+  total: !cel "steps.report.result.total"
+---
+kind: Schedule.Cron
+metadata: { name: nightly }
+cron: !cel "variables.reportCron"
+timezone: UTC
+invoke: !ref buildReport
+---
+# Reads one stored file back as text. `latest` is resolved against the index,
+# so a link to it never goes stale; a name that was never built is a throw the
+# routes render as a 404.
+kind: Run.Sequence
+metadata: { name: readReport }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ name, extension ]
+    properties:
+      name: { type: string }
+      extension: { type: string, enum: [ html, csv ] }
+steps:
+  - name: found
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT name FROM reports WHERE (? = 'latest' OR name = ?)
+        ORDER BY built_at DESC LIMIT 1
+      bindings:
+        - !cel "inputs.name"
+        - !cel "inputs.name"
+  - name: missing
+    if: !cel "size(steps.found.result.rows) == 0"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_REPORT_NOT_FOUND
+          message: !cel "'no report named ' + inputs.name"
+  - name: blob
+    invoke:
+      kind: Blob.Get
+      store: !ref reportStore
+    inputs:
+      key: !cel "'reports/' + string(steps.found.result.rows[0].name) + '.' + inputs.extension"
+      # Held in memory to be answered whole, so its size is bounded first.
+      maxBytes: 5000000
+  - name: read
+    invoke: { kind: Octet.Decoder }
+    inputs:
+      input: !cel "steps.blob.result.output"
+outputs:
+  text: !cel "string(steps.read.result.bytes)"
+---
+# What has been built, newest first, each with where to get it.
+kind: Run.Sequence
+metadata: { name: listReports }
+steps:
+  - name: found
+    invoke: !ref query
+    inputs:
+      sql: "SELECT name, built_at AS \"builtAt\", total FROM reports ORDER BY built_at DESC LIMIT 50"
+      bindings: []
+outputs:
+  reports: !cel >-
+    steps.found.result.rows.map(r, {
+      'name': string(r.name),
+      'builtAt': string(r.builtAt),
+      'total': int(r.total),
+      'html': '/api/reports/' + string(r.name),
+      'csv': '/api/reports/' + string(r.name) + '/csv'
+    })
+---
+kind: Run.Sequence
+metadata: { name: buildAndList }
+steps:
+  - name: built
+    invoke: !ref buildReport
+  - name: listed
+    invoke: !ref listReports
+outputs:
+  name: !cel "steps.built.result.name"
+  total: !cel "steps.built.result.total"
+  reports: !cel "steps.listed.result.reports"
+---
+# The shape both buttons draw their table from, and both routes answer with.
+# `format: uri-reference` is what makes a column a link.
+kind: Telo.JsonSchema
+metadata: { name: ReportList }
+schema:
+  type: object
+  required: [ reports ]
+  properties:
+    reports:
+      type: array
+      items:
+        type: object
+        required: [ name, builtAt, total, html, csv ]
+        properties:
+          name: { type: string, title: Report }
+          builtAt: { type: string, title: Built }
+          total: { type: integer, title: Total }
+          html: { type: string, title: Page, format: uri-reference }
+          csv: { type: string, title: CSV, format: uri-reference }
+---
+kind: Http.Api
+metadata: { name: reportRoutes }
+routes:
+  - request:
+      path: /reports
+      method: POST
+    handler: !ref buildAndList
+    inputs: {}
+    returns:
+      - status: 201
+        headers:
+          Location: !cel "'/api/reports/' + result.name"
+        content:
+          application/json:
+            body:
+              name: !cel "result.name"
+              total: !cel "result.total"
+              reports: !cel "result.reports"
+    # `telo check` knows what building can throw — a chart refusing its rows, a
+    # store refusing a file — and refuses a route that leaves a code unrendered.
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"
+              message: !cel "error.message"
+
+  - request:
+      path: /reports
+      method: GET
+    handler: !ref listReports
+    inputs: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.reports"
+
+  # The same list as an operation a page can run: a button sends a POST.
+  - request:
+      path: /reports/recent
+      method: POST
+    handler: !ref listReports
+    inputs: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              reports: !cel "result.reports"
+
+  - request:
+      path: /reports/{name}
+      method: GET
+      schema:
+        params: &reportName
+          type: object
+          required: [ name ]
+          properties:
+            name: { type: string }
+    handler: !ref readReport
+    inputs:
+      name: !cel "request.params.name"
+      extension: html
+    returns:
+      - status: 200
+        content:
+          text/html:
+            body: !cel "result.text"
+    catches: &notFound
+      - when: !cel "error.code == 'ERR_REPORT_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: not_found
+              message: !cel "error.message"
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"
+
+  - request:
+      path: /reports/{name}/csv
+      method: GET
+      schema:
+        params: *reportName
+    handler: !ref readReport
+    inputs:
+      name: !cel "request.params.name"
+      extension: csv
+    returns:
+      - status: 200
+        headers:
+          Content-Disposition: !cel "'attachment; filename=\"report-' + request.params.name + '.csv\"'"
+        content:
+          text/csv:
+            body: !cel "result.text"
+    catches: *notFound
+---
+# The whole frontend: two buttons with nothing to fill in, and the table of
+# reports each draws from what its route answers. A link out of that table
+# opens the stored page itself.
+kind: UiReact.App
+metadata: { name: ui }
+title: !cel "variables.title"
+lang: en
+pages:
+  - path: /
+    title: Reports
+    children:
+      - { type: text, text: "Build a report", style: heading }
+      - { type: text, text: "Queries the orders, draws the charts and stores the page and its CSV.", style: muted }
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel: &nothing
+            kind: Telo.JsonSchema
+            schema: { type: object, additionalProperties: false, properties: {} }
+          outputModel: !ref ReportList
+          source: { path: /api/reports }
+          label: Build report
+          lists:
+            - heading: Reports
+              rows: !cel "result.reports"
+              columns: &reportColumns
+                - value: !cel "row.builtAt"
+                - value: !cel "row.total"
+                - value: !cel "row.html"
+                - value: !cel "row.csv"
+      - { type: text, text: "Built so far", style: heading }
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel: *nothing
+          outputModel: !ref ReportList
+          source: { path: /api/reports/recent }
+          label: Show reports
+          lists:
+            - rows: !cel "result.reports"
+              columns: *reportColumns
+      - { type: link, text: "Open the latest report", href: /api/reports/latest }
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Report generator
+    version: 1.0.0
+mounts:
+  - path: /api
+    mount: !ref reportRoutes
+  - path: /
+    mount: !ref ui

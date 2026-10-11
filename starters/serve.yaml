@@ -1,0 +1,55 @@
+kind: Telo.Application
+metadata:
+  name: StartersServer
+  version: 1.0.0
+  description: |
+    Serves this directory over HTTP so a locally running Studio can load the
+    starter gallery from the checkout instead of the published one.
+
+    Run from the repository root:
+        pnpm run starters
+    then set Studio's "Starter gallery source" to http://localhost:8787. The
+    local docker compose stack runs it as the `starters` service, and its
+    Studio loads the gallery from it by default.
+
+    Files are read per request, so an edited starter shows on the next gallery
+    open. The starters' own imports stay the published pins they carry.
+imports:
+  Http: ../modules/http-server
+targets:
+  - !ref server
+ports:
+  http:
+    env: STARTERS_PORT
+    arg: port
+    protocol: tcp
+    default: 8787
+variables:
+  host:
+    env: STARTERS_HOST
+    arg: host
+    type: string
+    default: 127.0.0.1
+    description: The address to listen on; 0.0.0.0 inside a container.
+  dir:
+    env: STARTERS_DIR
+    arg: dir
+    type: string
+    x-telo-type: Telo.HostPath
+    default: starters
+    description: The directory holding starters.json, resolved against the working directory.
+---
+kind: Http.Server
+metadata: { name: server }
+host: !cel "variables.host"
+port: !cel "ports.http"
+# Studio's dev page is another origin.
+cors:
+  origin: "*"
+  methods: [ GET ]
+mounts:
+  - path: /
+    mount:
+      kind: Http.Static
+      root: !cel "variables.dir"
+      index: starters.json

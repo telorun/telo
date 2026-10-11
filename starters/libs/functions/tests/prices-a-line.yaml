@@ -1,0 +1,66 @@
+kind: Telo.Application
+metadata:
+  name: FunctionLibraryStarterTest
+  version: 1.0.0
+  description: >-
+    Runs an application that calls the library's functions and checks what they
+    compute: a line below the volume threshold and one above it, the optional
+    VAT rate given and omitted, and a product name that needs every slug rule.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8204
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ./__fixtures__/price-app.yaml
+    ports:
+      http: 8204
+targets:
+  - !ref app
+steps:
+  - name: small
+    invoke: !ref call
+    inputs:
+      url: /price
+      method: GET
+      query: { name: "  Standing Desk (Oak) — 160cm! ", unitNet: "1250", quantity: "3" }
+  - name: bulk
+    invoke: !ref call
+    inputs:
+      url: /price
+      method: GET
+      query: { name: Cable, unitNet: "123456", quantity: "10" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        small: !cel "steps.small.result.body"
+        bulk: !cel "steps.bulk.result.body"
+      expected:
+        small:
+          slug: standing-desk-oak-160cm
+          # 3750 net, no discount below ten units, 23% VAT.
+          quote: { net: 3750, discount: 0, vat: 863, gross: 4613 }
+          label: "€46.13"
+          reducedRate: 1350
+          dollars: "$12.50"
+        bulk:
+          slug: cable
+          # 1,234,560 net, a tenth off from ten units, VAT on what is left.
+          quote: { net: 1234560, discount: 123456, vat: 255554, gross: 1366658 }
+          label: "€13,666.58"
+          reducedRate: 133332
+          dollars: "$1,234.56"

@@ -283,6 +283,8 @@ back into a question, never quietly replaced with a guess.
 | `DELETE /conversations/{id}/turns?from=&revision=` | Remove a turn and every later one. `200 { removedTurns, conversation }` |
 | `POST /conversations/{id}/branch` | A new conversation copying every turn through `{ throughTurnId }`. `201` Conversation |
 | `GET /conversations/{id}/records` | The conversation's turns and their records, paged (below) |
+| `POST /conversations/{id}/attachments` | Upload one file for a message of the conversation. `201 { id, name, mediaType, size }` (see Attachments) |
+| `GET /conversations/{id}/attachments/{attachmentId}` | An uploaded file's bytes, as `application/octet-stream` |
 | `GET /workspace` | Content-hash tree, for diffing against the client's own files |
 | `POST /workspace` | Apply an explicit write/delete change set. `503 ERR_WORKSPACE_BUSY` when the workspace stays locked (see Checkpoints) |
 | `GET /workspace/file?path=` | One file's contents |
@@ -538,6 +540,56 @@ null on the last. A `fromTurn` that is not one of its turns is 404
 removed turn is not listed. The records of a turn are
 exactly the frames its event stream delivers, so a client renders a conversation
 it opens and a turn it follows with the same fold.
+
+### Attachments
+
+A message may carry files. A client uploads each one to the conversation first,
+then names the ids it got back in `POST /chat`'s `attachments`.
+
+- **`POST /conversations/{id}/attachments`** takes a `multipart/form-data` body
+  holding **one** part named `file`, read as it arrives, and answers 201 with
+  `{ id, name, mediaType, size }`. `name` is the part's file name without any
+  directory. `mediaType` is what the file's own leading bytes prove, or the
+  part's declared type where bytes prove nothing (text).
+- **`POST /chat`** takes `attachments: [id]` — at most 10, each an upload of
+  that conversation. The turn's first record keeps what each is:
+  `user-message { content, attachments: [{ id, name, mediaType, size, sha256 }], model }`
+  (`attachments` is absent on a message with none).
+- **`GET /conversations/{id}/attachments/{attachmentId}`** streams the bytes
+  back. The response is always `application/octet-stream`; the name and media
+  type are on the upload's answer and on the record.
+
+**What the model receives.** An image (`image/png`, `image/jpeg`, `image/gif`,
+`image/webp`) and a PDF reach it as themselves, on every turn whose history
+still holds the message. Any other accepted type — `text/*`,
+`application/json`, `application/yaml`, `application/x-yaml` — reaches it as
+text, headed `ATTACHED FILE <name> (<mediaType>):` and cut at
+`MAX_TOOL_RESULT_BYTES` characters with a `[truncated: …]` marker. A text file
+that is not UTF-8 is replaced by a note saying so, and an upload whose bytes
+are gone by a note that it is no longer available.
+
+**An upload belongs to its conversation and is removed with it, never
+before.** A turn names it by id, so Retry and Edit & resend send the same ids
+again, and a branch gets its own copy of every upload under the same ids. A
+file uploaded and never sent therefore stays until the conversation is deleted
+or retention removes it; a conversation holds at most 100 files.
+
+| Status | `code` | When |
+| --- | --- | --- |
+| 404 / 410 / 409 | `ERR_CONVERSATION_NOT_FOUND` / `ERR_CONVERSATION_REMOVED` / `ERR_CONVERSATION_ARCHIVED` | The conversation cannot take an upload |
+| 409 | `ERR_ATTACHMENT_LIMIT` | The conversation already holds 100 files (with `max`) |
+| 400 | `ERR_ATTACHMENT_MISSING` | The body is not multipart, holds more than one part, or has no part named `file` |
+| 415 | `ERR_ATTACHMENT_MISLABELLED` | The content contradicts the declared type (with the proven `mediaType`) |
+| 415 | `ERR_ATTACHMENT_TYPE_NOT_ACCEPTED` | A type the agent does not take (with `mediaType` and `accepted`) |
+| 413 | `ERR_ATTACHMENT_TOO_LARGE` | The file is larger than `MAX_ATTACHMENT_BYTES` (with `maxBytes`) |
+| 413 | `ERR_REQUEST_BODY_TOO_LARGE` | The whole request is larger than `MAX_ATTACHMENT_BYTES` + 64 KiB — the server's own answer, in its `{ error: { code, message, data } }` envelope |
+| 404 | `ERR_ATTACHMENT_NOT_FOUND` | Reading an id this conversation does not hold, or whose bytes are gone |
+| 422 | `ERR_ATTACHMENT_NOT_FOUND` | `POST /chat` names an id this conversation does not hold (with `attachmentIds`); no turn starts |
+| 422 | `ERR_TOO_MANY_ATTACHMENTS` | `POST /chat` names more than 10 (with `max`); no turn starts |
+
+A refused upload stores nothing. A body that is not multipart at all is
+answered by the server before the route runs, as 500
+`ERR_REQUEST_BODY_NOT_STREAMED`.
 
 ### The model's history
 
@@ -810,7 +862,10 @@ in the conversation's `totalTokens`.
 ### Retention
 
 **What the agent keeps, and for how long.** A conversation — its title, its
-turns' journal records, their projected history, and their checkpoints: the
+turns' journal records, their projected history, the files uploaded to it
+(their rows in `agent.sqlite` and their bytes under
+`<AGENT_STATE_DIR>/attachments/`, sent in a message or not), and their
+checkpoints: the
 entries in `agent.sqlite` and the file copies under
 `<AGENT_STATE_DIR>/checkpoints/<turnId>/`, which are copies of workspace files
 as they were before and after each change — is kept until it is
@@ -818,10 +873,12 @@ deleted or until it has not changed for `RETENTION_DAYS`, whichever comes first.
 Retention then deletes it **whole**, through the same path `DELETE
 /conversations/{id}` takes: a tombstone, every turn marked, then every turn's
 journal key, its checkpoint directory, and its `messages`, `turn_projections`,
-checkpoint and `turns` rows — nothing of a conversation outlives it. A
-truncation removes its turns the same way, and a branch copies each turn's
+checkpoint and `turns` rows, then every uploaded file's bytes and row — nothing
+of a conversation outlives it. A
+truncation removes its turns the same way and keeps the conversation's uploads,
+and a branch copies each turn's
 checkpoint — entries, copies in a directory of its own, and a recorded revert —
-so it outlives its source. The tombstone (id and timestamps only) answers 410
+and every uploaded file, so it outlives its source. The tombstone (id and timestamps only) answers 410
 for another `RETENTION_DAYS`, then is forgotten and the id answers 404; a
 removed turn's event stream answers 410 as long (the journal's removal marker).
 A conversation whose latest turn is running, or that changed during the sweep,
@@ -850,8 +907,10 @@ client no longer seeds history, because the agent keeps it.
   prompt: { id },
   auth: "none" | "bearer",
   features: ["conversations", "conversation-truncation", "conversation-branching",
-             "turn-changes", "turn-revert", "turn-summary", "turn-conclusion"],
-  manifestRuns: true | false
+             "turn-changes", "turn-revert", "turn-summary", "turn-conclusion",
+             "attachments"],
+  manifestRuns: true | false,
+  attachments: { maxBytes, maxPerMessage, mediaTypes: [...] }
 }
 ```
 
@@ -863,10 +922,15 @@ Edit & resend, Delete from here), `conversation-branching`
 (`POST /conversations/{id}/branch`), `turn-changes`
 (`GET /chat/{turnId}/changes`, and `changes` / `hunks` in the file tools'
 `output`), `turn-revert` (`POST /chat/{turnId}/revert`), `turn-summary`
-(`summary` and `revert` on the records route) and `turn-conclusion` (a spent
-step budget ends in a wrap-up, its `finish` carrying `limit: "max-steps"`). A
+(`summary` and `revert` on the records route), `turn-conclusion` (a spent
+step budget ends in a wrap-up, its `finish` carrying `limit: "max-steps"`) and
+`attachments` (the two attachment routes, `attachments` on `POST /chat` and on
+the `user-message` record). A
 client ignores an entry it does not know
 and treats a missing one as unsupported. `manifestRuns` is `ALLOW_MANIFEST_RUNS`.
+`attachments` says what an upload may be, so a client can refuse a file before
+sending it: `maxBytes` is `MAX_ATTACHMENT_BYTES`, `maxPerMessage` is 10, and
+`mediaTypes` lists the types taken, where `type/*` stands for every subtype.
 
 ## Configuration
 
@@ -892,6 +956,7 @@ Variables:
 | `MAX_TOOL_RESULT_BYTES` | `32768` | The most UTF-8 bytes of text one tool result feeds the model; a longer one is cut and marked `[truncated: …]` |
 | `MAX_CHECKPOINT_BYTES` | `16777216` | The most bytes of "before" copies one `write_file` / `edit_file` / `delete_file` call may capture into its turn's checkpoint; over it the call is refused with `ERR_CHECKPOINT_TOO_LARGE` before anything changes |
 | `MAX_CHECKPOINT_FILES` | `1000` | The most files one such call may capture — what bounds a recursive delete (at least 1) |
+| `MAX_ATTACHMENT_BYTES` | `10485760` | The largest file one upload may store; a larger one is refused 413 and stores nothing (at least 1) |
 | `REASONING_EFFORT` | `medium` | How hard the model thinks before each turn: `minimal`, `low`, `medium` or `high`. Trades answer quality against latency and spend on every turn; `minimal` is the pre-reasoning behaviour |
 | `ALLOW_MANIFEST_RUNS` | `false` | Lets the agent execute manifests — its tests, and probes against your live systems. Arbitrary code execution in this container, with its credentials — read the section above before turning it on |
 | `ALLOWED_ORIGINS` | `*` | Comma-separated origins a browser may call the guarded routes from (see Routes) |
@@ -1099,6 +1164,11 @@ revert and kept, every caller refused: both routes, the tool, and the long
 revert with what it had restored recorded.
 `checkpoint-removal.yaml` pins that deletion, truncation and the
 sweep remove a turn's checkpoint, and that a branch's copy outlives its source.
+`attachments.yaml` uploads an image and a text file, sends them in a turn and
+reads what the model received and what the turn recorded; sends one long text
+file alone and reads the cut the model was given and the title's prompt; pins
+each upload refusal; and deletes a branched conversation to show the source's bytes gone
+and the branch's still readable.
 
 ```bash
 pnpm run telo apps/authoring-agent/test-suite-e2e.yaml

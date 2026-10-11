@@ -3,17 +3,31 @@ metadata:
   name: NotesRepository
   version: 1.0.0
   description: |
-    A reusable `Telo.Library` for a `notes` table: it owns the SQLite connection,
-    the schema migration, and typed `SqlRepository` create/read resources, and
-    exports them as ready-made singletons. Importers add `Migrate` to their
-    `targets` and dispatch to `CreateNote` / `ListNotes` from their own routes —
-    no hand-written SQL beyond the migration.
+    A domain library for a `notes` table: it owns the SQLite connection, the
+    table, the migration and the typed operations on it, and exports them as
+    ready-made instances. An importer adds `migrate` to its `targets` and calls
+    `createNote` / `findNotes` / `updateNote` / `deleteNote` from its own routes
+    or steps — it never writes SQL, and never sees the connection.
+
+    What is exported is the contract; what is not stays private. The connection
+    and the table are left out of `exports.resources`, so no importer can reach
+    past the operations — which is what lets this library change its storage
+    without breaking one.
+
+    An importer supplies where the database lives:
+
+        imports:
+          Notes:
+            source: ./notes
+            variables:
+              dbFile: !cel "variables.dbFile"
 # Where the database lives is the importing application's decision: it passes
 # an absolute path, typically from its own `Telo.HostPath` variable.
 variables:
   dbFile:
     type: string
     x-telo-type: Telo.HostPath
+    description: The SQLite file the notes are kept in.
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
@@ -22,7 +36,9 @@ exports:
   resources:
     - migrate
     - createNote
-    - listNotes
+    - findNotes
+    - updateNote
+    - deleteNote
 ---
 kind: SQLite.Connection
 metadata:
@@ -37,7 +53,10 @@ columns:
   id: { type: integer, primaryKey: true, identity: always }
   title: { type: text, nullable: false }
   body: { type: text }
+  pinned: { type: integer, nullable: false, default: 0 }
   created_at: { type: text, defaultExpression: "datetime('now')" }
+indexes:
+  notes_pinned: { columns: [ pinned ] }
 ---
 kind: SQLite.Schema
 metadata:
@@ -46,6 +65,9 @@ connection: !ref db
 tables:
   - !ref notes
 ---
+# Each operation is typed from the table it names: `data` and `filters` accept
+# the table's columns and nothing else, so a misspelled one is a `telo check`
+# error at the importer's call site.
 kind: SqlRepository.Create
 metadata:
   name: createNote
@@ -54,6 +76,18 @@ table: !ref notes
 ---
 kind: SqlRepository.Read
 metadata:
-  name: listNotes
+  name: findNotes
+connection: !ref db
+table: !ref notes
+---
+kind: SqlRepository.Update
+metadata:
+  name: updateNote
+connection: !ref db
+table: !ref notes
+---
+kind: SqlRepository.Delete
+metadata:
+  name: deleteNote
 connection: !ref db
 table: !ref notes

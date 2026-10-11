@@ -57,6 +57,20 @@ export class TerminalBuffer {
     };
   }
 
+  /** The end of the recorded transcript as text — at most `maxBytes` of it. */
+  tail(maxBytes: number): string {
+    const kept: Uint8Array[] = [];
+    let size = 0;
+    for (let i = this.chunks.length - 1; i >= 0 && size < maxBytes; i--) {
+      const chunk = this.chunks[i];
+      const part = chunk.byteLength > maxBytes - size ? chunk.subarray(chunk.byteLength - (maxBytes - size)) : chunk;
+      kept.unshift(part);
+      size += part.byteLength;
+    }
+    const decoder = new TextDecoder();
+    return kept.map((part) => decoder.decode(part, { stream: true })).join("") + decoder.decode();
+  }
+
   send(bytes: Uint8Array): void {
     if (this.closed) return;
     this.connection.send(bytes);

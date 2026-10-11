@@ -1,9 +1,15 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RotateCw, Send, Square, SquarePen, X, ChevronDown } from "lucide-react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Clock, ListPlus, Paperclip, RotateCw, Send, Square, SquarePen, Upload, X, ChevronDown } from "lucide-react";
 import {
   AGENT_PANEL_DEFAULT_WIDTH,
   AGENT_PANEL_MIN_WIDTH,
   CONTINUE_MESSAGE,
+  FOCUS_COMPOSER_LABEL,
+  MOD_KEY_LABEL,
+  composerHold,
+  formatBytes,
+  hasMessage,
+  turnAttachments,
   turnIds,
   turnOfUserMessage,
   turnRequest,
@@ -16,8 +22,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageBlock, SummaryDivider } from "./MessageBlock";
 import type { MessageActionHandlers } from "./MessageActions";
+import { AgentEmptyState } from "./AgentEmptyState";
 import { AgentIdentityDetails, NoAuthBadge, NoTestRunsBadge, UnsupportedFeatures } from "./AgentIdentity";
+import { ComposerAttachments } from "./ComposerAttachments";
 import { ConversationSwitcher } from "./ConversationSwitcher";
+import { AttachmentLoaderContext } from "./MessageAttachments";
 import { useTurnActions } from "./TurnActionConfirm";
 import { TurnSummaryCard } from "./TurnSummaryCard";
 import { EditorFileContext } from "./WorkspaceFileLink";
@@ -32,12 +41,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
+import { Conversation, ConversationContent, ConversationScrollButton } from "@/components/ai-elements/conversation";
 import { Loader } from "@/components/ai-elements/loader";
 
 /** Horizontal space the editor keeps while the panel is dragged wider — a panel
@@ -46,7 +50,7 @@ const MIN_EDITOR_WIDTH = 360;
 
 export function AgentPanel({ className }: { className?: string }) {
   const agent = useAgent();
-  const [draft, setDraft] = useState("");
+  const composerInput = useRef<HTMLTextAreaElement | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
@@ -108,12 +112,15 @@ export function AgentPanel({ className }: { className?: string }) {
   // both listeners on `window` until the next pointerup anywhere.
   useEffect(() => () => endDragRef.current(), []);
 
-  const submit = () => {
-    const text = draft.trim();
-    if (!text || agent.locked) return;
-    agent.send(text);
-    setDraft("");
-  };
+  // A request to focus the composer — the shortcut, or an entry point that
+  // just wrote into it — lands with the caret after what is there.
+  const { composerFocus } = agent;
+  useEffect(() => {
+    const input = composerInput.current;
+    if (composerFocus === 0 || !input) return;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }, [composerFocus]);
 
   const turnActions = useTurnActions();
   const { features, turnFeatures } = agent;
@@ -127,14 +134,14 @@ export function AgentPanel({ className }: { className?: string }) {
       if (!turn || !features.truncation) return { busy };
       return {
         busy,
-        onEditResend: (text) => turnActions.editResend(turn, text),
+        onEditResend: (text) => turnActions.editResend(turn, text, m.attachments ?? []),
         onDeleteFrom: () => turnActions.deleteFrom(turn),
       };
     }
     const request = turnRequest(agent.messages, m.id);
     return {
       busy,
-      onRetry: features.truncation && request !== null ? () => turnActions.retry(m.id, request) : undefined,
+      onRetry: features.truncation && request !== null ? () => turnActions.retry(m.id, request, turnAttachments(agent.messages, m.id)) : undefined,
       onBranch: features.branching ? () => void agent.branchFrom(m.id) : undefined,
     };
   };
@@ -154,7 +161,29 @@ export function AgentPanel({ className }: { className?: string }) {
   }, [agent.messages]);
 
   const archived = agent.conversation?.archived === true;
-  const canCompose = (agent.conversationId !== null || agent.draft) && !archived;
+  const { canCompose, attachmentLimits } = agent;
+  const { text, queued } = agent.composer;
+  // The composer is as tall as its text, up to its CSS cap; wrapping depends
+  // on the panel's width too.
+  const panelWidth = draftWidth ?? agent.panelWidth;
+  useLayoutEffect(() => {
+    const input = composerInput.current;
+    if (!input) return;
+    input.style.height = "auto";
+    if (input.scrollHeight > 0) input.style.height = `${input.scrollHeight + input.offsetHeight - input.clientHeight}px`;
+  }, [text, panelWidth]);
+  const hold = composerHold(agent.composer);
+  const canAttach = attachmentLimits !== null && canCompose;
+
+  const filePicker = useRef<HTMLInputElement | null>(null);
+  // Counted, not flagged: dragging across a child fires a leave for the parent.
+  const dragDepth = useRef(0);
+  const [dropping, setDropping] = useState(false);
+  const carriesFiles = (event: React.DragEvent) => canAttach && event.dataTransfer.types.includes("Files");
+  const endDrop = () => {
+    dragDepth.current = 0;
+    setDropping(false);
+  };
 
   // A turn that spent its step budget ended in a wrap-up, and goes on as a NEW
   // turn — never a continue of the same one, which is what Resume does for an
@@ -171,9 +200,14 @@ export function AgentPanel({ className }: { className?: string }) {
       : null;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && (!e.shiftKey || e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      submit();
+      agent.submitComposer();
+      return;
+    }
+    if (e.key === "Escape" && agent.locked && agent.status !== "stopping") {
+      e.preventDefault();
+      agent.stop();
     }
   };
 
@@ -185,12 +219,10 @@ export function AgentPanel({ className }: { className?: string }) {
       return;
     }
     agent.clearConversation();
-    setDraft("");
   };
 
   const confirmStartOver = () => {
     agent.clearConversation();
-    setDraft("");
     setConfirmClear(false);
   };
 
@@ -204,7 +236,35 @@ export function AgentPanel({ className }: { className?: string }) {
         className,
       )}
       style={{ width: draftWidth ?? agent.panelWidth }}
+      onDragEnter={(event) => {
+        if (!carriesFiles(event)) return;
+        event.preventDefault();
+        dragDepth.current++;
+        setDropping(true);
+      }}
+      onDragOver={(event) => {
+        if (carriesFiles(event)) event.preventDefault();
+      }}
+      onDragLeave={(event) => {
+        if (!carriesFiles(event)) return;
+        if (--dragDepth.current <= 0) endDrop();
+      }}
+      onDrop={(event) => {
+        if (!carriesFiles(event)) return;
+        event.preventDefault();
+        endDrop();
+        agent.addAttachments([...event.dataTransfer.files]);
+      }}
     >
+      {dropping && (
+        <div
+          role="status"
+          className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-primary bg-background/85 text-sm font-medium"
+        >
+          <Upload className="size-6" />
+          Drop files to attach
+        </div>
+      )}
       <div
         onPointerDown={startDrag}
         onDoubleClick={() => agent.setPanelWidth(AGENT_PANEL_DEFAULT_WIDTH)}
@@ -290,10 +350,15 @@ export function AgentPanel({ className }: { className?: string }) {
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className="gap-4 px-3 py-3">
           <EditorFileContext.Provider value={agent.editorFile}>
+          <AttachmentLoaderContext.Provider value={attachmentLimits ? agent.attachmentBlob : null}>
           {agent.messages.length === 0 && (
-            <ConversationEmptyState
-              title="Describe what you want to build"
-              description="The agent edits your workspace and validates every change."
+            <AgentEmptyState
+              identity={agent.identity}
+              // A starter is a whole request: it replaces what was typed.
+              onPick={(prompt) => {
+                agent.setComposerText(prompt);
+                composerInput.current?.focus();
+              }}
             />
           )}
           {agent.messages.map((m, i) => (
@@ -319,6 +384,7 @@ export function AgentPanel({ className }: { className?: string }) {
               {summaries.after.get(m.id)?.map((summary, j) => <SummaryDivider key={j} summary={summary} />)}
             </Fragment>
           ))}
+          </AttachmentLoaderContext.Provider>
           </EditorFileContext.Provider>
         </ConversationContent>
         <ConversationScrollButton />
@@ -352,38 +418,130 @@ export function AgentPanel({ className }: { className?: string }) {
             </span>
           </div>
         )}
+        {queued && (
+          <div role="group" aria-label="Queued message" className="mb-2 rounded-md border border-border bg-muted/40 p-2 text-xs">
+            <div className="flex items-center gap-1">
+              <Clock className="size-3 shrink-0 text-muted-foreground" />
+              <span className="flex-1 text-muted-foreground">Queued — sent when this turn finishes</span>
+              <Button variant="ghost" size="xs" onClick={agent.editQueued}>
+                Edit
+              </Button>
+              <Button variant="ghost" size="xs" onClick={agent.removeQueued}>
+                Remove
+              </Button>
+            </div>
+            {queued.text && <p className="mt-1 line-clamp-4 whitespace-pre-wrap break-words">{queued.text}</p>}
+            {queued.attachments.length > 0 && (
+              <p className="mt-1 break-words text-muted-foreground">
+                {queued.attachments.map((a) => `${a.name} (${formatBytes(a.size)})`).join(", ")}
+              </p>
+            )}
+          </div>
+        )}
+        <AttachmentLoaderContext.Provider value={attachmentLimits ? agent.attachmentBlob : null}>
+          <ComposerAttachments
+            attachments={agent.composer.attachments}
+            fileOf={agent.attachmentFile}
+            onRemove={agent.removeAttachment}
+            onRetry={agent.retryAttachment}
+          />
+        </AttachmentLoaderContext.Provider>
+        {agent.composerNotice && <p className="mb-2 text-xs text-destructive">{agent.composerNotice}</p>}
         <div className="flex items-end gap-2">
           <Textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            ref={composerInput}
+            value={text}
+            onChange={(e) => agent.setComposerText(e.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={(event) => {
+              const files = [...event.clipboardData.files];
+              if (!canAttach || files.length === 0) return;
+              event.preventDefault();
+              agent.addAttachments(files);
+            }}
+            aria-label="Message the agent"
             placeholder={
               archived
                 ? "Archived — unarchive to continue"
-                : canCompose
-                  ? "Message the agent…"
-                  : "Open a workspace first"
+                : !canCompose
+                  ? "Open a workspace first"
+                  : agent.locked
+                    ? "Queue a message for when this turn finishes…"
+                    : "Message the agent…"
             }
-            disabled={agent.locked || !canCompose}
+            disabled={!canCompose}
             rows={2}
-            className="max-h-40 resize-none"
+            className="max-h-[50vh] resize-none"
           />
-          {agent.locked ? (
+          <div className="flex flex-col gap-1">
+            {canCompose && (
+              <>
+                <input
+                  ref={filePicker}
+                  type="file"
+                  multiple
+                  hidden
+                  aria-label="Files to attach"
+                  onChange={(event) => {
+                    agent.addAttachments([...(event.target.files ?? [])]);
+                    event.target.value = "";
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => filePicker.current?.click()}
+                  disabled={!canAttach}
+                  title={
+                    attachmentLimits
+                      ? `Attach files — up to ${attachmentLimits.maxPerMessage} per message, ${formatBytes(attachmentLimits.maxBytes)} each. Files can also be dropped on the panel or pasted.`
+                      : agent.identity?.state === "known"
+                        ? "This agent does not accept file attachments"
+                        : "Attach files — available once the agent is running"
+                  }
+                  aria-label="Attach files"
+                >
+                  <Paperclip className="size-4" />
+                </Button>
+              </>
+            )}
+            {agent.locked && (
+              <Button
+                variant="destructive"
+                size="icon"
+                onClick={agent.stop}
+                disabled={agent.status === "stopping"}
+                title="Stop (Esc)"
+                aria-label="Stop"
+              >
+                <Square className="size-4" />
+              </Button>
+            )}
             <Button
-              variant="destructive"
               size="icon"
-              onClick={agent.stop}
-              disabled={agent.status === "stopping"}
-              title="Stop"
+              variant={agent.locked ? "outline" : "default"}
+              onClick={agent.submitComposer}
+              disabled={!hasMessage(agent.composer) || hold !== null || !canCompose}
+              title={
+                hold === "uploading"
+                  ? "Waiting for the files to upload"
+                  : hold === "failed"
+                    ? "Remove or retry the file that failed first"
+                    : agent.locked
+                  ? `Queue for when this turn finishes (Enter or ${MOD_KEY_LABEL}Enter)`
+                  : `Send (Enter or ${MOD_KEY_LABEL}Enter)`
+              }
+              aria-label={agent.locked ? "Queue message" : "Send"}
             >
-              <Square className="size-4" />
+              {agent.locked ? <ListPlus className="size-4" /> : <Send className="size-4" />}
             </Button>
-          ) : (
-            <Button size="icon" onClick={submit} disabled={!draft.trim() || !canCompose} title="Send">
-              <Send className="size-4" />
-            </Button>
-          )}
+          </div>
         </div>
+        {/* Keys a phone does not have. */}
+        <p className="mt-1.5 text-[11px] text-muted-foreground max-md:hidden">
+          Enter or {MOD_KEY_LABEL}Enter sends · Shift+Enter adds a line · Esc stops a running turn ·{" "}
+          {FOCUS_COMPOSER_LABEL} focuses this box
+        </p>
       </div>
 
       {turnActions.dialog}

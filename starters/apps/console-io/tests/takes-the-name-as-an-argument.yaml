@@ -1,10 +1,10 @@
 kind: Telo.Application
 metadata:
-  name: ConsoleIoStarterTest
+  name: ConsoleIoStarterArgumentTest
   version: 1.0.0
   description: >-
-    Answers the starter's question and checks the greeting it builds. A starter is
-    copied verbatim, so the one thing it does is the one thing worth running.
+    Supplies the starter's name and greeting by name, as its command line would:
+    it must greet without asking and go straight to the command prompt.
 imports:
   App: ../../../../modules/app
   Channel: ../../../../modules/channel
@@ -17,7 +17,9 @@ targets:
 kind: App.Instance
 metadata: { name: app }
 source: ../telo.yaml
-# It blocks on its first prompt, so its targets never all finish dispatching.
+variables:
+  name: Grace
+  greeting: Welcome
 awaitStart: false
 ---
 kind: Channel.ReadUntil
@@ -32,17 +34,21 @@ channel: !ref app
 kind: Run.Sequence
 metadata: { name: test }
 steps:
-  - name: question
-    invoke: !ref read
-    inputs: { until: "What's your name? " }
-  - name: answer
-    invoke: !ref send
-    inputs: { text: Ada }
   - name: greeting
+    invoke: !ref read
+    inputs: { until: "\n> " }
+  - name: sendQuit
+    invoke: !ref send
+    inputs: { text: quit }
+  - name: farewell
     invoke: !ref read
     inputs: { until: "\n" }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.greeting.result.text"
-      expected: "Hello, Ada! Welcome to Telo.\n"
+      actual:
+        greeting: !cel "steps.greeting.result.text"
+        farewell: !cel "steps.farewell.result.text"
+      expected:
+        greeting: "Welcome, Grace! Type help for commands.\n> "
+        farewell: "Goodbye, Grace.\n"

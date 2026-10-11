@@ -24,6 +24,9 @@ export const AGENT_FEATURES = {
   /** A spent step budget ends the turn in a wrap-up whose `finish` carries
    *  `limit: "max-steps"`, instead of failing it. */
   turnConclusion: "turn-conclusion",
+  /** Files on a message: the upload and read routes, `attachments` on
+   *  `POST /chat` and on the `user-message` record. */
+  attachments: "attachments",
 } as const;
 
 export type AgentFeature = (typeof AGENT_FEATURES)[keyof typeof AGENT_FEATURES];
@@ -36,6 +39,7 @@ const FEATURE_LABELS: Record<AgentFeature, string> = {
   "turn-revert": "Reverting a turn's changes",
   "turn-summary": "A summary of each turn",
   "turn-conclusion": "Continuing after the step limit",
+  attachments: "File attachments",
 };
 
 export function hasFeature(identity: AgentIdentityState | null, feature: AgentFeature): boolean {

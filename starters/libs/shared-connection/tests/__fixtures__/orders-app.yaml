@@ -1,0 +1,165 @@
+kind: Telo.Application
+metadata:
+  name: OrdersApp
+  version: 1.0.0
+  description: >-
+    An application that owns one database connection and hands it to the audit
+    library. Placing an order writes the order and its audit entry in one
+    transaction; an order for nothing is refused after the audit entry was
+    written, which is what shows the two share a transaction.
+imports:
+  # Published throughout, like the library's own imports: a workspace copy of
+  # one module beside the published copy of the same one is two modules.
+  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Audit:
+    source: ../..
+    resources:
+      connection: !ref db
+targets:
+  - !ref migrate
+  - !ref Audit.install
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8205
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: orders.db
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: orders }
+table: orders
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  item: { type: text, nullable: false }
+  quantity: { type: integer, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables:
+  - !ref orders
+---
+kind: Run.Sequence
+metadata: { name: placeOrderWrites }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ actor, item, quantity ]
+    properties:
+      actor: { type: string }
+      item: { type: string }
+      quantity: { type: integer }
+steps:
+  - name: order
+    invoke:
+      kind: Sql.Command
+      connection: !ref db
+    inputs:
+      sql: "INSERT INTO orders (item, quantity) VALUES (?, ?)"
+      bindings:
+        - !cel "inputs.item"
+        - !cel "inputs.quantity"
+  - name: audited
+    invoke: !ref Audit.record
+    inputs:
+      actor: !cel "inputs.actor"
+      action: order.created
+      subject: !cel "inputs.item"
+  # Refused last on purpose: by now both rows are written, and the throw must
+  # take both back.
+  - name: nothingOrdered
+    if: !cel "inputs.quantity == 0"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_EMPTY_ORDER
+          message: an order needs at least one item
+---
+kind: Sql.Transaction
+metadata: { name: placeOrder }
+connection: !ref db
+steps: !ref placeOrderWrites
+inputs:
+  actor: !cel "inputs.actor"
+  item: !cel "inputs.item"
+  quantity: !cel "inputs.quantity"
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref routes
+---
+kind: Http.Api
+metadata: { name: routes }
+routes:
+  - request:
+      path: /orders
+      method: POST
+      schema:
+        body:
+          type: object
+          required: [ actor, item, quantity ]
+          properties:
+            actor: { type: string }
+            item: { type: string }
+            quantity: { type: integer, minimum: 0 }
+    handler: !ref placeOrder
+    inputs:
+      actor: !cel "request.body.actor"
+      item: !cel "request.body.item"
+      quantity: !cel "request.body.quantity"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: { placed: true }
+    catches:
+      - status: 422
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"
+
+  - request:
+      path: /orders
+      method: GET
+    handler:
+      kind: Sql.Query
+      connection: !ref db
+    inputs:
+      sql: "SELECT item, quantity FROM orders ORDER BY id"
+      bindings: []
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.rows"
+
+  - request:
+      path: /audit
+      method: GET
+    handler: !ref Audit.recent
+    inputs:
+      limit: 10
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.entries.map(e, [e.actor, e.action, e.subject])"

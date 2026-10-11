@@ -1,0 +1,165 @@
+kind: Telo.Application
+metadata:
+  name: AiAgentService
+  version: 1.0.0
+  categories: [ AI, Transport, Storage ]
+  description: |
+    An AI assistant behind an HTTP API, built on the AgentApp blueprint: a
+    shop's support agent that looks orders up and opens tickets itself. You
+    declare the model, what the assistant is told and the tools it may use; the
+    chat endpoints, the per-conversation history and the tool-use loop come from
+    the blueprint, which is imported rather than copied.
+
+      - `POST /conversations/{id}/messages` sends a message and answers with the
+        reply; the caller picks the id, and each conversation keeps its history
+      - `GET /conversations/{id}/messages` reads a conversation back
+      - `order_status` is a SQL query and `open_ticket` a SQL insert — a tool is
+        an ordinary resource plus a description for the model
+      - the model and the endpoint are inputs, so it talks to any
+        OpenAI-compatible server
+
+    Set your OpenAI key in the environment (or a sibling dotenv file):
+        OPENAI_API_KEY=sk-...
+    Run, then:
+        curl -s -XPOST localhost:8103/conversations/c1/messages -H 'content-type: application/json' \
+          -d '{"message":"Where is my order A-1001?"}'
+        curl -s localhost:8103/conversations/c1/messages
+imports:
+  AgentApp: oci://ghcr.io/telorun/blueprints/agent-app@0.3.1#sha256-AG1ELILQyJ94YiEC29G5-A02tQeiIjrsg7I7GKhEsac
+  # The same versions the blueprint itself imports.
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  OpenAI: oci://ghcr.io/telorun/openai@0.12.0#sha256-hKc2_SoJ5vZtMltBiuTFpCu-_POOVKpvl9KJ27iM63s
+  Http: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+targets:
+  - !ref migrate
+  - !ref assistant
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8103
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+variables:
+  model:
+    env: OPENAI_MODEL
+    arg: { flag: model, short: m }
+    type: string
+    default: gpt-4o-mini
+  openaiBaseUrl:
+    env: OPENAI_BASE_URL
+    type: string
+    default: https://api.openai.com/v1
+    description: Any OpenAI-compatible endpoint.
+  history:
+    env: CONVERSATIONS_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/shop-conversations.sqlite
+  shopFile:
+    env: SHOP_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: shop.db
+---
+# The shop's own data: what the tools read and write. It is a separate file
+# from the conversations, which belong to the blueprint.
+kind: SQLite.Connection
+metadata: { name: shop }
+file: !cel "variables.shopFile"
+---
+kind: SQLite.Table
+metadata: { name: orders }
+table: orders
+columns:
+  id: { type: text, primaryKey: true }
+  status: { type: text, nullable: false }
+  expected_on: { type: text }
+---
+kind: SQLite.Table
+metadata: { name: tickets }
+table: tickets
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  order_id: { type: text, nullable: false }
+  summary: { type: text, nullable: false }
+  opened_at: { type: text, nullable: false, defaultExpression: "datetime('now')" }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref shop
+tables:
+  - !ref orders
+  - !ref tickets
+# Seed rows are data, not shape, so they stay imperative. Replace them with
+# your own order system — a query against yours, or an HTTP request.
+migrations:
+  0001_seed_orders:
+    statements:
+      - "INSERT OR IGNORE INTO orders (id, status, expected_on) VALUES ('A-1001', 'shipped', '2026-11-03'), ('A-1002', 'processing', NULL), ('A-1003', 'delivered', '2026-10-01')"
+---
+kind: AgentApp.App
+metadata: { name: assistant }
+port: !cel "ports.http"
+title: Shop assistant
+history: !cel "variables.history"
+model:
+  kind: OpenAI.ChatModel
+  model: !cel "variables.model"
+  request:
+    kind: Http.Request
+    client:
+      kind: Http.Client
+      baseUrl: !cel "variables.openaiBaseUrl"
+      credential:
+        kind: Http.BearerToken
+        token: !cel "secrets.openaiApiKey"
+system: |
+  You are the support assistant of a small online shop. Be brief and friendly.
+  Look an order up with `order_status` before saying anything about it, and
+  never guess a delivery date the lookup did not give you. If the customer
+  reports a problem with an order, open a ticket with `open_ticket` and tell
+  them its number.
+maxSteps: 6
+tools:
+  - tool:
+      kind: Sql.Query
+      connection: !ref shop
+    name: order_status
+    description: Where an order is and when it is expected, by its order number.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [ orderId ]
+      properties:
+        orderId: { type: string, description: "The order number, e.g. A-1001." }
+    inputs:
+      sql: "SELECT id, status, expected_on AS expectedOn FROM orders WHERE id = ?"
+      bindings:
+        - !cel "arguments.orderId"
+    result: !cel "size(result.rows) == 0 ? {'status': 'unknown'} : result.rows[0]"
+
+  # `RETURNING` makes the insert a read, so the ticket number can be told to
+  # the customer.
+  - tool:
+      kind: Sql.Query
+      connection: !ref shop
+    name: open_ticket
+    description: Open a support ticket about an order. Returns the ticket number.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [ orderId, summary ]
+      properties:
+        orderId: { type: string, description: The order the problem is about. }
+        summary: { type: string, description: One sentence describing the problem. }
+    inputs:
+      sql: "INSERT INTO tickets (order_id, summary) VALUES (?, ?) RETURNING id"
+      bindings:
+        - !cel "arguments.orderId"
+        - !cel "arguments.summary"
+    result: !cel "{'ticket': result.rows[0].id}"

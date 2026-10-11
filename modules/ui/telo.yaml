@@ -224,6 +224,23 @@ schema:
                 additionalProperties: { $ref: "#/$defs/Binding" }
               # Present when the press asks first.
               confirm: { type: string }
+              # Present when the press opens a dialog that enters these fields
+              # of the operation's input model before anything is sent.
+              prompt:
+                type: object
+                additionalProperties: false
+                required: [schema, fields]
+                properties:
+                  schema: { type: object }
+                  fields:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [property, label]
+                      properties:
+                        property: { type: string }
+                        label: { type: string }
         columns:
           type: array
           items:
@@ -1545,8 +1562,8 @@ schema:
           action:
             title: Action
             description: >-
-              The operation run. Its path, input model and label are used; its
-              fields are not, since a row supplies every input.
+              The operation run. Its path, input model and label are used, and
+              its fields where `prompt` asks for them.
             x-telo-ref: { kind: Self.Action, use: dependency, inputs: /inputs }
           inputs:
             title: Inputs
@@ -1563,9 +1580,20 @@ schema:
               x-telo-eval: accessor
           confirm:
             title: Confirm
-            description: A question asked before the operation runs. Omitted, a press runs it at once.
+            description: >-
+              A question asked before the operation runs. Omitted, a press runs
+              it at once, unless `prompt` opens a dialog.
             type: string
             minLength: 1
+          prompt:
+            title: Prompt
+            description: >-
+              Whether a press opens a dialog that asks for the action's fields
+              the row's `inputs` do not bind — a reason, a note — and sends them
+              with the row's values. The dialog is titled with `confirm`, or
+              with the action's label.
+            type: boolean
+            default: false
   $defs:
     StyleName:
       enum: [heading, subheading, muted, strong, accent, danger, warning, success]

@@ -2,30 +2,45 @@ kind: Telo.Application
 metadata:
   name: ScheduledJob
   version: 1.0.0
+  categories: [ Scheduling, Coordination, Storage ]
   description: |
     A recurring job with two triggers onto one declaration: `Schedule.Cron`
-    fires `runJob` on `JOB_CRON` (03:00 daily by default), and `POST /run`
-    fires the same resource on demand. Swap the body for whatever the job is —
-    a rollup, a prune, a sync — and both triggers follow.
+    fires it on `JOB_CRON` (03:00 daily by default), and `POST /api/run` fires
+    the same resource on demand. Swap `runJob`'s steps for whatever the job is — a
+    rollup, a prune, a sync — and everything around it follows:
 
-    The schedule keeps the application alive by itself, so the server here is
-    not holding the process up — it is what a job in production ends up wanting
-    anyway: a liveness probe (`GET /healthz`) and a way to run the job now
-    without waiting for the next tick. Delete the server, the routes and the
-    `ports:` block and what is left is a working scheduled worker.
+      - one run at a time: `Lease.Critical` wraps the job, so a manual run during
+        a scheduled one is told who holds it (409) instead of running beside it
+      - a history: every run is a row in `job_runs` with its outcome, read back
+        at `GET /api/runs`
+      - failures are recorded, not lost: a `try` / `catch` stores the error and
+        rethrows it, so the schedule logs it and the route answers 500
+      - a page at `/` with a "Run now" button and the run history — declared in
+        this manifest, with no frontend code
+      - a liveness probe at `GET /api/healthz`
 
-    Run, then:
-        curl -s localhost:8046/healthz
-        curl -s -XPOST localhost:8046/run
+    The schedule keeps the application alive by itself; the server is what a
+    job in production ends up wanting anyway.
+
+    Run, then open http://localhost:8046, or:
+        curl -s -XPOST localhost:8046/api/run
+        curl -s localhost:8046/api/runs
     To watch it tick without waiting for 03:00:
         JOB_CRON='*/10 * * * * *' telo .
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
+  Ui: oci://ghcr.io/telorun/ui@0.3.0#sha256-Xp_vAsCGcbXDo6rqK9A-xEnCbqSksPlG-q_jziF83LU
+  UiReact: oci://ghcr.io/telorun/ui-react@0.4.0#sha256-Maz-ACXHNqymhG283guc_wYMIrM_FKWKfGOxRdZ7TBw
   Schedule: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
+  Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
+  KvStore: oci://ghcr.io/telorun/kv-store-memory@0.8.0#sha256-GmMDeJ2eYatJ0_ewaUI6A6bnfkqlphjd4YKWtqZ5d2Y
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
   Fs: oci://ghcr.io/telorun/fs@0.13.0#sha256-N1958jBabVz-eFK2L43qLw-AQ3rImZnSfoH2b2KEyiw
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
+  - !ref migrate
   - !ref server
   - !ref nightly
 ports:
@@ -36,46 +51,331 @@ ports:
 variables:
   jobCron:
     env: JOB_CRON
+    arg: cron
     type: string
     default: "0 3 * * *"
+  scheduleEnabled:
+    env: JOB_SCHEDULE_ENABLED
+    type: boolean
+    default: true
+    description: >-
+      Turn the calendar trigger off without removing it — a maintenance window,
+      a replica that should only serve on-demand runs.
   scanPath:
     env: SCAN_PATH
+    arg: scan-path
     type: string
     x-telo-type: Telo.HostPath
     default: "."
+  dbFile:
+    env: DB_FILE
+    arg: db-file
+    type: string
+    x-telo-type: Telo.HostPath
+    default: job-runs.db
+  maxRunTime:
+    env: MAX_RUN_TIME
+    type: string
+    default: "10m"
+    description: >-
+      How long one run may hold the lease. Set it above the job's worst case: a
+      holder that dies frees the lease after this long.
 ---
-# The job itself: one Telo.Runnable, so nothing in it knows which trigger
-# started it. Replace the steps; leave the shape.
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: jobRuns }
+table: job_runs
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  started_at: { type: text, nullable: false }
+  finished_at: { type: text, nullable: false }
+  outcome: { type: text, nullable: false }
+  detail: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables:
+  - !ref jobRuns
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+# The job itself: nothing in it knows which trigger started it, that it is
+# leased, or that it is recorded. Replace the steps; leave the shape.
 kind: Run.Sequence
 metadata: { name: runJob }
 steps:
   - name: list
-    invoke: !ref listFiles
+    invoke:
+      kind: Fs.DirectoryListing
+      cwd: !cel "variables.scanPath"
     inputs:
       exclude: [ node_modules, .git, .telo ]
-
-  - name: report
-    invoke: !ref Console.writeLine
-    inputs:
-      output: !cel >-
-        '{green ✔} scanned ' + string(variables.scanPath) + ' — ' +
-        string(size(steps.list.result.entries.filter(e, e.type == 'file'))) + ' files, ' +
-        string(sum(steps.list.result.entries.map(e, e.size))) + ' bytes'
 outputs:
   files: !cel "size(steps.list.result.entries.filter(e, e.type == 'file'))"
-  bytes: !cel "sum(steps.list.result.entries.map(e, e.size))"
+  bytes: !cel "int(sum(steps.list.result.entries.map(e, e.size)))"
 ---
-kind: Fs.DirectoryListing
-metadata: { name: listFiles }
-cwd: !cel "variables.scanPath"
+# One run, recorded whichever way it ends.
+kind: Run.Sequence
+metadata: { name: recordedRun }
+steps:
+  - name: started
+    value: !cel "nowIso()"
+  - name: attempt
+    try:
+      - name: work
+        invoke: !ref runJob
+      - name: recordSuccess
+        invoke: !ref exec
+        inputs:
+          sql: "INSERT INTO job_runs (started_at, finished_at, outcome, detail) VALUES (?, ?, 'ok', ?)"
+          bindings:
+            - !cel "steps.started.result"
+            - !cel "nowIso()"
+            - !cel "json(steps.work.result)"
+      - name: say
+        invoke: !ref Console.writeLine
+        inputs:
+          output: !cel >-
+            '{green ✔} scanned ' + string(variables.scanPath) + ' — ' +
+            string(steps.work.result.files) + ' files, ' + string(steps.work.result.bytes) + ' bytes'
+    catch:
+      - name: recordFailure
+        invoke: !ref exec
+        inputs:
+          sql: "INSERT INTO job_runs (started_at, finished_at, outcome, detail) VALUES (?, ?, 'failed', ?)"
+          bindings:
+            - !cel "steps.started.result"
+            - !cel "nowIso()"
+            - !cel "error.code + ': ' + error.message"
+      - name: rethrow
+        throw:
+          code: ERR_JOB_FAILED
+          message: !cel "error.code + ': ' + error.message"
+outputs:
+  files: !cel "steps.work.result.files"
+  bytes: !cel "steps.work.result.bytes"
+---
+# Claims live in the process, which is enough to keep the two triggers apart.
+# Swap this one resource for kv-store-sql or kv-store-redis and the same lease
+# keeps every replica apart too.
+kind: KvStore.Store
+metadata: { name: claims }
+---
+kind: Lease.Critical
+metadata: { name: runExclusively }
+store: !ref claims
+ttl: !cel "variables.maxRunTime"
+invoke: !ref recordedRun
 ---
 # The calendar trigger. `timezone` is explicit so the schedule means the same
-# thing on every host it is deployed to.
+# thing on every host it is deployed to. A tick that finds the lease held
+# returns `acquired: false` and that is all — skipping is not an error.
 kind: Schedule.Cron
 metadata: { name: nightly }
 cron: !cel "variables.jobCron"
 timezone: UTC
-invoke: !ref runJob
+when: !cel "variables.scheduleEnabled"
+invoke: !ref runExclusively
+inputs:
+  key: scheduled-job
+  holder: schedule
+  inputs: {}
+---
+kind: Sql.Query
+metadata: { name: recentRuns }
+connection: !ref db
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ rows ]
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          required: [ id, startedAt, finishedAt, outcome, detail ]
+          properties:
+            id: { type: integer }
+            startedAt: { type: string }
+            finishedAt: { type: string }
+            outcome: { type: string }
+            detail: { type: string }
+---
+# What the on-demand trigger answers with: the run it made — or who is already
+# running — and the history including it.
+kind: Run.Sequence
+metadata: { name: runOnDemand }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ holder ]
+    properties:
+      holder: { type: string }
+steps:
+  - name: attempt
+    invoke: !ref runExclusively
+    inputs:
+      key: scheduled-job
+      holder: !cel "inputs.holder"
+      inputs: {}
+  - name: history
+    invoke: !ref recentRuns
+    inputs:
+      sql: >-
+        SELECT id, started_at AS "startedAt", finished_at AS "finishedAt", outcome, detail
+        FROM job_runs ORDER BY id DESC LIMIT 20
+      bindings: []
+outputs:
+  acquired: !cel "steps.attempt.result.acquired"
+  holder: !cel "steps.attempt.result.acquired ? '' : string(steps.attempt.result.holder)"
+  files: !cel "steps.attempt.result.acquired ? steps.attempt.result.result.files : 0"
+  bytes: !cel "steps.attempt.result.acquired ? steps.attempt.result.result.bytes : 0"
+  runs: !cel "steps.history.result.rows"
+---
+# The shape both buttons draw their table from, and both routes answer with.
+kind: Telo.JsonSchema
+metadata: { name: RunHistory }
+schema:
+  type: object
+  required: [ runs ]
+  properties:
+    runs:
+      type: array
+      items:
+        type: object
+        required: [ id, startedAt, finishedAt, outcome, detail ]
+        properties:
+          id: { type: integer, title: Run }
+          startedAt: { type: string, title: Started }
+          finishedAt: { type: string, title: Finished }
+          outcome: { type: string, title: Outcome }
+          detail: { type: string, title: Detail }
+---
+kind: Http.Api
+metadata: { name: jobRoutes }
+routes:
+  # The on-demand trigger: the same leased resource the schedule fires.
+  - request:
+      path: /run
+      method: POST
+    handler: !ref runOnDemand
+    inputs:
+      holder: !cel "'manual-' + request.ip"
+    returns:
+      - status: 409
+        when: !cel "!result.acquired"
+        content:
+          application/json:
+            body:
+              error: already_running
+              holder: !cel "result.holder"
+      - status: 200
+        content:
+          application/json:
+            body:
+              files: !cel "result.files"
+              bytes: !cel "result.bytes"
+              runs: !cel "result.runs"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"
+              message: !cel "error.message"
+
+  - request:
+      path: /runs
+      method: GET
+    handler: !ref recentRuns
+    inputs: &recentRunsQuery
+      sql: >-
+        SELECT id, started_at AS "startedAt", finished_at AS "finishedAt", outcome, detail
+        FROM job_runs ORDER BY id DESC LIMIT 20
+      bindings: []
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.rows"
+
+  # The same history as an operation a page can run: a button sends a POST.
+  - request:
+      path: /runs/recent
+      method: POST
+    handler: !ref recentRuns
+    inputs: *recentRunsQuery
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              runs: !cel "result.rows"
+
+  - request:
+      path: /healthz
+      method: GET
+    handler:
+      kind: Run.Value
+      value:
+        status: ok
+    inputs: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+# The whole frontend: two buttons, each a form with nothing to fill in, and the
+# table each draws from what its route answers.
+kind: UiReact.App
+metadata: { name: ui }
+title: Scheduled job
+lang: en
+pages:
+  - path: /
+    title: Job
+    children:
+      - { type: text, text: "Run the job", style: heading }
+      - { type: text, text: "Fires the same run the schedule fires. One run at a time: a second one is refused while the first is going.", style: muted }
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel: &nothing
+            kind: Telo.JsonSchema
+            schema: { type: object, additionalProperties: false, properties: {} }
+          outputModel: !ref RunHistory
+          source: { path: /api/run }
+          label: Run now
+          lists:
+            - heading: Runs
+              rows: !cel "result.runs"
+              columns: &runColumns
+                - value: !cel "row.id"
+                - value: !cel "row.startedAt"
+                - value: !cel "row.finishedAt"
+                - value: !cel "row.outcome"
+                - value: !cel "row.detail"
+      - { type: text, text: "History", style: heading }
+      - type: composite
+        ref:
+          kind: Ui.Action
+          inputModel: *nothing
+          outputModel: !ref RunHistory
+          source: { path: /api/runs/recent }
+          label: Show history
+          lists:
+            - rows: !cel "result.runs"
+              columns: *runColumns
 ---
 kind: Http.Server
 metadata: { name: server }
@@ -85,38 +385,7 @@ openapi:
     title: Scheduled job
     version: 1.0.0
 mounts:
-  - path: /
+  - path: /api
     mount: !ref jobRoutes
----
-kind: Http.Api
-metadata: { name: jobRoutes }
-routes:
-  # The on-demand trigger: the same resource the schedule fires.
-  - request:
-      path: /run
-      method: POST
-    handler: !ref runJob
-    inputs: {}
-    returns:
-      - status: 200
-        content:
-          application/json:
-            body:
-              files: !cel "result.files"
-              bytes: !cel "result.bytes"
-
-  - request:
-      path: /healthz
-      method: GET
-    handler: !ref health
-    inputs: {}
-    returns:
-      - status: 200
-        content:
-          application/json:
-            body: !cel "result"
----
-kind: Run.Value
-metadata: { name: health }
-value:
-  status: ok
+  - path: /
+    mount: !ref ui

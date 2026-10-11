@@ -1,0 +1,84 @@
+kind: Telo.Application
+metadata:
+  name: AlertingApp
+  version: 1.0.0
+  description: >-
+    An application that uses the library's two kinds exactly like built-ins:
+    one `Alerts.Webhook`, one `Alerts.PagerDuty`, each behind a route.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  Alerts:
+    source: ../..
+    variables:
+      alertSource: billing
+      eventsUrl: !cel "variables.receiverUrl + '/pager'"
+targets:
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8203
+variables:
+  receiverUrl:
+    env: RECEIVER_URL
+    type: string
+    default: http://127.0.0.1:8072
+---
+kind: Alerts.Webhook
+metadata: { name: chatAlert }
+url: !cel "variables.receiverUrl + '/chat'"
+headers:
+  x-team: billing
+---
+kind: Alerts.PagerDuty
+metadata: { name: pager }
+routingKey: key-123
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref routes
+---
+kind: Http.Api
+metadata: { name: routes }
+routes:
+  - request:
+      path: /chat
+      method: POST
+    handler: !ref chatAlert
+    inputs:
+      payload:
+        text: disk almost full
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - status: 502
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"
+
+  - request:
+      path: /page
+      method: POST
+    handler: !ref pager
+    inputs:
+      summary: database is down
+      severity: critical
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - status: 502
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"

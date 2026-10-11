@@ -1,0 +1,7 @@
+modules:
+  modules/durable-local: Fixed
+  modules/durable-journal-file: Fixed
+  modules/durable-journal-postgres: Fixed
+body: A run is recorded already claimed by the process that starts it. Before, a resumer
+  polling while a run was being started could take it first and execute it without its
+  inputs, which left the run stuck as running and refused every later delivery to it.

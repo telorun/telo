@@ -184,6 +184,7 @@ class FileJournalController {
       dueAt?: number;
       inputs?: unknown;
       inputsCodecVersion?: number;
+      claim?: { holder: string; ttlMs: number };
     },
   ): Promise<{ admitted: boolean; existing?: RunRecord }> {
     const file = fileFor(this.resource.directory, run);
@@ -202,6 +203,14 @@ class FileJournalController {
       // be two operations with a window between them, and the window is exactly
       // where a concurrent duplicate start slips through.
       const handle = await open(file, "wx");
+      // Claimed before the header is written: a sweep reads a file with no
+      // header as no run at all, so the run is never visible unclaimed.
+      if (init?.claim) {
+        this.#claims.set(run, {
+          holder: init.claim.holder,
+          until: Date.now() + init.claim.ttlMs,
+        });
+      }
       try {
         await handle.writeFile(`${JSON.stringify({ type: "run", ...header })}\n`);
         await handle.sync();

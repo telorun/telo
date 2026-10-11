@@ -1,4 +1,6 @@
 import { LOCAL_KEYS, LOCAL_PREFIXES } from "../storage-keys";
+import { EMPTY_COMPOSER, storedComposer, type ComposerState } from "./composer";
+import type { Attachment } from "./types";
 
 /** The panel's width before anyone drags it (Tailwind's `w-96`, which it was
  *  fixed at) and the narrowest it can be dragged — below this the composer and
@@ -11,6 +13,7 @@ export const AGENT_PANEL_MIN_WIDTH = 280;
 
 const CHAT_PREFIX = LOCAL_PREFIXES.agentChat;
 const CONV_PREFIX = LOCAL_PREFIXES.agentConv;
+const COMPOSER_PREFIX = LOCAL_PREFIXES.agentComposer;
 const SETTINGS_KEY = LOCAL_KEYS.agentSettings;
 
 export interface AgentSettings {
@@ -100,4 +103,45 @@ export function saveConversationId(workspaceKey: string, id: string): void {
 
 export function clearConversationId(workspaceKey: string): void {
   localStorage.removeItem(CONV_PREFIX + workspaceKey);
+}
+
+function storedAttachments(value: unknown): Attachment[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry: Partial<Attachment> | null) =>
+    entry &&
+    typeof entry.id === "string" &&
+    typeof entry.name === "string" &&
+    typeof entry.mediaType === "string" &&
+    typeof entry.size === "number"
+      ? [{ id: entry.id, name: entry.name, mediaType: entry.mediaType, size: entry.size }]
+      : [],
+  );
+}
+
+/** The composer as it was left under `key` (`composerKey`): its unsent text,
+ *  its uploaded files and its queued message. Empty when nothing was stored, or
+ *  what is stored is not a composer. */
+export function loadComposer(key: string): ComposerState {
+  const raw = readJson<{ text?: unknown; attachments?: unknown; queued?: { text?: unknown; attachments?: unknown } | null }>(
+    COMPOSER_PREFIX + key,
+    {},
+  );
+  const text = typeof raw.text === "string" ? raw.text : "";
+  const attachments = storedAttachments(raw.attachments).map((a) => ({ ...a, key: a.id, state: "uploaded" as const }));
+  const queuedFiles = storedAttachments(raw.queued?.attachments);
+  const queuedText = typeof raw.queued?.text === "string" ? raw.queued.text : "";
+  const queued = queuedText || queuedFiles.length > 0 ? { text: queuedText, attachments: queuedFiles } : null;
+  return text || attachments.length > 0 || queued ? { text, attachments, queued } : EMPTY_COMPOSER;
+}
+
+/** Descriptors only, never bytes — and a composer with nothing to keep stores
+ *  nothing: a key per conversation ever opened would only spend quota. */
+export function saveComposer(key: string, composer: ComposerState): void {
+  const stored = storedComposer(composer);
+  if (stored.text === "" && stored.attachments.length === 0 && stored.queued === null) clearComposer(key);
+  else writeJson(COMPOSER_PREFIX + key, stored);
+}
+
+export function clearComposer(key: string): void {
+  localStorage.removeItem(COMPOSER_PREFIX + key);
 }

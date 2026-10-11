@@ -2,27 +2,31 @@ kind: Telo.Application
 metadata:
   name: TodoApp
   version: 1.0.0
-  categories: [ Transport, Storage ]
+  categories: [ Transport, Storage, UI ]
   description: |
-    A complete app served as one unit: the REST todo API and the vanilla HTML/JS
-    frontend that consumes it (`Http.Static`), on a single port. The whole REST
-    surface is one declarative `Crud.Resource` — list / read / create / update /
-    delete over the `todos` table — mounted alongside the static frontend.
+    A complete app served as one unit, with no hand-written frontend: the REST
+    todo API (one `Crud.Resource` over the `todos` table) and an admin UI declared
+    in the same manifest (`UiReact.App`) — a filterable, sortable, paged table
+    with create, edit and delete — on a single port.
 
-    Run, then open http://localhost:8077.
+    The UI and the API share one model, so renaming a property is a `telo check`
+    error rather than a broken page, and a column the database fills in is read
+    by both and written by neither. `/` is the whole screen in one `Crud.Ui`;
+    `/status` is the same screen written out by hand, with presets and a pinned
+    filter — what you drop down to when the one-liner has no key for it.
+
+    Run, then open http://localhost:8077, or:
+        curl -s 'localhost:8077/api/todos?isDone.eq=false&limit=10'
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
   Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
-  Crud: oci://ghcr.io/telorun/crud@0.25.0#sha256-_SY6ZTspZ69ECauO1F9pxA-veKlbirov2i9RQoo14gI
+  Crud: oci://ghcr.io/telorun/crud@0.26.0#sha256-6QhGLwE7wRFRUJoOjtNveov8xzl8BWWPD9QaF2cRiZg
+  Ui: oci://ghcr.io/telorun/ui@0.3.0#sha256-Xp_vAsCGcbXDo6rqK9A-xEnCbqSksPlG-q_jziF83LU
+  UiReact: oci://ghcr.io/telorun/ui-react@0.4.0#sha256-Maz-ACXHNqymhG283guc_wYMIrM_FKWKfGOxRdZ7TBw
 targets:
   - !ref migrate
   - !ref server
-# Studio's starter import copies only literal `files:` entries.
-files:
-  - public/app.js
-  - public/index.html
-  - public/style.css
 ports:
   http:
     env: PORT
@@ -34,6 +38,69 @@ variables:
     type: string
     x-telo-type: Telo.HostPath
     default: todo.db
+---
+# What creates a todo: its title alone. A new todo is not done — the column's
+# default says so — and the create form has the one field.
+kind: Telo.JsonSchema
+metadata:
+  name: NewTodo
+schema:
+  type: object
+  required: [ text ]
+  additionalProperties: false
+  properties:
+    text: { type: string, title: Task, minLength: 1 }
+---
+# What an update replaces: the title, whether it is done, and the day it is
+# due. The first two are required, so an update that leaves `isDone` out is
+# refused rather than clearing it; `dueOn` is optional, and leaving it out
+# clears it.
+kind: Telo.JsonSchema
+metadata:
+  name: TodoEdit
+extends: NewTodo
+schema:
+  type: object
+  required: [ isDone ]
+  properties:
+    isDone: { type: boolean, title: Done }
+    dueOn: { type: string, title: Due, format: date }
+---
+# What is read back: everything written, the key, and `createdAt`, which the
+# table fills in. It is in no write shape, so no request can set it.
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+extends: TodoEdit
+schema:
+  type: object
+  required: [ id ]
+  properties:
+    id: { type: integer }
+    createdAt: { type: string, title: Created }
+---
+# One model for the API and the UI: a record's shape for each operation, and
+# what the list may be filtered and sorted by. The API accepts nothing else, and
+# the UI offers exactly this.
+kind: Crud.Model
+metadata:
+  name: todoModel
+schemas:
+  read: !ref Todo
+  list: !ref Todo
+  create: !ref NewTodo
+  update: !ref TodoEdit
+query:
+  filters:
+    - { property: text, operator: contains }
+    - { property: isDone, operator: eq }
+    # A date range is two filters on one property: from this day, to this day.
+    - { property: dueOn, operator: gte }
+    - { property: dueOn, operator: lte }
+  sort:
+    - { property: text }
+    - { property: dueOn }
+    - { property: createdAt }
 ---
 kind: SQLite.Connection
 metadata:
@@ -48,6 +115,7 @@ columns:
   id: { type: integer, primaryKey: true, identity: always }
   text: { type: text, nullable: false }
   is_done: { type: integer, nullable: false, default: 0 }
+  due_on: { type: text }
   created_at: { type: text, defaultExpression: "datetime('now')" }
 ---
 kind: SQLite.Schema
@@ -56,6 +124,92 @@ metadata:
 connection: !ref db
 tables:
   - !ref todos
+---
+kind: Ui.Theme
+metadata:
+  name: theme
+tokens:
+  color.accent: "#1f8fff"
+  radius.md: 6px
+---
+# The whole frontend. `/` is one `Crud.Ui` — table, filters, and the create and
+# edit forms all come from the model — given three keys that say how it behaves:
+# the bar shows only the filters chosen, summarises them as chips and keeps them
+# in the address and the browser; a new todo is entered in a drawer that stays
+# open for the next one; a todo is edited in a drawer too, with an
+# address of its own. `/status` is the same screen written out by hand, which is
+# what you drop down to for what `Crud.Ui` has no key for: here a filter that
+# stays outside the folded bar, and one set only by presets.
+kind: UiReact.App
+metadata:
+  name: ui
+title: Todos
+lang: en
+theme: !ref theme
+pages:
+  - path: /
+    title: Todos
+    children:
+      - type: composite
+        ref:
+          kind: Crud.Ui
+          model: !ref todoModel
+          basePath: /api/todos
+          filters:
+            show: chosen
+            summary: chips
+            state: { key: todos, address: true, store: { kind: Ui.LocalStore } }
+          create:
+            # A drawer, and a full-size dialog on a narrow screen.
+            surface: { kind: Ui.Drawer, side: end, compact: { kind: Ui.Dialog, size: full } }
+            afterSubmit: again
+          edit:
+            surface: { kind: Ui.Drawer, side: end, address: { name: todo } }
+            unsaved: confirm
+  - path: /status
+    title: By status
+    children:
+      - { type: text, text: Todos by status, style: heading }
+      - type: composite
+        ref:
+          kind: Ui.Filters
+          model: !ref Todo
+          collection: !ref todoModel
+          policy:
+            # The bar folds behind a toggle.
+            placement: { kind: Ui.CollapsiblePlacement }
+          fields:
+            # Pinned: the search box stays outside the fold.
+            - { property: text, operator: contains, pinned: true }
+            # No control: the presets below are the only way to set it.
+            - { property: isDone, operator: eq, control: none }
+            # Behind the toggle: a range of due days, from one to another.
+            - { property: dueOn, operator: gte }
+            - { property: dueOn, operator: lte }
+          presets:
+            - label: All
+              values: []
+            - label: Open
+              values:
+                - { property: isDone, operator: eq, value: false }
+            - label: Done
+              values:
+                - { property: isDone, operator: eq, value: true }
+          content:
+            type: composite
+            ref:
+              kind: Ui.Table
+              model: !ref Todo
+              collection: !ref todoModel
+              source: { basePath: /api/todos }
+              rowKey: id
+              # An opener with nothing but its form opens as the table decides:
+              # a dialog that closes after a save.
+              create:
+                form: { kind: Ui.Form, model: !ref NewTodo, source: { basePath: /api/todos } }
+              edit:
+                form: { kind: Ui.Form, model: !ref TodoEdit, source: { basePath: /api/todos } }
+              delete: true
 ---
 kind: Http.Server
 metadata:
@@ -68,49 +222,19 @@ openapi:
 mounts:
   - path: /api/todos
     mount:
+      # The entire REST API: CRUD over the `todos` table. Mounted at /api/todos, it
+      # serves GET / (a paged list, filtered and sorted by what the model's
+      # `query` declares), GET /{id}, POST /,
+      # PUT /{id} (replace) and DELETE /{id}. Both writes answer with the stored todo.
       kind: Crud.Resource
       connection: !ref db
       plural: todos
       singular: todo
-      model:
-        kind: Crud.Model
-        schemas:
-          read: !ref Todo
-          list: !ref Todo
-          create: !ref TodoDraft
-          update: !ref TodoDraft
-        query:
-          filters:
-            - { property: isDone, operator: eq }
-          sort: []
+      # The model is the request contract too: a POST without `text`, or with a
+      # property its create shape lacks, is rejected with a 400 before the
+      # database is touched. `isDone` reads and writes the snake_case column
+      # `is_done`.
+      model: !ref todoModel
 
   - path: /
     mount: !ref ui
----
-# What a client writes.
-kind: Telo.JsonSchema
-metadata:
-  name: TodoDraft
-schema:
-  type: object
-  required: [ text ]
-  additionalProperties: false
-  properties:
-    text: { type: string, minLength: 1 }
-    isDone: { type: boolean }
----
-# What is read back: the draft plus the key the table assigns.
-kind: Telo.JsonSchema
-metadata:
-  name: Todo
-extends: TodoDraft
-schema:
-  type: object
-  required: [ id, isDone ]
-  properties:
-    id: { type: integer }
----
-kind: Http.Static
-metadata:
-  name: ui
-root: !module-path ./public

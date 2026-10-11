@@ -1,0 +1,109 @@
+kind: Telo.Application
+metadata:
+  name: WorkflowApiStarterTest
+  version: 1.0.0
+  description: >-
+    Runs the starter and calls both workflows: a quote for each customer tier,
+    an order that goes through on its third payment attempt, one over the limit,
+    and one the request schema refuses. The blueprint's promise is that
+    declaring a workflow is enough to serve it; this is each of them, served.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8111
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8111
+    variables:
+      orderLimitCents: 10000
+targets:
+  - !ref app
+steps:
+  - name: standard
+    invoke: !ref call
+    inputs:
+      url: /orders/quote
+      method: POST
+      body:
+        tier: standard
+        items: [ { price: 1200, quantity: 2 }, { price: 500, quantity: 1 } ]
+  - name: gold
+    invoke: !ref call
+    inputs:
+      url: /orders/quote
+      method: POST
+      body:
+        tier: gold
+        items: [ { price: 1200, quantity: 2 }, { price: 500, quantity: 1 } ]
+  - name: verifyQuotes
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        standardStatus: !cel "steps.standard.result.status"
+        standard: !cel "steps.standard.result.body"
+        gold: !cel "steps.gold.result.body"
+      expected:
+        standardStatus: 200
+        # 2900 is under the free-shipping threshold, so shipping is charged.
+        standard: { subtotal: 2900, discount: 0, shipping: 700, total: 3600 }
+        gold: { subtotal: 2900, discount: 435, shipping: 700, total: 3165 }
+
+  - name: order
+    invoke: !ref call
+    inputs:
+      url: /orders
+      method: POST
+      body:
+        tier: silver
+        items: [ { price: 3000, quantity: 2 } ]
+  - name: tooLarge
+    invoke: !ref call
+    inputs:
+      url: /orders
+      method: POST
+      body:
+        tier: standard
+        items: [ { price: 3000, quantity: 5 } ]
+  - name: malformed
+    invoke: !ref call
+    inputs:
+      url: /orders
+      method: POST
+      body:
+        tier: platinum
+        items: [ { price: 3000, quantity: 1 } ]
+  - name: verifyOrders
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        orderStatus: !cel "steps.order.result.status"
+        orderId: !cel "steps.order.result.body.id.startsWith('ord_')"
+        total: !cel "steps.order.result.body.total"
+        paymentAttempts: !cel "steps.order.result.body.paymentAttempts"
+        tooLargeStatus: !cel "steps.tooLarge.result.status"
+        tooLarge: !cel "steps.tooLarge.result.body.error"
+        malformed: !cel "steps.malformed.result.status"
+      expected:
+        orderStatus: 201
+        orderId: true
+        # 6000 less 5%, and free shipping from 5000.
+        total: 5700
+        paymentAttempts: 3
+        tooLargeStatus: 422
+        tooLarge: order_over_limit
+        malformed: 400

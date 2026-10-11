@@ -452,6 +452,41 @@ describe("an in-flight run is not started twice", () => {
   });
 });
 
+describe("a run is claimed by its admission", () => {
+  it("is never offered to a poller, and refuses another holder", async () => {
+    await journal.admitRun("run-owned", { claim: { holder: "starter", ttlMs: 60_000 } });
+    expect(await journal.dueRuns(Date.now(), 10)).not.toContain("run-owned");
+    expect(await journal.claimRun("run-owned", "poller", 60_000)).toBe(false);
+    expect(await journal.claimRun("run-owned", "starter", 60_000)).toBe(true);
+  });
+
+  it("stays unseen by a poller sweeping while it is being admitted", async () => {
+    // The window a claim taken after admission leaves open: the record is on
+    // disk and `running` before the admitter holds it.
+    let admitting = true;
+    const sightings: string[] = [];
+    const sweeping = (async () => {
+      while (admitting) sightings.push(...(await journal.dueRuns(Date.now(), 10)));
+    })();
+    for (let i = 0; i < 50; i++) {
+      await journal.admitRun(`run-mid-${i}`, { claim: { holder: "starter", ttlMs: 60_000 } });
+    }
+    admitting = false;
+    await sweeping;
+    expect(sightings).toEqual([]);
+  });
+
+  it("leaves a run it did not admit with the claim it had", async () => {
+    await journal.admitRun("run-taken");
+    await journal.claimRun("run-taken", "holder-a", 60_000);
+    const second = await journal.admitRun("run-taken", {
+      claim: { holder: "holder-b", ttlMs: 60_000 },
+    });
+    expect(second.admitted).toBe(false);
+    expect(await journal.claimRun("run-taken", "holder-b", 60_000)).toBe(false);
+  });
+});
+
 describe("the durable handle rides the invocation context", () => {
   it("is carried by deriveContext like every other member", async () => {
     await journal.admitRun("run-8");

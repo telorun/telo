@@ -54,6 +54,11 @@ imports:
   SecretScan: oci://ghcr.io/telorun/secret-scan@0.3.0#sha256-j5LTmj50zPdy65badRWFTPmICPURIf1n4Q-Iaq6dFSo
   Log: oci://ghcr.io/telorun/log@0.3.0#sha256-zHq0Vq_G85EDj7Wfbcla8_6hvE4imxgVQoMZsxZwIwE
   Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
+  Blob: oci://ghcr.io/telorun/blob@0.2.0#sha256-UgFwVFoZWZ_s8GWHIi-0qJB8K82CZ5gSQN0HZaqpc58
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.2.0#sha256-_DxXaUEsakpFyEif4SKQc1QesAcTFOpnXBW9AjIyUbo
+  MediaType: oci://ghcr.io/telorun/media-type@0.2.0#sha256-IMusU6CSTRaPcV9IytZWjhUfxTszK483gmWuJdC-3Xo
+  Multipart: oci://ghcr.io/telorun/multipart@0.4.0#sha256-RjPcqJs2rTd4hWLUbQ-SGcqkhYW3GIDCgWbi_bk8kt0
+  Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
 secrets:
   openaiApiKey:
     type: string
@@ -230,6 +235,17 @@ variables:
     # The most files one such call may capture — what bounds a recursive
     # delete.
     default: 1000
+  maxAttachmentBytes:
+    type: integer
+    minimum: 1
+    # The largest file one upload may store. A larger one stores nothing.
+    default: 10485760
+  maxConversationAttachments:
+    type: integer
+    minimum: 1
+    # The most files one conversation may hold, sent or not: an upload lives
+    # until its conversation is removed. No env binding: a test lowers it.
+    default: 100
 exports:
   resources:
     - ensureWorkspace
@@ -261,6 +277,10 @@ exports:
     - syncWorkspace
     - readiness
     - promptIdentity
+    - storeAttachment
+    - readAttachment
+    - attachmentTypes
+    - messageAttachmentLimit
     - CheckReport
 ---
 kind: SQLite.Connection
@@ -432,6 +452,21 @@ migrations:
       - ALTER TABLE turn_projections ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0
       - ALTER TABLE turn_projections ADD COLUMN runs TEXT NOT NULL DEFAULT '[]'
       - ALTER TABLE turn_projections ADD COLUMN ended INTEGER NOT NULL DEFAULT 0
+  # Files a client uploaded for a conversation's messages: what each is, here;
+  # its bytes, in the attachment store under `<conversation>/<id>`. A row lives
+  # until its conversation is removed.
+  projection_7_attachments:
+    statement: |
+      CREATE TABLE attachments (
+        conversation_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        media_type TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        sha256 TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        PRIMARY KEY (conversation_id, id)
+      )
 ---
 # The account, declared once: base URL and credential on the client, so the model
 # kinds carry no key and the 401 re-acquire-and-retry is inherited from
@@ -3070,7 +3105,12 @@ returns:
 body: !cel >-
   cel.bind(ends, enumerate(records).filter(e, e.value.type in ['step-finish', 'turn-continued']).map(e, e.index),
     cel.bind(answered, records.filter(r, r.type == 'tool-result').map(r, r.toolResult.toolCallId),
-      records.filter(r, r.type == 'user-message').map(r, {'role': 'user', 'content': r.content})
+      records.filter(r, r.type == 'user-message').map(r, {'role': 'user', 'content':
+          has(r.attachments) && size(r.attachments) > 0
+            ? dyn((r.content == '' ? [] : [{'type': 'text', 'text': r.content}])
+                + r.attachments.map(a, {'type': 'attachment', 'id': a.id, 'name': a.name,
+                    'mediaType': a.mediaType, 'size': a.size, 'sha256': a.sha256}))
+            : dyn(r.content)})
       + flatten(range(size(ends) + 1).map(k,
           cel.bind(segment, slice(records, k == 0 ? 0 : ends[k - 1] + 1, k < size(ends) ? ends[k] : size(records)),
             segment.filter(r, r.type == 'tool-result').map(r, {
@@ -3982,6 +4022,36 @@ steps:
     invoke: !ref cascadeTurns
     inputs:
       turnIds: !cel "steps.marked.result.rows.map(r, r.turn_id)"
+  # A removed conversation's uploads go with it: each blob, then its row, so a
+  # removal a crash cut short is finished by the next one.
+  - name: uploads
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT a.id FROM attachments a
+        WHERE a.conversation_id = ?
+          AND NOT EXISTS (SELECT 1 FROM conversations c WHERE c.id = a.conversation_id AND c.removed_at IS NULL)
+        ORDER BY a.id
+      bindings: [ !cel "inputs.conversationId" ]
+  - name: removeUploads
+    invoke:
+      kind: Run.Iteration
+      collection: !cel "inputs.ids"
+      steps:
+        - name: blob
+          invoke: !ref deleteAttachment
+          inputs:
+            key: !cel "Self.attachmentKey(inputs.conversationId, item)"
+        - name: row
+          invoke: { kind: Sql.Command, connection: !ref chatDb }
+          inputs:
+            sql: "DELETE FROM attachments WHERE conversation_id = ? AND id = ?"
+            bindings:
+              - !cel "inputs.conversationId"
+              - !cel "item"
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      ids: !cel "steps.uploads.result.rows.map(r, string(r.id))"
 ---
 # One attempt at tombstoning a conversation, and the answer as data:
 # `missing`, `removed` (already tombstoned), `busy` (its latest live turn's key
@@ -4615,6 +4685,43 @@ steps:
           turns: !cel "steps.turns.result.rows"
           sourceIds: !cel "steps.ids.result.sources"
           copyIds: !cel "steps.ids.result.copies"
+      # The branch holds its own copy of every upload, under the same ids, so
+      # removing either conversation leaves the other's messages whole.
+      - name: uploads
+        invoke: !ref historyRows
+        inputs:
+          sql: "SELECT id, name, media_type, size, sha256 FROM attachments WHERE conversation_id = ? ORDER BY id"
+          bindings: [ !cel "inputs.conversationId" ]
+      - name: copyUploads
+        invoke:
+          kind: Run.Iteration
+          collection: !cel "inputs.rows"
+          steps:
+            - name: source
+              invoke: !ref getAttachment
+              inputs:
+                key: !cel "Self.attachmentKey(inputs.sourceId, string(item.id))"
+            - name: copy
+              invoke: !ref putAttachment
+              inputs:
+                key: !cel "Self.attachmentKey(inputs.conversationId, string(item.id))"
+                content: !cel "steps.source.result.output"
+                contentType: !cel "steps.source.result.contentType"
+            - name: row
+              invoke: { kind: Sql.Command, connection: !ref chatDb }
+              inputs:
+                sql: "INSERT INTO attachments (conversation_id, id, name, media_type, size, sha256) VALUES (?, ?, ?, ?, ?, ?)"
+                bindings:
+                  - !cel "inputs.conversationId"
+                  - !cel "string(item.id)"
+                  - !cel "string(item.name)"
+                  - !cel "string(item.media_type)"
+                  - !cel "int(item.size)"
+                  - !cel "string(item.sha256)"
+        inputs:
+          sourceId: !cel "inputs.conversationId"
+          conversationId: !cel "steps.ids.result.conversation"
+          rows: !cel "steps.uploads.result.rows"
       - name: reveal
         invoke: { kind: Sql.Command, connection: !ref chatDb }
         inputs:
@@ -4701,6 +4808,383 @@ steps:
     invoke: !ref cascadeConversation
     inputs:
       conversationId: !cel "inputs.conversationId"
+---
+# Attachments: files a client uploads for a conversation's messages. The bytes
+# are blobs under `attachments/` in the state directory, keyed
+# `<conversation>/<id>`; what each is — name, media type, size, digest — is a
+# row. An upload belongs to its conversation and is removed with it, never
+# before: a turn names it by id, and Retry, Edit & resend and a branch send the
+# same ids again.
+kind: BlobFs.Store
+metadata: { name: attachmentStore }
+root: !cel "variables.stateDir.joinPath('attachments')"
+---
+kind: Blob.Put
+metadata: { name: putAttachment }
+store: !ref attachmentStore
+---
+kind: Blob.Get
+metadata: { name: getAttachment }
+store: !ref attachmentStore
+---
+kind: Blob.Delete
+metadata: { name: deleteAttachment }
+store: !ref attachmentStore
+---
+kind: Telo.Function
+metadata:
+  name: attachmentKey
+  description: The blob key of a conversation's upload.
+params:
+  - name: conversationId
+    schema: { type: string }
+  - name: id
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "conversationId + '/' + id"
+---
+# A `type/*` entry accepts every subtype. Text of any kind is given to the model
+# as text; an image and a PDF as themselves.
+kind: Telo.Function
+metadata:
+  name: attachmentTypes
+  description: The media types an upload may have.
+params: []
+returns:
+  schema:
+    type: array
+    items: { type: string }
+body: !cel >-
+  ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf',
+   'application/json', 'application/yaml', 'application/x-yaml', 'text/*']
+---
+kind: Telo.Function
+metadata:
+  name: messageAttachmentLimit
+  description: The most attachments one message may name.
+params: []
+returns:
+  schema: { type: integer }
+body: !cel "10"
+---
+kind: Telo.Function
+metadata:
+  name: attachmentAccepted
+  description: Whether an upload of this media type is accepted.
+params:
+  - name: mediaType
+    schema: { type: string }
+returns:
+  schema: { type: boolean }
+body: !cel >-
+  Self.attachmentTypes().exists(t,
+    t == mediaType || (t.endsWith('/*') && mediaType.startsWith(t.substring(0, size(t) - 1))))
+---
+# What an Idempotency-Key replay is compared against: the message, and the
+# uploads it names when it names any.
+kind: Telo.Function
+metadata:
+  name: turnFingerprint
+  description: The digest identifying one turn request — its message and the attachments it names.
+params:
+  - name: message
+    schema: { type: string }
+  - name: attachmentIds
+    schema:
+      type: array
+      items: { type: string }
+returns:
+  schema: { type: string }
+body: !cel >-
+  size(attachmentIds) == 0 ? sha256(message)
+    : sha256(json({'message': message, 'attachments': attachmentIds}))
+---
+# A text upload as the model reads it: named, then its text, cut at `maxChars`
+# characters with a marker. Null text is content that is not UTF-8. The cut is
+# a regex, which counts code points, in runs of 1000 — RE2's largest repeat.
+kind: Telo.Function
+metadata:
+  name: attachedText
+  description: Renders a text attachment for the model, bounded and named.
+params:
+  - name: name
+    schema: { type: string }
+  - name: mediaType
+    schema: { type: string }
+  - name: text
+    schema:
+      anyOf:
+        - type: string
+        - type: "null"
+  - name: maxChars
+    schema: { type: integer }
+returns:
+  schema: { type: string }
+body: !cel >-
+  text == null
+    ? '[attached file ' + name + ' is not UTF-8 text and was not included]'
+    : 'ATTACHED FILE ' + name + ' (' + mediaType + '):\n'
+      + (size(text) > maxChars
+          ? regexExtract(text, '(?s)^' + join(range(maxChars / 1000).map(i, '.{0,1000}'), '')
+              + '.{0,' + string(maxChars % 1000) + '}')
+            + '\n[truncated: ' + string(size(text) - maxChars) + ' of ' + string(size(text))
+            + ' characters cut; an attached text file passes at most ' + string(maxChars) + ' characters to the model]'
+          : text)
+---
+# A stored message's content as the model takes it: every `attachment` part
+# replaced by what it names — an image or a PDF by its bytes, text by its text —
+# and by a note when its bytes are gone. `loaded` is `[{ id, data }]`, `data`
+# null for an upload that could not be read.
+kind: Telo.Function
+metadata:
+  name: modelContent
+  description: Resolves the attachment parts of a message's content into the parts a model takes.
+params:
+  - name: content
+    schema: { type: array }
+  # A projection's result, which is a list at run time and untyped statically.
+  - name: loaded
+    schema: {}
+  - name: maxChars
+    schema: { type: integer }
+returns:
+  schema: { type: array }
+body: !cel >-
+  flatten(content.map(p,
+    type(p) == type({}) && 'type' in p && p.type == 'attachment'
+      ? cel.bind(found, loaded.filter(l, l.id == p.id),
+          size(found) == 0 || found[0].data == null
+            ? [dyn({'type': 'text', 'text': '[attached file ' + string(p.name) + ' is no longer available]'})]
+            : string(p.mediaType).startsWith('image/')
+              ? [dyn({'type': 'image', 'mediaType': p.mediaType, 'data': found[0].data})]
+            : p.mediaType == 'application/pdf'
+              ? [dyn({'type': 'file', 'mediaType': p.mediaType, 'name': p.name, 'data': found[0].data})]
+            : [dyn({'type': 'text', 'text': Self.attachedText(string(p.name), string(p.mediaType),
+                Self.blobText(bytesToBase64(found[0].data), string(p.sha256)), maxChars)})])
+      : [dyn(p)]))
+---
+# One part of an upload, stored: identified from its own bytes, refused when
+# they contradict what it was sent as or are of a type the agent does not take,
+# then put — nothing is stored past `maxAttachmentBytes` — and recorded only
+# for a conversation that is still there.
+kind: Run.Iteration
+metadata: { name: storeParts }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, id, parts]
+    properties:
+      conversationId: { type: string }
+      id: { type: string }
+      parts:
+        x-telo-type:
+          name: Telo.Stream
+          of:
+            type: object
+            properties:
+              name: { type: string }
+              filename: { type: string }
+              contentType: { type: string }
+              content:
+                x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+collection: !cel "inputs.parts"
+concurrency: 1
+steps:
+  - name: field
+    if: !cel "!has(item.name) || item.name != 'file'"
+    then:
+      - name: refuseField
+        throw:
+          code: ERR_ATTACHMENT_MISSING
+          message: An upload is one multipart part named `file`.
+  - name: sniffed
+    invoke: { kind: MediaType.Detector }
+    inputs:
+      input: !cel "item.content"
+      declared: !cel "has(item.contentType) ? item.contentType : ''"
+  - name: mislabelled
+    if: !cel "steps.sniffed.result.mislabelled"
+    then:
+      - name: refuseMislabelled
+        throw:
+          code: ERR_ATTACHMENT_MISLABELLED
+          message: !cel "'The file is not what it was sent as: its content is ' + steps.sniffed.result.mediaType + '.'"
+          data:
+            mediaType: !cel "steps.sniffed.result.mediaType"
+  - name: unaccepted
+    if: !cel "!Self.attachmentAccepted(steps.sniffed.result.mediaType)"
+    then:
+      - name: refuseType
+        throw:
+          code: ERR_ATTACHMENT_TYPE_NOT_ACCEPTED
+          message: !cel "'Files of type ' + steps.sniffed.result.mediaType + ' are not accepted.'"
+          data:
+            mediaType: !cel "steps.sniffed.result.mediaType"
+            accepted: !cel "Self.attachmentTypes()"
+  - name: put
+    invoke: !ref putAttachment
+    inputs:
+      key: !cel "Self.attachmentKey(inputs.conversationId, inputs.id)"
+      content: !cel "steps.sniffed.result.output"
+      contentType: !cel "steps.sniffed.result.mediaType"
+      maxBytes: !cel "int(variables.maxAttachmentBytes)"
+  - name: record
+    invoke: { kind: Sql.Command, connection: !ref chatDb }
+    inputs:
+      sql: |
+        INSERT INTO attachments (conversation_id, id, name, media_type, size, sha256)
+        SELECT id, ?, ?, ?, ?, ? FROM conversations
+        WHERE id = ? AND removed_at IS NULL AND archived = 0 AND assembling = 0
+      bindings:
+        - !cel "inputs.id"
+        # The file's own name, without any directory a client sent, at most
+        # 255 characters.
+        - !cel >-
+            cel.bind(name, has(item.filename) ? regexReplace(item.filename, '^.*[\\\\/]', '') : '',
+              name == '' ? 'attachment' : regexExtract(name, '(?s)^.{0,255}'))
+        - !cel "steps.put.result.contentType"
+        - !cel "steps.put.result.size"
+        - !cel "steps.put.result.sha256"
+        - !cel "inputs.conversationId"
+  - name: orphaned
+    if: !cel "steps.record.result.rowCount == 0"
+    then:
+      - name: discard
+        invoke: !ref deleteAttachment
+        inputs:
+          key: !cel "Self.attachmentKey(inputs.conversationId, inputs.id)"
+      - name: refuse
+        invoke: !ref refuseConversationWrite
+        inputs:
+          conversationId: !cel "inputs.conversationId"
+---
+# POST /conversations/{id}/attachments. One file per upload, as a multipart
+# part named `file`, read as it arrives. Refused, in order: the conversation
+# unknown (404), deleted (410) or archived (409); the conversation already
+# holding `maxConversationAttachments` files; a payload that is not one `file`
+# part; content that contradicts its declared type; a type the agent does not
+# take; a file past `maxAttachmentBytes`. A refused upload stores nothing.
+kind: Run.Sequence
+metadata: { name: storeAttachment }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, input, contentType]
+    properties:
+      conversationId: { type: string }
+      input:
+        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+      # The request's Content-Type, which carries the multipart boundary.
+      contentType: { type: string }
+steps:
+  - name: conversation
+    invoke: !ref requireWritableConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+  - name: held
+    invoke: !ref historyRows
+    inputs:
+      sql: "SELECT COUNT(*) AS n FROM attachments WHERE conversation_id = ?"
+      bindings: [ !cel "inputs.conversationId" ]
+  - name: full
+    if: !cel "int(steps.held.result.rows[0].n) >= int(variables.maxConversationAttachments)"
+    then:
+      - name: refuseFull
+        throw:
+          code: ERR_ATTACHMENT_LIMIT
+          message: !cel "'This conversation already holds ' + string(int(variables.maxConversationAttachments)) + ' files, the most it may.'"
+          data:
+            max: !cel "int(variables.maxConversationAttachments)"
+  - name: id
+    value: !cel "uuidv7()"
+  - name: parts
+    invoke: { kind: Multipart.Reader }
+    inputs:
+      input: !cel "inputs.input"
+      contentType: !cel "inputs.contentType"
+      maxParts: 1
+  - name: store
+    invoke: !ref storeParts
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      id: !cel "steps.id.result"
+      parts: !cel "steps.parts.result.parts"
+  - name: stored
+    invoke: !ref historyRows
+    inputs:
+      sql: "SELECT id, name, media_type, size FROM attachments WHERE conversation_id = ? AND id = ?"
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "steps.id.result"
+  - name: empty
+    if: !cel "size(steps.stored.result.rows) == 0"
+    then:
+      - name: refuseEmpty
+        throw:
+          code: ERR_ATTACHMENT_MISSING
+          message: An upload is one multipart part named `file`.
+outputs:
+  attachment: !cel >-
+    cel.bind(row, steps.stored.result.rows[0],
+      {'id': string(row.id), 'name': string(row.name), 'mediaType': string(row.media_type), 'size': int(row.size)})
+---
+# GET /conversations/{id}/attachments/{attachmentId}: an upload's bytes, with
+# what it is. Unknown to this conversation, or its bytes gone, is
+# ERR_ATTACHMENT_NOT_FOUND.
+kind: Run.Sequence
+metadata: { name: readAttachment }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, attachmentId]
+    properties:
+      conversationId: { type: string }
+      attachmentId: { type: string }
+steps:
+  - name: conversation
+    invoke: !ref requireConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+  - name: row
+    invoke: !ref historyRows
+    inputs:
+      sql: "SELECT name, media_type, size FROM attachments WHERE conversation_id = ? AND id = ?"
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "inputs.attachmentId"
+  - name: unknown
+    if: !cel "size(steps.row.result.rows) == 0"
+    then:
+      - name: refuseUnknown
+        throw:
+          code: ERR_ATTACHMENT_NOT_FOUND
+          message: !cel "'No attachment ' + inputs.attachmentId + ' exists in this conversation.'"
+          data:
+            attachmentIds: !cel "[inputs.attachmentId]"
+  - name: blob
+    try:
+      - name: content
+        invoke: !ref getAttachment
+        inputs:
+          key: !cel "Self.attachmentKey(inputs.conversationId, inputs.attachmentId)"
+    catch:
+      - name: gone
+        throw:
+          code: !cel "error.code == 'ERR_BLOB_NOT_FOUND' ? 'ERR_ATTACHMENT_NOT_FOUND' : error.code"
+          message: !cel "error.code == 'ERR_BLOB_NOT_FOUND' ? 'Attachment ' + inputs.attachmentId + ' is no longer stored.' : error.message"
+          data: !cel "error.code == 'ERR_BLOB_NOT_FOUND' ? dyn({'attachmentIds': [inputs.attachmentId]}) : has(error.data) ? error.data : null"
+outputs:
+  output: !cel "steps.content.result.output"
+  name: !cel "string(steps.row.result.rows[0].name)"
+  mediaType: !cel "string(steps.row.result.rows[0].media_type)"
+  size: !cel "int(steps.row.result.rows[0].size)"
 ---
 # Spend-budget state. A CacheMemory.Store for a single instance; swap to a
 # CacheRedis.Store to bound spend across instances — the Cache.Store seam makes
@@ -5437,6 +5921,10 @@ inputType:
     properties:
       conversationId: { type: string }
       message: { type: string }
+      # Ids of uploads of this conversation the message carries.
+      attachments:
+        type: array
+        items: { type: string }
       clientIp: { type: string }
       # Empty when the request carried no Idempotency-Key header.
       idempotencyKey: { type: string, maxLength: 255 }
@@ -5454,6 +5942,44 @@ steps:
     invoke: !ref requireWritableConversation
     inputs:
       conversationId: !cel "inputs.conversationId"
+  # The uploads the message names, each one of this conversation's: an id that
+  # is not takes no turn.
+  - name: named
+    value: !cel "has(inputs.attachments) ? distinct(inputs.attachments) : []"
+  - name: tooMany
+    if: !cel "size(steps.named.result) > Self.messageAttachmentLimit()"
+    then:
+      - name: refuseTooMany
+        throw:
+          code: ERR_TOO_MANY_ATTACHMENTS
+          message: !cel "'A message carries at most ' + string(Self.messageAttachmentLimit()) + ' attachments.'"
+          data:
+            max: !cel "Self.messageAttachmentLimit()"
+  - name: uploads
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT id, name, media_type, size, sha256 FROM attachments
+        WHERE conversation_id = ? AND id IN (SELECT value FROM json_each(?))
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "json(steps.named.result)"
+  - name: unknownUpload
+    if: !cel "size(steps.uploads.result.rows) != size(steps.named.result)"
+    then:
+      - name: refuseUnknownUpload
+        throw:
+          code: ERR_ATTACHMENT_NOT_FOUND
+          message: A named attachment does not exist in this conversation. Upload it again.
+          data:
+            attachmentIds: !cel >-
+              steps.named.result.filter(id, !steps.uploads.result.rows.exists(r, string(r.id) == id))
+  # In the order the message named them.
+  - name: attached
+    value: !cel >-
+      steps.named.result.map(id, cel.bind(row, steps.uploads.result.rows.filter(r, string(r.id) == id)[0],
+        {'id': id, 'name': string(row.name), 'mediaType': string(row.media_type),
+         'size': int(row.size), 'sha256': string(row.sha256)}))
   - name: admission
     if: !cel "inputs.idempotencyKey == ''"
     then:
@@ -5464,6 +5990,7 @@ steps:
           turnId: !cel "steps.turn.result.id"
           writer: !cel "steps.turn.result.writer"
           message: !cel "inputs.message"
+          attachments: !cel "steps.attached.result"
           clientIp: !cel "inputs.clientIp"
     else:
       - name: once
@@ -5485,6 +6012,7 @@ steps:
             turnId: !cel "steps.turn.result.id"
             writer: !cel "steps.turn.result.writer"
             message: !cel "inputs.message"
+            attachments: !cel "steps.attached.result"
             clientIp: !cel "inputs.clientIp"
       - name: inFlight
         if: !cel "steps.once.result.state == 'in-flight'"
@@ -5498,7 +6026,7 @@ steps:
       # The same key names the same request: a different message under it is a
       # client bug, never a second turn and never the first turn's id.
       - name: reused
-        if: !cel "steps.once.result.state == 'replayed' && steps.once.result.result.fingerprint != sha256(inputs.message)"
+        if: !cel "steps.once.result.state == 'replayed' && steps.once.result.result.fingerprint != Self.turnFingerprint(inputs.message, steps.named.result)"
         then:
           - name: refuseReused
             throw:
@@ -5527,7 +6055,7 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    required: [conversationId, turnId, writer, message, clientIp]
+    required: [conversationId, turnId, writer, message, attachments, clientIp]
     properties:
       conversationId: { type: string }
       turnId: { type: string }
@@ -5535,6 +6063,19 @@ inputType:
       # mint a second one.
       writer: { type: string }
       message: { type: string }
+      # What the message carries, as the turn's first record keeps it.
+      attachments:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, name, mediaType, size, sha256]
+          properties:
+            id: { type: string }
+            name: { type: string }
+            mediaType: { type: string }
+            size: { type: integer }
+            sha256: { type: string }
       clientIp: { type: string }
 steps:
   # Per-IP throttle first — a rate-limited client doesn't touch the budget.
@@ -5641,7 +6182,10 @@ steps:
               inputs:
                 conversationId: !cel "inputs.conversationId"
                 turnId: !cel "inputs.turnId"
-                lead: !cel "{'type': 'user-message', 'content': inputs.message, 'model': variables.model}"
+                lead: !cel >-
+                  size(inputs.attachments) > 0
+                    ? {'type': 'user-message', 'content': inputs.message, 'attachments': inputs.attachments, 'model': variables.model}
+                    : {'type': 'user-message', 'content': inputs.message, 'model': variables.model}
                 resume: false
                 reserved: !cel "steps.reserve.result.reserved"
                 writer: !cel "inputs.writer"
@@ -5707,7 +6251,7 @@ steps:
 outputs:
   turnId: !cel "inputs.turnId"
   # What a replay under the same key is compared against.
-  fingerprint: !cel "sha256(inputs.message)"
+  fingerprint: !cel "Self.turnFingerprint(inputs.message, inputs.attachments.map(a, a.id))"
 ---
 # POST /chat/{turnId}/abort. Cancels the turn's running attempt through the
 # conversation's lease — its model call and its running tool see the
@@ -6259,7 +6803,7 @@ inputType:
       # it — so the ids that name the turn ride its span.
       conversationId: { type: string, x-telo-span-attribute: gen_ai.conversation.id }
       turnId: { type: string, x-telo-span-attribute: telo.agent.turn.id }
-      # `user-message { content, model }` for a new turn, `turn-continued
+      # `user-message { content, attachments?, model }` for a new turn, `turn-continued
       # { note, model }` for a continued one — the model is what decides whether
       # the attempt's provider state may be replayed.
       lead:
@@ -6368,13 +6912,18 @@ steps:
             ORDER BY m.turn_id, m.seq LIMIT 1
           bindings: [ !cel "inputs.conversationId" ]
       # Its first 4000 code points, cut by a regex (which matches code points);
-      # four runs of 1000, RE2's largest repeat count.
+      # four runs of 1000, RE2's largest repeat count. A message of files alone
+      # is named from their names.
       - name: message
         value: !cel >-
-          cel.bind(text, size(steps.first.result.rows) > 0
-              ? Self.contentText(parseJson(steps.first.result.rows[0].content))
-              : has(inputs.lead.content) ? inputs.lead.content : '',
-            regexExtract(text, '(?s)^.{0,1000}.{0,1000}.{0,1000}.{0,1000}'))
+          cel.bind(content, size(steps.first.result.rows) > 0
+              ? parseJson(steps.first.result.rows[0].content)
+              : dyn(has(inputs.lead.content) ? inputs.lead.content : ''),
+            cel.bind(text, Self.contentText(content),
+              text != '' || type(content) != type([])
+                ? regexExtract(text, '(?s)^.{0,1000}.{0,1000}.{0,1000}.{0,1000}')
+                : 'Attached files: ' + join(content.filter(p, type(p) == type({}) && 'type' in p && p.type == 'attachment')
+                    .map(p, string(p.name)), ', ')))
       - name: attempt
         try:
           - name: call
@@ -6719,6 +7268,42 @@ steps:
       bindings:
         - !cel "inputs.conversationId"
         - !cel "size(steps.summary.result.rows) > 0 ? string(steps.summary.result.rows[0].summary_through) : ''"
+  - name: history
+    value: !cel "steps.readHistory.result.rows.map(r, parseJson(r.message))"
+  # The uploads that history names, each read once for this attempt. One whose
+  # bytes are gone reads as null and is told to the model as missing.
+  - name: uploads
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.ids"
+      steps:
+        - name: read
+          try:
+            - name: blob
+              invoke: !ref getAttachment
+              inputs:
+                key: !cel "Self.attachmentKey(inputs.conversationId, item)"
+            - name: bytes
+              invoke: { kind: Octet.Decoder }
+              inputs:
+                input: !cel "steps.blob.result.output"
+          catch:
+            - name: failed
+              if: !cel "error.code != 'ERR_BLOB_NOT_FOUND'"
+              then:
+                - name: propagate
+                  throw:
+                    code: !cel "error.code"
+                    message: !cel "error.message"
+                    data: !cel "has(error.data) ? error.data : null"
+      outputs:
+        id: !cel "item"
+        data: !cel "has(steps.bytes) ? dyn(steps.bytes.result.bytes) : null"
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      ids: !cel >-
+        distinct(flatten(steps.history.result.filter(m, type(m.content) == type([])).map(m,
+          m.content.filter(p, type(p) == type({}) && 'type' in p && p.type == 'attachment').map(p, string(p.id)))))
   # The reasoning the conversation last recorded, replayed only to the model
   # that produced it: another model cannot read it. This turn's own counts — a
   # continued turn's interrupted attempt recorded the latest. Never state from
@@ -6784,7 +7369,9 @@ steps:
         (size(steps.summary.result.rows) > 0
           ? [{'role': 'user', 'content': 'CONVERSATION SUMMARY: ' + string(steps.summary.result.rows[0].summary)}]
           : [])
-        + steps.readHistory.result.rows.map(r, parseJson(r.message)) + [{
+        + steps.history.result.map(m, type(m.content) == type([])
+            ? dyn({'role': m.role, 'content': Self.modelContent(m.content, steps.uploads.result, int(variables.maxToolResultBytes))})
+            : dyn(m)) + [{
           'role': 'user',
           'content': 'CURRENT TIME: ' + nowIso() + ' (UTC). Resolve every relative period the user names — "last week", "this month", "since Friday" — against this, and say which absolute range you resolved it to. Never guess a date, and where the boundaries depend on the user timezone, ask.'
         }, {

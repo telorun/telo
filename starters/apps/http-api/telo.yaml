@@ -2,76 +2,437 @@ kind: Telo.Application
 metadata:
   name: HttpApi
   version: 1.0.0
+  categories: [ Transport, Storage, Security ]
   description: |
-    A single typed `GET /v1/hello?name=…` route. Shows how `Http.Server` mounts
-    an `Http.Api`, how the request schema feeds a `!cel` expression on `inputs`,
-    and how the handler's output flows into the response body via `result.*`.
+    A hand-written JSON API over a SQLite table — bookmarks, with the parts a
+    real service ends up needing already in place:
+
+      - typed routes: path, query and body schemas refuse a bad request with a
+        400 before a handler runs, and feed the generated OpenAPI document
+      - a bearer token checked once per mount by a `guard:`, not per route
+      - a rate limit on writes, answered as a 429 with `Retry-After`
+      - a thrown code (`ERR_BOOKMARK_NOT_FOUND`) rendered as a 404 by `catches:`
+        — `telo check` refuses a route that leaves a throwable code unrendered
+      - an unguarded `/healthz` beside the guarded API
+      - configuration from flags or the environment, and a log level you can turn
 
     Run, then:
-        curl 'http://localhost:8845/v1/hello?name=World'
+        curl -s localhost:8845/healthz
+        curl -s -XPOST localhost:8845/v1/bookmarks \
+          -H 'authorization: Bearer local-dev-token' -H 'content-type: application/json' \
+          -d '{"url":"https://telo.run","title":"Telo","tag":"docs"}'
+        curl -s 'localhost:8845/v1/bookmarks?tag=docs' -H 'authorization: Bearer local-dev-token'
+    The OpenAPI document is at http://localhost:8845/openapi.json.
+
+    Every input is a flag as well as an environment variable:
+        telo . --log-level debug --write-limit 5
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.0#sha256-yPwUSVVhRMiqQYQ9cbptorm1cA-HnJW6pLHRZ-8-qPA
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.0#sha256-wHzRZi3uI7c12dRSULXQBO8GRYqhJj6gos6xv6eZj7g
 targets:
+  - !ref migrate
   - !ref server
 ports:
   http:
     env: PORT
     protocol: tcp
     default: 8845
+secrets:
+  apiToken:
+    env: API_TOKEN
+    type: string
+    default: local-dev-token
+    description: The bearer token every /v1 request must carry.
+variables:
+  dbFile:
+    env: DB_FILE
+    arg: db-file
+    type: string
+    x-telo-type: Telo.HostPath
+    default: bookmarks.db
+  writeLimit:
+    env: WRITE_LIMIT
+    arg: write-limit
+    type: integer
+    minimum: 1
+    default: 30
+    description: How many bookmarks one client may create per minute.
+  logLevel:
+    env: LOG_LEVEL
+    arg: log-level
+    type: string
+    enum: [ trace, debug, info, warn, error, fatal ]
+    default: info
+# Pretty on a terminal, JSON when piped — one record per request either way.
+logging:
+  level: !cel "variables.logLevel"
+  sinks:
+    - kind: Telo.ConsoleSink
+      encoding: auto
 ---
-kind: Http.Server
-metadata:
-  name: server
-port: !cel "ports.http"
-openapi:
-  info:
-    title: Hello server
-    version: 1.0.0
-mounts:
-  - path: /v1
-    mount: !ref helloApi
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: bookmarks }
+table: bookmarks
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  url: { type: text, nullable: false }
+  title: { type: text, nullable: false }
+  tag: { type: text, nullable: false, default: "" }
+  created_at: { type: text, nullable: false, defaultExpression: "datetime('now')" }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables:
+  - !ref bookmarks
+---
+# The one read path: every handler that answers with a bookmark goes through
+# it, so the row shape is declared once, here.
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ rows ]
+    properties:
+      rows:
+        type: array
+        items:
+          type: object
+          required: [ id, url, title, tag, createdAt ]
+          properties:
+            id: { type: integer }
+            url: { type: string }
+            title: { type: string }
+            tag: { type: string }
+            createdAt: { type: string }
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+# The inbound check, run once per request on the guarded mount, before the
+# body is read. A throw refuses the request; a normal return lets it through.
+kind: Run.Sequence
+metadata: { name: requireToken }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ authorization ]
+    properties:
+      authorization: { type: string, x-telo-sensitive: true }
+steps:
+  - name: check
+    if: !cel "inputs.authorization != 'Bearer ' + secrets.apiToken"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_UNAUTHENTICATED
+          message: a bearer token is required
+---
+# Counters live in the process. Swap this one resource for cache-redis and the
+# limit is shared by every replica.
+kind: CacheMemory.Store
+metadata: { name: counters }
+---
+kind: RateLimit.Guard
+metadata: { name: writeLimit }
+store: !ref counters
+limit: !cel "variables.writeLimit"
+window: "60s"
+---
+kind: Run.Sequence
+metadata: { name: listBookmarks }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ tag, limit ]
+    properties:
+      tag: { type: string }
+      limit: { type: integer }
+steps:
+  - name: found
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT id, url, title, tag, created_at AS "createdAt" FROM bookmarks
+        WHERE (? = '' OR tag = ?) ORDER BY id DESC LIMIT ?
+      bindings:
+        - !cel "inputs.tag"
+        - !cel "inputs.tag"
+        - !cel "inputs.limit"
+outputs:
+  bookmarks: !cel "steps.found.result.rows"
+---
+# The limit is a verdict, not a throw: over it, nothing is written and the
+# route answers 429 from `allowed`.
+kind: Run.Sequence
+metadata: { name: createBookmark }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ client, url, title, tag ]
+    properties:
+      client: { type: string }
+      url: { type: string }
+      title: { type: string }
+      tag: { type: string }
+steps:
+  - name: limit
+    invoke: !ref writeLimit
+    inputs:
+      key: !cel "inputs.client"
+  - name: write
+    if: !cel "steps.limit.result.allowed"
+    then:
+      # `RETURNING` makes the insert a read, so the stored row — key and
+      # timestamp included — is what the client gets back.
+      - name: inserted
+        invoke: !ref query
+        inputs:
+          sql: >-
+            INSERT INTO bookmarks (url, title, tag) VALUES (?, ?, ?)
+            RETURNING id, url, title, tag, created_at AS "createdAt"
+          bindings:
+            - !cel "inputs.url"
+            - !cel "inputs.title"
+            - !cel "inputs.tag"
+outputs:
+  allowed: !cel "steps.limit.result.allowed"
+  retryAfter: !cel "steps.limit.result.retryAfter"
+  bookmarks: !cel "steps.limit.result.allowed ? steps.inserted.result.rows : []"
+---
+kind: Run.Sequence
+metadata: { name: readBookmark }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ id ]
+    properties:
+      id: { type: integer }
+steps:
+  - name: found
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT id, url, title, tag, created_at AS "createdAt" FROM bookmarks WHERE id = ?
+      bindings:
+        - !cel "inputs.id"
+  - name: missing
+    if: !cel "size(steps.found.result.rows) == 0"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_BOOKMARK_NOT_FOUND
+          message: !cel "'no bookmark ' + string(inputs.id)"
+outputs:
+  bookmark: !cel "steps.found.result.rows[0]"
+---
+kind: Run.Sequence
+metadata: { name: deleteBookmark }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ id ]
+    properties:
+      id: { type: integer }
+steps:
+  - name: removed
+    invoke: !ref exec
+    inputs:
+      sql: "DELETE FROM bookmarks WHERE id = ?"
+      bindings:
+        - !cel "inputs.id"
+  - name: missing
+    if: !cel "steps.removed.result.rowCount == 0"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_BOOKMARK_NOT_FOUND
+          message: !cel "'no bookmark ' + string(inputs.id)"
 ---
 kind: Http.Api
-metadata:
-  name: helloApi
+metadata: { name: bookmarkRoutes }
 routes:
   - request:
-      path: /hello
+      path: /bookmarks
       method: GET
       schema:
         query:
           type: object
           properties:
-            name:
-              type: string
-          required: [ "name" ]
-    handler: !ref sayHello
+            tag: { type: string }
+            limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    handler: !ref listBookmarks
     inputs:
-      name: !cel "request.query.name"
+      tag: !cel "has(request.query.tag) ? request.query.tag : ''"
+      limit: !cel "has(request.query.limit) ? request.query.limit : 20"
     returns:
       - status: 200
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                greeting: { type: string }
-              required: [ greeting ]
-              additionalProperties: false
+              type: array
+              # What the API promises for one bookmark, anchored once and reused
+              # by every route below — it is what the OpenAPI document publishes.
+              items: &bookmark
+                type: object
+                additionalProperties: false
+                required: [ id, url, title, tag, createdAt ]
+                properties:
+                  id: { type: integer }
+                  url: { type: string }
+                  title: { type: string }
+                  tag: { type: string }
+                  createdAt: { type: string }
+            body: !cel "result.bookmarks"
+
+  - request:
+      path: /bookmarks
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ url, title ]
+          properties:
+            url: { type: string, pattern: "^https?://" }
+            title: { type: string, minLength: 1, maxLength: 200 }
+            tag: { type: string, maxLength: 40 }
+    handler: !ref createBookmark
+    inputs:
+      client: !cel "request.ip"
+      url: !cel "request.body.url"
+      title: !cel "request.body.title"
+      tag: !cel "has(request.body.tag) ? request.body.tag : ''"
+    returns:
+      - status: 429
+        when: !cel "!result.allowed"
+        headers:
+          Retry-After: !cel "string(result.retryAfter)"
+        content:
+          application/json:
             body:
-              greeting: !cel "'Hello ' + result.message + '!'"
+              error: rate_limited
+      - status: 201
+        content:
+          application/json:
+            schema: *bookmark
+            body: !cel "result.bookmarks[0]"
+
+  - request:
+      path: /bookmarks/{id}
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [ id ]
+          properties:
+            id: { type: integer }
+    handler: !ref readBookmark
+    inputs:
+      id: !cel "request.params.id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            schema: *bookmark
+            body: !cel "result.bookmark"
+    catches:
+      - when: !cel "error.code == 'ERR_BOOKMARK_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: not_found
+              message: !cel "error.message"
+
+  - request:
+      path: /bookmarks/{id}
+      method: DELETE
+      schema:
+        params:
+          type: object
+          required: [ id ]
+          properties:
+            id: { type: integer }
+    handler: !ref deleteBookmark
+    inputs:
+      id: !cel "request.params.id"
+    returns:
+      - status: 204
+    catches:
+      - when: !cel "error.code == 'ERR_BOOKMARK_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: not_found
+              message: !cel "error.message"
 ---
-kind: Run.Value
-metadata:
-  name: sayHello
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      name: { type: string }
-    required: [ "name" ]
-    additionalProperties: false
-value:
-  message: !cel "inputs.name"
+# Unguarded on purpose: an orchestrator's probe carries no token.
+kind: Http.Api
+metadata: { name: probeRoutes }
+routes:
+  - request:
+      path: /healthz
+      method: GET
+    handler:
+      kind: Sql.Query
+      connection: !ref db
+    inputs:
+      sql: "SELECT 1 AS ok"
+      bindings: []
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              status: ok
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+openapi:
+  info:
+    title: Bookmarks API
+    version: 1.0.0
+mounts:
+  - path: /v1
+    mount: !ref bookmarkRoutes
+    guard:
+      invoke: !ref requireToken
+      inputs:
+        authorization: !cel "'authorization' in request.headers ? string(request.headers['authorization']) : ''"
+      catches:
+        - when: !cel "error.code == 'ERR_UNAUTHENTICATED'"
+          status: 401
+          headers:
+            WWW-Authenticate: Bearer
+          content:
+            application/json:
+              body:
+                error: unauthenticated
+                message: !cel "error.message"
+  - path: /
+    mount: !ref probeRoutes

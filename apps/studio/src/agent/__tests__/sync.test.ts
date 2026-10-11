@@ -47,7 +47,7 @@ function fakeBridge(
       for (const w of writes) files.set(w.path, w.content);
       for (const d of deletes) files.delete(d);
     },
-    editorFile: () => null,
+    editorFile: () => null, workspaceFile: () => null,
   };
 }
 

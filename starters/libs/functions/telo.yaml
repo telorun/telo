@@ -1,0 +1,133 @@
+kind: Telo.Library
+metadata:
+  name: Pricing
+  version: 1.0.0
+  description: |
+    A library of functions: the pricing rules of a shop, written once in CEL
+    and called from any expression of whoever imports it —
+
+        total: !cel "Pricing.withVat(item.net)"
+        label: !cel "Pricing.formatMoney(Pricing.quote(1250, 3).gross)"
+
+    A function is a resource like any other. It has a typed signature that
+    `telo check` holds every call to — the wrong number of arguments, or a
+    string where a number goes, is an error at the call site — and it is
+    exported exactly as an instance is, through `exports.resources`.
+
+    Worth copying: an optional parameter with a default (`rate`), a function
+    that returns a typed object (`quote`), functions built from other functions
+    (`quote` calls `withVat`), and two left off the export list (`roundCents`,
+    `volumeDiscount`), which importers cannot call. A function computes from its arguments alone —
+    it sees no variables, resources or request — which is what makes it safe to
+    call anywhere.
+exports:
+  resources:
+    - withVat
+    - quote
+    - formatMoney
+    - slugify
+---
+# Internal: this one and `volumeDiscount` are not exported, so only the
+# library's own functions can call them.
+kind: Telo.Function
+metadata:
+  name: roundCents
+  description: Rounds an amount of cents to a whole cent.
+params:
+  - name: amount
+    schema: { type: number }
+returns:
+  schema: { type: integer }
+body: !cel "int(round(amount))"
+---
+kind: Telo.Function
+metadata:
+  name: volumeDiscount
+  description: Ten percent off a line of ten units or more, in cents.
+params:
+  - name: net
+    schema: { type: integer }
+  - name: quantity
+    schema: { type: integer }
+returns:
+  schema: { type: integer }
+body: !cel "quantity >= 10 ? Self.roundCents(double(net) * 0.1) : 0"
+---
+kind: Telo.Function
+metadata:
+  name: withVat
+  description: Adds VAT to a net amount in cents, at the given rate.
+params:
+  - name: net
+    schema: { type: integer }
+  # Optional parameters come last; an omitted one takes its default.
+  - name: rate
+    schema: { type: number, default: 0.23 }
+    optional: true
+returns:
+  schema: { type: integer }
+body: !cel "Self.roundCents(double(net) * (1.0 + rate))"
+---
+kind: Telo.Function
+metadata:
+  name: quote
+  description: >-
+    Prices a line: the unit price times the quantity, with a volume discount
+    from ten units up, then VAT. Amounts are in cents.
+params:
+  - name: unitNet
+    schema: { type: integer }
+  - name: quantity
+    schema: { type: integer }
+  - name: rate
+    schema: { type: number, default: 0.23 }
+    optional: true
+# The result's shape is declared, so `Pricing.quote(…).gross` is type-checked
+# at every call site and a misspelled member is an error there.
+returns:
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ net, discount, vat, gross ]
+    properties:
+      net: { type: integer }
+      discount: { type: integer }
+      vat: { type: integer }
+      gross: { type: integer }
+# `cel.bind` names an intermediate value, so each amount is computed once.
+body: !cel >-
+  cel.bind(net, unitNet * quantity,
+    cel.bind(discount, Self.volumeDiscount(net, quantity),
+      {
+        'net': net,
+        'discount': discount,
+        'vat': Self.withVat(net - discount, rate) - (net - discount),
+        'gross': Self.withVat(net - discount, rate)
+      }))
+---
+kind: Telo.Function
+metadata:
+  name: formatMoney
+  description: Renders an amount of cents as money, e.g. 123456 → "€1,234.56".
+params:
+  - name: cents
+    schema: { type: integer }
+  - name: symbol
+    schema: { type: string, default: "€" }
+    optional: true
+returns:
+  schema: { type: string }
+body: !cel "symbol + format(double(cents) / 100.0, ',.2f')"
+---
+kind: Telo.Function
+metadata:
+  name: slugify
+  description: >-
+    Turns a product name into a URL slug: lower case, every run of anything but
+    letters and digits becoming one hyphen, none at either end.
+params:
+  - name: text
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "trimSuffix(trimPrefix(regexReplace(lower(text), '[^a-z0-9]+', '-'), '-'), '-')"

@@ -14,7 +14,7 @@ A data grid over a REST collection.
 | `rowStyle` | | a [style rule](nodes.md#style-rules) for the whole row |
 | `create`, `edit` | | [how a form is opened](#opening-a-form): `{ form, surface?, afterSubmit?, unsaved? }` |
 | `delete` | `false` | whether each row offers a confirmed delete |
-| `rowActions` | none | [operations each row offers](#row-actions): `{ action, inputs, confirm? }` each |
+| `rowActions` | none | [operations each row offers](#row-actions): `{ action, inputs, confirm?, prompt? }` each |
 
 The collection must speak [the collection contract](collection-contract.md).
 
@@ -118,14 +118,45 @@ rowActions:
 | --- | --- | --- |
 | `action` | required | the [`Ui.Action`](action.md) run, `!ref` or inline |
 | `inputs` | required, at least one | the record sent, by input property: a path into `row`, or a fixed value |
-| `confirm` | | a question asked first; left out, a press runs the action at once |
+| `confirm` | | a question asked first; left out, a press runs the action at once, unless `prompt` opens a dialog |
+| `prompt` | `false` | whether a press opens a dialog that [asks for more](#asking-for-more) before the action is sent |
 
 The button shows the action's `label` and sends
-[its request](action-contract.md#from-a-row) to its `source.path`. A row uses
-only that much of the action: its `fields` are not read, since nothing opens to
-complete an input — every property the action's `inputModel` requires is bound
-here. Once the operation succeeds, the tables over the same `source.basePath`
-reload.
+[its request](action-contract.md#from-a-row) to its `source.path`. Every
+property the action's `inputModel` requires is bound here. Once the operation
+succeeds, the tables over the same `source.basePath` reload.
+
+### Asking for more
+
+`prompt: true` opens a dialog on the press, titled with `confirm` — or with the
+action's label when there is no question — and holding a field for each of the
+action's [`fields`](action.md) that `inputs` does not bind: a reason, a note,
+a date.
+
+```yaml
+rowActions:
+  - action:
+      kind: Ui.Action
+      inputModel: !ref Rejection      # { id (required), reason }
+      source: { path: /api/reject }
+      label: Reject
+    inputs:
+      id: !cel "row.id"
+    confirm: Reject this request?
+    prompt: true                      # the dialog asks for `reason`
+```
+
+- The fields are the action's own: the ones it lists, or every property a
+  control can enter, less those the row binds. Each is drawn as a form draws it.
+- The record sent is what the dialog entered with the row's `inputs` over it. A
+  field left empty is left out.
+- What is entered is checked in the page against the input model before
+  anything is sent, as a form's is.
+- `inputs` still binds every property the input model requires, so a prompted
+  field is one the model leaves optional. An operation that needs one answers
+  with a 400 naming it, and the dialog shows that on the field.
+- With every field of the action bound by the row, the dialog holds none and is
+  a confirmation.
 
 Each entry's `inputs` is checked as a record of **its own** action's
 `inputModel`, so two entries over different models do not mix. `telo check`

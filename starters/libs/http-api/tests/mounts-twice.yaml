@@ -1,0 +1,66 @@
+kind: Telo.Application
+metadata:
+  name: HttpApiLibraryStarterTest
+  version: 1.0.0
+  description: >-
+    Runs an application that mounts the library under two paths with two
+    configurations, and calls both. Each import must answer with its own
+    greeting, and the library's own validation and error mapping must reach the
+    caller through the importer's server.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  HttpClient: ../../../../modules/http-client
+  Assert: ../../../../modules/assert
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8202
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ./__fixtures__/greeter-app.yaml
+    ports:
+      http: 8202
+targets:
+  - !ref app
+steps:
+  - name: english
+    invoke: !ref call
+    inputs: { url: /en/hello, method: GET, query: { name: Ada } }
+  - name: spanish
+    invoke: !ref call
+    inputs: { url: /es/hello, method: GET, query: { name: Ada, shout: "true" } }
+  - name: info
+    invoke: !ref call
+    inputs: { url: /es/info, method: GET }
+  - name: noName
+    invoke: !ref call
+    inputs: { url: /en/hello, method: GET }
+  - name: number
+    invoke: !ref call
+    inputs: { url: /en/hello, method: GET, query: { name: "42" } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        english: !cel "steps.english.result.body"
+        spanish: !cel "steps.spanish.result.body"
+        info: !cel "steps.info.result.body"
+        noName: !cel "steps.noName.result.status"
+        number: !cel "steps.number.result.status"
+        numberBody: !cel "steps.number.result.body.error"
+      expected:
+        english: { greeting: "Hello, Ada!" }
+        spanish: { greeting: "HOLA, ADA!" }
+        info: { service: greeter, greeting: Hola }
+        noName: 400
+        number: 422
+        numberBody: name_refused

@@ -14,11 +14,13 @@ metadata:
     supplies its config, and the author-facing schema narrows to the one field
     a pager alert actually needs.
 
-    Two things worth copying. `alertSource` is a library `variables:` entry —
+    Three things worth copying. `alertSource` is a library `variables:` entry —
     the public contract an importer configures the whole library with, read
-    inside a kind's body as `variables.alertSource`. And the kinds are gated:
+    inside a kind's body as `variables.alertSource`. The kinds are gated:
     `exports.kinds` is what importers may reference, so a kind left off that
-    list stays internal.
+    list stays internal. And a field an importer should be able to compute —
+    a URL from a variable, a routing key from a secret — is marked
+    `x-telo-eval: compile`.
 variables:
   alertSource:
     type: string
@@ -52,10 +54,14 @@ schema:
   additionalProperties: false
   required: [ url ]
   properties:
+    # `x-telo-eval: compile` makes a field a CEL slot resolved once at startup,
+    # so an importer can write `url: !cel "variables.hookUrl"`. Without it a
+    # `!cel` there is refused: the value would be read as a literal.
     url:
       title: URL
       description: Absolute URL the payload is posted to.
       type: string
+      x-telo-eval: compile
     headers:
       title: Headers
       description: Headers sent with every alert from this resource.
@@ -115,6 +121,7 @@ schema:
       title: Routing key
       description: The integration (routing) key of the PagerDuty service to alert.
       type: string
+      x-telo-eval: compile
 # `base:` is the super(...) call: it supplies the parent's config, so `url` is
 # never written on an instance of this kind.
 base:

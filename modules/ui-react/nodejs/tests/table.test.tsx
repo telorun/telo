@@ -15,6 +15,17 @@ const show = (children: unknown[], rows = todos) =>
 const row = (...path: string[]) => ({ root: "row", path });
 const archive = { path: "/api/todos/archive", label: "Archive", inputs: { id: row("id"), status: { value: "archived" }, reason: row("reason") } };
 const rename = { path: "/api/todos/rename", label: "Rename", inputs: { text: row("text") }, confirm: "Rename this task?" };
+/** An operation whose dialog asks for a reason before it is sent. */
+const reject = {
+  path: "/api/todos/reject",
+  label: "Reject",
+  inputs: { id: row("id") },
+  confirm: "Reject this task?",
+  prompt: {
+    schema: { type: "object", required: ["id"], properties: { id: { type: "integer" }, reason: { type: "string", title: "Reason", minLength: 3 } } },
+    fields: [{ property: "reason", label: "Reason" }],
+  },
+};
 /** A table whose rows offer two operations, and nothing else unless told. */
 const acting = (overrides: Record<string, unknown> = {}) => tableNode({ rowActions: [archive, rename], create: undefined, edit: undefined, delete: false, ...overrides });
 /** A table whose one row holds an address, in an application of two pages. */
@@ -394,6 +405,61 @@ describe("a table", () => {
     expect(rendered.sent.map((each) => each.request)).toEqual(["POST /api/todos/archive", "POST /api/todos/archive"]);
     expect(confirmation()).toBeNull();
     expect(lists(rendered)).toHaveLength(before + 1);
+  });
+
+  it("opens a row operation's prompt, and sends what it entered with what the row binds", async () => {
+    rendered = await show([acting({ rowActions: [reject] })]);
+    rendered.answer("/api/todos/reject", () => new Response(null, { status: 204 }));
+    await rendered.click(rendered.parts("row-action")[0]);
+    const dialog = confirmation() as HTMLElement;
+    expect(dialog.querySelector('[data-telo-part="surface-title"]')?.textContent).toBe("Reject this task?");
+    expect([...dialog.querySelectorAll('[data-telo-part="label"]')].map((label) => label.textContent)).toEqual(["Reason"]);
+    expect(rendered.sent).toEqual([]);
+    await rendered.enter(dialog.querySelector('[data-telo-part="input"]') as Element, "Out of scope");
+    const before = lists(rendered).length;
+    await rendered.click(confirming());
+    expect(rendered.sent.map((each) => [each.request, each.body])).toEqual([["POST /api/todos/reject", { id: 1, reason: "Out of scope" }]]);
+    expect(confirmation()).toBeNull();
+    expect(lists(rendered)).toHaveLength(before + 1);
+  });
+
+  it("opens a prompt with no question under the operation's label, and leaves an empty field out of the record", async () => {
+    rendered = await show([acting({ rowActions: [{ ...reject, confirm: undefined }] })]);
+    rendered.answer("/api/todos/reject", () => new Response(null, { status: 204 }));
+    await rendered.click(rendered.parts("row-action")[0]);
+    expect(confirmation()?.querySelector('[data-telo-part="surface-title"]')?.textContent).toBe("Reject");
+    await rendered.click(confirming());
+    expect(rendered.sent.map((each) => each.body)).toEqual([{ id: 1 }]);
+  });
+
+  it("refuses in the page what the input model refuses of a prompt's field, and sends nothing", async () => {
+    rendered = await show([acting({ rowActions: [reject] })]);
+    await rendered.click(rendered.parts("row-action")[0]);
+    await rendered.enter(confirmation()?.querySelector('[data-telo-part="input"]') as Element, "No");
+    await rendered.click(confirming());
+    expect(rendered.sent).toEqual([]);
+    expect(confirmation()?.querySelector('[data-telo-part="field-error"]')?.textContent).toBeTruthy();
+  });
+
+  it("shows a prompt's 400 on the field it names and the rest under the fields, keeping what was entered", async () => {
+    rendered = await show([acting({ rowActions: [reject] })]);
+    rendered.answer(
+      "/api/todos/reject",
+      () => new Response(JSON.stringify({ error: "ValidationError", details: [{ location: "body", path: "reason", message: "is required" }, { location: "body", path: "id", message: "is closed" }] }), { status: 400 }),
+    );
+    const before = lists(rendered).length;
+    await rendered.click(rendered.parts("row-action")[0]);
+    await rendered.click(confirming());
+    const dialog = confirmation() as HTMLElement;
+    expect(dialog.querySelector('[data-telo-part="field-error"]')?.textContent).toBe("is required");
+    expect(dialog.querySelector('[data-telo-part="form-error"]')?.textContent).toBe("id is closed");
+    expect(dialog.querySelector('[data-telo-part="error"]')).toBeNull();
+    expect(lists(rendered)).toHaveLength(before);
+    rendered.answer("/api/todos/reject", () => new Response(null, { status: 204 }));
+    await rendered.enter(dialog.querySelector('[data-telo-part="input"]') as Element, "Out of scope");
+    await rendered.click(confirming());
+    expect(rendered.sent.map((each) => each.body)).toEqual([{ id: 1 }, { id: 1, reason: "Out of scope" }]);
+    expect(confirmation()).toBeNull();
   });
 
   it("dismisses a refused row operation when its confirmation is closed", async () => {

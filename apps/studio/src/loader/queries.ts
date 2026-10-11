@@ -235,6 +235,15 @@ export function isWorkspaceModule(workspace: Workspace, filePath: string): boole
   return filePath.startsWith(root);
 }
 
+/** True when the workspace directory holds no module of its own — whatever
+ *  external imports a since-deleted module left loaded. */
+export function hasNoWorkspaceModules(workspace: Workspace): boolean {
+  for (const filePath of workspace.modules.keys()) {
+    if (isWorkspaceModule(workspace, filePath)) return false;
+  }
+  return true;
+}
+
 /** A workspace-local `Telo.Library` the active module could import directly,
  *  with the relative source and a deduped PascalCase alias ready to write. */
 export interface ImportableLibrary {

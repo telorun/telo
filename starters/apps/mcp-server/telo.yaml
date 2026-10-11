@@ -2,25 +2,36 @@ kind: Telo.Application
 metadata:
   name: McpServer
   version: 1.0.0
+  categories: [ AI, Transport, Storage ]
   description: |
     An MCP server an assistant (Claude Desktop, Cursor, any MCP client) can
-    call: two tools — `search_notes` and `add_note` — over a SQLite table.
+    call: four tools over a SQLite table of notes, behind a bearer token.
 
     A tool is a description for a model plus a handler: `argumentsSchema` is
     what the model must produce, `inputs:` maps that onto an ordinary
     `Telo.Invocable`, and `result:` renders what comes back. The handlers know
-    nothing about MCP, so the same resources can be mounted on an HTTP route
-    later without being written twice.
+    nothing about MCP — which is why the same `searchNotes` resource is also
+    served as a plain REST route at `/api/notes`, without being written twice.
 
-    Run, then point a client at http://localhost:8067/mcp, or:
+    Two kinds of failure, on purpose. `get_note` on a missing id is a SOFT
+    failure: the tool succeeds and says so in words with `isError`, so the model
+    can read it and try something else. `delete_note` on a missing id THROWS,
+    and `catches:` turns the code into a JSON-RPC error the client sees as a
+    failed call.
+
+    Run, then point a client at http://localhost:8067/mcp with the header
+    `authorization: Bearer local-dev-token`, or:
         curl -s -XPOST localhost:8067/mcp -H 'content-type: application/json' \
           -H 'accept: application/json, text/event-stream' \
+          -H 'authorization: Bearer local-dev-token' \
           -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+        curl -s 'localhost:8067/api/notes?q=milk' -H 'authorization: Bearer local-dev-token'
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
   Mcp: oci://ghcr.io/telorun/mcp-server@0.18.0#sha256-AUCLqkRWEEt_LvYqqhRyvwz1V2NZ_5eeDECBXVfsJZk
   Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
 targets:
   - !ref migrate
   - !ref server
@@ -29,12 +40,30 @@ ports:
     env: PORT
     protocol: tcp
     default: 8067
+secrets:
+  apiToken:
+    env: API_TOKEN
+    type: string
+    default: local-dev-token
+    description: The bearer token every MCP and REST request must carry.
 variables:
   dbFile:
     env: DB_FILE
+    arg: db-file
     type: string
     x-telo-type: Telo.HostPath
     default: notes.db
+  logLevel:
+    env: LOG_LEVEL
+    arg: log-level
+    type: string
+    enum: [ trace, debug, info, warn, error, fatal ]
+    default: info
+logging:
+  level: !cel "variables.logLevel"
+  sinks:
+    - kind: Telo.ConsoleSink
+      encoding: auto
 ---
 kind: SQLite.Connection
 metadata: { name: db }
@@ -54,7 +83,7 @@ connection: !ref db
 tables:
   - !ref notes
 ---
-# The two operations, as plain resources. Nothing here knows a model is calling.
+# The operations, as plain resources. Nothing here knows a model is calling.
 kind: Sql.Query
 metadata: { name: searchNotes }
 connection: !ref db
@@ -62,11 +91,13 @@ outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
+    required: [ rows ]
     properties:
       rows:
         type: array
         items:
           type: object
+          required: [ id, title, body ]
           properties:
             id: { type: integer }
             title: { type: string }
@@ -81,13 +112,45 @@ outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
+    required: [ rows ]
     properties:
       rows:
         type: array
         items:
           type: object
+          required: [ id ]
           properties:
             id: { type: integer }
+---
+# A delete that affects nothing is a caller's mistake, so it throws — and each
+# transport decides how that code is shown.
+kind: Run.Sequence
+metadata: { name: deleteNote }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ id ]
+    properties:
+      id: { type: integer }
+steps:
+  - name: removed
+    invoke:
+      kind: Sql.Command
+      connection: !ref db
+    inputs:
+      sql: "DELETE FROM notes WHERE id = ?"
+      bindings:
+        - !cel "inputs.id"
+  - name: missing
+    if: !cel "steps.removed.result.rowCount == 0"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_NOTE_NOT_FOUND
+          message: !cel "'no note #' + string(inputs.id)"
+outputs:
+  id: !cel "inputs.id"
 ---
 kind: Mcp.Tools
 metadata: { name: NoteTools }
@@ -95,7 +158,7 @@ entries:
   - name: search_notes
     description: >-
       Search notes by a free-text term matched against the title and body.
-      Returns each match with its id and title.
+      Returns each match with its id and title. An empty query lists everything.
     argumentsSchema:
       type: object
       additionalProperties: false
@@ -117,6 +180,33 @@ entries:
             size(result.rows) == 0
               ? 'No notes matched.'
               : result.rows.map(r, '#' + string(r.id) + ' ' + r.title).join('\n')
+      # The same answer as data, for a client that reads structure instead of text.
+      structuredContent:
+        notes: !cel "result.rows.map(r, {'id': r.id, 'title': r.title})"
+
+  - name: get_note
+    description: Read one note in full, by the id search_notes returned.
+    argumentsSchema:
+      type: object
+      additionalProperties: false
+      required: [ id ]
+      properties:
+        id: { type: integer, description: The note's id. }
+    handler: !ref searchNotes
+    inputs:
+      sql: "SELECT id, title, body FROM notes WHERE id = ?"
+      bindings:
+        - !cel "request.arguments.id"
+    # A soft failure: the call succeeds and the text says what went wrong, so
+    # the model can read it and search again.
+    result:
+      isError: !cel "size(result.rows) == 0"
+      content:
+        - type: text
+          text: !cel >-
+            size(result.rows) == 0
+              ? 'There is no note #' + string(request.arguments.id) + '. Use search_notes to find one.'
+              : result.rows[0].title + '\n\n' + result.rows[0].body
 
   - name: add_note
     description: Store a new note with a title and a body.
@@ -125,7 +215,7 @@ entries:
       additionalProperties: false
       required: [ title, body ]
       properties:
-        title: { type: string, description: A short title for the note. }
+        title: { type: string, minLength: 1, description: A short title for the note. }
         body: { type: string, description: The note's contents. }
     handler: !ref addNote
     inputs:
@@ -134,17 +224,87 @@ entries:
       content:
         - type: text
           text: !cel "'Saved note #' + string(result.rows[0].id)"
+
+  - name: delete_note
+    description: Permanently delete a note by id.
+    argumentsSchema:
+      type: object
+      additionalProperties: false
+      required: [ id ]
+      properties:
+        id: { type: integer, description: The note's id. }
+    handler: !ref deleteNote
+    inputs:
+      id: !cel "request.arguments.id"
+    result:
+      content:
+        - type: text
+          text: !cel "'Deleted note #' + string(result.id)"
+    # A hard failure: the handler threw, and the client gets a JSON-RPC error.
+    catches:
+      - code: ERR_NOTE_NOT_FOUND
+        error:
+          # Application codes start below the ones the transport itself uses
+          # (-32000 and -32001 are session errors).
+          code: -32010
+          message: !cel "error.message"
 ---
 kind: Mcp.HttpEndpoint
 metadata: { name: mcpEndpoint }
 serverInfo:
   name: notes
-  version: 1.0.0
+  version: !cel "module.version"
 instructions: |
   This server stores short notes. Use search_notes to find existing ones before
-  adding a duplicate, and add_note to store a new one.
+  adding a duplicate, get_note to read one in full, add_note to store a new one,
+  and delete_note only when the user asks for a note to be removed.
 tools:
   - !ref NoteTools
+---
+# The same handler a tool calls, on a route: nothing about it is MCP's.
+kind: Http.Api
+metadata: { name: noteRoutes }
+routes:
+  - request:
+      path: /notes
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            q: { type: string }
+    handler: !ref searchNotes
+    inputs:
+      sql: "SELECT id, title, body FROM notes WHERE title LIKE ? OR body LIKE ? ORDER BY id"
+      bindings:
+        - !cel "'%' + (has(request.query.q) ? request.query.q : '') + '%'"
+        - !cel "'%' + (has(request.query.q) ? request.query.q : '') + '%'"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.rows"
+---
+# One check for both transports: a throw refuses the request before its body is
+# read; a normal return lets it through.
+kind: Run.Sequence
+metadata: { name: requireToken }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ authorization ]
+    properties:
+      authorization: { type: string, x-telo-sensitive: true }
+steps:
+  - name: check
+    if: !cel "inputs.authorization != 'Bearer ' + secrets.apiToken"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_UNAUTHENTICATED
+          message: a bearer token is required
 ---
 kind: Http.Server
 metadata: { name: server }
@@ -153,6 +313,23 @@ openapi:
   info:
     title: Notes MCP server
     version: 1.0.0
+# Declared once on the server, so every guarded mount renders the refusal alike.
+catches:
+  - when: !cel "error.code == 'ERR_UNAUTHENTICATED'"
+    status: 401
+    headers:
+      WWW-Authenticate: Bearer
+    content:
+      application/json:
+        body:
+          error: unauthenticated
 mounts:
   - path: /mcp
     mount: !ref mcpEndpoint
+    guard: &tokenGuard
+      invoke: !ref requireToken
+      inputs:
+        authorization: !cel "'authorization' in request.headers ? string(request.headers['authorization']) : ''"
+  - path: /api
+    mount: !ref noteRoutes
+    guard: *tokenGuard

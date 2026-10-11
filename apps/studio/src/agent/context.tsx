@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AgentClient,
   AgentRequestError,
@@ -31,18 +31,36 @@ import {
   userMessageId,
 } from "./records";
 import {
+  clearComposer,
   clearConversationId,
   loadAgentSettings,
+  loadComposer,
   loadConversationId,
   purgeStoredTranscripts,
   saveAgentSettings,
+  saveComposer,
   saveConversationId,
 } from "./storage";
+import {
+  EMPTY_COMPOSER,
+  appendBlock,
+  composerKey,
+  composerHold,
+  hasMessage,
+  queueComposerMessage,
+  unqueueIntoComposer,
+  uploadedAttachments,
+  type ComposerAttachment,
+  type ComposerState,
+} from "./composer";
+import { fileRefusal, perMessageRefusal, uploadMediaType, uploadRefusal } from "./attachment-rules";
 import type {
   AgentIdentityState,
   AgentStatus,
   AgentWorkspace,
   AssistantMessage,
+  Attachment,
+  AttachmentLimits,
   ChatMessage,
   CoResidentAgent,
   Conversation,
@@ -101,7 +119,53 @@ interface AgentContextValue {
   locked: boolean;
   error: string | null;
 
-  send: (message: string) => void;
+  send: (message: string, attachments?: Attachment[]) => void;
+  /** Send `text` to the workspace open or being opened, once its conversation
+   *  is settled; opens the panel. Queued when that conversation's turn is running. */
+  sendOnOpen: (text: string) => void;
+
+  // The composer — here rather than in the panel, so editor entry points can
+  // write into it and it outlives the panel.
+  /** The open conversation's unsent text and queued message, kept in browser
+   *  storage per conversation (per workspace before one exists). */
+  composer: ComposerState;
+  setComposerText: (text: string) => void;
+  /** False where nothing can be written: no workspace, or an archived conversation. */
+  canCompose: boolean;
+  /** Send the composer's message — its text, its uploaded files, or both — or,
+   *  while a turn runs, queue it: one queued message, a further submit appended
+   *  to it after a blank line, its files after the queued ones. Held while a
+   *  file is uploading or has failed. It goes out as
+   *  an ordinary new turn when the running turn finishes, and returns to the
+   *  composer when that turn fails or is stopped. */
+  submitComposer: () => void;
+  /** Move the queued message back into the composer. */
+  editQueued: () => void;
+  removeQueued: () => void;
+  /** What an upload may be — null unless the agent's `features` has
+   *  `attachments`, which is what every attachment surface is offered by. */
+  attachmentLimits: AttachmentLimits | null;
+  /** Put files on the composer. Each is uploaded at once — to a conversation
+   *  created first when there is none — and one the capability document rules
+   *  out becomes a failed chip saying why, without being sent. */
+  addAttachments: (files: File[]) => void;
+  /** Drop a file from the message. The upload stays the conversation's. */
+  removeAttachment: (key: string) => void;
+  /** Upload a failed file again. */
+  retryAttachment: (key: string) => void;
+  /** The local file behind a chip added in this session, for its thumbnail. */
+  attachmentFile: (key: string) => File | undefined;
+  /** An upload of the open conversation, typed as its record says. */
+  attachmentBlob: (attachment: Attachment) => Promise<Blob>;
+  /** Why the last submit was refused before sending, when it was. */
+  composerNotice: string | null;
+  /** Append prepared text to the composer, open the panel and focus the
+   *  composer. Never sends: every editor entry point calls this. */
+  compose: (text: string) => void;
+  /** Open the panel and focus the composer. */
+  focusComposer: () => void;
+  /** Bumped by each request to focus the composer. */
+  composerFocus: number;
   /** Abort the running turn: its stream stays open until the cancellation ends
    *  it, and the turn then reads as stopped. */
   stop: () => void;
@@ -165,12 +229,16 @@ interface AgentContextValue {
   exportConversation: (id: string, format: "markdown" | "json") => Promise<ConversationDownload>;
   /** Delete from here: remove `turnId` and every later turn. */
   truncateFrom: (turnId: string) => Promise<TurnActionOutcome>;
-  /** Retry / Edit & resend: remove `turnId` and every later turn, then send `text`. */
-  resendFrom: (turnId: string, text: string) => Promise<TurnActionOutcome>;
+  /** Retry / Edit & resend: remove `turnId` and every later turn, then send
+   *  `text` with the files the original message carried. */
+  resendFrom: (turnId: string, text: string, attachments?: Attachment[]) => Promise<TurnActionOutcome>;
   /** Branch: a new conversation holding every turn through `turnId`, opened. */
   branchFrom: (turnId: string) => Promise<void>;
 
   // Wiring from the editor shell.
+  /** Whether the shell offers the panel at all — what its toggle is shown by,
+   *  and so what every entry point into the composer is shown by. */
+  setPanelAvailable: (available: boolean) => void;
   setConversation: (id: string | null) => void;
   registerWorkspace: (bridge: WorkspaceBridge | null) => void;
   /** The active runner's base URL, used to launch a per-session agent. */
@@ -244,6 +312,10 @@ function refusalMessage(refusal: TurnRefused): string {
       return goneNotice(410);
     case ERR_CONVERSATION_ARCHIVED:
       return `This conversation is archived — unarchive it to continue. (${refusal.code})`;
+    case "ERR_ATTACHMENT_NOT_FOUND":
+      return "The agent no longer has a file attached to this message — remove it and attach it again.";
+    case "ERR_TOO_MANY_ATTACHMENTS":
+      return refusal.max === undefined ? "Too many files on one message." : perMessageRefusal(refusal.max);
     default:
       return refusal.message;
   }
@@ -314,6 +386,24 @@ const NO_EXCLUDED_PATHS: ReadonlySet<string> = new Set();
 
 const AgentContext = createContext<AgentContextValue | null>(null);
 
+/** What an editor entry point needs: the composer, and the path the agent
+ *  knows an editor file by. */
+export interface AgentCompose {
+  compose: (text: string) => void;
+  /** The workspace-relative path of an editor file; the path as given for a
+   *  file outside the workspace. */
+  workspaceFile: (editorPath: string) => string;
+}
+
+const AgentComposeContext = createContext<AgentCompose | null>(null);
+
+/** The composer entry points write into — null where the panel is not offered,
+ *  which is where they are not shown either. Its own context, so a canvas node
+ *  or a diagnostic popover is not re-rendered by every streamed record. */
+export function useAgentCompose(): AgentCompose | null {
+  return useContext(AgentComposeContext);
+}
+
 export function useAgent(): AgentContextValue {
   const ctx = useContext(AgentContext);
   if (!ctx) throw new Error("useAgent() called outside <AgentProvider>");
@@ -334,6 +424,31 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const [identity, setIdentity] = useState<AgentIdentityState | null>(null);
   const [questionCards, setQuestionCards] = useState(initialSettings.current.questionCards);
   const [panelWidth, setPanelWidth] = useState(initialSettings.current.panelWidth);
+  const [panelAvailable, setPanelAvailable] = useState(false);
+
+  // ── composer ────────────────────────────────────────────────────────────────
+  const [composer, setComposerState] = useState<ComposerState>(EMPTY_COMPOSER);
+  const composerRef = useRef<ComposerState>(EMPTY_COMPOSER);
+  // Where the composer shown is stored; null with no workspace open.
+  const composerKeyRef = useRef<string | null>(null);
+  const [composerFocus, setComposerFocus] = useState(0);
+  // The turn whose `finish` record arrived: the only ending a queued message
+  // is sent after.
+  const finishedTurnRef = useRef<string | null>(null);
+  // Set from a finished turn's end until its queued message is sent: the queue
+  // is spoken for, and a submit meanwhile joins it.
+  const flushingQueueRef = useRef(false);
+  const writeComposer = useCallback((change: (current: ComposerState) => ComposerState) => {
+    const next = change(composerRef.current);
+    if (next === composerRef.current) return;
+    composerRef.current = next;
+    setComposerState(next);
+    if (composerKeyRef.current) saveComposer(composerKeyRef.current, next);
+  }, []);
+  // A queued message whose turn will not finish goes back to the composer.
+  const returnQueued = useCallback(() => {
+    if (!flushingQueueRef.current) writeComposer(unqueueIntoComposer);
+  }, [writeComposer]);
 
   const [conversationId, setConversationId] = useState<string | null>(null);
   // The open conversation's agent-side state, and the agent (URL + token) it
@@ -364,6 +479,12 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // resolution still in flight notices it was superseded.
   const resolveGenRef = useRef(0);
   const resolvingRef = useRef(false);
+  // What `sendOnOpen` holds until the workspace's conversation is settled: a
+  // send before then would be wiped by the transcript that replaces the draft.
+  const openingMessageRef = useRef<string | null>(null);
+  const transcriptReadsRef = useRef(0);
+  // Assigned below, once `send` exists.
+  const deliverOpeningRef = useRef<() => void>(() => undefined);
   // The workspace's conversation was settled by something other than the
   // resolution — a send adopting one, a branch, the workspace closing.
   const supersedeResolution = useCallback(() => {
@@ -381,7 +502,12 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   // A message whose send failed before the agent admitted it: there is no turn
   // to continue, so a retry sends it again.
-  const [unsent, setUnsent] = useState<{ text: string; userId: string; assistantId: string } | null>(null);
+  const [unsent, setUnsent] = useState<{
+    text: string;
+    attachments: Attachment[];
+    userId: string;
+    assistantId: string;
+  } | null>(null);
   const unsentRef = useRef(unsent);
   unsentRef.current = unsent;
 
@@ -405,6 +531,23 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // conversationId is this key plus the workspace's current generation, which
   // "start over" bumps.
   const workspaceKeyRef = useRef<string | null>(null);
+  // Show the composer of `id` (of the workspace, for a draft). `carry` keeps
+  // what is on screen and re-homes it: a draft that just became a conversation.
+  const openComposer = useCallback((id: string | null, carry = false) => {
+    const key = composerKey(workspaceKeyRef.current, id);
+    const previous = composerKeyRef.current;
+    if (key === previous) return;
+    composerKeyRef.current = key;
+    if (carry) {
+      if (previous) clearComposer(previous);
+      if (key) saveComposer(key, composerRef.current);
+      return;
+    }
+    flushingQueueRef.current = false;
+    const stored = key ? loadComposer(key) : EMPTY_COMPOSER;
+    composerRef.current = stored;
+    setComposerState(stored);
+  }, []);
   // The effective agent base URL (a launched per-session instance, or the dev
   // override). Read through a ref so the callbacks below stay stable.
   const agentUrlRef = useRef<string>("");
@@ -578,6 +721,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const registerWorkspace = useCallback((next: WorkspaceBridge | null) => {
     bridgeRef.current = next;
     setBridge(next);
+    deliverOpeningRef.current();
   }, []);
   const setRunner = useCallback((base: string | null) => {
     runnerBaseRef.current = base;
@@ -609,6 +753,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // exactly as it will after a reload.
   const applyStreamRecord = useCallback((turn: string, record: JournalRecord) => {
     setMessages((prev) => applyRecord(prev, turn, record));
+    if (record.data.type === "finish") finishedTurnRef.current = turn;
     // The generated title names the conversation as soon as it is journaled —
     // unless it already has one, which the agent does not overwrite either.
     const title = (record.data as { type: string; title?: unknown }).title;
@@ -725,19 +870,31 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     [applyPendingReverts, serialized],
   );
 
-  const endTurn = useCallback(async () => {
+  // Assigned below, once `send` exists.
+  const sendRef = useRef<(message: string, attachments?: Attachment[]) => boolean>(() => false);
+
+  const endTurn = useCallback(async (ended: string) => {
     const bridge = bridgeRef.current;
     const workspace = workspaceRef.current;
+    // A queued message follows a turn that finished, and only that: after a
+    // failure or a stop it is the user's to send again.
+    const queueKey = composerKeyRef.current;
+    const flush = finishedTurnRef.current === ended && composerRef.current.queued !== null;
+    finishedTurnRef.current = null;
+    if (flush) flushingQueueRef.current = true;
+    else returnQueued();
     stoppingRef.current = false;
     turnIdRef.current = null;
     lockedRef.current = false;
     setStatus("idle");
     setTurnId(null);
     afterTurnRef.current();
+    let converged = true;
     if (bridge && workspace) {
       try {
         await serialized(() => reconcile(workspace, bridge));
       } catch (err) {
+        converged = false;
         // The next turn re-seeds, but the user must know the editor may be
         // showing stale files right now.
         setError(
@@ -745,7 +902,16 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         );
       }
     }
-  }, [serialized]);
+    // Sent only once the editor holds what the turn wrote: the next turn seeds
+    // the agent from the editor.
+    if (!flush || !flushingQueueRef.current || composerKeyRef.current !== queueKey) return;
+    flushingQueueRef.current = false;
+    const queued = composerRef.current.queued;
+    if (queued && converged && sendRef.current(queued.text, queued.attachments)) {
+      writeComposer((c) => ({ ...c, queued: null }));
+    }
+    else returnQueued();
+  }, [returnQueued, serialized, writeComposer]);
 
   // A cancellation this client did not ask for — another client's Stop, or the
   // agent shutting down — is told apart by the turn's status as the records
@@ -820,7 +986,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           if (assistantId) updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
         },
         onEnd: () => {
-          void endTurn();
+          void endTurn(activeTurnId);
         },
       });
     },
@@ -852,9 +1018,10 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       setConversationMeta(next);
       conversationIdRef.current = next.id;
       setConversationId(next.id);
+      openComposer(next.id, true);
       if (workspaceKeyRef.current) saveConversationId(workspaceKeyRef.current, next.id);
     },
-    [setConversationMeta, supersedeResolution],
+    [openComposer, setConversationMeta, supersedeResolution],
   );
 
   // Assigned below, once the resolver exists.
@@ -902,14 +1069,24 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     if (!stored && workspaceKey) saveConversationId(workspaceKey, id);
     conversationIdRef.current = id;
     setConversationId(id);
+    openComposer(id, true);
     return id;
-  }, [adoptConversation, client, currentIdentity]);
+  }, [adoptConversation, client, currentIdentity, openComposer]);
+
+  // One at a time: an upload to a draft and the send that follows it must end
+  // up in the one conversation the first of them created.
+  const conversationGateRef = useRef<Promise<unknown>>(Promise.resolve());
+  const conversationToSendTo = useCallback((): Promise<string | null> => {
+    const next = conversationGateRef.current.then(conversationForSend, conversationForSend);
+    conversationGateRef.current = next.catch(() => undefined);
+    return next;
+  }, [conversationForSend]);
 
   const dispatchTurn = useCallback(
-    (text: string, userId: string, assistantId: string) => {
+    (text: string, userId: string, assistantId: string, attachments: Attachment[]) => {
       const bridge = bridgeRef.current;
       if (!workspaceKeyRef.current || !bridge) return;
-      setUnsent({ text, userId, assistantId });
+      setUnsent({ text, attachments, userId, assistantId });
 
       // A Stop click bumps the generation; the pipeline re-checks it after
       // every await so a superseded send can't resurrect the turn.
@@ -931,14 +1108,18 @@ export function AgentProvider({ children }: { children: ReactNode }) {
             await seedDelta(workspace, bridge);
           });
           if (superseded()) return;
-          const convId = await conversationForSend();
+          const convId = await conversationToSendTo();
           if (superseded()) return;
           if (convId === null) {
             setStatus("error");
             updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
             return;
           }
-          const outcome = await c.startTurn(convId, text);
+          const outcome = await c.startTurn(
+            convId,
+            text,
+            attachments.map((a) => a.id),
+          );
           if (superseded()) {
             // Stopped while the agent was admitting it: the turn exists now,
             // so it is aborted rather than left running unseen.
@@ -994,7 +1175,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     },
     [
       client,
-      conversationForSend,
+      conversationToSendTo,
       ensureAgent,
       attachStream,
       invalidateLaunched,
@@ -1005,21 +1186,215 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  // True when the message became a turn's request.
   const send = useCallback(
-    (message: string) => {
+    (message: string, attachments: Attachment[] = []): boolean => {
       const text = message.trim();
-      if (!text || lockedRef.current || !workspaceKeyRef.current || !bridgeRef.current) return;
-      if (conversationRef.current?.archived) return;
+      if (!text && attachments.length === 0) return false;
+      if (lockedRef.current || !workspaceKeyRef.current || !bridgeRef.current) return false;
+      if (conversationRef.current?.archived) return false;
       setError(null);
-      const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", text, local: true };
+      const userMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        text,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        local: true,
+      };
       const assistantId = crypto.randomUUID();
       assistantIdRef.current = assistantId;
       const assistantMsg: ChatMessage = { id: assistantId, role: "assistant", parts: [], pending: true, local: true };
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
-      dispatchTurn(text, userMsg.id, assistantId);
+      dispatchTurn(text, userMsg.id, assistantId, attachments);
+      return true;
     },
     [dispatchTurn],
   );
+  sendRef.current = send;
+  deliverOpeningRef.current = () => {
+    const text = openingMessageRef.current;
+    if (text === null || !workspaceKeyRef.current || !bridgeRef.current) return;
+    if (resolvingRef.current || transcriptReadsRef.current > 0) return;
+    openingMessageRef.current = null;
+    if (lockedRef.current || turnIdRef.current || flushingQueueRef.current) {
+      writeComposer((c) => ({
+        ...c,
+        queued: c.queued ? { ...c.queued, text: appendBlock(c.queued.text, text) } : { text, attachments: [] },
+      }));
+      return;
+    }
+    // Refused — an archived conversation: the message stays in the composer.
+    if (!send(text)) writeComposer((c) => ({ ...c, text: appendBlock(c.text, text) }));
+  };
+
+  const setComposerText = useCallback(
+    (text: string) => writeComposer((c) => (c.text === text ? c : { ...c, text })),
+    [writeComposer],
+  );
+  const [composerNotice, setComposerNotice] = useState<string | null>(null);
+  // The local file behind each chip added in this session: its thumbnail, and
+  // what a retry uploads. Never stored.
+  const attachmentFilesRef = useRef(new Map<string, File>());
+  const attachmentLimitsRef = useRef<AttachmentLimits | null>(null);
+  const submitComposer = useCallback(() => {
+    const current = composerRef.current;
+    if (!hasMessage(current) || composerHold(current) !== null) return;
+    if (!workspaceKeyRef.current || conversationRef.current?.archived) return;
+    setComposerNotice(null);
+    const attachments = uploadedAttachments(current.attachments);
+    const queueing = lockedRef.current || flushingQueueRef.current;
+    const max = attachmentLimitsRef.current?.maxPerMessage;
+    const queuedFiles = queueing ? (current.queued?.attachments.length ?? 0) : 0;
+    if (max !== undefined && attachments.length > 0 && queuedFiles + attachments.length > max) {
+      setComposerNotice(
+        queuedFiles > 0 ? `${perMessageRefusal(max)} The queued message already has ${queuedFiles}.` : perMessageRefusal(max),
+      );
+      return;
+    }
+    if (queueing) writeComposer(queueComposerMessage);
+    else if (send(current.text, attachments)) writeComposer((c) => ({ ...c, text: "", attachments: [] }));
+    else return;
+    for (const sent of current.attachments) attachmentFilesRef.current.delete(sent.key);
+  }, [send, writeComposer]);
+  const editQueued = useCallback(() => writeComposer(unqueueIntoComposer), [writeComposer]);
+  const removeQueued = useCallback(() => writeComposer((c) => (c.queued ? { ...c, queued: null } : c)), [writeComposer]);
+  // ── attachments ─────────────────────────────────────────────────────────────
+  const setChip = useCallback(
+    (key: string, next: ComposerAttachment | null) =>
+      writeComposer((c) =>
+        c.attachments.some((a) => a.key === key)
+          ? { ...c, attachments: c.attachments.flatMap((a) => (a.key !== key ? [a] : next ? [next] : [])) }
+          : c,
+      ),
+    [writeComposer],
+  );
+  // Upload the chip's file to the conversation — created first for a draft, by
+  // the path a first send takes. A chip gone meanwhile (removed, or its
+  // conversation left) is not written back.
+  const uploadChip = useCallback(
+    (chip: { key: string; name: string; mediaType: string; size: number }, file: File) => {
+      const failed = (reason: string) => setChip(chip.key, { ...chip, state: "failed", reason });
+      void (async () => {
+        try {
+          const agent = reachableAgent();
+          if (!agent) return failed("No agent is reachable.");
+          selectAgent(agent);
+          const convId = await conversationToSendTo();
+          if (convId === null) return failed("The agent no longer has this conversation.");
+          const uploaded = await new AgentClient(agent.url, agent.token).uploadAttachment(
+            convId,
+            file,
+            chip.name,
+            chip.mediaType,
+          );
+          if (conversationIdRef.current !== convId) return;
+          setChip(chip.key, { ...uploaded, key: chip.key, state: "uploaded" });
+        } catch (err) {
+          failed(
+            err instanceof AgentRequestError
+              ? uploadRefusal({ code: err.code, message: err.message, details: err.details })
+              : message(err),
+          );
+        }
+      })();
+    },
+    [conversationToSendTo, reachableAgent, selectAgent, setChip],
+  );
+  // What the capability document rules out is refused here, before any upload.
+  const admitChip = useCallback(
+    (chip: { key: string; name: string; mediaType: string; size: number }, file: File, others: number) => {
+      const limits = attachmentLimitsRef.current;
+      if (!limits) return;
+      const refused = others >= limits.maxPerMessage ? perMessageRefusal(limits.maxPerMessage) : fileRefusal(limits, chip);
+      if (refused) return void setChip(chip.key, { ...chip, state: "failed", reason: refused });
+      setChip(chip.key, { ...chip, state: "uploading" });
+      uploadChip(chip, file);
+    },
+    [setChip, uploadChip],
+  );
+  const addAttachments = useCallback(
+    (files: File[]) => {
+      const limits = attachmentLimitsRef.current;
+      if (!limits || files.length === 0 || !workspaceKeyRef.current || conversationRef.current?.archived) return;
+      setComposerNotice(null);
+      for (const file of files) {
+        const chip = {
+          key: crypto.randomUUID(),
+          name: file.name || "pasted file",
+          mediaType: uploadMediaType(file, limits.mediaTypes),
+          size: file.size,
+        };
+        const others = composerRef.current.attachments.filter((a) => a.state !== "failed").length;
+        attachmentFilesRef.current.set(chip.key, file);
+        writeComposer((c) => ({ ...c, attachments: [...c.attachments, { ...chip, state: "uploading" }] }));
+        admitChip(chip, file, others);
+      }
+    },
+    [admitChip, writeComposer],
+  );
+  const removeAttachment = useCallback(
+    (key: string) => {
+      attachmentFilesRef.current.delete(key);
+      setChip(key, null);
+    },
+    [setChip],
+  );
+  const retryAttachment = useCallback(
+    (key: string) => {
+      const chip = composerRef.current.attachments.find((a) => a.key === key);
+      const file = attachmentFilesRef.current.get(key);
+      if (!chip || chip.state !== "failed" || !file) return;
+      const others = composerRef.current.attachments.filter((a) => a.key !== key && a.state !== "failed").length;
+      admitChip({ key, name: chip.name, mediaType: chip.mediaType, size: chip.size }, file, others);
+    },
+    [admitChip],
+  );
+  const attachmentFile = useCallback((key: string) => attachmentFilesRef.current.get(key), []);
+  // Read once per conversation and file: a bubble re-rendered by every streamed
+  // record must not fetch its thumbnails again.
+  const attachmentBlobsRef = useRef(new Map<string, Promise<Blob>>());
+  const attachmentBlob = useCallback(
+    (attachment: Attachment): Promise<Blob> => {
+      const convId = conversationIdRef.current;
+      const agent = reachableAgent();
+      if (!convId || !agent) return Promise.reject(new Error("No agent holds this file."));
+      const cacheKey = `${agentKey(agent)}\n${convId}\n${attachment.id}`;
+      const cached = attachmentBlobsRef.current.get(cacheKey);
+      if (cached) return cached;
+      const read = new AgentClient(agent.url, agent.token)
+        .attachmentBytes(convId, attachment.id)
+        .then((bytes) => new Blob([bytes], { type: attachment.mediaType }));
+      attachmentBlobsRef.current.set(cacheKey, read);
+      read.catch(() => attachmentBlobsRef.current.delete(cacheKey));
+      return read;
+    },
+    [reachableAgent],
+  );
+
+  const focusComposer = useCallback(() => {
+    setPanelOpen(true);
+    setComposerFocus((n) => n + 1);
+  }, []);
+  const compose = useCallback(
+    (text: string) => {
+      writeComposer((c) => ({ ...c, text: appendBlock(c.text, text) }));
+      focusComposer();
+    },
+    [focusComposer, writeComposer],
+  );
+  const sendOnOpen = useCallback(
+    (text: string) => {
+      if (text.trim() === "") return;
+      openingMessageRef.current = text;
+      focusComposer();
+      deliverOpeningRef.current();
+    },
+    [focusComposer],
+  );
+  // A send that ended before any turn ran leaves nothing to follow.
+  useEffect(() => {
+    if (status === "error") returnQueued();
+  }, [returnQueued, status]);
 
   // ── resume ──────────────────────────────────────────────────────────────────
 
@@ -1108,7 +1483,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     if (pendingSend) {
       assistantIdRef.current = pendingSend.assistantId;
       updateAssistant(pendingSend.assistantId, (m) => ({ ...m, pending: true, error: undefined, errorCode: undefined }));
-      dispatchTurn(pendingSend.text, pendingSend.userId, pendingSend.assistantId);
+      dispatchTurn(pendingSend.text, pendingSend.userId, pendingSend.assistantId, pendingSend.attachments);
       return;
     }
     const turn = interruptedTurn(messagesRef.current);
@@ -1130,6 +1505,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         setUnsent(null);
       }
       setStatus("idle");
+      returnQueued();
       return;
     }
     stoppingRef.current = true;
@@ -1152,7 +1528,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           setStatus("streaming");
         },
       );
-  }, [client, updateAssistant]);
+  }, [client, returnQueued, updateAssistant]);
 
   // ── conversation switch (workspace load / reload) ──────────────────────────
   // Replace the transcript with the open conversation's records on the agent,
@@ -1160,10 +1536,19 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // last record read. A bubble the agent never admitted stays below it.
   // Resolves `loaded` only when the transcript was replaced from the agent.
   const onGoneRef = useRef<(status: 404 | 410) => void>(() => undefined);
-  const loadTranscript = useCallback(async (): Promise<"loaded" | "failed" | "skipped"> => {
+  const readTranscript = useCallback(async (): Promise<"loaded" | "failed" | "skipped"> => {
     const convId = conversationIdRef.current;
     const agent = reachableAgent();
-    if (!convId || !agent || turnIdRef.current) return "skipped";
+    // A queued message found with no turn to follow — one stored before a
+    // reload or a switch, whose turn has since ended — returns to the composer.
+    const settleQueue = () => {
+      if (!lockedRef.current && !turnIdRef.current) returnQueued();
+    };
+    if (!convId || !agent) {
+      settleQueue();
+      return "skipped";
+    }
+    if (turnIdRef.current) return "skipped";
     const agentClient = new AgentClient(agent.url, agent.token);
     try {
       const turns = await readConversation((cursor) => agentClient.records(convId, cursor));
@@ -1173,6 +1558,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       for (const turn of turns) noteRevert(turn.turnId, turn.summary, turn.revert);
       const last = turns[turns.length - 1];
       if (last?.status !== "running") {
+        settleQueue();
         void convergeReverts(agent.workspace);
         return "loaded";
       }
@@ -1185,6 +1571,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       return "loaded";
     } catch (err) {
       if (conversationIdRef.current !== convId) return "failed";
+      settleQueue();
       const gone = goneStatus(err);
       if (gone !== null) {
         // Not known yet whether this agent serves conversations: the answer
@@ -1198,7 +1585,16 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       setError(`Failed to read the conversation from the agent: ${message(err)}`);
       return "failed";
     }
-  }, [attachStream, convergeReverts, noteRevert, reachableAgent, selectAgent]);
+  }, [attachStream, convergeReverts, noteRevert, reachableAgent, returnQueued, selectAgent]);
+  const loadTranscript = useCallback(async () => {
+    transcriptReadsRef.current++;
+    try {
+      return await readTranscript();
+    } finally {
+      transcriptReadsRef.current--;
+      deliverOpeningRef.current();
+    }
+  }, [readTranscript]);
   onCoResidentRef.current = () => {
     void loadTranscript();
   };
@@ -1212,19 +1608,25 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       streamRef.current = null;
       conversationIdRef.current = id;
       setConversationId(id);
+      openComposer(id);
+      attachmentBlobsRef.current.clear();
+      attachmentFilesRef.current.clear();
+      setComposerNotice(null);
       setError(null);
       setMessages(keepUnsent ? (prev) => prev.filter((m) => m.local) : []);
       assistantIdRef.current = null;
       turnIdRef.current = null;
       setTurnId(null);
+      lockedRef.current = false;
       setStatus("idle");
       stoppingRef.current = false;
       staleRef.current = false;
       pendingRevertsRef.current.clear();
       if (!keepUnsent) setUnsent(null);
       if (id) void loadTranscript();
+      else returnQueued();
     },
-    [loadTranscript],
+    [loadTranscript, openComposer, returnQueued],
   );
 
   // Open a conversation the agent reported, as the workspace's last-opened one.
@@ -1325,6 +1727,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         }
       } finally {
         if (resolveGenRef.current === gen) resolvingRef.current = false;
+        deliverOpeningRef.current();
       }
     },
     [markUnresolved, reachableAgent, setConversationMeta, showDraft, showOwned, switchTo],
@@ -1403,6 +1806,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       workspaceKeyRef.current = key;
       setWorkspaceOpen(key !== null);
       if (!key) {
+        openingMessageRef.current = null;
         deferredResolveRef.current = false;
         supersedeResolution();
         conversationAgentRef.current = null;
@@ -1411,6 +1815,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         streamRef.current = null;
         conversationIdRef.current = null;
         setConversationId(null);
+        openComposer(null);
         setMessages([]);
         setTurnId(null);
         setStatus("idle");
@@ -1418,8 +1823,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         return;
       }
       resolveWorkspace(key);
+      deliverOpeningRef.current();
     },
-    [resolveWorkspace, setConversationMeta, supersedeResolution],
+    [openComposer, resolveWorkspace, setConversationMeta, supersedeResolution],
   );
 
   const clearConversation = useCallback(() => {
@@ -1583,6 +1989,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           await waitForTurnEnd(agent.url, agent.token, err.activeTurnId);
           await c.deleteConversation(id);
         }
+        const stored = composerKey(null, id);
+        if (stored) clearComposer(stored);
         const workspaceKey = workspaceKeyRef.current;
         if (id === conversationIdRef.current && workspaceKey) await resolveOwned(workspaceKey);
         return "deleted";
@@ -1674,9 +2082,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   );
 
   const resendFrom = useCallback(
-    async (turn: string, text: string): Promise<TurnActionOutcome> => {
+    async (turn: string, text: string, attachments: Attachment[] = []): Promise<TurnActionOutcome> => {
       const outcome = await truncateFrom(turn);
-      if (outcome === "done") send(text);
+      if (outcome === "done") send(text, attachments);
       return outcome;
     },
     [send, truncateFrom],
@@ -1758,6 +2166,20 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("pagehide", onPageHide);
   }, []);
 
+  const attachmentLimits =
+    identity?.state === "known" && hasFeature(identity, AGENT_FEATURES.attachments)
+      ? (identity.identity.attachments ?? null)
+      : null;
+  useEffect(() => {
+    attachmentLimitsRef.current = attachmentLimits;
+  }, [attachmentLimits]);
+
+  const workspaceFile = useCallback((editorPath: string) => bridge?.workspaceFile(editorPath) ?? editorPath, [bridge]);
+  const composeValue = useMemo<AgentCompose | null>(
+    () => (panelAvailable ? { compose, workspaceFile } : null),
+    [compose, panelAvailable, workspaceFile],
+  );
+
   const value: AgentContextValue = {
     panelOpen,
     togglePanel,
@@ -1776,6 +2198,23 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     locked,
     error,
     send,
+    sendOnOpen,
+    composer,
+    setComposerText,
+    canCompose: workspaceOpen && conversation?.archived !== true,
+    submitComposer,
+    editQueued,
+    removeQueued,
+    attachmentLimits,
+    addAttachments,
+    removeAttachment,
+    retryAttachment,
+    attachmentFile,
+    attachmentBlob,
+    composerNotice,
+    compose,
+    focusComposer,
+    composerFocus,
     stop,
     retry,
     canRetry: !locked && (unsent !== null || interruptedTurn(messages) !== null),
@@ -1806,6 +2245,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     truncateFrom,
     resendFrom,
     branchFrom,
+    setPanelAvailable,
     setConversation,
     registerWorkspace,
     setRunner,
@@ -1814,5 +2254,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     registerTermsGate,
   };
 
-  return <AgentContext.Provider value={value}>{children}</AgentContext.Provider>;
+  return (
+    <AgentContext.Provider value={value}>
+      <AgentComposeContext.Provider value={composeValue}>{children}</AgentComposeContext.Provider>
+    </AgentContext.Provider>
+  );
 }
