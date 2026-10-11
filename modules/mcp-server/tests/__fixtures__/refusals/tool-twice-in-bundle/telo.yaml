@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata:
+  name: McpToolTwiceInBundleApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

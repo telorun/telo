@@ -3,10 +3,9 @@ import type { Readable, Writable } from "node:stream";
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { type ControllerContext, type ResourceContext, RuntimeError } from "@telorun/sdk";
+import type { ControllerContext, ResourceContext } from "@telorun/sdk";
 
-import { buildServer, type SessionContext, type ServerInfo } from "./registry.js";
-import { asToolsBundle } from "./tools-controller.js";
+import { buildServer, resolveBundles, type SessionContext, type ServerInfo } from "./registry.js";
 
 interface StdioServerManifest {
   kind: string;
@@ -35,22 +34,16 @@ export class McpStdioServer {
   }
 
   async init() {
-    if ((this.resource.resources ?? []).length > 0 || (this.resource.prompts ?? []).length > 0) {
-      throw new RuntimeError(
-        "ERR_MCP_V2_NOT_IMPLEMENTED",
-        `${this.resource.kind}[${this.resource.metadata.name}]: resources/prompts are schema-only in v1; runtime dispatch is v2 work`,
-      );
-    }
-
-    const toolsBundles = (this.resource.tools ?? []).map((ref) =>
-      asToolsBundle(ref, `${this.resource.kind}[${this.resource.metadata.name}]`),
+    const bundles = resolveBundles(
+      this.resource,
+      `${this.resource.kind}[${this.resource.metadata.name}]`,
     );
 
     return this.ctx.effect("mcp server", async () => {
       const server = buildServer({
         serverInfo: this.resource.serverInfo,
         instructions: this.resource.instructions,
-        toolsBundles,
+        bundles,
         sessionResolver: () => this.session,
         // rootContext: an inbound registrant dispatches with a context inheriting
         // nothing ambient (kernel/specs/execution-zones.md §7), never `undefined`.

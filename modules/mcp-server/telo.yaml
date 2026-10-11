@@ -54,6 +54,7 @@ schema:
             title: Name
             description: Unique tool identifier; sent in tools/call requests.
             type: "string"
+            minLength: 1
             x-telo-topology-role: matcher
           description:
             title: Description
@@ -180,10 +181,16 @@ schema:
               required: ["error"]
         required: ["name", "argumentsSchema", "handler", "inputs", "result"]
   required: ["entries"]
+  x-telo-resource-rules:
+    - in: /entries
+      condition: !cel "size(self.entries.filter(e, e.name == this.name)) == 1"
+      code: MCP_TOOL_DUPLICATE
+      message: >-
+        declares a name another entry of this bundle already declares. A client calls a
+        tool by its name, so each must name one entry.
 ---
-# Mcp.Resources — passive bundle of resource entries. Schema'd in v1; runtime
-# dispatch lands in v2. Transport refs are typed against this kind today so
-# manifests are forward-compatible.
+# Mcp.Resources — passive bundle of resource entries, served by a transport
+# through resources/list, resources/templates/list and resources/read.
 kind: "Telo.Definition"
 metadata:
   name: "Resources"
@@ -199,7 +206,7 @@ schema:
   properties:
     entries:
       title: Entries
-      description: Resource entries advertised to MCP clients (v2 runtime).
+      description: Resource entries advertised to MCP clients.
       type: "array"
       x-telo-topology-role: entries
       items:
@@ -210,13 +217,16 @@ schema:
         properties:
           uri:
             title: URI
-            description: Concrete resource URI. Mutually exclusive with `uriTemplate:`.
+            description: Concrete resource URI, listed by resources/list. Exactly one of `uri:` and `uriTemplate:` is declared.
             type: "string"
+            minLength: 1
             x-telo-topology-role: matcher
           uriTemplate:
             title: URI Template
-            description: RFC 6570 URI template. Mutually exclusive with `uri:`.
+            description: RFC 6570 URI template, listed by resources/templates/list. A read whose URI matches it reaches the handler with the template's variables as `request.params`. Variables arrive as written in the URI, without percent-decoding.
             type: "string"
+            # Every '{' closes and names a variable; twinned in the controller.
+            pattern: "^([^{}]|\\{[^{}]+\\})+$"
           name:
             title: Name
             description: Human-readable resource label.
@@ -239,18 +249,74 @@ schema:
               inputs: /inputs
           inputs:
             title: Inputs
+            description: CEL expressions mapping the MCP request scope onto the handler's input shape.
             type: "object"
             additionalProperties: true
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    uri: { type: string }
+                    params: { type: object, additionalProperties: true }
+                    meta: { type: object, additionalProperties: true }
+                    session:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        id: { type: string }
+                        clientInfo: { type: object, additionalProperties: true }
+                        capabilities: { type: object, additionalProperties: true }
           result:
             title: Result
-            description: MCP ReadResourceResult envelope.
+            description: MCP ReadResourceResult envelope (`contents`, optional `_meta`), rendered from the handler's output via CEL.
             type: "object"
             additionalProperties: true
+            required: [contents]
+            properties:
+              contents:
+                title: Contents
+                description: Array of resource contents, each carrying `uri` and either `text` or `blob`. A bytes value at `blob` is sent as base64.
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    uri: { type: string }
+                    params: { type: object, additionalProperties: true }
+                result:
+                  x-telo-context-ref-from: "handler/outputType"
+                  type: object
+                  additionalProperties: true
           catches:
             title: Catches
+            description: Maps a thrown InvokeError to a JSON-RPC error response.
             type: "array"
             x-telo-outcome-list: catches
             x-telo-catches-for: handler
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                error:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    code: { type: string }
+                    message: { type: string }
+                    data: { type: object, additionalProperties: true }
+                request:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    uri: { type: string }
+                    params: { type: object, additionalProperties: true }
             items:
               type: "object"
               additionalProperties: false
@@ -269,10 +335,22 @@ schema:
                   required: ["code", "message"]
               required: ["error"]
         required: ["name", "handler", "inputs", "result"]
+        oneOf:
+          - required: ["uri"]
+          - required: ["uriTemplate"]
   required: ["entries"]
+  x-telo-resource-rules:
+    - in: /entries
+      condition: !cel >-
+        size(self.entries.filter(e,
+          (has(e.uri) ? e.uri : has(e.uriTemplate) ? e.uriTemplate : '') == (has(this.uri) ? this.uri : has(this.uriTemplate) ? this.uriTemplate : ''))) == 1
+      code: MCP_RESOURCE_DUPLICATE
+      message: >-
+        declares a URI another entry of this bundle already declares. A client reads a
+        resource by its URI, so each must name one entry.
 ---
-# Mcp.Prompts — passive bundle of prompt entries. Schema'd in v1; runtime
-# dispatch lands in v2.
+# Mcp.Prompts — passive bundle of prompt entries, served by a transport through
+# prompts/list and prompts/get.
 kind: "Telo.Definition"
 metadata:
   name: "Prompts"
@@ -289,7 +367,7 @@ schema:
   properties:
     entries:
       title: Entries
-      description: Prompt entries advertised to MCP clients (v2 runtime).
+      description: Prompt entries advertised to MCP clients.
       type: "array"
       x-telo-topology-role: entries
       items:
@@ -302,13 +380,14 @@ schema:
             title: Name
             description: Unique prompt identifier.
             type: "string"
+            minLength: 1
             x-telo-topology-role: matcher
           description:
             title: Description
             type: "string"
           arguments:
             title: Arguments
-            description: Flat list of named prompt parameters.
+            description: Flat list of named prompt parameters. A prompts/get leaving out one marked `required` is refused before the handler runs.
             type: "array"
             items:
               type: "object"
@@ -328,18 +407,74 @@ schema:
               inputs: /inputs
           inputs:
             title: Inputs
+            description: CEL expressions mapping the MCP request scope onto the handler's input shape.
             type: "object"
             additionalProperties: true
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    name: { type: string }
+                    arguments: { type: object, additionalProperties: { type: string } }
+                    meta: { type: object, additionalProperties: true }
+                    session:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        id: { type: string }
+                        clientInfo: { type: object, additionalProperties: true }
+                        capabilities: { type: object, additionalProperties: true }
           result:
             title: Result
-            description: MCP GetPromptResult envelope.
+            description: MCP GetPromptResult envelope (`messages`, optional `description`, `_meta`), rendered from the handler's output via CEL.
             type: "object"
             additionalProperties: true
+            required: [messages]
+            properties:
+              messages:
+                title: Messages
+                description: Array of prompt messages, each `{ role, content }`.
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                request:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    name: { type: string }
+                    arguments: { type: object, additionalProperties: { type: string } }
+                result:
+                  x-telo-context-ref-from: "handler/outputType"
+                  type: object
+                  additionalProperties: true
           catches:
             title: Catches
+            description: Maps a thrown InvokeError to a JSON-RPC error response.
             type: "array"
             x-telo-outcome-list: catches
             x-telo-catches-for: handler
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                error:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    code: { type: string }
+                    message: { type: string }
+                    data: { type: object, additionalProperties: true }
+                request:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    name: { type: string }
+                    arguments: { type: object, additionalProperties: { type: string } }
             items:
               type: "object"
               additionalProperties: false
@@ -359,6 +494,13 @@ schema:
               required: ["error"]
         required: ["name", "handler", "inputs", "result"]
   required: ["entries"]
+  x-telo-resource-rules:
+    - in: /entries
+      condition: !cel "size(self.entries.filter(e, e.name == this.name)) == 1"
+      code: MCP_PROMPT_DUPLICATE
+      message: >-
+        declares a name another entry of this bundle already declares. A client fetches
+        a prompt by its name, so each must name one entry.
 ---
 # Mcp.StdioServer — Telo.Service. Owns a single MCP SDK Server bound to
 # stdin/stdout. References Mcp.Tools / Mcp.Resources / Mcp.Prompts bundles by
@@ -412,7 +554,7 @@ schema:
           use: dependency
     resources:
       title: Resources
-      description: Mcp.Resources bundles (v2 runtime).
+      description: Mcp.Resources bundles whose entries should be exposed by this transport.
       type: "array"
       items:
         x-telo-ref:
@@ -420,13 +562,44 @@ schema:
           use: dependency
     prompts:
       title: Prompts
-      description: Mcp.Prompts bundles (v2 runtime).
+      description: Mcp.Prompts bundles whose entries should be exposed by this transport.
       type: "array"
       items:
         x-telo-ref:
           kind: Self.Prompts
           use: dependency
   required: ["serverInfo"]
+  # A client addresses an entry by its name or URI alone, so the bundles one
+  # transport serves must not share one.
+  x-telo-resource-rules:
+    - resolve: [/tools]
+      in: /tools
+      condition: !cel >-
+        this.entries.all(e,
+          size(self.tools.filter(b, b.entries.exists(x, x.name == e.name))) == 1)
+      code: MCP_TOOL_DUPLICATE
+      message: >-
+        declares a tool name another bundle of this server also declares, or is listed
+        twice.
+    - resolve: [/resources]
+      in: /resources
+      condition: !cel >-
+        this.entries.all(e,
+          size(self.resources.filter(b, b.entries.exists(x,
+            (has(x.uri) ? x.uri : has(x.uriTemplate) ? x.uriTemplate : '') == (has(e.uri) ? e.uri : has(e.uriTemplate) ? e.uriTemplate : '')))) == 1)
+      code: MCP_RESOURCE_DUPLICATE
+      message: >-
+        declares a resource URI another bundle of this server also declares, or is
+        listed twice.
+    - resolve: [/prompts]
+      in: /prompts
+      condition: !cel >-
+        this.entries.all(e,
+          size(self.prompts.filter(b, b.entries.exists(x, x.name == e.name))) == 1)
+      code: MCP_PROMPT_DUPLICATE
+      message: >-
+        declares a prompt name another bundle of this server also declares, or is
+        listed twice.
 ---
 # Mcp.HttpEndpoint — Telo.Mount. Mounts on Http.Server at a chosen path; owns
 # a per-session map keyed by the Mcp-Session-Id header. Each session owns its
@@ -491,7 +664,7 @@ schema:
           use: dependency
     resources:
       title: Resources
-      description: Mcp.Resources bundles (v2 runtime).
+      description: Mcp.Resources bundles whose entries should be exposed by this transport.
       type: "array"
       items:
         x-telo-ref:
@@ -499,10 +672,41 @@ schema:
           use: dependency
     prompts:
       title: Prompts
-      description: Mcp.Prompts bundles (v2 runtime).
+      description: Mcp.Prompts bundles whose entries should be exposed by this transport.
       type: "array"
       items:
         x-telo-ref:
           kind: Self.Prompts
           use: dependency
   required: ["serverInfo"]
+  # A client addresses an entry by its name or URI alone, so the bundles one
+  # transport serves must not share one.
+  x-telo-resource-rules:
+    - resolve: [/tools]
+      in: /tools
+      condition: !cel >-
+        this.entries.all(e,
+          size(self.tools.filter(b, b.entries.exists(x, x.name == e.name))) == 1)
+      code: MCP_TOOL_DUPLICATE
+      message: >-
+        declares a tool name another bundle of this server also declares, or is listed
+        twice.
+    - resolve: [/resources]
+      in: /resources
+      condition: !cel >-
+        this.entries.all(e,
+          size(self.resources.filter(b, b.entries.exists(x,
+            (has(x.uri) ? x.uri : has(x.uriTemplate) ? x.uriTemplate : '') == (has(e.uri) ? e.uri : has(e.uriTemplate) ? e.uriTemplate : '')))) == 1)
+      code: MCP_RESOURCE_DUPLICATE
+      message: >-
+        declares a resource URI another bundle of this server also declares, or is
+        listed twice.
+    - resolve: [/prompts]
+      in: /prompts
+      condition: !cel >-
+        this.entries.all(e,
+          size(self.prompts.filter(b, b.entries.exists(x, x.name == e.name))) == 1)
+      code: MCP_PROMPT_DUPLICATE
+      message: >-
+        declares a prompt name another bundle of this server also declares, or is
+        listed twice.

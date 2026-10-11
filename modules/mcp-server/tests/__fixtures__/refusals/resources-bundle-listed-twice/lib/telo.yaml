@@ -1,0 +1,33 @@
+# `telo check` reports this here; a consumer's check sees nothing, so there the
+# resource refuses itself when the application boots.
+kind: Telo.Library
+metadata:
+  name: McpResourcesBundleListedTwice
+  version: 1.0.0
+  description: Test fixture exporting a stdio server listing one resources bundle twice.
+imports:
+  Mcp: ../../../../../
+  Run: ../../../../../../run
+exports:
+  resources: [server]
+---
+kind: Run.Value
+metadata: { name: answer }
+value:
+  text: ok
+---
+kind: Mcp.Resources
+metadata: { name: First }
+entries:
+  - uri: note://a
+    name: Entry
+    handler: !ref answer
+    inputs: {}
+    result:
+      contents:
+        - { uri: "note://a", text: !cel "result.text" }
+---
+kind: Mcp.StdioServer
+metadata: { name: server }
+serverInfo: { name: fixture, version: 1.0.0 }
+resources: [ !ref First, !ref First ]

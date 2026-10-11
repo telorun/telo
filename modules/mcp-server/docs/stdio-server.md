@@ -31,8 +31,8 @@ serverInfo:
 instructions: |                              # optional — primer for the client's LLM
   Free-form text surfaced on `initialize`.
 tools: [<Mcp.Tools bundle names>]
-resources: [<Mcp.Resources bundle names>]   # v2 runtime
-prompts: [<Mcp.Prompts bundle names>]       # v2 runtime
+resources: [<Mcp.Resources bundle names>]
+prompts: [<Mcp.Prompts bundle names>]
 ```
 
 `serverInfo` is a CEL slot, so the advertised version can come from the module's
@@ -47,8 +47,9 @@ serverInfo:
 That keeps one version in the manifest rather than two that have to be kept in
 sync by hand.
 
-In v1, `resources:` and `prompts:` arrays are accepted in the schema but
-must be empty — runtime dispatch lands in v2.
+The server advertises the `resources` and `prompts` capabilities only when the
+matching array lists at least one bundle — see [Mcp.Resources](./resources.md)
+and [Mcp.Prompts](./prompts.md).
 
 ### `instructions`
 
