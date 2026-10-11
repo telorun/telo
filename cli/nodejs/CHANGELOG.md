@@ -1,5 +1,15 @@
 # @telorun/cli
 
+## 0.115.1
+
+### Patch Changes
+
+- @telorun/analyzer@0.115.1
+- @telorun/kernel@0.115.1
+- @telorun/ide-support@0.115.1
+- @telorun/sdk@0.115.1
+- @telorun/templating@0.115.1
+
 ## 0.115.0
 
 ### Patch Changes

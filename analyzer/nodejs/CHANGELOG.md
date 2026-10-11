@@ -1,5 +1,13 @@
 # @telorun/analyzer
 
+## 0.115.1
+
+### Patch Changes
+
+- Updated dependencies [9fe8a24]
+  - @telorun/cel@0.115.1
+  - @telorun/templating@0.115.1
+
 ## 0.115.0
 
 ### Patch Changes
