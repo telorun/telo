@@ -75,7 +75,17 @@ import {
 } from "../run";
 import type { RunnerCapabilities, RunnerTerms } from "../run";
 import { isFocusComposerShortcut, useAgent } from "../agent";
+import { isTauri } from "@tauri-apps/api/core";
 import { useCloud } from "../cloud/context";
+import {
+  clearProjectLinkParams,
+  decideProjectLink,
+  forgetProjectLinkSignIn,
+  noteProjectLinkSignIn,
+  projectLinkSignInTried,
+  readProjectLink,
+  type ProjectLink,
+} from "../cloud/project-link";
 import { cloudProjectIdOf, cloudWorkspaceRoot } from "../cloud/working-copy-adapter";
 import { findWorkingCopy } from "../cloud/working-copy-index";
 import { CloudProjectBar } from "./cloud/CloudProjectBar";
@@ -223,6 +233,19 @@ export function Editor() {
   const editingPausedRef = useRef(editingPaused);
   editingPausedRef.current = editingPaused;
   const [error, setError] = useState<string | null>(null);
+  // The console's link to a Telo Cloud project, until it is settled. The
+  // desktop build reads no query parameters.
+  const [projectLink, setProjectLink] = useState<ProjectLink | null>(() =>
+    isTauri() ? null : readProjectLink(window.location.search),
+  );
+  // A link decides what opens, so the last workspace is not restored under it
+  // — nor after it was refused, where the message stands alone.
+  const [restoreDeferred, setRestoreDeferred] = useState(projectLink !== null);
+  const [linkedModule, setLinkedModule] = useState<{
+    rootDir: string;
+    modulePath: string;
+    projectName: string;
+  } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // The sidebar as a drawer; read at phone width only.
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
@@ -268,7 +291,14 @@ export function Editor() {
     closeWorkspace,
     browserWorkspaceOpen,
     reloadFromDisk,
-  } = useWorkspaceLifecycle({ state, setState, settings, persistedHint, setError });
+  } = useWorkspaceLifecycle({
+    state,
+    setState,
+    settings,
+    persistedHint,
+    setError,
+    restoreDeferred,
+  });
 
   // Bridge the editor's workspace to the authoring agent: content-hash the tree
   // for two-way sync, and reflect the agent's writes back through the same
@@ -1032,6 +1062,83 @@ export function Editor() {
   useEffect(() => {
     setCloudActiveRoot(workspaceRootDir);
   }, [setCloudActiveRoot, workspaceRootDir]);
+
+  // A project link: sign in to its organization when needed, open the project's
+  // working copy, and say why when it cannot be opened.
+  const projectLinkStartedRef = useRef(false);
+  useEffect(() => {
+    if (!projectLink) {
+      forgetProjectLinkSignIn();
+      return;
+    }
+    if (projectLinkStartedRef.current) return;
+    const decision = decideProjectLink(
+      projectLink,
+      cloud.session,
+      projectLinkSignInTried(projectLink),
+    );
+    if (decision.action === "wait") return;
+    if (decision.action === "ignore") {
+      setProjectLink(null);
+      setRestoreDeferred(false);
+      return;
+    }
+    projectLinkStartedRef.current = true;
+    if (decision.action === "signIn") {
+      noteProjectLinkSignIn(projectLink);
+      cloud.signInToOrganization(projectLink.orgId);
+      return;
+    }
+    clearProjectLinkParams();
+    if (decision.action === "refuse") {
+      setError(decision.message);
+      setProjectLink(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const projects = await cloud.api.listProjects();
+        const project = projects.find((candidate) => candidate.id === projectLink.projectId);
+        if (!project) {
+          setError(
+            `The linked project ${projectLink.projectId} could not be opened: it does not exist, or you have no access to it.`,
+          );
+          return;
+        }
+        const result = await cloud.openProject(project);
+        if (!result.ok) {
+          setError(result.message);
+          return;
+        }
+        if (projectLink.modulePath) {
+          setLinkedModule({
+            rootDir: cloudWorkspaceRoot(project.id),
+            modulePath: projectLink.modulePath,
+            projectName: project.name,
+          });
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setProjectLink(null);
+      }
+    })();
+    // Decided once per session reading; the cloud actions are read as they are.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectLink, cloud.session]);
+
+  // The module a project link names, once that project's workspace is open.
+  useEffect(() => {
+    const workspace = state.workspace;
+    if (!linkedModule || workspace?.rootDir !== linkedModule.rootDir) return;
+    const filePath = pathJoin(linkedModule.rootDir, linkedModule.modulePath, "telo.yaml");
+    setLinkedModule(null);
+    if (workspace.modules.has(filePath)) {
+      setState((s) => activateModuleState(s, filePath));
+    } else {
+      setError(`${linkedModule.projectName} has no module at ${linkedModule.modulePath}.`);
+    }
+  }, [linkedModule, state.workspace, setState]);
 
   // A workspace opened with nothing in it shows the drawer: at phone width the
   // sidebar is the only way forward there.

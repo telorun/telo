@@ -228,6 +228,12 @@ request:
 
 ### 5. External URL & OpenAPI `servers`
 
+`host` is the network interface the server listens on. Leave it unset for an
+application: the default `0.0.0.0` accepts connections from other machines, which a
+container, a runner session or a proxy in front of the app requires. `127.0.0.1`
+accepts connections from the same machine only — right for a mock server inside a
+test, and an application that is unreachable everywhere it is deployed.
+
 A server is usually reached through a reverse proxy / ingress, so its own bound
 `host:port` is not the URL clients use. The generated OpenAPI `servers` block is a
 **single origin** — each operation is documented at its full `<mountPrefix><path>`,

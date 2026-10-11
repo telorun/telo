@@ -59,10 +59,13 @@ export class WebCloudBackend implements CloudTransport, CloudSessionSource {
   }
 
   /** A full-page navigation: Cloud redirects to the identity provider and back
-   *  to `returnTo`, and Studio restores its tabs as it does after a reload. */
-  signIn(): Promise<CloudSessionState> {
+   *  to `returnTo`, and Studio restores its tabs as it does after a reload. With
+   *  `orgId` Cloud first tries a silent sign-in into that organization. */
+  signIn(orgId?: string): Promise<CloudSessionState> {
     const here = window.location.pathname + window.location.search + window.location.hash;
-    window.location.assign(`${API_BASE}/session/login?returnTo=${encodeURIComponent(here)}`);
+    const query = new URLSearchParams({ returnTo: here });
+    if (orgId) query.set("orgId", orgId);
+    window.location.assign(`${API_BASE}/session/login?${query.toString()}`);
     return new Promise(() => undefined);
   }
 

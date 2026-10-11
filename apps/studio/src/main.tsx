@@ -1,3 +1,5 @@
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import "@radix-ui/themes/styles.css";
 import "react-complex-tree/lib/style-modern.css";
 import "streamdown/styles.css";

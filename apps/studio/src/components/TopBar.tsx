@@ -96,7 +96,9 @@ export function TopBar({
           <Menu />
         </Button>
       )}
-      <span className="shrink-0 font-semibold text-zinc-900 dark:text-zinc-100">Telo Studio</span>
+      <span className="shrink-0 font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+        Telo <span className="text-brand">Studio</span>
+      </span>
 
       <div className="mx-3 flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-zinc-500 max-md:mx-1 dark:text-zinc-400">
         <WorkspaceSwitcher {...workspaceSwitcher} />

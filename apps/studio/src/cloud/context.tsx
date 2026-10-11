@@ -96,6 +96,8 @@ interface CloudContextValue {
   session: CloudSessionState | { status: "loading" };
   api: CloudApi;
   signIn(): void;
+  /** Signs in to a named organization, as a link to one of its projects asks. */
+  signInToOrganization(orgId: string): void;
   switchOrganization(): void;
   retrySession(): void;
   /** Sign-out removes the working copies, so it asks first when there are any. */
@@ -257,6 +259,10 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     [loadSession],
   );
   const signIn = useCallback(() => authorize(() => backend.signIn()), [authorize, backend]);
+  const signInToOrganization = useCallback(
+    (orgId: string) => authorize(() => backend.signIn(orgId)),
+    [authorize, backend],
+  );
   const switchOrganization = useCallback(
     () => authorize(() => backend.switchOrganization()),
     [authorize, backend],
@@ -927,6 +933,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     session,
     api,
     signIn,
+    signInToOrganization,
     switchOrganization,
     retrySession: () => void loadSession(),
     requestSignOut,

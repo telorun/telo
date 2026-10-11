@@ -463,12 +463,14 @@ describe("a run is claimed by its admission", () => {
   it("stays unseen by a poller sweeping while it is being admitted", async () => {
     // The window a claim taken after admission leaves open: the record is on
     // disk and `running` before the admitter holds it.
+    // Few admissions on purpose: each one is an fsync, and one already holds
+    // that window open long enough for the sweep to land in it.
     let admitting = true;
     const sightings: string[] = [];
     const sweeping = (async () => {
       while (admitting) sightings.push(...(await journal.dueRuns(Date.now(), 10)));
     })();
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 8; i++) {
       await journal.admitRun(`run-mid-${i}`, { claim: { holder: "starter", ttlMs: 60_000 } });
     }
     admitting = false;

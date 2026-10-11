@@ -93,7 +93,12 @@ schema:
   properties:
     host:
       title: Host
-      description: Host interface for the HTTP server.
+      description: >-
+        Network interface the server listens on. The default `0.0.0.0` accepts
+        connections from other machines, which a container, a runner session or
+        any proxy in front of the app requires — leave it unset for an
+        application. `127.0.0.1` accepts connections from the same machine only;
+        use it for a mock server inside a test.
       type: "string"
       x-telo-eval: compile
       default: "0.0.0.0"

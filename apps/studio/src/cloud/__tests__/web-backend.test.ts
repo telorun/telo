@@ -50,6 +50,18 @@ describe("WebCloudBackend", () => {
     expect(await new WebCloudBackend().read()).toEqual({ status: "unavailable" });
   });
 
+  it("signs in back to the current address, into a named organization when given one", () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { pathname: "/", search: "?org=org_1&project=prj_1", hash: "", assign });
+    const backend = new WebCloudBackend();
+    void backend.signIn();
+    void backend.signIn("org_1");
+    expect(assign.mock.calls).toEqual([
+      ["/api/session/login?returnTo=%2F%3Forg%3Dorg_1%26project%3Dprj_1"],
+      ["/api/session/login?returnTo=%2F%3Forg%3Dorg_1%26project%3Dprj_1&orgId=org_1"],
+    ]);
+  });
+
   it("sends the CSRF token on unsafe methods only", async () => {
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
       answer(200, JSON.stringify(SESSION), "application/json"),

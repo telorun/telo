@@ -2572,7 +2572,11 @@ to say.
   in a Library (`LIBRARY_ARG_KEY_REJECTED`).
 - `ports:` (Application only) — NAME-KEYED MAP. Each entry binds an `env:` var
   (required), optionally an `arg:` beside it, and optional `default:`; the
-  value is implicitly a port integer. Read as `ports.X`.
+  value is implicitly a port integer. Read as `ports.X`. The server that
+  listens on one sets NO `host:` — the default `0.0.0.0` is what a container,
+  a runner session and the studio reach it through. `host: 127.0.0.1` on an
+  application's server boots clean, reports nothing, and every URL the runner
+  hands out answers 503; loopback is for a mock server inside a test only.
 - `targets:` (Application only) — a flat boot list of `!ref`s to the
   Runnables / Services to start after resources init. ORDER MATTERS: a Service
   prepares in `init()` but does not begin accepting events until it is run
@@ -3949,7 +3953,8 @@ Three things make it work, and each is load-bearing:
   - The canned response is a `Run.Value` as the route's `handler`; the shape it
     returns is declared in `returns`. Bind `127.0.0.1` and an unusual port, so
     the mock is unreachable from outside and does not collide with a real
-    service.
+    service. That is a rule for a test's mock ONLY: an application's own
+    server sets no `host:`, or nothing outside its container can reach it.
 
 **This is why a library must take its base URL as a variable.** The test points
 the library at the mock by setting that variable at its import

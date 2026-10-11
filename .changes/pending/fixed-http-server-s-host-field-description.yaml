@@ -1,0 +1,5 @@
+modules:
+  modules/http-server: Fixed
+body: "Http.Server's host field description says what the bind address decides: the
+  default 0.0.0.0 is reachable from other machines, 127.0.0.1 from the same machine
+  only."
