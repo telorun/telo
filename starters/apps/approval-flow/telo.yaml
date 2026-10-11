@@ -36,12 +36,12 @@ metadata:
         curl -s localhost:8102/api/requests/<id>              # completed, approved
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
-  Ui: oci://ghcr.io/telorun/ui@0.3.0#sha256-Xp_vAsCGcbXDo6rqK9A-xEnCbqSksPlG-q_jziF83LU
-  UiReact: oci://ghcr.io/telorun/ui-react@0.4.0#sha256-Maz-ACXHNqymhG283guc_wYMIrM_FKWKfGOxRdZ7TBw
+  Ui: oci://ghcr.io/telorun/ui@0.4.0#sha256-9hNZj-hzEkskbX-GgG3eabew02lvQIjMbAHILQ7ca3U
+  UiReact: oci://ghcr.io/telorun/ui-react@0.5.0#sha256-xyuX5J_vK5o817qrpjNTlhi3TerS7dxPqisDyNTl4WA
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
   Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
-  DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.0#sha256-OYRLiD-tTFJvTaweXET6A6ZWXNb27FStXEcpkq1enc0
-  Journal: oci://ghcr.io/telorun/durable-journal-file@0.6.0#sha256-RD0WUotw6eiUZBKgBVd7IzJi95D6Jvk5Anmmzw6QfLo
+  DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.1#sha256-2zh8d4sURSCk3aYbZ-VyED-LuOD6-LsXCbKszuTROC4
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.6.1#sha256-EGPt-j_ir4VMa3gAz8xWNbiQ4BMN9-KuxPzb88VlT8E
   Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw

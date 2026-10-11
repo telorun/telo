@@ -32,8 +32,8 @@ imports:
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
   Embedding: oci://ghcr.io/telorun/embedding@0.12.0#sha256-lQqgopkTtGP1RyYmoryM-mr1fv_Ey_xbMZsj3vlLEeM
   VectorStore: oci://ghcr.io/telorun/vector-store@0.11.0#sha256-lmCK8i7SQuTRupTSY-s5l89wUwQuikXpjJOxI5vbNwI
-  Durable: oci://ghcr.io/telorun/durable-local@0.5.0#sha256-OYRLiD-tTFJvTaweXET6A6ZWXNb27FStXEcpkq1enc0
-  Journal: oci://ghcr.io/telorun/durable-journal-postgres@0.9.0#sha256-SOJEbHFONpJRlFyG1QWw-U0B975xLrZTza7zVRUn9ww
+  Durable: oci://ghcr.io/telorun/durable-local@0.5.1#sha256-2zh8d4sURSCk3aYbZ-VyED-LuOD6-LsXCbKszuTROC4
+  Journal: oci://ghcr.io/telorun/durable-journal-postgres@0.9.1#sha256-Mk266dnSLnUihJoHikXQiJ2uJyWcQ5Ol-u7S0r1rAMI
   Schema:
     source: ./hub-schema.yaml
     resources:
