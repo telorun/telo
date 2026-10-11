@@ -62,18 +62,18 @@ export function RunBar({
   const hasOutput = dockHasContent(appPath);
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex min-w-0 items-center gap-1">
       <button
         type="button"
         onClick={onOpenSettings}
         title={runnerName ? `Runner: ${runnerName}` : "No runner selected"}
-        className="flex max-w-40 items-center gap-1 truncate rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+        className="flex min-w-0 max-w-40 items-center gap-1 truncate rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
       >
         <Server className="size-3 shrink-0" aria-hidden />
         <span className="truncate">{runnerName ?? "No runner"}</span>
       </button>
 
-      <div className="mx-1 h-4 w-px bg-zinc-200 dark:bg-zinc-800" aria-hidden />
+      <div className="mx-1 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-800" aria-hidden />
 
       {liveRun ? (
         <>
@@ -98,7 +98,7 @@ export function RunBar({
         </Button>
       )}
 
-      <div className="flex items-stretch">
+      <div className="flex shrink-0 items-stretch">
         {liveRun ? (
           <Button
             variant="default"

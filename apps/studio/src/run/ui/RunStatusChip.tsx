@@ -13,7 +13,7 @@ export function RunStatusChip({ status }: Props) {
   const spinning = status.kind === "starting";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${className}`}
+      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${className}`}
     >
       {spinning && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
       {label}

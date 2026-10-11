@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RepositoryLimits } from "../api";
 import type { SnapshotEntry } from "../snapshot-tar";
-import { CommitLimitError, WorkingCopy } from "../working-copy";
+import { CommitLimitError, ImportPathError, WorkingCopy } from "../working-copy";
 import { WorkingCopyAdapter } from "../working-copy-adapter";
 import { bytes, MemoryByteStore, text } from "./memory-byte-store";
 
@@ -173,6 +173,53 @@ describe("WorkingCopy", () => {
     await copy.discard();
     expect(await copy.changes()).toEqual([]);
     expect([...(await store.read("tree/logo.png"))]).toEqual([...BINARY]);
+  });
+
+  it("copies files in as uncommitted changes, naming what it would replace", async () => {
+    const { store, copy } = await seeded();
+    const prepared = await copy.prepareImport(
+      [
+        { path: "apps/shop/telo.yaml", bytes: bytes("kind: Telo.Application\n# mine\n") },
+        { path: "notes.md", bytes: bytes("new") },
+        // Byte-identical to what the tree holds: not written, not a replacement.
+        { path: "scripts/run.sh", bytes: bytes("#!/bin/sh\n") },
+        { path: "latest", bytes: bytes("no longer a link") },
+      ],
+      LIMITS,
+    );
+    expect(prepared.overwrites).toEqual(["apps/shop/telo.yaml", "latest"]);
+    expect(prepared.files.map((f) => f.path)).toEqual(["apps/shop/telo.yaml", "notes.md", "latest"]);
+    // Preparing changes nothing.
+    expect(await copy.changes()).toEqual([]);
+
+    await copy.applyImport(prepared);
+    expect(await copy.changes()).toEqual([
+      { path: "apps/shop/telo.yaml", status: "modified" },
+      { path: "latest", status: "modified" },
+      { path: "notes.md", status: "added" },
+    ]);
+    expect(text(await store.read("tree/notes.md"))).toBe("new");
+
+    await copy.discard();
+    expect(await copy.changes()).toEqual([]);
+  });
+
+  it("refuses a copy before writing anything", async () => {
+    const { copy } = await seeded();
+    const small = { path: "notes.md", bytes: bytes("new") };
+    await expect(
+      copy.prepareImport([small, { path: "big.txt", bytes: new Uint8Array(2048) }], LIMITS),
+    ).rejects.toThrow(/big\.txt/);
+    // A file where the project holds a directory, and under a path it holds as a file.
+    await expect(copy.prepareImport([{ path: "apps", bytes: bytes("x") }], LIMITS)).rejects.toThrow(
+      ImportPathError,
+    );
+    await expect(
+      copy.prepareImport([{ path: "logo.png/readme.md", bytes: bytes("x") }], LIMITS),
+    ).rejects.toThrow(/logo\.png/);
+    const many = Array.from({ length: 11 }, (_, i) => ({ path: `f${i}.txt`, bytes: bytes("x") }));
+    await expect(copy.prepareImport(many, LIMITS)).rejects.toThrow(CommitLimitError);
+    expect(await copy.changes()).toEqual([]);
   });
 });
 

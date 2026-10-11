@@ -41,11 +41,34 @@ export interface PreparedUpdate {
   plan: MergePlan;
 }
 
+/** A file to copy into the working tree, by path relative to its root. */
+export interface ImportFile {
+  path: string;
+  bytes: Uint8Array;
+}
+
+/** A copy into the working tree as it will be written. */
+export interface PreparedImport {
+  /** The files that differ from the working tree. */
+  files: ImportFile[];
+  /** The paths among them the working tree already holds. */
+  overwrites: string[];
+}
+
 /** A commit Studio will not send because Cloud would refuse it. */
 export class CommitLimitError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "CommitLimitError";
+  }
+}
+
+/** A file that cannot be copied in: the working tree holds a directory where
+ *  it would be a file, or a file where it needs a directory. */
+export class ImportPathError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ImportPathError";
   }
 }
 
@@ -253,6 +276,82 @@ export class WorkingCopy {
     }
     await this.writeBase(record.branch, update.headCommit, update.head);
     return taken;
+  }
+
+  /**
+   * Reads what copying `files` into the working tree would write, and refuses —
+   * naming the file — what could not be written or what Cloud's limits would
+   * refuse of the commit that follows. Changes nothing. Meant for a clean
+   * working copy, where what it writes is the whole of that commit.
+   */
+  async prepareImport(files: ImportFile[], limits: RepositoryLimits): Promise<PreparedImport> {
+    const local = await this.localTree(await this.record());
+    const directories = new Set<string>();
+    for (const path of local.keys()) {
+      const segments = path.split("/");
+      for (let i = 1; i < segments.length; i++) directories.add(segments.slice(0, i).join("/"));
+    }
+
+    const prepared: PreparedImport = { files: [], overwrites: [] };
+    const sizes = new Map([...local].map(([path, file]) => [path, file.size]));
+    let commitBytes = 0;
+    for (const file of files) {
+      const { path, bytes } = file;
+      if (directories.has(path)) {
+        throw new ImportPathError(`${path} cannot be copied: the project holds a directory there.`);
+      }
+      const segments = path.split("/");
+      for (let i = 1; i < segments.length; i++) {
+        const parent = segments.slice(0, i).join("/");
+        if (local.has(parent)) {
+          throw new ImportPathError(`${path} cannot be copied: the project holds a file at ${parent}.`);
+        }
+      }
+      if (bytes.length > limits.maxFileBytes) {
+        throw new CommitLimitError(
+          `${path} is ${mebibytes(bytes.length)}; a file may be at most ${mebibytes(limits.maxFileBytes)}.`,
+        );
+      }
+      const existing = local.get(path)?.state;
+      if (existing?.kind === "file" && existing.sha256 === (await sha256Hex(bytes))) continue;
+      commitBytes += bytes.length;
+      if (commitBytes > limits.maxCommitBytes) {
+        throw new CommitLimitError(
+          `Copying these files exceeds ${mebibytes(limits.maxCommitBytes)} for one commit at ${path}.`,
+        );
+      }
+      prepared.files.push(file);
+      if (existing) prepared.overwrites.push(path);
+      sizes.set(path, bytes.length);
+    }
+
+    if (prepared.files.length > limits.maxCommitChanges) {
+      throw new CommitLimitError(
+        `Copying would change ${prepared.files.length} files; a commit may change at most ${limits.maxCommitChanges}.`,
+      );
+    }
+    if (sizes.size > limits.maxSnapshotFiles) {
+      throw new CommitLimitError(
+        `The project would hold ${sizes.size} files; a repository may hold at most ${limits.maxSnapshotFiles}.`,
+      );
+    }
+    let treeBytes = 0;
+    for (const [path, size] of sizes) {
+      treeBytes += size;
+      if (treeBytes > limits.maxSnapshotBytes) {
+        throw new CommitLimitError(
+          `The project would exceed ${mebibytes(limits.maxSnapshotBytes)} at ${path}.`,
+        );
+      }
+    }
+    return prepared;
+  }
+
+  /** Writes a prepared copy into the working tree. Nothing is committed. */
+  async applyImport(prepared: PreparedImport): Promise<void> {
+    for (const file of prepared.files) {
+      await this.store.write(`${TREE_DIR}/${file.path}`, file.bytes);
+    }
   }
 
   /** Drops every local change: the working tree becomes the base again. */

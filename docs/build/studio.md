@@ -55,6 +55,30 @@ in the Telo Cloud console.
 Signing out removes the working copies from the device, after listing the
 projects whose changes were never committed.
 
+### Moving a browser workspace into a project
+
+A workspace started in the browser lives in that browser only. To keep it in
+git, open it, sign in, and choose **Copy to Telo Cloud project…** in the
+workspace menu, then pick a project you can write to.
+
+Studio copies the files to the project's root on your device and opens the
+project; the browser workspace is left as it was. The copied files show as
+changes, and they reach the project's git repository when you **Commit** —
+until then they exist on this device only. The workspace's pinned telo version
+comes along. `.telo`, `node_modules`, `.git`, `dist`, `.probes` and
+`.telo-agent` directories are not copied.
+
+- A project with uncommitted changes on this device is refused: commit or
+  discard them first.
+- When the project already holds a file at one of the paths, Studio lists those
+  files and asks before replacing them. Discarding the project's changes
+  afterwards restores them.
+- A copy the repository's limits would refuse is not started, and the message
+  names the file.
+
+Once the commit lands, Studio offers to remove the browser workspace — unless
+you have edited it since the copy, in which case it is kept without asking.
+
 ## Hosting the web build
 
 Each Studio release publishes the web build as the image

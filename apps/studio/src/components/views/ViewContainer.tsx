@@ -65,7 +65,8 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-hidden">
-      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-950">
+      {/* Wraps: a pane too narrow for both gives the run controls a row of their own. */}
+      <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-1 border-b border-zinc-200 bg-white px-3 py-1 dark:border-zinc-800 dark:bg-zinc-950">
         {visibleTabs.map((tab) => (
           <div key={tab.id} className="flex items-center">
             <button
@@ -82,15 +83,14 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
           </div>
         ))}
         {appPath && (
-          <>
-            <div className="flex-1" />
+          <div className="ml-auto min-w-0">
             <RunBar
               appPath={appPath}
               runnerName={viewProps.run.runnerName}
               onRun={viewProps.run.onRun}
               onOpenSettings={viewProps.run.onOpenSettings}
             />
-          </>
+          </div>
         )}
       </div>
 

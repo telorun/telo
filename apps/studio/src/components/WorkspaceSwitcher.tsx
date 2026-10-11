@@ -4,6 +4,7 @@ import { useCloud } from "../cloud/context";
 import { loadWorkingCopyIndex, type WorkingCopyEntry } from "../cloud/working-copy-index";
 import { pathBasename } from "../loader/paths";
 import { browserWorkspaceHasFiles } from "../storage";
+import { CopyToCloudProjectDialog } from "./cloud/CopyToCloudProjectDialog";
 import { OpenCloudProjectDialog } from "./cloud/OpenCloudProjectDialog";
 import { Button } from "./ui/button";
 import {
@@ -56,6 +57,7 @@ export function WorkspaceSwitcher({
 }: WorkspaceSwitcherProps) {
   const cloud = useCloud();
   const [cloudDialogOpen, setCloudDialogOpen] = useState(false);
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   // Read when the menu opens: both lists live in storage other code writes.
   const [workingCopies, setWorkingCopies] = useState<WorkingCopyEntry[]>([]);
   const [browserWorkspaceStored, setBrowserWorkspaceStored] = useState(false);
@@ -126,6 +128,11 @@ export function WorkspaceSwitcher({
               Open from Telo Cloud…
             </DropdownMenuItem>
           )}
+          {signedIn && browserCurrent && browserWorkspaceStored && (
+            <DropdownMenuItem onSelect={() => setCopyDialogOpen(true)}>
+              Copy to Telo Cloud project…
+            </DropdownMenuItem>
+          )}
           {current && (
             <>
               {(onOpenFolder || signedIn) && <DropdownMenuSeparator />}
@@ -135,6 +142,7 @@ export function WorkspaceSwitcher({
         </DropdownMenuContent>
       </DropdownMenu>
       <OpenCloudProjectDialog open={cloudDialogOpen} onOpenChange={setCloudDialogOpen} />
+      <CopyToCloudProjectDialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen} />
     </>
   );
 }

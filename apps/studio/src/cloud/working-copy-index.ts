@@ -16,6 +16,9 @@ export interface WorkingCopyEntry {
    *  under and what it was a commit of, so a retry — after a reload too —
    *  reuses the key and yields one commit. */
   pendingCommit?: { key: string; fingerprint: string };
+  /** The browser-stored workspace was copied in and that copy is not yet
+   *  committed: the digest of the files it held then. */
+  browserImport?: { digest: string };
 }
 
 /** A working copy stored before Cloud named its projects: its id names nothing
