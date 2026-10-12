@@ -8,6 +8,7 @@ vi.mock("../cloud/context", () => ({
   useCloud: () => ({ session: { status: "unavailable" } }),
 }));
 vi.mock("./cloud/OpenCloudProjectDialog", () => ({ OpenCloudProjectDialog: () => null }));
+vi.mock("./cloud/NewCloudProjectDialog", () => ({ NewCloudProjectDialog: () => null }));
 
 afterEach(() => cleanup());
 

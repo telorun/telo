@@ -33,7 +33,16 @@ Module documentation (schema descriptions) is rendered inline next to each field
 
 Signing in is optional: everything above works without an account. Where Studio
 is served by Telo Cloud, and in the desktop build, **Sign in** adds **Open from
-Telo Cloud**, which lists your Cloud projects.
+Telo Cloud**, which lists your Cloud projects, and **New Telo Cloud project**.
+
+A new project asks for a name, a slug and — when your organization has more than
+one place to run on — where it runs; the organization's default is preselected.
+Telo Cloud gives the project one stage, **Production**, running there, and
+Studio opens the project. Organization owners and admins can create projects.
+Before an organization's first project, an owner or admin claims its registry
+namespace in the same dialog; that name is permanent. An organization with no
+hosting yet gets the project without a stage: hosting is set up in the Telo
+Cloud console.
 
 Opening one copies its git repository to your device as a working copy, on the
 project's default branch. You edit, run and use the agent exactly as in any
@@ -44,13 +53,36 @@ tabs shows the project, its branch and how many files have changed.
 | --- | --- |
 | **Commit** | Lists the changed files, asks for a message, and commits them to the branch as you. |
 | **Update** | Offered when the branch has new commits and you have local changes. Files only the branch changed are taken; a file both sides changed is yours to settle with **Keep mine** or **Take theirs**. Nothing is committed by an update. A working copy with no local changes follows the branch by itself. |
-| **Publish** | Publishes the open Application or Library at the last commit to your project's private registry and shows its ref, version, digest and integrity pin. Enabled once the module's directory has nothing uncommitted. It creates no app and starts no deployment — do that in the Telo Cloud console with the ref. |
+| **Publish** | Publishes the open Application or Library at the last commit to your project's private registry and shows its ref, version, digest and integrity pin. Enabled once the module's directory has nothing uncommitted. Publishing an Application creates its app in Telo Cloud. |
+| **Publish and deploy** | For an Application: publishes it, then Telo Cloud deploys the published version to the stage you pick, and the dialog follows the deployment step by step. Cloud does the deploying, so closing the dialog or Studio does not stop it. A protected stage is offered to project admins only. |
 | **Published modules** | What the project has published, with each module's versions. A project admin can make a module public or private. |
 
-A project you can only view opens read-only: you can run it, not edit, commit
-or publish. If the git host protects the branch, Studio offers to commit to a
-new branch instead. Projects, members and repository connections are managed
-in the Telo Cloud console.
+### The Cloud view
+
+While a Cloud project is open, an Application has a **Cloud** tab beside Graph,
+Outline, Variables and Source. It shows the application in each of the
+project's stages: the version that serves, whether it is running, and the
+deployment under way with its steps as they happen — or, when the last one
+failed, why.
+
+| Action | What it does |
+| --- | --- |
+| **Deploy** | Deploys a version the module has published to that stage. |
+| **Revert to previous version** | Deploys the newest healthy deployment before the current one again, exactly as it was. |
+| **Promote from …** | Deploys the version another stage serves, with this stage's own variables and secrets. |
+| **Restart** | Replaces every instance by a new one, one at a time. |
+| **Cancel deployment** | Stops a deployment that has not started applying yet. |
+| **Variables and secrets** | The stage's environment variables. A secret's value is write-only: it can be replaced, never read. A change takes effect with the next deployment; **Apply changed variables** starts one. |
+| **Deployments** | The stage's recent deployments. |
+
+Deploying to a stage needs the project role deployer, and admin when the stage
+is protected. Stopping an application, deleting it, scaling it, and adding or
+changing stages are done in the Telo Cloud console, which each stage links to.
+
+A project you can only view opens read-only: you can run it and see where it
+runs, not edit, commit, publish or deploy. If the git host protects the branch,
+Studio offers to commit to a new branch instead. Members, repository
+connections, stages and hosting are managed in the Telo Cloud console.
 
 Signing out removes the working copies from the device, after listing the
 projects whose changes were never committed.

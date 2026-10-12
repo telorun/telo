@@ -5,6 +5,7 @@ import { loadWorkingCopyIndex, type WorkingCopyEntry } from "../cloud/working-co
 import { pathBasename } from "../loader/paths";
 import { browserWorkspaceHasFiles } from "../storage";
 import { CopyToCloudProjectDialog } from "./cloud/CopyToCloudProjectDialog";
+import { NewCloudProjectDialog } from "./cloud/NewCloudProjectDialog";
 import { OpenCloudProjectDialog } from "./cloud/OpenCloudProjectDialog";
 import { Button } from "./ui/button";
 import {
@@ -58,6 +59,7 @@ export function WorkspaceSwitcher({
   const cloud = useCloud();
   const [cloudDialogOpen, setCloudDialogOpen] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   // Read when the menu opens: both lists live in storage other code writes.
   const [workingCopies, setWorkingCopies] = useState<WorkingCopyEntry[]>([]);
   const [browserWorkspaceStored, setBrowserWorkspaceStored] = useState(false);
@@ -128,6 +130,11 @@ export function WorkspaceSwitcher({
               Open from Telo Cloud…
             </DropdownMenuItem>
           )}
+          {signedIn && (
+            <DropdownMenuItem onSelect={() => setNewProjectOpen(true)}>
+              New Telo Cloud project…
+            </DropdownMenuItem>
+          )}
           {signedIn && browserCurrent && browserWorkspaceStored && (
             <DropdownMenuItem onSelect={() => setCopyDialogOpen(true)}>
               Copy to Telo Cloud project…
@@ -141,7 +148,12 @@ export function WorkspaceSwitcher({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-      <OpenCloudProjectDialog open={cloudDialogOpen} onOpenChange={setCloudDialogOpen} />
+      <OpenCloudProjectDialog
+        open={cloudDialogOpen}
+        onOpenChange={setCloudDialogOpen}
+        onNewProject={() => setNewProjectOpen(true)}
+      />
+      <NewCloudProjectDialog open={newProjectOpen} onOpenChange={setNewProjectOpen} />
       <CopyToCloudProjectDialog open={copyDialogOpen} onOpenChange={setCopyDialogOpen} />
     </>
   );

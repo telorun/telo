@@ -1065,7 +1065,8 @@ against the live hub, and imports the standard library at pinned published
 versions once a release is out (by in-repo path while a change to it is being
 built), so it also fails while a change has landed here but is not yet
 released and re-pinned. Live cases skip themselves when `OPENAI_API_KEY` is
-unset.
+unset. CI never runs it on its own: it is the `Authoring Agent E2E` workflow,
+started by hand against a chosen branch.
 
 The offline cases run whole turns against `chat/tests/__fixtures__/provider-stub`,
 a local stand-in for the responses endpoint reached through `MODEL_ENDPOINT`: it replies, calls one tool, refuses, or holds a reply until a test calls its `POST /release` (an aborted turn's request ends with the abort) depending on the message, and keeps every request it was sent for a test to read.

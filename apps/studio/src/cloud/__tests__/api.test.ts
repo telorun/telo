@@ -87,4 +87,22 @@ describe("CloudApi", () => {
       body: '{"visibility":"public"}',
     });
   });
+
+  it("publishes a module for the telo version it is edited against", async () => {
+    const { api, requests } = scripted([
+      json(202, { id: "pub_1", status: "queued", modulePath: "apps/shop", commit: "c1", teloVersion: "0.110.0" }),
+    ]);
+    const publication = await api.createPublication(
+      "prj_1",
+      { modulePath: "apps/shop", commit: "c1", teloVersion: "0.110.0" },
+      "key-1",
+    );
+    expect(publication.teloVersion).toBe("0.110.0");
+    expect(requests[0]).toMatchObject({
+      method: "POST",
+      path: "/v1/projects/prj_1/publications",
+      headers: { "idempotency-key": "key-1" },
+      body: '{"modulePath":"apps/shop","commit":"c1","teloVersion":"0.110.0"}',
+    });
+  });
 });

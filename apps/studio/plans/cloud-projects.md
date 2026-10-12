@@ -14,8 +14,9 @@ Studio, edit it, commit to its git repository and publish a module so Cloud can
 deploy it. Signing in is optional: everything Studio does today keeps working
 anonymously.
 
-Out of scope: usage limits, creating projects or connecting repositories
-(done in the Cloud console), opening pull requests, deploying from Studio.
+Out of scope: usage limits, connecting repositories (done in the Cloud
+console), opening pull requests. Creating projects and deploying were out of
+scope here and are built since: `plans/cloud-developer-loop.md`.
 
 ## Solution
 
@@ -210,8 +211,9 @@ removes them and otherwise signs out again.
   each agent turn, so one tar per commit replaces thousands of calls.
 - **Per-file conflict choice, no in-file merge.** Studio has no diff or merge
   view; the server never merges and never forces a push.
-- **Workspaces and repository connections are managed in the console.** Studio's
-  clients carry only the scopes Studio's features need.
+- **Repository connections are managed in the console.** Studio's clients carry
+  only the scopes Studio's features need; creating a project became one of
+  those features (`plans/cloud-developer-loop.md`).
 
 ## Outside Studio
 

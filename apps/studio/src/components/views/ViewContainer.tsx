@@ -1,9 +1,11 @@
 import { Lock } from "lucide-react";
+import { useEffect } from "react";
 import { getModuleFiles, summarizeFiles } from "../../diagnostics-aggregate";
 import type { ModuleKind, ViewId } from "../../model";
 import { RunBar, RunDock, useRun } from "../../run";
 import { DiagnosticBadge } from "../diagnostics/DiagnosticBadge";
 import { RegionErrorBoundary } from "../RegionErrorBoundary";
+import { CloudView } from "./cloud/CloudView";
 import { useDiagnosticsState } from "../diagnostics/DiagnosticsContext";
 import { OutlineView } from "./outline/OutlineView";
 import { RunConfigView } from "./run/RunConfigView";
@@ -22,17 +24,21 @@ interface TabEntry {
   label: string;
   /** If true, hidden when the active module is a Library. */
   applicationOnly?: boolean;
+  /** If true, hidden unless a Telo Cloud project is open. */
+  cloudOnly?: boolean;
 }
 
 const VIEW_TABS: TabEntry[] = [
   { id: "topology", label: "Graph" },
   { id: "outline", label: "Outline" },
   { id: "run", label: "Variables", applicationOnly: true },
+  { id: "cloud", label: "Cloud", applicationOnly: true, cloudOnly: true },
   { id: "source", label: "Source" },
 ];
 
-function isTabVisible(tab: TabEntry, kind: ModuleKind): boolean {
+function isTabVisible(tab: TabEntry, kind: ModuleKind, cloudOpen: boolean): boolean {
   if (tab.applicationOnly && kind !== "Application") return false;
+  if (tab.cloudOnly && !cloudOpen) return false;
   return true;
 }
 
@@ -43,7 +49,7 @@ const OVERLAY_LOCKED_VIEWS: ReadonlySet<ViewId> = new Set<ViewId>(["topology", "
 
 export function ViewContainer({ activeView, onChangeView, viewProps }: ViewContainerProps) {
   const kind = viewProps.viewData.manifest.kind;
-  const visibleTabs = VIEW_TABS.filter((t) => isTabVisible(t, kind));
+  const visibleTabs = VIEW_TABS.filter((t) => isTabVisible(t, kind, viewProps.cloud !== null));
   // Module-wide rollup surfaced on the Source tab — the same dot + count the
   // sidebar shows per module, since Source is where you go to fix diagnostics.
   const diagState = useDiagnosticsState();
@@ -52,6 +58,12 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
   // nothing — Editor is expected to reset activeView when this happens, but we
   // guard here so a stale state doesn't crash the canvas.
   const renderedView = visibleTabs.some((t) => t.id === activeView) ? activeView : null;
+  // The Cloud view is remembered per workspace, and a workspace is not always
+  // a Cloud project: one that is no longer offered gives way to the graph.
+  const cloudViewGone = activeView === "cloud" && renderedView === null;
+  useEffect(() => {
+    if (cloudViewGone) onChangeView("topology");
+  }, [cloudViewGone, onChangeView]);
 
   const { dockFillsPane } = useRun();
   const appPath = viewProps.run.appPath;
@@ -115,6 +127,12 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
           {renderedView === "topology" && <TopologyView {...viewProps} />}
           {renderedView === "outline" && <OutlineView {...viewProps} />}
           {renderedView === "source" && <SourceView {...viewProps} />}
+          {renderedView === "cloud" && viewProps.cloud && (
+            <CloudView
+              name={viewProps.viewData.manifest.metadata.name}
+              modulePath={viewProps.cloud.modulePath}
+            />
+          )}
           {renderedView === "run" && (
             <RunConfigView
               manifest={viewProps.viewData.manifest}

@@ -270,7 +270,9 @@ export interface DirEntry {
   kind: DirectoryEntryKind;
 }
 
-export type ViewId = "topology" | "outline" | "source" | "run";
+/** `run` is an application's local variables; `cloud` is where it runs in Telo
+ *  Cloud, offered while a Cloud project is open. */
+export type ViewId = "topology" | "outline" | "source" | "run" | "cloud";
 
 /** An entry in the unified open-editors tab strip. A `module` tab hosts the
  *  structured `ViewContainer` (graph/outline/run/source) for a

@@ -145,8 +145,15 @@ interface CloudContextValue {
   cancelConflicts(): void;
   discard(): Promise<CloudActionResult>;
   switchBranch(branch: string): Promise<CloudActionResult>;
+  /** Publishes the module at the last commit, to run in Telo Cloud on
+   *  `teloVersion`: the version it is edited against, as a run uses it. With
+   *  `deployTo`, Telo Cloud then deploys the published version to the module's
+   *  app in that stage; the publication is followed until that deployment is
+   *  started or is known not to start. */
   publish(
     modulePath: string,
+    teloVersion: string,
+    deployTo: string | null,
     onProgress: (publication: Publication) => void,
   ): Promise<{ ok: true; publication: Publication } | { ok: false; message: string }>;
 }
@@ -892,7 +899,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   // ---------------------------------------------------------------------------
 
   const publish = useCallback<CloudContextValue["publish"]>(
-    async (modulePath, onProgress) => {
+    async (modulePath, teloVersion, deployTo, onProgress) => {
       const current = activeRef.current;
       if (!current || current.baseCommit === null) {
         return { ok: false, message: "Commit the module before publishing it." };
@@ -900,11 +907,22 @@ export function CloudProvider({ children }: { children: ReactNode }) {
       try {
         let publication = await api.createPublication(
           current.projectId,
-          { modulePath, commit: current.baseCommit },
+          {
+            modulePath,
+            commit: current.baseCommit,
+            teloVersion,
+            ...(deployTo !== null ? { deploy: { stageId: deployTo } } : {}),
+          },
           crypto.randomUUID(),
         );
         onProgress(publication);
-        while (publication.status === "queued" || publication.status === "running") {
+        // Cloud starts the deployment itself once the module is published, so
+        // leaving here loses nothing: this only watches.
+        while (
+          publication.status === "queued" ||
+          publication.status === "running" ||
+          (publication.status === "published" && publication.deploy?.status === "pending")
+        ) {
           await new Promise((resolve) => setTimeout(resolve, PUBLICATION_POLL_MS));
           publication = await api.getPublication(current.projectId, publication.id);
           onProgress(publication);

@@ -1,6 +1,17 @@
-import { Cloud, GitBranch, GitCommitHorizontal, Lock, RefreshCw, Upload } from "lucide-react";
+import {
+  ChevronDown,
+  Cloud,
+  GitBranch,
+  GitCommitHorizontal,
+  Lock,
+  RefreshCw,
+  Rocket,
+  Upload,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import type { CloudStage } from "../../cloud/api";
+import { consoleStagesUrl } from "../../cloud/console-links";
 import { useCloud } from "../../cloud/context";
 import { repositoryRefusalMessage } from "../../cloud/refusal-messages";
 import {
@@ -38,17 +49,26 @@ interface CloudProjectBarProps {
   activeModule: PublishTarget | null;
   /** Opens the active module's manifest in the source view. */
   onOpenManifest: () => void;
+  /** Opens the active module's Cloud view. */
+  onOpenCloudView: () => void;
 }
 
 /** The strip above a Cloud project's tabs: which project and branch, what
- *  has changed, and the three things done with it — commit, update, publish. */
-export function CloudProjectBar({ activeModule, onOpenManifest }: CloudProjectBarProps) {
+ *  has changed, and what is done with it — commit, update, publish, and for an
+ *  application publish and deploy to one of the project's stages. */
+export function CloudProjectBar({
+  activeModule,
+  onOpenManifest,
+  onOpenCloudView,
+}: CloudProjectBarProps) {
   const cloud = useCloud();
   const { active, api } = cloud;
   const [commitOpen, setCommitOpen] = useState(false);
   const [modulesOpen, setModulesOpen] = useState(false);
   const [publishing, setPublishing] = useState<PublishTarget | null>(null);
   const [branches, setBranches] = useState<string[] | null>(null);
+  const [stages, setStages] = useState<CloudStage[] | null>(null);
+  const [stagesError, setStagesError] = useState<string | null>(null);
 
   if (!active) return null;
   const signedIn = cloud.session.status === "signedIn";
@@ -72,7 +92,9 @@ export function CloudProjectBar({ activeModule, onOpenManifest }: CloudProjectBa
         ? "Commit this module's changes before publishing it."
         : active.changes === null
           ? "Reading the working copy…"
-          : null;
+          : activeModule !== null && "refusal" in activeModule.telo
+            ? activeModule.telo.refusal
+            : null;
 
   function loadBranches(open: boolean) {
     if (!open || !active) return;
@@ -82,6 +104,20 @@ export function CloudProjectBar({ activeModule, onOpenManifest }: CloudProjectBa
       toast.error(repositoryRefusalMessage(err));
     });
   }
+
+  function loadStages(open: boolean) {
+    if (!open || !active) return;
+    setStages(null);
+    setStagesError(null);
+    api.listStages(active.projectId).then(setStages, (err: unknown) => {
+      setStagesError(repositoryRefusalMessage(err));
+    });
+  }
+
+  const stagesUrl = consoleStagesUrl(
+    cloud.session.status === "signedIn" ? cloud.session.identity.consoleUrl : null,
+    active.projectId,
+  );
 
   async function act(action: () => Promise<{ ok: true } | { ok: false; message: string }>) {
     const result = await action();
@@ -158,12 +194,79 @@ export function CloudProjectBar({ activeModule, onOpenManifest }: CloudProjectBa
           variant="ghost"
           size="xs"
           disabled={publishBlocked !== null || busy}
-          title={publishBlocked ?? `Publish ${activeModule.name} at the last commit`}
+          title={
+            publishBlocked ??
+            `Publish ${activeModule.name} at the last commit, to run on telo ${"version" in activeModule.telo ? activeModule.telo.version : ""}`
+          }
           onClick={() => setPublishing(activeModule)}
         >
           <Upload />
           Publish
         </Button>
+      )}
+      {activeModule && activeModule.kind === "Application" && !viewer && (
+        <DropdownMenu onOpenChange={loadStages}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="xs"
+              disabled={publishBlocked !== null || busy}
+              title={
+                publishBlocked ??
+                `Publish ${activeModule.name} at the last commit and deploy it to a stage`
+              }
+            >
+              <Rocket />
+              Publish and deploy
+              <ChevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="max-h-72 w-64 overflow-y-auto">
+            <DropdownMenuLabel>Deploy to</DropdownMenuLabel>
+            {stagesError && (
+              <DropdownMenuItem disabled className="whitespace-normal text-destructive">
+                {stagesError}
+              </DropdownMenuItem>
+            )}
+            {stages === null && !stagesError && <DropdownMenuItem disabled>Loading…</DropdownMenuItem>}
+            {stages?.length === 0 && (
+              <>
+                <DropdownMenuItem disabled>This project has no stage yet.</DropdownMenuItem>
+                {stagesUrl && (
+                  <DropdownMenuItem asChild>
+                    <a href={stagesUrl} target="_blank" rel="noreferrer">
+                      Add a stage in the Telo Cloud console
+                    </a>
+                  </DropdownMenuItem>
+                )}
+              </>
+            )}
+            {stages?.map((stage) => {
+              // Deploying to a protected stage is a project admin's.
+              const locked = stage.protected && active.role !== "admin";
+              return (
+                <DropdownMenuItem
+                  key={stage.id}
+                  disabled={locked}
+                  onSelect={() =>
+                    setPublishing({
+                      ...activeModule,
+                      deployTo: { stageId: stage.id, stageName: stage.name },
+                    })
+                  }
+                >
+                  <span className="min-w-0 flex-1 truncate">{stage.name}</span>
+                  {locked && (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Lock className="size-3" />
+                      admin only
+                    </span>
+                  )}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
       <Button variant="ghost" size="xs" disabled={!signedIn} onClick={() => setModulesOpen(true)}>
         Published modules
@@ -194,6 +297,7 @@ export function CloudProjectBar({ activeModule, onOpenManifest }: CloudProjectBa
         target={publishing}
         onOpenChange={(open) => !open && setPublishing(null)}
         onOpenManifest={onOpenManifest}
+        onOpenCloudView={onOpenCloudView}
       />
     </div>
   );

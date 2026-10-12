@@ -6,6 +6,7 @@ const SESSION = {
   org: { id: "org_1" },
   permissions: ["cloud:access"],
   csrfToken: "csrf-1",
+  consoleUrl: "https://console.telo.cloud",
   expiresAt: "2026-11-01T00:00:00Z",
 };
 
@@ -28,9 +29,17 @@ describe("WebCloudBackend", () => {
         org: SESSION.org,
         permissions: SESSION.permissions,
         expiresAt: SESSION.expiresAt,
+        consoleUrl: SESSION.consoleUrl,
       },
     });
     expect(fetchMock).toHaveBeenCalledWith("/api/session", expect.objectContaining({ credentials: "same-origin" }));
+  });
+
+  it("names no console when the session names none", async () => {
+    const { consoleUrl: _, ...older } = SESSION;
+    vi.stubGlobal("fetch", vi.fn(async () => answer(200, JSON.stringify(older), "application/json")));
+    const state = await new WebCloudBackend().read();
+    expect(state.status === "signedIn" && state.identity.consoleUrl).toBeNull();
   });
 
   it("is anonymous on 401 session_required", async () => {

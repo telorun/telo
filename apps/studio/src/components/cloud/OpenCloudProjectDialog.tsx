@@ -3,10 +3,12 @@ import type { CloudProject } from "../../cloud/api";
 import { useCloud } from "../../cloud/context";
 import { repositoryRefusalMessage } from "../../cloud/refusal-messages";
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
@@ -14,10 +16,16 @@ import {
 interface OpenCloudProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Leaves this dialog for the one that creates a project. */
+  onNewProject: () => void;
 }
 
-/** "Open from Telo Cloud": the signed-in user's projects. */
-export function OpenCloudProjectDialog({ open, onOpenChange }: OpenCloudProjectDialogProps) {
+/** "Open from Telo Cloud": the signed-in user's projects, and the way to a new one. */
+export function OpenCloudProjectDialog({
+  open,
+  onOpenChange,
+  onNewProject,
+}: OpenCloudProjectDialogProps) {
   const cloud = useCloud();
   const { api } = cloud;
   const [projects, setProjects] = useState<CloudProject[] | null>(null);
@@ -64,7 +72,7 @@ export function OpenCloudProjectDialog({ open, onOpenChange }: OpenCloudProjectD
         {!projects && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
         {projects?.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            You have no projects in this organization. Create one in the Telo Cloud console.
+            You have no projects in this organization yet.
           </p>
         )}
         {projects && projects.length > 0 && (
@@ -93,6 +101,18 @@ export function OpenCloudProjectDialog({ open, onOpenChange }: OpenCloudProjectD
             ))}
           </ul>
         )}
+        <DialogFooter>
+          <Button
+            variant="outline"
+            disabled={opening !== null}
+            onClick={() => {
+              onOpenChange(false);
+              onNewProject();
+            }}
+          >
+            New project…
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

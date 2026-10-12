@@ -94,6 +94,20 @@ cached nor downloadable is an **error state**: the status item and one
 notification name it, with **Select version** and **Retry**. The editor never
 quietly edits against a different version instead.
 
+## Publishing to Telo Cloud
+
+telo studio publishes a module **for the version it is edited against** — the
+workspace's pin, or what Auto resolved for that module. Telo Cloud publishes the
+module with that release's own `telo publish` and runs every deployment of the
+published version on exactly that telo. What checked the manifest in the editor
+is what publishes it and what runs it in the cloud, as it is for a run started
+from studio. A published version keeps its telo version: to run the same module
+on another one, change `metadata.version` and publish again. A module with no
+version yet (its engine is still starting, or failed) cannot be published until
+the status in the top bar is resolved. Telo Cloud publishes for released telo
+versions from 0.110.0 on: a development build (`X+unreleased`) and an older
+version are refused, and the message names the version to pick instead.
+
 ## Running is unaffected
 
 The editing version only decides what the editor checks against. `telo run`
