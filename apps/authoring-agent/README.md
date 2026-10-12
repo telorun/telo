@@ -1033,9 +1033,19 @@ The tools are the security boundary, and they are declared:
   read as a convenience.
 - **Every subprocess is execed without a shell and without the key** —
   `OPENAI_API_KEY` is unset in the child, so a tool call cannot read it back out.
-- **Hub discovery** (`search_resources`, `get_module_manifest`) comes from an
-  `AiMcp.ToolProvider` over the hub's MCP endpoint, so the agent looks modules up
-  live instead of from a frozen list.
+- **Hub discovery** reads the live hub's MCP endpoint (`https://telo.sh/mcp`)
+  three ways, so the agent looks modules up live instead of from a frozen
+  list. A `LIBRARY INDEX:` message leads every turn: one line per library of
+  the publisher `hubPublisher` names (`ghcr.io/telorun`), read from the hub's
+  `list_libraries` tool, held for an hour and served for a day past that while
+  the hub cannot be reached; a turn started with no index at all runs without
+  one and logs a warning. `get_kinds` returns the definitions of kinds the
+  agent names, with each module's `imports:` line. `find_kinds` takes needs in
+  plain words: a second agent on the low-effort model (`discoveryMaxSteps`
+  model responses, 6 by default) searches the hub and names kinds, and their
+  definitions are then fetched from the hub directly — the search results
+  never enter the authoring agent's context. That agent's token usage is part
+  of the turn's own (`tokens` on the turn, the settled budget amount).
 
 A deployment whose callers are trusted can widen `teloVerbs` at the import.
 

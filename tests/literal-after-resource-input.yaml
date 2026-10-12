@@ -1,0 +1,39 @@
+# A call's plain-encoded literal is read against its target's declaration when
+# the resource holding the call is created — so that resource is created after
+# the import its target is reached through. The import here takes a resource of
+# the application, which places it after that resource; the caller, written
+# first and depending on nothing, used to be created ahead of the import, and
+# its RFC 3339 text reached the library as text and was refused at the call
+# (`ERR_INPUT_INVALID`: `/at must be a Telo.Timestamp`).
+kind: Telo.Application
+metadata:
+  name: LiteralAfterResourceInputTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+  Run: ../modules/run
+  Lib:
+    source: ./__fixtures__/literal-after-resource-input
+    resources:
+      marker: !ref marker
+targets:
+  - !ref verify
+---
+kind: Run.Sequence
+metadata:
+  name: verify
+steps:
+  - name: read
+    invoke: !ref Lib.instantText
+    inputs:
+      at: "2020-01-01T00:00:00Z"
+  - name: assertInstant
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result"
+      expected: "2020-01-01T00:00:00Z"
+---
+kind: Run.Value
+metadata:
+  name: marker
+value: 1

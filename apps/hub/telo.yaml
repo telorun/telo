@@ -977,37 +977,43 @@ entries:
   - name: search_resources
     description: |
       Search what registered Telo modules can do, on any host or transport.
-      A hit is either a kind to declare (`entry: kind`) or a ready-made
-      instance to reference (`entry: instance` — a function such as
-      `hmacSha256` you call as `<YourAlias>.hmacSha256(…)`, or a model such as
-      `pol` you reference as `!ref <YourAlias>.pol`), ranked together. `name`
-      is what you write after YOUR import alias, `kind` the kind it is or
-      instantiates; each hit carries its capability and description, the
-      kernels that can load it, and the owning module's exact location ref +
-      version.
-      Pass `entry` to choose what is ranked: `kind`, `instance` and
-      `application`, default `[kind, instance]`. An `application` hit is a
-      runnable application, never written in `imports:` — you run it by pinned
-      ref (`telo run oci://…@<version>#<pin>`, the pin from
-      `list_module_versions`) or stand it up with `App.Instance`; its
-      `application` field lists the variables, secrets and ports it asks for.
-      Follow up with `get_module_manifest(ref)` to read the full schemas.
+      Pass one `query`, or several `queries` to search every capability you
+      need in ONE call; each is answered separately under `results`.
+      Hits are grouped under the module that owns them: `ref` + `version` are
+      what you import, `name` on a hit is what you write after YOUR import
+      alias. A hit is a kind to declare unless it says otherwise: `entry:
+      instance` is a ready-made resource (`!ref <YourAlias>.<name>`, or
+      `<YourAlias>.<name>(…)` for a function) of the kind in `kind`, and
+      `entry: application` a runnable application — never written in
+      `imports:`, run by pinned ref or stood up with `App.Instance`, with the
+      inputs it asks for under `application`. A member a hit does not carry is
+      empty: no `extends` means it extends nothing, no `instances` that no
+      ready-made instance exists, no `runtimes` that any kernel loads it.
+      Follow up with `get_kinds` for the exact schemas of the kinds you chose.
     argumentsSchema:
       type: object
       properties:
         query: { type: string, description: "What the resource should do (name or description)." }
+        queries:
+          type: array
+          items: { type: string }
+          description: "Several needs searched in one call, each answered on its own."
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 8
+          description: "Most hits per query."
         category:
           type: string
           default: ""
           # Not enumerable — the vocabulary is open, so the guard is a hard
-          # error naming the real slugs and every response carries the facet,
-          # rather than a silent empty set.
+          # error naming the real slugs, rather than a silent empty set.
           description: >-
             Optional domain slug to narrow the search. OMIT IT UNLESS YOU KNOW
             THE SLUG EXISTS: categories are declared by module authors and open-
-            ended, so a guessed one is rejected rather than answered. Every
-            response lists the real vocabulary under `categories`; searching
-            once without this argument is the way to learn it.
+            ended, so a guessed one is rejected rather than answered.
+            `list_categories` lists the real vocabulary.
         runtime:
           type: string
           default: ""
@@ -1033,23 +1039,30 @@ entries:
             (a ready-made instance to reference) and `application` (a runnable
             application to run by pinned ref, never to import). Default
             `[kind, instance]`.
-      required: [query]
       additionalProperties: false
-    handler: !ref Search.searchResources
+    handler: !ref Search.searchMany
     inputs:
-      q: !cel "request.arguments.query"
+      queries: !cel >-
+        request.arguments.?queries.orValue([])
+          + (has(request.arguments.query) ? [request.arguments.query] : [])
+      limit: !cel "request.arguments.?limit.orValue(8)"
       category: !cel "request.arguments.?category.orValue('')"
       runtime: !cel "request.arguments.?runtime.orValue('')"
       entry: !cel "request.arguments.?entry.orValue(['kind', 'instance'])"
     result:
       content:
         - type: text
-          # `categories` rides on every response so one search teaches the whole
-          # facet vocabulary, and `categoryFilterDropped` says the hits are from
-          # a widened search rather than from the requested category.
+          # The grouped form, and nothing a caller cannot act on: the facet has
+          # its own tool, and `categoryFilterDropped` is stated only when the
+          # hits are from a widened search rather than the requested category.
           text: !cel >-
-            json({'query': request.arguments.query, 'categories': result.categories,
-                  'categoryFilterDropped': result.categoryFilterDropped, 'hits': result.hits})
+            size(result) == 0
+              ? json({'error': 'pass `query` or `queries`'})
+              : json({'results': result.map(r, compact({
+                  'query': r.query,
+                  'categoryFilterDropped': r.categoryFilterDropped ? dyn(true) : dyn(null),
+                  'modules': r.modules}))})
+      isError: !cel "size(result) == 0"
     catches:
       # -32602 (invalid params), not an empty hit list: a guessed category that
       # answered "no such kind" is what sent an agent hunting for a capability
@@ -1066,9 +1079,102 @@ entries:
           message: !cel "error.message"
           data:
             code: !cel "error.code"
+      # A `limit` outside 1–50, or an argument of the wrong type.
+      - when: !cel "error.code == 'ERR_INPUT_INVALID'"
+        error:
+          code: -32602
+          message: !cel "error.message"
       - error:
           code: -32603
           message: !cel "'search failed: ' + error.code"
+
+  # get_kinds — what a caller reads to WRITE a resource: the definitions of the
+  # kinds it names and nothing else of their modules. Text, not JSON: the
+  # documents are the manifest's own YAML, and quoting them into a JSON string
+  # would cost an escape per line.
+  - name: get_kinds
+    description: |
+      Fetch the definitions of the kinds you name — the EXACT field shapes to
+      author against — across any number of modules in one call. For each
+      module it returns the line to write under `imports:` (ref, version and
+      integrity pin), then each asked kind's `Telo.Definition` document as its
+      module wrote it: `schema`, `inputType`, `outputType`, `throws`,
+      `status`. Every named shape and parent kind a definition reaches is
+      included, parents in other modules too, so one call answers what fields
+      a kind takes. A name the module does not define is reported with the
+      kinds it does export. Prefer this to `get_module_manifest`, which
+      returns a whole module.
+    argumentsSchema:
+      type: object
+      properties:
+        kinds:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              ref: { type: string, description: "Location ref of the module owning the kind, exactly as search_resources returned it." }
+              kind: { type: string, description: "The kind's name within that module, e.g. Server." }
+              version: { type: string, description: "Exact version, or omit for the latest tracked one. One version is read per module." }
+            required: [ref, kind]
+            additionalProperties: false
+      required: [kinds]
+      additionalProperties: false
+    handler: !ref Catalog.kindDefinitions
+    inputs:
+      kinds: !cel "request.arguments.?kinds.orValue([])"
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            size(result.modules) == 0
+              ? 'pass `kinds`: a list of { ref, kind } naming at least one kind'
+            : join((result.modules.map(m, {'m': m, 'inherited': false})
+                  + result.inherited.map(m, {'m': m, 'inherited': true})).map(e,
+              !e.m.found
+                ? '# ' + e.m.ref + ' is not tracked by the hub (asked for: ' + join(e.m.asked, ', ')
+                    + '). Resolve the ref with suggest_module_refs.\n'
+              : e.m.application
+                ? '# ' + e.m.ref + ' is an application: it is run by pinned ref, never imported.\n'
+              : '# ' + e.m.name
+                  + (e.inherited ? ' — reached through `extends`: a kind above takes these fields too\n' : '\n')
+                  + '# imports:\n#   ' + e.m.name + ': ' + e.m.importRef + '\n'
+                  + (size(e.m.missing) > 0
+                      ? '# NOT DEFINED by this module: ' + join(e.m.missing, ', ')
+                          + '. It exports: ' + join(e.m.exported, ', ') + '\n'
+                      : '')
+                  + join(e.m.definitions.map(d, '---\n' + d + '\n'), '')), '\n')
+      isError: !cel "result.modules.all(m, !m.found)"
+    catches:
+      - error:
+          code: -32603
+          message: !cel "'reading kinds failed: ' + error.code"
+
+  # list_libraries — the whole of a publisher's library in one small answer, so
+  # a caller that keeps it need not search for what it can already name.
+  - name: list_libraries
+    description: |
+      List every library the hub tracks at its latest version, one entry each:
+      its ref, name, a one-sentence summary and the names of the kinds and
+      ready-made instances it exports. Pass `publisher` (a host and
+      organisation, e.g. `ghcr.io/telorun` for the standard library) to list
+      one publisher's libraries. Read it once to learn what exists, then
+      `get_kinds` for the schemas of what you will use.
+    argumentsSchema:
+      type: object
+      properties:
+        publisher:
+          type: string
+          default: ""
+          description: "Host and organisation whose libraries to list; omit for every tracked library."
+      additionalProperties: false
+    handler: !ref Catalog.libraryIndex
+    inputs:
+      publisher: !cel "request.arguments.?publisher.orValue('')"
+    result:
+      content:
+        - type: text
+          text: !cel "json({'libraries': result.libraries})"
 
   # get_module_manifest — keyed off the module's location ref, serving the
   # cached telo.yaml.
@@ -1316,28 +1422,29 @@ instructions: !literal |
   - https://telo.run/cel.md — CEL function reference.
 
   ## Tools
-  - `search_resources(query, category?, entry?)` — find what can do a job:
-    resource KINDS to declare and ready-made INSTANCES to reference, ranked
-    together (`entry: kind | instance`); pass `entry` including `application`
-    to find runnable APPLICATIONS too, which are run by pinned ref or with
-    `App.Instance` and never imported. Each hit carries its `name` (`Bucket`, `pol`),
-    the `kind` it is or instantiates, its capability/description, and the owning
-    module's exact location ref + version. Search UNFILTERED first:
-    `category` is an open, author-declared vocabulary, a guessed slug is
-    rejected outright, and a wrong-but-real one hides the answer. Every response
-    lists the real slugs under `categories`, so one call teaches you the set.
-    Write a kind hit as `<YourAlias>.<name>`; reference an instance hit as
-    `!ref <YourAlias>.<name>` or call it as `<YourAlias>.<name>(…)`. An
-    application hit's `application` lists the inputs it asks for.
-  - `get_module_manifest(ref, version?)` — read a tracked module's `telo.yaml`
-    by location ref. Its `Telo.Definition` docs are JSON Schemas: the EXACT
-    field shapes you must produce. `version` defaults to `latest`.
+  - `search_resources(query | queries, limit?, category?, entry?)` — find what
+    can do a job: resource KINDS to declare and ready-made INSTANCES to
+    reference, ranked together and grouped under the module that owns them.
+    Pass every need at once as `queries`. Write a kind hit as
+    `<YourAlias>.<name>`; reference an instance hit (`entry: instance`) as
+    `!ref <YourAlias>.<name>` or call it as `<YourAlias>.<name>(…)`. Pass
+    `entry` including `application` to find runnable APPLICATIONS too, which
+    are run by pinned ref or with `App.Instance` and never imported. Search
+    UNFILTERED first: `category` is an open, author-declared vocabulary and a
+    guessed slug is rejected outright.
+  - `get_kinds(kinds: [{ref, kind, version?}])` — the definitions of exactly
+    the kinds you name, across modules: each module's `imports:` line with its
+    version and integrity pin, each kind's `Telo.Definition` — the EXACT field
+    shapes you must produce — and every shape or parent kind it reaches.
+  - `list_libraries(publisher?)` — every tracked library in one line each:
+    ref, name, summary, exported kinds and instances.
+  - `get_module_manifest(ref, version?)` — a tracked module's whole `telo.yaml`
+    by location ref. Use `get_kinds` unless you need the entire module.
   - `get_module(ref, version?)` — keyed facts about one module (license,
     repository, deprecation, runtime reach, every exported kind/instance,
     every tracked version) without parsing manifest YAML.
   - `list_module_versions(ref)` — every tracked version, newest first, with the
-    `integrity` pin to write after `@` in an `imports:` entry. Use this to pin
-    a version instead of importing an unpinned `latest`.
+    `integrity` pin to write after `@<version>#` in an `imports:` entry.
   - `find_implementations(ref, kind)` — every exported kind extending a given
     contract (e.g. backends of `Sql.Connection`), across module boundaries.
   - `find_instances(ref, kind)` — every ready-made instance of a kind that any
@@ -1350,17 +1457,16 @@ instructions: !literal |
     misspelled ref; not semantic search over capability.
 
   ## Composing an application
-  1. `search_resources` for each capability you need; `find_implementations`
-     once you have an abstract kind and need a concrete backend;
-     `find_instances` when a kind you need has ready-made instances to import.
-  2. `get_module_manifest` on each hit's `module.ref`; read the
+  1. `search_resources` with every capability you need as `queries`;
+     `find_implementations` once you have an abstract kind and need a concrete
+     backend; `find_instances` when a kind you need has ready-made instances.
+  2. `get_kinds` for every kind you will declare, in one call; read the
      `Telo.Definition` schemas — never guess fields from a kind name.
-     `list_module_versions` first if you want a pinned, non-latest version.
   3. Write one `Telo.Application`. Declare dependencies in the `imports` map
-     (PascalCase alias → the hit's `ref@version`, e.g.
-     `S3: oci://ghcr.io/acme/telo-s3@1.2.0`). A hit's kind suffix is written as
-     `<YourAlias>.<suffix>` — the prefix is the alias you chose, never a fixed
-     name. `targets` lists the runnables/services to start.
+     with the lines `get_kinds` returned (PascalCase alias → `ref@version#pin`,
+     e.g. `S3: oci://ghcr.io/acme/telo-s3@1.2.0#sha256-…`). A hit's kind
+     suffix is written as `<YourAlias>.<suffix>` — the prefix is the alias you
+     chose, never a fixed name. `targets` lists the runnables/services to start.
 
   ## Must-know
   - No `spec:` wrapper — resource fields sit at the doc top level.

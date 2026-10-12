@@ -5,9 +5,11 @@ metadata:
   description: |
     End-to-end tests for the hub's MCP endpoint at /mcp, run against a live
     hub at http://localhost:8040 that has tracked the seeded refs. Locks in
-    the discovery loop: `search_resources` returns kind hits carrying the exact
-    module location ref, `get_module_manifest(ref)` returns the tracker-cached
-    telo.yaml for that ref, and `get_module` / `list_module_versions` /
+    the discovery loop: `search_resources` returns kind hits grouped under the
+    module location ref that owns them, for one query or several; `get_kinds`
+    returns the definitions of the named kinds with their import line;
+    `list_libraries` lists a publisher's libraries; `get_module_manifest(ref)`
+    returns the tracker-cached telo.yaml for that ref, and `get_module` / `list_module_versions` /
     `find_implementations` / `find_instances` / `list_categories` / `suggest_module_refs` mirror
     the hub's keyed-read HTTP routes as tools.
 imports:
@@ -17,7 +19,17 @@ imports:
   Yaml: oci://ghcr.io/telorun/yaml@0.11.0#sha256-KSC6vlR1yOvXgCUZzj6g4p0r_T-6SfMqQPLR_HQnktk
 targets:
   - !ref searchResources_ReturnsKindHits
-  - !ref searchResources_CarriesCategoryVocabulary
+  - !ref searchResources_OmitsWhatSaysNothing
+  - !ref searchResources_AnswersSeveralQueries
+  - !ref searchResources_LeadsWithTheNamedKind
+  - !ref searchResources_RefusesNoQuery
+  - !ref getKinds_ReturnsDefinitionsAndImportLine
+  - !ref getKinds_NamesWhatIsNotDefined
+  - !ref getKinds_ReportsAnUntrackedRef
+  - !ref getKinds_ReadsTheParentTheChildPins
+  - !ref getKinds_RefusesNoKinds
+  - !ref searchResources_RefusesLimitOutOfRange
+  - !ref listLibraries_ListsAPublishersLibraries
   - !ref searchResources_RefusesRuntimeForApplications
   - !ref searchResources_RefusesUnknownEntryType
   - !ref getModule_ReturnsTrackedModuleFacts
@@ -55,17 +67,333 @@ steps:
       text: !cel "steps.call.result.content[0].text"
   # The hit list itself is not assertable as a literal — scores and the rest of
   # the corpus move — so the claim is stated directly: the query echoes back,
-  # and the seeded timer's Delay is somewhere in the results.
+  # and the seeded timer's Delay is a hit under its own module, which states the
+  # ref and version to import once.
   - name: assert
     inputs:
       actual:
-        query: !cel "steps.parse.result.docs[0].query"
+        queries: !cel "steps.parse.result.docs[0].results.map(r, r.query)"
         foundTimerDelay: !cel >-
-          steps.parse.result.docs[0].hits.exists(h,
-            h.kind == 'Delay' && h.module.ref == 'oci://ghcr.io/telorun/timer')
+          steps.parse.result.docs[0].results[0].modules.exists(m,
+            m.ref == 'oci://ghcr.io/telorun/timer' && m.version != ''
+              && m.hits.exists(h, h.name == 'Delay' && h.capability == 'Telo.Invocable'))
       expected:
-        query: delay a task
+        queries: [delay a task]
         foundTimerDelay: true
+    invoke:
+      kind: Assert.Equals
+---
+# A hit carries only what says something: a kind hit has no `entry`, a hit that
+# extends nothing no `extends`, and the response no category facet — each of
+# which a caller that pays per byte would otherwise be sent on every hit.
+kind: Run.Sequence
+metadata: { name: searchResources_OmitsWhatSaysNothing }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: search_resources
+      arguments:
+        query: repeat a step while a condition holds
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: loopHit
+    value: !cel >-
+      steps.parse.result.docs[0].results[0].modules
+        .filter(m, m.ref == 'oci://ghcr.io/telorun/run')[0].hits.filter(h, h.name == 'Loop')[0]
+  - name: assert
+    inputs:
+      actual:
+        topLevel: !cel "keys(steps.parse.result.docs[0])"
+        resultKeys: !cel "sort(keys(steps.parse.result.docs[0].results[0]))"
+        loopKeys: !cel "sort(keys(steps.loopHit.result))"
+      expected:
+        topLevel: [results]
+        resultKeys: [modules, query]
+        loopKeys: [capability, description, name, runtimes]
+    invoke:
+      kind: Assert.Equals
+---
+# Several needs in one call: each query is answered on its own, in the order
+# asked, and `limit` bounds each answer's hits.
+kind: Run.Sequence
+metadata: { name: searchResources_AnswersSeveralQueries }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: search_resources
+      arguments:
+        queries: [delay a task, repeat a step while a condition holds]
+        limit: 2
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        queries: !cel "steps.parse.result.docs[0].results.map(r, r.query)"
+        withinLimit: !cel >-
+          steps.parse.result.docs[0].results.all(r,
+            sum(r.modules.map(m, size(m.hits))) <= 2)
+      expected:
+        queries: [delay a task, repeat a step while a condition holds]
+        withinLimit: true
+    invoke:
+      kind: Assert.Equals
+---
+# A query that spells a module and one of its kinds leads with that kind, the
+# rest of the module's matching kinds beside it — the name is a vote of its own
+# rather than one term among a description's many.
+kind: Run.Sequence
+metadata: { name: searchResources_LeadsWithTheNamedKind }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: search_resources
+      arguments:
+        queries: [scheduler cron, run loop]
+        limit: 3
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual: !cel >-
+        steps.parse.result.docs[0].results.map(r,
+          [r.modules[0].ref, r.modules[0].hits[0].name])
+      expected:
+        - ["oci://ghcr.io/telorun/scheduler", Cron]
+        - ["oci://ghcr.io/telorun/run", Loop]
+    invoke:
+      kind: Assert.Equals
+---
+# Neither `query` nor `queries` is an error result, not an empty answer. The
+# call must fail — reaching the step after it is itself the failure.
+kind: Run.Sequence
+metadata: { name: searchResources_RefusesNoQuery }
+steps:
+  - name: refused
+    try:
+      - name: call
+        invoke: !ref mcpToolCall
+        inputs:
+          name: search_resources
+          arguments: {}
+      - name: answered
+        throw:
+          code: ERR_TEST_EXPECTED_REFUSAL
+          message: search_resources answered a call naming no query
+    catch:
+      - name: assert
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MCP_TOOL_ERROR
+        invoke:
+          kind: Assert.Equals
+---
+# get_kinds answers with exactly what a caller writes against: the `imports:`
+# line for the version read, the asked kind's own document without its
+# controllers, and the parent a kind takes fields from — in another module.
+kind: Run.Sequence
+metadata: { name: getKinds_ReturnsDefinitionsAndImportLine }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: get_kinds
+      arguments:
+        kinds:
+          - { ref: "oci://ghcr.io/telorun/timer", kind: Delay }
+          - { ref: "oci://ghcr.io/telorun/kv-store-redis", kind: Store }
+  - name: text
+    value: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        timerImport: !cel >-
+          size(regexExtract(steps.text.result,
+            '#   Timer: oci://ghcr\\.io/telorun/timer@[0-9.]+#sha256-[A-Za-z0-9_-]+')) > 0
+        delayDefinition: !cel "steps.text.result.contains('\\n  name: Delay\\n')"
+        delayInput: !cel "steps.text.result.contains('duration:')"
+        noControllers: !cel "!steps.text.result.contains('controllers:')"
+        redisStore: !cel "steps.text.result.contains('extends: KvStore.Store')"
+        inheritedParent: !cel >-
+          size(regexExtract(steps.text.result,
+            'reached through `extends`[^\\n]*\\n# imports:\\n#   [A-Za-z]+: oci://ghcr\\.io/telorun/kv-store@')) > 0
+      expected:
+        timerImport: true
+        delayDefinition: true
+        delayInput: true
+        noControllers: true
+        redisStore: true
+        inheritedParent: true
+    invoke:
+      kind: Assert.Equals
+---
+# A name the module does not define is said so, beside what it does export — and
+# an alias-qualified name is read by its suffix, an alias being the caller's own.
+kind: Run.Sequence
+metadata: { name: getKinds_NamesWhatIsNotDefined }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: get_kinds
+      arguments:
+        kinds:
+          - { ref: "oci://ghcr.io/telorun/run", kind: Run.Loop }
+          - { ref: "oci://ghcr.io/telorun/run", kind: Nope }
+  - name: text
+    value: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        loopDefinition: !cel "steps.text.result.contains('\\n  name: Loop\\n')"
+        notDefined: !cel >-
+          size(regexExtract(steps.text.result,
+            '# NOT DEFINED by this module: Nope\\. It exports: [A-Za-z, ]*Loop')) > 0
+      expected:
+        loopDefinition: true
+        notDefined: true
+    invoke:
+      kind: Assert.Equals
+---
+# A call naming only refs the hub does not track is an error result.
+kind: Run.Sequence
+metadata: { name: getKinds_ReportsAnUntrackedRef }
+steps:
+  - name: refused
+    try:
+      - name: call
+        invoke: !ref mcpToolCall
+        inputs:
+          name: get_kinds
+          arguments:
+            kinds:
+              - { ref: "oci://example.test/absent", kind: Thing }
+      - name: answered
+        throw:
+          code: ERR_TEST_EXPECTED_REFUSAL
+          message: get_kinds answered for a ref the hub does not track
+    catch:
+      - name: assert
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MCP_TOOL_ERROR
+        invoke:
+          kind: Assert.Equals
+---
+# A parent kind is read at the version the CHILD pins it at, not at whatever is
+# latest: an older child was written against an older parent.
+kind: Run.Sequence
+metadata: { name: getKinds_ReadsTheParentTheChildPins }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: get_kinds
+      arguments:
+        kinds:
+          - { ref: "oci://ghcr.io/telorun/kv-store-redis", kind: Store, version: 0.6.0 }
+  - name: text
+    value: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        child: !cel "steps.text.result.contains('oci://ghcr.io/telorun/kv-store-redis@0.6.0')"
+        parent: !cel "regexGroups(steps.text.result, 'oci://ghcr[.]io/telorun/kv-store@([0-9.]+)')"
+      expected:
+        child: true
+        parent: [0.4.0]
+    invoke:
+      kind: Assert.Equals
+---
+# An empty `kinds` list is an error result saying what to pass.
+kind: Run.Sequence
+metadata: { name: getKinds_RefusesNoKinds }
+steps:
+  - name: refused
+    try:
+      - name: call
+        invoke: !ref mcpToolCall
+        inputs:
+          name: get_kinds
+          arguments: { kinds: [] }
+      - name: answered
+        throw:
+          code: ERR_TEST_EXPECTED_REFUSAL
+          message: get_kinds answered a call naming no kind
+    catch:
+      - name: assert
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MCP_TOOL_ERROR
+        invoke:
+          kind: Assert.Equals
+---
+# A `limit` outside 1–50 is a bad argument, not an internal failure.
+kind: Run.Sequence
+metadata: { name: searchResources_RefusesLimitOutOfRange }
+steps:
+  - name: refused
+    try:
+      - name: call
+        invoke: !ref mcpToolCall
+        inputs:
+          name: search_resources
+          arguments:
+            query: delay
+            limit: 500
+      - name: answered
+        throw:
+          code: ERR_TEST_EXPECTED_REFUSAL
+          message: search_resources answered a limit of 500
+    catch:
+      - name: assert
+        inputs:
+          actual:
+            code: !cel "error.code"
+            rpcCode: !cel "error.data.code"
+          expected:
+            code: ERR_MCP_JSON_RPC_ERROR
+            rpcCode: -32602
+        invoke:
+          kind: Assert.Equals
+---
+# list_libraries is the whole of a publisher's library in one answer: a summary
+# no longer than a line, and the kinds each library exports.
+kind: Run.Sequence
+metadata: { name: listLibraries_ListsAPublishersLibraries }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: list_libraries
+      arguments:
+        publisher: ghcr.io/telorun
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        timerKinds: !cel >-
+          steps.parse.result.docs[0].libraries
+            .filter(l, l.ref == 'oci://ghcr.io/telorun/timer')[0].kinds
+        onlyThePublisher: !cel >-
+          steps.parse.result.docs[0].libraries.all(l, l.ref.startsWith('oci://ghcr.io/telorun/'))
+        oneLine: !cel "steps.parse.result.docs[0].libraries.all(l, size(l.summary) <= 160)"
+      expected:
+        timerKinds: [Delay]
+        onlyThePublisher: true
+        oneLine: true
     invoke:
       kind: Assert.Equals
 ---
@@ -94,41 +422,6 @@ steps:
       expected:
         docKind: Telo.Library
         moduleName: Timer
-    invoke:
-      kind: Assert.Equals
----
-# The facet rides on every tool response, which is the only way an agent learns
-# an open, author-declared vocabulary from inside the discovery loop. Without it
-# a guessed `category` was answered with an empty hit list — indistinguishable
-# from "Telo has no such kind", and enough to send an agent hunting for a
-# capability it had already been shown.
-kind: Run.Sequence
-metadata: { name: searchResources_CarriesCategoryVocabulary }
-steps:
-  - name: call
-    invoke: !ref mcpToolCall
-    inputs:
-      name: search_resources
-      arguments:
-        query: repeat a step while a condition holds
-  - name: parse
-    invoke: !ref parsePayload
-    inputs:
-      text: !cel "steps.call.result.content[0].text"
-  # `run` is categorized Compute, and Run.Loop is what an app that repeats work
-  # actually needs — the kind an unfiltered search has to surface.
-  - name: assert
-    inputs:
-      actual:
-        dropped: !cel "steps.parse.result.docs[0].categoryFilterDropped"
-        knowsCompute: !cel "steps.parse.result.docs[0].categories.exists(c, c.category == 'compute')"
-        foundRunLoop: !cel >-
-          steps.parse.result.docs[0].hits.exists(h,
-            h.kind == 'Loop' && h.module.ref == 'oci://ghcr.io/telorun/run')
-      expected:
-        dropped: false
-        knowsCompute: true
-        foundRunLoop: true
     invoke:
       kind: Assert.Equals
 ---

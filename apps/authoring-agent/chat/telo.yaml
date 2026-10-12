@@ -11,9 +11,10 @@ metadata:
     and the `telo` tool may only name a subcommand listed in `teloVerbs` —
     inspection verbs by default, with `run` / `publish` / `install` / `upgrade`
     absent, so an anonymous prompt can neither execute a manifest on this host nor
-    reach the operator's key or registry credentials. Plus live Telo hub discovery tools (an
-    AiMcp.ToolProvider over the hub's MCP endpoint — search_resources /
-    get_module_manifest), and the turn machinery that ties them together: mint,
+    reach the operator's key or registry credentials. Plus live Telo hub discovery (two
+    hub tools over the hub's MCP endpoint — `find_kinds`, which has a second,
+    cheaper agent search the hub and returns the definitions of what it chose,
+    and `get_kinds` for kinds already named), and the turn machinery that ties them together: mint,
     list, search, rename, archive, delete, truncate and branch conversations,
     admit a turn at most once per idempotency key, claim its journal key before
     answering, record every part of it — the user's message first — in a durable
@@ -47,6 +48,7 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
   Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
   KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.0#sha256-GmMDeJ2eYatJ0_ewaUI6A6bnfkqlphjd4YKWtqZ5d2Y
+  Cache: oci://ghcr.io/telorun/cache@0.13.0#sha256-m85mbpiAnfwojpzTTF9I1yZeTF6KDLlCPEtadghO3nc
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.0#sha256-yPwUSVVhRMiqQYQ9cbptorm1cA-HnJW6pLHRZ-8-qPA
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.0#sha256-wHzRZi3uI7c12dRSULXQBO8GRYqhJj6gos6xv6eZj7g
   Idempotency: oci://ghcr.io/telorun/idempotency@0.11.0#sha256-hd4NvqYA6OioV89wn7SNk7BXrHIFYzv0cNL68Cscgd4
@@ -59,6 +61,13 @@ imports:
   MediaType: oci://ghcr.io/telorun/media-type@0.2.0#sha256-IMusU6CSTRaPcV9IytZWjhUfxTszK483gmWuJdC-3Xo
   Multipart: oci://ghcr.io/telorun/multipart@0.4.0#sha256-RjPcqJs2rTd4hWLUbQ-SGcqkhYW3GIDCgWbi_bk8kt0
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
+resources:
+  # The Telo hub the agent discovers modules through. An input rather than a
+  # client declared here, so the application names the hub it uses and a test
+  # stands a local one in its place.
+  hub:
+    kind: Mcp.Client
+    description: The Telo hub's MCP endpoint, which discovery reads.
 secrets:
   openaiApiKey:
     type: string
@@ -246,6 +255,19 @@ variables:
     # The most files one conversation may hold, sent or not: an upload lives
     # until its conversation is removed. No env binding: a test lowers it.
     default: 100
+  hubPublisher:
+    type: string
+    # Whose libraries the agent is told about at the head of every turn — the
+    # hub's own derivation of a publisher, a host and organisation. Every other
+    # tracked module is still reachable through `find_kinds`.
+    default: ghcr.io/telorun
+  discoveryMaxSteps:
+    type: integer
+    minimum: 1
+    # Model responses one `find_kinds` call may take: its searches run side by
+    # side in one response, so two or three is the usual count. A call that
+    # spends the budget concludes with what it has found.
+    default: 6
 exports:
   resources:
     - ensureWorkspace
@@ -270,6 +292,8 @@ exports:
     - turnChanges
     - revertTurn
     - author
+    - findKinds
+    - libraryIndex
     - readWorkspaceFile
     - runTelo
     - runManifest
@@ -521,12 +545,33 @@ reasoning:
 ---
 kind: AiMcp.ToolProvider
 metadata: { name: hubTools }
-client:
-  kind: Mcp.HttpClient
-  url: https://telo.sh/mcp
-  clientInfo:
-    name: authoring-agent
-    version: 0.0.0
+client: !ref hub
+---
+# A hub tool called by the runtime rather than by a model: the library index,
+# and the definitions of the kinds a discovery call chose.
+kind: Mcp.ToolsCall
+metadata: { name: hubCall }
+client: !ref hub
+---
+# Every model call a turn's journal records, as the usage each reported: the
+# agent's own steps, the naming and summary calls, and the calls a `find_kinds`
+# tool made on the turn's behalf — which reach the journal as that tool
+# result's own output. The one definition of "what a turn spent".
+kind: Telo.Function
+metadata:
+  name: callUsages
+  description: The usage of every model call a turn's journal records.
+params:
+  - name: records
+    schema: { type: array }
+returns:
+  schema: { type: array }
+body: !cel >-
+  records.filter(r, r.type == 'step-finish'
+      || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, r.usage)
+  + records.filter(r, r.type == 'tool-result' && r.toolResult.name == 'find_kinds'
+      && has(r.toolResult.output) && type(r.toolResult.output) == type({})
+      && 'usage' in r.toolResult.output).map(r, r.toolResult.output.usage)
 ---
 kind: Fs.FileWrite
 metadata: { name: writeFile }
@@ -3511,8 +3556,7 @@ steps:
       # Every model call the turn made, across its attempts: each call's
       # `step-finish`, plus the title and summary calls.
       tokens: !cel >-
-        cel.bind(spent, steps.records.result.filter(r, r.type == 'step-finish'
-            || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.totalTokens)),
+        cel.bind(spent, Self.callUsages(steps.records.result).map(u, int(u.totalTokens)),
           size(spent) == 0 ? 0 : int(sum(spent)))
       # The model the latest attempt ran on.
       model: !cel >-
@@ -3533,12 +3577,10 @@ steps:
       changes: !cel "json(steps.changes.result)"
       # The same calls `tokens` sums, by direction.
       promptTokens: !cel >-
-        cel.bind(spent, steps.records.result.filter(r, r.type == 'step-finish'
-            || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.promptTokens)),
+        cel.bind(spent, Self.callUsages(steps.records.result).map(u, int(u.promptTokens)),
           size(spent) == 0 ? 0 : int(sum(spent)))
       completionTokens: !cel >-
-        cel.bind(spent, steps.records.result.filter(r, r.type == 'step-finish'
-            || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.completionTokens)),
+        cel.bind(spent, Self.callUsages(steps.records.result).map(u, int(u.completionTokens)),
           size(spent) == 0 ? 0 : int(sum(spent)))
       # Every `run_manifest` call that returned a result, in order, with the
       # path its call named. A call refused as a tool error ran nothing.
@@ -5798,7 +5840,196 @@ maxToolResultBytes: !cel "int(variables.maxToolResultBytes)"
 maxParallelTools: 1
 toolProviders:
   - provider: !ref workspaceTools
+  - provider: !ref discoveryTools
+  # The definitions of kinds the agent can already name. Searching the hub is
+  # `find_kinds`' work: a search answers with far more text than the choice it
+  # leads to, and whatever a tool returns here is re-sent on every later step.
   - provider: !ref hubTools
+    include: [get_kinds]
+---
+# Chooses kinds, and nothing else: it searches the hub and names what answers
+# each need. It never writes a schema — `findKinds` fetches the definitions of
+# what it chose, so a field name reaches the author exactly as its module
+# declares it. On the low-effort model, with a short prompt of its own: a
+# search result read here is read once, at this call's price, instead of
+# riding the author's context for the rest of the turn.
+kind: Ai.Agent
+metadata: { name: discoverer }
+model: !ref bufferedModel
+system: !include-text ./discovery.md
+maxSteps: !cel "int(variables.discoveryMaxSteps)"
+onMaxSteps: conclude
+conclusionPrompt: >-
+  You have used every search this call may make. Do not call a tool. Reply now
+  with the JSON object your instructions describe, listing what you found and
+  what you did not.
+maxToolResultBytes: !cel "int(variables.maxToolResultBytes)"
+# Searches read and never write, so one response's calls have no order.
+maxParallelTools: 4
+toolProviders:
+  - provider: !ref hubTools
+    include: [search_resources, find_implementations, find_instances]
+---
+# `find_kinds`: needs in plain words in, the definitions to write against out.
+# The discoverer's reply is read as data — the first JSON object in it — and
+# everything the author is shown is built here, from that choice and the hub's
+# own answer. The discoverer's usage is part of the result, which is how the
+# turn's journal comes to hold it.
+kind: Run.Sequence
+metadata: { name: findKinds }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [needs]
+    properties:
+      needs: { type: array, items: { type: string } }
+      runtime: { type: string }
+steps:
+  - name: choose
+    invoke: !ref discoverer
+    inputs:
+      prompt: !cel >-
+        json(compact({'needs': inputs.needs, 'runtime': inputs.?runtime.orValue('')}))
+  - name: read
+    try:
+      - name: reply
+        value: !cel "parseJson(regexExtract(steps.choose.result.text, '[{].*[}]', 's'))"
+    catch:
+      - name: unreadable
+        value: !cel "error.message"
+  # One entry per need the discoverer answered: the module and the kinds of it
+  # to declare. An entry naming no module or no kind chose nothing.
+  - name: found
+    value: !cel >-
+      'reply' in steps && type(steps.reply.result) == type({}) && 'found' in steps.reply.result
+        ? steps.reply.result.found.filter(f, type(f) == type({}) && 'ref' in f && 'kinds' in f
+            && type(f.kinds) == type([]) && size(f.kinds) > 0)
+        : []
+  - name: notFound
+    value: !cel >-
+      'reply' in steps && type(steps.reply.result) == type({}) && 'notFound' in steps.reply.result
+        ? steps.reply.result.notFound : []
+  - name: definitions
+    if: !cel "size(steps.found.result) > 0"
+    then:
+      - name: fetch
+        try:
+          - name: kinds
+            invoke: !ref hubCall
+            inputs:
+              name: get_kinds
+              arguments:
+                kinds: !cel >-
+                  flatten(steps.found.result.map(f, f.kinds.map(k, {'ref': string(f.ref), 'kind': string(k)})))
+        catch:
+          - name: cancelled
+            if: !cel "error.code == 'ERR_INVOKE_CANCELLED'"
+            then:
+              - name: propagate
+                throw:
+                  code: !cel "error.code"
+                  message: !cel "error.message"
+          - name: unfetched
+            value: !cel "error.code + ': ' + error.message"
+outputs:
+  usage: !cel "steps.choose.result.usage"
+  found: !cel "steps.found.result"
+  notFound: !cel "steps.notFound.result"
+  text: !cel >-
+    (size(steps.found.result) > 0
+      ? 'FOUND\n' + join(steps.found.result.map(f,
+          '- ' + ('need' in f ? string(f.need) + ': ' : '') + join(f.kinds.map(k, string(k)), ', ')
+            + ' in ' + string(f.ref) + ('note' in f && string(f.note) != '' ? ' — ' + string(f.note) : '')), '\n') + '\n'
+      : '')
+    + (size(steps.notFound.result) > 0
+      ? 'NOT FOUND\n' + join(steps.notFound.result.map(n,
+          '- ' + (type(n) == type({}) && 'need' in n ? string(n.need) : json(n))
+            + (type(n) == type({}) && 'tried' in n ? ' (searched: ' + json(n.tried) + ')' : '')), '\n') + '\n'
+      : '')
+    + ('unreadable' in steps
+      ? 'ERR_DISCOVERY_UNREADABLE: the search did not end in an answer that could be read ('
+          + steps.unreadable.result + '). Call find_kinds again with the needs worded differently.\n'
+      : size(steps.found.result) == 0 && size(steps.notFound.result) == 0
+        ? 'NOT FOUND\n- the search named no kind for any of the needs.\n' : '')
+    + ('kinds' in steps ? '\nDEFINITIONS\n' + join(steps.kinds.result.content.filter(c, c.type == 'text').map(c, c.text), '\n')
+      : 'unfetched' in steps
+        ? '\nERR_DEFINITIONS_UNAVAILABLE: the hub did not return the definitions (' + steps.unfetched.result
+            + '). Call get_kinds for the kinds listed under FOUND.\n'
+      : '')
+---
+kind: Ai.Tools
+metadata: { name: discoveryTools }
+tools:
+  - tool: !ref findKinds
+    name: find_kinds
+    description: >-
+      Find the kinds that do a job, and get their definitions, in one call. Give
+      every capability you need as one entry of `needs`, in plain words ("serve
+      HTTP routes", "store rows in PostgreSQL", "run a job every hour") — all of
+      them at once, never one call per need. The result lists, under FOUND, the
+      module and kinds chosen for each need; under NOT FOUND, each need nothing
+      answers, with what was searched; and under DEFINITIONS, for each chosen
+      module the exact line to write under `imports:` and each kind's
+      `Telo.Definition` — the field shapes to author against. Use it for
+      anything the LIBRARY INDEX does not already name; for a kind you can
+      name, call `get_kinds` directly. ERR_DISCOVERY_UNREADABLE means the
+      search gave no usable answer — call again with different wording;
+      ERR_DEFINITIONS_UNAVAILABLE that the definitions must be fetched with
+      `get_kinds`.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [needs]
+      properties:
+        needs:
+          type: array
+          minItems: 1
+          items: { type: string }
+        runtime:
+          type: string
+          enum: [nodejs, rust]
+          description: Only when the user named the kernel the application must run on.
+    result: !cel "result.text"
+---
+# The hub's one-line-per-library index of a publisher, as the text the agent is
+# shown. Read through `libraryIndex`, never directly.
+kind: Run.Sequence
+metadata: { name: readLibraryIndex }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      key: { type: string }
+steps:
+  - name: list
+    invoke: !ref hubCall
+    inputs:
+      name: list_libraries
+      arguments:
+        publisher: !cel "variables.hubPublisher"
+outputs:
+  text: !cel >-
+    join(parseJson(steps.list.result.content[0].text).libraries.map(l,
+      '- ' + string(l.name) + ' (' + string(l.ref) + '): ' + string(l.summary)
+        + ('kinds' in l ? ' Kinds: ' + join(l.kinds.map(k, string(k)), ', ') + '.' : '')
+        + ('instances' in l ? ' Instances: ' + join(l.instances.map(i, string(i)), ', ') + '.' : '')), '\n')
+---
+kind: CacheMemory.Store
+metadata: { name: indexStore }
+---
+# The index, held for an hour and served for a day past that while the hub
+# cannot be reached: it moves only when a module is released, and a text that
+# is the same on every turn is what lets a provider cache the turn's head.
+kind: Cache.View
+metadata: { name: libraryIndex }
+store: !ref indexStore
+invoke: !ref readLibraryIndex
+ttl: 1h
+staleTtl: 24h
+revalidate: sync
 ---
 # The agent's model at low effort, with no readable reasoning, for the naming
 # and summary calls: on this API `max_output_tokens` bounds reasoning and reply
@@ -5832,16 +6063,13 @@ inputs:
   # plus the title and summary calls. A completed attempt is charged that; any
   # other ending at least its reservation.
   inputTokens: !cel >-
-    cel.bind(calls, records.filter(r, r.type == 'step-finish'
-        || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.promptTokens)),
+    cel.bind(calls, Self.callUsages(records).map(u, int(u.promptTokens)),
       size(calls) == 0 ? 0 : int(sum(calls)))
   outputTokens: !cel >-
-    cel.bind(calls, records.filter(r, r.type == 'step-finish'
-        || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.completionTokens)),
+    cel.bind(calls, Self.callUsages(records).map(u, int(u.completionTokens)),
       size(calls) == 0 ? 0 : int(sum(calls)))
   amount: !cel >-
-    cel.bind(calls, records.filter(r, r.type == 'step-finish'
-        || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.totalTokens)),
+    cel.bind(calls, Self.callUsages(records).map(u, int(u.totalTokens)),
       cel.bind(spent, size(calls) == 0 ? 0 : int(sum(calls)),
         outcome.state == 'completed' || spent > context.reserved ? spent : context.reserved))
 ---
@@ -7334,6 +7562,31 @@ steps:
       path: ""
       recursive: true
       exclude: [".telo", "node_modules", ".git", "dist", ".probes", ".telo-agent"]
+  # What the standard library holds, one line a module, so the agent names what
+  # it needs instead of searching for it. A hub that cannot be reached leaves
+  # the turn without the index — `find_kinds` still answers — and says so in
+  # the operator's log.
+  - name: index
+    try:
+      - name: libraries
+        invoke: !ref libraryIndex
+        inputs:
+          key: !cel "variables.hubPublisher"
+    catch:
+      - name: indexCancelled
+        if: !cel "error.code == 'ERR_INVOKE_CANCELLED'"
+        then:
+          - name: propagateIndex
+            throw:
+              code: !cel "error.code"
+              message: !cel "error.message"
+      - name: indexUnavailable
+        invoke: !ref Log.emit
+        inputs:
+          level: warn
+          message: The hub's library index could not be read; the turn runs without it.
+          attributes:
+            error: !cel "error.code + ': ' + error.message"
   - name: ask
     invoke: !ref author
     inputs:
@@ -7365,8 +7618,16 @@ steps:
       # after the request it applies to. UTC, stated as UTC: a report's
       # boundaries may well want the user's own zone, and that is a question to
       # ask rather than a guess to bury in an offset.
+      #
+      # The library index leads: it is the same text on every turn of every
+      # conversation until a module is released, so it extends the cached head
+      # rather than moving it.
       messages: !cel >-
-        (size(steps.summary.result.rows) > 0
+        ('libraries' in steps && steps.libraries.result.value.text != ''
+          ? [{'role': 'user', 'content': 'LIBRARY INDEX: every library of the standard library, one line each — its import ref, what it is for, and the kinds and ready-made instances it exports. For a kind named here, call get_kinds with the ref and the kind; for anything else, find_kinds.\n'
+              + string(steps.libraries.result.value.text)}]
+          : [])
+        + (size(steps.summary.result.rows) > 0
           ? [{'role': 'user', 'content': 'CONVERSATION SUMMARY: ' + string(steps.summary.result.rows[0].summary)}]
           : [])
         + steps.history.result.map(m, type(m.content) == type([])

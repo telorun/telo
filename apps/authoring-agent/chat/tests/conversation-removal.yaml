@@ -26,8 +26,11 @@ metadata:
     whose window ended before it changed leaves it whole, and one whose window
     ends after removes it, its turns and their keys.
 imports:
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.16.0#sha256-uGRA31NI6oUiT8Pr88uBvMqIvCgoG5QLASMIshc7c-A
   Chat:
     source: ../
+    resources:
+      hub: !ref hub
     secrets:
       openaiApiKey: stub-key
     variables:
@@ -63,6 +66,12 @@ targets:
   - !ref Chat.initSchema
   - !ref crashedBranch
   - !ref test
+---
+# The hub the chat library discovers modules through.
+kind: Mcp.HttpClient
+metadata: { name: hub }
+url: https://telo.sh/mcp
+clientInfo: { name: authoring-agent-test, version: 0.0.0 }
 ---
 kind: HttpClient.Client
 metadata: { name: client }

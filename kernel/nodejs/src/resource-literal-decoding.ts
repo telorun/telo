@@ -9,9 +9,10 @@
  * analyzer's one reader of those sites. Text the encoding refuses stays, and
  * validation reports it.
  *
- * Once per manifest object: a `with:`-scoped resource is created on every run of
- * its scope, and a decoded literal already is the instance, so a second walk
- * would change nothing and cost a whole-manifest traversal on a request path.
+ * Once per manifest object whose every call target resolved: a `with:`-scoped
+ * resource is created on every run of its scope, and a decoded literal already
+ * is the instance, so a second walk would change nothing and cost a
+ * whole-manifest traversal on a request path.
  */
 import { decodePlainLiterals, type AnalysisRegistry } from "@telorun/analyzer";
 import type { EvaluationContext, ResourceManifest } from "@telorun/sdk";
@@ -38,21 +39,29 @@ export function decodeResourceLiterals(
 ): void {
   if (decoded.has(resource)) return;
   decodePlainLiterals(resource, configSchema, schemaForRef);
+  let unresolved = false;
   const slots = host.registry().derivedSlotsOf(resource, {
     rootModules: host.rootModules(),
     typeManifests: host.typeDeclarations(),
     // Declarations, never instances: a call target need not exist yet, and a
     // step's edge is no init-order edge.
-    resolveTarget: (ref) =>
-      typeof ref.name === "string"
-        ? (evalContext.resolveDeclaredManifest?.(ref.name, ref.alias) as
-            | Record<string, any>
-            | undefined)
-        : undefined,
+    resolveTarget: (ref) => {
+      const target =
+        typeof ref.name === "string"
+          ? (evalContext.resolveDeclaredManifest?.(ref.name, ref.alias) as
+              | Record<string, any>
+              | undefined)
+          : undefined;
+      if (target === undefined) unresolved = true;
+      return target;
+    },
   });
   for (const slot of slots) {
     const next = decodePlainLiterals(slot.value, slot.schema, schemaForRef);
     if (next !== slot.value) slot.replace(next);
   }
-  decoded.add(resource);
+  // A target that did not resolve has its slots still undecoded: an import that
+  // takes a resource input registers its library after the resources created
+  // ahead of it, so the next creation of this resource reads them again.
+  if (!unresolved) decoded.add(resource);
 }

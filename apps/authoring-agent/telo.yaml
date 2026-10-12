@@ -37,6 +37,8 @@ requires:
 imports:
   Chat:
     source: ./chat
+    resources:
+      hub: !ref hub
     secrets:
       openaiApiKey: !cel "secrets.openaiApiKey"
     variables:
@@ -55,6 +57,7 @@ imports:
       maxCheckpointFiles: !cel "variables.maxCheckpointFiles"
       maxAttachmentBytes: !cel "variables.maxAttachmentBytes"
   Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.16.0#sha256-uGRA31NI6oUiT8Pr88uBvMqIvCgoG5QLASMIshc7c-A
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
   Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4
   Scheduler: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
@@ -261,6 +264,14 @@ targets:
         allowedOrigins: !cel "variables.allowedOrigins"
         manifestRuns: !cel "variables.allowManifestRuns"
   - !ref server
+---
+# The hub the agent discovers modules through, handed to the chat library.
+kind: Mcp.HttpClient
+metadata: { name: hub }
+url: https://telo.sh/mcp
+clientInfo:
+  name: authoring-agent
+  version: 0.0.0
 ---
 # Retention hourly: every conversation idle for `RETENTION_DAYS` is deleted.
 kind: Scheduler.Interval

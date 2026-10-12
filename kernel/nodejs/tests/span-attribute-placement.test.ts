@@ -223,6 +223,11 @@ async function refused(app: string): Promise<Problem[]> {
 const sorted = (problems: Problem[]): string[] =>
   problems.map(({ code, message }) => `${code}: ${message}`).sort();
 
+/** Each case loads `modules/run` from source twice — once to check, once to
+ *  boot, which builds its controller. That is seconds of work on a slow runner,
+ *  not the default five. */
+const CASE_TIMEOUT_MS = 60_000;
+
 describe("x-telo-span-attribute placements", () => {
   placements.forEach((placement, index) => {
     it(`${placement.name}: telo check reports what the kernel refuses`, async () => {
@@ -232,6 +237,6 @@ describe("x-telo-span-attribute placements", () => {
 
       expect(analyzer.map(({ code, path }) => [code, path])).toEqual(placement.expected);
       expect(sorted(analyzer)).toEqual(sorted(kernel));
-    });
+    }, CASE_TIMEOUT_MS);
   });
 });

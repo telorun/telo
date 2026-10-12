@@ -6,13 +6,13 @@ metadata:
     Live integration test for the chat library: drives the exported ChatHandler
     with a real OpenAI model and asserts the agent authors a REAL, runnable Telo
     application — a minimal HTTP server with one static route — by DISCOVERING the
-    module it needs through the hub MCP tools (search_resources /
-    get_module_manifest) and importing it at its exact published version. Kept
+    module it needs through its hub tools (`find_kinds` / `get_kinds`) and
+    importing it at its exact published version. Kept
     deliberately tiny (one import, one route, a literal JSON body — no SQL, no
     CEL output-mapping) so any capable model reliably produces a passing file.
     It drains the event stream (which runs the agent + its fs / shell / hub
     tools, including the agent's own `telo check`), then independently asserts:
-    (1) the agent called get_module_manifest (hub discovery actually
+    (1) the agent called `find_kinds` or `get_kinds` (hub discovery actually
     happened), (2) `telo check` on the authored file passes — which can only
     succeed if the import version resolves against its origin and the http
     resources are wired correctly, and (3) the file composed the real
@@ -43,8 +43,11 @@ variables:
     x-telo-type: Telo.HostPath
     default: apps/authoring-agent/chat/tests/.scratch/authors-manifest
 imports:
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.16.0#sha256-uGRA31NI6oUiT8Pr88uBvMqIvCgoG5QLASMIshc7c-A
   Chat:
     source: ../
+    resources:
+      hub: !ref hub
     secrets:
       openaiApiKey: !cel "secrets.openaiApiKey"
     variables:
@@ -69,6 +72,12 @@ targets:
   - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema
   - !ref testAuthors
+---
+# The hub the chat library discovers modules through.
+kind: Mcp.HttpClient
+metadata: { name: hub }
+url: https://telo.sh/mcp
+clientInfo: { name: authoring-agent-test, version: 0.0.0 }
 ---
 kind: Run.Sequence
 metadata: { name: cleanWorkspace }
@@ -117,9 +126,8 @@ steps:
               - GET /hello returns the literal JSON body {"message": "hello"} with
                 status 200.
             You do not know the HTTP module's fields or version — DISCOVER it with
-            the hub tools: search_resources for the HTTP server module, then
-            get_module_manifest to read its exact `metadata.version` and the
-            JSON-Schema of every kind you use. Import it at that exact version and
+            your hub tools, and read its exact version and the JSON-Schema of
+            every kind you use from what they return. Import it at that exact version and
             wire the server and route from the schema (no guessing). The body is a
             fixed literal — no CEL, no database.
             Validate with `telo check hello-api.yaml` and fix every error until it
@@ -140,7 +148,7 @@ steps:
       - name: assertWrote
         inputs:
           calledWriteFile: !cel "steps.drain.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name == 'write_file')"
-          calledRegistry: !cel "steps.drain.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name == 'get_module_manifest')"
+          calledRegistry: !cel "steps.drain.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name in ['find_kinds', 'get_kinds'])"
           toolNames: !cel "steps.drain.result.items.filter(r, r.data.type == 'tool-call').map(r, r.data.toolCall.name)"
         invoke:
           kind: Assert.Schema

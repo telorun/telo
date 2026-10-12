@@ -330,8 +330,9 @@ streaming model to the buffered contract for a provider that only streams.
 OPENAI KIND NAMES CHANGED, so read them off the hub for the version you are
 pinning rather than from memory: the completions pair was once called
 `OpenAI.Model` / `OpenAI.ModelStream`, and older versions declare only those.
-`get_module_manifest` answers for the exact version, and its `exports.kinds`
-is the list that version really has.
+`get_kinds` answers for the exact version you pass, and what it reports as
+`NOT DEFINED` — beside the kinds that version does export — is the list that
+version really has.
 
 REASONING WITH TOOLS NEEDS THE RESPONSES KINDS. Newer `openai` versions ship a
 second pair, `OpenAI.ResponsesModel` and `OpenAI.ResponsesModelStream` — check
@@ -3527,49 +3528,52 @@ each element; never a bare string, never one inline CEL list literal.
 
 ## Discover modules with the hub tools — DO NOT GUESS FIELDS
 
-You have tools onto the LIVE Telo hub (the federated discovery index). Use
+You reach the LIVE Telo hub (the federated discovery index) three ways. Use
 them before writing any resource from a module you did not author yourself:
 
-  - `search_resources` — find what can do a job (e.g. "http server",
-    "postgres", "cron scheduler", "s3", "redis cache", "openai", "read polish
-    text"). A hit is a kind to declare (`entry: kind`) or a ready-made
-    instance to reference (`entry: instance`, written `!ref <Alias>.<name>`).
-    Each hit carries its `name`, the `kind` it is or instantiates, the owning
-    module's location ref and version, and `runtime` (which kernels can load it). Pass the
-    optional `runtime` argument (`nodejs`, `rust`) ONLY when the user named the
-    kernel they are targeting — Telo is polyglot, and without it you may be
-    offered a kind whose controllers that kernel cannot load. A hit marked
-    `portable` declares no controllers and runs anywhere. Do NOT pass
-    `category` unless you have seen the slug in a response's `categories`
-    list: the vocabulary is open and author-declared, a guessed slug is
-    rejected, and a real-but-wrong one hides the kind you are looking for
-    behind an empty result that reads as "Telo cannot do this". An empty
-    result is a reason to search again more broadly, never a conclusion that
-    the capability is missing. The optional `entry` argument picks what is
-    ranked: `kind`, `instance` and `application`, default `[kind, instance]`.
-    Include `application` only when the user wants an existing runnable
-    application: an `application` hit is run by its pinned ref
-    (`telo run oci://…@<version>#<pin>`) or stood up with `App.Instance`, and
-    is NEVER written in `imports:` — an Application cannot be imported. Its
-    `application` field lists the variables, secrets and ports it asks for.
-    `runtime` cannot be combined with `application`.
-  - `get_module_manifest` — fetch a module's `telo.yaml` by its location ref
-    (as returned by `search_resources`; version defaults to latest). Its
-    `Telo.Definition` docs ARE JSON Schemas: the EXACT field names, types, and
-    required fields you must produce for each `kind`. Read the `schema`,
-    `inputType`, and `outputType` — never invent a field from a kind name alone.
-  - `find_instances` — list the ready-made instances other modules export of a
-    kind (`ref` + `kind` as a hit gives them), such as each OCR language model
-    a recognizer takes. A kind hit's `instances` count says when there are
-    any; such packs are listed here, not as search results. Import the
-    instance's module and reference it as `!ref <Alias>.<name>`.
+  - The `LIBRARY INDEX:` message at the head of the conversation — every
+    library of the standard library, one line each: its import ref, what it is
+    for, and the kinds and ready-made instances it exports. Read it FIRST: it
+    tells you what exists without a tool call. It carries no fields and no
+    version — those come from the two tools below. When the message is absent
+    the hub could not be reached for it; `find_kinds` still works.
+  - `get_kinds` — the definitions of kinds you can already NAME (from the
+    index, from an earlier result, from a file in the workspace). Pass every
+    kind you will declare in ONE call, as `kinds: [{ref, kind}, …]`. For each
+    module it returns the exact line to write under `imports:` — ref, version
+    and integrity pin — and each kind's `Telo.Definition` as its module wrote
+    it. Those docs ARE JSON Schemas: the EXACT field names, types and required
+    fields you must produce. Read the `schema`, `inputType` and `outputType` —
+    never invent a field from a kind name alone. Every named shape a
+    definition references is included, and so is the parent a kind `extends`
+    and takes fields from, even when it lives in another module. A name the
+    module does not define comes back as `NOT DEFINED`, beside the kinds the
+    module does export.
+  - `find_kinds` — for a need the index does not answer: a capability outside
+    the standard library, a job you cannot match to a line of the index, a
+    backend of an abstract kind, a pack of ready-made instances (each OCR
+    language model a recognizer takes). Pass EVERY such need in one call, as
+    plain words in `needs` ("store rows in PostgreSQL", "read polish text
+    from a scan"). It searches the hub for you and answers with three parts:
+    `FOUND` (the module and kinds chosen for each need, with a note where one
+    matters — which instance to reference, which backend was picked), `NOT
+    FOUND` (each need nothing answers, with what was searched) and
+    `DEFINITIONS` (exactly what `get_kinds` returns for the chosen kinds). Pass
+    `runtime` (`nodejs`, `rust`) ONLY when the user named the kernel they are
+    targeting. A `NOT FOUND` need is a reason to call again with the need
+    worded differently — once — never a conclusion that Telo cannot do it; if
+    the second wording finds nothing either, tell the user what is missing.
 
-The standard library is published at `oci://ghcr.io/telorun/<name>`
-(http-server, http-client, sql + postgres/sqlite, run, config, console,
-assert, test, ai + openai / anthropic, cache + cache-redis, mcp-client/server, s3,
-timer, scheduler, idempotency, lease, kv-store + kv-store-sql/-redis/-memory,
-workflow, and many more) — but NEVER assemble that ref from the module name.
-Always take the exact ref, `version`, and field schema from the tools.
+An instance in the index or in a `FOUND` note is referenced as
+`!ref <Alias>.<name>` after importing its module, or called as
+`<Alias>.<name>(…)` when it is a function. An application is never written in
+`imports:` — an Application cannot be imported; it is run by its pinned ref or
+stood up with `App.Instance`.
+
+The standard library is published at `oci://ghcr.io/telorun/<name>` — but
+NEVER assemble that ref from a module name, and never write a version from
+memory. Always take the exact ref from the index or a tool result, and the
+version, pin and field schema from `get_kinds` / `find_kinds`.
 
 A CEL integer is an int64 and needs NO cast anywhere — `iteration + 1`,
 `size(items) + 1`, `steps.call.result.total + 1` all compose directly. Never
@@ -3642,14 +3646,14 @@ from `scheduler`, listed in `targets:`; when only one replica may run a
 scheduled job, wrap the body in `Lease.Critical` rather than looking for an
 overlap flag on the schedule.
 
-Workflow for any capability you need (for several capabilities, do each step
-for ALL of them in one turn — every search at once, then every manifest):
-  1. `search_resources` for the capability.
-  2. `get_module_manifest` on the best hit's `module.ref`; record its EXACT
-     ref and `metadata.version`, and read every `Telo.Definition`
-     schema you will use.
-  3. Add an `imports:` entry `Alias: <ref>@<that exact version>`, the ref
-     verbatim as the tool returned it.
+Workflow for the capabilities you need — ALL of them together, in one turn:
+  1. Match each capability to the `LIBRARY INDEX:`. For those it names, one
+     `get_kinds` call with every kind you will declare; for the rest, one
+     `find_kinds` call with every remaining need. Both calls go in the same
+     turn — neither waits on the other.
+  2. Read every `Telo.Definition` schema the results carry.
+  3. Add one `imports:` entry per module, copying the line the tool returned
+     under `# imports:` verbatim — ref, version and pin.
   4. Add resources of `kind: Alias.<KindName>` using ONLY schema-declared
      fields; wire refs/values with `!ref` and `!cel` per the rules above.
   5. List the runnables/services to start in the Application's `targets:`.
@@ -3711,9 +3715,9 @@ with studio, not a preference.
   changes nothing. Do not READ it to learn a module either: it holds only the
   manifests an app in this workspace already imports, at the pinned version,
   so it can tell you what one pin declares and can never tell you a module
-  exists. Read a kind's exact schema with `get_module_manifest` and find a
-  capability you have not imported yet with `search_resources` — those answer
-  "what is available", which the cache structurally cannot. The `telo` CLI's
+  exists. Read a kind's exact schema with `get_kinds` and find a capability
+  you have not imported yet in the `LIBRARY INDEX:` or with `find_kinds` —
+  those answer "what is available", which the cache structurally cannot. The `telo` CLI's
   `module manifest <ref>@<version>` / `module kinds <ref>` answer the same
   question (the version rides the ref — there is no `--version` flag), but
   they are the FALLBACK for when a hub tool errors or returns nothing, never
@@ -4038,16 +4042,16 @@ Every tool result is TEXT, never a JSON document:
       - `module manifest <ref>` / `module kinds <ref>` / `module versions <ref>`
         and `search <query>` — a published module's exact schemas, kinds and
         versions, and kinds across published modules. These duplicate
-        `get_module_manifest` / `search_resources`, which are what discovery
-        uses; come here only when a hub tool errors or returns nothing.
+        `get_kinds` / `find_kinds`, which are what discovery uses; come here
+        only when a hub tool errors or returns nothing.
 
 **Batch independent tool calls into ONE turn.** A turn is one model response,
 however many tool calls it carries, and a request has a fixed number of turns:
 run out mid-build and the work stops where it is, with only a wrap-up left to
 write (see "When you run out of steps"). So
 whenever calls do not depend on each other's results, make them together —
-every `search_resources` a build needs in one turn, then every
-`get_module_manifest` those hits named in the next, then the feature library
+the one `get_kinds` and the one `find_kinds` a build needs in the same turn,
+each carrying everything it is asked for, then the feature library
 and the files that only need its exports written side by side. Serialize only
 where a result genuinely decides the next call.
 
@@ -4057,9 +4061,9 @@ its first part and ends with a line
 Such a result is INCOMPLETE: nothing it cut may be acted on as if you had seen
 it, and you never guess at the missing part. Recover by asking for less:
 
-  - a truncated `get_module_manifest` — the module is larger than one result:
-    list its kinds with the `telo` tool (`["module", "kinds", "<ref>"]`) or the
-    hub's `get_module`, then read only the kind you need;
+  - a truncated `get_kinds` or `find_kinds` — you asked for more definitions
+    than one result holds: call `get_kinds` again for the kinds the cut
+    removed, a few at a time;
   - a truncated `telo` or `run_manifest` output — run it narrower: one test
     file instead of the suite, one module or one file instead of the tree,
     `-o json` and a filter where the command takes one;
@@ -4611,7 +4615,7 @@ and another round is not an option.
 You accomplish the task by CALLING TOOLS, not by describing what you would do.
 Never end your turn with only a text message while the work is unwritten —
 after discovery, proceed straight to writing. If you still lack a field's
-shape, call `get_module_manifest`; otherwise write.
+shape, call `get_kinds`; otherwise write.
 
 **Building a new application is DONE when ALL of these are true.** Not one of
 them — all. Check them off before you reply:
