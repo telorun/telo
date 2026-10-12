@@ -10,11 +10,14 @@ name: E2E Tests
 # failure ambiguous.
 #
 # PULL REQUESTS ONLY. These are the expensive suites — a compose stack with a
-# model sidecar, and tens of minutes of live agent turns — and running them
-# again on the merge commit re-pays for a result the PR already gave. The cost
-# is that nothing catches a break arriving through a path the PR gate does not
-# watch (`cli/`, `kernel/`); `workflow_dispatch` is how that gets run on demand
-# when a change there is suspected.
+# model sidecar, and live model conversations — and running them again on the
+# merge commit re-pays for a result the PR already gave. The cost is that
+# nothing catches a break arriving through a path a job's gate does not watch;
+# `workflow_dispatch` is how that gets run on demand when a change there is
+# suspected.
+#
+# The authoring agent's suite is not here: it runs only on demand, from
+# `authoring-agent-e2e.yml`.
 
 on:
   pull_request:
@@ -68,8 +71,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Gated on what the hub stack is made of, same reasoning and same shape
-      # as the two jobs below: this job always runs and always reports, and
-      # what it skips is the build and the compose stack.
+      # as the job below: this job always runs and always reports, and what it
+      # skips is the build and the compose stack.
       #
       # The runtime IS in the trigger set here, unlike below: the hub container
       # mounts this checkout and runs its CLI, so a change to the runtime is a
@@ -131,9 +134,9 @@ jobs:
 
   # The two interactive examples — `agent-console` and `chat-console` — driven
   # through real conversations against a real model. They are here rather than in
-  # the per-PR suite for the same reason the authoring agent's tests are: tokens
-  # and minutes on every run. What they cover is not coverable any other way — a
-  # REPL's second turn exists only because its first was answered.
+  # the module suite because they cost tokens and minutes on every run. What they
+  # cover is not coverable any other way — a REPL's second turn exists only
+  # because its first was answered.
   live-examples:
     name: Live example conversations
     runs-on: ubuntu-latest
@@ -160,11 +163,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Gated on the two examples' own dependency graphs, same reasoning and
-      # same shape as the authoring agent's gate below: a job that never
-      # starts never reports, and a required check that never reports blocks
-      # the merge it was meant to guard. This job always runs and always
-      # reports; what it skips is the expensive part.
+      # Gated on the two examples' own dependency graphs rather than skipped
+      # by a workflow-level `paths:` filter: a job that never starts never
+      # reports, and a required check that never reports blocks the merge it
+      # was meant to guard. This job always runs and always reports; what it
+      # skips is the expensive part.
       #
       # `telo changed` walks the same relative-`imports:` edges `telo release`
       # propagates a version bump along, so a change to a local sibling either
@@ -220,119 +223,3 @@ jobs:
           path: |
             e2e-logs/
             examples/.telo.debug.jsonl
-
-  # The authoring agent drives a real model against the live hub and authors a
-  # manifest against PINNED PUBLISHED modules. No stack to bring up — what makes
-  # it e2e is the live model and registry — but it is separated from the module
-  # suite on the same grounds as the hub's: a red run here can mean "not
-  # released and re-pinned yet" rather than "the code is wrong".
-  authoring-agent:
-    name: Authoring Agent E2E
-    runs-on: ubuntu-latest
-
-    env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10.28.2
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # The suite drives a real model through whole agent turns, so it costs
-      # tens of minutes and real tokens on every run. Gated on the agent's own
-      # files rather than skipped by a workflow-level `paths:` filter: a job
-      # that never STARTS never reports, and a required check that never
-      # reports blocks the merge it was meant to guard. This job always runs and
-      # always reports; what it skips is the expensive part.
-      #
-      # Knowingly NOT in the trigger set: `cli/` and `kernel/`. The agent runs
-      # `telo` from this checkout, so a change there really can break it — but
-      # including them would re-run the suite on most pull requests, which is
-      # the cost this gate exists to remove. Nothing else covers that coupling
-      # now the workflow no longer runs on main, so a change there that is
-      # expected to reach the agent wants a manual `workflow_dispatch`.
-      #
-      # `telo changed` walks the same relative-`imports:` edges `telo release`
-      # propagates a version bump along, so a change to a local sibling the
-      # agent imports (`./chat`, today) is caught the same way release would
-      # attribute it — without building anything.
-      - name: Decide whether the agent changed
-        id: changed
-        shell: bash
-        run: |
-          # A manual dispatch is someone asking for this suite by name.
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "run=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          # Full history is already checked out (fetch-depth: 0), so this only
-          # makes sure the base branch ref exists locally. NOT shallow: a
-          # depth-limited ref has no merge base with HEAD, and the three-dot
-          # diff below needs one.
-          git fetch --no-tags origin "${{ github.base_ref }}" || true
-          # FAIL OPEN: only an explicit empty `affected` list skips. A crash, a
-          # bad flag or a missing toolchain yields no list, and treating that as
-          # "nothing changed" turns a broken gate into a silently disabled test
-          # — the one outcome worse than paying for a run.
-          affected=$(pnpm run --silent telo changed \
-               apps/authoring-agent/telo.yaml .github/workflows/e2e.yml \
-               --base "origin/${{ github.base_ref }}" -o json | jq '.affected | length') || true
-          if [ "$affected" = "0" ]; then
-            echo "run=false" >> $GITHUB_OUTPUT
-            echo "No authoring-agent changes — skipping the live suite." >> $GITHUB_STEP_SUMMARY
-          else
-            echo "run=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Run authoring agent e2e suite
-        if: steps.changed.outputs.run == 'true'
-        shell: bash
-        run: |
-          set -o pipefail
-          mkdir -p e2e-logs
-          # Not `pnpm exec` — see the live example step.
-          export PATH="$PWD/node_modules/.bin:$PATH"
-          bun ./cli/nodejs/bin/telo.ts --debug ./apps/authoring-agent/test-suite-e2e.yaml 2>&1 | tee e2e-logs/authoring-agent.log
-
-      # `workspace/` holds what the agent built in each test, so a failed run
-      # shows the files it could not get green.
-      - name: Upload logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-authoring-agent-logs
-          retention-days: 14
-          if-no-files-found: ignore
-          include-hidden-files: true
-          path: |
-            e2e-logs/
-            apps/authoring-agent/.telo.debug.jsonl
-            workspace/

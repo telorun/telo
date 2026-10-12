@@ -85,6 +85,9 @@ pub enum CloudSession {
         org: SessionOrg,
         permissions: Vec<String>,
         expires_at: String,
+        /// The Telo Cloud console's address, as Cloud names it: where the webview links to what
+        /// only the console does.
+        console_url: Option<String>,
     },
 }
 
@@ -107,6 +110,9 @@ struct Principal {
     org: SessionOrg,
     permissions: Vec<String>,
     expires_at: String,
+    /// Absent from a Telo Cloud older than the links to it.
+    #[serde(default)]
+    console_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -474,6 +480,7 @@ impl Cloud {
             org: principal.org,
             permissions: principal.permissions,
             expires_at: principal.expires_at,
+            console_url: principal.console_url,
         })
     }
 
@@ -590,6 +597,7 @@ mod tests {
             org: SessionOrg { id: "org_1".into() },
             permissions: vec!["cloud:access".into()],
             expires_at: "2026-01-01T00:00:00.000Z".into(),
+            console_url: Some("https://console.telo.cloud".into()),
         };
         assert_eq!(
             serde_json::to_value(signed_in).unwrap(),
@@ -598,7 +606,8 @@ mod tests {
                 "user": { "id": "usr_1", "name": null, "email": "a@b.c" },
                 "org": { "id": "org_1" },
                 "permissions": ["cloud:access"],
-                "expiresAt": "2026-01-01T00:00:00.000Z"
+                "expiresAt": "2026-01-01T00:00:00.000Z",
+                "consoleUrl": "https://console.telo.cloud"
             })
         );
     }

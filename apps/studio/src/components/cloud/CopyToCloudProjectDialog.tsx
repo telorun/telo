@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { NewCloudProjectDialog } from "./NewCloudProjectDialog";
 
 interface CopyToCloudProjectDialogProps {
   open: boolean;
@@ -27,6 +28,7 @@ export function CopyToCloudProjectDialog({ open, onOpenChange }: CopyToCloudProj
   const [projects, setProjects] = useState<CloudProject[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copying, setCopying] = useState<string | null>(null);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [confirming, setConfirming] = useState<{
     project: CloudProject;
     overwrites: string[];
@@ -67,6 +69,7 @@ export function CopyToCloudProjectDialog({ open, onOpenChange }: CopyToCloudProj
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -115,9 +118,18 @@ export function CopyToCloudProjectDialog({ open, onOpenChange }: CopyToCloudProj
             {!projects && !error && <p className="text-sm text-muted-foreground">Loading…</p>}
             {projects?.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                You have no projects you can write to in this organization. Create one in the Telo
-                Cloud console.
+                You have no projects you can write to in this organization yet.
               </p>
+            )}
+            {projects && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={copying !== null}
+                onClick={() => setNewProjectOpen(true)}
+              >
+                Copy to a new project…
+              </Button>
             )}
             {projects && projects.length > 0 && (
               <ul className="max-h-80 space-y-1 overflow-y-auto">
@@ -149,5 +161,15 @@ export function CopyToCloudProjectDialog({ open, onOpenChange }: CopyToCloudProj
         )}
       </DialogContent>
     </Dialog>
+    {/* The new project is the copy's target: it is not opened empty first. */}
+    <NewCloudProjectDialog
+      open={newProjectOpen}
+      onOpenChange={setNewProjectOpen}
+      onCreated={(project) => {
+        setProjects((current) => [...(current ?? []), project]);
+        void handleCopy(project, []);
+      }}
+    />
+    </>
   );
 }

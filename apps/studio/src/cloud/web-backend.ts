@@ -1,4 +1,4 @@
-import { isCloudIdentity, type CloudSessionSource, type CloudSessionState } from "./session";
+import { identityOf, isCloudIdentity, type CloudSessionSource, type CloudSessionState } from "./session";
 import { CloudUnreachableError, type CloudRequest, type CloudTransport } from "./transport";
 
 /** The API on Studio's own origin: same-origin requests carry the HttpOnly
@@ -48,8 +48,7 @@ export class WebCloudBackend implements CloudTransport, CloudSessionSource {
       const csrfToken = (body as { csrfToken?: unknown }).csrfToken;
       if (typeof csrfToken !== "string") return { status: "unavailable" };
       this.csrfToken = csrfToken;
-      const { user, org, permissions, expiresAt } = body;
-      return { status: "signedIn", identity: { user, org, permissions, expiresAt } };
+      return { status: "signedIn", identity: identityOf(body) };
     }
     this.csrfToken = null;
     if (response.status === 401 && (body as { code?: unknown } | null)?.code === "session_required") {

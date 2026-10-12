@@ -1,0 +1,79 @@
+name: Authoring Agent E2E
+
+# The authoring agent drives a real model against the live hub and authors a
+# manifest against PINNED PUBLISHED modules. No stack to bring up — what makes
+# it e2e is the live model and registry — so a red run here can mean "not
+# released and re-pinned yet" rather than "the code is wrong".
+#
+# MANUAL ONLY. The suite costs tens of minutes and real tokens on every run,
+# and the agent runs `telo` from this checkout, so no path filter narrower than
+# most of the repo says when it is worth paying for. It runs when someone asks
+# for it by name, against the branch they pick.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  authoring-agent:
+    name: Authoring Agent E2E
+    runs-on: ubuntu-latest
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run authoring agent e2e suite
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p e2e-logs
+          # Not `pnpm exec`: it puts a RELATIVE `./node_modules/.bin` first on PATH,
+          # and Bun's spawn stops at it with ENOENT for a child whose working
+          # directory differs — a test's `bun …/telo.ts` then cannot start.
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          bun ./cli/nodejs/bin/telo.ts --debug ./apps/authoring-agent/test-suite-e2e.yaml 2>&1 | tee e2e-logs/authoring-agent.log
+
+      # `workspace/` holds what the agent built in each test, so a failed run
+      # shows the files it could not get green.
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-authoring-agent-logs
+          retention-days: 14
+          if-no-files-found: ignore
+          include-hidden-files: true
+          path: |
+            e2e-logs/
+            apps/authoring-agent/.telo.debug.jsonl
+            workspace/

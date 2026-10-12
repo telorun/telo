@@ -168,7 +168,7 @@ function activateModuleState(s: EditorState, filePath: string): EditorState {
   const moduleChanged = s.activeModulePath !== filePath;
   const nextModule = s.workspace?.modules.get(filePath);
   const activeView: ViewId =
-    s.activeView === "run" && nextModule?.kind !== "Application"
+    (s.activeView === "run" || s.activeView === "cloud") && nextModule?.kind !== "Application"
       ? "topology"
       : s.activeView;
   return {
@@ -1198,6 +1198,8 @@ export function Editor() {
     const slash = relative.lastIndexOf("/");
     return {
       name: activeManifest.metadata.name,
+      kind: activeManifest.kind,
+      filePath: activeManifest.filePath,
       modulePath: slash === -1 ? "" : relative.slice(0, slash),
     };
   }, [cloud.active, activeManifest, workspaceRootDir]);
@@ -2343,11 +2345,20 @@ export function Editor() {
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             {cloud.active && (
               <CloudProjectBar
-                activeModule={cloudActiveModule}
+                activeModule={
+                  cloudActiveModule && {
+                    name: cloudActiveModule.name,
+                    modulePath: cloudActiveModule.modulePath,
+                    kind: cloudActiveModule.kind,
+                    // Published to run on the version it is edited against, as a run does.
+                    telo: runVersionFor(teloLanguage, cloudActiveModule.filePath),
+                  }
+                }
                 onOpenManifest={() => {
                   if (state.activeModulePath) handleOpenFile(state.activeModulePath);
                   setState((s) => ({ ...s, activeView: "source" as ViewId }));
                 }}
+                onOpenCloudView={() => setState((s) => ({ ...s, activeView: "cloud" as ViewId }))}
               />
             )}
             <EditorTabs items={tabItems} onActivate={handleActivateTab} onClose={handleCloseTab} />
@@ -2417,6 +2428,9 @@ export function Editor() {
                       onSourceEdit: handleSourceEdit,
                       onExtractInline: handleExtractInline,
                       onInlineReference: handleInlineReference,
+                      cloud: cloud.active
+                        ? { modulePath: cloudActiveModule?.modulePath ?? null }
+                        : null,
                       deployment: {
                         activeEnvironment: readActiveEnvironment(
                           state.deploymentsByApp,

@@ -16,7 +16,11 @@ use url::Url;
 use crate::cloud_error::CloudError;
 
 pub const CLIENT_ID: &str = "telo-studio-desktop";
-const SCOPE: &str = "openid profile email offline_access cloud:access cloud:projects.admin";
+/// What Studio does in Telo Cloud: act in the user's projects (`cloud:projects.admin`), create one
+/// (`cloud:projects.create`) and claim the organization's registry namespace, which a first
+/// project needs (`cloud:registry.manage`). A token carries only those the user's role holds.
+const SCOPE: &str = "openid profile email offline_access cloud:access cloud:projects.admin \
+     cloud:projects.create cloud:registry.manage";
 const CALLBACK_PATH: &str = "/callback";
 const AUTHORIZATION_WINDOW: Duration = Duration::from_secs(5 * 60);
 const REQUEST_HEAD_LIMIT: usize = 16 * 1024;

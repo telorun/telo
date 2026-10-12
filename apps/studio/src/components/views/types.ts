@@ -158,6 +158,11 @@ export interface ViewProps {
   /** Deployment config for the active Application. For Libraries this is still
    *  populated (with a fresh ephemeral environment) but the Variables tab is hidden so
    *  it goes unused. */
+  /** The open Telo Cloud project's view of this module: the directory of its
+   *  `telo.yaml` in the project's repository ("" at the root), or null for a
+   *  module the project does not hold. Null when no Cloud project is open —
+   *  the Cloud view is then not offered. */
+  cloud: { modulePath: string | null } | null;
   deployment: {
     activeEnvironment: DeploymentEnvironment;
     onSetEnvVars: (env: Record<string, string>) => void;

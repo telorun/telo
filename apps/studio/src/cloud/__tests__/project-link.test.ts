@@ -13,6 +13,7 @@ function signedInTo(orgId: string): CloudSessionState {
       user: { id: "usr_1", name: "Ada", email: null },
       org: { id: orgId },
       permissions: ["cloud:access"],
+      consoleUrl: null,
       expiresAt: "2026-11-01T00:00:00Z",
     },
   };

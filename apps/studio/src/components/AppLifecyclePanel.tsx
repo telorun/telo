@@ -2,6 +2,7 @@ import { Cloud } from "lucide-react";
 import { useState } from "react";
 import { useCloud } from "../cloud/context";
 import { BuildRequest } from "./agent/BuildRequest";
+import { NewCloudProjectDialog } from "./cloud/NewCloudProjectDialog";
 import { OpenCloudProjectDialog } from "./cloud/OpenCloudProjectDialog";
 import { DotGridBackdrop } from "./DotGridBackdrop";
 import { Button } from "./ui/button";
@@ -34,6 +35,7 @@ export function AppLifecyclePanel({
   const chooser = openMode === "chooser";
   const cloud = useCloud();
   const [cloudDialogOpen, setCloudDialogOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
   const cloudStatus = cloud.session.status;
   const openHint = chooser
     ? "Open a directory to load its modules. An empty directory becomes a new workspace."
@@ -89,7 +91,12 @@ export function AppLifecyclePanel({
           sendTitle="Build in the browser workspace (Enter)"
         />
       )}
-      <OpenCloudProjectDialog open={cloudDialogOpen} onOpenChange={setCloudDialogOpen} />
+      <OpenCloudProjectDialog
+        open={cloudDialogOpen}
+        onOpenChange={setCloudDialogOpen}
+        onNewProject={() => setNewProjectOpen(true)}
+      />
+      <NewCloudProjectDialog open={newProjectOpen} onOpenChange={setNewProjectOpen} />
     </div>
   );
 }

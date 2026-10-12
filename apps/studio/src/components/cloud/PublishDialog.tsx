@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Publication } from "../../cloud/api";
 import { useCloud } from "../../cloud/context";
+import { deployFailureMessage, useDeploymentProgress } from "../../cloud/deployment-progress";
 import { publicationFailureMessage } from "../../cloud/refusal-messages";
 import { Button } from "../ui/button";
 import {
@@ -13,12 +14,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { DeploymentProgressView } from "./DeploymentProgressView";
 
 export interface PublishTarget {
   /** The module's display name. */
   name: string;
   /** The directory of its `telo.yaml`, relative to the repository root. */
   modulePath: string;
+  /** The telo version the module is edited against, which is the one it is
+   *  published to run on; or why it has none, which is why it cannot be
+   *  published now. */
+  telo: { version: string } | { refusal: string };
+  /** An application gets its app in Telo Cloud when it is published, and is
+   *  what a stage runs; a library is only imported. */
+  kind: "Application" | "Library";
+  /** The stage Telo Cloud deploys the published version to; absent: none. */
+  deployTo?: { stageId: string; stageName: string };
 }
 
 interface PublishDialogProps {
@@ -26,6 +37,8 @@ interface PublishDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Opens the module's manifest, where `metadata.version` is. */
   onOpenManifest: () => void;
+  /** Opens the module's Cloud view, where what runs in each stage is. */
+  onOpenCloudView: () => void;
 }
 
 function CopyableValue({ label, value }: { label: string; value: string }) {
@@ -62,22 +75,38 @@ function diagnosticLine(diagnostic: unknown): string {
 }
 
 /** Publishes one module at the working copy's base commit and follows the
- *  publication until it is published or has failed. Publishing creates no app
- *  and starts no deployment. */
-export function PublishDialog({ target, onOpenChange, onOpenManifest }: PublishDialogProps) {
-  const { publish } = useCloud();
+ *  publication until it is published or has failed. Publishing an application
+ *  gives it its app in Telo Cloud. With a stage to deploy to, Telo Cloud starts
+ *  that deployment itself once the module is published, and the dialog follows
+ *  it; closing the dialog stops neither. */
+export function PublishDialog({
+  target,
+  onOpenChange,
+  onOpenManifest,
+  onOpenCloudView,
+}: PublishDialogProps) {
+  const { publish, active, api } = useCloud();
   const [publication, setPublication] = useState<Publication | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const modulePath = target?.modulePath ?? null;
+  const teloVersion = target && "version" in target.telo ? target.telo.version : null;
+  const deployStageId = target?.deployTo?.stageId ?? null;
+  const deploy = publication?.status === "published" ? (publication.deploy ?? null) : null;
+  const deployment = useDeploymentProgress(
+    api,
+    active?.projectId ?? null,
+    // Followed only while the dialog is open: the Cloud view follows it after.
+    target && deploy?.status === "started" ? deploy.deploymentId : null,
+  );
 
   useEffect(() => {
-    if (modulePath === null) return;
+    if (modulePath === null || teloVersion === null) return;
     let stopped = false;
     setPublication(null);
     setFailure(null);
     setRunning(true);
-    publish(modulePath, (progress) => {
+    publish(modulePath, teloVersion, deployStageId, (progress) => {
       if (!stopped) setPublication(progress);
     }).then((result) => {
       if (stopped) return;
@@ -88,7 +117,10 @@ export function PublishDialog({ target, onOpenChange, onOpenManifest }: PublishD
     return () => {
       stopped = true;
     };
-  }, [modulePath, publish]);
+    // The version is the one the dialog opened with: a publication under way
+    // is not started again when the editor resolves another.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modulePath, deployStageId, publish]);
 
   if (!target) return null;
   const error = publication?.status === "failed" ? publication.error : null;
@@ -100,16 +132,22 @@ export function PublishDialog({ target, onOpenChange, onOpenManifest }: PublishD
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Publish {target.name}</DialogTitle>
+          <DialogTitle>
+            {target.deployTo
+              ? `Publish ${target.name} and deploy to ${target.deployTo.stageName}`
+              : `Publish ${target.name}`}
+          </DialogTitle>
           <DialogDescription>
-            {running
-              ? publication?.status === "running"
-                ? "Publishing…"
-                : "Waiting for the publisher…"
-              : publication?.status === "published"
-                ? publication.identical
-                  ? "This content was already published — nothing new was pushed."
-                  : "Published. Create or update an app with this ref in the Telo Cloud console to deploy it."
+            {publication?.status === "published"
+              ? publication.identical
+                ? "This content was already published — nothing new was pushed."
+                : target.kind === "Application" && !target.deployTo
+                  ? "Published. Deploy it to a stage from the Cloud view."
+                  : "Published."
+              : running
+                ? publication?.status === "running"
+                  ? "Publishing…"
+                  : "Waiting for the publisher…"
                 : "Publishing failed."}
           </DialogDescription>
         </DialogHeader>
@@ -122,10 +160,35 @@ export function PublishDialog({ target, onOpenChange, onOpenManifest }: PublishD
             </div>
             {publication.ref && <CopyableValue label="Ref" value={publication.ref} />}
             {publication.version && <CopyableValue label="Version" value={publication.version} />}
+            {publication.teloVersion && (
+              <CopyableValue label="Telo" value={publication.teloVersion} />
+            )}
             {publication.digest && <CopyableValue label="Digest" value={publication.digest} />}
             {publication.integrity && (
               <CopyableValue label="Integrity" value={publication.integrity} />
             )}
+          </div>
+        )}
+
+        {deploy && target.deployTo && (
+          <div className="space-y-1.5 rounded-lg border border-border p-3">
+            <div className="text-sm font-medium">Deployment to {target.deployTo.stageName}</div>
+            {deploy.status === "pending" && (
+              <p className="text-sm text-muted-foreground">Starting the deployment…</p>
+            )}
+            {deploy.status === "failed" && deploy.error && (
+              <div className="space-y-1 text-sm">
+                <p className="text-destructive">{deployFailureMessage(deploy.error)}</p>
+                <p className="text-xs text-muted-foreground">{deploy.error.code}</p>
+              </div>
+            )}
+            {(deploy.status === "skipped" || (deploy.status === "failed" && !deploy.error)) && (
+              <p className="text-sm text-muted-foreground">
+                Telo Cloud started no deployment. The version is published: deploy it from the
+                Cloud view.
+              </p>
+            )}
+            {deploy.status === "started" && <DeploymentProgressView progress={deployment} />}
           </div>
         )}
 
@@ -156,7 +219,8 @@ export function PublishDialog({ target, onOpenChange, onOpenManifest }: PublishD
         )}
 
         <DialogFooter>
-          {error?.code === "version_content_mismatch" && (
+          {(error?.code === "version_content_mismatch" ||
+            error?.code === "telo_version_mismatch") && (
             <Button
               variant="outline"
               onClick={() => {
@@ -165,6 +229,17 @@ export function PublishDialog({ target, onOpenChange, onOpenManifest }: PublishD
               }}
             >
               Open metadata.version
+            </Button>
+          )}
+          {publication?.status === "published" && target.kind === "Application" && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                onOpenCloudView();
+                onOpenChange(false);
+              }}
+            >
+              Open Cloud view
             </Button>
           )}
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

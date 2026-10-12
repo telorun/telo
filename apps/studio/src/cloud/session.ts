@@ -3,6 +3,10 @@ export interface CloudIdentity {
   org: { id: string };
   permissions: string[];
   expiresAt: string;
+  /** The Telo Cloud console's address, as Cloud names it; null when it names
+   *  none. Studio links there for what only the console does and takes the
+   *  address from nowhere else. */
+  consoleUrl: string | null;
 }
 
 /**
@@ -45,6 +49,27 @@ export function isCloudIdentity(value: unknown): value is CloudIdentity {
     Array.isArray(v.permissions) &&
     typeof v.expiresAt === "string"
   );
+}
+
+/** The identity of a session answer that {@link isCloudIdentity} accepted. */
+export function identityOf(value: CloudIdentity): CloudIdentity {
+  const { user, org, permissions, expiresAt } = value;
+  const consoleUrl = (value as { consoleUrl?: unknown }).consoleUrl;
+  return {
+    user,
+    org,
+    permissions,
+    expiresAt,
+    consoleUrl: typeof consoleUrl === "string" && consoleUrl !== "" ? consoleUrl : null,
+  };
+}
+
+/** Whether the session is signed in with `permission`. */
+export function hasPermission(
+  state: CloudSessionState | { status: "loading" },
+  permission: string,
+): boolean {
+  return state.status === "signedIn" && state.identity.permissions.includes(permission);
 }
 
 export function displayName(identity: CloudIdentity): string {

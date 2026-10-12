@@ -1,5 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { isCloudIdentity, type CloudSessionSource, type CloudSessionState } from "./session";
+import { identityOf, isCloudIdentity, type CloudSessionSource, type CloudSessionState } from "./session";
 import { CloudUnreachableError, type CloudRequest, type CloudTransport } from "./transport";
 
 /** What a shell command rejects with. */
@@ -130,8 +130,7 @@ export class DesktopCloudBackend implements CloudTransport, CloudSessionSource {
     const state = answer as { status?: unknown };
     if (state.status === "anonymous") return { status: "anonymous" };
     if (state.status === "signedIn" && isCloudIdentity(answer)) {
-      const { user, org, permissions, expiresAt } = answer;
-      return { status: "signedIn", identity: { user, org, permissions, expiresAt } };
+      return { status: "signedIn", identity: identityOf(answer) };
     }
     throw new Error("The shell answered with a session Studio cannot read.");
   }

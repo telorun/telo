@@ -78,6 +78,16 @@ export function publicationFailureMessage(error: NonNullable<Publication["error"
       return "Telo Cloud can no longer access this project's repository. A project admin must reconnect it in the Telo Cloud console.";
     case "registry_unavailable":
       return "The Telo Cloud registry is unavailable. Try again later.";
+    case "telo_version_unavailable": {
+      const minimum = named("minimumTeloVersion");
+      return `Telo Cloud cannot publish for telo ${named("teloVersion") ?? "this version"}: it publishes and runs released telo versions${minimum ? ` from ${minimum} on` : ""}. Pick such a version in the top bar, then publish again.`;
+    }
+    case "telo_version_mismatch": {
+      const published = named("publishedTeloVersion");
+      return `Version ${named("version") ?? "of this module"} is already published ${published ? `for telo ${published}` : "without a telo version"}, and a published version keeps it. Change metadata.version and commit to publish for telo ${named("teloVersion") ?? "another version"}.`;
+    }
+    case "telo_release_unavailable":
+      return "Telo Cloud could not look up the release of this telo version. Try again later.";
     case "publish_timeout":
       return "Publishing took too long and was stopped.";
     case "publish_failed":
