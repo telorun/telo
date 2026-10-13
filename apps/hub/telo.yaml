@@ -170,11 +170,42 @@ variables:
     items: { type: string }
     minItems: 1
     default: [telo]
-  # Self-hosted embeddinggemma-300m server, OpenAI-compatible /embeddings API.
-  # The `/v1` base URL the embedding controller appends `/embeddings` to.
+  # An OpenAI-compatible /embeddings API: the `/v1` base URL the embedding
+  # controller appends `/embeddings` to.
   embedderBaseUrl:
     env: EMBEDDER_BASE_URL
     type: string
+  # The embedding model and everything that is a property of it. The four move
+  # together: the defaults are embeddinggemma-300m's, and a different model
+  # needs its own vector length and its own wrappers. Changing any of them is a
+  # re-embed of the whole index — see "Changing the embedding model" in the
+  # README — never an in-place swap.
+  embedderModel:
+    env: EMBEDDER_MODEL
+    type: string
+    default: embeddinggemma-300m
+  # The length of the vectors the model returns, fixed into the vectors table
+  # when it is created.
+  embedderDimensions:
+    env: EMBEDDER_DIMENSIONS
+    type: integer
+    minimum: 1
+    default: 768
+  # What each text is wrapped in before it is embedded, `{text}` standing for
+  # the text. A prompt-tuned model expects its exact wrappers: without them the
+  # similarity spread collapses and the ranking degenerates into orthographic
+  # noise ("Schema" outranking a real scheduling match for the query
+  # "schedule"). A symmetric model that takes raw text is given `{text}`.
+  embedderQueryPrompt:
+    env: EMBEDDER_QUERY_PROMPT
+    type: string
+    pattern: "\\{text\\}"
+    default: "task: search result | query: {text}"
+  embedderPassagePrompt:
+    env: EMBEDDER_PASSAGE_PROMPT
+    type: string
+    pattern: "\\{text\\}"
+    default: "title: none | text: {text}"
   # Relevance floor for the semantic arm — see the note beside `minScore` in
   # hub-search.yaml, which is where it is applied.
   vectorMinScore:
@@ -199,6 +230,12 @@ secrets:
   bucketSecretAccessKey:
     env: MANIFEST_BUCKET_SECRET_ACCESS_KEY
     type: string
+  # The key of an embeddings API that asks for one, sent as a bearer token.
+  # Empty for a self-hosted server that takes none: no header is sent at all.
+  embedderApiKey:
+    env: EMBEDDER_API_KEY
+    type: string
+    default: ""
 targets:
   # Migrations first: every read below and the ingest claim itself are written
   # against tables this creates.
@@ -260,18 +297,51 @@ metadata:
 connectionString: !cel "variables.dbConnection"
 ---
 # ── Semantic search: embedding model + pgvector index ────────────────────────
-# The embedder is a self-hosted embeddinggemma-300m sidecar (OpenAI-compatible);
-# the vector index is a pgvector table the backend owns, living in the same
+# The embedder is any OpenAI-compatible /embeddings server, the model it serves
+# named by `variables.embedderModel` (a self-hosted embeddinggemma-300m sidecar
+# by default); the vector index is a pgvector table the backend owns, living in the same
 # database as the relational rows. The RRF search query never touches that
 # table — it only fuses the ids VectorStore.Match returns.
 
-# The sidecar's endpoint, declared as an account. It carries no `credential:` at
-# all — the self-hosted server needs none, which is the honest spelling of what
-# used to be an `apiKey: unused` placeholder.
+# A bearer token that may be absent. `HttpClient.BearerToken` refuses an empty
+# token, rightly — a key that resolved to "" is a misconfiguration there — and a
+# `credential:` slot is a reference, so it cannot be left out for one deployment
+# and present for another. This kind is the same header for a key and no header
+# at all for none, which is what "the embedder may or may not ask for a key"
+# means. A credential rather than a default header on the client: a client
+# publishes its headers as a reading, a credential's are marked sensitive.
+kind: Telo.Definition
+metadata:
+  name: OptionalBearerToken
+capability: Telo.Invocable
+extends: HttpClient.Credential
+schema:
+  type: object
+  additionalProperties: false
+  required: [token]
+  properties:
+    token:
+      type: string
+      x-telo-eval: compile
+resources:
+  - kind: Run.Value
+    metadata: { name: nothing }
+    value: {}
+invoke: !ref nothing
+result:
+  headers: !cel "self.token == '' ? {} : {'authorization': 'Bearer ' + self.token}"
+---
+kind: Self.OptionalBearerToken
+metadata:
+  name: embedderCredential
+token: !cel "secrets.embedderApiKey"
+---
+# The embedder's endpoint, declared as an account.
 kind: HttpClient.Client
 metadata:
   name: embedderClient
 baseUrl: !cel "variables.embedderBaseUrl"
+credential: !ref embedderCredential
 ---
 kind: HttpClient.Request
 metadata:
@@ -281,17 +351,10 @@ client: !ref embedderClient
 kind: OpenAI.EmbeddingModel
 metadata:
   name: embedder
-# Pinned to the stored vectors: embeddinggemma-300m → 768 dims. A model change
-# is a re-embed, never an in-place swap.
-model: embeddinggemma-300m
+model: !cel "variables.embedderModel"
 request: !ref embedderRequest
-# embeddinggemma is prompt-tuned: it expects these exact wrappers, and without
-# them the similarity spread collapses (every kind lands in a narrow band and
-# the ranking degenerates into orthographic noise — "Schema" outranking a real
-# scheduling match for the query "schedule"). Changing either wrapper is a
-# re-embed of the whole index, exactly like changing the model.
-queryPrompt: "task: search result | query: {text}"
-passagePrompt: "title: none | text: {text}"
+queryPrompt: !cel "variables.embedderQueryPrompt"
+passagePrompt: !cel "variables.embedderPassagePrompt"
 ---
 kind: Embedding.Passage
 metadata:
@@ -304,12 +367,13 @@ metadata:
 model: !ref embedder
 ---
 # The vectors table (`resource_vectors`) is provisioned by this Store on init —
-# CREATE EXTENSION vector + table + HNSW index. 768 dims is fixed at creation.
+# CREATE EXTENSION vector + table + HNSW index. The vector length is fixed at
+# creation: an existing table keeps the length it was created with.
 kind: VectorStorePgvector.Store
 metadata:
   name: vectorIndex
 connection: !ref db
-dimensions: 768
+dimensions: !cel "variables.embedderDimensions"
 metric: cosine
 table: resource_vectors
 ---

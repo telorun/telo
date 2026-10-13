@@ -102,8 +102,9 @@ being linearized into a chain.
 - **Serves discovery** over HTTP (the `telo.sh` verbs) and MCP. Ranking is
   **hybrid**: a semantic (vector) arm and the lexical (Postgres full-text +
   trigram) arm fused by Reciprocal Rank Fusion. At ingest each module's latest
-  version has its kinds embedded (a self-hosted embeddinggemma-300m model via
-  the `embedding` stack) into a pgvector index (the `vector-store-pgvector` module,
+  version has its kinds embedded (by the configured embedding model — a
+  self-hosted embeddinggemma-300m by default — via the `embedding` stack) into
+  a pgvector index (the `vector-store-pgvector` module,
   same database); at query the vector arm returns the nearest kind ids and one
   `Sql.Query` RRF-fuses them with the lexical rank. Intent-shaped queries
   ("store files in object storage") resolve even without a substring match.
@@ -559,7 +560,11 @@ modules than it did.
 | --- | --- |
 | `PORT` | HTTP port (default 8040) |
 | `DB_CONNECTION` | Postgres connection string (needs `pg_trgm` + the `vector` extension — use a `pgvector/pgvector` image) |
-| `EMBEDDER_BASE_URL` | OpenAI-compatible `/v1` base URL of the self-hosted embeddinggemma-300m sidecar (semantic search); the compose sidecar uses the ungated `onnx-community` mirror, no token needed |
+| `EMBEDDER_BASE_URL` | `/v1` base URL of an OpenAI-compatible embeddings server (semantic search). The compose sidecar serves embeddinggemma-300m from the ungated `onnx-community` mirror, no token needed |
+| `EMBEDDER_API_KEY` | Key of an embeddings API that asks for one, sent as `Authorization: Bearer <key>` (default empty: no header is sent, which is what a self-hosted server takes) |
+| `EMBEDDER_MODEL` | Model id sent with every embeddings request (default `embeddinggemma-300m`) |
+| `EMBEDDER_DIMENSIONS` | Length of the vectors that model returns, fixed into the `resource_vectors` table when it is created (default `768`) |
+| `EMBEDDER_QUERY_PROMPT` / `EMBEDDER_PASSAGE_PROMPT` | What a search query / an indexed text is wrapped in before it is embedded, `{text}` standing for the text (defaults: embeddinggemma's `task: search result \| query: {text}` and `title: none \| text: {text}`). Set both to `{text}` for a model that takes raw text |
 | `MANIFEST_BUCKET_NAME` / `MANIFEST_BUCKET_ENDPOINT` | S3-compatible manifest cache (R2 / MinIO / RustFS) |
 | `MANIFEST_BUCKET_ACCESS_KEY_ID` / `MANIFEST_BUCKET_SECRET_ACCESS_KEY` | Bucket credentials |
 | `MANIFEST_BUCKET_FORCE_PATH_STYLE` | `true` for MinIO/RustFS (default `false`) |
@@ -577,6 +582,65 @@ modules than it did.
 replace them. `TELO_BIN` is **gone** too: `TELO_COMMAND` replaces it, as an array
 so the command may carry leading arguments (the development image runs the
 checkout's CLI as `["/telo/node_modules/.bin/bun","/telo/cli/nodejs/bin/telo.ts"]`).
+
+### Changing the embedding model
+
+`EMBEDDER_MODEL`, `EMBEDDER_DIMENSIONS` and the two prompts describe one model
+and move together; the defaults are embeddinggemma-300m's. Any server speaking
+the OpenAI `/v1/embeddings` API works: a hosted one that asks for a key takes
+it from `EMBEDDER_API_KEY`, as a bearer token.
+
+Stored vectors are only comparable with vectors from the same model and the
+same wrappers, so a change to any of the four is a re-embed of the whole index:
+
+1. Stop the hub and drop the `resource_vectors` table. The table is created
+   only when absent, so an existing one keeps the vector length it was created
+   with, and writes of another length are refused.
+2. Start the hub with the new values and a raised `INGEST_REV`, which makes
+   every tracked version due once and embeds it again.
+3. Re-tune `VECTOR_MIN_SCORE`: another model scores on another scale.
+
+The vectors table is indexed with HNSW, which pgvector limits to 2000
+dimensions, so a model returning longer vectors cannot be used.
+
+## Deploy on Kubernetes
+
+`apps/hub/chart` is a Helm chart for the hub alone, published as
+`oci://ghcr.io/telorun/charts/hub`. Its version is the hub's, and it deploys
+the `telorun/hub` image of that version. The database, the bucket and the
+embeddings server are yours to supply; every credential is read from a Secret
+you name.
+
+```sh
+kubectl create secret generic hub-db \
+  --from-literal=DB_CONNECTION='postgres://user:password@host:5432/hub'
+kubectl create secret generic hub-bucket \
+  --from-literal=MANIFEST_BUCKET_ACCESS_KEY_ID=… \
+  --from-literal=MANIFEST_BUCKET_SECRET_ACCESS_KEY=…
+
+helm install hub oci://ghcr.io/telorun/charts/hub \
+  --set database.existingSecret.name=hub-db \
+  --set bucket.name=telo-manifests \
+  --set bucket.endpoint=https://<account>.r2.cloudflarestorage.com \
+  --set bucket.existingSecret.name=hub-bucket \
+  --set embedder.baseUrl=http://embedder/v1
+```
+
+Those five values are required and an install without one is refused, naming
+it. The rest of the configuration table above has a value of its own in
+`values.yaml` (`embedder.model`, `seedRefs`, `tracking.cron`, …), each left to
+the hub's default when empty; `embedder.apiKey.existingSecret` names the Secret
+holding `EMBEDDER_API_KEY`. `ingress` and `httpRoute` expose the service, both
+off by default.
+
+- **One instance.** There is no replica count, and setting one is refused: the
+  `/register` rate limiter counts in process memory. A rollout stops the old
+  pod before starting the new one, so an upgrade is a few seconds of downtime.
+- **The pod runs unprivileged**: the image's `node` user, a read-only root
+  filesystem, no capabilities.
+- **Egress is yours to bound.** The hub fetches whatever ref is registered, and
+  the image refuses private, loopback and link-local hosts (`TELO_EGRESS`) only
+  as a guardrail; a network policy on the namespace is the boundary.
 
 ## Run locally
 

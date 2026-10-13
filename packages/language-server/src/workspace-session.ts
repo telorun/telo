@@ -25,10 +25,11 @@ import type { WorkspaceMarkers } from "./workspace-marker.js";
 
 // A module doc declares `kind: Telo.*`; a partial declares a module-prefixed kind
 // (`Run.Sequence`) and is reached through its owner. The narrow pattern decides
-// whether an owner-less file is analysed standalone, so unrelated YAML declaring
-// a `kind:` (Kubernetes) draws no Telo diagnostics.
+// whether an owner-less file is analysed standalone; the qualified one whether a
+// file is a Telo document at all, so YAML declaring an unqualified `kind:`
+// (Kubernetes' `Deployment`) draws no Telo diagnostics, beside a module or not.
 const TELO_KIND_RE = /^kind:\s+Telo\./m;
-const ANY_KIND_RE = /^kind:\s+/m;
+const QUALIFIED_KIND_RE = /^kind:\s+["']?[A-Za-z_]\w*\.\w/m;
 
 const LOAD: LoadOptions = { desugarImports: true, migrate: true };
 
@@ -194,8 +195,9 @@ export class WorkspaceSession {
   private async analyzeDocument(source: string, done: Set<string>): Promise<void> {
     const text = this.texts.get(source)!;
     this.documentDiagnostics.delete(source);
-    // Unrelated YAML (a CI config beside a telo.yaml) is not a partial of it.
-    if (!ANY_KIND_RE.test(text)) {
+    // Unrelated YAML (a CI config or a Kubernetes manifest beside a telo.yaml)
+    // is not a partial of it.
+    if (!QUALIFIED_KIND_RE.test(text)) {
       this.documentOwner.delete(source);
       return;
     }

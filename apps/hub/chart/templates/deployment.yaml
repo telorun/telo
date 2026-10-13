@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hub.name" . }}
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # Never two at once: the old pod stops before the new one starts.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "hub.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "hub.labels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        # The image's own `node` user; the image itself declares none.
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hub
+          image: {{ include "hub.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # The image's own command, with cache writes off: the analysis cache
+          # is baked into the image, and on a read-only root every attempt to
+          # add to it is a warning in the log.
+          args: ["telo", "--no-cache-write", "."]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8040
+          env:
+            - name: PORT
+              value: "8040"
+            # The root filesystem is read-only and `node` has no writable home.
+            - name: HOME
+              value: /tmp
+            - name: DB_CONNECTION
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "database.existingSecret.name is required: the Secret holding the PostgreSQL connection string" .Values.database.existingSecret.name }}
+                  key: {{ .Values.database.existingSecret.key }}
+            - name: MANIFEST_BUCKET_NAME
+              value: {{ required "bucket.name is required" .Values.bucket.name | quote }}
+            - name: MANIFEST_BUCKET_ENDPOINT
+              value: {{ required "bucket.endpoint is required" .Values.bucket.endpoint | quote }}
+            - name: MANIFEST_BUCKET_FORCE_PATH_STYLE
+              value: {{ .Values.bucket.forcePathStyle | quote }}
+            - name: MANIFEST_BUCKET_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "bucket.existingSecret.name is required: the Secret holding the bucket's access key pair" .Values.bucket.existingSecret.name }}
+                  key: {{ .Values.bucket.existingSecret.accessKeyIdKey }}
+            - name: MANIFEST_BUCKET_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.bucket.existingSecret.name }}
+                  key: {{ .Values.bucket.existingSecret.secretAccessKeyKey }}
+            - name: EMBEDDER_BASE_URL
+              value: {{ required "embedder.baseUrl is required: the /v1 base URL of an OpenAI-compatible embeddings server" .Values.embedder.baseUrl | quote }}
+            {{- with .Values.embedder.model }}
+            - name: EMBEDDER_MODEL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if not (kindIs "invalid" .Values.embedder.dimensions) }}
+            - name: EMBEDDER_DIMENSIONS
+              value: {{ .Values.embedder.dimensions | int64 | quote }}
+            {{- end }}
+            {{- with .Values.embedder.queryPrompt }}
+            - name: EMBEDDER_QUERY_PROMPT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.embedder.passagePrompt }}
+            - name: EMBEDDER_PASSAGE_PROMPT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.embedder.apiKey.existingSecret }}
+            {{- if .name }}
+            - name: EMBEDDER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .name }}
+                  key: {{ .key }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.seedRefs }}
+            - name: SEED_REFS
+              value: {{ toJson . | quote }}
+            {{- end }}
+            - name: TRACK_ENABLED
+              value: {{ .Values.tracking.enabled | quote }}
+            {{- with .Values.tracking.cron }}
+            - name: TRACK_CRON
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if not (kindIs "invalid" .Values.ingestRev) }}
+            - name: INGEST_REV
+              value: {{ .Values.ingestRev | int64 | quote }}
+            {{- end }}
+            {{- if not (kindIs "invalid" .Values.vectorMinScore) }}
+            - name: VECTOR_MIN_SCORE
+              value: {{ .Values.vectorMinScore | quote }}
+            {{- end }}
+            {{- if not (kindIs "invalid" .Values.registerRateLimit.limit) }}
+            - name: REGISTER_RATE_LIMIT
+              value: {{ .Values.registerRateLimit.limit | int64 | quote }}
+            {{- end }}
+            {{- with .Values.registerRateLimit.window }}
+            - name: REGISTER_RATE_WINDOW
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          # Start-up runs the schema migrations and creates the bucket and the
+          # vectors table before the server listens.
+          startupProbe:
+            httpGet:
+              path: /health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/liveness
+              port: http
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

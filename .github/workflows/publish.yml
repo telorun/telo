@@ -208,6 +208,11 @@ jobs:
           TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
         run: node ./cli/nodejs/bin/telo.mjs release apply --base HEAD
 
+      # A chart that deploys a module's image carries that module's version, so
+      # it moves in the same PR as the version it names.
+      - name: Stamp chart versions
+        run: node scripts/stamp-chart-version.mjs
+
       - name: Render the PR body
         run: node scripts/module-release-pr-body.mjs /tmp/release-plan.json > /tmp/release-body.md
 

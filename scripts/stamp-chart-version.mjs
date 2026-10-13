@@ -2,7 +2,8 @@
 // Write each Helm chart's `version` and `appVersion` from the package it deploys.
 //
 // A chart here has no version of its own. It deploys exactly one image built
-// from exactly one workspace package, that package's version is already what the
+// from exactly one workspace package — or, for a declarative Telo application,
+// from exactly one module — that package's version is already what the
 // image's immutable tag is cut from, and a chart-only edit already forces a
 // package bump (`check-changeset-status.mjs` attributes any changed file to its
 // nearest package directory, so `chart/values.yaml` is a change to
@@ -12,7 +13,9 @@
 // Run from `version-packages`, right after `changeset version`, so the bump
 // lands in the Version PR and is reviewed in the same diff as the changelog —
 // the "one version, several files" move `telo release apply` already makes for a
-// module (`telo.yaml` + `package.json` + `Cargo.toml`).
+// module (`telo.yaml` + `package.json` + `Cargo.toml`). A chart whose version is
+// a module's (`manifest:` below) is stamped the same way right after
+// `telo release apply`, so its bump lands in the Module Release PR.
 //
 // `--check` is the PR gate. Without it the two files drift the moment someone
 // edits Chart.yaml by hand, and the drift is invisible until an operator
@@ -31,22 +34,33 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Every chart in the workspace, with the package whose version it carries. */
+/** Every chart in the workspace, with what its version is read from: a
+ *  workspace package's `package.json`, or a module manifest's `metadata.version`. */
 const CHARTS = [
   { chart: "apps/k8s-runner/chart", pkg: "apps/k8s-runner" },
   { chart: "apps/studio/chart", pkg: "apps/studio" },
+  { chart: "apps/hub/chart", manifest: "apps/hub/telo.yaml" },
 ];
+
+/** `metadata.version` of a manifest's module doc. Read by pattern, like the
+ *  chart keys below: the file holds custom YAML tags a plain parse refuses. */
+function manifestVersion(text) {
+  const moduleDoc = text.split(/^---[ \t]*$/m, 1)[0];
+  const metadata = /^metadata:[ \t]*\n((?:[ \t]+[^\n]*\n|[ \t]*\n)*)/m.exec(moduleDoc)?.[1] ?? "";
+  return /^  version:[ \t]*["']?([^"'\s#]+)/m.exec(metadata)?.[1];
+}
 
 const check = process.argv.includes("--check");
 const problems = [];
 const written = [];
 
-for (const { chart, pkg } of CHARTS) {
+for (const { chart, pkg, manifest } of CHARTS) {
   const chartPath = join(ROOT, chart, "Chart.yaml");
-  const pkgPath = join(ROOT, pkg, "package.json");
-  const version = JSON.parse(readFileSync(pkgPath, "utf8")).version;
+  const source = manifest ?? `${pkg}/package.json`;
+  const sourceText = readFileSync(join(ROOT, source), "utf8");
+  const version = manifest ? manifestVersion(sourceText) : JSON.parse(sourceText).version;
   if (!version) {
-    problems.push(`${pkg}/package.json has no version`);
+    problems.push(`${source} has no version`);
     continue;
   }
 
@@ -72,7 +86,7 @@ for (const { chart, pkg } of CHARTS) {
 
   if (check) {
     problems.push(
-      `${chart}/Chart.yaml does not match ${pkg}/package.json (${version}). ` +
+      `${chart}/Chart.yaml does not match ${source} (${version}). ` +
         `Run \`node scripts/stamp-chart-version.mjs\` — a chart's version and appVersion ` +
         `are the deployed package's version, not numbers of their own.`,
     );

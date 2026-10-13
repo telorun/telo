@@ -1,0 +1,11 @@
+{{/*
+Refuse a replica count rather than ignore it.
+
+Helm IGNORES unknown values keys, so `--set replicas=2` would install one pod
+and report success. The hub is one instance by design — its `/register` rate
+limiter counts in process memory — and saying so here is the only place an
+operator scaling it would be told.
+*/}}
+{{- if or (hasKey .Values "replicas") (hasKey .Values "replicaCount") }}
+{{- fail "the hub runs as ONE instance and takes no replica count: its /register rate limiter counts in process memory. See apps/hub/README.md." }}
+{{- end }}

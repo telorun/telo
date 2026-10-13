@@ -1,0 +1,111 @@
+name: Authoring Agent Test
+
+# The authoring agent's image is otherwise built for the first time by
+# `publish-docker.yml`, on the push to main — so a manifest the analyzer refuses,
+# or a file the image's ignore list leaves out of the build context, went red
+# only after the merge. This builds the same image, unpushed, on the pull
+# request.
+#
+# The paths are the ones that make `publish-docker.yml` rebuild the agent, minus
+# `modules/**`: the agent imports published modules by pin, so a module's
+# checkout source never reaches its image.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/authoring-agent/**"
+      - "cli/**"
+      - "kernel/**"
+      - "analyzer/**"
+      - "templating/**"
+      - "cel/**"
+      - "sdk/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/authoring-agent-test.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: authoring-agent-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check authoring agent manifests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The Application, as the image runs it: the chat library is checked
+      # through the import that reaches it.
+      - name: Check authoring agent manifests
+        run: pnpm run check apps/authoring-agent/telo.yaml
+
+  image:
+    name: Build telorun/authoring-agent
+    runs-on: ubuntu-latest
+
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Anonymous pulls are limited per IP, and a hosted runner shares its IP
+      # with everyone else's jobs. A fork's pull request holds no secrets and
+      # pulls anonymously.
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # The publish run builds the agent on the same-commit kernel image, so the
+      # base is built here from this checkout rather than pulled: a published
+      # `telorun/node` is an older runtime than the one this change ships with.
+      # Plain `docker build` on the default driver, because a buildx container
+      # builder cannot see a local image in `FROM`.
+      - name: Build the kernel image
+        run: docker build -f cli/nodejs/Dockerfile --target lean-slim -t telorun/node:ci-slim .
+
+      # `telo install` inside this build loads the manifest graph from the build
+      # context alone, which is what refuses a file the ignore list dropped.
+      - name: Build the authoring agent image
+        run: >-
+          docker build
+          -f apps/authoring-agent/Dockerfile
+          --target production
+          --build-arg TELO_NODE_VERSION=ci
+          -t telorun/authoring-agent:ci
+          apps/authoring-agent
