@@ -1,6 +1,0 @@
-modules:
-  apps/hub: Added
-body: A Helm chart, apps/hub/chart, published as oci://ghcr.io/telorun/charts/hub at the
-  hub's own version. It deploys the hub alone as one unprivileged instance; the
-  database, the manifest bucket and the embeddings server are supplied, and every
-  credential is read from a named Secret.

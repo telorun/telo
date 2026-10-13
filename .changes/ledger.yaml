@@ -3,15 +3,15 @@
 # `telo release verify` reconciles it against the registry.
 modules:
   apps/authoring-agent:
-    version: 0.22.1
+    version: 0.23.0
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-TBARdeBEE94KS5AtNAZwEnIAAnIkWk6ouBfTNifQi6U
+      image: sha256-z_UdQYNa0ItVGTZy5g4p7j7Ahwg9SQqQqZ_0C02MwUE
   apps/hub:
-    version: 0.13.2
+    version: 0.14.0
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-OP5QjOC5EQXkTQuuAqFiRiLYxwd1Y0eH-hcwljUIv7I
+      image: sha256-5Q9TL44gOufLnYgr-xEgA7cP8NOidPbbGEFmHIY2aXE
   blueprints/agent-app:
     version: 0.3.2
     registry: oci://ghcr.io/telorun/blueprints
@@ -19,11 +19,11 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       manifest: sha256-WR9N3gKuf-6JoP4pF8Nyj2IpGX5OXJ70tlj7jXKaAzw
   blueprints/approval-app:
-    version: 0.3.2
+    version: 0.3.3
     registry: oci://ghcr.io/telorun/blueprints
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-vP-lINbmUJnAD1iSpwEsYG50v6VYKvVMP1ObD70bNvE
+      manifest: sha256-0rd0WkAzCsIWMUz9_i2AEMpYRRb4R5CQaRMRliqRUrg
   blueprints/workflow-app:
     version: 0.3.2
     registry: oci://ghcr.io/telorun/blueprints
@@ -154,12 +154,12 @@ modules:
       controller/js: sha256-H5ImamXHPGvf5kv99wFTDgQUezUgDthcQG90yBTDJtQ
       manifest: sha256-vT5DEj3s9x2eJINJTthLDwiTAwE88dDqo48vE_hRbno
   modules/crud:
-    version: 0.27.0
+    version: 0.27.1
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       controller/js: sha256-sweownW7O9HpHnirmImV9VN724aCvSeE-uJdxqleMJU
-      manifest: sha256-xXNjHLydUvSs-NiY98kHCzG2vqIORc-oxQAo4jjudxg
+      manifest: sha256-wLWdgRZYUpM6_yaUumeSg_R-0_GrMtBZTraVpSS-JC0
   modules/durable:
     version: 0.3.0
     registry: oci://ghcr.io/telorun
@@ -319,13 +319,13 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       manifest: sha256-0p8VXy5iZInyuU_RwE9v8zdMETEbd6ttxAEeJISOEBI
   modules/http-server:
-    version: 0.37.0
+    version: 0.37.1
     registry: oci://ghcr.io/telorun
     layers:
       assets: sha256-LECze_d4UowiHyAsJ_3lUeplxtIJhICnX7JXJgOJiDU
       common: sha256-VXUwlTSyvLhtrxzK8M_Uv69jGcw2Y2xVE1jFjx7PXq0
       controller/js: sha256-9YfjYmY0GFe15p9_LgSOWm8E4Db4OsjH4zPMXOvJWns
-      manifest: sha256-X9ha7hgxFz8mO9WSrJV4Pp0B1SLT22aPg1_X4kwiMV0
+      manifest: sha256-vjyU6sYa8X-kK0qAzmtwu3_s3hh7jLGjsdY9HnhhvG0
   modules/idempotency:
     version: 0.11.0
     registry: oci://ghcr.io/telorun
