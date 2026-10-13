@@ -172,8 +172,6 @@ jobs:
   # - `unit_mode` / `unit_build_args` / `unit_test_args`: the workspace
   #   packages whose unit tests run — the changed ones and their dependents —
   #   as pnpm `--filter` pairs, empty for a full run;
-  # - `os_build` / `os_build_args`: what the Windows and macOS jobs build,
-  #   which is everything as soon as a manifest test or a suite runs there;
   # - `integration_mode` / `integration_args`: the Postgres suite's tests;
   # - `package_integration`, `suites`, `rust`: `true` or `false` for the
   #   package integration tests, the example / starter / blueprint /
@@ -194,8 +192,6 @@ jobs:
       package_integration: ${{ steps.packages.outputs.package_integration }}
       suites: ${{ steps.packages.outputs.suites }}
       rust: ${{ steps.packages.outputs.rust }}
-      os_build: ${{ steps.packages.outputs.os_build }}
-      os_build_args: ${{ steps.packages.outputs.os_build_args }}
       integration_mode: ${{ steps.integration.outputs.integration_mode }}
       integration_args: ${{ steps.integration.outputs.integration_args }}
 
@@ -286,7 +282,6 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           EVENT_NAME: ${{ github.event_name }}
-          MANIFEST_MODE: ${{ steps.select.outputs.mode }}
         run: |
           emit() {
             {
@@ -297,15 +292,6 @@ jobs:
               echo "suites=$(jq -r '.suites' <<<"$1")"
               echo "rust=$(jq -r '.rust' <<<"$1")"
             } >> "$GITHUB_OUTPUT"
-            # Windows and macOS run manifest tests, suites and unit tests off
-            # one build, so it is partial only when unit tests are all it serves.
-            if [ "$MANIFEST_MODE" != "none" ] || [ "$(jq -r '.suites' <<<"$1")" = "true" ] || [ "$(jq -r '.mode' <<<"$1")" = "full" ]; then
-              echo "os_build=full" >> "$GITHUB_OUTPUT"
-              echo "os_build_args=[]" >> "$GITHUB_OUTPUT"
-            else
-              echo "os_build=$(jq -r '.mode' <<<"$1")" >> "$GITHUB_OUTPUT"
-              echo "os_build_args=$(jq -c '.buildArgs' <<<"$1")" >> "$GITHUB_OUTPUT"
-            fi
             {
               echo
               echo "Package tests: **$(jq -r '.mode' <<<"$1")** — $(jq -r '.reason' <<<"$1")."
@@ -843,8 +829,11 @@ jobs:
   # `pnpm -r --no-bail test` does NOT soften that — `--no-bail` keeps the
   # recursive run going past a failing package so one run reports every one of
   # them, and pnpm still exits non-zero at the end.
-  windows:
-    name: "Windows: unit & manifest tests"
+  # Windows and macOS each run as two jobs, unit and manifest, so the two
+  # halves run side by side and a red unit run does not hide the manifest
+  # result. Each half pays for its own build.
+  windows-unit:
+    name: "Windows: package unit tests"
     runs-on: windows-latest
     timeout-minutes: 60
     needs: select
@@ -884,7 +873,81 @@ jobs:
       # real `cargo build` of fixture crates, so the Rust toolchain is on the
       # unit-test path here exactly as it is on ubuntu.
       - name: Setup Rust cache
-        if: needs.select.outputs.os_build != 'none'
+        if: needs.select.outputs.unit_mode != 'none'
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Controller crates are built into the workspace-anchored `.telo` cache,
+          # keyed by SDK backend, which is NOT the workspace `target/` this action
+          # caches by default. Without naming it every run rebuilds each napi
+          # controller and its dependency tree from cold — minutes on Windows.
+          cache-directories: .telo/cargo
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The same selection as the Linux unit job — see the note there for why
+      # modules are built. The excluded packages are browser bundles and the
+      # docs site: nothing here reads their output, they have no
+      # Windows-specific path, and the Linux unit job builds them.
+      - name: Build for Node.js
+        if: needs.select.outputs.unit_mode != 'none'
+        shell: bash
+        env:
+          BUILD_ARGS: ${{ needs.select.outputs.unit_build_args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$BUILD_ARGS" | tr -d '\r')
+          pnpm -r "${args[@]}" --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
+
+      - name: Run package unit tests
+        if: needs.select.outputs.unit_mode == 'full' || (needs.select.outputs.unit_mode == 'selected' && needs.select.outputs.unit_test_args != '[]')
+        shell: bash
+        env:
+          TEST_ARGS: ${{ needs.select.outputs.unit_test_args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$TEST_ARGS" | tr -d '\r')
+          pnpm -r "${args[@]}" --no-bail test
+
+  windows-manifest:
+    name: "Windows: manifest tests (Node)"
+    runs-on: windows-latest
+    timeout-minutes: 60
+    needs: select
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # The `runtime-rust` and napi manifest tests run a real `cargo build` of
+      # controller and fixture crates.
+      - name: Setup Rust cache
+        if: needs.select.outputs.mode != 'none' || needs.select.outputs.suites == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           # Controller crates are built into the workspace-anchored `.telo` cache,
@@ -905,22 +968,9 @@ jobs:
       # here reads their output, they have no Windows-specific path, and the
       # Linux unit job builds them.
       - name: Build for Node.js
-        if: needs.select.outputs.os_build != 'none'
+        if: needs.select.outputs.mode != 'none' || needs.select.outputs.suites == 'true'
         shell: bash
-        env:
-          BUILD_ARGS: ${{ needs.select.outputs.os_build_args }}
-        run: |
-          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$BUILD_ARGS" | tr -d '\r')
-          pnpm -r "${args[@]}" --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
-
-      - name: Run package unit tests
-        if: needs.select.outputs.unit_mode == 'full' || (needs.select.outputs.unit_mode == 'selected' && needs.select.outputs.unit_test_args != '[]')
-        shell: bash
-        env:
-          TEST_ARGS: ${{ needs.select.outputs.unit_test_args }}
-        run: |
-          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$TEST_ARGS" | tr -d '\r')
-          pnpm -r "${args[@]}" --no-bail test
+        run: pnpm -r --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
 
       # `telo check` is analyze-only — it installs no controller — so this is the
       # part of the surface expected to work first. Run through bash so the glob
@@ -956,6 +1006,16 @@ jobs:
       # Invoked directly rather than through `pnpm run test:node:windows`: pnpm
       # runs a script through cmd.exe, whose 8191-character command line a
       # selection of a couple of hundred `--include` pairs exceeds.
+      # Three manifest tests write a log file under `/tmp`, which Node resolves
+      # to `\tmp` on the workspace's drive. Nothing creates that directory on a
+      # Windows runner; before this job was split from the unit tests, a unit
+      # test that ran first did.
+      - name: Create the temp directory manifest tests write to
+        if: needs.select.outputs.mode != 'none'
+        shell: bash
+        run: |
+          node -e "require('node:fs').mkdirSync('/tmp', { recursive: true })"
+
       - name: Run telo manifest tests (Node)
         if: needs.select.outputs.mode != 'none'
         shell: bash
@@ -965,16 +1025,16 @@ jobs:
           args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$SUITE_ARGS" | tr -d '\r')
           node ./cli/nodejs/bin/telo.mjs ./test-suite-windows.yaml "${args[@]}"
 
-  # macOS is POSIX, so unlike the Windows job this is not covering a separate
-  # code path — it covers the platform axes that differ underneath one: an
+  # macOS is POSIX, so unlike the Windows jobs these are not covering a separate
+  # code path — they cover the platform axes that differ underneath one: an
   # arm64 runner (native prebuilds for esbuild, sqlite's staged better-sqlite3
   # addon and the cargo fixture crates), a case-INSENSITIVE default filesystem, and BSD rather than
   # GNU userland. An import whose casing disagrees with the file on disk passes
   # here and on Windows, and fails only on Linux; the reverse never happens. So
-  # this job is not redundant with the ubuntu ones, but it is the cheapest of
-  # the three to reason about when it goes red.
-  macos:
-    name: "macOS: unit & manifest tests"
+  # these jobs are not redundant with the ubuntu ones, but they are the cheapest
+  # to reason about when they go red.
+  macos-unit:
+    name: "macOS: package unit tests"
     runs-on: macos-latest
     timeout-minutes: 60
     needs: select
@@ -1014,7 +1074,81 @@ jobs:
       # real `cargo build` of fixture crates, so the Rust toolchain is on the
       # unit-test path here exactly as it is on ubuntu.
       - name: Setup Rust cache
-        if: needs.select.outputs.os_build != 'none'
+        if: needs.select.outputs.unit_mode != 'none'
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Controller crates are built into the workspace-anchored `.telo` cache,
+          # keyed by SDK backend, which is NOT the workspace `target/` this action
+          # caches by default. Without naming it every run rebuilds each napi
+          # controller and its dependency tree from cold — minutes on Windows.
+          cache-directories: .telo/cargo
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The same selection as the Linux unit job — see the note there for why
+      # modules are built. The excluded packages are browser bundles and the
+      # docs site: nothing here reads their output, they have no
+      # macOS-specific path, and the Linux unit job builds them.
+      - name: Build for Node.js
+        if: needs.select.outputs.unit_mode != 'none'
+        shell: bash
+        env:
+          BUILD_ARGS: ${{ needs.select.outputs.unit_build_args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$BUILD_ARGS" | tr -d '\r')
+          pnpm -r "${args[@]}" --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
+
+      - name: Run package unit tests
+        if: needs.select.outputs.unit_mode == 'full' || (needs.select.outputs.unit_mode == 'selected' && needs.select.outputs.unit_test_args != '[]')
+        shell: bash
+        env:
+          TEST_ARGS: ${{ needs.select.outputs.unit_test_args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$TEST_ARGS" | tr -d '\r')
+          pnpm -r "${args[@]}" --no-bail test
+
+  macos-manifest:
+    name: "macOS: manifest tests (Node)"
+    runs-on: macos-latest
+    timeout-minutes: 60
+    needs: select
+
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # The `runtime-rust` and napi manifest tests run a real `cargo build` of
+      # controller and fixture crates.
+      - name: Setup Rust cache
+        if: needs.select.outputs.mode != 'none' || needs.select.outputs.suites == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           # Controller crates are built into the workspace-anchored `.telo` cache,
@@ -1035,22 +1169,9 @@ jobs:
       # here reads their output, they have no macOS-specific path, and the
       # Linux unit job builds them.
       - name: Build for Node.js
-        if: needs.select.outputs.os_build != 'none'
+        if: needs.select.outputs.mode != 'none' || needs.select.outputs.suites == 'true'
         shell: bash
-        env:
-          BUILD_ARGS: ${{ needs.select.outputs.os_build_args }}
-        run: |
-          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$BUILD_ARGS" | tr -d '\r')
-          pnpm -r "${args[@]}" --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
-
-      - name: Run package unit tests
-        if: needs.select.outputs.unit_mode == 'full' || (needs.select.outputs.unit_mode == 'selected' && needs.select.outputs.unit_test_args != '[]')
-        shell: bash
-        env:
-          TEST_ARGS: ${{ needs.select.outputs.unit_test_args }}
-        run: |
-          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$TEST_ARGS" | tr -d '\r')
-          pnpm -r "${args[@]}" --no-bail test
+        run: pnpm -r --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
 
       - name: Check module manifests
         if: needs.select.outputs.suites == 'true'

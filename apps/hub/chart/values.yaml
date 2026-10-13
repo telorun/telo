@@ -1,0 +1,131 @@
+# Telo Hub API — default values.
+#
+# The chart deploys the hub and nothing it depends on. Three things are
+# supplied: a PostgreSQL database with the `vector` and `pg_trgm` extensions
+# available, an S3-compatible bucket, and an OpenAI-compatible embeddings
+# server. Every credential is read from a Secret you name; none is rendered
+# from these values.
+#
+# The hub is ONE instance: its `/register` rate limiter counts in process
+# memory, so there is no replica count, and a rollout stops the old pod before
+# starting the new one.
+
+image:
+  repository: telorun/hub
+  # EMPTY: the tag is the chart's own appVersion, the hub version this chart
+  # was released with. Set it only to deliberately run another one.
+  tag: ""
+  # Deploy by digest (`sha256:…`) instead of by tag. When set, `tag` is ignored.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+
+service:
+  port: 8040
+
+# PostgreSQL. The Secret's value is a whole connection string
+# (`postgres://user:password@host:5432/hub`). The hub creates its own tables
+# and the `vector` extension on start, so the role needs the rights to do so.
+database:
+  existingSecret:
+    # Required.
+    name: ""
+    key: DB_CONNECTION
+
+# The manifest cache: an S3-compatible bucket (R2, MinIO, RustFS, S3), created
+# on start when missing. It is read anonymously by editors, so on a backend
+# other than R2 the hub marks it public-read.
+bucket:
+  # Required.
+  name: ""
+  # Required: the bucket API's base URL.
+  endpoint: ""
+  # `true` for MinIO and RustFS.
+  forcePathStyle: false
+  existingSecret:
+    # Required.
+    name: ""
+    accessKeyIdKey: MANIFEST_BUCKET_ACCESS_KEY_ID
+    secretAccessKeyKey: MANIFEST_BUCKET_SECRET_ACCESS_KEY
+
+# The embeddings server behind semantic search: anything speaking the OpenAI
+# `/v1/embeddings` API. `model`, `dimensions` and the two prompts describe ONE
+# model and move together; left empty, the hub's own defaults apply
+# (embeddinggemma-300m, 768, its two prompt wrappers). Changing any of them on
+# a deployed hub is a re-embed of the whole index — see "Changing the embedding
+# model" in the hub README.
+embedder:
+  # Required: the `/v1` base URL; the hub appends `/embeddings`.
+  baseUrl: ""
+  model: ""
+  # Length of the vectors the model returns.
+  dimensions: null
+  # What a search query / an indexed text is wrapped in, `{text}` standing for
+  # the text. `{text}` alone for a model that takes raw text.
+  queryPrompt: ""
+  passagePrompt: ""
+  # For a server that asks for a key, sent as a bearer token. Leave `name`
+  # empty for one that takes none: no header is sent.
+  apiKey:
+    existingSecret:
+      name: ""
+      key: EMBEDDER_API_KEY
+
+# Module refs registered on every start, idempotently
+# (`oci://ghcr.io/telorun/console`). Publishers also register their own
+# through `POST /register`.
+seedRefs: []
+
+# When tracked refs are re-read from their origins. `cron` is five fields, in
+# UTC; empty is the hub's default, every 15 minutes.
+tracking:
+  enabled: true
+  cron: ""
+
+# Raising this re-ingests every tracked version once. Empty is the hub's
+# default, which is right unless you are forcing a re-ingest or a re-embed.
+ingestRev: null
+
+# Relevance floor of the semantic arm of search. Empty is the hub's default,
+# tuned for the default embedding model.
+vectorMinScore: null
+
+# Budget of the unauthenticated `POST /register`, per client IP. Empty is the
+# hub's default, 5 per 10m.
+registerRateLimit:
+  limit: null
+  window: ""
+
+# Further environment variables, as a list of `{ name, value }` or
+# `{ name, valueFrom }` entries.
+extraEnv: []
+
+# Gateway API route for everything on the hub's host.
+httpRoute:
+  enabled: false
+  # Required when enabled.
+  hostnames: []
+  # Required when enabled: the Gateway listener(s) this route attaches to.
+  parentRefs: []
+
+# The Ingress equivalent, for a cluster without Gateway API.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # Required when enabled.
+  host: ""
+  # Name of a TLS Secret for `host`; empty leaves TLS to the controller.
+  tlsSecretName: ""

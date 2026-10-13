@@ -1,0 +1,16 @@
+apiVersion: v2
+name: hub
+description: Telo Hub API — federated discovery over Telo modules, served over HTTP and MCP. Deploys the hub alone; its database, manifest bucket and embeddings server are supplied.
+type: application
+# BOTH are the hub's own version — `metadata.version` in `apps/hub/telo.yaml`,
+# moved by `telo release apply` — written by `scripts/stamp-chart-version.mjs`
+# in the Module Release PR and checked on every PR: the chart deploys exactly
+# one image, `telorun/hub`, tagged with that version.
+version: 0.13.2
+appVersion: "0.13.2"
+keywords:
+  - telo
+  - hub
+home: https://telo.run
+sources:
+  - https://github.com/telorun/telo

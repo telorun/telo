@@ -361,6 +361,10 @@ jobs:
       (needs.kernel-release.result == 'success' || needs.kernel-release.result == 'skipped')
     needs: [context, kernel-dev, kernel-release]
     runs-on: ubuntu-latest
+    outputs:
+      # The version this run released, or empty — consumed by the chart job, as
+      # the k8s-runner job's is.
+      released-version: ${{ steps.imgtags.outputs.released-version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -409,6 +413,10 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
+          if [ -n "$NOW" ] && [ "$NOW" != "$PREV" ]; then
+            echo "released-version=$NOW" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build & push hub
         uses: docker/build-push-action@v6
         with:
@@ -421,6 +429,39 @@ jobs:
           tags: ${{ steps.imgtags.outputs.tags }}
           cache-from: type=gha,scope=hub
           cache-to: type=gha,mode=max,scope=hub
+
+  hub-chart:
+    name: Publish the hub Helm chart
+    # Gated on the image job's OWN answer to "did this commit release the hub",
+    # as the k8s-runner chart is, and ordered after it by `needs`: the chart's
+    # appVersion is that image's tag. NOT gated on `inputs.release`: the hub's
+    # version is a module's, moved by the Module Release PR, whose merge commit
+    # builds on the ordinary push path. `always()` is load-bearing for the same
+    # reason it is below — a skipped kernel job up the chain would otherwise
+    # skip this one.
+    if: |
+      always() &&
+      needs.hub.result == 'success' &&
+      needs.hub.outputs.released-version != ''
+    needs: [context, hub]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+
+      - name: Verify the chart carries the released version
+        run: node scripts/stamp-chart-version.mjs --check
+
+      - name: Package and push the chart
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${GITHUB_TOKEN}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm package apps/hub/chart --destination /tmp/charts
+          helm push /tmp/charts/*.tgz oci://ghcr.io/telorun/charts
 
   runner:
     name: Build telorun/docker-runner
