@@ -159,7 +159,7 @@ variables:
   ingestRev:
     env: INGEST_REV
     type: integer
-    default: 6
+    default: 7
   # The command the origin reads run, as a JSON array: a program and its leading
   # arguments (e.g. '["telo"]'). It must be the telo that runs this hub, so the
   # `telo module manifest --json` contract ingest reads is this hub's own
@@ -484,12 +484,21 @@ routes:
                 instances; an application is opt-in, since it is run rather than
                 imported. A `runtime` filter cannot be combined with
                 `application`.
+            publisher:
+              type: string
+              default: ""
+              description: >-
+                Narrow to modules published under this host and org, exactly as
+                `module.publisher` reports it (`ghcr.io/telorun`). A publisher
+                is derived from refs, not declared, so one with no module
+                selects nothing rather than being refused. Empty means no filter.
     handler: !ref Search.searchResources
     inputs:
       q: !cel "request.query.q"
       category: !cel "request.query.category"
       runtime: !cel "request.query.runtime"
       entry: !cel "request.query.entry"
+      publisher: !cel "request.query.publisher"
     returns:
       - status: 200
         content:
@@ -498,6 +507,7 @@ routes:
               query: !cel "request.query.q"
               category: !cel "request.query.category"
               runtime: !cel "request.query.runtime"
+              publisher: !cel "request.query.publisher"
               categories: !cel "result.categories"
               categoryFilterDropped: !cel "result.categoryFilterDropped"
               hits: !cel "result.hits"
@@ -567,6 +577,40 @@ routes:
                 instances; an application is opt-in, since it is run rather than
                 imported. A `runtime` filter cannot be combined with
                 `application`.
+            publisher:
+              type: string
+              default: ""
+              description: >-
+                Narrow to modules published under this host and org, exactly as
+                `module.publisher` reports it (`ghcr.io/telorun`). A publisher
+                is derived from refs, not declared, so one with no module
+                selects nothing rather than being refused. Empty means no filter.
+            sort:
+              type: string
+              default: relevance
+              # Enumerated: an unrecognized order would silently be relevance.
+              enum: [relevance, name, recent]
+              description: >-
+                The order of the hits: `relevance` (the fused score), `name`
+                (the declared module name) or `recent` (when the hub first
+                tracked the listed version, newest first — the hub's own
+                observation, not a publish date). With a query, `name` and
+                `recent` order the ranked candidates, not the whole catalogue.
+            deprecated:
+              type: string
+              default: include
+              enum: [include, exclude]
+              description: >-
+                `exclude` leaves deprecated modules out of the hits and of
+                `total`; `hidden.deprecated` says how many matched.
+            contractOnly:
+              type: string
+              default: include
+              enum: [include, exclude]
+              description: >-
+                `exclude` leaves out modules whose every exported kind is a
+                contract with no implementation of its own;
+                `hidden.contractOnly` says how many matched.
             limit:
               type: integer
               default: 20
@@ -579,6 +623,10 @@ routes:
       q: !cel "request.query.q"
       category: !cel "request.query.category"
       runtime: !cel "request.query.runtime"
+      publisher: !cel "request.query.publisher"
+      sort: !cel "request.query.sort"
+      deprecated: !cel "request.query.deprecated"
+      contractOnly: !cel "request.query.contractOnly"
       limit: !cel "request.query.limit"
       offset: !cel "request.query.offset"
       entry: !cel "request.query.entry"
@@ -590,9 +638,16 @@ routes:
               query: !cel "request.query.q"
               category: !cel "request.query.category"
               runtime: !cel "request.query.runtime"
+              # Echoed so a caller can tell a hub that applied the filter and the
+              # order from an older one that ignored the parameters.
+              publisher: !cel "request.query.publisher"
+              sort: !cel "request.query.sort"
+              deprecated: !cel "request.query.deprecated"
+              contractOnly: !cel "request.query.contractOnly"
               categories: !cel "result.categories"
               categoryFilterDropped: !cel "result.categoryFilterDropped"
               total: !cel "result.total"
+              hidden: !cel "result.hidden"
               hits: !cel "result.hits"
     catches:
       - status: 400
@@ -661,6 +716,80 @@ routes:
             body:
               code: !cel "error.code"
               error: !cel "error.message"
+
+  # The publishers that exist — every host and org a searchable module sits
+  # under — with how many modules each holds. The values are what the
+  # `publisher` filter takes.
+  - request:
+      path: /publishers
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            entry:
+              type: array
+              items: { type: string, enum: [kind, instance, application] }
+              minItems: 1
+              default: [kind, instance]
+              description: >-
+                Entry types whose publishers to list, repeatable. `modules`
+                counts modules with an entry of a requested type. Omitted means
+                kinds and instances.
+    handler: !ref Search.publisherFacet
+    inputs:
+      entry: !cel "request.query.entry"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              publishers: !cel "result.publishers"
+    catches:
+      - status: 400
+        when: !cel "error.code == 'ERR_UNKNOWN_ENTRY_TYPE'"
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              error: !cel "error.message"
+
+  # Every module importing a given module, each at its latest version — the
+  # reverse of `imports:`.
+  - request:
+      path: /dependents
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            ref: { type: string, description: "Ref of the imported module, exactly as registered." }
+            limit:
+              type: integer
+              default: 50
+              minimum: 1
+              maximum: 100
+              description: "Page size."
+            offset: { type: integer, default: 0, minimum: 0, description: "Rows to skip." }
+          required: [ref]
+    handler: !ref Catalog.dependents
+    inputs:
+      ref: !cel "request.query.ref"
+      limit: !cel "request.query.limit"
+      offset: !cel "request.query.offset"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              of: !cel "{'ref': request.query.ref}"
+              # How many modules import it in all — what a caller holding one
+              # page is not being shown, and what tells it from an older hub
+              # that returned every row.
+              total: !cel "result.total"
+              dependents: !cel >-
+                result.dependents.map(d, {'ref': d.ref, 'version': d.version, 'name': d.name,
+                                          'description': d.description, 'application': d.application})
 
   # Every kind that implements a given contract, across module boundaries — the
   # derived grouping axis. A backend is discoverable from the abstract it
@@ -809,6 +938,8 @@ routes:
               exportedResources: !cel "result.exportedResources"
               versions: !cel "result.versions"
               application: !cel "result.application"
+              imports: !cel "result.imports"
+              dependents: !cel "result.dependents"
       # One 404 for both "never registered" and "no such version": the caller's
       # next move is the same either way, and distinguishing them would leak
       # which refs are tracked.
@@ -817,6 +948,45 @@ routes:
           application/json:
             body:
               error: Module not tracked
+
+  # The cached `telo.yaml` of one version, as text — the HTTP twin of the
+  # `get_module_manifest` tool, on the same handler. One 404 for an unknown ref
+  # and an unknown version, as `/module` answers.
+  - request:
+      path: /module/manifest
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            ref: { type: string, description: "Module ref exactly as registered." }
+            version:
+              type: string
+              default: latest
+              description: "Tracked version to read, or `latest` (default)."
+          required: [ref]
+    handler: !ref Catalog.moduleManifestText
+    inputs:
+      ref: !cel "request.query.ref"
+      version: !cel "request.query.version"
+    returns:
+      - status: 200
+        content:
+          text/yaml; charset=utf-8:
+            body: !cel "result.text"
+    catches:
+      - status: 404
+        when: !cel "error.code == 'ERR_NOT_FOUND'"
+        content:
+          application/json:
+            body:
+              error: Module not tracked
+      - status: 500
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              error: manifest read failed
 
   - request:
       path: /module/versions
@@ -1039,6 +1209,12 @@ entries:
             (a ready-made instance to reference) and `application` (a runnable
             application to run by pinned ref, never to import). Default
             `[kind, instance]`.
+        publisher:
+          type: string
+          default: ""
+          description: >-
+            Optional host and org to stay within, as `list_libraries` takes it
+            (`ghcr.io/telorun`). Omit unless the caller named a publisher.
       additionalProperties: false
     handler: !ref Search.searchMany
     inputs:
@@ -1049,6 +1225,7 @@ entries:
       category: !cel "request.arguments.?category.orValue('')"
       runtime: !cel "request.arguments.?runtime.orValue('')"
       entry: !cel "request.arguments.?entry.orValue(['kind', 'instance'])"
+      publisher: !cel "request.arguments.?publisher.orValue('')"
     result:
       content:
         - type: text
@@ -1247,7 +1424,8 @@ entries:
             result.found
               ? json({'module': result.module, 'kinds': result.kinds,
                       'exportedResources': result.exportedResources, 'versions': result.versions,
-                      'application': result.application})
+                      'application': result.application, 'imports': result.imports,
+                      'dependents': result.dependents})
               : json({'error': 'Module not tracked', 'ref': request.arguments.ref})
       isError: !cel "!result.found"
 
@@ -1304,6 +1482,51 @@ entries:
           text: !cel >-
             json({'extends': {'ref': request.arguments.ref, 'kind': request.arguments.kind},
                   'implementations': result.implementations})
+
+  # find_dependents — the reverse of `imports:`: every module importing a given
+  # one, which is where working uses of its kinds are found.
+  - name: find_dependents
+    description: |
+      List the tracked modules that import a given module, each at its latest
+      version and with a one-sentence summary. Use it to find working examples
+      of a module's kinds in use, or to see what a change to a module would
+      reach. `total` is how many import it in all; page with `offset` when it
+      exceeds the entries returned.
+    argumentsSchema:
+      type: object
+      properties:
+        ref: { type: string, description: "Location ref of the imported module." }
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+          description: "Most importers to return."
+        offset: { type: integer, minimum: 0, default: 0, description: "Importers to skip." }
+      required: [ref]
+      additionalProperties: false
+    handler: !ref Catalog.dependents
+    inputs:
+      ref: !cel "request.arguments.ref"
+      limit: !cel "request.arguments.?limit.orValue(50)"
+      offset: !cel "request.arguments.?offset.orValue(0)"
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            json({'of': {'ref': request.arguments.ref}, 'total': result.total,
+                  'dependents': result.dependents.map(d, compact({
+                    'ref': d.ref, 'name': d.name, 'summary': d.summary,
+                    'application': d.application ? dyn(true) : dyn(null)}))})
+    catches:
+      # A `limit` outside 1–100, or an argument of the wrong type.
+      - when: !cel "error.code == 'ERR_INPUT_INVALID'"
+        error:
+          code: -32602
+          message: !cel "error.message"
+      - error:
+          code: -32603
+          message: !cel "'listing dependents failed: ' + error.code"
 
   # find_instances — the instance axis: every ready-made instance of a kind,
   # exported by any module, without the kind's own module knowing any of them.
@@ -1422,7 +1645,7 @@ instructions: !literal |
   - https://telo.run/cel.md — CEL function reference.
 
   ## Tools
-  - `search_resources(query | queries, limit?, category?, entry?)` — find what
+  - `search_resources(query | queries, limit?, category?, entry?, publisher?)` — find what
     can do a job: resource KINDS to declare and ready-made INSTANCES to
     reference, ranked together and grouped under the module that owns them.
     Pass every need at once as `queries`. Write a kind hit as
@@ -1451,6 +1674,8 @@ instructions: !literal |
     module exports (e.g. the language models an OCR recognizer takes). A kind
     hit's `instances` count says when there are some; packs of instances are
     listed here rather than as search results of their own.
+  - `find_dependents(ref, limit?, offset?)` — the tracked modules importing a
+    given module, one line each, with the `total`: working uses of its kinds.
   - `list_categories(category?)` — browse the domain facet directly, or check
     a slug/label exists before passing it to `search_resources`.
   - `suggest_module_refs(query)` — fuzzy ref typeahead for a half-remembered or

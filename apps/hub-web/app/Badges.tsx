@@ -1,6 +1,9 @@
-import { AlertTriangle, Globe } from "lucide-react";
+import { AlertTriangle, Code2, Cpu, Globe } from "lucide-react";
+import { Link } from "react-router";
 
-import type { RuntimeSupport } from "@/api";
+import type { Category, RuntimeSupport } from "@/api";
+import { catalogPath } from "@/catalog-filters";
+import { cn } from "@/lib/utils";
 
 /** How a kernel name reads on screen. The keys are the ecosystem's own labels
  *  (an `imports:` entry's `runtime:` field, and the implementation directory
@@ -13,27 +16,78 @@ function label(map: Record<string, string>, value: string): string {
   return map[value] ?? value;
 }
 
-function Chip({
+/** One badge system, one tone per question a badge answers — so a category, a
+ *  kernel and a warning are told apart by colour before they are read. */
+const TONES = {
+  neutral: "bg-muted text-muted-foreground",
+  version: "border border-border bg-background font-mono text-foreground",
+  category: "bg-primary/10 text-primary",
+  runtime: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+  partial: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  portable: "bg-sky-500/12 text-sky-700 dark:text-sky-300",
+  contract: "bg-violet-500/12 text-violet-700 dark:text-violet-300",
+  danger: "bg-destructive/10 text-destructive",
+} as const;
+
+export type BadgeTone = keyof typeof TONES;
+
+const BADGE = "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs leading-4";
+
+/** A badge, or — given `to` — a badge that is a link applying what it names. */
+export function Badge({
   children,
-  tone = "muted",
+  tone = "neutral",
   title,
+  to,
 }: {
   children: React.ReactNode;
-  tone?: "muted" | "accent" | "warn";
+  tone?: BadgeTone;
   title?: string;
+  to?: string;
 }) {
-  const tones = {
-    muted: "bg-muted text-muted-foreground",
-    accent: "bg-primary/10 text-primary",
-    warn: "bg-destructive/10 text-destructive",
-  };
+  if (to) {
+    return (
+      <Link
+        to={to}
+        title={title}
+        className={cn(
+          BADGE,
+          TONES[tone],
+          "relative z-10 transition-shadow outline-none hover:ring-1 hover:ring-current/40 focus-visible:ring-2 focus-visible:ring-ring",
+        )}
+      >
+        {children}
+      </Link>
+    );
+  }
   return (
-    <span
-      title={title}
-      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${tones[tone]}`}
-    >
+    <span title={title} className={cn(BADGE, TONES[tone])}>
       {children}
     </span>
+  );
+}
+
+export function VersionBadge({ version }: { version: string }) {
+  return <Badge tone="version">v{version}</Badge>;
+}
+
+/** A module's categories. Each links to its category page, so a badge is also
+ *  the way to "more like this". */
+export function CategoryBadges({ categories }: { categories?: Category[] }) {
+  if (!categories || categories.length === 0) return null;
+  return (
+    <>
+      {categories.map((category) => (
+        <Badge
+          key={category.slug}
+          tone="category"
+          to={catalogPath(category.slug)}
+          title={`Browse ${category.label}`}
+        >
+          {category.label}
+        </Badge>
+      ))}
+    </>
   );
 }
 
@@ -43,21 +97,22 @@ function Chip({
  * The two are separate axes on purpose: `pkg:npm` and a bundled `pkg:telo/local/js`
  * are both JavaScript *and* Node-kernel, while a `pkg:cargo` controller is Rust
  * and runs on both kernels (Node builds it as a napi addon). Collapsing them
- * would make one of the two claims wrong.
+ * would make one of the two claims wrong. A kernel badge is tinted and carries
+ * a chip glyph; a language badge is neutral with a code glyph.
  *
  * Renders nothing when the hub reported no runtime data — an older backend, or a
  * version tracked before the field existed. An empty space is honest; a "runs
  * nowhere" badge would not be.
  */
-export function RuntimeBadges({ runtime }: { runtime?: RuntimeSupport }) {
+export function RuntimeBadges({ runtime }: { runtime?: RuntimeSupport | null }) {
   if (!runtime) return null;
   const { runtimes = [], full = [], languages = [], portable } = runtime;
 
   if (portable) {
     return (
-      <Chip tone="accent" title="Declares no controllers, so any Telo kernel can run it.">
-        <Globe className="size-3" /> Portable
-      </Chip>
+      <Badge tone="portable" title="Declares no controllers, so any Telo kernel can run it.">
+        <Globe className="size-3" aria-hidden /> Portable
+      </Badge>
     );
   }
 
@@ -70,23 +125,26 @@ export function RuntimeBadges({ runtime }: { runtime?: RuntimeSupport }) {
         // does not, so treat a missing list as full coverage.
         const partial = full.length > 0 && !full.includes(kernel);
         return (
-          <Chip
+          <Badge
             key={kernel}
+            tone={partial ? "partial" : "runtime"}
             title={
               partial
                 ? `Some of this module's kinds run on the ${label(KERNEL_LABELS, kernel)} kernel.`
                 : `Runs on the ${label(KERNEL_LABELS, kernel)} kernel.`
             }
           >
+            <Cpu className="size-3" aria-hidden />
             {label(KERNEL_LABELS, kernel)}
-            {partial && <span className="opacity-70">partial</span>}
-          </Chip>
+            {partial && <span className="opacity-80">partial</span>}
+          </Badge>
         );
       })}
       {languages.map((lang) => (
-        <Chip key={lang} title="Language the controllers are written in.">
+        <Badge key={lang} title="Language the controllers are written in.">
+          <Code2 className="size-3" aria-hidden />
           {label(LANGUAGE_LABELS, lang)}
-        </Chip>
+        </Badge>
       ))}
     </>
   );

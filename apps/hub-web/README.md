@@ -1,7 +1,7 @@
 # Telo Hub — discovery frontend
 
-The site at `hub.telo.run`: search the federated discovery hub, read one module's
-page, register a module ref. A React Router (framework mode) app served by its
+The site at `hub.telo.run`: search and browse the federated discovery hub by
+category, runtime and entry type, read one module's page, register a module ref. A React Router (framework mode) app served by its
 own Node process, which renders every page **per request** from the live hub and
 serves the sitemap and `robots.txt`. A module has a crawlable 200 page, and a
 sitemap entry, the moment the hub has ingested it — nothing is rebuilt or
@@ -17,25 +17,62 @@ Same UI idiom as [`apps/studio`](../studio): Radix primitives (`radix-ui`) in
 listening on `PORT`, answering `/health`, serving `/assets/`, and choosing where
 the server build comes from. Everything else is the React Router app in `app/`.
 
-- **Server reads.** Page loaders read the hub (`GET /module`, `GET /modules`)
-  through one hub reader, on `HUB_API_ORIGIN`. A page is rendered to completion
+- **Server reads.** Page loaders read the hub (`GET /module`,
+  `GET /module/manifest`, `GET /modules`, and — to seed a catalogue page —
+  `GET /categories`, `GET /publishers` and `GET /search/modules` with no query)
+  through one hub reader, on `HUB_API_ORIGIN`. A seed read carries no query, so
+  the hub embeds nothing for it. A page is rendered to completion
   before its first byte, so its status is final. Client-side navigation fetches
   the next page's data from this server (`…/_.data`), which answers with the
   same statuses and headers as the page itself.
-- **Browser reads.** Search, categories, registration and its status, and a
-  kind's instances stay in the browser, calling the hub on
-  `HUB_BROWSER_API_ORIGIN`. The server hands that origin to the page.
+- **Browser reads.** Every search with a query or a filter, further pages of a
+  listing, the ref typeahead, a contract's implementations, a kind's instances,
+  the modules using a module, the manifest source, a version's import pin, and
+  registration with its status stay in the browser,
+  calling the hub on `HUB_BROWSER_API_ORIGIN`. The server hands that origin to
+  the page.
 - **No in-process cache.** Every request reads the hub. Caching is expressed as
   response headers, for a shared cache the operator may place in front. Without
   one, hub load equals crawl rate: one `/module` read per module page, at most
   50 `/modules` pages per sitemap shard, and one `/modules` probe per non-empty
-  shard, plus one, for the sitemap index.
+  shard, plus one, for the sitemap index; three reads (`/categories`,
+  `/publishers`, `/search/modules`) per home, category or publisher page; and
+  per module page two (`/module`, `/module/manifest`), plus `/dependents` when
+  something imports it and one `/implementations` per contract it defines.
 
 ## Routes
 
-- `/` — search and register; `?q=` is the query and `?category=` the category
-  filter (a slug from the hub's `GET /categories`). An empty query with a
-  category lists that category.
+- `/` — the catalogue: a search box, category tiles and the first page of every
+  module, read by the server so the list is in the markup. The query string
+  narrows it: `?q=` is the query, `?runtime=nodejs|rust` the kernel,
+  `?sort=name|recent` the order (read only with no query),
+  `?type=library|application` keeps one type of module (both otherwise),
+  `?show=deprecated` includes deprecated modules (left out otherwise), and
+  `?hide=contract` drops modules exporting only contracts. When the hub does not
+  answer the server, the page is still a 200 and the browser asks itself.
+  `/?category=<slug>` and `/?publisher=<publisher>` are each a 301 to that
+  page, other parameters kept.
+- `/category/<slug>` — one category, with the same query string, plus
+  `?publisher=<publisher>` to narrow it to one publisher. The slug is one the
+  hub's `GET /categories` lists; a slug no module declares is a 404, and a hub
+  that does not answer is a 503.
+- `/publisher/<host>/<org…>` — every module published under a host and org
+  (`/publisher/ghcr.io/telorun`), with the same query string. The path is a
+  publisher the hub's `GET /publishers` lists; one it does not list is a 404,
+  and a hub that does not answer — or that cannot filter by publisher — is a
+  503.
+- `/register` — the registration form.
+- `/auth/callback` — where the identity provider returns a reader after a
+  sign-in. The page redeems the authorization code in the browser and goes back
+  to the page the sign-in was started from; a failure is shown with its reason
+  and a "Try again".
+- `/auth/silent` — where the identity provider lands the silent sign-in check,
+  inside a hidden frame. A page of one script that hands the response to the
+  page that framed it; it is not the app.
+- `/mcp` — how to connect an AI agent: the hub's MCP endpoint
+  (`<HUB_BROWSER_API_ORIGIN>/mcp`), the Claude Code command and a client
+  configuration, each with a copy button. Linked from the header and from a
+  banner on the home page.
 - `/module/oci/<rest>/` and `/module/url/<rest>/` — one module's page, for the
   ref `oci://<rest>` or `https://<rest>`. Only such a ref has a page, and only
   when `<rest>` is one or more `/`-separated segments, each non-empty, not `.` or
@@ -48,14 +85,18 @@ the server build comes from. Everything else is the React Router app in `app/`.
   slashes, a percent-encoded ordinary character — redirects to the page path
   (301, query kept). `?version=` addresses a tracked version, whose canonical is
   the unversioned page.
-- `/sitemap.xml` — a sitemap index listing `<SITE_ORIGIN>/sitemaps/modules-<k>.xml`
-  for every non-empty shard `k`. Each probe asks the hub for the first module past
+- `/sitemap.xml` — a sitemap index listing `<SITE_ORIGIN>/sitemaps/pages.xml`,
+  then `<SITE_ORIGIN>/sitemaps/modules-<k>.xml` for every non-empty shard `k`. Each probe asks the hub for the first module past
   the previous shard, whose `seq` names the next non-empty shard directly.
 - `/sitemaps/modules-<k>.xml` — the canonical page URL of every module with
   `seq` in (50000·k, 50000·(k+1)], refs without a page skipped, streamed page by page from
   `/modules`. An empty shard is a valid empty `<urlset>`. If the hub fails after
   the response has started, the connection is reset and `</urlset>` is never
   written, so a truncated shard cannot parse as a complete one.
+- `/sitemaps/pages.xml` — every page that is not a module's: `/`, `/mcp`,
+  `/register`, one per category and one per publisher, as the hub's two facets
+  list them. The `local` publisher is left out — its modules have no pages. A
+  hub that does not answer either facet is a 503.
 - `/robots.txt` — allows everything and names `<SITE_ORIGIN>/sitemap.xml`.
 - `/health` — 200 while the process serves; never touches the hub.
 - `/assets/…` — the built client assets.
@@ -65,6 +106,44 @@ manifest cache keys use, so one mental model covers a module's URL here and its
 cached manifest. The page-bearing grammar is what makes the path read back as
 exactly the ref it was built from; every in-app link to a module goes through
 it, and a ref without a page is shown as text.
+
+## Search engines
+
+**Every page has one address, and says so.**
+
+| Page | Canonical | Other spellings |
+|---|---|---|
+| home | `/` | — |
+| category | `/category/<slug>`, the slug exactly as the hub's facet lists it | a trailing slash is a 301; any other spelling the hub would accept (`Storage` for `storage`) is a 404 |
+| publisher | `/publisher/<host>/<org…>` | a trailing slash or an encoded `/` is a 301 |
+| module | `/module/<transport>/<rest>/` | redirected as described under Routes; `?version=` keeps the unversioned canonical |
+| register, MCP | `/register`, `/mcp` | — |
+
+- **A filter keeps the listing's canonical.** `?runtime=`, `?type=`, `?sort=`,
+  `?show=`, `?hide=` and — beside a category — `?publisher=` show a subset or a
+  reordering of one listing, so those addresses name the unfiltered page.
+- **A search-results address is `noindex, follow` and names no canonical.** With
+  `?q=` the page is whatever matched an unbounded query space: not something to
+  index, and not a duplicate of the page it was searched from.
+- **Error pages name no canonical.**
+- **The sitemap lists exactly the canonical addresses**: every module page, and
+  the pages sitemap above.
+- **What a crawler reads is in the first response.** The first page of every
+  listing, a module's kinds with their field tables, the modules it imports,
+  the modules using it and the kinds implementing its contracts are rendered by
+  the server, so each module's page links on to the next. Rows past the first
+  30 of a listing are loaded by the browser; those modules are reached through
+  the sitemap and through each other.
+- **Icon and share image.** Every page names the hub's mark as its icon (SVG),
+  and its link preview carries the same mark as a square PNG (`og:image`,
+  `twitter:image`).
+- **Structured data.** The home page states the site (`WebSite`); a module page
+  states its breadcrumb trail (`BreadcrumbList`) and itself
+  (`SoftwareSourceCode`: name, description, ref as `identifier`, latest version,
+  and the repository, license, languages and categories the hub knows).
+- **Links a module's author supplied** — its repository and homepage — carry
+  `rel="nofollow ugc"`: registration is open, and the hub does not vouch for
+  where they lead.
 
 Each page's head — title, description, canonical link — is the same on first
 load and after client-side navigation. A module page's title is its display
@@ -78,8 +157,8 @@ the request URL.
 |---|---|
 | 200 | a module the hub answers for |
 | 404 | an unknown module or unknown `?version=` (one body, linking to the unversioned canonical URL) |
-| 404 | an unmatched path, a `/module/…` path whose ref has no page (including local refs), a bad shard name |
-| 301 | a module path not in canonical form |
+| 404 | an unmatched path, a `/module/…` path whose ref has no page (including local refs), a `/category/…` slug no module declares, a `/publisher/…` path the hub does not list, a bad shard name |
+| 301 | a module path not in canonical form; `/?category=<slug>`; `/?publisher=<publisher>` |
 | 503 + `Retry-After: 60` | the hub is unreachable, silent for 10 s (before its headers, or between body chunks), answers a status outside the route's expected set, or sends an unreadable body |
 | 500 | a render failure |
 
@@ -90,42 +169,197 @@ The detail of a 5xx is logged on the server and never sent in the response.
 | Response | Header |
 |---|---|
 | `/assets/` | `public, max-age=31536000, immutable` |
-| 200 HTML (home, module) | `public, max-age=60, stale-if-error=86400` |
+| 200 HTML (home, category, publisher, register, mcp, module) | `public, max-age=60, stale-if-error=86400` |
+| `/auth/callback`, `/auth/silent` | `no-store`, with `Referrer-Policy: no-referrer` |
 | 404, `/sitemap.xml`, shards | `no-cache` |
 | 5xx | `no-store` |
 | `/robots.txt` | `public, max-age=3600` |
 
-## Preview panel vs. page
+## Catalogue
 
-Two ways to look at a module, because there are two questions.
+The URL is the state: the category is the path, the query and every other filter
+the query string, so each view reloads, shares and goes Back as itself. Rows
+load 30 at a time; "Load more" asks the hub for the next `offset`, and a listing
+already loaded in this visit is shown again at once, at the length it had been
+paged to, when the reader returns to it.
 
-**Scanning** ("is this the one?") is the common case, so a left-click on a
-result opens a **side panel** rather than navigating. It renders entirely from
-the search hit — the response carries every exported kind with its capability,
-description, runtime and deprecation, plus the exported instances — so it opens
-with **no request at all**. Making this a navigation costs a round trip and a
-Back for every candidate considered, which is the whole cost of choosing.
+The filters, in a rail beside the list (a bottom sheet on a narrow screen):
 
-**Committing** ("tell me everything") is the page: the full kind list, the
-version picker, provenance links, and a URL worth sharing. The row is a real
-`<a href>`, so cmd/middle-click opens it in a new tab and the address is honest;
-the panel also links to it explicitly.
+- **Type** — all modules, libraries only, or applications only. Every module is
+  one or the other: a library is imported for what it exports, an application
+  is run. Both are listed unless one is chosen, and a card says which it is.
+- **Category** — one at a time, each a link to its page, with its module count.
+- **Publisher** — one at a time, with its module count; combinable with a
+  category.
+- **Runs on** — any kernel, Node or Rust. The hub does not index which kernels
+  an application runs on, so choosing a kernel leaves applications out of an
+  "all" listing (the rail says so) and the control is off for applications.
+- **Display** — show deprecated modules; hide contract-only modules. The hub
+  applies both (`deprecated=exclude`, `contractOnly=exclude` on
+  `/search/modules`), so the count line and "Load more" are of what is listed.
 
-The one thing the panel does not show is the tracked version list — that needs a
-call, so it belongs to the page.
+**Deprecated modules are hidden unless asked for.** A reader choosing what to
+build on should not have to know to filter them out. When any are hidden the
+count line says how many — the hub's `hidden.deprecated`, over every match and
+not only the rows loaded — with a link that shows them; a search whose only
+matches are deprecated says so and offers the same. A deprecated module's own
+page is unaffected. The server's seed of a listing is the default one, with
+deprecated modules left out; `?show=deprecated` is read by the browser.
 
-Each kind and each exported instance in a row or panel opens a **popover** with
-its own detail. Same reasoning: the data is already in the response, so
-answering "what does this kind do?" should not cost a navigation.
+A hub that predates the two parameters ignores them. Hiding contract-only
+modules is then an error ("this hub cannot hide contract-only modules yet"),
+as for a publisher. Leaving deprecated modules out is the default and not a
+choice, so that hub's listing is shown as answered: deprecated modules are in
+it, each marked.
+
+Active filters repeat as removable chips above the list. A category badge
+anywhere on the site, and the publisher in a module page's breadcrumb, is a link
+applying it.
+
+With no query the list can be ordered: the hub's default, by name, or
+"Recently added" — newest first by when the hub first tracked the version, which
+is the hub's observation and not a publish date. Each card then shows that date.
+
+**A hub older than a filter is reported, not trusted.** The hub echoes the
+`publisher` and `sort` it applied; a response without the echo is the unfiltered
+catalogue, and the page shows an error ("this hub cannot filter by publisher
+yet") rather than those rows.
+
+A search that matches nothing inside a category is answered from every category
+and says so (the hub's `categoryFilterDropped`).
+
+Keyboard: `/` focuses the search, `↓` moves from it into the list, `↑` / `↓`
+walk the cards, `Enter` opens the module page, `Space` opens the quick look,
+`Esc` closes it.
+
+## Card, quick look and page
+
+**A click on a card opens the module's page.** The module's name is a real link
+stretched over the card, so a click anywhere, a middle-click and the keyboard
+all behave as a link does.
+
+**Quick look** is the explicit second action — a button on the card, or `Space`
+— for comparing candidates without leaving the list. On a screen at least
+1280px wide it is a column docked beside the list; below that, a sheet over it.
+It renders from the search hit, which carries every exported kind and instance,
+and then asks for one thing: the version's import pin, so the entry it copies
+is the pinned one the page offers. Its primary button is the module page.
+
+A module with no page (a local development ref) can only be looked at, so its
+card opens the quick look.
+
+Each kind on a card or in the quick look is a link to that kind on the module's
+page; its detail shows on hover or keyboard focus.
+
+## Module page
+
+Two columns on a wide screen: the description, the kinds and the instances on
+the left; the import entry, the version picker and the provenance (publisher,
+license, source, homepage) pinned on the right.
+
+- The import entry uses the module's own name as its alias and is pinned
+  (`ref@version#integrity`); the copy button copies the entry line.
+- Kinds are grouped by what they are — contracts first, then each capability —
+  and each has an anchor (`#kind-<Kind>`), as do `#instances` and
+  `#application`.
+- A contract lists every kind implementing it, across modules; "Implements"
+  links the other way, to the contract's own entry.
+- Each kind shows its fields, and its inputs and outputs when it is invoked:
+  name, type, whether it is required, description, default and allowed values —
+  read by the server from the version's own manifest (`GET /module/manifest`).
+  A kind extending another lists the fields its own definition declares. A kind
+  that is not a contract also offers an example: the smallest resource of it,
+  with a stand-in for every required field.
+- "Imports" lists what the version imports, each linked; "Used by" lists the
+  modules importing this one, 50 at a time with "Show more".
+- "Manifest source" shows the version's `telo.yaml` as written, read when
+  opened.
+- When the hub serves no manifest for the version, the page renders without the
+  field tables, examples and manifest source.
+- A version other than the latest shows a banner linking to the latest.
+- An application shows what it asks for — variables, secrets and ports, each
+  with its environment variable, argument, default and whether it is required —
+  and the `telo run` line instead of an import entry.
+
+Every page's head carries Open Graph and Twitter card tags built from its title,
+description and canonical address.
+
+## Sign-in
+
+Optional: with `OIDC_ISSUER` and `OIDC_CLIENT_ID` unset the site offers no
+sign-in and behaves exactly as it does without this section. Signing in gates
+nothing yet — it shows who the reader is.
+
+**The browser is the OAuth client; this server never sees a token and sets no
+cookie.** The page is a public client of the identity provider: authorization
+code with PKCE (`S256`), scopes `openid profile email`, redirect
+`<SITE_ORIGIN>/auth/callback`. The provider's endpoints are fixed paths under the
+issuer — `/oauth2/authorize`, `/oauth2/token`, `/oauth2/end-session`.
+
+- **Page HTML never says who is signed in.** Pages are shared and cached, so the
+  header's account control is drawn only in the browser, after it has asked.
+- **A reader who signed in here before is recognised on every page load, without
+  a prompt**: a hidden frame opens the authorization endpoint with
+  `prompt=none` and redirect `<SITE_ORIGIN>/auth/silent`. An answer of
+  `login_required`, `interaction_required`, `consent_required` or
+  `account_selection_required` is "nobody". A frame that has not answered in
+  10 s is logged to the console and is also "nobody".
+- **A visitor who never signed in here costs the provider nothing.** The check
+  runs only while `localStorage` holds `hub.auth.signedIn`, set by a completed
+  sign-in and removed by sign-out and by a "nobody" answer. So a reader signed
+  in at the provider through another site is shown "Sign in" here until they
+  click it once.
+- **The check needs this site and the provider to be the same site** (two hosts
+  under one registrable domain, as `hub.telo.run` and `accounts.telo.run` are).
+  Across sites a browser withholds the provider's cookie from the frame, the
+  answer is always "nobody", and a signed-in reader is signed out by every
+  reload.
+- **"Sign in" is a full-page navigation** to the provider, and back to the page
+  it was clicked on — path, query and fragment.
+- **The token request carries a DPoP proof** (RFC 9449, `ES256`), signed by a key
+  whose private half cannot be exported and that exists only for that page
+  load; a `use_dpop_nonce` refusal is retried once with the nonce the provider
+  sent.
+- **What is kept, and where.** In memory only: the reader's id, name and email
+  from the ID token, and the ID token itself (sent as `id_token_hint` on
+  sign-out). The access token is not kept — nothing uses one yet. In
+  `sessionStorage` under `hub.auth.pending`, from "Sign in" until the callback:
+  the PKCE verifier, `state`, nonce and the address to return to. In `localStorage`, the
+  `hub.auth.signedIn` marker above, which holds no identity. No cookie.
+- **The response is checked before it is believed**: `state` matches, `iss` is
+  the configured issuer (RFC 9207), and the ID token's `iss`, `aud`, `nonce` and
+  `exp` are this sign-in's.
+- **The answer is asked again 30 s before the token it came with expires**, once
+  the page is in view, so a sign-out elsewhere shows here too.
+- **"Sign out"** navigates to the provider's end-session endpoint with
+  `post_logout_redirect_uri=<SITE_ORIGIN>/`.
+
+What the identity provider must offer for this: a public client with the two
+redirect addresses and the post-logout address above, CORS on its token endpoint
+for `SITE_ORIGIN` (allowing the `DPoP` request header and exposing `DPoP-Nonce`),
+and an authorization endpoint this site may frame.
+
+## Analytics
+
+Off unless `PLAUSIBLE_SCRIPT_URL` is set. With it, every page loads that
+Plausible script and initialises it; nothing else on the site reports to a
+third party — the fonts
+(Geist, the same packages studio bundles) are served with the site.
+
+## Theme
+
+Light, dark, or the OS setting, chosen with the header toggle and kept in
+`localStorage` under `hub.theme` (absent means follow the OS). The layout
+choice (rows or cards) is kept under `hub.view`.
 
 ## Badges
 
-The page and the result list show which kernels can run a module, derived by the
-hub from each kind's controllers: `Node` / `Rust`, marked `partial` when a kernel
-runs only some of the module's kinds, or one `Portable` badge when it declares no
-controller code at all and therefore runs anywhere. Language is a separate badge
-from runtime, because the two genuinely differ — a `pkg:cargo` controller is
-Rust and runs on *both* kernels.
+One tone per question a badge answers: version (outlined, monospace), category
+(brand), kernel (green, or amber and marked `partial` when a kernel runs only
+some of the module's kinds), `Portable` (blue, a module declaring no controller
+code at all), language (grey), `Contract only` / `Application` (violet),
+`Deprecated` (red). Kernel and language are separate badges because the two
+genuinely differ — a `pkg:cargo` controller is Rust and runs on *both* kernels.
 
 Every field the hub added for this is optional at the boundary. This app deploys
 independently of the backend, so a hub that predates a field renders nothing
@@ -139,8 +373,11 @@ with a message naming the variable.
 | Variable | Required | Meaning |
 |---|---|---|
 | `HUB_API_ORIGIN` | yes | The hub origin the server reads (`/module`, `/modules`). |
-| `HUB_BROWSER_API_ORIGIN` | no (defaults to `HUB_API_ORIGIN`) | The hub origin the browser calls for search, categories, register, register status and instances. |
+| `HUB_BROWSER_API_ORIGIN` | no (defaults to `HUB_API_ORIGIN`) | The hub origin the browser calls for search, categories, ref suggestions, implementations, instances, version pins, register and register status. Also the origin of the MCP endpoint the `/mcp` page shows. |
 | `SITE_ORIGIN` | yes | This site's origin, used for canonicals, the sitemap and `robots.txt`. Never derived from the request's `Host`. |
+| `PLAUSIBLE_SCRIPT_URL` | no | The Plausible script every page loads (`https://<host>/js/<site script>.js`). Unset, the site loads nothing from a third party. |
+| `OIDC_ISSUER` | no | The identity provider readers sign in through, as a bare origin (`https://accounts.telo.run`). Set together with `OIDC_CLIENT_ID`, or not at all. |
+| `OIDC_CLIENT_ID` | no | This site's client id at that provider. |
 | `PORT` | no (default `8050`) | The port to listen on. |
 
 ## Scripts

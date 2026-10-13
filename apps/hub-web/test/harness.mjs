@@ -47,8 +47,8 @@ export function runServer(env) {
 }
 
 /** Starts hub-web and resolves once it listens. */
-export async function startHubWeb({ hubOrigin, siteOrigin = "https://hub.example" }) {
-  const child = runServer({ HUB_API_ORIGIN: hubOrigin, SITE_ORIGIN: siteOrigin });
+export async function startHubWeb({ hubOrigin, siteOrigin = "https://hub.example", env = {} }) {
+  const child = runServer({ HUB_API_ORIGIN: hubOrigin, SITE_ORIGIN: siteOrigin, ...env });
   let stderr = "";
   child.stderr.on("data", (chunk) => (stderr += chunk));
   const port = await new Promise((resolve, reject) => {

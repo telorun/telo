@@ -635,6 +635,34 @@ migrations:
                            WHERE i.module_id = mv.module_id AND i.version = mv.version), ''))
         FROM module_versions mv
         WHERE mv.root_kind = 'Application'
+  # What a module version imports, one row per `imports:` entry. The alias is
+  # private to the importing manifest; `import_ref` is the imported module's ref
+  # with the pin cut off and a relative source resolved against the importer
+  # (`resolve_import_ref`), so it joins `modules.ref` — which is what answers
+  # "who uses this module" without reading every manifest again.
+  "20261013100000_AddModuleImports":
+    statements:
+      - |
+        CREATE TABLE module_imports (
+          module_id      BIGINT NOT NULL,
+          version        TEXT NOT NULL,
+          alias          TEXT NOT NULL,
+          import_ref     TEXT NOT NULL,
+          pinned_version TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY (module_id, version, alias),
+          FOREIGN KEY (module_id, version)
+            REFERENCES module_versions(module_id, version) ON DELETE CASCADE
+        )
+      - CREATE INDEX module_imports_import_ref ON module_imports (import_ref)
+  # When the hub FIRST tracked a version. `tracked_at` is rewritten by every
+  # re-ingest, so after an ingest revision it says the same day for the whole
+  # catalogue; this one is written once and is what "recently added" orders by.
+  # Seeded from `tracked_at`, the nearest thing the hub still knows for a
+  # version it already holds.
+  "20261013110000_AddFirstTrackedAt":
+    statements:
+      - ALTER TABLE module_versions ADD COLUMN first_tracked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      - UPDATE module_versions SET first_tracked_at = tracked_at
 ---
 # CLAIM — the single statement that decides a version is due and mints the
 # identity of the attempt that will ingest it.

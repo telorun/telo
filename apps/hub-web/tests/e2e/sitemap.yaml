@@ -17,7 +17,8 @@ targets:
   - !ref sitemapShard_ListsSeededOciRefs
   - !ref robots_NamesSitemap
 ---
-# Every module a fresh stack holds has a `seq` inside shard 0.
+# The pages sitemap comes first; every module a fresh stack holds has a `seq`
+# inside shard 0.
 kind: Run.Sequence
 metadata: { name: sitemapIndex_ListsShardZero }
 steps:
@@ -43,6 +44,7 @@ steps:
       expected:
         status: 200
         locs:
+          - http://hub.telo.localhost:8060/sitemaps/pages.xml
           - http://hub.telo.localhost:8060/sitemaps/modules-0.xml
     invoke:
       kind: Assert.Equals

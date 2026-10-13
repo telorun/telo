@@ -1,0 +1,14 @@
+modules:
+  apps/hub: Added
+body: "Four additions to the discovery surface. GET /search/modules and
+  /search/resources (and the search_resources tool) take publisher, narrowing to the
+  modules whose module.publisher equals it; the new GET /publishers lists the publishers
+  that hold a searchable module with their module counts. GET /search/modules takes sort
+  (relevance, name, recent), where recent orders by when the hub first tracked the
+  listed version and each hit carries that instant as module.trackedAt. Both parameters
+  are echoed in the response, so a caller can tell a hub that applied them from an older
+  one that ignored them. The new GET /module/manifest serves a tracked version's
+  telo.yaml as text. Ingest now records what each version imports: /module and
+  get_module carry imports and a dependents count, and the new GET /dependents and
+  find_dependents tool list the modules importing a given one. INGEST_REV defaults to 7,
+  so the deploy re-ingests every tracked version once."

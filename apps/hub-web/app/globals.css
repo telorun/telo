@@ -4,50 +4,56 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-geist-sans: "Geist", sans-serif;
-  --font-geist-mono: "Geist Mono", monospace;
+  --font-geist-sans: "Geist Variable", sans-serif;
+  --font-geist-mono: "Geist Mono Variable", monospace;
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
+  --background: oklch(0.992 0.003 260);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
+  /* This product's own hue: its mark and its name in the wordmark. Each Telo
+     product has one, so they are told apart in a product switcher; the
+     interface itself stays the shared brand blue below. */
+  --product: oklch(0.52 0.18 295);
+  /* The Telo brand hue, the same two values studio uses. */
+  --primary: oklch(0.52 0.18 260);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.965 0.005 260);
   --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.965 0.005 260);
+  --muted-foreground: oklch(0.5 0.015 260);
+  --accent: oklch(0.955 0.02 260);
+  --accent-foreground: oklch(0.32 0.14 260);
   --destructive: oklch(0.577 0.245 27.325);
   --success: oklch(0.52 0.13 150);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: oklch(0.915 0.006 260);
+  --input: oklch(0.9 0.008 260);
+  --ring: oklch(0.62 0.16 260);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  --background: oklch(0.16 0.012 260);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.185 0 0);
+  --card: oklch(0.2 0.014 260);
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
+  --popover: oklch(0.2 0.014 260);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
+  --product: oklch(0.74 0.13 295);
+  --primary: oklch(0.707 0.123 260);
+  --primary-foreground: oklch(0.17 0.03 260);
+  --secondary: oklch(0.25 0.014 260);
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.25 0.014 260);
+  --muted-foreground: oklch(0.72 0.015 260);
+  --accent: oklch(0.29 0.05 260);
+  --accent-foreground: oklch(0.9 0.06 260);
   --destructive: oklch(0.704 0.191 22.216);
   --success: oklch(0.7 0.14 155);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.556 0 0);
+  --border: oklch(0.29 0.015 260);
+  --input: oklch(0.31 0.016 260);
+  --ring: oklch(0.6 0.14 260);
 }
 
 @theme inline {
@@ -57,6 +63,7 @@
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-product: var(--product);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
@@ -81,4 +88,30 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+/* A module's monogram tile. The hue comes from the module itself (--h), so the
+   two themes only decide how light the tile and its letters are. */
+.module-avatar {
+  background: oklch(0.94 0.05 var(--h));
+  color: oklch(0.42 0.14 var(--h));
+}
+.dark .module-avatar {
+  background: oklch(0.33 0.07 var(--h));
+  color: oklch(0.88 0.09 var(--h));
+}
+
+/* The landing hero's backdrop: a soft brand glow that fades into the page. */
+.hero-glow {
+  background:
+    radial-gradient(60% 120% at 50% 0%, color-mix(in oklch, var(--primary) 14%, transparent), transparent 70%);
+}
+
+/* Anchored kinds must clear the sticky site header. */
+[id^="kind-"],
+#instances,
+#application,
+#used-by,
+#manifest {
+  scroll-margin-top: 5rem;
 }

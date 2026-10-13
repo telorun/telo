@@ -26,6 +26,7 @@ import type { TeloLanguage } from "../hooks/useLanguageSession";
 import { TeloVersionControl } from "./TeloVersionControl";
 import { CloudAccountControl } from "./cloud/CloudAccountControl";
 import { WorkspaceSwitcher, type WorkspaceSwitcherProps } from "./WorkspaceSwitcher";
+import studioMark from "./telo-studio-mark.svg";
 
 /** Workspace-global chrome only. Running belongs to one Application, so its
  *  trigger, status and history live in that module's own view-tab strip — a
@@ -96,8 +97,11 @@ export function TopBar({
           <Menu />
         </Button>
       )}
-      <span className="shrink-0 font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-        Telo <span className="text-brand">Studio</span>
+      <span className="flex shrink-0 items-center gap-2 font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+        <img src={studioMark} alt="" className="size-6" />
+        <span>
+          Telo <span className="text-brand">Studio</span>
+        </span>
       </span>
 
       <div className="mx-3 flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-zinc-500 max-md:mx-1 dark:text-zinc-400">

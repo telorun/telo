@@ -1,3 +1,4 @@
+import { catalogPath, publisherPath } from "@/catalog-filters";
 import { type HubReader, unavailableResponse } from "@/hub-reader.server";
 import { modulePagePath } from "@/module-ref";
 
@@ -27,11 +28,40 @@ function loc(url: string): string {
   return `<loc>${escapeXml(url)}</loc>`;
 }
 
-/** The sitemap index: one entry per non-empty shard. Each probe asks for the
+/** The pages that are not a module's: the fixed ones, then one per category and
+ *  one per publisher, as the hub's two facets list them. */
+export const PAGES_SITEMAP = "pages.xml";
+
+const FIXED_PAGES = ["/", "/mcp", "/register"];
+
+/** A module read off the hub's own disk has no page, so a listing of nothing
+ *  but those is not one to send a crawler to. */
+const LOCAL_PUBLISHER = "local";
+
+export async function sitemapPages(hub: HubReader, siteOrigin: string): Promise<Response> {
+  const [categories, publishers] = await Promise.all([hub.readCategories(), hub.readPublishers()]);
+  if (categories.kind === "unavailable") {
+    throw unavailableResponse(categories, "listing categories for the sitemap");
+  }
+  if (publishers.kind === "unavailable") {
+    throw unavailableResponse(publishers, "listing publishers for the sitemap");
+  }
+  const paths = [
+    ...FIXED_PAGES,
+    ...categories.categories.map((c) => catalogPath(c.category)),
+    ...publishers.publishers
+      .filter((p) => p.publisher !== LOCAL_PUBLISHER)
+      .map((p) => publisherPath(p.publisher)),
+  ];
+  const urls = paths.map((path) => `<url>${loc(`${siteOrigin}${path}`)}</url>`).join("\n");
+  return new Response(`${XML_HEAD}<urlset ${NS}>\n${urls}\n</urlset>\n`, { headers: XML_HEADERS });
+}
+
+/** The sitemap index: the pages sitemap, then one entry per non-empty shard. Each probe asks for the
  *  first module past the previous shard, and its `seq` names the next non-empty
  *  shard directly, so sparse ranges cost nothing. */
 export async function sitemapIndex(hub: HubReader, siteOrigin: string): Promise<Response> {
-  const entries: string[] = [];
+  const entries = [`<sitemap>${loc(`${siteOrigin}/sitemaps/${PAGES_SITEMAP}`)}</sitemap>`];
   let after = 0;
   for (;;) {
     const read = await hub.readCatalogue(after, 1);

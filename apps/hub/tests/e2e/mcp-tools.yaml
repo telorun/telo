@@ -36,6 +36,8 @@ targets:
   - !ref listModuleVersions_ReturnsPinnedVersions
   - !ref findImplementations_ListsKvStoreBackends
   - !ref findInstances_ListsSeededLanguagePacks
+  - !ref findDependents_ListsImportersInOneLine
+  - !ref searchResources_StaysWithinAPublisher
   - !ref listCategories_CarriesSchedulingSlug
   - !ref suggestModuleRefs_ResolvesPartialToken
   - !ref getModuleManifest_ReturnsCachedYaml
@@ -645,5 +647,89 @@ steps:
           steps.parse.result.docs[0].refs.exists(r, r.ref == 'oci://ghcr.io/telorun/console')
       expected:
         foundConsole: true
+    invoke:
+      kind: Assert.Equals
+---
+# find_dependents answers in the short form a model is re-sent: ref, name and a
+# one-sentence summary, never the whole description, with the total and paging.
+kind: Run.Sequence
+metadata: { name: findDependents_ListsImportersInOneLine }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: find_dependents
+      arguments:
+        ref: oci://ghcr.io/telorun/kv-store
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: one
+    invoke: !ref mcpToolCall
+    inputs:
+      name: find_dependents
+      arguments:
+        ref: oci://ghcr.io/telorun/kv-store
+        limit: 1
+  - name: parseOne
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.one.result.content[0].text"
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'of': steps.parse.result.docs[0].of.ref,
+         'memory': steps.parse.result.docs[0].dependents.exists(d, d.ref == 'oci://ghcr.io/telorun/kv-store-memory'),
+         'countsAll': steps.parse.result.docs[0].total == size(steps.parse.result.docs[0].dependents),
+         'summarised': steps.parse.result.docs[0].dependents.all(d,
+           has(d.summary) && size(d.summary) <= 160 && !has(d.description)),
+         'paged': size(steps.parseOne.result.docs[0].dependents),
+         'pagedTotal': steps.parseOne.result.docs[0].total == steps.parse.result.docs[0].total}
+      expected:
+        of: oci://ghcr.io/telorun/kv-store
+        memory: true
+        countsAll: true
+        summarised: true
+        paged: 1
+        pagedTotal: true
+    invoke:
+      kind: Assert.Equals
+---
+# `publisher` keeps a search inside one host and org; one with no module selects
+# nothing rather than being refused.
+kind: Run.Sequence
+metadata: { name: searchResources_StaysWithinAPublisher }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: search_resources
+      arguments:
+        query: key value store
+        publisher: ghcr.io/telorun
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: none
+    invoke: !ref mcpToolCall
+    inputs:
+      name: search_resources
+      arguments:
+        query: key value store
+        publisher: example.invalid/nobody
+  - name: parseNone
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.none.result.content[0].text"
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'some': size(steps.parse.result.docs[0].results[0].modules) > 0,
+         'onlyTheirs': steps.parse.result.docs[0].results[0].modules.all(m,
+           m.ref.startsWith('oci://ghcr.io/telorun/')),
+         'unknownSelectsNothing': size(steps.parseNone.result.docs[0].results[0].modules)}
+      expected: { some: true, onlyTheirs: true, unknownSelectsNothing: 0 }
     invoke:
       kind: Assert.Equals

@@ -12,7 +12,7 @@ metadata:
     Keyed reads over the discovery index: one module's metadata, kinds, an
     application's declared inputs and versions, the cached manifest text for a version, the
     definitions of named kinds with everything they reference, a one-line-per-module
-    index of a publisher's libraries, the kinds implementing a contract, the ready-made instances of a kind, ref autocomplete, and how far a
+    index of a publisher's libraries, the kinds implementing a contract, the ready-made instances of a kind, the modules importing a module, ref autocomplete, and how far a
     registration has got.
 requires:
   # 0.83.0: `resources:` inputs on a library.
@@ -42,6 +42,7 @@ exports:
     - moduleVersionList
     - implementations
     - instances
+    - dependents
     - refSuggestions
     - registrationStatus
 ---
@@ -462,7 +463,11 @@ outputType:
       versions: { type: array }
       # An application's declared contract; null for a library.
       application: { type: [object, "null"], additionalProperties: true }
-    required: [found, module, kinds, exportedResources, versions, application]
+      # What this version imports: `{ alias, ref, version }` per entry.
+      imports: { type: array }
+      # How many other modules import this one at their latest version.
+      dependents: { type: integer }
+    required: [found, module, kinds, exportedResources, versions, application, imports, dependents]
 steps:
   - name: tracked
     invoke: !ref trackedModules
@@ -541,6 +546,18 @@ steps:
                        ORDER BY mr.name), '[]'::json)
                 FROM module_resources mr
                 WHERE mr.module_id = mv.module_id AND mr.version = mv.version) AS "exportedResources",
+               (SELECT COALESCE(json_agg(json_build_object(
+                         'alias', mi.alias, 'ref', mi.import_ref, 'version', mi.pinned_version)
+                       ORDER BY mi.alias), '[]'::json)
+                FROM module_imports mi
+                WHERE mi.module_id = mv.module_id AND mi.version = mv.version) AS imports,
+               /* Counted at each importer's LATEST version, the one `/dependents`
+                  lists: a module that imported this once and no longer does is
+                  not a dependent. */
+               (SELECT COUNT(DISTINCT dm.id)::int
+                FROM module_imports di
+                JOIN modules dm ON dm.id = di.module_id AND dm.latest_version = di.version
+                WHERE di.import_ref = m.ref AND dm.id <> m.id) AS dependents,
                /* Newest-first, the same ordering `/module/versions` and the CLI
                   verb use, so a version picker built off either agrees. */
                (SELECT COALESCE(json_agg(v.version ORDER BY
@@ -575,6 +592,8 @@ outputs:
   # empty and its `module.runtime` is null — the hub does not index the reach of
   # a whole import closure.
   application: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].application : null"
+  imports: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].imports : []"
+  dependents: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].dependents : 0"
 ---
 # Newest-first, matching the `telo module versions` CLI verb this mirrors (one
 # contract, three front-ends): valid dotted-numeric versions sort by numeric
@@ -659,6 +678,62 @@ steps:
         - !cel "inputs.kind"
 outputs:
   implementations: !cel "steps.rows.result.rows"
+---
+# Every module that imports a given module — the reverse of `imports:`. An
+# importer is listed once, at its latest version: what it imported in an older
+# one says nothing about who depends on the module now.
+#
+# Paged, because a widely imported module is imported by most of the catalogue.
+# `total` is the count before the page is cut, and is read from a row of its own
+# so a page past the end still reports it. Each row carries `description` whole
+# and `summary` — its first sentence, cut at 160 characters, as `libraryIndex`
+# cuts one — so a caller that is re-sent every result takes the short form.
+kind: Run.Sequence
+metadata:
+  name: dependents
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+      limit: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      offset: { type: integer, minimum: 0, default: 0 }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      dependents: { type: array }
+      total: { type: integer }
+    required: [dependents, total]
+steps:
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        WITH d AS (
+          SELECT DISTINCT m.ref, mv.version, COALESCE(mv.module_name, '') AS name,
+                 COALESCE(mv.description, '') AS description,
+                 (SELECT CASE WHEN length(s) > 160 THEN left(s, 159) || '…' ELSE s END
+                  FROM (SELECT split_part(regexp_replace(COALESCE(mv.description, ''), '\s+', ' ', 'g'),
+                                          '. ', 1) AS s) first_sentence) AS summary,
+                 COALESCE(mv.root_kind, '') = 'Application' AS application
+          FROM module_imports mi
+          JOIN modules m ON m.id = mi.module_id AND m.latest_version = mi.version
+          JOIN module_versions mv ON mv.module_id = mi.module_id AND mv.version = mi.version
+          WHERE mi.import_ref = $1 AND m.ref <> $1
+        )
+        SELECT (SELECT COUNT(*) FROM d)::int AS total,
+               (SELECT COALESCE(json_agg(row_to_json(p) ORDER BY p.ref), '[]'::json)
+                FROM (SELECT * FROM d ORDER BY ref LIMIT $2 OFFSET $3) p) AS page
+      bindings:
+        - !cel "inputs.ref"
+        - !cel "inputs.limit"
+        - !cel "inputs.offset"
+outputs:
+  dependents: !cel "steps.rows.result.rows[0].page"
+  total: !cel "steps.rows.result.rows[0].total"
 ---
 # Every exported instance of a given kind, across module boundaries — the
 # instance axis. A module that only packages ready-made instances of another

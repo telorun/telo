@@ -208,19 +208,293 @@ describe("module page", () => {
     const html = await (await get(web.origin, PAGE)).text();
     assert.ok(html.includes('<code class="font-mono break-all">./modules/x</code>'));
     assert.ok(!html.includes('href="/module/local'));
-    assert.ok(html.includes('href="/module/oci/example.com/acme/base/"'));
+    assert.ok(html.includes('href="/module/oci/example.com/acme/base/#kind-Base"'));
+  });
+});
+
+/** The two reads a catalogue page is seeded from, over one category `tools`. */
+function answerCatalogue(req, res, url) {
+  if (url.pathname === "/categories") {
+    return sendJson(res, 200, {
+      categories: [{ category: "tools", label: "Tools", modules: 1, kinds: 1 }],
+    });
+  }
+  if (url.pathname === "/publishers") {
+    return sendJson(res, 200, { publishers: [{ publisher: "example.com/acme", modules: 1 }] });
+  }
+  if (url.pathname === "/search/modules") {
+    const category = url.searchParams.get("category") ?? "";
+    if (category && category !== "tools") {
+      return sendJson(res, 400, { error: `unknown category "${category}"` });
+    }
+    return sendJson(res, 200, {
+      // A hub that applies the publisher filter echoes it; `oldHub` is one that
+      // predates the parameter and answers as if it were not there.
+      ...(answerCatalogue.oldHub ? {} : { publisher: url.searchParams.get("publisher") ?? "" }),
+      total: 1,
+      hits: [
+        {
+          module: { ref: REF, version: "1.0.0", name: "Widget", description: "Makes widgets." },
+          score: 0,
+          matchedKinds: [{ entry: "kind", name: "Gadget", kind: "Gadget", capability: "Telo.Invocable", description: "", score: 0 }],
+          exportedKinds: [{ kind: "Gadget", capability: "Telo.Invocable", description: "" }],
+          exportedResources: [],
+        },
+      ],
+    });
+  }
+  sendJson(res, 404, { error: "no such route" });
+}
+
+describe("catalogue", () => {
+  test("home lists the first page of modules and the categories in its markup", async () => {
+    hub.handle = answerCatalogue;
+    const html = await (await get(web.origin, "/")).text();
+    assert.ok(html.includes(`href="${PAGE}"`), "the module card links to its page");
+    assert.ok(html.includes('href="/category/tools"'));
+  });
+
+  test("the seeded listing and facets cover libraries and applications alike", async () => {
+    hub.handle = answerCatalogue;
+    const before = hub.requests.length;
+    await (await get(web.origin, "/")).text();
+    const all = "entry=kind&entry=instance&entry=application";
+    for (const path of ["/search/modules", "/categories", "/publishers"]) {
+      assert.ok(
+        hub.requests.slice(before).some((r) => r.startsWith(path) && r.includes(all)),
+        `${path} was asked for every entry type`,
+      );
+    }
+  });
+
+  test("home is still a 200 when the hub answers nothing", async () => {
+    hub.handle = (req, res) => sendJson(res, 500, { error: "db exploded" });
+    const res = await get(web.origin, "/");
+    assert.equal(res.status, 200);
+    assert.ok(!(await res.text()).includes("db exploded"));
+  });
+
+  test("a category the hub knows is a 200 page with its own head", async () => {
+    hub.handle = answerCatalogue;
+    const res = await get(web.origin, "/category/tools");
+    const html = await res.text();
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("cache-control"), "public, max-age=60, stale-if-error=86400");
+    assert.match(html, /<title>Tools modules — Telo Hub<\/title>/);
+    assert.match(html, /<link rel="canonical" href="https:\/\/hub.example\/category\/tools"\/>/);
+    assert.match(html, /<h1[^>]*>Tools<\/h1>/);
+    assert.ok(html.includes(`href="${PAGE}"`));
+  });
+
+  test("a category has one address: other spellings are a 301 or a 404", async () => {
+    hub.handle = (req, res, url) => {
+      // The hub itself reads `Tools` as `tools`.
+      if (url.searchParams.get("category") === "Tools") url.searchParams.set("category", "tools");
+      answerCatalogue(req, res, url);
+    };
+    const slash = await get(web.origin, "/category/tools/?runtime=rust");
+    assert.equal(slash.status, 301);
+    assert.equal(slash.headers.get("location"), "/category/tools?runtime=rust");
+    assert.equal((await get(web.origin, "/category/Tools")).status, 404);
+  });
+
+  test("a publisher has one address: a trailing slash is a 301", async () => {
+    const res = await get(web.origin, "/publisher/example.com/acme/");
+    assert.equal(res.status, 301);
+    assert.equal(res.headers.get("location"), "/publisher/example.com/acme");
+  });
+
+  test("a category no module declares is a 404", async () => {
+    hub.handle = answerCatalogue;
+    const res = await get(web.origin, "/category/nothing");
+    assert.equal(res.status, 404);
+    assert.equal(res.headers.get("cache-control"), "no-cache");
+  });
+
+  test("a category page is a 503 when the hub does not answer", async () => {
+    hub.handle = (req, res) => sendJson(res, 500, { error: "db exploded" });
+    const res = await get(web.origin, "/category/tools");
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get("retry-after"), "60");
+  });
+
+  test("the old ?category= address is a 301 to the category page, filters kept", async () => {
+    const res = await get(web.origin, "/?category=tools&q=widgets&runtime=rust");
+    assert.equal(res.status, 301);
+    assert.equal(res.headers.get("location"), "/category/tools?q=widgets&runtime=rust");
+  });
+
+  test("a publisher the hub lists is a 200 page with its own head", async () => {
+    hub.handle = answerCatalogue;
+    const res = await get(web.origin, "/publisher/example.com/acme");
+    const html = await res.text();
+    assert.equal(res.status, 200);
+    assert.match(html, /<title>Modules published on example.com\/acme — Telo Hub<\/title>/);
+    assert.match(html, /<link rel="canonical" href="https:\/\/hub.example\/publisher\/example.com\/acme"\/>/);
+    assert.ok(html.includes(`href="${PAGE}"`));
+    assert.ok(hub.requests.some((r) => r.includes("publisher=example.com%2Facme")));
+  });
+
+  test("a publisher the hub does not list is a 404", async () => {
+    hub.handle = answerCatalogue;
+    assert.equal((await get(web.origin, "/publisher/example.com/nobody")).status, 404);
+  });
+
+  test("a hub that ignores the publisher filter is a 503, never an unfiltered list", async () => {
+    answerCatalogue.oldHub = true;
+    hub.handle = answerCatalogue;
+    const res = await get(web.origin, "/publisher/example.com/acme");
+    answerCatalogue.oldHub = false;
+    assert.equal(res.status, 503);
+    assert.match(web.stderr(), /cannot filter by publisher/);
+  });
+
+  test("the ?publisher= address on home is a 301 to the publisher page", async () => {
+    const res = await get(web.origin, "/?publisher=example.com/acme&sort=name");
+    assert.equal(res.status, 301);
+    assert.equal(res.headers.get("location"), "/publisher/example.com/acme?sort=name");
+  });
+
+  test("a kind's fields are read from the version's manifest", async () => {
+    hub.handle = (req, res, url) => {
+      if (url.pathname !== "/module/manifest") return answerModule(req, res, url);
+      res.writeHead(200, { "Content-Type": "text/yaml; charset=utf-8" });
+      res.end(
+        [
+          "kind: Telo.Library",
+          "metadata: { name: Widget }",
+          "---",
+          "kind: Telo.Definition",
+          "metadata: { name: Gadget }",
+          "capability: Telo.Invocable",
+          "schema:",
+          "  type: object",
+          "  required: [size]",
+          "  properties:",
+          "    size: { type: integer, description: How big it is. }",
+          '    target: { x-telo-ref: { kind: Self.Socket, use: call } }',
+          '    label: { type: string, default: !cel "variables.label" }',
+        ].join("\n"),
+      );
+    };
+    const html = await (await get(web.origin, PAGE)).text();
+    assert.ok(html.includes("How big it is."));
+    assert.ok(html.includes("ref → Self.Socket"));
+    assert.ok(html.includes("variables.label"));
+  });
+
+  test("a module page without a manifest is still a 200, without field tables", async () => {
+    hub.handle = answerModule;
+    const res = await get(web.origin, PAGE);
+    assert.equal(res.status, 200);
+    assert.ok(!(await res.text()).includes("Manifest source"));
+  });
+
+  test("a listing asks the hub to leave deprecated modules out, and says how many it left", async () => {
+    let asked;
+    hub.handle = (req, res, url) => {
+      if (url.pathname !== "/search/modules") return answerCatalogue(req, res, url);
+      asked = url.searchParams;
+      sendJson(res, 200, { deprecated: "exclude", total: 0, hidden: { deprecated: 3, contractOnly: 0 }, hits: [] });
+    };
+    const html = await (await get(web.origin, "/")).text();
+    assert.equal(asked.get("deprecated"), "exclude");
+    assert.equal(asked.get("contractOnly"), null);
+    assert.ok(!html.includes(`href="${PAGE}"`));
+    assert.match(html, /3<!-- --> deprecated hidden|3 deprecated hidden/);
+  });
+
+  test("a listing from a hub that leaves nothing out is shown as answered", async () => {
+    hub.handle = answerCatalogue;
+    const html = await (await get(web.origin, "/")).text();
+    assert.ok(html.includes(`href="${PAGE}"`));
+    assert.ok(!html.includes("deprecated hidden"));
+  });
+
+  test("the MCP page names the hub's endpoint on the browser origin", async () => {
+    const res = await get(web.origin, "/mcp");
+    const html = await res.text();
+    assert.equal(res.status, 200);
+    assert.match(html, /<title>Connect over MCP — Telo Hub<\/title>/);
+    assert.ok(html.includes(`${hub.origin}/mcp`));
+  });
+
+  test("register is a page of its own", async () => {
+    const res = await get(web.origin, "/register");
+    const html = await res.text();
+    assert.equal(res.status, 200);
+    assert.match(html, /<title>Register a module — Telo Hub<\/title>/);
+    assert.match(html, /<link rel="canonical" href="https:\/\/hub.example\/register"\/>/);
+  });
+
+  test("a module page links the modules using it and implementing its contracts", async () => {
+    hub.handle = (req, res, url) => {
+      if (url.pathname === "/module") {
+        return sendJson(res, 200, {
+          ...modulePage("1.0.0"),
+          kinds: [{ kind: "Socket", capability: "Telo.Provider", abstract: true, description: "" }],
+          dependents: 1,
+        });
+      }
+      if (url.pathname === "/dependents") {
+        return sendJson(res, 200, {
+          dependents: [{ ref: "oci://example.com/acme/user", version: "1.0.0", name: "User", description: "" }],
+        });
+      }
+      if (url.pathname === "/implementations") {
+        return sendJson(res, 200, {
+          implementations: [
+            { ref: "oci://example.com/acme/plug", version: "1.0.0", kind: "Socket", capability: "", description: "" },
+          ],
+        });
+      }
+      sendJson(res, 404, {});
+    };
+    const html = await (await get(web.origin, PAGE)).text();
+    assert.ok(html.includes('href="/module/oci/example.com/acme/user/"'));
+    assert.ok(html.includes('href="/module/oci/example.com/acme/plug/#kind-Socket"'));
+  });
+
+  test("a module page states what it is as structured data", async () => {
+    hub.handle = answerModule;
+    const html = await (await get(web.origin, PAGE)).text();
+    assert.ok(html.includes('"@type":"SoftwareSourceCode"'));
+    assert.ok(html.includes('"@type":"BreadcrumbList"'));
+    assert.ok(html.includes(`"identifier":"${REF}"`));
+    assert.ok(!html.includes(HOSTILE), "a hostile description reaches the document unescaped");
+  });
+
+  test("a module page carries the tags a pasted link unfurls from", async () => {
+    hub.handle = answerModule;
+    const html = await (await get(web.origin, PAGE)).text();
+    assert.ok(html.includes('<meta property="og:title" content="Widget — Telo Hub"/>'));
+    assert.ok(html.includes(`<meta property="og:url" content="https://hub.example${PAGE}"/>`));
   });
 });
 
 describe("site", () => {
   test("home is a 200 page with its head and canonical", async () => {
-    const res = await get(web.origin, "/?q=widgets");
+    const res = await get(web.origin, "/");
     const html = await res.text();
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("cache-control"), "public, max-age=60, stale-if-error=86400");
     assert.match(html, /<title>Telo Hub — find a module, on any host<\/title>/);
     assert.match(html, /<link rel="canonical" href="https:\/\/hub.example\/"\/>/);
+    assert.ok(!html.includes('name="robots"'));
+    assert.ok(html.includes('"@type":"WebSite"'));
+  });
+
+  test("a filtered listing keeps the listing's canonical", async () => {
+    const html = await (await get(web.origin, "/?runtime=rust&type=library&sort=name")).text();
+    assert.match(html, /<link rel="canonical" href="https:\/\/hub.example\/"\/>/);
+    assert.ok(!html.includes('name="robots"'));
+  });
+
+  test("a search-results address is noindex and names no canonical", async () => {
+    const html = await (await get(web.origin, "/?q=widgets")).text();
     assert.match(html, /value="widgets"/);
+    assert.ok(html.includes('<meta name="robots" content="noindex, follow"/>'));
+    assert.ok(!html.includes('rel="canonical"'));
   });
 
   test("an unmatched path is a 404 with no-cache", async () => {

@@ -120,18 +120,21 @@ being linearized into a chain.
 
 | Verb | Path |
 | --- | --- |
-| `telo search "<query>"` | `GET /search/modules?q=…&category=…&runtime=…&entry=…&limit=…&offset=…` (grouped by module) |
-| `telo search --kinds "<query>"` | `GET /search/resources?q=…&category=…&runtime=…&entry=…` (flat hits) |
+| `telo search "<query>"` | `GET /search/modules?q=…&category=…&publisher=…&runtime=…&entry=…&sort=…&deprecated=…&contractOnly=…&limit=…&offset=…` (grouped by module) |
+| `telo search --kinds "<query>"` | `GET /search/resources?q=…&category=…&publisher=…&runtime=…&entry=…` (flat hits) |
 | ref autocomplete | `GET /refs?q=…` (pg_trgm fuzzy, lexical) |
 | browse the category facet | `GET /categories?entry=…` (slug + module and kind counts) |
+| browse the publisher facet | `GET /publishers?entry=…` (publisher + module count) |
 | backends of a contract | `GET /implementations?ref=…&kind=…` |
+| modules importing a module | `GET /dependents?ref=…&limit=…&offset=…` |
 | ready-made instances of a kind | `GET /instances?ref=…&kind=…` |
 | everything about one module | `GET /module?ref=…&version=…` |
+| one version's `telo.yaml` | `GET /module/manifest?ref=…&version=…` (`text/yaml`) |
 | `telo module versions <ref>` | `GET /module/versions?ref=…` |
 | the whole catalogue (sitemaps) | `GET /modules?after=…&limit=…` (every ref `/module` answers for, paged by `seq`) |
 | register a module | `POST /register` (`{ ref }` → validate + schedule, `202`; open, no auth) |
 | poll a registration | `GET /register/status?ref=` |
-| MCP (`search_resources`, `get_kinds`, `list_libraries`, `get_module_manifest`, `get_module`, `list_module_versions`, `find_implementations`, `find_instances`, `list_categories`, `suggest_module_refs`) | `POST /mcp` |
+| MCP (`search_resources`, `get_kinds`, `list_libraries`, `get_module_manifest`, `get_module`, `list_module_versions`, `find_implementations`, `find_instances`, `find_dependents`, `list_categories`, `suggest_module_refs`) | `POST /mcp` |
 | liveness | `GET /health` |
 
 **Every keyed HTTP read has an MCP twin.** `get_module` mirrors `GET /module`,
@@ -448,6 +451,89 @@ not address an older version. Both "never registered" and "no such version"
 return one 404 — the caller's next move is the same, and separating them would
 leak which refs are tracked.
 
+### Publishers
+
+A **publisher** is the host and org a module's ref sits under
+(`ghcr.io/telorun`; the host alone for a `url` module; `local` for a seeded
+path) — derived, never declared, which is why it can be trusted as far as the
+host can. `GET /publishers` lists the ones that hold a searchable module, as
+`{ publishers: [{ publisher, modules }] }`, most modules first; `entry` selects
+which entry types count, as on `/categories`.
+
+`publisher` on `/search/modules`, `/search/resources` and `search_resources`
+narrows to exactly the modules whose `module.publisher` equals it. Unlike a
+category it is not refused when unknown: there is no declared vocabulary to
+refuse against, so a publisher with no module selects nothing.
+
+**Both search routes echo `publisher`, and `/search/modules` echoes `sort`,
+`deprecated` and `contractOnly`.** An older hub accepts any of these parameters
+and ignores it, answering with the whole catalogue in its own order. A caller
+that sent a filter and reads no echo of it is looking at unfiltered rows.
+
+### Leaving modules out of a listing
+
+Two parameters on `/search/modules`, each `include` (default) or `exclude`; any
+other value is a `400`:
+
+- `deprecated=exclude` leaves out modules whose latest version is deprecated.
+- `contractOnly=exclude` leaves out modules whose every exported kind is a
+  contract. A module exporting no kind at all — an application, a pack of
+  instances — is not contract-only.
+
+Both are applied before the page is cut, so `total` counts what is listed and
+every page holds `limit` rows of it. The response says what was left out as
+`hidden: { deprecated, contractOnly }`, a module that is both counted as
+deprecated — so `total + hidden.deprecated + hidden.contractOnly` is the count
+with neither filter. `total` and `hidden` are reported for a page with no hits
+too: one past the last row, or one whose every match is hidden.
+
+### Sort
+
+`sort` on `/search/modules` orders the hits: `relevance` (default — the fused
+score, then the ref), `name` (the declared module name, case-insensitive) or
+`recent` (newest first by when the hub **first tracked** the listed version).
+Any other value is a `400`. Each hit's `module.trackedAt` is that instant
+(RFC 3339, UTC).
+
+`recent` is the hub's own observation, not a publish date — no transport reports
+one. It is stored once per version (`module_versions.first_tracked_at`) and
+never rewritten by a re-ingest, unlike `tracked_at`. Versions the hub already
+held when the column was added carry their last ingest time, so the order means
+something only for versions tracked since.
+
+With a query, `name` and `recent` order the ranked candidates the search already
+caps, not the whole catalogue; they are meant for browsing (an empty `q`).
+
+### `GET /module/manifest`
+
+The cached `telo.yaml` of one tracked version, as `text/yaml` — the HTTP twin of
+`get_module_manifest`, on the same handler. `version` defaults to `latest`. An
+unknown ref and an unknown version are one 404, as on `/module`. The text is the
+public manifest exactly as cached: no parsing, no re-serialization.
+
+### Imports and dependents
+
+Ingest records what each version imports (`module_imports`: the alias, the
+imported ref with its pin cut off and a relative source resolved against the
+importer, and the version the pin named). Two readings:
+
+- `/module` and `get_module` carry `imports` (`[{ alias, ref, version }]`, the
+  described version's own) and `dependents` (how many other modules import it).
+- `GET /dependents?ref=…` lists those modules, a page at a time:
+  `{ of: { ref }, total, dependents: [{ ref, version, name, description, application }] }`.
+  `limit` is 1–100 (default 50), `offset` skips rows, and `total` is the count
+  before the page is cut — reported for a page past the end too. A response
+  with no `total` is from a hub that returned every importer.
+- `find_dependents(ref, limit?, offset?)` is the same list for a model:
+  `{ of, total, dependents: [{ ref, name, summary, application? }] }`, where
+  `summary` is the description's first sentence cut at 160 characters, as
+  `list_libraries` cuts one.
+
+A dependent is counted once, at **its latest version**: what a module imported
+in an older version says nothing about who depends on the import now. An
+untracked importer is invisible — the hub knows only the modules registered
+with it.
+
 ### `GET /modules`
 
 The complete catalogue, for building sitemaps: `{ modules: [{ ref,
@@ -644,6 +730,9 @@ UPDATE version_ingest SET claimed_at = NULL WHERE module_id = $1 AND version = $
 Clearing `last_error` alone does **not** make a version due — the digest still
 matches and the revision is still current. Raising `INGEST_REV` re-ingests
 everything, once.
+
+Revision `7` records what each version imports (`module_imports`), so deploying
+it re-ingests every tracked version once.
 
 Revision `6` records each version's root kind (`module_versions.root_kind`,
 `Library` or `Application`), stores an application's contract

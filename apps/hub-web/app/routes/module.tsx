@@ -2,15 +2,19 @@ import { data, isRouteErrorResponse, Link, redirect } from "react-router";
 
 import type { Route } from "./+types/module";
 import { hubContext } from "@/hub-context.server";
-import { unavailableResponse } from "@/hub-reader.server";
+import type { ModulePage as ModulePageData } from "@/api";
+import { type HubReader, unavailableResponse } from "@/hub-reader.server";
+import { readKindSchemas } from "@/kind-schema.server";
 import {
   canonicalLink,
   moduleDescription,
+  moduleSchema,
   moduleTitle,
+  shareTags,
   statusTitle,
 } from "@/module-head";
 import { modulePagePath, refFromPath } from "@/module-ref";
-import { ModulePage } from "@/ModulePage";
+import { ModulePage, type RelatedModules } from "@/ModulePage";
 import { errorStatus, StatusPage } from "@/StatusPage";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
@@ -24,7 +28,40 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const read = await context.get(hubContext).hub.readModule(ref, url.searchParams.get("version") ?? "");
   if (read.kind === "absent") throw data({ pagePath }, { status: 404 });
   if (read.kind === "unavailable") throw unavailableResponse(read, `reading module ${ref}`);
-  return { page: read.page, pagePath };
+  // The field tables come from the version's own manifest. Without it — a hub
+  // that does not serve manifests, or one that does not answer — the page is
+  // still the module's page, so a failed read costs the tables and nothing else.
+  const hub = context.get(hubContext).hub;
+  const [manifest, related] = await Promise.all([
+    hub.readManifest(ref, read.page.module.version),
+    readRelated(hub, read.page),
+  ]);
+  if (manifest.kind === "unavailable") {
+    console.error(`hub unavailable (${manifest.reason}) while reading the manifest of ${ref}: ${manifest.detail}`);
+  }
+  const schemas = manifest.kind === "found" ? readKindSchemas(manifest.text) : null;
+  return { page: read.page, pagePath, schemas, related };
+}
+
+/** The modules a page links out to beyond its own: who uses it, and who
+ *  implements each of its contracts. Read here so those links are in the markup
+ *  a crawler reads — they are how one module's page leads to the next. A list
+ *  the hub did not answer is `null`, and the browser asks for it instead. */
+async function readRelated(hub: HubReader, page: ModulePageData): Promise<RelatedModules> {
+  const contracts = page.kinds.filter((k) => k.abstract);
+  const [dependents, ...implementations] = await Promise.all([
+    (page.dependents ?? 0) > 0 ? hub.readDependents(page.module.ref) : null,
+    ...contracts.map((k) => hub.readImplementations(k.ref ?? page.module.ref, k.kind)),
+  ]);
+  return {
+    dependents: dependents?.kind === "found" ? dependents.items : null,
+    implementations: Object.fromEntries(
+      contracts.map((k, i) => {
+        const read = implementations[i];
+        return [k.kind, read.kind === "found" ? read.items : null];
+      }),
+    ),
+  };
 }
 
 export function headers(): HeadersInit {
@@ -35,15 +72,27 @@ export function headers(): HeadersInit {
 // point at the unversioned page.
 export const meta: Route.MetaFunction = ({ loaderData, matches, error }) => {
   if (error || !loaderData) return [{ title: statusTitle(errorStatus(error)) }];
+  const { siteOrigin } = matches[0].loaderData;
+  const title = moduleTitle(loaderData.page);
+  const description = moduleDescription(loaderData.page);
   return [
-    { title: moduleTitle(loaderData.page) },
-    { name: "description", content: moduleDescription(loaderData.page) },
-    canonicalLink(matches[0].loaderData.siteOrigin, loaderData.pagePath),
+    { title },
+    { name: "description", content: description },
+    canonicalLink(siteOrigin, loaderData.pagePath),
+    ...shareTags(siteOrigin, loaderData.pagePath, title, description),
+    ...moduleSchema(siteOrigin, loaderData.page, loaderData.pagePath),
   ];
 };
 
 export default function Module({ loaderData }: Route.ComponentProps) {
-  return <ModulePage page={loaderData.page} pagePath={loaderData.pagePath} />;
+  return (
+    <ModulePage
+      page={loaderData.page}
+      pagePath={loaderData.pagePath}
+      schemas={loaderData.schemas}
+      related={loaderData.related}
+    />
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

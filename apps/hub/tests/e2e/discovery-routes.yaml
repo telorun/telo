@@ -38,6 +38,19 @@ targets:
   - !ref modules_ListsExactlyTheRefsModuleAnswers
   - !ref modules_PagesChainByNext
   - !ref modules_RejectsInvalidLimit
+  - !ref publishers_ListsTheSeededPublishers
+  - !ref searchModules_FiltersByPublisher
+  - !ref searchModules_SortsByName
+  - !ref searchModules_SortsByRecent
+  - !ref searchModules_RejectsUnknownSort
+  - !ref searchModules_LeavesOutContractOnlyModules
+  - !ref searchModules_CountsAPagePastTheEnd
+  - !ref searchResources_FiltersByPublisher
+  - !ref dependents_ListsImporters
+  - !ref dependents_Pages
+  - !ref module_ListsItsImports
+  - !ref moduleManifest_ServesTheManifestText
+  - !ref moduleManifest_UntrackedReturns404
 ---
 kind: Run.Sequence
 metadata: { name: health }
@@ -990,3 +1003,333 @@ steps:
       actual: !cel "steps.hit.result.status"
       expected: 400
     invoke: { kind: Assert.Equals }
+---
+# The publisher facet is derived from refs: every seeded `oci://ghcr.io/telorun/*`
+# module sits under one publisher, and the checkout's own `./modules/*` under
+# `local`. Counts move with the seed, so only the two names are pinned.
+kind: Run.Sequence
+metadata: { name: publishers_ListsTheSeededPublishers }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/publishers
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'status': steps.hit.result.status,
+         'telorun': steps.hit.result.body.publishers.exists(p, p.publisher == 'ghcr.io/telorun' && p.modules > 0),
+         'local': steps.hit.result.body.publishers.exists(p, p.publisher == 'local' && p.modules > 0)}
+      expected: { status: 200, telorun: true, local: true }
+    invoke:
+      kind: Assert.Equals
+---
+# The filter selects exactly the modules reporting that publisher, and the
+# response echoes it — what tells a caller the filter was applied rather than
+# ignored.
+kind: Run.Sequence
+metadata: { name: searchModules_FiltersByPublisher }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: "http://localhost:8040/search/modules?q=&publisher=local&limit=100"
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'status': steps.hit.result.status,
+         'echo': steps.hit.result.body.publisher,
+         'onlyLocal': steps.hit.result.body.hits.all(h, h.module.publisher == 'local'),
+         'some': size(steps.hit.result.body.hits) > 0}
+      expected: { status: 200, echo: local, onlyLocal: true, some: true }
+    invoke:
+      kind: Assert.Equals
+---
+# `sort=name` orders by the declared module name, case-insensitively, and is
+# echoed. Every adjacent pair is compared, so the assertion holds for whichever
+# modules are seeded and fails for any one out of place.
+kind: Run.Sequence
+metadata: { name: searchModules_SortsByName }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: "http://localhost:8040/search/modules?q=&sort=name&limit=100"
+      method: GET
+  - name: names
+    value: !cel "steps.hit.result.body.hits.map(h, h.module.name.lowerAscii())"
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'status': steps.hit.result.status,
+         'echo': steps.hit.result.body.sort,
+         'several': size(steps.names.result) > 2,
+         'ordered': range(size(steps.names.result) - 1).all(i,
+           steps.names.result[i] <= steps.names.result[i + 1])}
+      expected: { status: 200, echo: name, several: true, ordered: true }
+    invoke:
+      kind: Assert.Equals
+---
+# `sort=recent` lists the module the hub tracked last first. `trackedAt` is one
+# fixed-width UTC format, so comparing it as text compares the instants.
+kind: Run.Sequence
+metadata: { name: searchModules_SortsByRecent }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: "http://localhost:8040/search/modules?q=&sort=recent&limit=100"
+      method: GET
+  - name: tracked
+    value: !cel "steps.hit.result.body.hits.map(h, h.module.trackedAt)"
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'status': steps.hit.result.status,
+         'echo': steps.hit.result.body.sort,
+         'several': size(steps.tracked.result) > 2,
+         'newestFirst': range(size(steps.tracked.result) - 1).all(i,
+           steps.tracked.result[i] >= steps.tracked.result[i + 1])}
+      expected: { status: 200, echo: recent, several: true, newestFirst: true }
+    invoke:
+      kind: Assert.Equals
+---
+# `contractOnly=exclude` is applied by the hub, before the page is cut: the
+# contract-only `kv-store` is gone from the hits AND from `total`, `hidden` says
+# how many were left out, and the two add up to the unfiltered total. Echoed, so
+# a caller can tell a hub that applied it from one that ignored it.
+kind: Run.Sequence
+metadata: { name: searchModules_LeavesOutContractOnlyModules }
+steps:
+  - name: all
+    invoke:
+      kind: HttpClient.Request
+      url: "http://localhost:8040/search/modules?q=&limit=100"
+      method: GET
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: "http://localhost:8040/search/modules?q=&limit=100&contractOnly=exclude&deprecated=exclude"
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'status': steps.hit.result.status,
+         'echo': [steps.hit.result.body.contractOnly, steps.hit.result.body.deprecated],
+         'defaultEcho': [steps.all.result.body.contractOnly, steps.all.result.body.deprecated],
+         'listedByDefault': steps.all.result.body.hits.exists(h, h.module.ref == 'oci://ghcr.io/telorun/kv-store'),
+         'leftOut': steps.hit.result.body.hits.exists(h, h.module.ref == 'oci://ghcr.io/telorun/kv-store'),
+         'backendKept': steps.hit.result.body.hits.exists(h, h.module.ref == 'oci://ghcr.io/telorun/kv-store-memory'),
+         'someHidden': steps.hit.result.body.hidden.contractOnly > 0,
+         'addsUp': steps.hit.result.body.total + steps.hit.result.body.hidden.contractOnly
+           + steps.hit.result.body.hidden.deprecated == steps.all.result.body.total,
+         'nothingHiddenByDefault': steps.all.result.body.hidden}
+      expected:
+        status: 200
+        echo: [exclude, exclude]
+        defaultEcho: [include, include]
+        listedByDefault: true
+        leftOut: false
+        backendKept: true
+        someHidden: true
+        addsUp: true
+        nothingHiddenByDefault: { deprecated: 0, contractOnly: 0 }
+    invoke:
+      kind: Assert.Equals
+---
+# A page past the last row has no hits and still reports how many are listed.
+kind: Run.Sequence
+metadata: { name: searchModules_CountsAPagePastTheEnd }
+steps:
+  - name: first
+    invoke:
+      kind: HttpClient.Request
+      url: "http://localhost:8040/search/modules?q=&limit=1"
+      method: GET
+  - name: past
+    invoke:
+      kind: HttpClient.Request
+      url: "http://localhost:8040/search/modules?q=&limit=1&offset=100000"
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'status': steps.past.result.status,
+         'hits': size(steps.past.result.body.hits),
+         'some': steps.first.result.body.total > 0,
+         'sameTotal': steps.past.result.body.total == steps.first.result.body.total}
+      expected: { status: 200, hits: 0, some: true, sameTotal: true }
+    invoke:
+      kind: Assert.Equals
+---
+# The publisher filter on the kind-first route: every hit is that publisher's,
+# and the response echoes it.
+kind: Run.Sequence
+metadata: { name: searchResources_FiltersByPublisher }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: "http://localhost:8040/search/resources?q=store&publisher=ghcr.io%2Ftelorun"
+      method: GET
+  - name: none
+    invoke:
+      kind: HttpClient.Request
+      url: "http://localhost:8040/search/resources?q=store&publisher=example.invalid%2Fnobody"
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'status': steps.hit.result.status,
+         'echo': steps.hit.result.body.publisher,
+         'some': size(steps.hit.result.body.hits) > 0,
+         'onlyTheirs': steps.hit.result.body.hits.all(h, h.module.publisher == 'ghcr.io/telorun'),
+         'unknownSelectsNothing': size(steps.none.result.body.hits)}
+      expected: { status: 200, echo: ghcr.io/telorun, some: true, onlyTheirs: true, unknownSelectsNothing: 0 }
+    invoke:
+      kind: Assert.Equals
+---
+# An order outside the enum is a bad argument, not relevance in disguise.
+kind: Run.Sequence
+metadata: { name: searchModules_RejectsUnknownSort }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: "http://localhost:8040/search/modules?q=&sort=popularity"
+      method: GET
+      success: [400]
+  - name: assert
+    inputs:
+      actual: !cel "steps.hit.result.status"
+      expected: 400
+    invoke:
+      kind: Assert.Equals
+---
+# The reverse of `imports:`: the seeded redis and memory backends both import
+# `kv-store`, and neither is named by `kv-store` itself.
+kind: Run.Sequence
+metadata: { name: dependents_ListsImporters }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/dependents?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Fkv-store
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'status': steps.hit.result.status,
+         'of': steps.hit.result.body.of.ref,
+         'redis': steps.hit.result.body.dependents.exists(d, d.ref == 'oci://ghcr.io/telorun/kv-store-redis'),
+         'memory': steps.hit.result.body.dependents.exists(d, d.ref == 'oci://ghcr.io/telorun/kv-store-memory'),
+         'self': steps.hit.result.body.dependents.exists(d, d.ref == 'oci://ghcr.io/telorun/kv-store')}
+      expected:
+        status: 200
+        of: oci://ghcr.io/telorun/kv-store
+        redis: true
+        memory: true
+        self: false
+    invoke:
+      kind: Assert.Equals
+---
+# The list is paged: `limit` cuts it, `total` is the count before the cut, and a
+# page past the end is empty with the same total.
+kind: Run.Sequence
+metadata: { name: dependents_Pages }
+steps:
+  - name: one
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/dependents?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Fkv-store&limit=1
+      method: GET
+  - name: next
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/dependents?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Fkv-store&limit=1&offset=1
+      method: GET
+  - name: past
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/dependents?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Fkv-store&offset=100000
+      method: GET
+  - name: tooMany
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/dependents?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Fkv-store&limit=101
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'onePerPage': [size(steps.one.result.body.dependents), size(steps.next.result.body.dependents)],
+         'differentRows': steps.one.result.body.dependents[0].ref != steps.next.result.body.dependents[0].ref,
+         'totalIsAll': steps.one.result.body.total >= 2,
+         'past': size(steps.past.result.body.dependents),
+         'sameTotal': steps.past.result.body.total == steps.one.result.body.total,
+         'tooMany': steps.tooMany.result.status}
+      expected: { onePerPage: [1, 1], differentRows: true, totalIsAll: true, past: 0, sameTotal: true, tooMany: 400 }
+    invoke:
+      kind: Assert.Equals
+---
+# `/module` carries both directions: what the version imports, pin cut off and
+# its version kept, and how many modules import it.
+kind: Run.Sequence
+metadata: { name: module_ListsItsImports }
+steps:
+  - name: importer
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/module?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Fkv-store-redis
+      method: GET
+  - name: imported
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/module?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Fkv-store
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'importsKvStore': steps.importer.result.body.imports.exists(i,
+           i.ref == 'oci://ghcr.io/telorun/kv-store' && i.alias != '' && i.version != ''),
+         'dependents': steps.imported.result.body.dependents >= 2}
+      expected: { importsKvStore: true, dependents: true }
+    invoke:
+      kind: Assert.Equals
+---
+# The cached manifest as text — the HTTP twin of `get_module_manifest`.
+kind: Run.Sequence
+metadata: { name: moduleManifest_ServesTheManifestText }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/module/manifest?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Fkv-store
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {'status': steps.hit.result.status,
+         'yaml': string(steps.hit.result.headers['content-type']).startsWith('text/yaml'),
+         'library': string(steps.hit.result.body).startsWith('kind: Telo.Library'),
+         'definesStore': string(steps.hit.result.body).contains('name: Store')}
+      expected: { status: 200, yaml: true, library: true, definesStore: true }
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: moduleManifest_UntrackedReturns404 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/module/manifest?ref=oci%3A%2F%2Fnope.invalid%2Fnothing
+      method: GET
+      success: [404]
+  - name: assert
+    inputs:
+      actual: !cel "steps.hit.result.status"
+      expected: 404
+    invoke:
+      kind: Assert.Equals
