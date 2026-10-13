@@ -39,11 +39,27 @@ The kernel knows nothing about HTTP, SQL, or AI. Each kind is declared by a
 
 - a **JSON Schema** for the resource's fields — this is what `telo check`
   validates your YAML against, and what the editor completes from;
+- **`x-telo-*` annotations** on that schema, saying what each field means —
+  which kinds a reference accepts, where an expression is evaluated and what it
+  can read — so the checker handles the kind without knowing it;
 - a **capability**, naming its lifecycle role;
-- a **controller**, the code that implements it.
+- an **implementation**: a controller written in code, or a template that
+  composes kinds that already exist, written in the manifest itself — see
+  [Templated definitions](/extend/templated-definitions).
 
 That is the whole extension mechanism. A kind you write yourself is
 indistinguishable from `Http.Server` — see [Authoring a module](/extend/authoring-a-module).
+
+The declaration states the kind's whole contract, so the language its
+controller is written in is invisible to a manifest that uses the kind. The
+manifest says what exists and how it is wired; a controller says how one piece
+works inside.
+
+So a manifest holds two levels in one language: the kinds, and the resources
+that are instances of them. Both are documents in the same files, checked by the
+same checker and shipped by the same modules. What a module can add is
+vocabulary — new kinds. The grammar itself is fixed: the capabilities, the
+annotations, the tags and the step forms are the same for every module.
 
 ## Capabilities
 

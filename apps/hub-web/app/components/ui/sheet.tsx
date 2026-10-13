@@ -37,15 +37,23 @@ function SheetContent({
   className,
   children,
   showCloseButton = true,
+  side = "right",
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Content> & { showCloseButton?: boolean }) {
+}: React.ComponentProps<typeof SheetPrimitive.Content> & {
+  showCloseButton?: boolean;
+  side?: "right" | "bottom";
+}) {
   return (
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-md flex-col gap-4 overflow-y-auto border-l border-border bg-popover p-5 text-sm text-popover-foreground shadow-lg duration-200 outline-none data-[state=open]:animate-in data-[state=open]:slide-in-from-right data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right",
+          "fixed z-50 flex flex-col gap-4 overflow-y-auto border-border bg-popover p-5 text-sm text-popover-foreground shadow-lg duration-200 outline-none data-[state=open]:animate-in data-[state=closed]:animate-out",
+          side === "right" &&
+            "inset-y-0 right-0 h-full w-full max-w-md border-l data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right",
+          side === "bottom" &&
+            "inset-x-0 bottom-0 max-h-[85dvh] rounded-t-2xl border-t data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom",
           className,
         )}
         {...props}

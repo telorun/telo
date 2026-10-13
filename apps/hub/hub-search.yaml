@@ -68,6 +68,7 @@ variables:
 exports:
   resources:
     - categoryVocabulary
+    - publisherFacet
     - searchResources
     - searchMany
     - searchModules
@@ -298,6 +299,57 @@ steps:
             the hub does not index an application's runtime reach — it depends on
             its whole import closure
 ---
+# The publisher facet: every host and org a searchable module is published
+# under, with how many modules each holds. Derived from refs by the one rule
+# `module.publisher` is (`module_publisher`), so a value read here selects
+# exactly the modules that report it.
+kind: Run.Sequence
+metadata:
+  name: publisherFacet
+throws:
+  - code: ERR_UNKNOWN_ENTRY_TYPE
+    description: The `entry` argument is empty or names an unknown entry type.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      entry: { type: array, items: { type: string }, default: [kind, instance] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      publishers:
+        type: array
+        items:
+          type: object
+          properties:
+            publisher: { type: string }
+            modules: { type: integer }
+          required: [publisher, modules]
+    required: [publishers]
+steps:
+  - name: entryGuard
+    invoke: !ref requireKnownEntries
+    inputs:
+      entry: !cel "inputs.entry"
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT module_publisher(m.ref, m.transport) AS publisher, COUNT(*)::int AS modules
+        FROM modules m
+        WHERE EXISTS (SELECT 1 FROM search_entries e
+                      WHERE e.module_id = m.id AND e.version = m.latest_version
+                        AND e.entry = ANY($1::text[]))
+        GROUP BY 1
+        ORDER BY modules DESC, publisher
+      bindings:
+        - !cel "inputs.entry"
+outputs:
+  publishers: !cel "steps.rows.result.rows.map(r, {'publisher': r.publisher, 'modules': r.modules})"
+---
 kind: Run.Sequence
 metadata:
   name: searchResources
@@ -318,6 +370,8 @@ inputType:
       runtime: { type: string }
       # Which entry types to rank: `kind`, `instance`, `application`.
       entry: { type: array, items: { type: string }, default: [kind, instance] }
+      # A publisher as `module.publisher` reports it, or '' for every publisher.
+      publisher: { type: string, default: "" }
       # How many hits to return, after sibling instances fold.
       limit: { type: integer, minimum: 1, maximum: 50, default: 20 }
 steps:
@@ -372,7 +426,8 @@ steps:
   # $3 = category slug or '' for no facet filter,
   # $4 = kernel name or '' — see the runtime filter below,
   # $5 = the entry types to rank,
-  # $6 = how many hits to return.
+  # $6 = how many hits to return,
+  # $7 = publisher or '' — applied in every arm, for the reason the facet is.
   #
   # The facet is a filter on the SAME query, not a second endpoint: an empty
   # `q` already degrades to an unranked listing, so `?q=&category=storage` is
@@ -415,6 +470,7 @@ steps:
           -- applies and it satisfies every runtime. Written as a flag rather
           -- than by enumerating kernels into the row, which would go stale.
           AND ($4 = '' OR e.portable OR e.runtimes @> ARRAY[$4]::text[])
+          AND ($7 = '' OR module_publisher(m.ref, m.transport) = $7)
           AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR e.name ILIKE '%' || $1 || '%')
         ORDER BY rank
         LIMIT (CASE WHEN $1 = '' THEN 5000 ELSE 100 END)
@@ -449,6 +505,7 @@ steps:
         WHERE e.entry = ANY($5::text[])
           AND ($3 = '' OR e.categories @> ARRAY[category_slug($3)]::text[])
           AND ($4 = '' OR e.portable OR e.runtimes @> ARRAY[$4]::text[])
+          AND ($7 = '' OR module_publisher(m.ref, m.transport) = $7)
           AND q.orq IS NOT NULL AND i.vec @@ q.andq
         ORDER BY rank
         LIMIT 100
@@ -493,6 +550,7 @@ steps:
       WHERE e.entry = ANY($5::text[])
         AND ($3 = '' OR e.categories @> ARRAY[category_slug($3)]::text[])
         AND ($4 = '' OR e.portable OR e.runtimes @> ARRAY[$4]::text[])
+        AND ($7 = '' OR module_publisher(m.ref, m.transport) = $7)
       ),
       /* Sibling instances collapse into the best-ranked one, which lists the
          rest: a broad query returns one hit per kind of instance instead of
@@ -528,6 +586,7 @@ steps:
         - !cel "inputs.runtime"
         - !cel "inputs.entry"
         - !cel "inputs.limit"
+        - !cel "inputs.publisher"
   # A KNOWN category that selects nothing for THIS query is a filter that was
   # too narrow, not an absent capability — so the search is repeated without it
   # and the response says which happened (`categoryFilterDropped`). Returning
@@ -548,6 +607,7 @@ steps:
             - !cel "inputs.runtime"
             - !cel "inputs.entry"
             - !cel "inputs.limit"
+            - !cel "inputs.publisher"
   # The rows the response is built from, named once for the two projections.
   - name: rows
     value: !cel "'retry' in steps ? steps.retry.result.rows : steps.query.result.rows"
@@ -647,6 +707,7 @@ inputType:
       queries: { type: array, items: { type: string } }
       category: { type: string }
       runtime: { type: string }
+      publisher: { type: string, default: "" }
       entry: { type: array, items: { type: string }, default: [kind, instance] }
       limit: { type: integer, minimum: 1, maximum: 50, default: 8 }
     required: [queries]
@@ -658,6 +719,7 @@ steps:
       q: !cel "item"
       category: !cel "inputs.category"
       runtime: !cel "inputs.runtime"
+      publisher: !cel "inputs.publisher"
       entry: !cel "inputs.entry"
       limit: !cel "inputs.limit"
 outputs:
@@ -686,6 +748,16 @@ inputType:
       q: { type: string }
       category: { type: string }
       runtime: { type: string }
+      # A publisher as `module.publisher` reports it, or '' for every publisher.
+      publisher: { type: string, default: "" }
+      # `relevance` (the fused score), `name` (the declared module name) or
+      # `recent` (when the hub first tracked the listed version, newest first).
+      sort: { type: string, enum: [relevance, name, recent], default: relevance }
+      # Whether deprecated modules, and modules exporting only contracts, are
+      # listed. Decided here rather than by the caller over the rows it was
+      # sent, so `total` and every page are of what is actually listed.
+      deprecated: { type: string, enum: [include, exclude], default: include }
+      contractOnly: { type: string, enum: [include, exclude], default: include }
       limit: { type: integer }
       offset: { type: integer }
       # Which entry types a module is matched by: `kind`, `instance`, `application`.
@@ -762,6 +834,7 @@ steps:
           -- Module-level reach: a kernel that runs even one kind keeps the
           -- module in the result, since the card shows full-vs-partial.
           AND ($6 = '' OR mv.portable OR mv.runtimes @> ARRAY[$6]::text[])
+          AND ($8 = '' OR module_publisher(m.ref, m.transport) = $8)
           AND ((q.orq IS NOT NULL AND v.vec @@ q.orq) OR e.name ILIKE '%' || $1 || '%')
         ORDER BY rank
         LIMIT (CASE WHEN $1 = '' THEN 5000 ELSE 100 END)
@@ -792,6 +865,7 @@ steps:
                mv.runtimes_full AS module_runtimes_full,
                mv.languages AS module_languages, mv.portable AS module_portable,
                COALESCE(mv.root_kind, '') AS module_root_kind,
+               mv.first_tracked_at AS module_tracked_at,
                f.score
         FROM fused f
         JOIN search_entries e ON e.id = f.id
@@ -800,6 +874,7 @@ steps:
         WHERE e.entry = ANY($7::text[])
           AND ($3 = '' OR mv.categories @> ARRAY[category_slug($3)]::text[])
           AND ($6 = '' OR mv.portable OR mv.runtimes @> ARRAY[$6]::text[])
+          AND ($8 = '' OR module_publisher(m.ref, m.transport) = $8)
       ),
       mods AS (
       SELECT h.ref, h.version, h.module_name, h.module_description,
@@ -807,6 +882,9 @@ steps:
              h.module_publisher, h.module_deprecated_reason, h.module_replaced_by,
              h.module_runtimes, h.module_runtimes_full,
              h.module_languages, h.module_portable, h.module_root_kind,
+             h.module_tracked_at,
+             to_char(h.module_tracked_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+               AS module_tracked_at_text,
              /* An application's declared contract; NULL for a library. */
              CASE WHEN h.module_root_kind = 'Application'
                   THEN application_contract(h.module_id, h.version) END AS application,
@@ -895,7 +973,8 @@ steps:
                h.module_repository, h.module_license, h.module_homepage,
                h.module_publisher, h.module_deprecated_reason, h.module_replaced_by,
                h.module_runtimes, h.module_runtimes_full,
-               h.module_languages, h.module_portable, h.module_root_kind
+               h.module_languages, h.module_portable, h.module_root_kind,
+               h.module_tracked_at
       ),
       /* Siblings collapse into their best-ranked member: every pack still
          matches and is listed, but a broad query returns one row per kind of
@@ -906,26 +985,63 @@ steps:
                ROW_NUMBER() OVER (PARTITION BY COALESCE(pack_key, 'module:' || ref)
                                   ORDER BY score DESC, ref) AS pack_rank
         FROM mods
+      ),
+      /* Every module the request matches, packs folded, each marked with what
+         the two display filters read. A module with no exported kind is not
+         contract-only: it is an application, or exports only instances. */
+      listed AS (
+        SELECT r.*,
+               (SELECT COALESCE(json_agg(json_build_object(
+                         'ref', o.ref, 'version', o.version, 'name', o.module_name,
+                         'description', o.module_description, 'score', o.score,
+                         'matchedKinds', o.matched_kinds)
+                       ORDER BY o.score DESC, o.ref), '[]'::json)
+                FROM ranked o
+                WHERE r.pack_key IS NOT NULL AND o.pack_key = r.pack_key AND o.pack_rank > 1)
+                 AS siblings,
+               r.module_deprecated_reason <> '' AS is_deprecated,
+               (json_array_length(r.exported_kinds) > 0
+                AND NOT EXISTS (SELECT 1 FROM json_array_elements(r.exported_kinds) k
+                                WHERE NOT COALESCE((k->>'abstract')::boolean, false)))
+                 AS is_contract_only
+        FROM ranked r
+        WHERE r.pack_rank = 1
+      ),
+      shown AS (
+        SELECT l.* FROM listed l
+        WHERE ($10 = 'include' OR NOT l.is_deprecated)
+          AND ($11 = 'include' OR NOT l.is_contract_only)
+      ),
+      /* One row whatever the page holds, so a page with nothing on it — every
+         match hidden, or an offset past the end — still says how many matched
+         and how many were left out. A module both deprecated and contract-only
+         is counted as deprecated. */
+      counts AS (
+        SELECT (SELECT COUNT(*) FROM shown)::int AS total,
+               (SELECT COUNT(*) FROM listed l
+                WHERE $10 = 'exclude' AND l.is_deprecated)::int AS deprecated_hidden,
+               (SELECT COUNT(*) FROM listed l
+                WHERE $11 = 'exclude' AND l.is_contract_only
+                  AND NOT ($10 = 'exclude' AND l.is_deprecated))::int AS contract_only_hidden
       )
-      SELECT r.*,
-             COUNT(*) OVER ()::int AS total,
-             (SELECT COALESCE(json_agg(json_build_object(
-                       'ref', o.ref, 'version', o.version, 'name', o.module_name,
-                       'description', o.module_description, 'score', o.score,
-                       'matchedKinds', o.matched_kinds)
-                     ORDER BY o.score DESC, o.ref), '[]'::json)
-              FROM ranked o
-              WHERE r.pack_key IS NOT NULL AND o.pack_key = r.pack_key AND o.pack_rank > 1)
-               AS siblings
-      FROM ranked r
-      WHERE r.pack_rank = 1
-      /* `ref` breaks the tie so paging is stable: with an empty query every
-         module scores alike, and an unordered page boundary would repeat or
-         skip rows between requests. Block comment, not `--`: this block is a
-         folded YAML scalar, so a line comment at the base indentation joins
-         onto one line and swallows the SQL after it. */
-      ORDER BY r.score DESC, r.ref
-      LIMIT $4 OFFSET $5
+      SELECT c.total, c.deprecated_hidden, c.contract_only_hidden, p.*
+      FROM counts c
+      LEFT JOIN LATERAL (
+        /* `ref` breaks the tie so paging is stable: with an empty query every
+           module scores alike, and an unordered page boundary would repeat or
+           skip rows between requests. Block comment, not `--`: this block is a
+           folded YAML scalar, so a line comment at the base indentation joins
+           onto one line and swallows the SQL after it. */
+        SELECT s.*,
+               ROW_NUMBER() OVER (
+                 ORDER BY CASE WHEN $9 = 'name' THEN lower(s.module_name) END,
+                          CASE WHEN $9 = 'recent' THEN s.module_tracked_at END DESC NULLS LAST,
+                          s.score DESC, s.ref) AS position
+        FROM shown s
+        ORDER BY position
+        LIMIT $4 OFFSET $5
+      ) p ON true
+      ORDER BY p.position
   - name: query
     invoke: !ref query
     inputs:
@@ -938,10 +1054,15 @@ steps:
         - !cel "inputs.offset"
         - !cel "inputs.runtime"
         - !cel "inputs.entry"
+        - !cel "inputs.publisher"
+        - !cel "inputs.sort"
+        - !cel "inputs.deprecated"
+        - !cel "inputs.contractOnly"
   # Same reduction as /search/resources: a KNOWN category that selects nothing
-  # for THIS query is too narrow a filter, not an absent capability.
+  # for THIS query is too narrow a filter, not an absent capability. The query
+  # always answers one row; a page with no module on it has a null `ref`.
   - name: broaden
-    if: !cel "inputs.category != '' && steps.query.result.rows.size() == 0"
+    if: !cel "inputs.category != '' && steps.query.result.rows[0].ref == null"
     then:
       - name: retry
         invoke: !ref query
@@ -955,6 +1076,12 @@ steps:
             - !cel "inputs.offset"
             - !cel "inputs.runtime"
             - !cel "inputs.entry"
+            - !cel "inputs.publisher"
+            - !cel "inputs.sort"
+            - !cel "inputs.deprecated"
+            - !cel "inputs.contractOnly"
+  - name: answered
+    value: !cel "'retry' in steps ? steps.retry.result.rows : steps.query.result.rows"
 outputs:
   categories: !cel "steps.vocabulary.result.categories"
   categoryFilterDropped: !cel "'retry' in steps"
@@ -965,13 +1092,14 @@ outputs:
   # same kind as this hit's (language model packs), ranked below it and folded
   # into it; empty for any other hit. `total` counts hits after that folding.
   #
-  # `total` is the match count before LIMIT/OFFSET — a paging UI needs to know
-  # what it is not showing, and a browse that silently stopped at 20 would read
-  # as "that's all there is". An empty result carries no row to read it from,
-  # hence the fallback.
-  total: !cel >-
-    ('retry' in steps ? steps.retry.result.rows : steps.query.result.rows).size() > 0
-      ? ('retry' in steps ? steps.retry.result.rows : steps.query.result.rows)[0].total : 0
+  # `total` is the count of listed modules before LIMIT/OFFSET — a paging UI
+  # needs to know what it is not showing, and a browse that silently stopped at
+  # 20 would read as "that's all there is".
+  total: !cel "steps.answered.result[0].total"
+  # The matches the `deprecated` / `contractOnly` filters left out of `total`.
+  hidden: !cel >-
+    {'deprecated': steps.answered.result[0].deprecated_hidden,
+     'contractOnly': steps.answered.result[0].contract_only_hidden}
   # `runtimes` lists every kernel with at least partial reach and `full` the
   # subset covering every kind, so a caller renders "Rust (partial)" without a
   # second lookup — and a filter still reads one array.
@@ -979,12 +1107,13 @@ outputs:
   # An application module indexes no runtime reach (`module.runtime: null`) and
   # carries its declared contract as `application`.
   hits: !cel >-
-    ('retry' in steps ? steps.retry.result.rows : steps.query.result.rows).map(r,
+    steps.answered.result.filter(r, r.ref != null).map(r,
       r.module_root_kind == 'Application'
         ? {'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name,
                       'description': r.module_description, 'repository': r.module_repository,
                       'license': r.module_license, 'homepage': r.module_homepage,
                       'publisher': r.module_publisher,
+                      'trackedAt': r.module_tracked_at_text,
                       'deprecated': {'reason': r.module_deprecated_reason,
                                      'replacedBy': r.module_replaced_by},
                       'runtime': null, 'categories': r.module_categories},
@@ -995,6 +1124,7 @@ outputs:
                       'description': r.module_description, 'repository': r.module_repository,
                       'license': r.module_license, 'homepage': r.module_homepage,
                       'publisher': r.module_publisher,
+                      'trackedAt': r.module_tracked_at_text,
                       'deprecated': {'reason': r.module_deprecated_reason,
                                      'replacedBy': r.module_replaced_by},
                       'runtime': {'runtimes': r.module_runtimes, 'full': r.module_runtimes_full,

@@ -117,6 +117,10 @@ first-class path to your own.
 - **A new capability is a module** — a `Telo.Definition` describing the kind and
   a controller implementing it. It is not a plugin in a vendor SDK; it is the
   same mechanism every built-in kind uses.
+- **A kind is declared in the language it is used from.** Its fields, how they
+  are type-checked and — for a [templated kind](/extend/templated-definitions) —
+  its behaviour are manifest documents, so an extension is visible to the
+  editor and the checker rather than code beside the canvas.
 - **Controllers are polyglot** — Node.js, Rust and Go. The kind's contract is
   language-neutral by design, so which language a controller is written in is
   invisible to the manifest that uses it. Node.js ships today; the Rust kernel

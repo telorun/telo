@@ -42,8 +42,8 @@ test("the index lists every non-empty shard, one probe per shard", async () => {
   assert.equal(
     await res.text(),
     `${XML}<sitemapindex ${NS}>\n` +
-      [0, 1, 3]
-        .map((k) => `<sitemap><loc>https://hub.example/sitemaps/modules-${k}.xml</loc></sitemap>`)
+      ["pages", "modules-0", "modules-1", "modules-3"]
+        .map((name) => `<sitemap><loc>https://hub.example/sitemaps/${name}.xml</loc></sitemap>`)
         .join("\n") +
       `\n</sitemapindex>\n`,
   );
@@ -144,4 +144,31 @@ test("a hub failure mid-shard resets the connection without </urlset>", async ()
   // One connection is dropped, not the server.
   assert.equal((await get(web.origin, "/health")).status, 200);
   assert.match(web.stderr(), /sitemap shard 0 aborted mid-stream: hub unavailable \(status\)/);
+});
+
+test("the pages sitemap lists the fixed pages, every category and every publisher", async () => {
+  hub.handle = (req, res, url) =>
+    url.pathname === "/categories"
+      ? sendJson(res, 200, { categories: [{ category: "tools", label: "Tools", modules: 1 }] })
+      : sendJson(res, 200, {
+          publishers: [
+            { publisher: "example.com/acme", modules: 1 },
+            { publisher: "local", modules: 1 },
+          ],
+        });
+  const res = await get(web.origin, "/sitemaps/pages.xml");
+  assert.equal(res.status, 200);
+  assert.equal(
+    await res.text(),
+    `${XML}<urlset ${NS}>\n` +
+      ["/", "/mcp", "/register", "/category/tools", "/publisher/example.com/acme"]
+        .map((path) => `<url><loc>https://hub.example${path}</loc></url>`)
+        .join("\n") +
+      `\n</urlset>\n`,
+  );
+});
+
+test("the pages sitemap is a 503 when the hub does not answer a facet", async () => {
+  hub.handle = (req, res) => sendJson(res, 500, {});
+  assert.equal((await get(web.origin, "/sitemaps/pages.xml")).status, 503);
 });

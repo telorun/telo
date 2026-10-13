@@ -10,6 +10,12 @@ export interface Settings {
   /** This site's own origin: canonicals, the sitemap and robots.txt. Never
    *  derived from `Host`, which the client controls. */
   siteOrigin: string;
+  /** The identity provider readers sign in through, and this site's client id
+   *  there. Null on a site that offers no sign-in. */
+  oidc: { issuer: string; clientId: string } | null;
+  /** The Plausible script every page loads. Null on a site that reports to no
+   *  one. */
+  plausibleScriptUrl: string | null;
   port: number;
 }
 
@@ -56,6 +62,30 @@ function port(value: string | undefined): number {
   return parsed;
 }
 
+function oidc(env: NodeJS.ProcessEnv): Settings["oidc"] {
+  const issuer = env.OIDC_ISSUER?.trim();
+  const clientId = env.OIDC_CLIENT_ID?.trim();
+  if (!issuer && !clientId) return null;
+  if (!issuer) throw new SettingsError("OIDC_ISSUER is required when OIDC_CLIENT_ID is set");
+  if (!clientId) throw new SettingsError("OIDC_CLIENT_ID is required when OIDC_ISSUER is set");
+  return { issuer: origin("OIDC_ISSUER", issuer), clientId };
+}
+
+function scriptUrl(name: string, value: string | undefined): string | null {
+  const text = value?.trim();
+  if (!text) return null;
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    throw new SettingsError(`${name} must be an absolute http(s) URL, got "${text}"`);
+  }
+  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
+    throw new SettingsError(`${name} must be an http(s) URL without credentials, got "${text}"`);
+  }
+  return url.href;
+}
+
 function readSettings(env: NodeJS.ProcessEnv): Settings {
   const hubApiOrigin = required(env, "HUB_API_ORIGIN");
   const browser = env.HUB_BROWSER_API_ORIGIN?.trim();
@@ -63,6 +93,8 @@ function readSettings(env: NodeJS.ProcessEnv): Settings {
     hubApiOrigin,
     browserApiOrigin: browser ? origin("HUB_BROWSER_API_ORIGIN", browser) : hubApiOrigin,
     siteOrigin: required(env, "SITE_ORIGIN"),
+    oidc: oidc(env),
+    plausibleScriptUrl: scriptUrl("PLAUSIBLE_SCRIPT_URL", env.PLAUSIBLE_SCRIPT_URL),
     port: port(env.PORT),
   };
 }

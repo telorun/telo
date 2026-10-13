@@ -11,6 +11,14 @@ Short definitions for the vocabulary the rest of the documentation assumes.
 A YAML file of one or more `---`-separated documents. The first is a
 `Telo.Application` or `Telo.Library`; each one after it declares a resource.
 
+### Manifest language
+
+What a manifest is written in: a declarative language whose syntax is YAML, with
+[CEL](https://github.com/google/cel-spec) embedded for expressions. It is
+self-extensible and has two levels — a `Telo.Definition` declares a kind, and a
+resource is an instance of one — sharing one syntax, one module system and one
+type checker. Modules extend its vocabulary with new kinds; its grammar is fixed.
+
 ### Resource
 
 One declared thing — a server, a handler, a connection. Written as a document
@@ -24,9 +32,9 @@ prefix is an **import alias you chose**, not a fixed namespace.
 
 ### `Telo.Definition`
 
-The document that *declares* a kind: its JSON Schema, its capability, and the
-controller that implements it. Kinds are declared in modules, never built into
-the kernel.
+The document that *declares* a kind: its JSON Schema, its capability, and its
+implementation — a controller, or a template composing existing kinds. Kinds are
+declared in modules, never built into the kernel.
 
 ### `Telo.Abstract`
 

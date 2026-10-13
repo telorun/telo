@@ -76,10 +76,11 @@ variables:
   # due exactly once, which is the whole-registry re-ingest control — and what
   # replaced the per-column backfill probes, each of which had to be added and
   # read one at a time. 6 records each version's root kind and an application's
-  # contract, and stops storing an application's own kinds as exported.
+  # contract, and stops storing an application's own kinds as exported. 7
+  # records what each version imports.
   ingestRev:
     type: integer
-    default: 6
+    default: 7
 exports:
   resources:
     - ingestVersion
@@ -480,6 +481,18 @@ steps:
                 : inputs.docs[0].imports[string(k).split('.')[0]].source).split('#')[0].split('@')[0]
             : ''
         })
+  # What the version imports: alias, the source with its pin cut off, and the
+  # version the pin names ('' for an unpinned source).
+  - name: importRows
+    value: !cel >-
+      ('imports' in inputs.docs[0] ? inputs.docs[0].imports : {})
+        .map(a, {'alias': a,
+                 'source': (type(inputs.docs[0].imports[a]) == type('')
+                             ? inputs.docs[0].imports[a]
+                             : inputs.docs[0].imports[a].source).split('#')[0]})
+        .map(i, {'alias': i.alias,
+                 'ref': i.source.split('@')[0],
+                 'version': size(i.source.split('@')) > 1 ? i.source.split('@')[1] : ''})
   - name: upsertVersion
     invoke: !ref exec
     inputs:
@@ -642,6 +655,25 @@ steps:
         - !cel "inputs.version"
         - !cel >-
           inputs.docs[0].kind == 'Telo.Application' ? json(inputs.payload.application) : ''
+  - name: clearImports
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM module_imports WHERE module_id = $1 AND version = $2
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+  - name: insertImports
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_imports (module_id, version, alias, import_ref, pinned_version)
+        SELECT $1, $2, r.alias, resolve_import_ref($4, r.ref), r.version
+        FROM jsonb_to_recordset($3::jsonb) AS r(alias text, ref text, version text)
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "json(steps.importRows.result)"
+        - !cel "inputs.ref"
   - name: clearReexports
     invoke: !ref exec
     inputs:

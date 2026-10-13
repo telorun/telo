@@ -30,9 +30,19 @@ The **instance axis** is derived the same way: an exported instance's kind prefi
 
 **Origin reads run the telo that runs the hub** (`TELO_COMMAND`, a JSON array, `["telo"]` by default; the development image names the checkout's bun and CLI). Ingest reads that CLI's `module manifest --json` contract, so the hub and the contract it reads are one generation by construction — a released CLI one generation behind would report payloads the hub cannot index.
 
+## Imports and dependents
+
+**Import edges are stored, one row per `imports:` entry of a version** (`module_imports`), resolved through `resolve_import_ref()` like every other cross-module ref. `/dependents` and `find_dependents` read them in reverse, and `/module` carries both directions (`imports`, and `dependents` as a count). **A dependent is counted at its latest version only** — an importer's older versions are history, not dependency. Do not derive "used by" from `extends_ref` / `kind_ref`: those record only the imports a kind or instance happens to resolve through, so a module imported for a function or a referenced instance would be missed.
+
 ## Publisher, runtime reach
 
-**No `authors` / `maintainers` field, deliberately.** Registration is open and unauthenticated, so a declared author verifies nothing; the hub derives a **publisher** from the ref's host + org (`module_publisher(ref, transport)`), because ownership is a property of the host. A `url` module is attributed to its host alone — its path segments are a directory, not an organisation.
+**No `authors` / `maintainers` field, deliberately.** Registration is open and unauthenticated, so a declared author verifies nothing; the hub derives a **publisher** from the ref's host + org (`module_publisher(ref, transport)`), because ownership is a property of the host. A `url` module is attributed to its host alone — its path segments are a directory, not an organisation. The same derived value is the `publisher` filter on both search routes and the facet `/publishers` lists; an unknown one selects nothing rather than being refused, because there is no declared vocabulary to refuse against.
+
+**A filter or order an older hub would ignore is echoed in the response** (`publisher`, `sort`, `deprecated`, `contractOnly`). The routes accept unknown query parameters, so a frontend deployed ahead of the hub would otherwise show the unfiltered catalogue under a publisher's name; the echo is what lets it tell. Any new narrowing parameter on a search route gets an echo for the same reason.
+
+**What a listing leaves out is decided in the query, never by the caller over the rows it was sent.** `deprecated` and `contractOnly` on `/search/modules` filter before `LIMIT`, so `total` and every page are of what is listed, and the response counts what they hid (`hidden`). The query answers one row whatever the page holds — the counts joined to the page — so a page with no module on it (every match hidden, an offset past the end) still reports them; a reader of its rows skips the one whose `ref` is null. `/dependents` is paged the same way for the same reason: a widely imported module is imported by most of the catalogue, and `find_dependents` hands its result to a model.
+
+**"Recently added" orders by `module_versions.first_tracked_at`, never `tracked_at`.** `tracked_at` is rewritten by every re-ingest, so after an ingest revision it is the same day for the whole catalogue. It is the hub's observation, not a publish date — no transport reports one.
 
 Runtime reach is derived by the CLI, not the hub — see `cli/nodejs/CLAUDE.md` § Runtime reach. **The kernel labels are `nodejs` / `rust`** — the ones `LABEL_TO_PURL_TYPE` (`runtime-registry.ts`) already gives an `imports:` entry's `runtime:` field, and the implementation directory names. A third spelling for the same two kernels would mean an author who wrote `runtime: nodejs` had to learn a different word for the hub's filter. The hub's `runtime` param is an **enum** on both HTTP routes and the MCP tool: an unrecognized value would otherwise match only portable kinds, a near-empty result that reads as "no such module" rather than "bad filter".
 

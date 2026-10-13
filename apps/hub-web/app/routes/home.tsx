@@ -1,64 +1,44 @@
-import * as React from "react";
-import { PackagePlus, Search } from "lucide-react";
-import { Link } from "react-router";
+import { redirect } from "react-router";
 
 import type { Route } from "./+types/home";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { canonicalLink, HOME_DESCRIPTION, HOME_TITLE } from "@/module-head";
-import { RegisterModule } from "@/RegisterModule";
-import { SearchModules } from "@/SearchModules";
+import { Catalog } from "@/Catalog";
+import { catalogPath, readFilters } from "@/catalog-filters";
+import { readCatalogSeed } from "@/catalog-seed.server";
+import { hubContext } from "@/hub-context.server";
+import { catalogueHead, HOME_DESCRIPTION, HOME_TITLE, siteSchema } from "@/module-head";
 
-export const meta: Route.MetaFunction = ({ matches }) => [
-  { title: HOME_TITLE },
-  { name: "description", content: HOME_DESCRIPTION },
-  canonicalLink(matches[0].loaderData.siteOrigin, "/"),
-];
+/** The catalogue is still usable when the hub does not answer the server: the
+ *  page renders without a seed and the browser asks, and reports, itself. */
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const url = new URL(request.url);
+  // A category and a publisher each have a page of their own; as a query
+  // parameter here either one is the same view under a second address.
+  const category = url.searchParams.get("category") ?? "";
+  const filters = readFilters(url.searchParams);
+  if (category || filters.publisher) throw redirect(catalogPath(category, filters), 301);
+  const { seed } = await readCatalogSeed(context.get(hubContext).hub, { category: "", publisher: "" });
+  return seed;
+}
+
+/** The seed answers "everything, unfiltered", which a change of query string
+ *  never invalidates — and re-reading it per keystroke would be a hub read per
+ *  keystroke. */
+export function shouldRevalidate() {
+  return false;
+}
+
+export const meta: Route.MetaFunction = ({ matches, location }) => {
+  const { siteOrigin } = matches[0].loaderData;
+  return [
+    ...catalogueHead(siteOrigin, "/", HOME_TITLE, HOME_DESCRIPTION, location.search),
+    siteSchema(siteOrigin),
+  ];
+};
 
 export function headers(): HeadersInit {
   return { "Cache-Control": "public, max-age=60, stale-if-error=86400" };
 }
 
-export default function Home() {
-  const [tab, setTab] = React.useState("find");
-
-  return (
-    <>
-      <header className="flex flex-col gap-2">
-        <Link
-          to="/"
-          className="self-start text-sm font-medium tracking-wide text-muted-foreground uppercase"
-        >
-          Telo Hub
-        </Link>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Find a module, on any host
-        </h1>
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          Federated discovery across every registered Telo module — the HTTP registry, OCI
-          registries, and direct manifest URLs. Search matches on what a resource{" "}
-          <em>does</em>, not just its name.
-        </p>
-      </header>
-
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="find">
-            <Search /> Find
-          </TabsTrigger>
-          <TabsTrigger value="register">
-            <PackagePlus /> Register
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="find">
-          <SearchModules />
-        </TabsContent>
-        {/* The form is a reading/typing surface — keep it narrow even though the
-            search view spans the wider shell. */}
-        <TabsContent value="register" className="max-w-2xl">
-          <RegisterModule />
-        </TabsContent>
-      </Tabs>
-    </>
-  );
+export default function Home({ loaderData }: Route.ComponentProps) {
+  return <Catalog category="" publisher="" seed={loaderData} />;
 }

@@ -1,4 +1,18 @@
-import type { ModulePage } from "@/api";
+import {
+  entryQuery,
+  hiddenMatches,
+  PAGE_SIZE,
+  searchQuery,
+  unappliedFilter,
+  type CategoryFacet,
+  type Dependent,
+  type HiddenMatches,
+  type Implementation,
+  type ModuleHit,
+  type ModulePage,
+  type PublisherFacet,
+  type SearchRequest,
+} from "@/api";
 
 /** How long the hub may stay silent — before its response headers, and between
  *  two body chunks — before the read is abandoned as unavailable. */
@@ -25,6 +39,25 @@ export interface CataloguePage {
 
 export type CatalogueRead = { kind: "found"; page: CataloguePage } | Unavailable;
 
+/** The first page of a listing, as the browser's own search would answer it. */
+export interface ListingPage {
+  hits: ModuleHit[];
+  total: number;
+  hidden: HiddenMatches;
+}
+
+/** `absent` is the hub refusing the category: no module declares it. */
+export type ListingRead = { kind: "found"; page: ListingPage } | { kind: "absent" } | Unavailable;
+
+export type CategoriesRead = { kind: "found"; categories: CategoryFacet[] } | Unavailable;
+
+export type PublishersRead = { kind: "found"; publishers: PublisherFacet[] } | Unavailable;
+
+export type ListRead<T> = { kind: "found"; items: T[] } | Unavailable;
+
+/** `absent` is a version the hub holds no manifest for. */
+export type ManifestRead = { kind: "found"; text: string } | { kind: "absent" } | Unavailable;
+
 export interface HubReader {
   /** `GET /module`: everything a module page renders, in one call — keyed by
    *  ref rather than ranked, able to address a non-latest version, and carrying
@@ -32,6 +65,20 @@ export interface HubReader {
   readModule(ref: string, version: string): Promise<ModuleRead>;
   /** `GET /modules`: one page of the catalogue, ascending by `seq`. */
   readCatalogue(after: number, limit: number): Promise<CatalogueRead>;
+  /** `GET /search/modules` with no query: the unranked first page — libraries
+   *  and applications alike — of a category, of a publisher, or of everything. No query means the hub embeds
+   *  nothing, so a crawler costs it one indexed read. */
+  readListing(scope: { category: string; publisher: string }): Promise<ListingRead>;
+  /** `GET /categories`: the facet a category page validates its slug against. */
+  readCategories(): Promise<CategoriesRead>;
+  /** `GET /publishers`: the facet a publisher page validates its path against. */
+  readPublishers(): Promise<PublishersRead>;
+  /** `GET /dependents`: the modules importing a module. */
+  readDependents(ref: string): Promise<ListRead<Dependent>>;
+  /** `GET /implementations`: the kinds implementing a contract. */
+  readImplementations(ref: string, kind: string): Promise<ListRead<Implementation>>;
+  /** `GET /module/manifest`: one version's `telo.yaml`, as text. */
+  readManifest(ref: string, version: string): Promise<ManifestRead>;
 }
 
 type Fetched = {
@@ -131,6 +178,9 @@ function modulePage(url: URL, data: unknown): ModulePage | Unavailable {
     versions: Array.isArray(page.versions)
       ? page.versions.filter((v): v is string => typeof v === "string")
       : [],
+    application: page.application ?? null,
+    imports: Array.isArray(page.imports) ? page.imports : [],
+    dependents: typeof page.dependents === "number" ? page.dependents : 0,
   };
 }
 
@@ -155,7 +205,33 @@ function cataloguePage(url: URL, data: unknown): CataloguePage | Unavailable {
 }
 
 export function createHubReader(origin: string): HubReader {
+  /** One keyed list read: a route answering `{ <member>: [...] }`. */
+  async function readList<T>(
+    path: string,
+    params: Record<string, string> | URLSearchParams,
+    member: string,
+  ): Promise<ListRead<T>> {
+    const url = new URL(path, origin);
+    url.search = new URLSearchParams(params).toString();
+    const fetched = await get(url);
+    if (isUnavailable(fetched)) return fetched;
+    if (fetched.status !== 200) {
+      await fetched.cancel();
+      return unexpectedStatus(url, fetched.status);
+    }
+    const data = await fetched.body();
+    if (isUnavailable(data)) return data;
+    const list = (typeof data === "object" && data !== null ? data : {}) as Record<string, unknown>;
+    if (!Array.isArray(list[member])) {
+      return unavailable("unreadable", `${url.origin}${url.pathname}: no ${member} list`);
+    }
+    return { kind: "found", items: list[member] as T[] };
+  }
+
   return {
+    readDependents: (ref) => readList("/dependents", { ref }, "dependents"),
+    readImplementations: (ref, kind) => readList("/implementations", { ref, kind }, "implementations"),
+
     async readModule(ref, version) {
       const url = new URL("/module", origin);
       url.searchParams.set("ref", ref);
@@ -190,6 +266,88 @@ export function createHubReader(origin: string): HubReader {
       if (isUnavailable(data)) return data;
       const page = cataloguePage(url, data);
       return isUnavailable(page) ? page : { kind: "found", page };
+    },
+
+    async readListing({ category, publisher }) {
+      const url = new URL("/search/modules", origin);
+      const request: SearchRequest = {
+        query: "",
+        category,
+        publisher,
+        sort: "relevance",
+        runtime: "",
+        type: "all",
+        showDeprecated: false,
+        hideContractOnly: false,
+        offset: 0,
+      };
+      url.search = searchQuery(request).toString();
+      const fetched = await get(url);
+      if (isUnavailable(fetched)) return fetched;
+      if (fetched.status === 400) {
+        await fetched.cancel();
+        return { kind: "absent" };
+      }
+      if (fetched.status !== 200) {
+        await fetched.cancel();
+        return unexpectedStatus(url, fetched.status);
+      }
+      const data = await fetched.body();
+      if (isUnavailable(data)) return data;
+      const unapplied = unappliedFilter(request, data);
+      if (unapplied) return unavailable("status", `${url.origin}${url.pathname}: ${unapplied}`);
+      const { hits, total } = (typeof data === "object" && data !== null ? data : {}) as {
+        hits?: unknown;
+        total?: unknown;
+      };
+      if (!Array.isArray(hits)) {
+        return unavailable("unreadable", `${url.origin}${url.pathname}: not a listing page`);
+      }
+      return {
+        kind: "found",
+        page: {
+          hits: hits.slice(0, PAGE_SIZE) as ModuleHit[],
+          total: typeof total === "number" ? total : hits.length,
+          hidden: hiddenMatches(data),
+        },
+      };
+    },
+
+    async readCategories() {
+      const read = await readList<CategoryFacet>("/categories", entryQuery("all"), "categories");
+      return read.kind === "found" ? { kind: "found", categories: read.items } : read;
+    },
+
+    async readPublishers() {
+      const read = await readList<PublisherFacet>("/publishers", entryQuery("all"), "publishers");
+      return read.kind === "found" ? { kind: "found", publishers: read.items } : read;
+    },
+
+    async readManifest(ref, version) {
+      const url = new URL("/module/manifest", origin);
+      url.searchParams.set("ref", ref);
+      url.searchParams.set("version", version);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), SILENCE_MS);
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (res.status === 404) {
+          await res.body?.cancel();
+          return { kind: "absent" };
+        }
+        if (res.status !== 200) {
+          await res.body?.cancel();
+          return unexpectedStatus(url, res.status);
+        }
+        return { kind: "found", text: await res.text() };
+      } catch (err) {
+        return unavailable(
+          controller.signal.aborted ? "silent" : "refused",
+          `${url.origin}${url.pathname}: ${(err as Error).message}`,
+        );
+      } finally {
+        clearTimeout(timer);
+      }
     },
   };
 }
