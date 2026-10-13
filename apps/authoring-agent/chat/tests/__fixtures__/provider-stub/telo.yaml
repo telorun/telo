@@ -19,6 +19,11 @@ metadata:
         STUB_TITLE_LONG answers it with a 94-character line whose 80th
         character is the astral `😀`, and `STUB_TITLE_REPLY:<base64 of a
         UTF-8 text>` answers it with exactly that text;
+      - a discovery call (instructions starting `You find Telo modules`)
+        asks for one `search_resources` call over the query `stub need`, and
+        the request that carries its result answers with the text a
+        `STUB_DISCOVERY:<base64 of a UTF-8 text>` directive in the request
+        holds — `{"found": [], "notFound": []}` without one;
       - a message containing STUB_FAIL is refused with 400 — with
         STUB_FAIL_ONCE, only until a request carries a continued turn's note
         (`TURN CONTINUED: the previous attempt`; the system prompt names the
@@ -95,6 +100,7 @@ steps:
     value: !cel >-
       has(inputs.body.instructions) && string(inputs.body.instructions).startsWith('You name conversations') ? 'title'
         : has(inputs.body.instructions) && string(inputs.body.instructions).startsWith('You summarize conversations') ? 'summary'
+        : has(inputs.body.instructions) && string(inputs.body.instructions).startsWith('You find Telo modules') ? 'discovery'
         : 'agent'
   # A naming or summary call's own directives; empty where its kind has none.
   - name: markers
@@ -172,6 +178,10 @@ steps:
     value: !cel >-
       cel.bind(directive, regexExtract(steps.request.result, 'STUB_TITLE_REPLY:[A-Za-z0-9+/=]+'),
         directive == '' ? '' : base64Decode(directive.substring(17)))
+  - name: discoveryReply
+    value: !cel >-
+      cel.bind(directive, regexExtract(steps.request.result, 'STUB_DISCOVERY:[A-Za-z0-9+/=]+'),
+        directive == '' ? '{"found": [], "notFound": []}' : base64Decode(directive.substring(15)))
   - name: events
     value: !cel >-
       [{'type': 'response.output_item.done',
@@ -184,6 +194,12 @@ steps:
       : steps.kind.result == 'summary'
           ? (steps.obeys.result.empty ? []
               : [{'type': 'response.output_text.delta', 'delta': steps.obeys.result.cut ? 'stub sum' : 'stub summary'}])
+      : steps.kind.result == 'discovery'
+          ? (steps.request.result.contains('function_call_output')
+              ? [{'type': 'response.output_text.delta', 'delta': steps.discoveryReply.result}]
+              : [{'type': 'response.output_item.done',
+                  'item': {'type': 'function_call', 'id': 'fc_' + uuidv4(), 'call_id': 'call_' + uuidv4(),
+                           'name': 'search_resources', 'arguments': json({'queries': ['stub need']})}}])
       : size(steps.scripted.result) > 0
           ? steps.scripted.result.map(c, {'type': 'response.output_item.done',
               'item': {'type': 'function_call', 'id': 'fc_' + uuidv4(), 'call_id': 'call_' + uuidv4(),

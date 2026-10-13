@@ -10,6 +10,7 @@ import {
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
+import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { readSuppliedResources } from "./resource-input.js";
 
 export interface ResourceNode {
@@ -169,6 +170,14 @@ const DECLARATION_KINDS: ReadonlySet<string> = new Set([
  * this they sorted after everything and every such resource failed its first
  * creation attempt.
  *
+ * A reference written through an import alias (`!ref Lib.sweep`, at a step's
+ * `invoke:` as much as at a slot) orders the same way: the target's declaration
+ * exists only once its import is created, and the kernel reads a call site's
+ * plain-encoded literals against that declaration when it creates the resource
+ * holding the call. An import that takes a resource input is created after that
+ * resource, so without the edge a caller with nothing before it was created
+ * first and its literals were never read.
+ *
  * These are SOFT edges: they order, and never fail. An import may be handed an
  * instance of a kind it itself exports (`resources: { conn: !ref db }` where
  * `db` is `kind: Lib.Connection`), which the runtime satisfies because the
@@ -241,6 +250,15 @@ function creationOrder(
       const target = declarationOf(declared, scope);
       if (target && target !== key) set.add(target);
     }
+    if (node.manifest.kind !== "Telo.Import") {
+      const imports = importsByScope.get(scope);
+      if (imports) {
+        for (const alias of referencedAliases(node.manifest)) {
+          const target = imports.get(alias);
+          if (target && target !== key) set.add(target);
+        }
+      }
+    }
     unmet.set(key, set);
     for (const dep of set) {
       if (!dependents.has(dep)) dependents.set(dep, new Set());
@@ -274,6 +292,40 @@ function creationOrder(
     }
   }
   return order;
+}
+
+/** Every import alias a reference inside `manifest` is written through — a
+ *  resolved `{ kind, name, alias }` or a `!ref Alias.name` still tagged. */
+function referencedAliases(manifest: ResourceManifest): Set<string> {
+  const found = new Set<string>();
+  const pending: unknown[] = [manifest];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (Array.isArray(value)) {
+      for (const item of value) if (item !== null && typeof item === "object") pending.push(item);
+      continue;
+    }
+    if (value === null || typeof value !== "object") continue;
+    const sentinel = refSentinelTarget(value);
+    if (sentinel) {
+      if (sentinel.alias && sentinel.alias !== "Self") found.add(sentinel.alias);
+      continue;
+    }
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) continue;
+    const record = value as Record<string, unknown>;
+    if (
+      typeof record.alias === "string" &&
+      typeof record.name === "string" &&
+      record.alias !== "Self"
+    ) {
+      found.add(record.alias);
+    }
+    for (const child of Object.values(record)) {
+      if (child !== null && typeof child === "object") pending.push(child);
+    }
+  }
+  return found;
 }
 
 const declaringModuleOf = (manifest: ResourceManifest): string | undefined =>

@@ -10,8 +10,9 @@ metadata:
   name: HubCatalog
   description: >-
     Keyed reads over the discovery index: one module's metadata, kinds, an
-    application's declared inputs and versions, the cached manifest text for a version, the kinds implementing a
-    contract, the ready-made instances of a kind, ref autocomplete, and how far a
+    application's declared inputs and versions, the cached manifest text for a version, the
+    definitions of named kinds with everything they reference, a one-line-per-module
+    index of a publisher's libraries, the kinds implementing a contract, the ready-made instances of a kind, ref autocomplete, and how far a
     registration has got.
 requires:
   # 0.83.0: `resources:` inputs on a library.
@@ -34,6 +35,8 @@ resources:
 exports:
   resources:
     - moduleManifestText
+    - kindDefinitions
+    - libraryIndex
     - trackedModules
     - moduleDetail
     - moduleVersionList
@@ -90,6 +93,293 @@ steps:
       input: !cel "steps.fetch.result.output"
 outputs:
   text: !cel "steps.decode.result.text"
+---
+# The definitions of named kinds of ONE module version, as the manifest wrote
+# them: each asked kind's document, every named shape and local parent kind it
+# reaches (three levels deep), and nothing else — no controller of another kind,
+# no sibling the caller did not ask about. Documents are cut out of the cached
+# manifest text rather than parsed and written back, so a tag, a comment and a
+# key order arrive exactly as the author left them.
+#
+# `parents` names the kinds in OTHER modules that an included kind extends and
+# takes fields from: a kind with no `base:` is authored against its parent's
+# schema merged with its own, so the parent's definition is part of the answer
+# and the caller of this sequence fetches it next.
+kind: Run.Sequence
+metadata:
+  name: moduleKindDefinitions
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+      version: { type: string }
+      names: { type: array, items: { type: string } }
+      # Read the latest version when `version` is not tracked: a parent kind is
+      # asked for at the version its child pins, which the hub may never have
+      # ingested, and the latest definition is then the nearest one it holds.
+      orLatest: { type: boolean, default: false }
+    required: [ref, version, names]
+steps:
+  - name: meta
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT mv.version, mv.manifest_key, COALESCE(mv.integrity, '') AS integrity,
+               mv.module_name, m.transport,
+               COALESCE(mv.root_kind, '') AS root_kind,
+               (SELECT COALESCE(json_agg(rk.name ORDER BY rk.name), '[]'::json)
+                FROM resource_kinds rk
+                WHERE rk.module_id = mv.module_id AND rk.version = mv.version AND rk.exported)
+                 AS exported,
+               (SELECT COALESCE(json_agg(json_build_object(
+                         'name', rk.name, 'ref', rk.extends_ref, 'kind', rk.extends_kind)), '[]'::json)
+                FROM resource_kinds rk
+                WHERE rk.module_id = mv.module_id AND rk.version = mv.version
+                  AND rk.extends_kind <> '')
+                 AS parents
+        FROM module_versions mv
+        JOIN modules m ON m.id = mv.module_id
+        WHERE m.ref = $1
+          AND (mv.version = $2 OR (($2 = 'latest' OR $3) AND mv.version = m.latest_version))
+        ORDER BY (mv.version = $2) DESC
+        LIMIT 1
+      bindings:
+        - !cel "inputs.ref"
+        - !cel "inputs.version"
+        - !cel "inputs.orLatest"
+  - name: tracked
+    if: !cel "steps.meta.result.rows.size() > 0"
+    then:
+      - name: fetch
+        invoke: !ref bucketGet
+        inputs:
+          key: !cel "steps.meta.result.rows[0].manifest_key"
+      - name: decode
+        invoke: { kind: PlainText.Decoder }
+        inputs:
+          input: !cel "steps.fetch.result.output"
+      # One entry per type document: a kind, an abstract or a named shape. What
+      # says how a kind is IMPLEMENTED — its controllers, its template body, its
+      # `base:` mapping — is cut from the text: a caller declaring a resource of
+      # the kind writes none of it. A published manifest separates documents
+      # with repeated `---` lines, so a leading run of them is dropped too.
+      - name: docs
+        value: !cel >-
+          split('\n' + steps.decode.result.text, '\n---\n')
+            .map(c, {'text': c,
+                     'kind': regexGroups(c, '^kind:[ \t]*(\\S+)', 'm'),
+                     'name': regexGroups(c, '^metadata:[ \t]*(?:\\{[ \t]*|\n[ \t]+)name:[ \t]*([A-Za-z0-9_]+)', 'm')})
+            .filter(d, size(d.kind) > 0 && size(d.name) > 0
+                       && d.kind[0] in ['Telo.Definition', 'Telo.Abstract', 'Telo.JsonSchema'])
+            .map(d, {'text': trim(regexReplace(
+                       regexReplace(trim(d.text), '^(?:---[ \t]*\n\\s*)+', '') + '\n',
+                       '^(?:controllers|resources|invoke|run|provide|targets|base):.*\n(?:(?:[ \t]+.*|[ \t]*-.*|[ \t]*)\n)*',
+                       '', 'm')),
+                     'name': d.name[0],
+                     'based': size(regexGroups(d.text, '^(base):', 'm')) > 0,
+                     'reaches': distinct(
+                       regexExtractAll(d.text, '(?:!ref[ \t]+|telo://Self/|telo:[A-Za-z0-9_]+/|Self\\.)[A-Z][A-Za-z0-9_]*')
+                         .map(x, regexReplace(x, '^.*[ \t/.]', ''))
+                       + steps.meta.result.rows[0].parents
+                           .filter(p, p.name == d.name[0] && p.ref == inputs.ref).map(p, p.kind))})
+      - name: wanted1
+        value: !cel >-
+          distinct(inputs.names + flatten(steps.docs.result.filter(d, d.name in inputs.names).map(d, d.reaches)))
+      - name: wanted2
+        value: !cel >-
+          distinct(steps.wanted1.result
+            + flatten(steps.docs.result.filter(d, d.name in steps.wanted1.result).map(d, d.reaches)))
+      - name: wanted3
+        value: !cel >-
+          distinct(steps.wanted2.result
+            + flatten(steps.docs.result.filter(d, d.name in steps.wanted2.result).map(d, d.reaches)))
+      - name: selected
+        value: !cel "steps.docs.result.filter(d, d.name in steps.wanted3.result)"
+outputs:
+  ref: !cel "inputs.ref"
+  found: !cel "'selected' in steps"
+  asked: !cel "inputs.names"
+  version: !cel "'selected' in steps ? steps.meta.result.rows[0].version : ''"
+  name: !cel "'selected' in steps ? steps.meta.result.rows[0].module_name : ''"
+  application: !cel "'selected' in steps && steps.meta.result.rows[0].root_kind == 'Application'"
+  # What an `imports:` entry holds for exactly this version: an OCI ref pins by
+  # version and, when the hub knows it, by integrity; any other transport is one
+  # fixed location and takes neither.
+  importRef: !cel >-
+    !('selected' in steps) ? ''
+      : steps.meta.result.rows[0].transport != 'oci' ? inputs.ref
+      : inputs.ref + '@' + steps.meta.result.rows[0].version
+          + (steps.meta.result.rows[0].integrity == '' ? '' : '#' + steps.meta.result.rows[0].integrity)
+  exported: !cel "'selected' in steps ? steps.meta.result.rows[0].exported : []"
+  definitions: !cel "'selected' in steps ? steps.selected.result.map(d, d.text) : []"
+  # Each parent is named at the version this module's own `imports:` pins it
+  # at — the definition the child was written against — or `latest` where the
+  # import carries no version.
+  #
+  # Asked for, and no type document of this version carries the name.
+  missing: !cel >-
+    'selected' in steps
+      ? inputs.names.filter(n, !steps.docs.result.exists(d, d.name == n))
+      : inputs.names
+  parents: !cel >-
+    'selected' in steps
+      ? steps.meta.result.rows[0].parents
+          .filter(p, p.ref != '' && p.ref != inputs.ref
+                     && steps.selected.result.exists(d, d.name == p.name && !d.based))
+          .map(p, {'ref': p.ref, 'kind': p.kind,
+                   'version': cel.bind(pin, regexGroups(steps.decode.result.text,
+                       replace(replace(p.ref, '.', '[.]'), '+', '[+]') + '@([0-9][0-9A-Za-z.+-]*)'),
+                     size(pin) > 0 ? pin[0] : 'latest')})
+      : []
+---
+kind: Run.Projection
+metadata:
+  name: definitionsByModule
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      requests:
+        type: array
+        items:
+          type: object
+          properties:
+            ref: { type: string }
+            version: { type: string }
+            names: { type: array, items: { type: string } }
+            orLatest: { type: boolean }
+          required: [ref, version, names]
+    required: [requests]
+collection: !cel "inputs.requests"
+steps:
+  - name: module
+    invoke: !ref moduleKindDefinitions
+    inputs:
+      ref: !cel "item.ref"
+      version: !cel "item.version"
+      names: !cel "item.names"
+      orLatest: !cel "item.?orLatest.orValue(false)"
+outputs:
+  ref: !cel "steps.module.result.ref"
+  found: !cel "steps.module.result.found"
+  asked: !cel "steps.module.result.asked"
+  version: !cel "steps.module.result.version"
+  name: !cel "steps.module.result.name"
+  application: !cel "steps.module.result.application"
+  importRef: !cel "steps.module.result.importRef"
+  exported: !cel "steps.module.result.exported"
+  definitions: !cel "steps.module.result.definitions"
+  missing: !cel "steps.module.result.missing"
+  parents: !cel "steps.module.result.parents"
+---
+# The definitions a caller needs to WRITE resources of the kinds it names, in
+# one call across modules: per module the exact `imports:` value, the asked
+# kinds' documents with the shapes they reach, and — in `inherited` — the kinds
+# of other modules those kinds extend, two levels up. A kind is named by its
+# owning module's ref and its suffix; an alias-qualified name is read by its
+# suffix, since an alias is the caller's own choice.
+kind: Run.Sequence
+metadata:
+  name: kindDefinitions
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      kinds:
+        type: array
+        items:
+          type: object
+          properties:
+            ref: { type: string }
+            kind: { type: string }
+            version: { type: string }
+          required: [ref, kind]
+    required: [kinds]
+steps:
+  - name: asked
+    invoke: !ref definitionsByModule
+    inputs:
+      requests: !cel >-
+        distinct(inputs.kinds.map(k, k.ref)).map(ref, {
+          'ref': ref,
+          'version': inputs.kinds.filter(k, k.ref == ref)[0].?version.orValue('latest'),
+          'names': distinct(inputs.kinds.filter(k, k.ref == ref)
+                              .map(k, regexReplace(k.kind, '^.*\\.', '')))})
+  - name: parents
+    invoke: !ref definitionsByModule
+    inputs:
+      requests: !cel >-
+        distinct(flatten(steps.asked.result.map(m, m.parents)).map(p, p.ref)).map(ref, {
+          'ref': ref, 'orLatest': true,
+          'version': flatten(steps.asked.result.map(m, m.parents)).filter(p, p.ref == ref)[0].version,
+          'names': distinct(flatten(steps.asked.result.map(m, m.parents))
+                              .filter(p, p.ref == ref).map(p, p.kind))})
+  - name: grandparents
+    invoke: !ref definitionsByModule
+    inputs:
+      requests: !cel >-
+        distinct(flatten(steps.parents.result.map(m, m.parents)).map(p, p.ref)).map(ref, {
+          'ref': ref, 'orLatest': true,
+          'version': flatten(steps.parents.result.map(m, m.parents)).filter(p, p.ref == ref)[0].version,
+          'names': distinct(flatten(steps.parents.result.map(m, m.parents))
+                              .filter(p, p.ref == ref).map(p, p.kind))})
+outputs:
+  modules: !cel "steps.asked.result"
+  inherited: !cel "steps.parents.result + steps.grandparents.result"
+---
+# One line per library a publisher ships, at its latest version: what it is
+# called, what it is for (the first sentence of its description, cut at 160
+# characters), and the kinds and ready-made instances it exports. The
+# whole of a standard library in a few kilobytes — what a caller reads ONCE to
+# know what exists, so that naming a need costs no search. Applications are left
+# out: nothing here is imported from one.
+kind: Run.Sequence
+metadata:
+  name: libraryIndex
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      # The publisher as the hub derives it (`ghcr.io/telorun`), or '' for every
+      # tracked library.
+      publisher: { type: string }
+steps:
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT m.ref, COALESCE(mv.module_name, '') AS name,
+               (SELECT CASE WHEN length(s) > 160 THEN left(s, 159) || '…' ELSE s END
+                FROM (SELECT split_part(regexp_replace(COALESCE(mv.description, ''), '\s+', ' ', 'g'),
+                                        '. ', 1) AS s) first_sentence) AS summary,
+               (SELECT COALESCE(json_agg(rk.name ORDER BY rk.name), '[]'::json)
+                FROM resource_kinds rk
+                WHERE rk.module_id = mv.module_id AND rk.version = mv.version AND rk.exported)
+                 AS kinds,
+               (SELECT COALESCE(json_agg(mr.name ORDER BY mr.name), '[]'::json)
+                FROM module_resources mr
+                WHERE mr.module_id = mv.module_id AND mr.version = mv.version)
+                 AS instances
+        FROM modules m
+        JOIN module_versions mv ON mv.module_id = m.id AND mv.version = m.latest_version
+        WHERE mv.root_kind IS DISTINCT FROM 'Application'
+          AND COALESCE(mv.deprecated_reason, '') = ''
+          AND ($1 = '' OR module_publisher(m.ref, m.transport) = $1)
+        ORDER BY m.ref
+      bindings:
+        - !cel "inputs.publisher"
+outputs:
+  libraries: !cel >-
+    steps.rows.result.rows
+      .filter(r, size(r.kinds) > 0 || size(r.instances) > 0)
+      .map(r, compact({'ref': r.ref, 'name': r.name, 'summary': r.summary,
+                       'kinds': size(r.kinds) == 0 ? dyn(null) : dyn(r.kinds),
+                       'instances': size(r.instances) == 0 ? dyn(null) : dyn(r.instances)}))
 ---
 # THE definition of a module the catalog answers for: one whose latest version's
 # row exists. `/module` and `/modules` both read it, so the listing and the keyed

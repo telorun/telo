@@ -303,7 +303,7 @@ steps:
               tokens: !cel "steps.afterT2.result.body.totalTokens"
               t2Call: !cel >-
                 cel.bind(input, steps.t2Call.result.request.input,
-                  [json(input[0]).contains('CONVERSATION SUMMARY: stub summary'),
+                  [input.exists(i, json(i).contains('CONVERSATION SUMMARY: stub summary')),
                    json(input).contains('message t1'),
                    input.exists(i, has(i.type) && i.type == 'reasoning')])
               failed: !cel >-
@@ -456,7 +456,7 @@ steps:
                    t.records.filter(r, r.data.type == 'context-summary').map(r, has(r.data.summary))])
               eCall: !cel >-
                 cel.bind(input, json(steps.eCall.result.request.input),
-                  [json(steps.eCall.result.request.input[0]).contains('CONVERSATION SUMMARY: stub summary'),
+                  [steps.eCall.result.request.input.exists(i, json(i).contains('CONVERSATION SUMMARY: stub summary')),
                    size(input.split('CONVERSATION SUMMARY:')) - 1,
                    input.contains('message e1')])
               fFailed: !cel >-

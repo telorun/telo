@@ -9,8 +9,11 @@ metadata:
     cannot decide WHICH subcommand may run. These assert that an allowed verb
     reaches the CLI and a denied one never spawns anything.
 imports:
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.16.0#sha256-uGRA31NI6oUiT8Pr88uBvMqIvCgoG5QLASMIshc7c-A
   Chat:
     source: ../
+    resources:
+      hub: !ref hub
     secrets:
       # The tool never touches the model; the key is only a required import input.
       openaiApiKey: dummy-key-never-used
@@ -40,6 +43,12 @@ targets:
   - !ref Chat.ensureWorkspace
   - !ref testAllowedVerb
   - !ref testDeniedVerbs
+---
+# The hub the chat library discovers modules through.
+kind: Mcp.HttpClient
+metadata: { name: hub }
+url: https://telo.sh/mcp
+clientInfo: { name: authoring-agent-test, version: 0.0.0 }
 ---
 # An allowed verb passes the guard, and the argv handed to the program is
 # `teloProgram + args` — exactly. Pinning the whole line is what catches a

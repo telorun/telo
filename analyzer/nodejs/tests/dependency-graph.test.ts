@@ -286,4 +286,52 @@ describe("buildDependencyGraph — creation order", () => {
     expect(cycle).toBeUndefined();
     expect(order!.map((n) => n.name)).toEqual(["db", "Lib"]);
   });
+
+  it("creates an import before a resource whose reference is written through its alias", () => {
+    // The import takes a resource input, so it is created after `db`; a caller
+    // with no dependency of its own would otherwise be created ahead of it, and
+    // its call's literals read before the target's declaration exists.
+    const app = { module: "App" };
+    const lib = {
+      kind: "Telo.Import",
+      metadata: { name: "Lib", ...app },
+      source: "./lib",
+      resources: { connection: { kind: "test.Db", name: "db" } },
+    };
+    const db = { kind: "test.Db", metadata: { name: "db", ...app } };
+    const resolved = names([
+      {
+        kind: "test.Caller",
+        metadata: { name: "resolved", ...app },
+        steps: [{ name: "sweep", invoke: { kind: "Lib.Sweep", name: "sweep", alias: "Lib" } }],
+      },
+      lib,
+      db,
+    ]);
+    expect(resolved).toEqual(["db", "Lib", "resolved"]);
+
+    const tagged = names([
+      {
+        kind: "test.Caller",
+        metadata: { name: "tagged", ...app },
+        steps: [{ name: "sweep", invoke: { __tagged: true, engine: "ref", source: "Lib.sweep" } }],
+      },
+      lib,
+      db,
+    ]);
+    expect(tagged).toEqual(["db", "Lib", "tagged"]);
+  });
+
+  it("does not order a resource after an import it only reaches through Self", () => {
+    const app = { module: "App" };
+    const order = names([
+      {
+        kind: "test.Caller",
+        metadata: { name: "caller", ...app },
+        steps: [{ name: "own", invoke: { kind: "App.Thing", name: "thing", alias: "Self" } }],
+      },
+      { kind: "Telo.Import", metadata: { name: "Lib", ...app }, source: "./lib" },
+    ]);
+    expect(order).toEqual(["caller", "Lib"]);
+  });
 });

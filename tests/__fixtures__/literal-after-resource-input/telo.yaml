@@ -1,0 +1,30 @@
+kind: Telo.Library
+metadata:
+  name: LiteralAfterResourceInput
+  version: 1.0.0
+  description: >-
+    Test fixture: a library that takes a resource from its importer and exports
+    an operation whose input is an instant.
+imports:
+  Run: ../../../modules/run
+resources:
+  marker:
+    kind: Run.Value
+    description: Any value, so that the import is created after a resource of the importer.
+exports:
+  resources:
+    - instantText
+---
+kind: Run.Value
+metadata:
+  name: instantText
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [at]
+    properties:
+      at:
+        x-telo-type: Telo.Timestamp
+value: !cel "string(inputs.at)"

@@ -107,6 +107,14 @@ being linearized into a chain.
   same database); at query the vector arm returns the nearest kind ids and one
   `Sql.Query` RRF-fuses them with the lexical rank. Intent-shaped queries
   ("store files in object storage") resolve even without a substring match.
+  A third, **identity** arm votes for entries whose qualified name the query
+  spells: module name and entry name are split at their capitals, so
+  `http server` reads `HttpServer.Server`, and every word of the query must
+  appear. A name holding the words as one phrase, in order, counts twice in
+  the fusion, so the named module's other kinds rank beside the one named and
+  ahead of a kind elsewhere whose description repeats the words. A query that
+  names a module therefore leads with that module's kinds; a described need
+  leaves the arm empty and the other two decide.
 
 ## HTTP surface
 
@@ -123,7 +131,7 @@ being linearized into a chain.
 | the whole catalogue (sitemaps) | `GET /modules?after=…&limit=…` (every ref `/module` answers for, paged by `seq`) |
 | register a module | `POST /register` (`{ ref }` → validate + schedule, `202`; open, no auth) |
 | poll a registration | `GET /register/status?ref=` |
-| MCP (`search_resources`, `get_module_manifest`, `get_module`, `list_module_versions`, `find_implementations`, `find_instances`, `list_categories`, `suggest_module_refs`) | `POST /mcp` |
+| MCP (`search_resources`, `get_kinds`, `list_libraries`, `get_module_manifest`, `get_module`, `list_module_versions`, `find_implementations`, `find_instances`, `list_categories`, `suggest_module_refs`) | `POST /mcp` |
 | liveness | `GET /health` |
 
 **Every keyed HTTP read has an MCP twin.** `get_module` mirrors `GET /module`,
@@ -132,6 +140,39 @@ mirrors `GET /implementations`, `find_instances` mirrors `GET /instances`,
 `list_categories` mirrors `GET /categories`,
 and `suggest_module_refs` mirrors `GET /refs` — same handler, same shape,
 reached as a tool instead of a query string.
+
+**Three tools are shaped for a caller that pays for every byte it is sent** — a
+model, whose context re-sends each result on every later step — and have no
+HTTP twin.
+
+- `search_resources` takes one `query` or several `queries` (each answered on
+  its own under `results`) and a `limit` per query (default 8, at most 50). Hits
+  are grouped under the module that owns them, so a module's ref, version, name
+  and description are stated once; a member that says nothing is left out
+  (`entry` unless the hit is not a kind, `extends`, `deprecated`, `instances`,
+  `siblings`, `runtimes` on a portable hit). The category facet is not
+  repeated on each response: `list_categories` serves it, and a refused
+  `category` still names the real slugs. `categoryFilterDropped` appears only
+  when it is true. A call with neither `query` nor `queries` is an error result,
+  and a `limit` outside 1–50 is refused as `-32602`.
+- `get_kinds` takes `kinds: [{ ref, kind, version? }]` across any number of
+  modules and answers in text: per module, the line to write under `imports:`
+  (`<Name>: <ref>@<version>#<integrity>` for an OCI ref, the bare ref for any
+  other transport), then each asked kind's document cut verbatim out of the
+  cached `telo.yaml` — with every named shape and local parent it references,
+  three levels deep, and without the keys that say how the kind is implemented
+  (`controllers`, `base`, the template body). A kind extending a kind of
+  another module without `base:` takes that parent's fields, so the parent's
+  definition follows, two modules up, marked as reached through `extends` —
+  read at the version the child's own `imports:` pins the parent at, or at the
+  latest tracked one when the hub does not hold that version. A
+  name the module does not define is reported beside the kinds it exports; a
+  call naming only untracked refs is an error result. An alias-qualified name
+  (`Http.Server`) is read by its suffix.
+- `list_libraries` takes an optional `publisher` (`ghcr.io/telorun`) and lists
+  every tracked library at its latest version: `ref`, `name`, a `summary` (the
+  first sentence of its description, at most 160 characters), `kinds` and
+  `instances`. Applications and deprecated modules are left out.
 
 `GET /modules` is deliberately HTTP-only: listing the whole catalogue is a crawler / site-build read that no
 manifest-authoring agent needs, and `search_resources` and `suggest_module_refs`
@@ -252,8 +293,9 @@ A category outside the declared vocabulary is a bad argument — HTTP 400,
 JSON-RPC `-32602` — carrying the real slugs. A recognized one that selects
 nothing *for that query* re-runs the search without it and reports
 `categoryFilterDropped: true`, because too narrow a filter is not an absent
-capability. And every response carries the `categories` facet, so one search
-teaches the whole vocabulary instead of leaving a caller to guess the next slug.
+capability. And every HTTP response carries the `categories` facet, so one search
+teaches the whole vocabulary instead of leaving a caller to guess the next slug;
+the `search_resources` tool leaves it to `list_categories`.
 
 **One query owns "what slugs exist".** `CategoryVocabulary` answers `/categories`
 *and* backs the guard (through `RequireKnownCategory`, split out so `/categories`,

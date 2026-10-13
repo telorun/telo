@@ -1,0 +1,96 @@
+kind: Telo.Application
+metadata:
+  name: HubStub
+  version: 1.0.0
+  description: |
+    Test fixture: a local stand-in for the Telo hub's MCP endpoint, so the
+    agent's discovery runs offline. It serves, at /mcp, the three tools
+    discovery uses, each with one fixed answer about a `Greeter` library at
+    `oci://example.test/greeter`:
+      - `search_resources` answers every query with that library's `Hello`
+        kind, in a description carrying the marker HUB_SEARCH_HIT;
+      - `get_kinds` answers with the library's import line and one definition
+        per asked kind, named as asked, carrying the marker HUB_DEFINITION;
+      - `list_libraries` lists the one library.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.37.0#sha256-oUJEa_MoII_3QxsUplbceh0NkOSY1Sztd1JsVtBmcJ8
+  Mcp: oci://ghcr.io/telorun/mcp-server@0.19.0#sha256-JczHRE8f0y-yyxl83FnOOsvlRj4AjwJUfyP-mCkC5ns
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+ports:
+  http:
+    env: PORT
+    default: 18561
+targets:
+  - !ref server
+---
+# Every tool answers from its own `result:`; the handler has nothing to do.
+kind: Run.Value
+metadata: { name: nothing }
+value: true
+---
+kind: Mcp.Tools
+metadata: { name: HubTools }
+entries:
+  - name: search_resources
+    description: Search what registered Telo modules can do.
+    argumentsSchema:
+      type: object
+      properties:
+        queries: { type: array, items: { type: string } }
+    handler: !ref nothing
+    inputs: {}
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            json({'results': request.arguments.queries.map(q, {'query': q, 'modules': [
+              {'ref': 'oci://example.test/greeter', 'version': '1.0.0', 'name': 'Greeter',
+               'description': 'HUB_SEARCH_HIT Greets people.',
+               'hits': [{'name': 'Hello', 'capability': 'Telo.Invocable', 'description': 'Says hello.'}]}]})})
+  - name: get_kinds
+    description: Fetch the definitions of the kinds you name.
+    argumentsSchema:
+      type: object
+      properties:
+        kinds: { type: array, items: { type: object } }
+    handler: !ref nothing
+    inputs: {}
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            '# Greeter\n# imports:\n#   Greeter: oci://example.test/greeter@1.0.0#sha256-stub\n'
+              + join(request.arguments.kinds.map(k,
+                  '---\nkind: Telo.Definition\nmetadata:\n  name: ' + string(k.kind)
+                    + '\n  description: HUB_DEFINITION from ' + string(k.ref) + '\n'), '')
+  - name: list_libraries
+    description: List every library the hub tracks.
+    argumentsSchema:
+      type: object
+      properties:
+        publisher: { type: string }
+    handler: !ref nothing
+    inputs: {}
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            json({'libraries': [{'ref': 'oci://example.test/greeter', 'name': 'Greeter',
+                                 'summary': 'Greets people for ' + request.arguments.publisher + '.',
+                                 'kinds': ['Hello']}]})
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: endpoint }
+serverInfo:
+  name: hub-stub
+  version: 1.0.0
+tools:
+  - !ref HubTools
+---
+kind: Http.Server
+metadata: { name: server }
+host: 127.0.0.1
+port: !cel "ports.http"
+mounts:
+  - path: /mcp
+    mount: !ref endpoint

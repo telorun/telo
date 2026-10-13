@@ -8,20 +8,22 @@
 # asks: an application is opt-in, because a caller composing a manifest cannot
 # import one.
 #
-# Two arms. The vector arm embeds the query and asks for the nearest entry ids
+# Three arms. The vector arm embeds the query and asks for the nearest entry ids
 # of the requested types — the ANN stays inside the vector-store abstraction. The lexical arm is Postgres
 # full-text over the entry's name/description and its module's name/description. A single query
 # takes the matched ids as a bound JSON param, RRF-fuses their rank with the
 # lexical rank, and joins the relational rows; the vectors table is never touched
-# here. An empty query skips the vector arm and degrades to lexical-only.
+# here. The identity arm votes for entries whose qualified name the query spells.
+# An empty query skips the vector and identity arms and degrades to lexical-only.
 kind: Telo.Library
 metadata:
   name: HubSearch
   description: >-
     Ranked search over indexed resource kinds, ready-made instances and runnable
-    applications, and the modules that own them, fusing full-text matching with
-    semantic nearest-neighbour matching, and the category facet every response
-    carries.
+    applications, and the modules that own them, fusing full-text matching,
+    semantic nearest-neighbour matching and a match on an entry's qualified
+    name, with the category facet every response carries and a grouped form
+    answering several queries at once.
 requires:
   # 0.83.0: `resources:` inputs on a library.
   # 0.87.0: a `resources:` entry constrained by an ABSTRACT kind satisfies the
@@ -67,6 +69,7 @@ exports:
   resources:
     - categoryVocabulary
     - searchResources
+    - searchMany
     - searchModules
 ---
 kind: Sql.Query
@@ -315,6 +318,8 @@ inputType:
       runtime: { type: string }
       # Which entry types to rank: `kind`, `instance`, `application`.
       entry: { type: array, items: { type: string }, default: [kind, instance] }
+      # How many hits to return, after sibling instances fold.
+      limit: { type: integer, minimum: 1, maximum: 50, default: 20 }
 steps:
   - name: runtimeGuard
     invoke: !ref requireIndexedRuntime
@@ -366,7 +371,8 @@ steps:
   # so ORDINALITY is the vector rank; '[]' when the arm was skipped),
   # $3 = category slug or '' for no facet filter,
   # $4 = kernel name or '' — see the runtime filter below,
-  # $5 = the entry types to rank.
+  # $5 = the entry types to rank,
+  # $6 = how many hits to return.
   #
   # The facet is a filter on the SAME query, not a second endpoint: an empty
   # `q` already degrades to an unranked listing, so `?q=&category=storage` is
@@ -381,7 +387,8 @@ steps:
       WITH q AS (
         SELECT plainto_tsquery('english', $1) AS andq,
                CASE WHEN plainto_tsquery('english', $1)::text = '' THEN NULL
-                    ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq
+                    ELSE to_tsquery('english', replace(plainto_tsquery('english', $1)::text, '&', '|')) END AS orq,
+               phraseto_tsquery('english', $1) AS phq
       ),
       vec AS (
         SELECT elem->>'id' AS id, ord::int AS rank
@@ -412,9 +419,45 @@ steps:
         ORDER BY rank
         LIMIT (CASE WHEN $1 = '' THEN 5000 ELSE 100 END)
       ),
+      /* The identity arm: entries whose qualified NAME the query spells —
+         module name and entry name, split at their capitals, so `http server`
+         reads `HttpServer.Server`. A third vote in the fusion, because a caller
+         who names a module wants that module's kinds first, and in the lexical
+         arm a name is one term among a description's many. Every word of the
+         query must appear, so a described need ("sign a webhook payload")
+         leaves this arm empty and the other two decide alone. A name holding
+         the query's words as one phrase, in order, counts twice: that is a
+         caller naming the module, and its other kinds belong beside the one
+         named — ahead of a kind elsewhere whose description repeats the
+         words. */
+      ident AS (
+        SELECT e.id,
+               CASE WHEN i.vec @@ q.phq THEN 2.0 ELSE 1.0 END AS weight,
+               ROW_NUMBER() OVER (
+                 ORDER BY (CASE WHEN i.vec @@ q.phq THEN 1 ELSE 0 END) DESC,
+                          ts_rank(to_tsvector('english', regexp_replace(e.name, '([a-z0-9])([A-Z])', '\1 \2', 'g')), q.orq) DESC,
+                          (e.entry = 'kind') DESC, e.name
+               ) AS rank
+        FROM search_entries e
+        JOIN modules m ON m.id = e.module_id AND m.latest_version = e.version
+        LEFT JOIN module_versions mv ON mv.module_id = e.module_id AND mv.version = e.version
+        CROSS JOIN q
+        CROSS JOIN LATERAL (
+          SELECT to_tsvector('english', regexp_replace(COALESCE(mv.module_name, '') || ' ' || e.name,
+                                                       '([a-z0-9])([A-Z])', '\1 \2', 'g')) AS vec
+        ) i
+        WHERE e.entry = ANY($5::text[])
+          AND ($3 = '' OR e.categories @> ARRAY[category_slug($3)]::text[])
+          AND ($4 = '' OR e.portable OR e.runtimes @> ARRAY[$4]::text[])
+          AND q.orq IS NOT NULL AND i.vec @@ q.andq
+        ORDER BY rank
+        LIMIT 100
+      ),
       fused AS (
-        SELECT id, SUM(1.0 / (60 + rank)) AS score
-        FROM (SELECT id, rank FROM vec UNION ALL SELECT id, rank FROM lex) s
+        SELECT id, SUM(weight / (60 + rank)) AS score
+        FROM (SELECT id, rank, 1.0 AS weight FROM vec
+              UNION ALL SELECT id, rank, 1.0 AS weight FROM lex
+              UNION ALL SELECT id, rank, weight FROM ident) s
         GROUP BY id
       ),
       entries AS (
@@ -473,7 +516,7 @@ steps:
       FROM ranked r
       WHERE r.pack_rank = 1
       ORDER BY r.score DESC, r.name
-      LIMIT 20
+      LIMIT $6
   - name: query
     invoke: !ref query
     inputs:
@@ -484,6 +527,7 @@ steps:
         - !cel "inputs.category"
         - !cel "inputs.runtime"
         - !cel "inputs.entry"
+        - !cel "inputs.limit"
   # A KNOWN category that selects nothing for THIS query is a filter that was
   # too narrow, not an absent capability — so the search is repeated without it
   # and the response says which happened (`categoryFilterDropped`). Returning
@@ -503,6 +547,10 @@ steps:
             - ""
             - !cel "inputs.runtime"
             - !cel "inputs.entry"
+            - !cel "inputs.limit"
+  # The rows the response is built from, named once for the two projections.
+  - name: rows
+    value: !cel "'retry' in steps ? steps.retry.result.rows : steps.query.result.rows"
 outputs:
   # The facet travels with EVERY response, not only a browse: it is the only
   # thing that makes an open vocabulary learnable from inside a search, and a
@@ -527,7 +575,7 @@ outputs:
   # indexed runtime reach (`runtime: null`), and its declared contract as
   # `application`. It never folds as a sibling.
   hits: !cel >-
-    ('retry' in steps ? steps.retry.result.rows : steps.query.result.rows).map(r,
+    steps.rows.result.map(r,
       r.entry == 'application'
         ? {'entry': r.entry, 'name': r.name, 'kind': 'Application', 'kindRef': '',
            'capability': '', 'description': r.description, 'categories': r.categories,
@@ -554,6 +602,69 @@ outputs:
                       'deprecated': {'reason': r.module_deprecated_reason},
                       'categories': r.module_categories},
            'score': r.score})
+  # The same hits for a reader that pays for every byte it is sent (a model):
+  # grouped under the module that owns them, so a module's facts are stated once
+  # however many of its kinds matched; modules in the order of their best hit,
+  # hits in rank order. A member that says nothing is left out rather than sent
+  # empty — `entry` is stated only when the hit is not a kind, `kind` only on an
+  # instance, `runtimes` only on a hit a kernel must be able to load.
+  modules: !cel >-
+    distinct(steps.rows.result.map(r, r.ref)).map(ref,
+      steps.rows.result.filter(r, r.ref == ref)).map(own,
+        {'ref': own[0].ref, 'version': own[0].version, 'name': own[0].module_name,
+         'description': own[0].module_description,
+         'hits': own.map(r, compact({
+           'name': r.name,
+           'entry': r.entry == 'kind' ? '' : r.entry,
+           'kind': r.entry == 'instance' ? r.kind : '',
+           'kindRef': r.entry == 'instance' && r.kind_ref != r.ref ? r.kind_ref : '',
+           'capability': r.capability,
+           'description': r.entry == 'application' ? '' : r.description,
+           'extends': r.extends_kind == '' ? dyn(null)
+             : dyn({'kind': r.extends_kind, 'ref': r.extends_ref}),
+           'runtimes': r.entry == 'application' || r.portable ? dyn(null) : dyn(r.runtimes),
+           'deprecated': r.deprecated_reason == '' ? dyn(null)
+             : dyn(compact({'reason': r.deprecated_reason,
+                            'replacedBy': r.replaced_by_kind == '' ? dyn(null)
+                              : dyn({'kind': r.replaced_by_kind, 'ref': r.replaced_by_ref})})),
+           'instances': r.instances > 0 ? dyn(r.instances) : dyn(null),
+           'siblings': size(r.siblings) == 0 ? dyn(null)
+             : dyn(r.siblings.map(s, {'name': s.name, 'ref': s.module.ref})),
+           'application': r.entry == 'application' ? dyn(r.application) : dyn(null)}))})
+---
+# Several searches in one call, each answered in the grouped form. A caller
+# composing an application has one need per capability, and a call per need is a
+# round trip per need; the answers stay separate because a hit's rank means
+# something only within its own query.
+kind: Run.Projection
+metadata:
+  name: searchMany
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      queries: { type: array, items: { type: string } }
+      category: { type: string }
+      runtime: { type: string }
+      entry: { type: array, items: { type: string }, default: [kind, instance] }
+      limit: { type: integer, minimum: 1, maximum: 50, default: 8 }
+    required: [queries]
+collection: !cel "inputs.queries"
+steps:
+  - name: search
+    invoke: !ref searchResources
+    inputs:
+      q: !cel "item"
+      category: !cel "inputs.category"
+      runtime: !cel "inputs.runtime"
+      entry: !cel "inputs.entry"
+      limit: !cel "inputs.limit"
+outputs:
+  query: !cel "item"
+  # Present only when the category was dropped to find anything at all.
+  categoryFilterDropped: !cel "steps.search.result.categoryFilterDropped"
+  modules: !cel "steps.search.result.modules"
 ---
 # Module-first projection: the same fused hits grouped by owning module, with
 # every exported kind included so a module card needs no second manifest fetch.

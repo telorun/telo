@@ -15,8 +15,11 @@ metadata:
     precedent — it also drops a dependency on which interpreter CI happens to
     run).
 imports:
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.16.0#sha256-uGRA31NI6oUiT8Pr88uBvMqIvCgoG5QLASMIshc7c-A
   ChatOff:
     source: ../
+    resources:
+      hub: !ref hub
     secrets:
       openaiApiKey: dummy-key-never-used
     variables:
@@ -28,6 +31,8 @@ imports:
       allowManifestRuns: false
   ChatOn:
     source: ../
+    resources:
+      hub: !ref hub
     secrets:
       openaiApiKey: dummy-key-never-used
     variables:
@@ -51,6 +56,12 @@ targets:
   - !ref ChatOff.ensureWorkspace
   - !ref testRefusedWhenOff
   - !ref testRunsWhenOn
+---
+# The hub the chat library discovers modules through.
+kind: Mcp.HttpClient
+metadata: { name: hub }
+url: https://telo.sh/mcp
+clientInfo: { name: authoring-agent-test, version: 0.0.0 }
 ---
 # Off is the default, and it must refuse BEFORE anything is spawned — an error
 # the agent can read and act on, not a silent no-op.

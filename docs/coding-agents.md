@@ -18,22 +18,30 @@ No authentication is needed for reads.
 
 ## What the agent gets
 
-On `initialize`, the server publishes two tools and an instructions primer:
+On `initialize`, the server publishes its tools and an instructions primer.
+The ones an agent composes with:
 
-- **`search_resources(query)`** — searches resource *kinds* across every
-  registered module, on any host or transport. The unit an agent composes with
-  is a kind it can import, not a package, so each hit carries the bare kind
-  suffix (e.g. `Bucket` — the prefix is *your* chosen import alias), its
-  capability and description, and the owning module's exact location ref +
-  version.
+- **`search_resources(query | queries)`** — searches resource *kinds* across
+  every registered module, on any host or transport, for one need or several
+  in one call. The unit an agent composes with is a kind it can import, not a
+  package, so hits are grouped under the module that owns them — its exact
+  location ref + version stated once — and each carries the bare kind suffix
+  (e.g. `Bucket` — the prefix is *your* chosen import alias), its capability
+  and description.
+- **`get_kinds(kinds)`** — the definitions of exactly the kinds named, across
+  modules: each module's `imports:` line with its version and integrity pin,
+  each kind's `Telo.Definition`, and every shape or parent kind it references.
+  This is the agent's source of truth for field shapes, at a fraction of a
+  whole manifest's size.
+- **`list_libraries(publisher?)`** — every tracked library in one line each:
+  ref, name, summary, exported kinds and instances.
 - **`get_module_manifest(ref, version?)`** — returns the raw `telo.yaml` for a
   tracked module by its location ref (e.g. `oci://ghcr.io/telorun/console` or
-  `oci://ghcr.io/acme/telo-s3`). `version` defaults to `latest`. This is the
-  agent's source of truth for `Telo.Definition` schemas, capability types, and
-  CEL context shapes.
+  `oci://ghcr.io/acme/telo-s3`). `version` defaults to `latest`. For when the
+  whole module is wanted rather than a few of its kinds.
 - **Instructions primer** — explains Telo's runtime model, built-in kinds
   (`Telo.Application`, `Telo.Library`, `Telo.Definition`), CEL `!cel "…"`
-  templating, and the recommended workflow: search → read manifest → compose.
+  templating, and the recommended workflow: search → read the kinds → compose.
 
 The primer is surfaced to the LLM as system context, so the model knows
 Telo before you've written a single message.
@@ -106,6 +114,6 @@ Once connected, prompts that lean on the catalog work well:
 - "Add a daily job that reads new rows from a SQL database, summarizes
   each with `Ai.Text`, and writes the summaries to S3."
 
-The agent will call `search_resources`, drill into the manifests of the
-modules that own the matching kinds, and produce YAML against the actual
+The agent will call `search_resources`, read the definitions of the matching
+kinds with `get_kinds`, and produce YAML against the actual
 schemas — no guessed kind names, no stale field shapes.
