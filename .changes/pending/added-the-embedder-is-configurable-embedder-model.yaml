@@ -1,8 +1,0 @@
-modules:
-  apps/hub: Added
-body: "The embedder is configurable: EMBEDDER_MODEL, EMBEDDER_DIMENSIONS,
-  EMBEDDER_QUERY_PROMPT and EMBEDDER_PASSAGE_PROMPT name the model, its vector length
-  and its prompt wrappers, and an optional EMBEDDER_API_KEY is sent as a bearer token to
-  an embeddings API that asks for one. The defaults are embeddinggemma-300m's and no
-  key, so an existing deployment is unchanged. Changing the model, the vector length or
-  a wrapper is a re-embed of the whole index."
