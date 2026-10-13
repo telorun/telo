@@ -1,6 +1,6 @@
 [package]
 name = "telo-cli"
-version = "0.115.1"
+version = "0.115.2"
 license-file = "../../LICENSE"
 edition = "2021"
 publish = false
