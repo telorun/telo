@@ -1,0 +1,48 @@
+kind: Telo.Application
+metadata:
+  name: AiMcpPromptToolCallTest
+  version: 1.0.0
+  description: |
+    A model's call of a prompt tool renders the prompt with the call's arguments
+    and returns every message's content block in order, roles dropped and an
+    image block carried as an image part.
+imports:
+  Ai: ../../ai
+  AiMcp: ../
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  Stub: ./__fixtures__/stub-mcp.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Stub.StubClient
+metadata:
+  name: mcpServer
+---
+kind: Ai.Agent
+metadata:
+  name: assistant
+model:
+  kind: AiEcho.EchoModel
+  emitToolCall:
+    name: review
+    arguments: { language: Rust }
+toolProviders:
+  - provider:
+      kind: AiMcp.PromptToolProvider
+      client: !ref mcpServer
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: ask
+    invoke: !ref assistant
+    inputs: { prompt: "review my code" }
+  - name: assertResult
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.ask.result.toolResults[0].content"
+      expected:
+        - { type: text, text: Review this Rust code for correctness. }
+        - { type: image, data: aGVsbG8=, mediaType: image/png }

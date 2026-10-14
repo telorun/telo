@@ -1,10 +1,10 @@
 # AI MCP
 
-Bridges an MCP server to the [`Ai.ToolProvider`](../ai/docs/ai-tool-provider.md) contract, so an [`Ai.Agent`](../ai/docs/ai-agent.md) can discover and call a whole MCP server's tools.
+Bridges an MCP server to the [`Ai.ToolProvider`](../ai/docs/ai-tool-provider.md) contract, so an [`Ai.Agent`](../ai/docs/ai-agent.md) can discover and call a whole MCP server's tools — and its prompts, each offered as a tool that renders the prompt.
 
 ## Why use this
 
-- **Discovery, not declaration** — point an agent at a server and it gets every advertised tool; no per-tool manifest entry.
+- **Discovery, not declaration** — point an agent at a server and it gets every advertised tool, or every listed prompt; no per-tool manifest entry.
 - **Agent stays MCP-agnostic** — `AiMcp.ToolProvider` implements the generic `Ai.ToolProvider` abstract; `@telorun/ai` never depends on MCP.
 - **Transport-pluggable** — wraps any `Mcp.Client` (`Mcp.StdioClient`, `Mcp.HttpClient`).
 - **The only coupling point** — this is the single module that depends on both `@telorun/ai` and `@telorun/mcp-client`; the two cores stay single-purpose.
@@ -14,6 +14,7 @@ Bridges an MCP server to the [`Ai.ToolProvider`](../ai/docs/ai-tool-provider.md)
 | Kind                  | Purpose                                                              |
 | --------------------- | -------------------------------------------------------------------- |
 | `AiMcp.ToolProvider`  | An `Ai.ToolProvider` backed by an `Mcp.Client` (tools/list + tools/call). |
+| `AiMcp.PromptToolProvider` | An `Ai.ToolProvider` offering each of the server's prompts as a tool (prompts/list, every page up to 100 + prompts/get). |
 
 ## Example
 
@@ -70,5 +71,6 @@ toolProviders:
 ## Reference
 
 - [`AiMcp.ToolProvider`](docs/ai-mcp-tool-provider.md) — fields and behavior.
+- [`AiMcp.PromptToolProvider`](docs/ai-mcp-prompt-tool-provider.md) — how prompts become tools, and what a call returns.
 - [`Ai.Agent`](../ai/docs/ai-agent.md) — the consuming agent loop.
 - [`Ai.ToolProvider`](../ai/docs/ai-tool-provider.md) — the contract this implements.

@@ -1,0 +1,69 @@
+kind: Telo.Application
+metadata:
+  name: McpClientPromptsStdioTest
+  version: 1.0.0
+  description: |
+    A stdio client lists the prompts its child server offers and renders one
+    from the arguments it sends, invoked directly with `prompts/list` and
+    `prompts/get`. A result is returned as the server sent it, unchecked
+    against the method's result shape, as over HTTP.
+imports:
+  McpClient: ../
+  Run: ../../run
+  Assert: ../../assert
+targets: [ !ref testRun ]
+---
+kind: McpClient.StdioClient
+metadata: { name: localMcp }
+command: node
+args:
+  - ./__fixtures__/stdio-server.mjs
+clientInfo: { name: telo-test, version: 1.0.0 }
+---
+kind: McpClient.StdioClient
+metadata: { name: malformedMcp }
+command: node
+args:
+  - ./__fixtures__/stdio-server.mjs
+  - --malformed-prompt-list
+clientInfo: { name: telo-test, version: 1.0.0 }
+---
+kind: Run.Sequence
+metadata: { name: testRun }
+steps:
+  - name: list
+    invoke: !ref localMcp
+    inputs: { method: prompts/list }
+  - name: assertList
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.list.result.prompts"
+      expected:
+        - name: greet
+          description: Greets someone.
+          arguments:
+            - name: who
+              description: Who to greet.
+              required: true
+  - name: get
+    invoke: !ref localMcp
+    inputs:
+      method: prompts/get
+      params: { name: greet, arguments: { who: Ada } }
+  - name: assertGet
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.get.result"
+      expected:
+        description: A greeting
+        messages:
+          - role: user
+            content: { type: text, text: Say hello to Ada. }
+  - name: listMalformed
+    invoke: !ref malformedMcp
+    inputs: { method: prompts/list }
+  - name: assertVerbatim
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.listMalformed.result"
+      expected: { items: [] }

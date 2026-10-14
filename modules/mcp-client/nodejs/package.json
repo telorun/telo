@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.lib.json"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",

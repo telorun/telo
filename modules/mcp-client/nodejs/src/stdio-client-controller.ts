@@ -9,6 +9,7 @@ import {
   type ResourceContext,
 } from "@telorun/sdk";
 import { isAbsolute, resolve } from "node:path";
+import { z } from "zod";
 import { fileURLToPath } from "node:url";
 import { bridgeStderrChunk } from "./stderr-bridge.js";
 
@@ -21,6 +22,7 @@ import {
 
 const DEFAULT_CLIENT_INFO = { name: "telo-mcp-client", version: "0.1.0" };
 const DEFAULT_SHUTDOWN_GRACE_MS = 5000;
+const VERBATIM_RESULT = z.unknown();
 
 interface ClientInfo {
   name: string;
@@ -196,8 +198,39 @@ export class McpStdioClient {
       const res = await client.listTools((params ?? {}) as { cursor?: string }, { signal });
       return res as unknown as Record<string, unknown>;
     }
+    // Prompt results cross verbatim, as over HTTP: the consumer judges their shape,
+    // so the SDK's own result schemas are not applied.
+    if (method === "prompts/list") {
+      const res = await client.request(
+        { method, params: (params ?? {}) as { cursor?: string } },
+        VERBATIM_RESULT,
+        { signal },
+      );
+      return res as Record<string, unknown>;
+    }
+    if (method === "prompts/get") {
+      const getParams = (params ?? {}) as {
+        name?: string;
+        arguments?: Record<string, string>;
+      };
+      if (!getParams.name) {
+        throw protocolError("prompts/get requires params.name");
+      }
+      const res = await client.request(
+        {
+          method,
+          params: {
+            name: getParams.name,
+            ...(getParams.arguments ? { arguments: getParams.arguments } : {}),
+          },
+        },
+        VERBATIM_RESULT,
+        { signal },
+      );
+      return res as Record<string, unknown>;
+    }
     throw protocolError(
-      `Mcp.StdioClient v1 does not implement method '${method}'`,
+      `Mcp.StdioClient does not implement method '${method}'`,
       { method },
     );
   }

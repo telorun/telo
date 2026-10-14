@@ -1,0 +1,59 @@
+kind: Telo.Application
+metadata:
+  name: AiMcpPromptToolCancellationTest
+  version: 1.0.0
+  description: |
+    A turn cancelled while a prompt tool call is in flight ends with the
+    cancellation, and the cancellation reaches the MCP client rendering the
+    prompt: the stub's never-answering prompt is told to stop, and counts it.
+imports:
+  Ai: ../../ai
+  AiMcp: ../
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  Stub: ./__fixtures__/stub-mcp.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Stub.StubClient
+metadata:
+  name: mcpServer
+---
+kind: Ai.Agent
+metadata:
+  name: assistant
+model:
+  kind: AiEcho.EchoModel
+  emitToolCall:
+    name: hang
+toolProviders:
+  - provider:
+      kind: AiMcp.PromptToolProvider
+      client: !ref mcpServer
+---
+# The step's bound cancels the turn while `hang` is in flight; the cancellation
+# propagates under the default `onToolError: feedback`, so the step times out.
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: bounded
+    try:
+      - name: run
+        timeout: 300
+        invoke: !ref assistant
+        inputs: { prompt: "wait please" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a cancelled prompt call completed the turn" }
+    catch:
+      - name: timedOut
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_STEP_TIMEOUT }
+  - name: count
+    invoke: !ref mcpServer
+    inputs: { method: tools/call, params: { name: cancelled_count } }
+  - name: clientSawCancellation
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.count.result.content"
+      expected: [{ type: text, text: "1" }]

@@ -7,9 +7,13 @@
 // Protocol: newline-delimited JSON-RPC 2.0 over stdin/stdout. Supports just
 // what the stdio tests need: initialize, notifications/initialized,
 // notifications/cancelled, tools/list, tools/call (echo; wait_for_cancel, which
-// never answers; cancelled_count, how many of those the client cancelled).
+// never answers; cancelled_count, how many of those the client cancelled),
+// prompts/list and prompts/get (greet, rendering its `who` argument). Started
+// with `--malformed-prompt-list`, prompts/list answers `{ items: [] }`.
 
-import { stdin, stdout } from "node:process";
+import { argv, stdin, stdout } from "node:process";
+
+const malformedPromptList = argv.includes("--malformed-prompt-list");
 
 stdin.setEncoding("utf8");
 let buffer = "";
@@ -29,7 +33,7 @@ function handle(message) {
       id,
       result: {
         protocolVersion: params?.protocolVersion ?? "2024-11-05",
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, prompts: {} },
         serverInfo: { name: "mcp-client-stdio-fixture", version: "0.1.0" },
       },
     });
@@ -91,6 +95,52 @@ function handle(message) {
       id,
       result: {
         content: [{ type: "text", text: String(args.message ?? "") }],
+      },
+    });
+    return;
+  }
+
+  if (method === "prompts/list") {
+    if (malformedPromptList) {
+      write({ jsonrpc: "2.0", id, result: { items: [] } });
+      return;
+    }
+    write({
+      jsonrpc: "2.0",
+      id,
+      result: {
+        prompts: [
+          {
+            name: "greet",
+            description: "Greets someone.",
+            arguments: [{ name: "who", description: "Who to greet.", required: true }],
+          },
+        ],
+      },
+    });
+    return;
+  }
+
+  if (method === "prompts/get") {
+    if (params?.name !== "greet") {
+      write({
+        jsonrpc: "2.0",
+        id,
+        error: { code: -32602, message: `Unknown prompt: ${params?.name}` },
+      });
+      return;
+    }
+    write({
+      jsonrpc: "2.0",
+      id,
+      result: {
+        description: "A greeting",
+        messages: [
+          {
+            role: "user",
+            content: { type: "text", text: `Say hello to ${params?.arguments?.who ?? "nobody"}.` },
+          },
+        ],
       },
     });
     return;

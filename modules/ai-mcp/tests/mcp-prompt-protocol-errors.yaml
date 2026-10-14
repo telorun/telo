@@ -1,0 +1,189 @@
+kind: Telo.Application
+metadata:
+  name: AiMcpPromptProtocolErrorsTest
+  version: 1.0.0
+  description: |
+    Every malformed prompt answer fails with ERR_MCP_PROTOCOL instead of reading
+    as an empty or default one: a list without a `prompts` array, a prompt without
+    a name, arguments that are not a list of named ones, a cursor that is not a
+    string, one repeated, a list that does not end within 100 pages, a render
+    without a `messages` array and a message without a content block.
+imports:
+  Ai: ../../ai
+  AiMcp: ../
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  Stub: ./__fixtures__/stub-mcp.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: promptsMissing
+    try:
+      - name: run
+        invoke:
+          kind: Ai.Agent
+          model: { kind: AiEcho.EchoModel }
+          toolProviders:
+            - provider:
+                kind: AiMcp.PromptToolProvider
+                client: { kind: Stub.StubClient, malformation: promptsMissing }
+        inputs: { prompt: "hello" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a prompt list without prompts was read" }
+    catch:
+      - name: refused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MCP_PROTOCOL
+  - name: promptNameMissing
+    try:
+      - name: run
+        invoke:
+          kind: Ai.Agent
+          model: { kind: AiEcho.EchoModel }
+          toolProviders:
+            - provider:
+                kind: AiMcp.PromptToolProvider
+                client: { kind: Stub.StubClient, malformation: promptNameMissing }
+        inputs: { prompt: "hello" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a prompt without a name was listed" }
+    catch:
+      - name: refused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MCP_PROTOCOL
+  - name: argumentsMalformed
+    try:
+      - name: run
+        invoke:
+          kind: Ai.Agent
+          model: { kind: AiEcho.EchoModel }
+          toolProviders:
+            - provider:
+                kind: AiMcp.PromptToolProvider
+                client: { kind: Stub.StubClient, malformation: argumentsMalformed }
+        inputs: { prompt: "hello" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "malformed prompt arguments were listed" }
+    catch:
+      - name: refused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MCP_PROTOCOL
+  - name: cursorNotString
+    try:
+      - name: run
+        invoke:
+          kind: Ai.Agent
+          model: { kind: AiEcho.EchoModel }
+          toolProviders:
+            - provider:
+                kind: AiMcp.PromptToolProvider
+                client: { kind: Stub.StubClient, malformation: cursorNotString }
+        inputs: { prompt: "hello" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a cursor that is not a string was followed" }
+    catch:
+      - name: refused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            code: !cel "error.code"
+            ownGuard: !cel "error.message.contains('not a string')"
+          expected:
+            code: ERR_MCP_PROTOCOL
+            ownGuard: true
+  - name: cursorRepeated
+    try:
+      - name: run
+        invoke:
+          kind: Ai.Agent
+          model: { kind: AiEcho.EchoModel }
+          toolProviders:
+            - provider:
+                kind: AiMcp.PromptToolProvider
+                client: { kind: Stub.StubClient, malformation: cursorRepeated }
+        inputs: { prompt: "hello" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a repeated cursor was followed" }
+    catch:
+      - name: refused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            code: !cel "error.code"
+            ownGuard: !cel "error.message.contains('a second time')"
+          expected:
+            code: ERR_MCP_PROTOCOL
+            ownGuard: true
+  - name: cursorsEndless
+    try:
+      - name: run
+        invoke:
+          kind: Ai.Agent
+          model: { kind: AiEcho.EchoModel }
+          toolProviders:
+            - provider:
+                kind: AiMcp.PromptToolProvider
+                client: { kind: Stub.StubClient, malformation: cursorsEndless }
+        inputs: { prompt: "hello" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "an endless prompt list was read" }
+    catch:
+      - name: refused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MCP_PROTOCOL
+  - name: messagesMissing
+    try:
+      - name: run
+        invoke:
+          kind: Ai.Agent
+          model:
+            kind: AiEcho.EchoModel
+            emitToolCall: { name: summary }
+          onToolError: throw
+          toolProviders:
+            - provider:
+                kind: AiMcp.PromptToolProvider
+                client: { kind: Stub.StubClient, malformation: messagesMissing }
+        inputs: { prompt: "hello" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a rendered prompt without messages was read" }
+    catch:
+      - name: refused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MCP_PROTOCOL
+  - name: contentMissing
+    try:
+      - name: run
+        invoke:
+          kind: Ai.Agent
+          model:
+            kind: AiEcho.EchoModel
+            emitToolCall: { name: summary }
+          onToolError: throw
+          toolProviders:
+            - provider:
+                kind: AiMcp.PromptToolProvider
+                client: { kind: Stub.StubClient, malformation: contentMissing }
+        inputs: { prompt: "hello" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a rendered message without content was read" }
+    catch:
+      - name: refused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MCP_PROTOCOL

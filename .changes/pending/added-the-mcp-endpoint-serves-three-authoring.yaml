@@ -1,0 +1,5 @@
+modules:
+  apps/hub: Added
+body: The MCP endpoint serves three authoring guides as prompts — build_ui,
+  write_integration_tests and design_library — each answering one user message with the
+  guide's text (at most 32768 UTF-8 bytes), and the server instructions name them.

@@ -6,8 +6,9 @@ metadata:
   license: MIT
   categories: [AI, Transport]
   description: >-
-    Brings the tools a connected MCP server advertises into an AI agent, so a model
-    can call them like any other tool. The catalogue and its argument schemas are
+    Brings the tools and prompts a connected MCP server offers into an AI agent, so a
+    model can call them like any other tool — a prompt is rendered with the model's
+    arguments and its messages handed back. The catalogue and its argument schemas are
     discovered at run time over whichever MCP transport the connection uses.
 imports:
   # Import @telorun/ai for the Ai.ToolProvider abstract this definition implements.
@@ -19,6 +20,7 @@ imports:
 exports:
   kinds:
     - ToolProvider
+    - PromptToolProvider
 ---
 # AiMcp.ToolProvider — wraps any Mcp.Client as an Ai.ToolProvider. listTools() maps to
 # `tools/list`, callTool() to `tools/call`, run under the agent turn's context: handed
@@ -42,6 +44,39 @@ schema:
     client:
       title: Client
       description: Reference to any Mcp.Client implementation (Mcp.HttpClient, Mcp.StdioClient, …).
+      x-telo-ref:
+        kind: Mcp.Client
+        use: dependency
+  required: [ client ]
+  additionalProperties: false
+---
+# AiMcp.PromptToolProvider — wraps any Mcp.Client as an Ai.ToolProvider over the
+# server's prompts. listTools() follows `prompts/list` to its last page, at most 100,
+# and makes each prompt a tool whose parameters are its arguments (strings, closed);
+# callTool() sends `prompts/get` and returns every message's content block in order.
+# The result is judged here, never by the transport. A malformed list
+# or get result raises ERR_MCP_PROTOCOL; a cancelled turn abandons the call with
+# ERR_INVOKE_CANCELLED. A separate kind rather than a mode of ToolProvider: the two
+# read different methods and map them differently.
+kind: Telo.Definition
+metadata:
+  name: PromptToolProvider
+  description: >-
+    Offers every prompt a connected MCP server lists to an agent as a tool: the
+    prompt's name and description become the tool's, its arguments the tool's string
+    parameters. Calling it renders the prompt and returns its messages' content in
+    order. Prompts are discovered at run time; a malformed answer from the server
+    raises instead of looking empty.
+capability: Telo.Mount
+extends: Ai.ToolProvider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ai-mcp.mjs&local_path=./nodejs/src/index.ts#McpPromptToolProviderController
+schema:
+  type: object
+  properties:
+    client:
+      title: Client
+      description: Reference to any Mcp.Client implementation (Mcp.HttpClient, Mcp.StdioClient, …) whose server offers prompts.
       x-telo-ref:
         kind: Mcp.Client
         use: dependency

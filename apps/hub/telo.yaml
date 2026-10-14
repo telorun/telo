@@ -1764,5 +1764,56 @@ instructions: !literal |
   - Tag dynamic leaves with `!cel`, not whole inline collections.
   - Install/run resolve against the module's own host — the hub only stores
     discovery metadata and cached manifests, never artifact payloads.
+
+  ## Guides
+  Three prompts (no arguments) each return one authoring guide — how to
+  design and compose, not field schemas, which always come from `get_kinds`.
+  Fetch the one that covers the work before writing its first file:
+  - `build_ui` — any screen: pages, tables, forms, actions, filters.
+  - `write_integration_tests` — a test that starts a real service (a
+    database, a queue) as a container.
+  - `design_library` — any `Telo.Library`: what to export, how to make a kind,
+    the importer contract.
 tools:
   - !ref HubTools
+# The authoring guides, one argument-less prompt each. A guide is plain text
+# kept at most 32768 UTF-8 bytes, so a client bounding a tool result at that
+# size receives it whole.
+prompts:
+  - kind: Mcp.Prompts
+    entries:
+      - name: build_ui
+        description: >-
+          How to build a user interface for a Telo application with the ui and
+          ui-react modules: pages, tables, forms, actions, filters, surfaces and
+          themes, wired to the routes they call. Read before writing any screen.
+        handler: { kind: Run.Value, value: {} }
+        inputs: {}
+        result:
+          messages:
+            - role: user
+              content: { type: text, text: !include-text guides/build-ui.md }
+      - name: write_integration_tests
+        description: >-
+          How to write Telo tests that start a real service — a PostgreSQL
+          database, a queue, a server — as a disposable container, connect to
+          it and clean up, so the test runs alone, in a suite and in a runner
+          session. Read before writing a test that needs one.
+        handler: { kind: Run.Value, value: {} }
+        inputs: {}
+        result:
+          messages:
+            - role: user
+              content: { type: text, text: !include-text guides/write-integration-tests.md }
+      - name: design_library
+        description: >-
+          How to design a Telo library: exporting kinds or ready-made instances,
+          templated kinds vs. extending one, abstract contracts, resources
+          borrowed from the importer, variables, lifecycle, naming, descriptions
+          and tests. Read before writing a Telo.Library.
+        handler: { kind: Run.Value, value: {} }
+        inputs: {}
+        result:
+          messages:
+            - role: user
+              content: { type: text, text: !include-text guides/design-library.md }

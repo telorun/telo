@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata: { name: McpClientMethodNotOffered, version: 1.0.0 }
+imports:
+  McpClient: ../../../
+  Run: ../../../../run
+targets: [ !ref read ]
+---
+kind: Run.Sequence
+metadata: { name: read }
+steps:
+  - name: read
+    invoke:
+      kind: McpClient.StdioClient
+      command: node
+      args: [ ../stdio-server.mjs ]
+    inputs: { method: resources/read, params: { uri: "file:///x" } }

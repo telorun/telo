@@ -1,0 +1,132 @@
+kind: Telo.Application
+metadata:
+  name: ChatReadsUiGuide
+  version: 1.0.0
+  description: |
+    Live integration test: asked for an application with a screen, the agent
+    reads the hub's UI guide before it writes the screen. It drives the chat
+    library with a real OpenAI model against the live hub, drains the turn's
+    records and asserts that a `guide_build_ui` call is recorded before the
+    first `write_file` or `edit_file` call whose text holds `UiReact.App`, and
+    that such a write happened at all. Skips silently when OPENAI_API_KEY is
+    unset; with the key it needs the deployed hub serving its authoring guides
+    (telo.sh) and ghcr.io for module resolution, or the run fails.
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+    default: ""
+variables:
+  # This case owns its workspace and starts from an empty one.
+  workspaceDir:
+    env: READS_UI_GUIDE_WORKSPACE_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./workspace/reads-ui-guide
+  stateDir:
+    env: READS_UI_GUIDE_STATE_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/reads-ui-guide
+imports:
+  Mcp: ../../../../modules/mcp-client
+  Chat:
+    source: ../
+    resources:
+      hub: !ref hub
+    secrets:
+      openaiApiKey: !cel "secrets.openaiApiKey"
+    variables:
+      workspaceDir: !cel "variables.workspaceDir"
+      stateDir: !cel "variables.stateDir"
+      # The agent's commands run from the workspace, two levels below the root.
+      teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
+  Fs: ../../../../modules/fs
+  Stream: ../../../../modules/stream
+  Run: ../../../../modules/run
+  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
+targets:
+  # Before ensureWorkspace, which creates the directory this removes.
+  - !ref cleanWorkspace
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref testReadsGuide
+---
+kind: Mcp.HttpClient
+metadata: { name: hub }
+url: https://telo.sh/mcp
+clientInfo: { name: authoring-agent-test, version: 0.0.0 }
+---
+kind: Run.Sequence
+metadata: { name: cleanWorkspace }
+steps:
+  - name: clean
+    try:
+      - name: remove
+        inputs:
+          path: !cel "string(variables.workspaceDir)"
+          recursive: true
+        invoke: { kind: Fs.FileRemoval }
+    catch:
+      # A first run has no directory to remove, which `Fs.FileRemoval` reports
+      # with its message ending `(ENOENT)`; any other failure stops the test.
+      - name: notAbsent
+        if: !cel "!error.message.endsWith('(ENOENT)')"
+        then:
+          - name: rethrow
+            throw: { code: !cel "error.code", message: !cel "error.message" }
+---
+kind: Run.Sequence
+metadata: { name: testReadsGuide }
+steps:
+  - name: runIfKey
+    if: !cel "secrets.openaiApiKey != ''"
+    then:
+      - name: conversation
+        invoke: !ref Chat.createConversation
+      - name: chat
+        invoke: !ref Chat.chatStart
+        inputs:
+          conversationId: !cel "steps.conversation.result.conversation.id"
+          idempotencyKey: ""
+          clientIp: test-runner
+          message: |
+            Build a small task tracker under apps/tasks: tasks have a text, a
+            status (open or done) and a due date, are kept in an SQLite file
+            named by a TASKS_DB env var (default tasks.db), and are served as a
+            REST API under /api/tasks. Give it an admin screen at /admin with a
+            table of tasks, a filter on status and a form to create and edit
+            one. Nothing else needs deciding: build it now, without asking.
+      - name: read
+        invoke: !ref Chat.journalSource
+        inputs:
+          key: !cel "steps.chat.result.turnId"
+          fromId: 0
+      - name: drain
+        invoke: { kind: Stream.Collect }
+        inputs:
+          input: !cel "steps.read.result.output"
+      - name: calls
+        value: !cel >-
+          steps.drain.result.items.filter(r, r.data.type == 'tool-call').map(r, r.data.toolCall)
+      # Where each call sits in the turn: the guide read, and every write whose
+      # text declares the screen.
+      - name: order
+        value: !cel >-
+          {'guide': range(size(steps.calls.result)).filter(i, steps.calls.result[i].name == 'guide_build_ui'),
+           'screen': range(size(steps.calls.result)).filter(i,
+             (steps.calls.result[i].name == 'write_file'
+               && string(steps.calls.result[i].arguments.content).contains('UiReact.App'))
+             || (steps.calls.result[i].name == 'edit_file'
+               && string(steps.calls.result[i].arguments.newString).contains('UiReact.App')))}
+      - name: assertOrder
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            wroteScreen: !cel "size(steps.order.result.screen) > 0"
+            guideFirst: !cel >-
+              size(steps.order.result.guide) > 0 && size(steps.order.result.screen) > 0
+                && steps.order.result.guide[0] < steps.order.result.screen[0]
+          expected:
+            wroteScreen: true
+            guideFirst: true

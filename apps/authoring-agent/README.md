@@ -1045,7 +1045,12 @@ The tools are the security boundary, and they are declared:
   model responses, 6 by default) searches the hub and names kinds, and their
   definitions are then fetched from the hub directly — the search results
   never enter the authoring agent's context. That agent's token usage is part
-  of the turn's own (`tokens` on the turn, the settled budget amount).
+  of the turn's own (`tokens` on the turn, the settled budget amount). Every
+  prompt the hub serves — its authoring guides on building a user interface,
+  writing tests that start a real service, and designing a library — is a
+  `guide_<name>` tool the agent calls before writing the first file of the
+  work a guide covers; a guide the hub adds becomes a tool with no change to
+  the agent.
 
 A deployment whose callers are trusted can widen `teloVerbs` at the import.
 
@@ -1074,12 +1079,28 @@ must declare.
 against the live hub, and imports the standard library at pinned published
 versions once a release is out (by in-repo path while a change to it is being
 built), so it also fails while a change has landed here but is not yet
-released and re-pinned. Live cases skip themselves when `OPENAI_API_KEY` is
+released and re-pinned. Today `Mcp` and `Run` (the application), `Mcp`,
+`AiMcp`, `Ai`, `OpenAI`, `Run`, `Stream` and `HttpClient` (the chat library), and
+the same names in every test that imports the chat library, come from the
+checkout until `mcp-client` and `ai-mcp` publish prompt support; they are
+re-pinned together, since a module loaded both from the checkout and from a
+published version is two identities for one kind. The live cases also fail until
+the hub serving its authoring guides is deployed: the agent lists the hub's
+prompts on its first turn, and a hub offering none refuses that call. Live cases skip themselves when `OPENAI_API_KEY` is
 unset. CI never runs it on its own: it is the `Authoring Agent E2E` workflow,
 started by hand against a chosen branch.
 
 The offline cases run whole turns against `chat/tests/__fixtures__/provider-stub`,
 a local stand-in for the responses endpoint reached through `MODEL_ENDPOINT`: it replies, calls one tool, refuses, or holds a reply until a test calls its `POST /release` (an aborted turn's request ends with the abort) depending on the message, and keeps every request it was sent for a test to read.
+
+`find-kinds.yaml` and `guide-tools.yaml` run discovery against
+`chat/tests/__fixtures__/hub-stub`, a local stand-in for the hub serving its
+three discovery tools and one prompt, `stub`. The first pins what a `find_kinds`
+call shows the agent and what it costs; the second that the prompt is offered
+as `guide_stub` with its description and no parameters, that a call returns its
+text whole, and that the call adds no usage. `reads-ui-guide.yaml` is the live
+counterpart: asked for an app with a screen, the agent calls `guide_build_ui`
+before the first write of a manifest declaring `UiReact.App`.
 
 `authors-manifest.yaml` and `asks-before-building.yaml` are a pair, and the pair
 is the assertion: a fully specified request writes a valid file in the first

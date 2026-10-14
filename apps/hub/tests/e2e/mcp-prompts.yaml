@@ -1,0 +1,118 @@
+kind: Telo.Application
+metadata:
+  name: HubE2EMcpPrompts
+  version: 1.0.0
+  description: |
+    End-to-end tests for the authoring guides the hub serves as MCP prompts on
+    /mcp, run against a live hub at http://localhost:8040. `prompts/list` offers
+    exactly the three guides, each with its description and no arguments;
+    `prompts/get` of each answers one `user` message holding one text block of
+    at most 32768 UTF-8 bytes, the authoring agent's default tool-result bound; an
+    unknown name is refused as invalid params. Spoken as raw JSON-RPC, since
+    the published MCP client carries only the tool methods.
+imports:
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
+targets:
+  - !ref promptsList_OffersTheThreeGuides
+  - !ref promptsGet_AnswersEachGuideWhole
+  - !ref promptsGet_RefusesAnUnknownName
+---
+# The endpoint answers as a server-sent event: the JSON-RPC message follows the
+# first `data: ` of the body.
+kind: HttpClient.Request
+metadata: { name: rpc }
+inputs:
+  url: http://localhost:8040/mcp
+  method: POST
+  headers:
+    content-type: application/json
+    accept: application/json, text/event-stream
+  responseType: text
+---
+kind: Run.Sequence
+metadata: { name: promptsList_OffersTheThreeGuides }
+steps:
+  - name: list
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 1, method: prompts/list }
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        parseJson(steps.list.result.body.substring(
+          steps.list.result.body.indexOf('data: ') + 6)).result.prompts
+      expected:
+        - name: build_ui
+          description: >-
+            How to build a user interface for a Telo application with the ui and
+            ui-react modules: pages, tables, forms, actions, filters, surfaces and
+            themes, wired to the routes they call. Read before writing any screen.
+          arguments: []
+        - name: write_integration_tests
+          description: >-
+            How to write Telo tests that start a real service — a PostgreSQL
+            database, a queue, a server — as a disposable container, connect to
+            it and clean up, so the test runs alone, in a suite and in a runner
+            session. Read before writing a test that needs one.
+          arguments: []
+        - name: design_library
+          description: >-
+            How to design a Telo library: exporting kinds or ready-made instances,
+            templated kinds vs. extending one, abstract contracts, resources
+            borrowed from the importer, variables, lifecycle, naming, descriptions
+            and tests. Read before writing a Telo.Library.
+          arguments: []
+---
+# Each guide arrives as one user message with one text block, starting with its
+# heading and within the 32768-byte bound.
+kind: Run.Sequence
+metadata: { name: promptsGet_AnswersEachGuideWhole }
+steps:
+  - name: buildUi
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 2, method: prompts/get, params: { name: build_ui } }
+  - name: integrationTests
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 3, method: prompts/get, params: { name: write_integration_tests } }
+  - name: library
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 4, method: prompts/get, params: { name: design_library } }
+  - name: messages
+    value: !cel >-
+      [steps.buildUi, steps.integrationTests, steps.library].map(s,
+        parseJson(s.result.body.substring(s.result.body.indexOf('data: ') + 6)).result.messages)
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        steps.messages.result.map(m, {
+          'shape': m.map(x, [x.role, x.content.type]),
+          'heading': m[0].content.text.split('\n')[0],
+          'withinBound': size(bytes(m[0].content.text)) <= 32768})
+      expected:
+        - { shape: [[user, text]], heading: "# Building a user interface", withinBound: true }
+        - { shape: [[user, text]], heading: "# Writing integration tests that start a real service", withinBound: true }
+        - { shape: [[user, text]], heading: "# Designing a library", withinBound: true }
+---
+kind: Run.Sequence
+metadata: { name: promptsGet_RefusesAnUnknownName }
+steps:
+  - name: get
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 5, method: prompts/get, params: { name: build_api } }
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        parseJson(steps.get.result.body.substring(
+          steps.get.result.body.indexOf('data: ') + 6)).error
+      expected:
+        code: -32602
+        message: "Mcp: unknown prompt 'build_api'"

@@ -1,6 +1,6 @@
 # MCP Client
 
-Model Context Protocol (MCP) client resource kinds for Telo: Streamable HTTP and stdio transports, transport-agnostic `tools/call` and `tools/list` dispatch.
+Model Context Protocol (MCP) client resource kinds for Telo: Streamable HTTP and stdio transports, transport-agnostic `tools/call` and `tools/list` dispatch, and `prompts/list` / `prompts/get` on the client itself.
 
 ## Why use this
 
@@ -14,7 +14,7 @@ Model Context Protocol (MCP) client resource kinds for Telo: Streamable HTTP and
 
 | Kind | Purpose |
 | --- | --- |
-| `Mcp.Client` | Abstract JSON-RPC request contract every transport satisfies. |
+| `Mcp.Client` | Abstract JSON-RPC request contract every transport satisfies: `{ method, params }` in, the `result` payload out, for `tools/call`, `tools/list`, `prompts/list` and `prompts/get`. |
 | `Mcp.HttpClient` | Streamable HTTP transport with lazy handshake, session caching, and DELETE on teardown. |
 | `Mcp.StdioClient` | Child-process stdio transport with spawn, handshake, and clean teardown. |
 | `Mcp.SessionProvider` | Abstract provider for externally-managed MCP session IDs (HTTP-only). |
@@ -54,6 +54,23 @@ steps:
     invoke: !ref CallGetWeather
 ```
 
+## Prompts
+
+A server's prompts are reached through the client directly — invoke any `Mcp.Client` with `method: prompts/list` (optionally `params: { cursor }`) or `method: prompts/get` with `params: { name, arguments }`, and the step's result is the server's `result` payload unchanged: `{ prompts, nextCursor? }` for a list, `{ description?, messages }` for a render. Both transports carry both methods.
+
+```yaml
+kind: Run.Sequence
+metadata: { name: RenderReview }
+steps:
+  - name: render
+    invoke: !ref RemoteMcp
+    inputs:
+      method: prompts/get
+      params: { name: code_review, arguments: { language: Rust } }
+```
+
+The `method` set is closed — `tools/call`, `tools/list`, `prompts/list`, `prompts/get` — so `telo check` refuses any other at the call site (`CONTRACT_INPUTS_MISMATCH`). To hand a server's prompts to an agent as tools, use `AiMcp.PromptToolProvider` from `ai-mcp`.
+
 ## Reference
 
 - [`Mcp.HttpClient`](docs/http-client.md) — Streamable HTTP transport, handshake, session cache.
@@ -64,7 +81,7 @@ steps:
 
 ## Error Contract
 
-Both `Mcp.ToolsCall` and `Mcp.ToolsList` surface a closed error union via `InvokeError`s so `catches:` blocks have a stable code surface:
+`Mcp.ToolsCall`, `Mcp.ToolsList` and a client invoked directly surface a closed error union via `InvokeError`s so `catches:` blocks have a stable code surface:
 
 | Code | When |
 | --- | --- |
@@ -93,7 +110,7 @@ Teardown reports two things that otherwise happen with nobody to tell, since tea
 
 ## Out of Scope for v1
 
-- `resources/read`, `prompts/get`, `sampling`, server notifications, roots — v1 covers `tools/call` and `tools/list`.
+- `resources/*`, `sampling`, server notifications (including `notifications/prompts/list_changed`), roots — the client carries `tools/call`, `tools/list`, `prompts/list` and `prompts/get`.
 - Per-tool typing of `structuredContent` (open shape in v1).
 - Dynamic / rotating header values (future `headerProvider:` slot).
 - Bidirectional / long-lived subscriptions exposed as kernel-level abstractions.

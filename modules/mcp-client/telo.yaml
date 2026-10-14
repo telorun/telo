@@ -7,10 +7,10 @@ metadata:
   categories: [Transport, AI]
   description: |
     Talks to Model Context Protocol (MCP) servers: list the tools a server advertises
-    and call one by name with arguments, getting back its content blocks. Connect over
-    Streamable HTTP with managed sessions, or by spawning the server as a child
-    process and speaking JSON-RPC over its stdio — the calls themselves are the same
-    either way.
+    and call one by name, getting back its content blocks, or list its prompts and
+    render one with arguments into messages. Connect over Streamable HTTP with managed
+    sessions, or by spawning the server as a child process and speaking JSON-RPC over
+    its stdio — the calls are the same either way.
 requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
@@ -55,6 +55,8 @@ inputType:
         enum:
           - tools/call
           - tools/list
+          - prompts/list
+          - prompts/get
       params:
         type: object
         additionalProperties: true
@@ -62,10 +64,10 @@ outputType:
   kind: Telo.JsonSchema
   schema:
     # The JSON-RPC success `result` payload, verbatim. Each MCP RPC has its
-    # own result shape (tools/call vs tools/list vs resources/read), so the
-    # abstract stays open at this internal controller-to-controller boundary.
-    # User CEL never reads from this directly — Mcp.Tools.* declare tight
-    # outputTypes for their callers (§3.4, §3.5).
+    # own result shape (tools/call vs tools/list vs prompts/get), so the
+    # abstract stays open. Mcp.ToolsCall / Mcp.ToolsList declare tight
+    # outputTypes for their callers (§3.4, §3.5); a direct prompts/list or
+    # prompts/get call reads this open payload as it is.
     type: object
     additionalProperties: true
 ---

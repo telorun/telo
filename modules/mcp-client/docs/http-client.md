@@ -7,7 +7,9 @@ sidebar_label: Mcp.HttpClient
 
 > Examples below assume `mcp-client` is imported as `McpClient`.
 
-A long-lived MCP client backed by the Streamable HTTP transport. Owns the
+A long-lived MCP client backed by the Streamable HTTP transport. It carries
+`tools/call`, `tools/list`, `prompts/list` and `prompts/get`, each as one
+JSON-RPC POST whose `result` payload is the invocation's result. Owns the
 entire HTTP transport lifecycle:
 
 - **Lazy handshake.** No network I/O at `init()`. The first `invoke()` does
@@ -71,4 +73,6 @@ its `snapshot()`. Notably absent: the cached `Mcp-Session-Id`. Session IDs
 ## Errors
 
 `Mcp.ToolsCall` and `Mcp.ToolsList` re-throw the client's `ERR_MCP_*`
-codes verbatim. See the [README error contract](../README.md#error-contract).
+codes verbatim, and a direct `prompts/list` / `prompts/get` raises them
+itself — a JSON-RPC error answer, which is what a server offering no prompts
+sends for them, is `ERR_MCP_JSON_RPC_ERROR`. See the [README error contract](../README.md#error-contract).

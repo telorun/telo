@@ -1,7 +1,9 @@
-import type { ContentPart } from "@telorun/ai";
 import type { AiToolProviderInstance, ToolDescriptor } from "@telorun/ai";
 import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { ERR_INVOKE_CANCELLED, InvokeError, isCancellationError } from "@telorun/sdk";
+import { InvokeError } from "@telorun/sdk";
+import { liveMcpClient, type McpClientInstance } from "./mcp-client-instance.js";
+import { normalizeMcpContent } from "./mcp-content.js";
+import { untilTurnCancelled } from "./turn-cancellation.js";
 
 /**
  * AiMcp.ToolProvider — bridges an MCP server (any Mcp.Client) to the Ai.ToolProvider
@@ -17,17 +19,10 @@ import { ERR_INVOKE_CANCELLED, InvokeError, isCancellationError } from "@telorun
  *
  * The agent never learns it is MCP; `modules/ai` never depends on `@telorun/mcp-client`.
  */
-interface McpClientInstance {
-  invoke(
-    input: { method: string; params?: Record<string, unknown> },
-    ctx?: InvokeContext,
-  ): Promise<unknown>;
-}
-
 interface McpToolProviderResource {
   metadata: { name: string; module?: string };
   /** Live Mcp.Client instance after Phase 5 injection. */
-  client: McpClientInstance;
+  client: unknown;
 }
 
 interface McpToolListResult {
@@ -40,29 +35,6 @@ interface McpToolCallResult {
   isError?: boolean;
 }
 
-/** MCP content blocks are nearly Ai content parts, but an image block names its MIME
- *  type `mimeType` where the Ai contract uses `mediaType`. Translate the block types
- *  the Ai contract understands (text, image) so a vision MCP tool's image reaches the
- *  model as an image part rather than a JSON-stringified blob. If any block is an
- *  unrecognized kind (resource link, audio, …), hand the whole array back untouched so
- *  no information is dropped — the agent serializes it as before. */
-function normalizeMcpContent(content: unknown): unknown {
-  if (!Array.isArray(content)) return content;
-  const parts: ContentPart[] = [];
-  for (const block of content) {
-    if (!block || typeof block !== "object") return content;
-    const b = block as { type?: unknown; text?: unknown; data?: unknown; mimeType?: unknown };
-    if (b.type === "text" && typeof b.text === "string") {
-      parts.push({ type: "text", text: b.text });
-    } else if (b.type === "image" && typeof b.data === "string" && typeof b.mimeType === "string") {
-      parts.push({ type: "image", data: b.data, mediaType: b.mimeType });
-    } else {
-      return content;
-    }
-  }
-  return parts.length > 0 ? parts : content;
-}
-
 class McpToolProvider implements ResourceInstance, AiToolProviderInstance {
   constructor(
     private readonly resource: McpToolProviderResource,
@@ -70,14 +42,7 @@ class McpToolProvider implements ResourceInstance, AiToolProviderInstance {
   ) {}
 
   private client(): McpClientInstance {
-    const client = this.resource.client;
-    if (!client || typeof client.invoke !== "function") {
-      throw new InvokeError(
-        "ERR_INVALID_REFERENCE",
-        `AiMcp.ToolProvider "${this.resource.metadata.name}": 'client' is not a live Mcp.Client instance — check Phase 5 injection.`,
-      );
-    }
-    return client;
+    return liveMcpClient(this.resource.client, `AiMcp.ToolProvider "${this.resource.metadata.name}"`);
   }
 
   async listTools(): Promise<ToolDescriptor[]> {
@@ -102,7 +67,12 @@ class McpToolProvider implements ResourceInstance, AiToolProviderInstance {
       { method: "tools/call", params: { name, arguments: args } },
       invokeCtx,
     );
-    const result = (await this.untilCancelled(call, name, invokeCtx)) as McpToolCallResult;
+    const result = (await untilTurnCancelled(call, invokeCtx, {
+      subject: `AiMcp.ToolProvider "${this.resource.metadata.name}": MCP tool "${name}"`,
+      log: this.ctx.log,
+      lateFailure: "AiMcp.ToolProvider's cancelled MCP tool call failed after it was abandoned",
+      attributes: { "mcp.tool.name": name },
+    })) as McpToolCallResult;
     if (result?.isError) {
       throw new InvokeError(
         "ERR_MCP_TOOL_ERROR",
@@ -112,48 +82,6 @@ class McpToolProvider implements ResourceInstance, AiToolProviderInstance {
     if (result?.structuredContent !== undefined) return result.structuredContent;
     if (result?.content !== undefined) return normalizeMcpContent(result.content);
     return result;
-  }
-
-  /** Settle with `call`, or reject with `ERR_INVOKE_CANCELLED` the moment the turn
-   *  is cancelled. An abandoned call that later fails for another reason is
-   *  logged, since nothing is left waiting to receive it. */
-  private untilCancelled(
-    call: Promise<unknown>,
-    name: string,
-    invokeCtx: InvokeContext | undefined,
-  ): Promise<unknown> {
-    const token = invokeCtx?.cancellation;
-    if (!token) return call;
-    return new Promise((resolve, reject) => {
-      let abandoned = false;
-      const unsubscribe = token.onCancelled((reason) => {
-        abandoned = true;
-        reject(
-          new InvokeError(
-            ERR_INVOKE_CANCELLED,
-            `AiMcp.ToolProvider "${this.resource.metadata.name}": MCP tool "${name}" was cancelled (${reason ?? "no reason given"}).`,
-          ),
-        );
-      });
-      call.then(
-        (value) => {
-          unsubscribe();
-          resolve(value);
-        },
-        (err: unknown) => {
-          unsubscribe();
-          if (!abandoned) {
-            reject(err);
-          } else if (!isCancellationError(err)) {
-            this.ctx.log.warn(
-              "AiMcp.ToolProvider's cancelled MCP tool call failed after it was abandoned",
-              { "mcp.tool.name": name },
-              { error: err },
-            );
-          }
-        },
-      );
-    });
   }
 
   snapshot(): Record<string, unknown> {
