@@ -1,6 +1,0 @@
-modules:
-  modules/test: Added
-body: "Test.Suite.env: environment variables every test manifest runs with, evaluated at
-  startup so a value may be computed from another resource, such as the address of a
-  database the suite's application started. It wins over the forwarded host environment
-  and the tests' env files."

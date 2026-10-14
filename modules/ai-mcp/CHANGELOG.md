@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.0 - 2026-10-14
+### Added
+* AiMcp.PromptToolProvider offers every prompt an MCP server lists to an Ai.Agent as a tool. It reads every page of prompts/list, at most 100 pages, makes each prompt argument a string parameter (required ones listed, nothing else allowed), and a call renders the prompt with prompts/get and returns every message content block in order, normalised as AiMcp.ToolProvider normalises tool content. A malformed list or render, or a listing that has not ended after 100 pages, raises ERR_MCP_PROTOCOL, and a cancelled turn abandons the call with ERR_INVOKE_CANCELLED.
+
 ## 0.21.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

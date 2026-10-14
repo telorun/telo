@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.0 - 2026-10-14
+### Added
+* The agent reads the hub's authoring guides: every prompt the hub serves is a guide_<name> tool, and the agent calls the guide covering its work before writing that work's first file. Its system prompt no longer carries the UI, library-design and container-test how-to those guides hold. Until mcp-client and ai-mcp publish prompt support, the application imports Mcp and Run, and the chat library Mcp, AiMcp, Ai, OpenAI, Run, Stream and HttpClient, from the repository, re-pinned together after release; meanwhile its image cannot be built and it must run against a hub that serves prompts.
+
 ## 0.23.0 - 2026-10-13
 ### Added
 * The agent spends far less context finding modules. A LIBRARY INDEX message leads every turn, one line per standard-library module, read from the hub and held for an hour. A new find_kinds tool takes needs in plain words: a second, low-effort agent searches the hub and names kinds, and the turn receives only that choice and the kinds' definitions, never the search results; its token usage counts in the turn's own. The agent reads definitions with the hub's get_kinds tool instead of whole module manifests, and no longer calls search_resources or get_module_manifest itself. New variables hubPublisher (default ghcr.io/telorun) and discoveryMaxSteps (default 6) on the chat library. Breaking for importers of the chat library: it takes the hub's MCP client as a required resources input named hub. Requires a hub that serves get_kinds and list_libraries.
