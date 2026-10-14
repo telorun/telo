@@ -2,7 +2,11 @@
 
 Loaded when working under `apps/hub/`. Repo-wide rules live in the root `CLAUDE.md` (including how authors write `metadata.description` and `metadata.categories`).
 
-`apps/hub/` — federated discovery hub (declarative Telo app): tracks registered module refs across transports via the `telo module versions|digest|manifest` CLI verbs, caches each version's `telo.yaml` to the static manifest bucket (`manifests.telo.sh`, the editor's browser-safe OCI read path, keys from the analyzer's `manifestCacheKey` helper), indexes one row per `(module-version, resource-kind)`, and serves `/search/*`, `/refs`, `/module/versions`, `/modules` + the `search_resources` MCP tool.
+`apps/hub/` — federated discovery hub (declarative Telo app): tracks registered module refs across transports via the `telo module versions|digest|manifest` CLI verbs, caches each version's `telo.yaml` to the static manifest bucket (`manifests.telo.sh`, the editor's browser-safe OCI read path, keys from the analyzer's `manifestCacheKey` helper), indexes one row per `(module-version, resource-kind)`, and serves `/search/*`, `/refs`, `/module/versions`, `/modules` + the `search_resources` MCP tool, and three authoring guides as MCP prompts.
+
+## Authoring guides
+
+The MCP endpoint serves `build_ui`, `write_integration_tests` and `design_library` as argument-less prompts, one inline `Mcp.Prompts` bundle on `mcpHttp`, each answering one `user` message whose text is `guides/<name>.md` (`!include-text`, so a missing file is `INCLUDE_FILE_NOT_FOUND` at check and load, and the image's build stage copies `guides/`). **Each guide stays at most 32768 UTF-8 bytes** — the authoring agent's default `maxToolResultBytes`, so it arrives whole — which `tests/e2e/mcp-prompts.yaml` asserts. **A guide names no import pin and no version number**: it says how to design and compose, and sends its reader to `get_kinds` for exact schemas and import lines, so it does not go stale with a release. Guides are written for any model authoring manifests and name no tool of one particular client.
 
 ## Categories
 

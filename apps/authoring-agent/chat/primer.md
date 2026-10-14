@@ -93,6 +93,18 @@ an inline `{ kind, ...config }` written at a reference slot. Both are
 `ABSTRACT_KIND_INSTANTIATED` at `telo check`, and the message lists the
 implementations reachable from your imports.
 
+Two `Telo.Definition` rules hold whatever the design. A templated kind — one
+with `resources:` and a dispatch key — that starts several of its entries
+lists them as `targets: [!ref a, !ref b]`; writing `targets:` beside `run:` is
+`TEMPLATE_TARGETS_WITH_RUN`, and `targets:` on a kind whose capability is not
+`Telo.Service` or `Telo.Runnable` is `TEMPLATE_TARGETS_CAPABILITY`. Inside
+such a body `self` (the instance's configuration) may be mixed with a
+call-time name in one expression (`!cel "self.table + ':' + inputs.id"`). And an
+`extends` child WITHOUT `base:` that redeclares a field it inherits changes
+only that field's schema (it may narrow it): the parent still publishes its
+own reading of the field, so `resources.<child>.<field>` reads what the parent
+publishes there.
+
 A kind that wraps a REGION OF WORK (a transaction, a durable run, a batch)
 carries the work itself rather than a `!ref` to something that holds it —
 point a step array at the shared grammar and the whole step vocabulary comes
@@ -1596,193 +1608,7 @@ decoder's limits:
             application/json:
               body: { error: !cel "error.data.limit" }
 
-## User interfaces — the `ui` and `ui-react` modules
-
-An admin screen is declared in the manifest, not written as a frontend. `ui`
-is the vocabulary; `ui-react` serves it. Import both, plus `http-server`. Both
-need telo 0.112.0 or newer (each declares `requires: telo: ">=0.112.0"`).
-
-**Nodes** are plain data with a `type`: `box` / `stack` / `columns`
-(`children:`), `text` / `badge` (`text:`), `link` (`text:`, `href:`), `image`
-(`src:`, `alt:`), `svg` (`markup:`, `alt:`) and `composite` (`ref:` — a `!ref`
-or an inline declaration). Every node takes `style:` (one or a list of
-`heading`, `subheading`, `muted`, `strong`, `accent`, `danger`, `warning`,
-`success`) and `when:` (boolean). There are no layout fields and no button
-node: a button that does something is a `Ui.Action` composite.
-
-An address inside the application — a `link`'s `href`, an `image`'s `src`, a
-page's `path`, a `basePath` — is APP-RELATIVE: `/` followed by anything except
-`/` or `\`, with no control character. `/`, `/done`, `/a//b` are valid; `//host`
-and `/\host` are refused (a browser reads them as another host). `href` may
-instead start `https://`, `http://` or `mailto:`, and `src` `https://` or
-`http://`.
-
-**Composites** are resources placed through a `composite` node:
-
-- `Ui.Collection` — `query: { filters: [{ property, operator }], sort:
-  [{ property }] }`, all three keys REQUIRED (`[]` for none): what a
-  collection's list accepts. `operator` is `eq | contains | gt | gte | lt | lte
-  | in`. Every table and filter bar names one as `collection:`.
-- `Ui.Table` — `model:` (a `Telo.JsonSchema`, the row), `collection:` (required),
-  `source: { basePath, filters? }` (each fixed filter a property the collection
-  declares with `eq`), optional `columns:` (each `{ header?, value: !cel "row.x" }` or
-  `{ header?, cell: <Ui.Component> }`; omitted → one per model property),
-  `pageSize`, `rowStyle`, `create:` / `edit:`, `delete: true`.
-  A column sorts only where the collection's `query.sort` lists its property.
-  `create:` and `edit:` are OBJECTS — `{ form: <Ui.Form>, surface?, afterSubmit?,
-  unsaved? }` — never a bare form (`create: !ref f` is refused). `surface:` is
-  where the form opens, a KIND chosen by `kind:` (`!ref` or inline; omitted → a
-  `Ui.Dialog`): `Ui.Dialog` (`size`, `modal`, `dismiss`, `address`, `compact`),
-  `Ui.Drawer` (plus `side`), `Ui.Popover` (`side`, `align`, `dismiss`,
-  `compact`), `Ui.InlineSurface` (`compact`), `Ui.Panel` (`side`, `size`,
-  `dismiss`, `address`, `compact`), `Ui.PageSurface` (`address`, required). A
-  key a kind does not list is refused. `address: { name }` puts the open form
-  in the page's address — give `create` and `edit` the SAME name; `compact:` is
-  the `Ui.Dialog` / `Ui.Drawer` used on a narrow viewport, itself with no
-  `address` and no `compact`. `afterSubmit:` is `close` (default) | `keep`,
-  and on `create` also `again`; `unsaved:` is `confirm` (default) | `discard`.
-  `rowActions: [{ action: <Ui.Action>, inputs, confirm?, prompt? }]` puts a button per
-  entry on every row, before edit and delete, showing the action's `label`.
-  `inputs:` (REQUIRED, at least one) is the record sent, by input property: a
-  `!cel "row.<property>"` chain or a fixed value — it must bind EVERY property
-  the action's `inputModel` requires, with matching types (`CONTRACT_INPUTS_MISMATCH`
-  for an unknown key, a missing required input or a mistyped literal;
-  `CEL_TYPE_ERROR` for a chain of the wrong type). `confirm:` is a question
-  asked first; omitted, a press runs at once. `prompt: true` opens a dialog
-  (titled with `confirm`, else the action's label) asking for the action's
-  fields that `inputs` does not bind — a reason, a note — and sends them with
-  the row's values; such a field is OPTIONAL in the `inputModel`, since `inputs`
-  still binds every required one. An action used in a row must
-  declare NO `lists` (`UI_ROW_ACTION_DRAWS_LISTS`); on success the tables over
-  the same `basePath` reload.
-- `Ui.Form` — `model:`, `source: { basePath }`, optional `fields: [{ property }]`
-  (omitted → one per ENTERABLE property: a scalar, or a list of scalars). A
-  list property (`type: array`) whose `items` declare `enum` is entered as a
-  multi-choice group; any other scalar `items` as typed tags, each item sent
-  in the items' type. There is no `control:` key on a form field — the model
-  decides. An object or a list of objects gets no field, and listing one in
-  `fields` is refused (`UI_FORM_FIELD_UNSUPPORTED`).
-- `Ui.Action` — a button that runs an operation, with a form for what it takes
-  and tables for what it answers: `inputModel:` (REQUIRED, a `Telo.JsonSchema`;
-  one with no properties is a bare button), `outputModel:`, `source: { path }`
-  (REQUIRED, app-relative URL — NOT a `!ref` to a handler, and there is no
-  `method:`), `label:` (REQUIRED), optional `fields: [{ property }]` (as a
-  form's; every REQUIRED input must be enterable and listed —
-  `UI_ACTION_REQUIRED_INPUT_NOT_ENTERED`), optional `lists:`. The URL must
-  answer `POST` with a JSON body: any 2xx whose body is a JSON object valid
-  against `outputModel` (read only when `lists` is declared), a 400 with the
-  request-validation envelope (`details[].path` marks the field), 401 / 403,
-  or a failure. Declare the route over the SAME two shapes the action names;
-  an `Http.Api` route's `request.schema.body` takes the JSON Schema INLINE (a
-  `!ref` to a `Telo.JsonSchema` there checks clean and fails at boot), so the
-  shape is written out there and must be kept equal to `inputModel`.
-  Each `lists` entry is one table drawn from the answer: `{ heading?, rows:
-  !cel "result.<list>", columns: [{ header?, value }] }`, where `value` is
-  `!cel "row.<member>"`, `!cel "result.<member>"` or a fixed value — plain
-  chains only. `result` is typed from `outputModel` (with none, any
-  `result.x` is `CEL_UNKNOWN_FIELD`); `row` is one element of THAT entry's
-  `rows`, and `telo check` types it only where the list's `items` are inline
-  in the answer model or one `!ref` away. A header defaults to the member's
-  `title`, else its name, and a `format: uri` / `uri-reference` member is a
-  link; both follow the member through any reference (`!ref`, `$ref:
-  "#/$defs/X"`, a shape reached through a shape), as does a `Ui.Table`
-  column over a nested member (`row.owner.site`). A reference there that
-  names nothing passes `telo check` and fails when the page is first read
-  (`ERR_REF_UNRESOLVED`).
-- `Ui.Filters` — `model:`, `collection:` (required), optional `fields:
-  [{ property, operator }]` (both required, each a pair the collection declares;
-  omitted → one control per filter the collection declares), `content:` (one
-  node; every table inside obeys the filters). No operator is implied by a
-  property's type, and no two fields share a property AND an operator. A field
-  also takes `pinned: true` (stays outside whatever the bar folds into; only
-  meaningful when something folds or `show: chosen`), `control:` — `auto`
-  (default) | `select` | `options` (both need an `enum` or a boolean) | `toggle`
-  (a boolean with `eq`; it holds true or nothing) | `slider` (a number/integer
-  declaring `minimum` AND `maximum`, with `eq` or a comparison) | `tags`
-  (needs `in`) | `none` (drawn nowhere; set by its default or a preset) — a
-  nullable type (`[boolean, "null"]`) counts as its plain type here — and
-  `default:` (one value of the property's type, or a LIST under `in`; never
-  `false` for a filter entered with a `toggle`, which holds true or nothing —
-  the same for a preset value). `presets: [{ label, values:
-  [{ property, operator, value }] }]` are one exclusive choice over pairs the
-  bar shows, labels unique. `policy:` (all optional, any combination valid):
-  `show: all | chosen`, `controls: direct | chips`, `apply: commit | typing |
-  button`, `summary: none | chips`, `placement:` — a KIND chosen by `kind:`
-  (`!ref` or inline; omitted → `Ui.AbovePlacement`): `Ui.AbovePlacement`
-  (`compact`), `Ui.AsidePlacement` (`side: start | end`, `compact`),
-  `Ui.CollapsiblePlacement` (`open`), `Ui.OverlayPlacement` (`surface:`
-  REQUIRED — a `Ui.Dialog` / `Ui.Drawer` / `Ui.Popover` only); `compact:` is a
-  `Ui.CollapsiblePlacement` or `Ui.OverlayPlacement` — and `state: { key,
-  address?, store? }`: `key` letters and digits, and AT LEAST ONE of `address:
-  true` (filter values in the page's address) and `store:` (`{ kind:
-  Ui.LocalStore }` or `{ kind: Ui.SessionStore }`, no keys); omitted → kept in
-  memory only. Bars sharing a `key` share their state. Under `apply: button`
-  only what is typed or picked in a control waits for Apply; a preset, Reset
-  and a summary chip's removal act at once. Apply and Reset stay
-  outside whatever folds. A folding placement with no unpinned, drawn filter
-  has nothing to fold and draws no toggle.
-- `Ui.Component` — `component: !ref <Alias>.<export>`, `props:`, `model:`.
-- `Ui.View` — `content:` (one node), for a reusable section.
-- `Ui.Theme` — `tokens:` (`color.accent`, `radius.md`, `font.body: !ref <Font.Family>`, …).
-
-`row.<property>` in a `value:`, a `props:` entry or a style rule's `by:` is an
-ACCESSOR: a plain chain only — no calls, operators or indexes. A string whose
-model property declares `format: uri` or `uri-reference` is drawn as a LINK in
-a table cell and in an action's list — give a download URL that format; the
-value must be app-relative (`/files/a.pdf`, resolved under the application's
-mount) or start `https://`, `http://` or `mailto:`, else it shows as text. A
-link is followed INSIDE the application only when its path is a declared
-page; any other app-relative address is loaded by the browser, so serve a
-downloadable file from a mount beneath the application's (`Http.Static` at
-`/admin/files` for an application at `/admin`) and link it as `/files/<name>`. A style that
-depends on data is a rule, never an expression:
-`rowStyle: { by: !cel "row.status", cases: { overdue: danger }, default: muted }`.
-
-A `source.basePath` must speak the collection contract: `GET` with `limit`,
-`cursor`, `sort` and `<property>[.contains|.gt|.gte|.lt|.lte|.in]=` filters,
-answering `{ rows, total, next }`; `POST` to it, `PUT` / `DELETE` to
-`<basePath>/<rowKey>`. `PUT` REPLACES the row: its body is a whole record, and
-a property left out of it is cleared. An edit form therefore sends back what
-the row held, with each field's entered value over it and an emptied field left
-out. A row read is a record valid against the model: a property with no value
-is left out of it (`null` only where the model admits `null`), so it can be
-sent back. A write body holds only properties that have a value, in the model's JSON
-types: a `null`, or a value of another JSON type, at a typed property is a 400
-naming it. A refused body is a 400 whose `details[].path` is the property's
-name; the form marks that field.
-
-**The application** is a mount:
-
-```yaml
-kind: UiReact.App
-metadata: { name: admin }
-title: Todo Admin
-pages:
-  - path: /
-    title: Todos
-    children:
-      - { type: text, text: Open work, style: heading }
-      - { type: composite, ref: !ref todos }
-```
-
-List it under `Http.Server.mounts` (`- { path: /, mount: !ref admin }`), after
-the API mounts. Inside `pages[].children`, a node's `when:` and its text
-values may read `request.headers` (lower-case names; test with `in` first) and
-`request.ip`, per request. The tree's structure and every `ref:` stay literal —
-a computed `children:` or `ref:` is `REF_SLOT_COMPUTED`. `theme:` is one
-`Ui.Theme` or a list of `{ theme, when? }`.
-
-**Manifests wire no events.** There is no `onClick` and no handler list. A
-table's buttons, a form's submit and a filter's change are built in, and an
-operation is run by declaring a `Ui.Action` (on a page, or in a table's
-`rowActions`). A custom React
-component (shipped by a library as a browser entry with `abi: ui_react-1`,
-published with `Ui.ComponentExport`) gets navigation, requests and refresh from
-the host — `useHost()` from `@telorun/ui-react` gives `location`, `navigate`,
-`href`, `fetch`, `notifyChanged`, `onChanged` — and receives only its declared
-`props`.
-
-## A REST API and its admin screen over a table — the `crud` module
+## A REST API over a table — the `crud` module
 
 `Crud.Resource` mounts list / read / create / replace / delete over one table:
 `connection:` (a `Sql.Connection`), `singular:`, `plural:`, `model:` (a
@@ -1838,57 +1664,6 @@ request-validation envelope with `location: "body"`, `path` the property
 
 Values come back in the model's declared JSON types on every route: a
 `boolean` property is `true` / `false` (also on SQLite) and is written as one.
-
-**`Crud.Ui`** is the whole admin screen — filter bar, sortable paged table,
-create / edit form, confirmed delete — from two required fields:
-`model:` (the SAME model the `Crud.Resource` has) and `basePath:` (where the
-resource is mounted — an app-relative path, as above). It does not reference
-the resource. Place
-it on a `UiReact.App` page:
-
-```yaml
-- type: composite
-  ref: { kind: Crud.Ui, model: !ref todoModel, basePath: /api/todos }
-```
-
-Three OPTIONAL keys say how the screen behaves; none needs an eject:
-
-- `filters:` — the bar's whole policy, exactly what `Ui.Filters.policy` takes
-  (`show`, `placement`, `controls`, `apply`, `summary`, `state`).
-- `create:` — `{ surface?, afterSubmit?, unsaved? }`: where the create form
-  opens, `close` | `again` | `keep` after a save, `confirm` | `discard` for
-  unsaved input.
-- `edit:` — the same three, `afterSubmit` being `close` | `keep` only.
-
-```yaml
-kind: Crud.Ui
-model: !ref todoModel
-basePath: /api/todos
-filters: { show: chosen, summary: chips, state: { key: todos, address: true } }
-create: { surface: { kind: Ui.Drawer, side: end }, afterSubmit: again }
-edit: { surface: { kind: Ui.Panel, address: { name: todo } } }
-```
-
-Variants are KINDS: a surface, a placement and a store are `ui` resources
-chosen by `kind:` (inline or `!ref`) — import `ui` to name one — never a
-`type:` or a mode string. `Crud.Ui` has no `form:` key in `create` / `edit`
-(it generates the forms) and no default of its own: each key is passed on as
-written, so a key left out takes the TABLE's or the BAR's default (a dialog
-that closes after a save and confirms unsaved input; every filter on show
-above the table, state in memory), and `create: {}` equals no `create`.
-
-When the screen needs what `Crud.Ui` has no key for — chosen columns, a custom
-cell, a row style, fewer filters, a filter's `pinned` / `control` / `default`,
-`presets`, chosen form fields — replace
-it with what it expands into and edit that: two `Ui.Form`s — one over the
-model's `create` shape, one over its `update` shape — a `Ui.Table` over its
-`list` shape with `rowKey: id`, `create: { form: !ref <the create form>, …what
-create: held }`, `edit: { form: !ref <the edit form>, …what edit: held }` and
-`delete: true`, and a `Ui.Filters` over its
-`read` shape whose `content:` is the table and whose `policy:` is what
-`filters:` held (no `policy:` when it was not written). All four share the `basePath`, and
-the table and the bar take `collection: !ref <the Crud.Model>` (a `Crud.Model`
-is a `Ui.Collection`).
 
 ## Web pages — the `html` module
 
@@ -2388,142 +2163,6 @@ client credentials. Grants are addressed by a per-call `key`, so one resource
 serves many users. Do not hand-roll consent URLs, code exchange or refresh
 logic — and never ask a user to paste a refresh token into an environment
 variable.
-
-## Building a library: composition vs. inheritance
-
-THREE WORDS, THREE THINGS. A STARTER is a working manifest the editor copies
-ONCE into the user's workspace (the `starters/` gallery); after the copy it is
-the user's own code. A BLUEPRINT is an importable library whose exported kind
-is a templated definition describing a whole application; an app imports it
-and declares one resource of that kind. "TEMPLATE" means only a definition's
-BODY — the `resources:` plus dispatch verb described below — never a starter
-or a blueprint.
-
-Two ways to author a `Telo.Definition` WITHOUT a controller — pick by intent:
-
-- TEMPLATED COMPOSITION — your kind assembles SEVERAL existing kinds. Declare
-  internal `resources:` and delegate one dispatch verb (`invoke:` / `provide:`
-  / `run:` / `mount:`); `inputs:` / `result:` are top-level siblings. Each
-  dispatch verb takes a `!ref` to a sibling entry (`invoke: !ref body`).
-  `provide:` reaches whatever its target offers — an invocable entry is invoked
-  (with `inputs:`, when written), an entry that is itself a provider is read
-  through its own `provide()` — and `result:` applies to either. Do not write
-  `inputs:` beside a provider target: it takes none, and the read is refused.
-
-  EACH `resources:` ENTRY IS AN ORDINARY DECLARATION OF ITS OWN KIND. Write it
-  exactly as you would at the top level, and every name that kind binds is in
-  scope where it declares it: `inputs.<name>` inside a `Run.Sequence` step's
-  `inputs:`, `item` / `index` inside a `Run.Iteration` or `Run.Projection`
-  body, `request` inside an `Http.Api` route, `error` inside a `catch:`. On top
-  of those, `self` is in scope THROUGHOUT the body — that is how the body reads
-  the configuration your kind was given (`!cel "self.table"`), and it may be
-  mixed with a call-time name in one expression. A body may be as many
-  dispatches as the work needs; it is not limited to one.
-
-  NAME EVERY ENTRY WITH A LITERAL, and name the dispatch target with a `!ref`
-  to one (`invoke: !ref body`). That is the ONLY spelling: a bare string or a
-  `{ kind, name }` object at a dispatch slot is `INVALID_REFERENCE_FORM`, the
-  same code that removed form gets everywhere else in Telo, and a `!ref`
-  naming no entry is `TEMPLATE_DISPATCH_UNKNOWN`. Do NOT compose an entry's
-  name from `self` (`name: !cel "self.name + '-query'"`) — every instance of
-  your kind owns its children in a child context of its own, so two instances
-  never collide on a literal name, and a `!ref` is looked up verbatim, so a
-  CEL-named entry is one nothing can name. It is refused
-  (`TEMPLATE_ENTRY_NAME_DYNAMIC`). Reference slots INSIDE an entry follow the
-  same rule: `!ref` a sibling entry or a resource of your own module.
-
-  A SERVICE OR RUNNABLE KIND THAT STARTS MORE THAN ONE ENTRY lists them in
-  `targets:` instead of `run:` — `targets: [!ref resumer, !ref server]`, each
-  a `!ref` to an entry, started in order when an instance runs (the template's
-  counterpart to an Application's boot sequence). `run:` starts exactly one
-  entry, so a server beside a poller, or a schema step before the server that
-  reads the table, needs `targets:`. Never both on one definition
-  (`TEMPLATE_TARGETS_WITH_RUN`), and never on an invocable, provider or mount
-  kind (`TEMPLATE_TARGETS_CAPABILITY`). A field your instance leaves out reads
-  as its schema `default:` through `self`.
-
-  A reference your kind's INSTANCE holds reaches an entry only through a bare
-  `!cel "self.<path>"` — one slot (`connection: !cel "self.connection"`) or a
-  whole value holding several (`routes: !cel "self.routes"`, each route's
-  `handler` a reference the instance declared). Never build such a value with
-  CEL (`self.items.map(i, {'handler': i.handler})`): CEL values are data, so
-  the reference is lost (`REF_SLOT_COMPUTED`, and `ERR_REF_SLOT_COMPUTED` at
-  boot). Declare the field on your kind already shaped as the entry expects,
-  and forward it whole. A bare path may CONTINUE PAST a reference slot of your
-  kind into the resource it names (`model: !cel "self.model.schemas.list"`,
-  where `model` references a resource whose own `schemas.list` is a reference):
-  the entry receives what that resource was declared with there, references
-  intact, and `telo check` checks it as the entry's field when the referenced
-  resource is declared in the same module as the one using your kind. The same
-  rule holds OUTSIDE a body: an expression
-  (`!cel`, `!interpolate`) at or above a reference slot in any field the kind
-  evaluates — at creation (a `Telo.Provider`, whose whole root is evaluated
-  once, or a field marked `x-telo-eval: compile`), per call
-  (`x-telo-eval: runtime`), or per request in a field a CEL context covers (an
-  `Http.Api` route's `handler`, the list above a route's
-  `returns[].content.*.encoder`) — is refused too. Write such a slot as `!ref`;
-  a plain value beside or below the slot may still be computed.
-
-  A FORWARDED VALUE IS CHECKED AS THE ENTRY'S OWN FIELD: what a user of your
-  kind writes there is validated against the entry kind's schema, reference
-  slots and CEL contexts (`request.*` in a route's `inputs:`, `result.*` in
-  its `returns:`), and reported on the user's own line. So in your kind's
-  `schema:` declare only what it adds — titles, the fields it requires — and
-  do NOT restate the entry's constraints or `x-telo-context` blocks. Keep
-  every REFERENCE SLOT beneath the forwarded value (`handler:` with its
-  `x-telo-ref`): a reference is resolved where the user declared it only
-  through your kind's slot. A declaration that contradicts the entry's field
-  is `TEMPLATE_FORWARD_INCOMPATIBLE`.
-- KIND INHERITANCE — your kind is ONE existing kind, SPECIALIZED (a
-  preconfigured client, a narrowed variant). `extends:` that kind (any kind,
-  concrete or abstract — alias form `Alias.Kind`) and omit `controllers:`. The
-  child inherits the parent's controller, capability, and behavior, and IS a
-  parent instance (substitutable at any `!ref` slot the parent fits,
-  transitively). Map the parent's config with `base:` — a top-level sibling
-  object of CEL over `self` (typed from the child's own `schema:`), evaluated
-  once to build the parent's config. With `base:`, the child's author surface
-  is its OWN `schema:` (parent config is internal). Capability is INHERITED and
-  IMMUTABLE — omit `capability`, or restate it identically; a different one is
-  an error. WITHOUT `base:` the child is a pure additive extension: its author
-  surface is `merge(parent, own)`, its whole config forwards to the parent's
-  controller, and fields it declares that the parent NEVER DID publish over the
-  parent's reading — so `resources.<child>.<field>` reads them. Redeclaring an
-  inherited field only narrows its schema; the parent's reading of it stands. A
-  `base:`-form child's own fields do NOT publish, being construction inputs
-  consumed by the mapping — and, for the same reason, they are COMPILE-EVAL
-  without annotation: `base:` reads them once at creation, so an expression
-  written at one is evaluated then, against the startup scope. Do not annotate
-  them `x-telo-eval`, and do not read observed state (`resources.x.status.…`)
-  there — nothing has run yet. NEVER declare `base:` alongside `resources:`,
-  `controllers:` or a dispatch slot: a body makes the kind a TEMPLATE, on which
-  `base:` is never evaluated, and the pair is refused
-  (`BASE_WITH_TEMPLATE_BODY`). Pick one shape. Example — a GitHub client
-  library:
-
-    kind: Telo.Definition
-    metadata: { name: GithubClient }
-    extends: Http.Client            # concrete parent; Provider inherited
-    schema:
-      type: object
-      required: [token]
-      properties: { token: { type: string } }
-    base:
-      baseUrl: https://api.github.com
-      headers:
-        Authorization: !cel "'Bearer ' + self.token"
-    ---
-    kind: Telo.Definition
-    metadata: { name: SearchRepos }
-    extends: Http.Request           # concrete Invocable parent
-    schema:
-      type: object
-      required: [client, q]
-      properties:
-        client: { x-telo-ref: { kind: Http.Client, use: dependency } }
-        q: { type: string }
-    base:
-      client: !cel "self.client"
-      inputs: { url: /search/repositories, method: GET, query: { q: !cel "self.q" } }
 
 ## Application / Library fields
 
@@ -3243,6 +2882,19 @@ to say.
   reference as a bare string or a `{ kind, name }` object.
 - A plain object at a reference slot is an INLINE definition:
   `{ kind: Some.Kind, ...config }` (note: no `name`).
+- A reference slot is never COMPUTED. Wherever a field is evaluated — a
+  Provider's config, a field marked `x-telo-eval: compile` or `runtime`, a
+  per-request field such as an `Http.Api` route's `handler:` — a `!cel` or
+  `!interpolate` AT the slot, or on any object or list that CONTAINS it, is
+  `REF_SLOT_COMPUTED` (`ERR_REF_SLOT_COMPUTED` at boot): an expression yields
+  data, and the reference is lost. Write the slot as `!ref`; a plain value
+  beside or below it may still be computed. The one form that carries a
+  reference through is a bare `!cel "self.<path>"` inside a templated kind's
+  body, which hands over what the instance was given. Such a path may go on
+  past a reference into what that resource was declared with
+  (`!cel "self.model.schemas.list"`); `telo check` checks the value there as
+  the entry's field only when the referenced resource is declared in the same
+  module as the resource using the kind, and leaves it unchecked otherwise.
 - Declare a resource INLINE when it is used EXACTLY ONCE, and give it its own
   document only when something needs to name it: it is referenced more than
   once, listed in `targets:`, or exported. A named single-use resource makes
@@ -3598,7 +3250,8 @@ app — do not go looking for a kind that "loops" or "sequences" as if it were a
 third-party capability. `Run.Sequence` runs ordered steps with `if` / `while` /
 `switch` / `try`; `Run.Loop` repeats a body while a CEL condition holds, seeing
 `iteration` (0-based, an integer — `iteration + 1` needs no cast) and
-`previous`; `Run.Iteration` / `Run.Projection` walk a collection; `Run.Value` /
+`previous`; `Run.Iteration` / `Run.Projection` walk a collection, their body
+seeing each element as `item` and its 0-based position as `index`; `Run.Value` /
 `Run.Choice` compute. A recurring job is `Schedule.Interval` in `targets:`; a
 loop that paces itself is `Run.Loop` with a `Timer.Delay` step. Neither needs a
 counter resource — the loop already carries one.
@@ -3668,6 +3321,16 @@ Workflow for the capabilities you need — ALL of them together, in one turn:
   4. Add resources of `kind: Alias.<KindName>` using ONLY schema-declared
      fields; wire refs/values with `!ref` and `!cel` per the rules above.
   5. List the runnables/services to start in the Application's `targets:`.
+
+## Guides — the `guide_…` tools
+
+Every tool whose name starts `guide_` is a how-to guide the hub serves, one
+per subject, and its description says which work it covers. It takes no
+arguments and returns the guide whole. Before you write the FIRST file of work
+a guide covers, call that guide — once per turn, not again for each file —
+and where it and your memory disagree, follow the guide: it is kept current
+with the modules, your memory is not. A guide shows how the pieces fit; the
+exact fields and import lines still come from `get_kinds`.
 
 ## Workspace layout — where files go
 
@@ -3751,21 +3414,24 @@ instead of starting a second copy beside it.
 When you build something new, work in this order. It is not a style
 preference: each step is what makes the next one checkable.
 
-1. **Split the work into FEATURE LIBRARIES first.** One `Telo.Library` per
+1. **Read the guide that covers the work.** When a `guide_…` tool's
+   description covers what you are about to build, call it before anything
+   else, so the decisions below are made the way it describes.
+2. **Split the work into FEATURE LIBRARIES first.** One `Telo.Library` per
    domain area, each in its own directory under the app, each declaring
    `exports:`. Decide this before writing any behaviour — it is the decision
    everything else rests on, and a single `telo.yaml` holding the whole app
    cannot be tested at all.
-2. **Write the tests next**, against those exports, in `apps/<slug>/tests/`.
+3. **Write the tests next**, against those exports, in `apps/<slug>/tests/`.
    Writing them before the implementation is what forces the exported surface
    to be usable — the test is its first consumer — and a test written
    afterwards tends to assert whatever the implementation happened to do.
-3. **Implement the libraries** until the behaviour is there.
-4. **Wire the application**: `apps/<slug>/telo.yaml` — imports, ports,
+4. **Implement the libraries** until the behaviour is there.
+5. **Wire the application**: `apps/<slug>/telo.yaml` — imports, ports,
    variables / secrets, the server, `targets:`, and nothing else.
-5. **Run the suite** and fix what fails, until it is green.
+6. **Run the suite** and fix what fails, until it is green.
 
-Steps 2 and 3 interleave, and they have to: a test cannot pass `telo check`
+Steps 3 and 4 interleave, and they have to: a test cannot pass `telo check`
 against a library that does not export the resource yet, and you must never
 leave a file failing its check. So declare each library with the resources it
 exports, then write the test against them, then fill those resources in. What
@@ -3908,65 +3574,6 @@ reads end of input and exits on its own, which is how a clean exit after EOF is
 asserted. There is no `stdin:` field on `App.Instance`, and no dialogue-script
 kind: a fixed script cannot answer a question that only appears once the
 previous one is answered.
-
-### Starting a real service the test needs
-
-When a test needs a real database, queue or server — something a mock cannot
-stand in for — the test STARTS IT ITSELF as a disposable container, with the
-`container` module and an engine backend (`docker`), so the same file runs
-alone, in a suite and in a runner session with nothing set up beforehand.
-Bind the engine to the two environment variables a runner sets, and leave the
-local defaults:
-
-    variables:
-      engineUrl:
-        env: TELO_HOST_CONTAINER_ENGINE_URL
-        type: string
-        default: unix:///var/run/docker.sock
-    secrets:
-      engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
-    ---
-    kind: Docker.Engine
-    metadata: { name: docker }
-    endpoint: !cel "variables.engineUrl"
-    token: !cel "secrets.engineToken"
-    ---
-    kind: Container.Instance
-    metadata: { name: database }
-    engine: !ref docker
-    image: pgvector/pgvector:pg18
-    user: "999:999"
-    env: { POSTGRES_PASSWORD: postgres }
-    ports: [5432]
-    readiness:
-      kind: Container.LogReady
-      text: database system is ready to accept connections
-      times: 2
-    lifetime: 2h
-    ---
-    kind: Container.Port
-    metadata: { name: databasePort }
-    container: !ref database
-    port: 5432
-    ---
-    kind: Postgres.Connection
-    metadata: { name: db }
-    connectionString: !cel >-
-      'postgres://postgres:postgres@' + resources.databasePort.status.host + ':' +
-      string(resources.databasePort.status.port) + '/postgres'
-
-`Container.Instance` and `Container.Port` are Providers: the container is
-pulled, started and awaited in `init()`, the port's address is its STATUS, and
-a Provider's status is readable in a startup field such as `connectionString`
-— the read orders the connection after the container. A `port` the container
-does not list under `ports` is a `telo check` error. The container is removed
-with its volumes when the test ends, and `lifetime` is when a container left
-by a killed process may be swept, so set it above the longest the test runs.
-Declare these at the top of the file (or import them), NEVER in a
-`Run.Sequence`'s `with:` — a scoped resource's startup fields cannot read a
-scoped sibling's status. To give the address to an application the test starts,
-pass it to an `App.Instance`'s `variables:`; to a `Test.Suite`'s tests, through
-its `env:` map (`DB_PORT: !cel "string(resources.databasePort.status.port)"`).
 
 ### Mocking an outbound API
 

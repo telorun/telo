@@ -1,0 +1,103 @@
+kind: Telo.Application
+metadata:
+  name: AiMcpPromptToolsDiscoveryTest
+  version: 1.0.0
+  description: |
+    Every prompt the server lists, across both pages of `prompts/list`, reaches
+    the model as a tool: the prompt's name (behind the entry's prefix) and
+    description, and parameters holding one string property per argument with
+    its description, the required arguments listed and nothing else allowed.
+
+    Offline: a local server stands in for the model and answers with the tools
+    array it was sent.
+imports:
+  Ai: ../../ai
+  AiMcp: ../
+  Stub: ./__fixtures__/stub-mcp.yaml
+  OpenAI: ../../openai
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: ModelApi }
+    routes:
+      - request:
+          path: /chat/completions
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler:
+          kind: Run.Value
+          value: {}
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  choices:
+                    - message:
+                        content: !cel "json(request.body.tools)"
+                      finish_reason: stop
+                  usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+  - kind: Server.Server
+    metadata: { name: ModelServer }
+    host: 127.0.0.1
+    port: 8974
+    baseUrl: http://127.0.0.1:8974
+    mounts:
+      - path: /v1
+        mount: !ref ModelApi
+targets:
+  - !ref ModelServer
+steps:
+  - name: ask
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: OpenAI.ChatModel
+        model: gpt-test
+        request:
+          kind: Http.Request
+          client:
+            kind: Http.Client
+            baseUrl: http://127.0.0.1:8974/v1
+      toolProviders:
+        - provider:
+            kind: AiMcp.PromptToolProvider
+            client: { kind: Stub.StubClient }
+          prefix: guide_
+    inputs: { prompt: "which guides are there?" }
+  - name: assertTools
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "parseJson(steps.ask.result.text)"
+      expected:
+        - type: function
+          function:
+            name: guide_review
+            description: Asks for a code review.
+            parameters:
+              type: object
+              properties:
+                language: { type: string, description: Language the code is written in. }
+                focus: { type: string }
+              required: [language]
+              additionalProperties: false
+        - type: function
+          function:
+            name: guide_summary
+            description: Summarises the conversation.
+            parameters: { type: object, properties: {}, additionalProperties: false }
+        - type: function
+          function:
+            name: guide_hang
+            description: Never answers; ends when the call is cancelled.
+            parameters: { type: object, properties: {}, additionalProperties: false }

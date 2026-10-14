@@ -56,6 +56,9 @@ WORKDIR /srv
 # because the entry imports them, which is exactly the property a hand-listed
 # set would lose the next time one is added.
 COPY ./*.yaml ./
+# The authoring guides the MCP prompts embed with `!include-text`; a missing one
+# fails the load with INCLUDE_FILE_NOT_FOUND.
+COPY ./guides ./guides
 
 # Pre-fetch every controller declared in the manifest graph so boot does
 # no network I/O. Cache writes to $TELO_CACHE_DIR (/srv/.telo-cache).

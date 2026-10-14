@@ -21,3 +21,19 @@ controllers:
 schema:
   type: object
   additionalProperties: false
+  properties:
+    malformation:
+      title: Malformation
+      description: |
+        Test-only marker — the one malformed way the server answers: the first six
+        concern `prompts/list`, the last two every `prompts/get`.
+      type: string
+      enum:
+        - promptsMissing
+        - promptNameMissing
+        - argumentsMalformed
+        - cursorNotString
+        - cursorRepeated
+        - cursorsEndless
+        - messagesMissing
+        - contentMissing

@@ -1,0 +1,117 @@
+kind: Telo.Application
+metadata:
+  name: ChatGuideTools
+  version: 1.0.0
+  description: |
+    The hub's prompts reach the agent as tools, offline against the provider
+    stub and the local hub stand-in, which offers one prompt, `stub`. The
+    agent's model is offered `guide_stub` with the prompt's description and
+    parameters taking nothing; a scripted call returns the prompt's text whole,
+    both in the turn's record and in what the model reads next; and the call
+    costs no usage of its own — with 15 tokens a model call, naming (15) and the
+    agent's two calls (30) are 45.
+imports:
+  Mcp: ../../../../modules/mcp-client
+  Chat:
+    source: ../
+    resources:
+      hub: !ref hub
+    secrets:
+      openaiApiKey: stub-key
+    variables:
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state')"
+      modelEndpoint: http://127.0.0.1:18562/v1
+      hubPublisher: example.test
+  App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
+  Stream: ../../../../modules/stream
+  Run: ../../../../modules/run
+  HttpClient: ../../../../modules/http-client
+  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
+variables:
+  scratch:
+    env: CHAT_TEST_GUIDE_TOOLS_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/guide-tools
+targets:
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref test
+---
+# The local hub stand-in the chat library discovers through.
+kind: Mcp.HttpClient
+metadata: { name: hub }
+url: http://127.0.0.1:18563/mcp
+clientInfo: { name: authoring-agent-test, version: 0.0.0 }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18562 }
+  - kind: App.Instance
+    metadata: { name: hubStub }
+    source: ./__fixtures__/hub-stub/telo.yaml
+    ports: { http: 18563 }
+targets: [ !ref stub, !ref hubStub ]
+steps:
+  - name: conversation
+    invoke: !ref Chat.createConversation
+  - name: start
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "steps.conversation.result.conversation.id"
+      idempotencyKey: ""
+      clientIp: test-runner
+      message: !cel >-
+        'read the guide STUB_CALLS:' + base64Encode(json([{'name': 'guide_stub', 'arguments': {}}]))
+  - name: read
+    invoke: !ref Chat.journalSource
+    inputs:
+      key: !cel "steps.start.result.turnId"
+      fromId: 0
+  - name: drain
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.read.result.output"
+  - name: sent
+    invoke:
+      kind: HttpClient.Request
+      client: { kind: HttpClient.Client }
+    inputs: { url: http://127.0.0.1:18562/requests }
+  - name: after
+    invoke: !ref Chat.getConversation
+    inputs: { conversationId: !cel "steps.conversation.result.conversation.id" }
+  - name: agentRequests
+    value: !cel >-
+      steps.sent.result.body.requests.filter(r,
+        !string(r.instructions).startsWith('You name conversations'))
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        offered: !cel >-
+          steps.agentRequests.result[0].tools.filter(t, string(t.name) == 'guide_stub')
+            .map(t, {'description': t.description, 'parameters': t.parameters})
+        recorded: !cel >-
+          steps.drain.result.items.filter(r, r.data.type == 'tool-result' && r.data.toolResult.name == 'guide_stub')
+            .map(r, r.data.toolResult.content)
+        modelRead: !cel >-
+          json(steps.agentRequests.result[1].input).contains(
+            json('HUB_GUIDE_TEXT A stub guide.\n\nA stub answers from a fixed text and is read whole.'))
+        truncated: !cel "json(steps.agentRequests.result[1].input).contains('truncated')"
+        totalTokens: !cel "steps.after.result.conversation.totalTokens"
+      expected:
+        offered:
+          - description: HUB_GUIDE_DESCRIPTION How to write a stub. Read before writing one.
+            parameters: { type: object, properties: {}, additionalProperties: false }
+        recorded:
+          - - type: text
+              text: "HUB_GUIDE_TEXT A stub guide.\n\nA stub answers from a fixed text and is read whole."
+        modelRead: true
+        truncated: false
+        totalTokens: 45

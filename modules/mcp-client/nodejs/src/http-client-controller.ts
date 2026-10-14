@@ -62,7 +62,8 @@ export async function register(_ctx: ControllerContext): Promise<void> {}
  * (which owns Http.Server) tears down. Hand-rolling means one fetch per RPC
  * and no persistent connections, so unwinding is deterministic.
  *
- * v1 covers tools/call + tools/list per the Mcp.Client.inputType enum.
+ * Covers tools/call, tools/list, prompts/list and prompts/get per the
+ * Mcp.Client.inputType enum; every method is one JSON-RPC POST.
  * Server→client notifications are an explicit non-goal (see the module's
  * plans/mcp-client-initial-design.md §2).
  */

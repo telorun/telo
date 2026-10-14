@@ -1,0 +1,93 @@
+kind: Telo.Application
+metadata:
+  name: McpClientPromptsHttpTest
+  version: 1.0.0
+  description: |
+    An HTTP client lists the prompts a server offers and renders one from the
+    arguments it sends, invoked directly with `prompts/list` and `prompts/get`.
+imports:
+  Mcp: ../../mcp-server
+  McpClient: ../
+  Http: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets: [ !ref testRun ]
+---
+kind: Mcp.HttpEndpoint
+metadata: { name: mcpHttp }
+serverInfo: { name: telo-test-prompts, version: 1.0.0 }
+prompts:
+  - kind: Mcp.Prompts
+    entries:
+      - name: greet
+        description: Greets someone.
+        arguments:
+          - name: who
+            description: Who to greet.
+            required: true
+        handler:
+          kind: Run.Value
+          inputType:
+            kind: Telo.JsonSchema
+            schema:
+              type: object
+              required: [who]
+              properties:
+                who: { type: string }
+          value:
+            text: !cel "'Say hello to ' + inputs.who + '.'"
+        inputs:
+          who: !cel "request.arguments.who"
+        result:
+          description: A greeting
+          messages:
+            - role: user
+              content:
+                type: text
+                text: !cel "result.text"
+---
+kind: McpClient.HttpClient
+metadata: { name: clientUnderTest }
+url: http://127.0.0.1:8975/mcp
+clientInfo: { name: telo-test, version: 1.0.0 }
+---
+kind: Run.Sequence
+metadata: { name: testRun }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8975
+    baseUrl: http://127.0.0.1:8975
+    mounts:
+      - { path: /mcp, mount: !ref mcpHttp }
+targets: [ !ref Server ]
+steps:
+  - name: list
+    invoke: !ref clientUnderTest
+    inputs: { method: prompts/list }
+  - name: assertList
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.list.result.prompts"
+      expected:
+        - name: greet
+          description: Greets someone.
+          arguments:
+            - name: who
+              description: Who to greet.
+              required: true
+  - name: get
+    invoke: !ref clientUnderTest
+    inputs:
+      method: prompts/get
+      params: { name: greet, arguments: { who: Ada } }
+  - name: assertGet
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.get.result"
+      expected:
+        description: A greeting
+        messages:
+          - role: user
+            content: { type: text, text: Say hello to Ada. }

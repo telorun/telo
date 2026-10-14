@@ -1,5 +1,6 @@
 *
 !*.yaml
+!guides/*.md
 
 tests
 plans

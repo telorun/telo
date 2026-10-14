@@ -1,0 +1,43 @@
+kind: Telo.Application
+metadata:
+  name: AiMcpPromptStdioMalformedTest
+  version: 1.0.0
+  description: |
+    Over a stdio client too, a prompt list without a `prompts` array fails with
+    ERR_MCP_PROTOCOL: the transport hands the answer over as received and the
+    provider judges it, as over HTTP.
+imports:
+  Ai: ../../ai
+  AiMcp: ../
+  Mcp: ../../mcp-client
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: list
+    try:
+      - name: run
+        invoke:
+          kind: Ai.Agent
+          model: { kind: AiEcho.EchoModel }
+          toolProviders:
+            - provider:
+                kind: AiMcp.PromptToolProvider
+                client:
+                  kind: Mcp.StdioClient
+                  command: node
+                  args: [ ./__fixtures__/malformed-prompts-server.mjs ]
+        inputs: { prompt: "hello" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a prompt list without prompts was read" }
+    catch:
+      - name: refused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MCP_PROTOCOL

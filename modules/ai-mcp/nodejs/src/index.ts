@@ -2,3 +2,4 @@
 // these by PURL fragment, so the whole module is one bundle and its shared
 // state is one module scope.
 export * as McpToolProviderController from "./mcp-tool-provider-controller.js";
+export * as McpPromptToolProviderController from "./mcp-prompt-tool-provider-controller.js";

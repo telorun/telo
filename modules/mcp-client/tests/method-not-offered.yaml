@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: McpClientMethodNotOfferedTest
+  version: 1.0.0
+  description: |
+    A client invoked with a method outside the four it carries — here
+    `resources/read` — is refused by `telo check` at the call site.
+imports:
+  Assert: ../../assert
+targets: [ !ref resourcesReadRefused ]
+---
+kind: Assert.Manifest
+metadata: { name: resourcesReadRefused }
+source: ./__fixtures__/method-not-offered/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
