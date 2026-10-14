@@ -1,0 +1,19 @@
+# An engine endpoint nothing listens on: the container's start fails before
+# anything is created.
+kind: Telo.Application
+metadata:
+  name: UnreachableEngine
+  version: 1.0.0
+imports:
+  Container: ../../../container
+  Docker: ../..
+---
+kind: Docker.Engine
+metadata: { name: docker }
+endpoint: unix:///nonexistent/telo-test/docker.sock
+---
+kind: Container.Instance
+metadata: { name: server }
+engine: !ref docker
+image: example/server:1
+lifetime: 10m

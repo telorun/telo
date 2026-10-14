@@ -1,0 +1,22 @@
+# A service's status read in a field that resolves at startup: the service has
+# not started when the reader is created, so the value cannot exist yet. It
+# lives in a LIBRARY so a consumer's entry-scoped check stays silent and the
+# kernel is what refuses it there.
+kind: Telo.Library
+metadata:
+  name: ServiceStatusAtStartup
+  version: 1.0.0
+  description: >-
+    Fixture library reading a service's observed state in a field resolved at
+    startup, which the kernel refuses at boot and this library's own check reports.
+imports:
+  Status: ../kinds
+---
+kind: Status.Listener
+metadata:
+  name: listener
+---
+kind: Status.Endpoint
+metadata:
+  name: reader
+port: !cel "resources.listener.status.port"

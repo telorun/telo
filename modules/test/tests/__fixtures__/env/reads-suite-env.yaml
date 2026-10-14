@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata:
+  name: ReadsSuiteEnv
+  version: 1.0.0
+imports:
+  Assert: ../../../../assert
+variables:
+  probe: { env: SUITE_ENV_PROBE, type: string }
+targets:
+  - invoke: !ref check
+    inputs:
+      actual: !cel "variables.probe"
+      expected: "computed 2"
+---
+kind: Assert.Equals
+metadata: { name: check }

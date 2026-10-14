@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: ServiceStatusBeforeStart
+  version: 1.0.0
+  description: A service reporting observed state from init(), which only a provider may do.
+---
+kind: Telo.Definition
+metadata:
+  name: EagerService
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/status.mjs#eagerService
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+status:
+  type: object
+  properties:
+    port: { type: integer }
+---
+kind: Self.EagerService
+metadata:
+  name: eager

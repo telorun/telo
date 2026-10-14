@@ -19,6 +19,7 @@ import type { SessionEntry, SessionRegistry } from "../session/registry.js";
 import { generateWorkloadToken } from "../session/workload-token.js";
 import { enforceTerms, launchWorkload, portsSchema, startWorkloadSession } from "./session-start.js";
 import { streamSessionEvents } from "../sse/channel.js";
+import type { SessionContainers } from "../session-containers/session-containers.js";
 
 /** The part of the operator's watch settings this route enforces. A projection
  *  of `WatchSessionConfig` rather than a second shape, so the two cannot
@@ -31,6 +32,8 @@ export type WatchConfig = Pick<
 export interface SessionsRouteDeps {
   backend: RunnerBackend;
   registry: SessionRegistry;
+  /** Present when the runner serves sessions a container engine. */
+  containers?: SessionContainers;
   corsOrigins: string[] | "*";
   /** When set, a session may only start if the client acknowledges this exact
    *  terms version via the `x-telo-accepted-terms` header. */
@@ -371,6 +374,9 @@ export function sessionsRoute(deps: SessionsRouteDeps): FastifyPluginAsync {
           }
         }
         entry.attribution?.expectAll("resume");
+        // The applications that started containers are replaced, and nothing of
+        // theirs survives to remove what they started.
+        await deps.containers?.release(entry.sessionId, { close: false });
         try {
           await session.setApps(resolved.apps);
         } catch (err) {

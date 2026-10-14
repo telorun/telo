@@ -235,6 +235,12 @@ services:
       # Short idle window locally. A dev machine is not paying for capacity, and
       # a fast suspend/resume cycle is the part worth exercising by hand.
       RUNNER_WATCH_IDLE_SECONDS: ${RUNNER_WATCH_IDLE_SECONDS:-600}
+      # Every session gets a container engine of its own, served by this runner
+      # at `/v1/sessions/<id>/engine` and reached over the compose network, so a
+      # test that starts its own database runs here unchanged. The containers
+      # are siblings on RUNNER_CHILD_NETWORK; no socket reaches a session.
+      RUNNER_SESSION_CONTAINERS: "true"
+      RUNNER_INTERNAL_URL: http://runner:8061
       # The studio of this stack is built from the working tree, so its bundled
       # engine is an unreleased build, and no registry holds a kernel image for
       # that identity. The `kernel` service below builds one from this same

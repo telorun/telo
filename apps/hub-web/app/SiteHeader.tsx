@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { ModuleAvatar } from "@/ModuleAvatar";
 import { moduleLabel, modulePagePath } from "@/module-ref";
+import { ProductSwitcher, type TeloProduct } from "@/ProductSwitcher";
 import { SessionControl } from "@/SessionControl";
 import { fetchRefSuggestions, type RefSuggestion } from "@/api";
 import hubMark from "@/telo-hub-mark.svg";
@@ -30,8 +31,15 @@ function isCatalog(pathname: string): boolean {
 
 /** The bar every page keeps: where you are, the way back to the catalogue, and
  *  a search that works from anywhere. `browserApiOrigin` is absent only when
- *  the root loader itself failed, and then the bar goes without its search. */
-export function SiteHeader({ browserApiOrigin }: { browserApiOrigin: string | null }) {
+ *  the root loader itself failed, and then the bar goes without its search.
+ *  Without a product list from accounts it goes without the product switcher. */
+export function SiteHeader({
+  browserApiOrigin,
+  products,
+}: {
+  browserApiOrigin: string | null;
+  products: TeloProduct[] | null;
+}) {
   const { pathname } = useLocation();
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-md">
@@ -68,6 +76,7 @@ export function SiteHeader({ browserApiOrigin }: { browserApiOrigin: string | nu
             GitHub
           </HeaderAnchor>
           <ThemeToggle />
+          {products && products.length > 0 && <ProductSwitcher products={products} />}
           <SessionControl className={HEADER_LINK} />
         </nav>
       </div>

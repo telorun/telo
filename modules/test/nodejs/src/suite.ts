@@ -19,6 +19,7 @@ const schema = Type.Object({
   ),
   filter: Type.Optional(Type.String()),
   concurrency: Type.Optional(Type.Integer({ minimum: 1 })),
+  env: Type.Optional(Type.Record(Type.String(), Type.String())),
 });
 
 type SuiteManifest = Static<typeof schema>;
@@ -87,16 +88,20 @@ function parseEnvFile(content: string | null): Record<string, string> {
  *
  * `hostEnv` is the suite controller's `ctx.env` (the sanctioned host-env
  * snapshot) — not the locked `process.env` — and takes precedence over the
- * .env files, matching CLI behaviour.
+ * .env files, matching CLI behaviour. `suiteEnv` — the suite's own `env` —
+ * wins over all of it: it is what the suite's author computed for these tests
+ * (an address learnt at startup), which a stray host variable of the same name
+ * must not replace.
  */
-function buildEnvForManifest(
+export function buildEnvForManifest(
   manifestPath: string,
   hostEnv: Record<string, string | undefined>,
+  suiteEnv: Record<string, string>,
 ): Record<string, string | undefined> {
   const dir = path.dirname(path.resolve(manifestPath));
   const base = parseEnvFile(tryReadFile(path.join(dir, ".env")));
   const local = parseEnvFile(tryReadFile(path.join(dir, ".env.local")));
-  return { ...base, ...local, ...hostEnv };
+  return { ...base, ...local, ...hostEnv, ...suiteEnv };
 }
 
 /**
@@ -127,6 +132,7 @@ async function runOneTest(
   parentStdout: NodeJS.WritableStream,
   parentStderr: NodeJS.WritableStream,
   hostEnv: Record<string, string | undefined>,
+  suiteEnv: Record<string, string>,
   runtime: ResourceContext["runtime"],
 ): Promise<TestResult> {
   const start = Date.now();
@@ -136,7 +142,7 @@ async function runOneTest(
     // importing the kernel — so a published `test` module binds to a versioned
     // contract instead of to whatever kernel happens to load it. Isolation is the
     // kernel's to choose; this side only says "run this manifest".
-    run = await runtime.run(testPath, { env: buildEnvForManifest(testPath, hostEnv) });
+    run = await runtime.run(testPath, { env: buildEnvForManifest(testPath, hostEnv, suiteEnv) });
   } catch (err) {
     return {
       path: testPath,
@@ -216,6 +222,7 @@ export async function create(
             ctx.stdout,
             ctx.stderr,
             ctx.env,
+            manifest.env ?? {},
             ctx.runtime,
           );
           result.label = label;

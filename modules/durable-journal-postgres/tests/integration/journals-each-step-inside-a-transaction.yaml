@@ -17,9 +17,13 @@ metadata:
     a runtime to make observable, and asserting only the Postgres half would pass just
     as well against a build where collapse never happened at all.
 
-    NEEDS A LIVE POSTGRES. Kept out of `tests/` proper for exactly that reason — the
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL. Kept out of `tests/` proper for exactly that reason — the
     root suite must run on a clean checkout with nothing installed.
 imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
   Durable: ../../../durable
   Local: ../../../durable-local
   Journal: ../../
@@ -29,39 +33,22 @@ imports:
   Run: ../../../run
   Assert: ../../../assert
 variables:
-  dbHost:
-    env: DB_HOST
-    type: string
-    default: localhost
-  dbPort:
-    env: DB_PORT
-    type: integer
-    default: 5432
-  dbUser:
-    env: DB_USER
-    type: string
-    default: postgres
-  dbPassword:
-    env: DB_PASSWORD
-    type: string
-    default: postgres
-  dbName:
-    env: DB_NAME
-    type: string
-    default: postgres
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
   journalDir:
     env: DURABLE_PG_TEST_DIR
     type: string
     x-telo-type: Telo.HostPath
     default: .telo/durable-postgres-test
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
 targets:
   - !ref test
 ---
 kind: Postgres.Connection
 metadata: { name: db }
 connectionString: !cel >-
-  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
-  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
+  string(resources.Pg.endpoint.status.port) + '/postgres'
 ---
 # The journal under test — on the SAME connection the transaction below opens,
 # which is the whole condition. Point it at another database and the attestation

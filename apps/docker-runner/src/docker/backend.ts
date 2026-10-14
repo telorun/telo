@@ -8,10 +8,14 @@ import {
 import { BundleWorkdir } from "./bundle-workdir.js";
 import { runProbe, type ProbeDockerClient } from "./probe.js";
 import { spawnDockerSession, type SessionDockerClient } from "./run-session.js";
+import {
+  createDockerSessionContainerEngine,
+  type EngineDockerClient,
+} from "./session-container-engine.js";
 import { startDockerWatchSession } from "./watch-session.js";
 
 export interface DockerBackendDeps {
-  docker: SessionDockerClient & ProbeDockerClient;
+  docker: SessionDockerClient & ProbeDockerClient & EngineDockerClient;
   bundleRoot: string;
   bundleVolume: string;
   childNetwork: string;
@@ -35,6 +39,11 @@ export interface DockerBackendDeps {
  */
 export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
   return {
+    containers: createDockerSessionContainerEngine({
+      docker: deps.docker,
+      childNetwork: deps.childNetwork,
+    }),
+
     async probe(config) {
       return runProbe(
         deps.docker,

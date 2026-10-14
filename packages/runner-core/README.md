@@ -90,6 +90,41 @@ at catalog load, and a client-supplied env var of that name is dropped. Core
 reports it, not the backend, so no backend can publish an endpoint without the
 token its workload holds.
 
+## Session containers
+
+With `RUNNER_SESSION_CONTAINERS=true` a runner serves every session a container
+engine of its own, so a test that starts the database it needs
+(`Container.Instance` over `Docker.Engine`) runs in a session unchanged:
+
+| Setting | Meaning |
+| --- | --- |
+| `RUNNER_SESSION_CONTAINERS` | `true` to serve the engine; default `false`, and a session then gets nothing. |
+| `RUNNER_SESSION_CONTAINERS_MAX` | Most containers one session may hold at once (default `4`); a create beyond it is `429`. |
+| `RUNNER_INTERNAL_URL` | The runner's base URL as a session's workload reaches it (`http://runner:8061`). Required when the engine is on — the runner refuses to boot without it. |
+
+Each session's env gets `TELO_HOST_CONTAINER_ENGINE_URL`
+(`<RUNNER_INTERNAL_URL>/v1/sessions/<id>/engine`) and
+`TELO_HOST_CONTAINER_ENGINE_TOKEN`, a token minted for that session. The engine
+answers the Docker Engine API 1.41 requests `Docker.Engine` sends, at
+`/v1/sessions/:id/engine/v1.41/…`, and refuses every other one:
+
+- a request without the token is `401`, with another session's `403`;
+- a create body may carry `Image`, `Cmd`, `Entrypoint`, `Env`, `User`,
+  `ExposedPorts`, `Labels`, and `HostConfig.PortBindings` only as one
+  `{ "HostIp": "127.0.0.1", "HostPort": "" }` per exposed port; anything else is
+  a `400` naming the field (`HostConfig.Privileged`,
+  `HostConfig.PortBindings.5432/tcp[0].HostPort`);
+- every container is labelled `run.telo.session=<id>`, and inspect, logs, delete
+  and list see only the session's own;
+- nothing is published on a host: inspect answers each requested binding with
+  the address the session reaches the container at and the container port;
+- a session's containers are removed when it stops, suspends, reaches its
+  deadline or is deleted, when its app set changes, and when the runner shuts
+  down; each backend's boot sweep removes what a killed runner left.
+
+A backend implements `RunnerBackend.containers` (`SessionContainerEngine`); a
+runner turning the setting on over a backend without one refuses to boot.
+
 ## Two nouns, one stream
 
 `status` is the SESSION's state; `run` is one application's outcome. They are

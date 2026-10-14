@@ -1,0 +1,255 @@
+kind: Telo.Library
+metadata:
+  name: Container
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Compute, Testing]
+  description: >-
+    Start a disposable container from an image for the lifetime of an
+    application or test — a database, a queue, any service a test needs — wait
+    until it is ready, and read the address its ports are reached at. The
+    container is removed with its volumes when the application stops, and one
+    left behind by a killed process expires.
+requires:
+  # The controllers report a port's address from `init()` and consumers read it
+  # in startup fields: a Provider's observed state at startup is first carried by
+  # this release. An older analyzer refuses the read (OBSERVED_STATE_NEVER_RUN,
+  # verified against 0.115.2) and an older kernel refuses the report with
+  # ERR_OBSERVED_STATE_BEFORE_START.
+  telo: ">=0.116.0"
+exports:
+  kinds:
+    - Engine
+    - Instance
+    - Port
+    - Readiness
+    - LogReady
+  # The entry point an engine's or a readiness kind's controller bundle resolves
+  # `@telorun/container` to: the two contracts and their guards. Optional for an
+  # implementation — an engine and a readiness check are recognised by their
+  # methods, never by having imported this.
+  code:
+    - specifier: "@telorun/container"
+      format: js
+      path: ./nodejs/container.mjs
+      source: ./nodejs/src/index.ts
+---
+# Container.Engine — what runs containers. A Telo.Provider an Instance names
+# through `engine:`. Normative contract: docs/engine-contract.md.
+#
+#   ping / hasImage / pullImage / create / start / inspect / logs / list / remove
+#
+# The abstract declares no schema — how an engine is reached is each backend's own.
+kind: Telo.Abstract
+metadata:
+  name: Engine
+  description: >-
+    A place containers run: it pulls images, creates and starts containers with
+    environment, user and exposed ports, reports whether one is running and the
+    host address each port is reached at, streams its logs, lists containers by
+    label and removes one together with its volumes.
+capability: Telo.Provider
+---
+# Container.Readiness — when a started container counts as ready. A
+# Telo.Provider an Instance names through `readiness:`. Contract:
+# docs/engine-contract.md (waitUntilReady).
+kind: Telo.Abstract
+metadata:
+  name: Readiness
+  description: >-
+    Decides when a freshly started container is ready to be used, by watching
+    what it does after start. Resolves once the container is ready, or reports
+    that the container stopped producing output first, so the caller can tell a
+    slow start from a crash.
+capability: Telo.Provider
+---
+kind: Telo.Definition
+metadata:
+  name: Instance
+  description: >-
+    Runs one disposable container for as long as the application runs: pulls the
+    image when missing, creates and starts it, and waits until it is ready within
+    a startup deadline. It is force-removed with its volumes on shutdown or on a
+    failed start, and carries an expiry after which any later start sweeps it.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/container.mjs&local_path=./nodejs/src/index.ts#Instance
+schema:
+  type: object
+  additionalProperties: false
+  required: [engine, image, lifetime]
+  properties:
+    engine:
+      title: Engine
+      description: The engine the container runs on.
+      x-telo-ref:
+        kind: Self.Engine
+        use: dependency
+    image:
+      title: Image
+      description: >-
+        The image reference (`postgres:18`, `ghcr.io/acme/svc@sha256:…`). An
+        image with no tag or digest is the `latest` tag. Pulled only when the
+        engine does not already hold it.
+      type: string
+      minLength: 1
+    command:
+      title: Command
+      description: Arguments replacing the image's default command.
+      type: array
+      items: { type: string }
+    entrypoint:
+      title: Entrypoint
+      description: The executable and arguments replacing the image's entrypoint.
+      type: array
+      items: { type: string }
+    env:
+      title: Environment
+      description: >-
+        Environment variables set in the container. Their values are never
+        published in the resource's reading — only their names.
+      type: object
+      additionalProperties: { type: string }
+    user:
+      title: User
+      description: >-
+        The user the container's process runs as (`999:999`, `postgres`). A
+        numeric non-root user runs on every engine, including one that refuses
+        root.
+      type: string
+      minLength: 1
+    ports:
+      title: Ports
+      description: >-
+        The container's TCP ports to publish. Each is bound on the engine's
+        loopback interface to a port the engine chooses, and is read through a
+        `Container.Port` naming it.
+      type: array
+      uniqueItems: true
+      items:
+        type: integer
+        x-telo-type: Telo.TcpPort
+        minimum: 1
+        maximum: 65535
+    readiness:
+      title: Readiness
+      description: >-
+        When the started container counts as ready. Omitted: as soon as it is
+        running.
+      x-telo-ref:
+        kind: Self.Readiness
+        use: dependency
+    startupTimeout:
+      title: Startup timeout
+      description: >-
+        How long pulling, creating, starting and becoming ready may take
+        together before the start fails with `ERR_CONTAINER_NOT_READY`.
+        Omitted: 120s.
+      x-telo-type: Telo.Duration
+    lifetime:
+      title: Lifetime
+      description: >-
+        The longest the container may outlive the start. It is written on the
+        container as the label `run.telo.container.expires` (Unix seconds), and
+        any later `Container.Instance` start on the same engine removes it once
+        that moment passes — the cleanup for a process that was killed before it
+        could remove its own. Set it above the longest the application runs.
+      x-telo-type: Telo.Duration
+  examples:
+    - engine: !ref docker
+      image: pgvector/pgvector:pg18
+      user: "999:999"
+      env: { POSTGRES_PASSWORD: postgres }
+      ports: [5432]
+      readiness: !ref acceptsConnections
+      lifetime: "1h"
+---
+kind: Telo.Definition
+metadata:
+  name: Port
+  description: >-
+    The address at which one published port of a running container is reached,
+    reported as a host and a port the moment the container is ready, so a
+    connection string or a client in any startup field can be built from it.
+    Naming a port the container does not publish is refused.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/container.mjs&local_path=./nodejs/src/index.ts#Port
+schema:
+  type: object
+  additionalProperties: false
+  required: [container, port]
+  properties:
+    container:
+      title: Container
+      description: The container whose port this is.
+      x-telo-ref:
+        kind: Self.Instance
+        use: dependency
+    port:
+      title: Port
+      description: The container port, one the container lists under `ports`.
+      type: integer
+      x-telo-type: Telo.TcpPort
+      minimum: 1
+      maximum: 65535
+  x-telo-resource-rules:
+    - resolve: [/container]
+      condition: !cel "self.port in self.container.?ports.orValue([])"
+      code: CONTAINER_PORT_NOT_EXPOSED
+      message: >-
+        names a port the container does not publish. Add it to the container's
+        `ports`, or name one listed there.
+  examples:
+    - container: !ref server
+      port: 5432
+status:
+  type: object
+  additionalProperties: false
+  properties:
+    host:
+      description: >-
+        The address the port is reached at from this application, as the engine
+        reports its binding (`127.0.0.1` on a local engine).
+      type: string
+    port:
+      description: The port number at that address.
+      type: integer
+      x-telo-type: Telo.TcpPort
+---
+kind: Telo.Definition
+metadata:
+  name: LogReady
+  description: >-
+    Treats a container as ready once a given text has appeared in its output a
+    given number of times — the usual signal for databases and servers that log
+    a line when they start accepting connections. Matching is a plain substring
+    over standard output and standard error together.
+capability: Telo.Provider
+extends: Self.Readiness
+controllers:
+  - pkg:telo/local/js?path=./nodejs/container.mjs&local_path=./nodejs/src/index.ts#LogReady
+schema:
+  type: object
+  additionalProperties: false
+  required: [text]
+  properties:
+    text:
+      title: Text
+      description: >-
+        The text to wait for, matched as a plain substring (not a pattern) and
+        possibly spanning lines.
+      type: string
+      minLength: 1
+    times:
+      title: Times
+      description: >-
+        How many occurrences make the container ready. Defaults to 1; a server
+        that restarts once during initialization logs its ready line twice.
+      type: integer
+      minimum: 1
+      default: 1
+  examples:
+    - text: database system is ready to accept connections
+      times: 2

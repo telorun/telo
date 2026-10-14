@@ -160,8 +160,8 @@ export interface ResourceContext extends ControllerContext {
    *   truth — declare a sometimes-absent field with a nullable type and report
    *   it as `null`.
    * - **Validated** against the kind's `status:` on every call.
-   * - **Illegal before the resource has started** (`ERR_OBSERVED_STATE_BEFORE_START`).
-   *   `init()` performs no I/O, so there is nothing observed to report there.
+   * - **Illegal before the resource has started** (`ERR_OBSERVED_STATE_BEFORE_START`),
+   *   except from a `Telo.Provider`, which reports from `init()` onward.
    * - **Sticky**: the last value reported stays published until the resource is
    *   torn down. A dispatch that reports nothing leaves the previous reading in
    *   place — a listener's bound address does not stop being true between calls.

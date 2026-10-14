@@ -31,7 +31,7 @@ the server build comes from. Everything else is the React Router app in `app/`.
   registration with its status stay in the browser,
   calling the hub on `HUB_BROWSER_API_ORIGIN`. The server hands that origin to
   the page.
-- **No in-process cache.** Every request reads the hub. Caching is expressed as
+- **No in-process cache of the hub.** Every request reads the hub. Caching is expressed as
   response headers, for a shared cache the operator may place in front. Without
   one, hub load equals crawl rate: one `/module` read per module page, at most
   50 `/modules` pages per sitemap shard, and one `/modules` probe per non-empty
@@ -339,6 +339,35 @@ redirect addresses and the post-logout address above, CORS on its token endpoint
 for `SITE_ORIGIN` (allowing the `DPoP` request header and exposing `DPoP-Nonce`),
 and an authorization endpoint this site may frame.
 
+## Product switcher
+
+With `OIDC_ISSUER` set, the header carries the menu of every Telo product —
+Cloud, Hub, Marketplace, Studio — that the identity provider (accounts) lists at
+`<OIDC_ISSUER>/v1/products`. A site with no identity provider shows none.
+
+- **The server reads the list**, on the root loader, with a 3 s timeout, and
+  keeps it in process for 5 minutes. A request that finds it older starts one
+  refresh, shared by every request meanwhile, and is answered with the list it
+  has without waiting; only while no list was ever read does a page wait for the
+  read, never beyond the timeout.
+- **A failed read keeps the last good list**; with none ever read the page
+  renders without the switcher, as a 200 like any other. A body that is not
+  `{ products: [...] }`, a non-2xx answer, a refused connection and a timeout
+  are all failures, logged once until the fault changes.
+- **Every entry is checked before use**, since it reaches CSS and `<img src>`:
+  the id pattern, a name of 1–100 characters, an `https` url, an `https` icon on
+  the issuer's own origin, both colours plain `oklch(…)` values, the id not
+  listed before. An entry failing any is dropped, the rest keep their order, and
+  the dropped ones are logged once until they change. An issuer on `http` (a
+  local stack) therefore yields no switcher.
+- **Colours are CSS, not `style` attributes**: the page head carries one
+  `<style>` setting `--product-<id>` under `:root` and `.dark` and a
+  `.telo-product-<id>` class colouring each name. The site's own wordmark keeps
+  its `--product` token and never depends on accounts.
+- **The menu** is the outline button with the dot grid (labelled "Telo
+  products"); each item is the product's icon and `Telo <name>`, the name in its
+  hue, linking to the product. Hub is marked `aria-current="true"`.
+
 ## Analytics
 
 Off unless `PLAUSIBLE_SCRIPT_URL` is set. With it, every page loads that
@@ -376,7 +405,7 @@ with a message naming the variable.
 | `HUB_BROWSER_API_ORIGIN` | no (defaults to `HUB_API_ORIGIN`) | The hub origin the browser calls for search, categories, ref suggestions, implementations, instances, version pins, register and register status. Also the origin of the MCP endpoint the `/mcp` page shows. |
 | `SITE_ORIGIN` | yes | This site's origin, used for canonicals, the sitemap and `robots.txt`. Never derived from the request's `Host`. |
 | `PLAUSIBLE_SCRIPT_URL` | no | The Plausible script every page loads (`https://<host>/js/<site script>.js`). Unset, the site loads nothing from a third party. |
-| `OIDC_ISSUER` | no | The identity provider readers sign in through, as a bare origin (`https://accounts.telo.run`). Set together with `OIDC_CLIENT_ID`, or not at all. |
+| `OIDC_ISSUER` | no | The identity provider readers sign in through, as a bare origin (`https://accounts.telo.run`), and where the product switcher's list is read. Set together with `OIDC_CLIENT_ID`, or not at all. |
 | `OIDC_CLIENT_ID` | no | This site's client id at that provider. |
 | `PORT` | no (default `8050`) | The port to listen on. |
 
@@ -400,7 +429,10 @@ HUB_API_ORIGIN=http://localhost:8040 SITE_ORIGIN=http://localhost:8050 \
 
 The tests boot the production `server.mjs` against the built output and a stub
 hub (both on port 0) and assert with real HTTP requests; one of them waits out
-the 10 s silence timeout.
+the 10 s silence timeout. The product switcher's accounts stub serves HTTPS with
+a certificate `openssl` makes for the run, trusted by the server under test
+through `NODE_EXTRA_CA_CERTS`; the product list's validation and cache are
+tested by importing `app/telo-products.server.ts` directly.
 
 ## Docker
 

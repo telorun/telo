@@ -27,11 +27,8 @@ imports:
   GraphLayers: ../../../../../graph-layers
   Run: ../../../../../run
 variables:
-  dbHost: { env: DB_HOST, type: string, default: localhost }
-  dbPort: { env: DB_PORT, type: integer, default: 5432 }
-  dbUser: { env: DB_USER, type: string, default: postgres }
-  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
-  dbName: { env: DB_NAME, type: string, default: postgres }
+  dbHost: { env: DB_HOST, type: string }
+  dbPort: { env: DB_PORT, type: integer }
   role: { env: RACER_ROLE, type: string }
   value: { env: RACER_VALUE, type: string, default: none }
 targets:
@@ -40,3 +37,10 @@ targets:
   - { ref: !ref Race.updateVisible, when: !cel "variables.role == 'update'" }
   - { ref: !ref SessionRace.writeInSession, when: !cel "variables.role == 'session'" }
   - { ref: !ref SessionRace.deleteOutside, when: !cel "variables.role == 'deleteOutside'" }
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://postgres:postgres@' + variables.dbHost + ':' +
+  string(variables.dbPort) + '/postgres' +
+  '?options=-c%20search_path%3Dpublic'

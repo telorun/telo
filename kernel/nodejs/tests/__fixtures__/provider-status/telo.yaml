@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: ProviderStatusKernel
+  version: 1.0.0
+  description: A provider whose init() reports observed state and then defers.
+---
+kind: Telo.Definition
+metadata:
+  name: Deferring
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/status.mjs#deferring
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+status:
+  type: object
+  properties:
+    port: { type: integer }
+---
+kind: Self.Deferring
+metadata:
+  name: deferred

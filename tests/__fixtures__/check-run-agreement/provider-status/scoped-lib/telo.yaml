@@ -1,0 +1,33 @@
+# A provider's status read at startup from a sibling declared in the same
+# `with:` scope: scoped resources are created when the scope opens, where a
+# startup field cannot see them. This library's own check refuses the read; the
+# kernel refuses it when the sequence opens its scope.
+kind: Telo.Library
+metadata:
+  name: ScopedProviderStatusAtStartup
+  version: 1.0.0
+  description: >-
+    Fixture library reading a scoped provider's observed state in a field
+    resolved at startup, which the kernel refuses when the scope opens and this
+    library's own check reports.
+imports:
+  Status: ../kinds
+  Run: ../../../../../modules/run
+exports:
+  resources: [check]
+---
+kind: Run.Sequence
+metadata:
+  name: check
+with:
+  - kind: Status.Endpoint
+    metadata:
+      name: first
+    port: 1
+  - kind: Status.Endpoint
+    metadata:
+      name: second
+    port: !cel "resources.first.status.port"
+steps:
+  - name: read
+    invoke: !ref second

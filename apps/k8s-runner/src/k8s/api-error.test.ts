@@ -53,6 +53,16 @@ describe("apiReason", () => {
     expect(reason).not.toContain("telo-k8s-runner-sessions");
   });
 
+  it("names the Pod Security standard when it refused the pod", () => {
+    const reason = apiReason(
+      forbidden(
+        'pods "telo-ctr-abc-1" is forbidden: violates PodSecurity "restricted:latest": runAsNonRoot != true',
+      ),
+    );
+    expect(reason).toContain("Pod Security standard");
+    expect(reason).not.toContain("runAsNonRoot");
+  });
+
   it("stays neutral on a 403 whose message identifies neither", () => {
     const reason = apiReason(forbidden("denied by a validating webhook"));
     expect(reason).toContain("rejected the request");

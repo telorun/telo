@@ -34,7 +34,14 @@ import {
   nowUnixNano,
 } from "@telorun/sdk";
 import { errorTypeOf, RuntimeError } from "@telorun/sdk";
-import { celResourceReads, concreteEvalPaths, evalPathCovers } from "@telorun/analyzer";
+import {
+  celResourceReads,
+  concreteEvalPaths,
+  evalPathCovers,
+  reportsFromInit,
+  startupObservedStateReads,
+  type CelEvalSites,
+} from "@telorun/analyzer";
 import { recordDeclarationScope } from "./declaration-scope.js";
 import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
 import { moduleCallsOf } from "./module-functions.js";
@@ -408,6 +415,7 @@ export async function publishedPropsOf(
     status: reportedStatus.get(instance),
     started: startedInstances.has(instance),
     completed: completedInstances.has(instance),
+    reportsFromInit: reportsFromInit(getDefinition?.(kind)?.capability),
   });
   publishedByInstance.set(instance, props);
   return props;
@@ -864,17 +872,39 @@ export class EvaluationContext implements IEvaluationContext {
     const entry = this.resourceInstances.get(name) ?? this.createdInstances.get(name);
     if (!entry) return;
     const kind = entry.resource.kind as string;
-    if (!startedInstances.has(entry.instance)) {
+    const fromInit = reportsFromInit(this.capabilityOf(kind));
+    if (!fromInit && !startedInstances.has(entry.instance)) {
       throw new RuntimeError(
         "ERR_OBSERVED_STATE_BEFORE_START",
-        `${kind} '${name}' reported observed state before it started. init() performs no I/O, so there is nothing observed to report there — call setStatus() from run(), or from a handler it reaches.`,
+        `${kind} '${name}' reported observed state before it started. Only a Telo.Provider reports from init(); any other resource reports from run(), or from a handler it reaches.`,
       );
     }
     reportedStatus.set(
       entry.instance,
       acceptReportedStatus(status, { kind, name, statusSchema: this.statusSchemaOf(kind) }),
     );
+    // A Provider still inside `init()` is published when `init()` returns — and
+    // never, if it fails — so no reader sees a reading its init may yet undo.
+    if (fromInit && this.resourceInstances.get(name)?.instance !== entry.instance) return;
     await this.publishSnapshot(name);
+  }
+
+  /**
+   * Defer the creation of a resource whose startup (compile-eval) field reads
+   * the observed state of a resource or import this context declares and has
+   * not initialized yet. The read is an init-order edge, so the dependency
+   * order normally initializes the producer first; this is the backstop for an
+   * order the edge could not decide.
+   */
+  deferPendingStartupReads(label: string, resource: ResourceManifest, sites: CelEvalSites): void {
+    for (const read of startupObservedStateReads(resource, sites)) {
+      const producer = read.alias ?? read.name;
+      if (!this.hasManifest(producer) || this.resourceInstances.has(producer)) continue;
+      throw new RuntimeError(
+        "ERR_LOCAL_REF_PENDING",
+        `${label}: reads the observed state of '${producer}' at startup, and '${producer}' is registered but not initialized yet (deferring to a later init pass)`,
+      );
+    }
   }
 
   /** The kind's effective `status:` — already folded through `extends` and
@@ -934,7 +964,10 @@ export class EvaluationContext implements IEvaluationContext {
     if (!entry) return;
     const kind = entry.resource.kind as string;
     const own = this.ownFieldOverlay(kind, entry.resource);
-    if (!entry.instance.snapshot && !own) return;
+    const statusSchema = this.statusSchemaOf(kind);
+    // A kind declaring `status:` publishes with or without a `snapshot()`, so a
+    // read of its observed state always reaches a reading that can say why.
+    if (!entry.instance.snapshot && !own && !statusSchema) return;
     const snapshot = entry.instance.snapshot
       ? ((await Promise.resolve(entry.instance.snapshot())) as Record<string, unknown> | undefined)
       : undefined;
@@ -943,10 +976,11 @@ export class EvaluationContext implements IEvaluationContext {
       kind,
       name,
       module: entry.resource.metadata?.module as string | undefined,
-      statusSchema: this.statusSchemaOf(kind),
+      statusSchema,
       status: reportedStatus.get(entry.instance),
       started: startedInstances.has(entry.instance),
       completed: completedInstances.has(entry.instance),
+      reportsFromInit: reportsFromInit(this.capabilityOf(kind)),
     });
     publishedByInstance.set(entry.instance, props);
     this.onResourceSnapshotted(name, props);
@@ -1194,6 +1228,9 @@ export class EvaluationContext implements IEvaluationContext {
           // allocation outside the chain is one nothing will reclaim.
           if (instance.init) await executeReturnedChain(await instance.init(ctx), scope);
         } catch (error) {
+          // What this attempt reported is discarded with it: a deferral re-runs
+          // `init()`, a failure builds a fresh instance.
+          reportedStatus.delete(instance);
           // Recover before the next pass: the loop retries a failed init, and
           // an init that registered a listener before it failed to connect
           // would otherwise register that listener again on every pass.

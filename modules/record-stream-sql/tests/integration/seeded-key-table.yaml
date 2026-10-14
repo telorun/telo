@@ -7,8 +7,12 @@ metadata:
     a writer lost at open, a lost writer's next append refused, and a key with no
     writer reported lost mid-tail. Each case clears its own keys first.
 
-    NEEDS A LIVE POSTGRES. Kept out of `tests/` proper for exactly that reason.
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL. Kept out of `tests/` proper for exactly that reason.
 imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
   Seeded:
     source: ../__fixtures__/seeded-suite
     variables: { table: record_stream_journal_seeded_test }
@@ -16,11 +20,9 @@ imports:
   RecordStreamSql: ../../
   Postgres: ../../../postgres
 variables:
-  dbHost: { env: DB_HOST, type: string, default: localhost }
-  dbPort: { env: DB_PORT, type: integer, default: 5432 }
-  dbUser: { env: DB_USER, type: string, default: postgres }
-  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
-  dbName: { env: DB_NAME, type: string, default: postgres }
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
 targets:
   - !ref Seeded.lostWriter
   - !ref Seeded.orphanedKey
@@ -29,8 +31,8 @@ targets:
 kind: Postgres.Connection
 metadata: { name: db }
 connectionString: !cel >-
-  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
-  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
+  string(resources.Pg.endpoint.status.port) + '/postgres'
 ---
 kind: RecordStreamSql.JournalStore
 metadata: { name: store }

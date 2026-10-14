@@ -236,6 +236,131 @@ describe("typed observed state", () => {
   });
 });
 
+describe("a Provider's observed state, reported from init()", () => {
+  // The capability is INHERITED: the implementation declares none, and the
+  // abstract it extends lives in a library only the implementation imports.
+  const contract = {
+    kind: "Telo.Abstract",
+    metadata: { name: "Endpoint", module: "contract" },
+    capability: "Telo.Provider",
+    status: { type: "object", properties: { host: { type: "string" } } },
+  } as unknown as ResourceManifest;
+
+  const backend = {
+    kind: "Telo.Definition",
+    metadata: { name: "Container", module: "backend" },
+    extends: "Contract.Endpoint",
+    schema: { type: "object", properties: {} },
+  } as unknown as ResourceManifest;
+
+  const backendImport = {
+    kind: "Telo.Import",
+    metadata: { name: "Contract", module: "backend", resolvedModuleName: "contract" },
+    source: "./contract",
+  } as unknown as ResourceManifest;
+
+  const consumerImport = {
+    kind: "Telo.Import",
+    metadata: { name: "Backend", resolvedModuleName: "backend" },
+    source: "./backend",
+  } as unknown as ResourceManifest;
+
+  const provider = {
+    kind: "Backend.Container",
+    metadata: { name: "db" },
+  } as unknown as ResourceManifest;
+
+  // Nothing starts `db`: a Provider is never in a targets: list.
+  const manifests = [
+    app([]),
+    consumerImport,
+    backendImport,
+    contract,
+    backend,
+    provider,
+    CONSUMER_DEF,
+  ] as unknown as ResourceManifest[];
+
+  it("is readable in a field that resolves at startup", () => {
+    expect(
+      analyze([...manifests, consumer("baseUrl", "resources.db.status.host")], "OBSERVED_STATE_IN_STARTUP_FIELD"),
+    ).toEqual([]);
+  });
+
+  it("needs nothing to start it", () => {
+    expect(
+      analyze([...manifests, consumer("url", "resources.db.status.host")], "OBSERVED_STATE_NEVER_RUN"),
+    ).toEqual([]);
+  });
+
+  it("is typed closed at startup", () => {
+    const diagnostics = analyze(
+      [...manifests, consumer("baseUrl", "resources.db.status.hots")],
+      "CEL_UNKNOWN_FIELD",
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].message).toContain("hots");
+  });
+
+  it("does not excuse a read whose target resolves to nothing", () => {
+    expect(
+      analyze([...manifests, consumer("baseUrl", "resources.nowhere.status.host")], "OBSERVED_STATE_IN_STARTUP_FIELD"),
+    ).toHaveLength(1);
+  });
+
+  describe("declared in a scope", () => {
+    // Scoped resources are created when the scope opens, where a startup field
+    // of a scoped sibling cannot see them.
+    const scopeDef = {
+      kind: "Telo.Definition",
+      metadata: { name: "Scoped", module: "Run" },
+      capability: "Telo.Runnable",
+      schema: {
+        type: "object",
+        properties: {
+          with: { "x-telo-scope": ["/targets"], type: "array", items: { type: "object" } },
+          targets: { type: "array", items: { "x-telo-ref": { kind: "Telo.Runnable", use: "call" } } },
+        },
+      },
+    } as unknown as ResourceManifest;
+
+    function scoped(field: "baseUrl" | "url"): ResourceManifest[] {
+      const sequence = {
+        kind: "Run.Scoped",
+        metadata: { name: "flow" },
+        with: [
+          { kind: "Backend.Container", metadata: { name: "db" } },
+          {
+            kind: "Consumer.Client",
+            metadata: { name: "browser" },
+            [field]: makeTaggedSentinel("cel", "resources.db.status.host"),
+          },
+        ],
+      } as unknown as ResourceManifest;
+      return [...manifests.filter((x) => x !== provider), scopeDef, sequence];
+    }
+
+    it("is refused in a scoped sibling's startup field, naming the scope", () => {
+      const diagnostics = analyze(scoped("baseUrl"), "OBSERVED_STATE_IN_STARTUP_FIELD");
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].message).toContain("'db' is declared in the 'with' scope of Run.Scoped/flow");
+    });
+
+    it("is readable in a scoped sibling's field that resolves while it runs", () => {
+      expect(analyze(scoped("url"), "OBSERVED_STATE_IN_STARTUP_FIELD")).toEqual([]);
+    });
+
+    it("leaves a reader outside the scope to the scope's reach check", () => {
+      const outside = {
+        kind: "Consumer.Client",
+        metadata: { name: "outside" },
+        baseUrl: makeTaggedSentinel("cel", "resources.db.status.host"),
+      } as unknown as ResourceManifest;
+      expect(analyze([...scoped("url"), outside], "OBSERVED_STATE_IN_STARTUP_FIELD")).toEqual([]);
+    });
+  });
+});
+
 describe("status: inherited from a Telo.Abstract", () => {
   // The abstract lives in a library the CONSUMER never imports — the sanctioned
   // "one import instead of two". Its `extends` alias belongs to the backend's

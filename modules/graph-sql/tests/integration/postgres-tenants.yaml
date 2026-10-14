@@ -9,8 +9,12 @@ metadata:
     each store addresses only its own schema's tables — and a cursor issued
     through one is refused through the other.
 
-    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
   Sql: ../../../sql
   Postgres: ../../../postgres
   Graph: ../../../graph
@@ -18,11 +22,9 @@ imports:
   Run: ../../../run
   Assert: ../../../assert
 variables:
-  dbHost: { env: DB_HOST, type: string, default: localhost }
-  dbPort: { env: DB_PORT, type: integer, default: 5432 }
-  dbUser: { env: DB_USER, type: string, default: postgres }
-  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
-  dbName: { env: DB_NAME, type: string, default: postgres }
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
 targets:
   - !ref reset
   - !ref tenantASchema
@@ -33,8 +35,8 @@ targets:
 kind: Postgres.Connection
 metadata: { name: db }
 connectionString: !cel >-
-  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
-  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
+  string(resources.Pg.endpoint.status.port) + '/postgres'
 ---
 kind: Run.Sequence
 metadata: { name: reset }

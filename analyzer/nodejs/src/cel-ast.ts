@@ -243,9 +243,9 @@ export function buildCelSegments(
   if (!tag?.startsWith("!") || taggedSource == null) return [];
   const engine = defaultRegistry().get(tag.slice(1));
   if (!engine?.expressionRegions) return [];
-  // Offsets into the parsed source mapped through the scalar's own escapes and
-  // indentation; where the style has no character-for-character image, the
-  // source's first occurrence in the text stands in for its start.
+  // Offsets into the parsed source mapped through the scalar's own escapes,
+  // indentation and folding; where the text does not align with the source,
+  // the source's first occurrence in the text stands in for its start.
   const rawOffsets = scalarRawOffsets(scalarText, style, taggedSource);
   const idx = scalarText.indexOf(taggedSource);
   const docAt = rawOffsets

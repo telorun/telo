@@ -18,6 +18,7 @@ import stylesheet from "./globals.css?url";
 import { hubContext, hubContextValue } from "@/hub-context.server";
 import { HubOriginsProvider } from "@/hub-origins";
 import { statusTitle } from "@/module-head";
+import { ProductColors } from "@/ProductSwitcher";
 import { SessionProvider } from "@/session";
 import { SiteFooter } from "@/SiteFooter";
 import { SiteHeader, THEME_KEY } from "@/SiteHeader";
@@ -49,17 +50,19 @@ export const middleware: Route.MiddlewareFunction[] = [
   },
 ];
 
-export function loader({ context }: Route.LoaderArgs) {
-  const { settings } = context.get(hubContext);
+export async function loader({ context }: Route.LoaderArgs) {
+  const { settings, products } = context.get(hubContext);
   return {
     browserApiOrigin: settings.browserApiOrigin,
     siteOrigin: settings.siteOrigin,
     oidc: settings.oidc,
     plausibleScriptUrl: settings.plausibleScriptUrl,
+    products: (await products?.list()) ?? null,
   };
 }
 
-/** The origins are fixed for the server's lifetime. */
+/** The origins are fixed for the server's lifetime, and the product list is
+ *  the one the page was served with. */
 export function shouldRevalidate() {
   return false;
 }
@@ -81,6 +84,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const oidc = origins?.oidc ?? null;
   const plausibleScriptUrl = origins?.plausibleScriptUrl ?? null;
   const siteOrigin = origins?.siteOrigin ?? null;
+  const products = origins?.products ?? null;
   const oidcClient = React.useMemo(
     () => (oidc && siteOrigin ? { ...oidc, siteOrigin } : null),
     [oidc, siteOrigin],
@@ -100,11 +104,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
         <Meta />
         <Links />
+        {products && <ProductColors products={products} />}
       </head>
       <body className="flex min-h-dvh flex-col antialiased">
         <HubOriginsProvider value={origins ?? null}>
           <SessionProvider client={oidcClient}>
-            <SiteHeader browserApiOrigin={browserApiOrigin} />
+            <SiteHeader browserApiOrigin={browserApiOrigin} products={products} />
             <main className="mx-auto flex w-full max-w-[88rem] flex-1 flex-col gap-8 px-4 py-8 sm:px-6">
               {children}
             </main>

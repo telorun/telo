@@ -86,6 +86,8 @@ export {
   buildObservedStateResourcesSchema,
   collectRunReachableNames,
   observedStateRead,
+  reportsFromInit,
+  startupObservedStateReads,
   validateObservedStateDeclarations,
   OBSERVED_STATE_SCHEMA,
 } from "./validate-observed-state.js";

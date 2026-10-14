@@ -132,6 +132,14 @@ not serve. To offer sign-in, route `/api` on the same host to the Telo Cloud
 API; the chart's route takes everything else. On a host with nothing behind
 `/api` Studio works as before, with the Telo Cloud controls hidden.
 
+`accountsUrl` (default `https://accounts.telo.run`) is the https origin of Telo
+accounts in your environment. The image serves it to Studio as `/config.json`
+(from the container's `ACCOUNTS_URL`), and Studio's products menu lists what
+`<accountsUrl>/v1/products` names. When that list cannot be read, the menu is
+not shown and everything else works. The image writes its server configuration
+to `/etc/nginx/conf.d` when it starts; with a read-only root filesystem, mount a
+writable volume there (the chart does).
+
 ## Open a manifest by link
 
 The web build opens a manifest named by the `open` query parameter:

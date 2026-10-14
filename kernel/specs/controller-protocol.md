@@ -519,8 +519,9 @@ end MUST refuse an `Session.Open` naming one already open.
 
 This section carries the capability entry points that build, start and tear an
 instance down, and the revertible effects they return. What the lifecycle MEANS —
-that `init()` allocates and `run()` performs the observable I/O, that frames open
-per lifecycle entry and unwind LIFO — is `kernel/specs/revertible-effects.md`'s.
+that `init()` allocates and `run()` performs the observable I/O (a
+`Telo.Provider`, having no `run()`, acquires in `init()`), that frames open per
+lifecycle entry and unwind LIFO — is `kernel/specs/revertible-effects.md`'s.
 
 ### 5.1 Binding and creating
 
@@ -554,9 +555,12 @@ already unwound. Within a tier the order is the cascade's own, which
 frame order it defines.
 
 A controller MUST NOT perform observable I/O in `Controller.Create` or
-`Controller.Init`. The protocol cannot enforce that, and states it because a
-runtime's retry semantics rest on it: a failed `init` unwinds and **discards the
-instance**, so a retry sends a fresh `Controller.Create`.
+`Controller.Init`, with one exception: a `Telo.Provider`, which has no
+`Controller.Run`, MAY acquire external resources in `Controller.Init` when each
+acquisition is an effect whose inverse releases it completely. The protocol
+cannot enforce either, and states them because a runtime's retry semantics rest
+on them: a failed `init` unwinds and **discards the instance**, so a retry sends
+a fresh `Controller.Create`.
 
 ### 5.2 Snapshot, run, provide, destroy
 
@@ -638,8 +642,10 @@ double-register wherever a caller also states it.
 
 `Status.Set` publishes **observed** state: it replaces rather than merges, is
 sticky until teardown, is validated against the kind's `status:` block, and is
-illegal before the resource has started — `init()` performs no I/O, so there is
-nothing observed to report there.
+illegal before the resource has started — except from a `Telo.Provider`, which
+reports from `Controller.Init` onward. A report made during `Controller.Init` is
+published when `init` returns and discarded with the attempt when it fails or
+defers, so a provider's reading is readable wherever a value resolves at startup.
 
 `Event.Emit` puts a lifecycle or debug event on the kernel's event bus. A runtime
 MUST NOT emit one per effect; recovery failures surface through the resource's
@@ -982,7 +988,7 @@ codes cross unchanged and are not listed here.
 | `ERR_DURABLE_SUSPENDED` | a durable run parked — a **signal**, rethrown by anything that catches | `Controller.Invoke`, `Dispatch.Invoke`, `Dispatch.InvokeResolved` |
 | `ERR_ZONE_REQUIRED` | a required zone was not open | `Zone.Require` |
 | `ERR_EFFECT_SCOPE_CLOSED` | an effect was registered against a scope that has fully unwound | `Controller.Init`, `Effect.Perform`, `Effect.Register`, `Effect.Run` |
-| `ERR_OBSERVED_STATE_BEFORE_START` | observed state was reported before the resource started | `Status.Set` |
+| `ERR_OBSERVED_STATE_BEFORE_START` | observed state was reported before the resource started, by a resource that is not a `Telo.Provider` | `Status.Set` |
 | `ERR_OBSERVED_STATE_UNDECLARED` | observed state named a field the kind's `status:` does not declare | `Status.Set` |
 | `ERR_OBSERVED_STATE_INVALID` | observed state did not satisfy the kind's `status:` | `Status.Set` |
 | `ERR_RESOURCE_NOT_INVOKABLE` | a dispatch named a resource with no invocable entry point | `Dispatch.Invoke`, `Dispatch.InvokeResolved` |

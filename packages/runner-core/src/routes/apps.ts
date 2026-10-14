@@ -5,11 +5,14 @@ import type { ResolvedRunnerApp } from "../config.js";
 import { DEFAULT_APP_NAME, type IoMode, type PortMapping, type RunnerTerms } from "../contract.js";
 import type { SessionRegistry } from "../session/registry.js";
 import { generateWorkloadToken } from "../session/workload-token.js";
+import type { SessionContainers } from "../session-containers/session-containers.js";
 import { enforceTerms, portsSchema, startWorkloadSession } from "./session-start.js";
 
 export interface AppsRouteDeps {
   backend: RunnerBackend;
   registry: SessionRegistry;
+  /** Present when the runner serves sessions a container engine. */
+  containers?: SessionContainers;
   /** Terms gate shared with `POST /v1/sessions` — app sessions execute on the
    *  operator's infrastructure just like runs, so they ride the same 428. */
   terms?: RunnerTerms;

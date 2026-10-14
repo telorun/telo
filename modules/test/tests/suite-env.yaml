@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: SuiteEnv
+  version: 1.0.0
+  description: |
+    A suite's `env` is evaluated at startup and reaches every test manifest it
+    runs as environment, where the test binds it like any other variable.
+imports:
+  Test: ..
+targets:
+  - !ref suite
+---
+kind: Test.Suite
+metadata: { name: suite }
+include:
+  - "__fixtures__/env/*.yaml"
+exclude: []
+env:
+  SUITE_ENV_PROBE: !cel "'computed ' + string(1 + 1)"

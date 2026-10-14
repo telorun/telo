@@ -4,7 +4,7 @@
   "spec": "5. Lifecycle",
   "request": {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "Report the resource's observed state. Replaces rather than merges, is sticky until teardown, and is illegal before the resource has started.",
+    "description": "Report the resource's observed state. Replaces rather than merges, is sticky until teardown, and is illegal before the resource has started except from a Telo.Provider, which reports from init() onward.",
     "type": "object",
     "properties": {
       "instance": {

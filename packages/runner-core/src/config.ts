@@ -16,7 +16,24 @@ export interface RunnerCoreConfig {
   replayBufferBytes: number;
   corsOrigins: string[] | "*";
   watch: WatchSessionConfig;
+  sessionContainers: SessionContainersConfig;
 }
+
+/**
+ * Containers a session's workload may start through the engine endpoint the
+ * runner serves it (`/v1/sessions/:id/engine/…`). Off by default: it lets a
+ * workload start workloads, so an operator opts in and bounds it.
+ */
+export type SessionContainersConfig =
+  | { enabled: false; max: number }
+  | {
+      enabled: true;
+      /** Most containers one session may hold at once (`RUNNER_SESSION_CONTAINERS_MAX`). */
+      max: number;
+      /** The runner's base URL as a session's workload reaches it
+       *  (`RUNNER_INTERNAL_URL`), without a trailing slash. */
+      internalUrl: string;
+    };
 
 /**
  * Watch-session policy. Off by default and separately ceilinged, because a watch
@@ -323,7 +340,36 @@ export function loadCoreConfig(
     ),
     corsOrigins: parseCorsOrigins(env.RUNNER_CORS_ORIGINS),
     watch: loadWatchConfig(env),
+    sessionContainers: loadSessionContainersConfig(env),
   };
+}
+
+export function loadSessionContainersConfig(env: NodeJS.ProcessEnv): SessionContainersConfig {
+  const enabled = parseBool(env.RUNNER_SESSION_CONTAINERS, false, "RUNNER_SESSION_CONTAINERS");
+  const max = parsePositiveInt(
+    env.RUNNER_SESSION_CONTAINERS_MAX,
+    4,
+    "RUNNER_SESSION_CONTAINERS_MAX",
+  );
+  if (!enabled) return { enabled, max };
+  const raw = env.RUNNER_INTERNAL_URL?.trim();
+  if (!raw) {
+    throw new RunnerConfigError(
+      "RUNNER_SESSION_CONTAINERS is on, so RUNNER_INTERNAL_URL is required: the runner's base URL " +
+        "as a session's workload reaches it (e.g. http://runner:8061), where the session's container " +
+        "engine is served.",
+    );
+  }
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new RunnerConfigError(`RUNNER_INTERNAL_URL must be an http(s) URL, got '${raw}'.`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new RunnerConfigError(`RUNNER_INTERNAL_URL must be an http(s) URL, got '${raw}'.`);
+  }
+  return { enabled, max, internalUrl: raw.replace(/\/+$/, "") };
 }
 
 export function loadWatchConfig(env: NodeJS.ProcessEnv): WatchSessionConfig {

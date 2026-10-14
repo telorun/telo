@@ -42,6 +42,9 @@ Optional, with defaults:
 | `RUNNER_WATCH_RELOAD_LIMIT` | `30` | Per-session reloads per minute |
 | `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` | `86400` | How long a suspended record is retained before eviction — bounds accumulation, and is not a workload deadline |
 | `RUNNER_WORKSPACE_CHECKPOINT_SECONDS` | `30` | How often the runner pulls a whole-tree workspace snapshot |
+| `RUNNER_SESSION_CONTAINERS` | `false` (`true` in compose) | Serve every session a container engine of its own — see [Session containers](#session-containers) |
+| `RUNNER_SESSION_CONTAINERS_MAX` | `4` | Most containers one session may hold at once; a create beyond it is `429` |
+| `RUNNER_INTERNAL_URL` | _(required when containers are on)_ | The runner as a session's container reaches it over `RUNNER_CHILD_NETWORK` (compose: `http://runner:8061`); the runner refuses to boot without it |
 | `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name via `POST /v1/apps/:name/sessions`: `{"<name>": {"image", "env"?, "pullPolicy"?, "port"?, "tokenEnv"?, "title"?, "description"?}}`. `env` is injected verbatim into the app's workload and may embed secrets — clients can never set those keys, and only name/title/description are advertised on `/v1/capabilities`. `port` is the tcp port the image listens on; it is what the runner publishes when the entry is used as a session's co-resident `agent`, and there is no default, because the runner knows nothing about any specific app. `tokenEnv` names an env var under which the runner injects a token it mints per session and reports as `token` on that workload's endpoints (see [Workload tokens](#workload-tokens)); naming a key the entry's own `env` also sets is a startup error. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"OPENAI_API_KEY": "<key>"}, "pullPolicy": "always", "port": 8080, "tokenEnv": "AGENT_TOKEN"}}` |
 
 ## Standalone
@@ -112,6 +115,30 @@ SSE stream. Events: `status`, `progress`, `debug`, `reachability`, `run`, `endpo
 **Workload output does not travel this stream.** It goes over the byte channel (`/v1/sessions/:id/io`), which exists precisely because per-chunk events are wasteful for high-volume output. This section previously listed `stdout` and `stderr` events; nothing ever emitted them, and they are gone.
 
 `status` is the SESSION's state, `run` is one application's outcome, and the two are deliberately separate nouns: in a watch session a one-shot app completing emits `run` with `phase: "completed"` and leaves the session `running`, so the next edit starts that app's next generation.
+
+## Session containers
+
+With `RUNNER_SESSION_CONTAINERS=true` every session gets
+`TELO_HOST_CONTAINER_ENGINE_URL` (`<RUNNER_INTERNAL_URL>/v1/sessions/<id>/engine`)
+and `TELO_HOST_CONTAINER_ENGINE_TOKEN`, so a test that starts its own database
+through `Docker.Engine` runs in a session exactly as it runs locally. No socket
+reaches the session: the runner answers the Engine API requests `Docker.Engine`
+sends behind the session's token (the contract, refusals and ceiling are
+`@telorun/runner-core`'s, in its README) and runs each container as a sibling
+on the host daemon:
+
+- joined to `RUNNER_CHILD_NETWORK`, where the session's container reaches it;
+- labelled `run.telo.session=<id>`, never named after the session, so the
+  proxy that fronts `telo-run-<id>` never routes to it;
+- publishing nothing on the host — inspect answers each requested binding with
+  the container's address on `RUNNER_CHILD_NETWORK` and its container port;
+- removed with its volumes when the session ends, stops, suspends or is
+  deleted, and at boot with every other container labelled with a session.
+
+`node scripts/runner-containers-e2e.mjs` runs a container-backed integration
+test as a run session against the runner's `production` image, on a network and
+bundles volume of its own, writing nothing in the checkout, and fails unless it
+exits 0 and leaves no container behind.
 
 ## The telo version an application runs on
 

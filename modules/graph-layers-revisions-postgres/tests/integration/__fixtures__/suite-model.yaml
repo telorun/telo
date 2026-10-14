@@ -4,13 +4,13 @@
 # built on is data, pinned by the runner — so until a runner pins anything, the
 # seven are independent layers sharing the tables. A partial: the runner that
 # includes it declares the schema `appSchema` listing these tables — in a
-# namespace of its own, so two runners never share one — and supplies the
-# connection variables.
+# namespace of its own, so two runners never share one — and imports the
+# server it connects to as `Pg`.
 kind: Postgres.Connection
 metadata: { name: db }
 connectionString: !cel >-
-  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
-  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
+  string(resources.Pg.endpoint.status.port) + '/postgres' +
   '?options=-c%20search_path%3Dpublic'
 ---
 kind: Layers.NodeTable

@@ -223,3 +223,117 @@ jobs:
           path: |
             e2e-logs/
             examples/.telo.debug.jsonl
+
+  # A session's own containers through the k8s runner's chart: a kind cluster
+  # (whose CNI enforces NetworkPolicy), the runner and the kernel built from this
+  # tree, the chart installed with `session.containers.enabled=true`, and one
+  # container-backed integration test run unchanged as a RUN session over `/v1`
+  # — `scripts/runner-containers-e2e.mjs --kubernetes`, the same session the
+  # script runs against the docker runner locally. The session must exit 0 and
+  # leave no pod or network policy behind. The test's PostgreSQL runs as
+  # `999:999` with its data in the container layer, which is what the session
+  # namespace's `restricted` Pod Security standard has to admit.
+  runner-containers:
+    name: Runner session containers (kind)
+    runs-on: ubuntu-latest
+
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # FAIL OPEN, like the jobs above: only a diff that was taken and reaches
+      # none of the runner, the runtime, the two container modules, the test or
+      # this workflow skips.
+      - name: Decide whether the runner's session containers changed
+        id: changed
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          run() { echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          [ "$EVENT_NAME" = "pull_request" ] || run
+          git fetch --no-tags origin "$BASE_REF" || true
+          base="origin/$BASE_REF"
+          changed=$(git diff --name-only "$base...HEAD") || run
+          if grep -qE '^((kernel|analyzer|sdk|templating|cel|cli|packages/runner-core|apps/k8s-runner)/|(pnpm-lock\.yaml|scripts/runner-containers-e2e\.mjs|\.github/workflows/e2e\.yml)$)' <<<"$changed"; then run; fi
+          affected=$(pnpm run --silent telo changed \
+               modules/vector-store-pgvector/tests/integration/filtered-top-k.yaml \
+               --base "$base" -o json | jq '.affected | length') || run
+          [ "$affected" = "0" ] || run
+          echo "run=false" >> "$GITHUB_OUTPUT"
+          echo "No runner or container-module changes — skipping the kind session-container run." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log in to Docker Hub
+        if: steps.changed.outputs.run == 'true' && env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create the kind cluster
+        if: steps.changed.outputs.run == 'true'
+        uses: helm/kind-action@v1
+        with:
+          version: v0.27.0
+          cluster_name: telo
+
+      # Every image a session needs is loaded into the node, so nothing is pulled
+      # from inside the cluster: the runner and the kernel built from this tree,
+      # the bundle-fetch init image and the test's database.
+      - name: Build and load the images
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          docker build -f apps/k8s-runner/Dockerfile --target production -t telo-k8s-runner:e2e .
+          docker build -f cli/nodejs/Dockerfile --target lean-slim -t telo-dev/node:local .
+          docker pull busybox:stable
+          docker pull pgvector/pgvector:pg18
+          kind load docker-image --name telo telo-k8s-runner:e2e telo-dev/node:local busybox:stable pgvector/pgvector:pg18
+
+      - name: Install the chart with session containers on
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          helm install telo-runner apps/k8s-runner/chart --wait --timeout 5m \
+            --set image.repository=telo-k8s-runner \
+            --set image.tag=e2e \
+            --set image.pullPolicy=Never \
+            --set session.image=telo-dev/node:local \
+            --set session.baseImages.enabled=false \
+            --set sessionRouting.mode=none \
+            --set session.containers.enabled=true
+
+      - name: Run a container-backed test as a session
+        if: steps.changed.outputs.run == 'true'
+        shell: bash
+        run: |
+          kubectl -n telo-runner port-forward svc/telo-k8s-runner 8062:8062 > port-forward.log 2>&1 &
+          node scripts/runner-containers-e2e.mjs --kubernetes \
+            --runner-url http://127.0.0.1:8062 \
+            --namespace telo-sessions \
+            --image telo-dev/node:local
+
+      - name: Show the cluster on failure
+        if: failure() && steps.changed.outputs.run == 'true'
+        run: |
+          kubectl get pods,networkpolicies -A -o wide || true
+          kubectl -n telo-sessions describe pods || true
+          kubectl -n telo-runner logs deploy/telo-k8s-runner --tail 300 || true
+          cat port-forward.log || true

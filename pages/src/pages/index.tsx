@@ -1,5 +1,6 @@
 import Head from "@docusaurus/Head";
 import Link from "@docusaurus/Link";
+import useBaseUrl from "@docusaurus/useBaseUrl";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import CodeBlock from "@theme/CodeBlock";
 import Layout from "@theme/Layout";
@@ -19,6 +20,7 @@ type LandingSample = { cases: SampleCase[] };
 export default function Home() {
   const { siteConfig } = useDocusaurusContext();
   const sample = siteConfig.customFields?.landingSample as LandingSample;
+  const logo = useBaseUrl("/telo.svg");
 
   return (
     <Layout description="Runtime for declarative backends.">
@@ -27,11 +29,7 @@ export default function Home() {
       </Head>
       <header className="hero heroBanner">
         <div className="container text--center">
-          <img
-            src="https://raw.githubusercontent.com/telorun/telo/main/assets/telo.png"
-            alt="Telo"
-            width={160}
-          />
+          <img src={logo} alt="Telo" width={96} />
           <h1 className="hero__title">Telo</h1>
           <p className="hero__subtitle">Define how your app works. Telo builds and runs it.</p>
           <div className="heroButtons">

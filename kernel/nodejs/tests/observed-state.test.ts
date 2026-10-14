@@ -191,6 +191,20 @@ describe("observed state — the three runtime read failures", () => {
     expect(message).not.toContain("defect");
   });
 
+  it("blames a Provider's module once it has initialized without reporting", () => {
+    // A Provider has no run(): it reports from init(), so a published reading
+    // with no status means init() returned without reporting — not ordering.
+    const props = buildPublishedProps(
+      {},
+      { ...base, started: false, completed: false, reportsFromInit: true },
+    );
+
+    const message = diagnoseObservedStateAccess(props, "status");
+    expect(message).toContain("initialized without reporting");
+    expect(message).toContain("oauth-client");
+    expect(message).not.toContain("targets:");
+  });
+
   it("lists what is reported for a field the kind does not declare", () => {
     const props = buildPublishedProps({}, { ...base, status: { port: 1 }, started: true, completed: true });
 

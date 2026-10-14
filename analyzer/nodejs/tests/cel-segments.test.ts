@@ -46,6 +46,37 @@ describe("celSegments — segment location", () => {
     }
   });
 
+  it("lands every member of a multi-line body on its written name", () => {
+    const body = [
+      "cel.bind(found, steps.above.result.entries.filter(e, e.name == x),",
+      "size(found) == 0 ? 'a' : steps.depth.result)",
+    ];
+    const cases = [
+      `foo: !cel >-\n  ${body[0]}\n    ${body[1]}\n`,
+      `foo: !cel >\n  ${body[0]}\n\n  ${body[1]}\n`,
+      `foo: !cel |-\n  ${body[0]}\n    ${body[1]}\n`,
+      `foo: !cel "${body[0]}\n  ${body[1]}"\n`,
+      `foo: !cel "${body[0]} \\\n  ${body[1]}"\n`,
+      `foo: !cel '${body[0].replace(/'/g, "''")}\n  ${body[1].replace(/'/g, "''")}'\n`,
+      "foo: !cel\n  steps.above.result.entries\n\n  + steps.depth.result\n",
+    ];
+    for (const text of cases) {
+      const seg = scalarAt(text, "foo").celSegments()[0]!;
+      const members: Extract<CelNode, { kind: "member" }>[] = [];
+      const walk = (node: CelNode): void => {
+        if (node.kind === "member") members.push(node);
+        for (const child of Object.values(node).flat()) {
+          if (child && typeof child === "object" && "kind" in child) walk(child as CelNode);
+        }
+      };
+      walk(seg.ast());
+      expect(members.map((m) => text.slice(m.propertyRange[0], m.propertyRange[1]))).toEqual(
+        members.map((m) => m.property),
+      );
+      expect(members.map((m) => m.property)).toContain("entries");
+    }
+  });
+
   it("maps a hole's nodes through an escape inside it", () => {
     const text = 'foo: !interpolate "${{ \\"a\\" + variables.x }}"\n';
     const seg = scalarAt(text, "foo").celSegments()[0]!;

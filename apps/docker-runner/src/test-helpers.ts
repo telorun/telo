@@ -169,6 +169,7 @@ export function makeRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
       suspendedTtlMs: 86_400_000,
       checkpointMs: 30_000,
     },
+    sessionContainers: { enabled: false, max: 4 },
     // Read from the environment as the runner does, so a test stubbing a
     // `RUNNER_*` variable configures the server it then builds.
     teloImages: loadTeloImageSource(process.env),

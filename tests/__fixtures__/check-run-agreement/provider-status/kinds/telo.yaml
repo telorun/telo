@@ -1,0 +1,49 @@
+# A provider that learns its address in `init()` and reports it as observed
+# state, and a service that reports its own only once it runs. The first is
+# readable in a field that resolves at startup; the second is not.
+kind: Telo.Library
+metadata:
+  name: ProviderStatus
+  version: 1.0.0
+  description: >-
+    Fixture kinds: a provider reporting an address it learns while initializing,
+    and a service reporting one only once it runs.
+exports:
+  kinds:
+    - Endpoint
+    - Listener
+---
+kind: Telo.Definition
+metadata:
+  name: Endpoint
+  description: Reports `port + 1000` as its observed port when it initializes.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./status.mjs#Endpoint
+schema:
+  type: object
+  additionalProperties: false
+  required: [port]
+  properties:
+    port: { type: integer }
+status:
+  type: object
+  properties:
+    host: { type: string }
+    port: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: Listener
+  description: Reports its observed port when it runs.
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./status.mjs#Listener
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+status:
+  type: object
+  properties:
+    port: { type: integer }

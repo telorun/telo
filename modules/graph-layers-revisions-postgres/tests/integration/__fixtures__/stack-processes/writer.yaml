@@ -12,14 +12,18 @@ imports:
   Graph: ../../../../../graph
   Run: ../../../../../run
 variables:
-  dbHost: { env: DB_HOST, type: string, default: localhost }
-  dbPort: { env: DB_PORT, type: integer, default: 5432 }
-  dbUser: { env: DB_USER, type: string, default: postgres }
-  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
-  dbName: { env: DB_NAME, type: string, default: postgres }
+  dbHost: { env: DB_HOST, type: string }
+  dbPort: { env: DB_PORT, type: integer }
   name: { env: ACTOR_NAME, type: string }
 targets:
   - !ref work
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://postgres:postgres@' + variables.dbHost + ':' +
+  string(variables.dbPort) + '/postgres' +
+  '?options=-c%20search_path%3Dpublic'
 ---
 kind: Run.Sequence
 metadata: { name: work }

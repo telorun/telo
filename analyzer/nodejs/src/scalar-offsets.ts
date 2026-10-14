@@ -2,85 +2,95 @@
  * Where each character of a scalar's PARSED value sits in its RAW source text,
  * so an offset into the value — a CEL hole, an AST node — lands on the
  * characters the author wrote even where the YAML style changed them: a
- * double-quoted escape, a doubled single quote, a block scalar's indentation.
+ * double-quoted escape, a doubled single quote, a block scalar's indentation, a
+ * line break folded into a space.
  *
  * Returns `parsed.length + 1` raw offsets (the last one is the value's end), or
- * undefined for a style whose value is not a character-for-character image of
- * its text (a folded block, a multi-line flow scalar), and for any mapping that
- * does not reproduce `parsed` — a caller then falls back rather than pointing at
- * the wrong characters.
+ * undefined when the text does not align with `parsed` — a caller then falls
+ * back rather than pointing at the wrong characters.
+ *
+ * Every non-whitespace character maps exactly. Whitespace the parsed value
+ * holds maps onto whitespace that was written, not necessarily the same
+ * character (a folded break, an indented line), and the first whitespace after
+ * a character always maps right after it — so a range ending there is exact.
  */
 export function scalarRawOffsets(
   raw: string,
   style: string | undefined,
   parsed: string,
 ): number[] | undefined {
-  const map =
-    style === "QUOTE_DOUBLE"
-      ? doubleQuoted(raw)
-      : style === "QUOTE_SINGLE"
-        ? singleQuoted(raw)
-        : style === "BLOCK_LITERAL"
-          ? literalBlock(raw, parsed.length)
-          : style === "PLAIN" && !/[\r\n]/.test(raw)
-            ? [...Array(raw.length + 1).keys()]
-            : undefined;
-  if (!map || map.length < parsed.length + 1) return undefined;
-  const offsets = map.slice(0, parsed.length + 1);
-  for (let i = 0; i < parsed.length; i++) {
-    const at = raw[offsets[i]!];
-    if (at !== "\\" && at !== parsed[i]) return undefined;
-  }
-  return offsets;
-}
-
-function doubleQuoted(raw: string): number[] | undefined {
+  const start = contentStart(raw, style);
+  if (start === undefined) return undefined;
+  const quote = style === "QUOTE_DOUBLE" ? '"' : style === "QUOTE_SINGLE" ? "'" : undefined;
   const out: number[] = [];
-  let j = 1;
-  while (j < raw.length - 1) {
-    const c = raw[j]!;
-    if (c === "\n" || c === "\r") return undefined;
-    if (c !== "\\") {
-      out.push(j++);
+  let j = start;
+  let p = 0;
+  while (p < parsed.length) {
+    const r = raw[j];
+    const c = parsed[p]!;
+    if (r === undefined) return undefined;
+    if (quote === '"' && r === "\\") {
+      const next = raw[j + 1];
+      if (next === undefined) return undefined;
+      // An escaped line break joins the lines and contributes nothing.
+      if (next === "\n" || next === "\r") {
+        j += 2;
+        continue;
+      }
+      const width = next === "x" ? 4 : next === "u" ? 6 : next === "U" ? 10 : 2;
+      out.push(j);
+      p++;
+      if (next === "U" && parseInt(raw.slice(j + 2, j + 10), 16) > 0xffff) {
+        out.push(j);
+        p++;
+      }
+      j += width;
       continue;
     }
-    const next = raw[j + 1];
-    if (next === undefined || next === "\n" || next === "\r") return undefined;
-    const width = next === "x" ? 4 : next === "u" ? 6 : next === "U" ? 10 : 2;
-    out.push(j);
-    if (next === "U" && parseInt(raw.slice(j + 2, j + 10), 16) > 0xffff) out.push(j);
-    j += width;
+    if (quote === "'" && r === "'") {
+      if (c !== "'" || raw[j + 1] !== "'") return undefined;
+      out.push(j);
+      p++;
+      j += 2;
+      continue;
+    }
+    if (r === c) {
+      out.push(j++);
+      p++;
+      continue;
+    }
+    if (!isBlank(r)) return undefined;
+    // A folded break or the indentation around one: whitespace in the value
+    // takes the written whitespace's place, anything else skips past it.
+    if (isBlank(c)) {
+      out.push(j);
+      p++;
+    }
+    j++;
   }
   out.push(j);
   return out;
 }
 
-function singleQuoted(raw: string): number[] | undefined {
-  const out: number[] = [];
-  let j = 1;
-  while (j < raw.length - 1) {
-    const c = raw[j]!;
-    if (c === "\n" || c === "\r") return undefined;
-    out.push(j);
-    j += c === "'" && raw[j + 1] === "'" ? 2 : 1;
+/** Where the value's first character may be written: past the opening quote,
+ *  or past a block scalar's header line. */
+function contentStart(raw: string, style: string | undefined): number | undefined {
+  switch (style) {
+    case "QUOTE_DOUBLE":
+    case "QUOTE_SINGLE":
+      return 1;
+    case "PLAIN":
+      return 0;
+    case "BLOCK_LITERAL":
+    case "BLOCK_FOLDED": {
+      const firstBreak = raw.indexOf("\n");
+      return firstBreak < 0 ? undefined : firstBreak + 1;
+    }
+    default:
+      return undefined;
   }
-  out.push(j);
-  return out;
 }
 
-function literalBlock(raw: string, parsedLength: number): number[] | undefined {
-  const firstBreak = raw.indexOf("\n");
-  if (firstBreak < 0) return undefined;
-  const lines = raw.slice(firstBreak + 1).split("\n");
-  const indent = lines.find((l) => l.trim() !== "")?.match(/^ */)?.[0].length ?? 0;
-  const out: number[] = [];
-  let lineStart = firstBreak + 1;
-  for (const line of lines) {
-    const content = Math.min(indent, line.length);
-    for (let k = content; k < line.length; k++) out.push(lineStart + k);
-    out.push(lineStart + line.length);
-    lineStart += line.length + 1;
-    if (out.length > parsedLength) break;
-  }
-  return out;
+function isBlank(c: string): boolean {
+  return c === " " || c === "\t" || c === "\n" || c === "\r";
 }

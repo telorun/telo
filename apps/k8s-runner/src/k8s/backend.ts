@@ -41,6 +41,7 @@ import {
   provisionMessage,
   terminalStatus,
 } from "./pod-status.js";
+import { createKubernetesSessionContainerEngine } from "./session-container-engine.js";
 import { startWatchSession } from "./watch-session.js";
 
 export { podFailureMessage } from "./pod-status.js";
@@ -516,7 +517,13 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     return teloImageRefusal(version, config.teloImages);
   }
 
-  return { probe, start, supplyTelo, reapOrphans };
+  return {
+    probe,
+    start,
+    supplyTelo,
+    reapOrphans,
+    containers: createKubernetesSessionContainerEngine({ kube, config }),
+  };
 }
 
 /** Create the session Service and publish its routes on whichever layer the

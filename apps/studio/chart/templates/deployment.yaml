@@ -39,6 +39,9 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          env:
+            - name: ACCOUNTS_URL
+              value: {{ include "studio-web.accountsUrl" . | quote }}
           ports:
             - name: http
               containerPort: 8080
@@ -59,8 +62,14 @@ spec:
             # filesystem is read-only.
             - name: tmp
               mountPath: /tmp
+            # The entrypoint renders the server config from its template here
+            # at start (`ACCOUNTS_URL` → /config.json).
+            - name: conf
+              mountPath: /etc/nginx/conf.d
       volumes:
         - name: tmp
+          emptyDir: {}
+        - name: conf
           emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:

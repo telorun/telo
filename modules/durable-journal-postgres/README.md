@@ -73,10 +73,10 @@ A wake only makes recovery **prompt**; the poller's interval is what makes it **
 
 ## Testing it
 
-The tests for this module need a live PostgreSQL, so they live under `tests/integration/` and run separately:
+The tests for this module need a container engine — each starts its own PostgreSQL through `Container.Instance` over `Docker.Engine` — so they live under `tests/integration/` and run separately:
 
 ```sh
 pnpm run test:integration
 ```
 
-Connection details come from `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` and `DB_NAME`.
+The engine is reached at `TELO_HOST_CONTAINER_ENGINE_URL` (default `unix:///var/run/docker.sock`), with `TELO_HOST_CONTAINER_ENGINE_TOKEN` when it asks for one; nothing else has to be running.

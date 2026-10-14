@@ -25,6 +25,7 @@ import {
 import type { TeloLanguage } from "../hooks/useLanguageSession";
 import { TeloVersionControl } from "./TeloVersionControl";
 import { CloudAccountControl } from "./cloud/CloudAccountControl";
+import { TopBarProductSwitcher } from "./ProductSwitcher";
 import { WorkspaceSwitcher, type WorkspaceSwitcherProps } from "./WorkspaceSwitcher";
 import studioMark from "./telo-studio-mark.svg";
 
@@ -154,6 +155,7 @@ export function TopBar({
         >
           <Settings />
         </Button>
+        <TopBarProductSwitcher />
         <CloudAccountControl />
       </div>
     </div>

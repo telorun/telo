@@ -1,0 +1,67 @@
+# A PostgreSQL server of its own for one test: imported once per test file
+# (isolated, so every import starts its own container), removed with its data
+# when the test ends.
+#
+#   imports:
+#     Pg:
+#       source: <relative>/postgres/tests/__fixtures__/container
+#       variables: { engineUrl: !cel "variables.engineUrl" }
+#       secrets: { engineToken: !cel "secrets.engineToken" }
+#
+# and the test connects to
+#   'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
+#   string(resources.Pg.endpoint.status.port) + '/postgres'
+#
+# The importer binds `engineUrl` to TELO_HOST_CONTAINER_ENGINE_URL (default
+# unix:///var/run/docker.sock) and `engineToken` to
+# TELO_HOST_CONTAINER_ENGINE_TOKEN (default empty: no token), so the same test runs against
+# the local engine and against one a runner serves its session.
+kind: Telo.Library
+metadata:
+  name: PostgresContainer
+  version: 1.0.0
+  description: >-
+    Fixture: a disposable PostgreSQL server with pgvector for one test, user
+    postgres, password postgres, database postgres.
+imports:
+  Container: ../../../../container
+  Docker: ../../../../docker
+variables:
+  engineUrl:
+    type: string
+    description: The container engine's endpoint.
+secrets:
+  engineToken:
+    type: string
+    description: The bearer token the engine asks for; empty for none.
+exports:
+  resources:
+    - server
+    - endpoint
+---
+kind: Docker.Engine
+metadata: { name: engine }
+endpoint: !cel "variables.engineUrl"
+token: !cel "secrets.engineToken"
+---
+kind: Container.Instance
+metadata: { name: server }
+engine: !ref engine
+image: pgvector/pgvector:pg18
+# The image's own postgres user, numeric so an engine refusing root runs it.
+user: "999:999"
+env:
+  POSTGRES_PASSWORD: postgres
+ports: [5432]
+# The server logs this line once for the initialization pass and once more when
+# it restarts to serve.
+readiness:
+  kind: Container.LogReady
+  text: database system is ready to accept connections
+  times: 2
+lifetime: 2h
+---
+kind: Container.Port
+metadata: { name: endpoint }
+container: !ref server
+port: 5432
