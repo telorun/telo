@@ -1,5 +1,15 @@
 # @telorun/sdk
 
+## 0.116.0
+
+### Minor Changes
+
+- f72827b: A `Telo.Provider` reports observed state from `init()`, and that status is readable in another resource's startup (compile-eval) fields. A provider has no `run()`, so its `init()` is where it becomes what it provides: it may acquire external resources there when each acquisition is an effect whose inverse releases it completely, and `ctx.setStatus(...)` there is no longer `ERR_OBSERVED_STATE_BEFORE_START`. The report is published when `init()` returns and discarded with an attempt that fails or defers. `telo check` no longer reports `OBSERVED_STATE_IN_STARTUP_FIELD` or `OBSERVED_STATE_NEVER_RUN` for a read whose target's effective capability (through `extends`) is `Telo.Provider` — except a provider declared in a `with:` scope, which is created when the scope opens and stays `OBSERVED_STATE_IN_STARTUP_FIELD` (naming the scope) in a scoped sibling's startup field; the read stays typed and closed, so a misspelled field is `CEL_UNKNOWN_FIELD`. Such a read is an init-order edge: the producer — or the import a `resources.<Alias>.<name>.status` read crosses — is initialized first, a loop of such reads is `DEPENDENCY_CYCLE`, and the kernel defers a reader whose producer has not initialized yet with `ERR_LOCAL_REF_PENDING`. Every other capability keeps the old rules, and a read whose target resolves to nothing is still refused. A kind declaring `status:` now publishes its reading even when its controller has no `snapshot()`.
+
+### Patch Changes
+
+- @telorun/cel@0.116.0
+
 ## 0.115.2
 
 ### Patch Changes

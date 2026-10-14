@@ -1,5 +1,11 @@
 # @telorun/templating
 
+## 0.116.0
+
+### Patch Changes
+
+- @telorun/cel@0.116.0
+
 ## 0.115.2
 
 ### Patch Changes
