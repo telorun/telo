@@ -1,0 +1,25 @@
+# A port the container does not publish: refused here by `telo check`, and at
+# creation for an importer whose check does not reach this library's internals.
+kind: Telo.Library
+metadata:
+  name: PortNotExposed
+  version: 1.0.0
+  description: Fixture naming a container port the container does not publish.
+imports:
+  Container: ../../..
+  Fake: ../fake-engine
+---
+kind: Fake.Engine
+metadata: { name: engine }
+---
+kind: Container.Instance
+metadata: { name: server }
+engine: !ref engine
+image: example/server:1
+ports: [8080]
+lifetime: 10m
+---
+kind: Container.Port
+metadata: { name: endpoint }
+container: !ref server
+port: 5432

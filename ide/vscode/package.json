@@ -46,6 +46,10 @@
           "telo.yaml",
           "*.telo.yaml"
         ],
+        "icon": {
+          "light": "./dist/file-icon.svg",
+          "dark": "./dist/file-icon.svg"
+        },
         "configuration": "./language-configuration.json"
       }
     ],

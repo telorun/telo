@@ -73,7 +73,9 @@ const config: Config = {
   url: "https://telo.run",
   baseUrl: process.env.BASE_URL ?? "/",
   trailingSlash: false,
-  favicon: "favicon.png",
+  favicon: "telo.svg",
+  // `../assets` holds the repo's one Telo mark, served as `/telo.svg`.
+  staticDirectories: ["static", "../assets"],
 
   onBrokenLinks: "warn",
 
@@ -193,7 +195,8 @@ const config: Config = {
 
   themeConfig: {
     navbar: {
-      title: "⚡ Telo",
+      title: "Telo",
+      logo: { alt: "Telo", src: "telo.svg" },
       items: [
         { to: "/learn/getting-started", label: "Learn", position: "left" },
         { to: "/build", label: "Build", position: "left" },

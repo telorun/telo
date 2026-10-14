@@ -129,6 +129,54 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   appLimits: LimitCeilings;
   /** Menu of base images a session may pick (advertised as the `image` enum). */
   baseImageCatalog: BaseImageCatalogConfig;
+  /** The resources of every pod a session starts through its container engine
+   *  (`RUNNER_SESSION_CONTAINERS_RESOURCES`, a pod container's `resources` as
+   *  JSON). Always set: the session namespace's quota admits no pod without
+   *  limits. */
+  sessionContainerResources: ContainerResources;
+}
+
+/** A pod container's `resources`, quantities as strings. */
+export interface ContainerResources {
+  limits: Record<string, string>;
+  requests: Record<string, string>;
+}
+
+const DEFAULT_SESSION_CONTAINER_RESOURCES: ContainerResources = {
+  limits: { cpu: "500m", memory: "512Mi", "ephemeral-storage": "1Gi" },
+  requests: { cpu: "500m", memory: "512Mi" },
+};
+
+function loadSessionContainerResources(raw: string | undefined): ContainerResources {
+  const text = raw?.trim();
+  if (!text) return DEFAULT_SESSION_CONTAINER_RESOURCES;
+  const fail = (detail: string): never => {
+    throw new RunnerConfigError(
+      `RUNNER_SESSION_CONTAINERS_RESOURCES must be a pod container's resources as JSON ` +
+        `({"limits": {...}, "requests": {...}}, quantities as strings): ${detail}`,
+    );
+  };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    return fail((err as Error).message);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return fail("not an object");
+  const resources: ContainerResources = { limits: {}, requests: {} };
+  for (const [key, value] of Object.entries(parsed)) {
+    if (key !== "limits" && key !== "requests") return fail(`unknown key '${key}'`);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return fail(`'${key}' is not an object`);
+    }
+    for (const [name, quantity] of Object.entries(value)) {
+      if (typeof quantity !== "string" && typeof quantity !== "number") {
+        return fail(`'${key}.${name}' is not a quantity`);
+      }
+      resources[key][name] = String(quantity);
+    }
+  }
+  return resources;
 }
 
 const DEFAULT_PORT = 8062;
@@ -285,5 +333,6 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
       ephemeralStorage: env.RUNNER_APP_MAX_EPHEMERAL_STORAGE?.trim() || "1Gi",
     },
     baseImageCatalog: loadBaseImageCatalogConfig(env),
+    sessionContainerResources: loadSessionContainerResources(env.RUNNER_SESSION_CONTAINERS_RESOURCES),
   };
 }

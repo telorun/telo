@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/telorun/telo/main/assets/telo.png" alt="Telo" width="200" />
+  <img src="assets/telo.svg" alt="Telo" width="120" />
 </p>
 
 <h1 align="center">Telo</h1>

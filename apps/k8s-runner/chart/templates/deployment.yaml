@@ -112,6 +112,17 @@ spec:
             - name: RUNNER_PULL_POLICY
               value: {{ .Values.session.teloImages.pullPolicy | quote }}
             {{- end }}
+            - name: RUNNER_SESSION_CONTAINERS
+              value: "{{ .Values.session.containers.enabled }}"
+            {{- if .Values.session.containers.enabled }}
+            - name: RUNNER_SESSION_CONTAINERS_MAX
+              value: "{{ .Values.session.containers.max }}"
+            - name: RUNNER_SESSION_CONTAINERS_RESOURCES
+              value: {{ toJson .Values.session.containers.resources | quote }}
+            # The runner as a session's workload reaches it: its own Service.
+            - name: RUNNER_INTERNAL_URL
+              value: {{ include "k8s-runner.selfUrl" . | quote }}
+            {{- end }}
             - name: RUNNER_INIT_IMAGE
               value: {{ .Values.session.initImage | quote }}
             - name: RUNNER_BASE_IMAGE_CATALOG_ENABLED

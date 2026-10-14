@@ -1,0 +1,17 @@
+modules:
+  modules/container: Added
+body: "New module. Container.Instance runs one disposable container for the lifetime of
+  an application or test: it pulls the image when missing, creates and starts it with
+  command, entrypoint, environment, user and published TCP ports, and waits for
+  readiness within startupTimeout (default 120s), all in init() as one effect whose
+  inverse force-removes the container and its volumes. Container.Port reports the
+  address a published port is reached at as status { host, port }, readable in startup
+  fields; a port the container does not publish is refused at check
+  (CONTAINER_PORT_NOT_EXPOSED) and at creation (ERR_CONTAINER_PORT_NOT_EXPOSED).
+  Container.LogReady makes a container ready once a text appears in its output a number
+  of times. Every container carries the label run.telo.container.expires (start plus
+  lifetime), and each start removes expired ones left by a killed process. Failures are
+  ERR_CONTAINER_ENGINE_UNREACHABLE, ERR_CONTAINER_START_FAILED, ERR_CONTAINER_NOT_READY
+  and ERR_CONTAINER_EXITED, each naming the resource. Container.Engine and
+  Container.Readiness are the abstracts an engine or readiness kind implements, with
+  their contracts exported as @telorun/container."

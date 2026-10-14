@@ -2,14 +2,8 @@
 # shares: people in a `top` layer, three layers it can be pinned to, and a
 # `notes` layer the children record their outcomes in, in one PostgreSQL
 # namespace. A partial: the parent that includes it runs the schema; a child
-# only names it.
-kind: Postgres.Connection
-metadata: { name: db }
-connectionString: !cel >-
-  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
-  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
-  '?options=-c%20search_path%3Dpublic'
----
+# only names it. Each includer declares the connection `db`:
+# the parent to the server it started, a child to the one it is handed.
 kind: Layers.NodeTable
 metadata: { name: people }
 table: people

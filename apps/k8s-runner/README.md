@@ -322,6 +322,10 @@ outcome than a URL that silently reaches the wrong app.
 | `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` | `86400` | How long a suspended session record is retained before eviction. Deliberately not the pod deadline: that bounds a pod, so on its own nothing would ever evict a suspended record |
 | `RUNNER_WORKSPACE_CHECKPOINT_SECONDS` | `30` | How often the runner pulls a whole-tree workspace snapshot |
 | `RUNNER_EXIT_TTL_MS` | `14400000` | How long exited sessions stay in the registry (so the editor can re-attach and replay their history after a reload) before eviction |
+| `RUNNER_SESSION_CONTAINERS` | `false` | Serve every session a container engine of its own (chart: `session.containers.enabled`) — see [Session containers](#session-containers) |
+| `RUNNER_SESSION_CONTAINERS_MAX` | `4` | Most containers one session may hold at once; a create beyond it is `429` (chart: `session.containers.max`) |
+| `RUNNER_SESSION_CONTAINERS_RESOURCES` | _(limits 500m CPU, 512Mi memory, 1Gi ephemeral storage; requests 500m CPU, 512Mi memory)_ | Every session container's pod `resources`, as JSON `{"limits": {…}, "requests": {…}}` (chart: `session.containers.resources`) |
+| `RUNNER_INTERNAL_URL` | _(required when containers are on)_ | The runner as a session pod reaches it; the chart sets it to the runner's Service, the same URL as `RUNNER_SELF_URL` |
 | `RUNNER_TERMS_FILE` | _(unset)_ | Path to the agreement file (plain text / markdown), read at startup — mount it from a `ConfigMap` (e.g. `/etc/telo/terms.md`). Setting this (or `RUNNER_TERMS_BODY`) enables terms: the runner advertises them on `/v1/capabilities` and rejects `POST /v1/sessions` with `428` unless the client sends `x-telo-accepted-terms` matching the version. An unreadable path fails startup. The public cloud should set this |
 | `RUNNER_TERMS_BODY` | _(unset)_ | Inline agreement text, for short notes; ignored when `RUNNER_TERMS_FILE` is set |
 | `RUNNER_TERMS_TITLE` | `Usage agreement` | Heading shown above the agreement |
@@ -356,6 +360,48 @@ none does.
 Each generation's `run` event carries the version the runtime itself reported
 (`telo`), passed on unjudged — the editor compares it with what it asked for and
 warns on a difference.
+
+### Session containers
+
+With `session.containers.enabled=true` every session gets
+`TELO_HOST_CONTAINER_ENGINE_URL` (`<runner Service>/v1/sessions/<id>/engine`) and
+`TELO_HOST_CONTAINER_ENGINE_TOKEN`, so a test that starts its own database
+through `Docker.Engine` runs in a session exactly as it runs locally — with no
+credentials in the session pod and no privileged container anywhere. The runner
+answers the Engine API requests `Docker.Engine` sends behind the session's token
+(the contract, refusals and ceiling are `@telorun/runner-core`'s, in its README)
+and runs each container as a pod in the session namespace:
+
+- under the namespace's `restricted` Pod Security standard: `runAsNonRoot`, the
+  `User` as `runAsUser` / `runAsGroup`, all capabilities dropped, no privilege
+  escalation, `RuntimeDefault` seccomp, no service-account token. A user that is
+  not a numeric non-root `uid[:gid]` is a `400` naming `User`;
+- with `session.containers.resources`, which the namespace's `ResourceQuota`
+  counts like any session pod — so enabling this requires raising
+  `resourceQuota.hard` by the container term: `pods` by `runner.maxSessions` ×
+  `session.containers.max`, and `requests.cpu` / `requests.memory` (and
+  `limits.cpu` / `limits.memory`) by `runner.maxSessions` ×
+  `session.containers.max` × the container's requests (limits). At the defaults
+  that is pods 32 → 160, cpu 16 → 80 (32 × 4 × 500m = 64, plus 16) and memory
+  16Gi → 80Gi; without it the quota, not `runner.maxSessions`, caps concurrency,
+  as a 403 the client sees;
+- labelled `run.telo.session=<id>` and the runner's managed-by label — never
+  `telo.run/session-id`, so the session's Service does not select it — and owned
+  by the session's pod, so the cluster collects it with that pod;
+- reachable only from that session's pods, through two NetworkPolicies the runner
+  creates per session (`telo-ctr-<id>-ingress`, `telo-ctr-<id>-egress`, owned by
+  the session's pod and deleted when the session ends — a run session's pod is
+  kept after it exits); the Role gains `networkpolicies` when the setting is on;
+- at its pod IP and container port, which inspect answers in the binding the
+  client asked for — no host or node port is bound;
+- removed when the session ends, stops, suspends or is deleted, and at boot with
+  every other pod carrying the managed-by label.
+
+The node pulls a container's image when its pod starts, so image inspect and
+pull answer at once and an image that cannot be pulled fails the start with the
+kubelet's reason. `.github/workflows/e2e.yml` installs this chart on kind with
+the setting on and runs a container-backed integration test as a session
+(`node scripts/runner-containers-e2e.mjs --kubernetes`).
 
 ### Base-image picker
 

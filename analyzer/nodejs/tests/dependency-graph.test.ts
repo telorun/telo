@@ -236,6 +236,70 @@ describe("buildDependencyGraph — module calls", () => {
   });
 });
 
+describe("buildDependencyGraph — startup reads of observed state", () => {
+  const cel = (source: string) => makeTaggedSentinel("cel", source);
+  const endpointDef = {
+    kind: "Telo.Definition",
+    metadata: { name: "Endpoint", module: "test" },
+    capability: "Telo.Provider",
+    schema: {
+      type: "object",
+      properties: {
+        host: { type: "string", "x-telo-eval": "compile" },
+        later: { type: "string", "x-telo-eval": "runtime" },
+      },
+    },
+    status: { type: "object", properties: { host: { type: "string" } } },
+  };
+
+  it("initializes a producer before a resource reading its status at startup", () => {
+    const resources = [
+      { kind: "test.Endpoint", metadata: { name: "reader" }, host: cel("resources.db.status.host") },
+      { kind: "test.Endpoint", metadata: { name: "db" } },
+    ] as unknown as ResourceManifest[];
+    const names = buildDependencyGraph(resources, registryOf(endpointDef)).order!.map((n) => n.name);
+    expect(names).toEqual(["db", "reader"]);
+  });
+
+  it("orders nothing for a read that resolves while the application runs", () => {
+    const resources = [
+      { kind: "test.Endpoint", metadata: { name: "reader" }, later: cel("resources.db.status.host") },
+      { kind: "test.Endpoint", metadata: { name: "db" }, later: cel("resources.reader.status.host") },
+    ] as unknown as ResourceManifest[];
+    const { order, cycle } = buildDependencyGraph(resources, registryOf(endpointDef));
+    expect(cycle).toBeUndefined();
+    expect(order!.map((n) => n.name)).toEqual(["reader", "db"]);
+  });
+
+  it("reports producers reading each other at startup as a cycle", () => {
+    const resources = [
+      { kind: "test.Endpoint", metadata: { name: "a" }, host: cel("resources.b.status.host") },
+      { kind: "test.Endpoint", metadata: { name: "b" }, host: cel("resources.a.status.host") },
+    ] as unknown as ResourceManifest[];
+    const { order, cycle } = buildDependencyGraph(resources, registryOf(endpointDef));
+    expect(order).toBeUndefined();
+    expect(cycle!.map((n) => n.name)).toEqual(["a", "b", "a"]);
+  });
+
+  it("creates the import before a resource reading an exported instance's status at startup", () => {
+    const aliases = new AliasResolver();
+    aliases.registerUngatedAlias("Self", "App");
+    aliases.registerImport("Pg", "Postgres");
+    const resources = [
+      {
+        kind: "test.Endpoint",
+        metadata: { name: "reader" },
+        host: cel("resources.Pg.endpoint.status.host"),
+      },
+      { kind: "Telo.Import", metadata: { name: "Pg" }, source: "./pg" },
+    ] as unknown as ResourceManifest[];
+    const names = buildDependencyGraph(resources, registryOf(endpointDef), aliases).order!.map(
+      (n) => n.name,
+    );
+    expect(names).toEqual(["Pg", "reader"]);
+  });
+});
+
 describe("buildDependencyGraph — creation order", () => {
   /** The entry's alias table, as analysis registers it for `App`. */
   const appAliases = () => {

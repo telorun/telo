@@ -10,6 +10,7 @@ import {
 } from "../contract.js";
 import { generateSessionId } from "../session/session-id.js";
 import { endpointsWithToken, statusWithTokens } from "../session/workload-token.js";
+import type { SessionContainers } from "../session-containers/session-containers.js";
 import {
   SessionLimitError,
   type SessionEntry,
@@ -56,6 +57,8 @@ export function enforceTerms(
 export interface WorkloadStartDeps {
   backend: RunnerBackend;
   registry: SessionRegistry;
+  /** Present when the runner serves sessions a container engine. */
+  containers?: SessionContainers;
 }
 
 export type WorkloadStartArgs = WorkloadLaunch;
@@ -97,7 +100,12 @@ export async function startWorkloadSession(
     throw err;
   }
 
-  const sessionEnv = withoutCacheOverride(args.env);
+  // The engine's address and token are the runner's to set: a client-supplied
+  // value of either is written over, as a minted token always is.
+  const sessionEnv = {
+    ...withoutCacheOverride(args.env),
+    ...deps.containers?.open(sessionId),
+  };
 
   // Respond as soon as the session is registered — BEFORE the backend starts.
   // `backend.start()` spans image pull and workload bring-up, which can take

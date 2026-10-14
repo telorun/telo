@@ -38,7 +38,8 @@ runner:
   # Cap on retained sessions (live + recently-exited, kept for studio re-attach).
   # At capacity the oldest exited session is evicted before a new run is rejected,
   # so this is a history-depth knob, not just a concurrency cap. Matches the code
-  # default and pairs with resourceQuota.pods (live sessions each hold one pod).
+  # default and pairs with resourceQuota.pods: a live session holds one pod, plus
+  # up to session.containers.max more when session.containers.enabled.
   maxSessions: 32
   # Usage agreement shown + enforced before a session starts. When enabled, the
   # chart mounts `body` as a file and points RUNNER_TERMS_FILE at it; the runner
@@ -180,6 +181,39 @@ session:
   imagePullSecret: ""
   # Optional sandbox RuntimeClass (gvisor/kata). Empty → cluster default (runc).
   runtimeClass: ""
+  # Containers a session's workload starts itself — a test bringing up the
+  # database it runs against, through `Container.Instance` over `Docker.Engine`.
+  # When enabled, every session gets a container engine of its own:
+  # TELO_HOST_CONTAINER_ENGINE_URL points at `/v1/sessions/<id>/engine` on this
+  # runner's Service and TELO_HOST_CONTAINER_ENGINE_TOKEN holds a token minted
+  # for that session. The engine answers the Docker Engine API subset
+  # `Docker.Engine` speaks and runs each container as a pod in the session
+  # namespace:
+  #   - under the namespace's `restricted` Pod Security standard — a container
+  #     must name a numeric non-root `user` (a named or root user is refused);
+  #   - with `resources` below, which the namespace's resource quota counts like
+  #     any session pod — so enabling this requires raising resourceQuota.hard
+  #     by the container term stated there;
+  #   - owned by the session's pod, so it is collected with it, and removed
+  #     when the session stops, suspends, hits its deadline or is deleted;
+  #   - reachable from that session's pods only, through two NetworkPolicies
+  #     the runner creates per session (the Role gains `networkpolicies`);
+  #   - at its pod IP and container port, which inspect answers in the port
+  #     binding a client asked for. No host or node port is ever bound.
+  # The node pulls a container's image when its pod starts.
+  containers:
+    enabled: false
+    # Most containers one session may hold at once; beyond it a create is 429.
+    max: 4
+    # A pod container's `resources` for every session container.
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+        ephemeral-storage: "1Gi"
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
   # Base-image picker advertised on /v1/capabilities. The runner resolves the
   # menu from a Docker Hub repo's tags (filtered), shows it as an editable
   # `image` dropdown in studio, and re-validates the chosen image server-side
@@ -291,6 +325,18 @@ sessionRouting:
 # client sees. The old 4 / 8Gi / 2 / 4Gi was exactly 32 pods at the old 50m /
 # 100Mi ceilings; at the ceilings a self-resolving session actually needs, the
 # same numbers would have admitted four. These are 32 x 500m and 32 x 512Mi.
+#
+# With session.containers.enabled, every session may hold up to
+# session.containers.max container pods besides its own, each counted with
+# session.containers.resources. The quota then needs the container term on top:
+#   - pods: + maxSessions x session.containers.max
+#   - requests.cpu / requests.memory: + maxSessions x session.containers.max x
+#     the container's requests
+#   - limits.cpu / limits.memory: + the same, with the container's limits
+# At the defaults (32 sessions, 4 containers each, 500m / 512Mi per container)
+# that is pods 32 -> 160, cpu 16 -> 80 (32 x 4 x 500m = 64, plus 16) and memory
+# 16Gi -> 80Gi. Without it the quota, not runner.maxSessions, caps concurrency,
+# as a 403 the client sees.
 #
 # A quota RESERVES nothing — it is a cap — so sizing it to the session ceilings
 # costs nothing on a small cluster: pods pend on the scheduler instead of being

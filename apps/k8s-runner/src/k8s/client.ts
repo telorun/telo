@@ -4,6 +4,7 @@ import {
   CoreV1Api,
   CustomObjectsApi,
   KubeConfig,
+  Log,
   NetworkingV1Api,
   Watch,
 } from "@kubernetes/client-node";
@@ -19,6 +20,8 @@ export interface KubeClient {
    *  when the routing mode is `auto`. */
   apis: ApisApi;
   attach: Attach;
+  /** Pod logs as a stream — what a session container's engine answers logs with. */
+  log: Log;
   watch: Watch;
 }
 
@@ -41,6 +44,7 @@ export function createKubeClient(): KubeClient {
     custom: kc.makeApiClient(CustomObjectsApi),
     apis: kc.makeApiClient(ApisApi),
     attach: new Attach(kc),
+    log: new Log(kc),
     watch: new Watch(kc),
   };
 }

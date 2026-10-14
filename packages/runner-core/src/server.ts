@@ -10,7 +10,9 @@ import { capabilitiesRoute } from "./routes/capabilities.js";
 import { healthRoute } from "./routes/health.js";
 import { ioRoute } from "./routes/io.js";
 import { probeRoute } from "./routes/probe.js";
+import { engineRoute } from "./routes/engine.js";
 import { sessionsRoute, type ConfigGate } from "./routes/sessions.js";
+import { SessionContainers } from "./session-containers/session-containers.js";
 import { SessionRegistry } from "./session/registry.js";
 import { WatchSupervisor } from "./session/watch-supervisor.js";
 
@@ -143,6 +145,28 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     );
   }
 
+  // A container engine per session, served only where the operator turned it on
+  // and the backend can run one: the setting and the seam are one statement,
+  // like `teloVersions` and `supplyTelo`.
+  let containers: SessionContainers | undefined;
+  const containerSettings = deps.config.sessionContainers;
+  if (containerSettings.enabled) {
+    if (!deps.backend.containers) {
+      throw new RunnerConfigError(
+        "RUNNER_SESSION_CONTAINERS is on, but this runner's backend cannot run a session's " +
+          "containers — turn it off.",
+      );
+    }
+    containers = new SessionContainers({
+      engine: deps.backend.containers,
+      registry,
+      max: containerSettings.max,
+      internalUrl: containerSettings.internalUrl,
+      log: app.log,
+    });
+    await app.register(engineRoute(containers));
+  }
+
   await app.register(healthRoute(deps.version));
   await app.register(capabilitiesRoute(capabilitiesGetter));
   await app.register(probeRoute({ backend: deps.backend }));
@@ -150,6 +174,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     sessionsRoute({
       backend: deps.backend,
       registry,
+      containers,
       corsOrigins: deps.config.corsOrigins,
       validateConfig: deps.validateConfig,
       // The capabilities document is the single source of the runner's terms;
@@ -176,6 +201,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     appsRoute({
       backend: deps.backend,
       registry,
+      containers,
       terms: capabilitiesValue.terms,
       apps: deps.apps,
       io: capabilitiesValue.features.io,

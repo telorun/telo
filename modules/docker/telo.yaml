@@ -1,0 +1,60 @@
+kind: Telo.Library
+metadata:
+  name: Docker
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Compute, Testing]
+  description: >-
+    Run disposable containers through a Docker-compatible engine — a local
+    Docker or Podman daemon, or a runner that serves one per session — reached
+    over a unix socket or HTTP(S) with an optional bearer token. Each published
+    port is bound to the engine's loopback interface.
+requires:
+  # The controllers return effect chains; everything newer the module relies on
+  # arrives through its `container` import.
+  telo: ">=0.82.0"
+imports:
+  Container: ../container
+exports:
+  kinds:
+    - Engine
+---
+# Docker.Engine — a Container.Engine over the Docker Engine API 1.41. The exact
+# requests it sends are listed in docs/engine-api.md.
+kind: Telo.Definition
+metadata:
+  name: Engine
+  description: >-
+    Runs containers on a Docker-compatible engine reached at an endpoint URL —
+    a unix socket, or a host over HTTP or HTTPS with an optional path prefix —
+    sending a bearer token when one is given. It speaks a small fixed set of
+    Engine API requests, so a runner can serve the same endpoint per session.
+capability: Telo.Provider
+extends: Container.Engine
+controllers:
+  - pkg:telo/local/js?path=./nodejs/docker.mjs&local_path=./nodejs/src/index.ts#Engine
+schema:
+  type: object
+  additionalProperties: false
+  required: [endpoint]
+  properties:
+    endpoint:
+      title: Endpoint
+      description: >-
+        Where the engine listens: `unix:///var/run/docker.sock`,
+        `tcp://host:2375` (plain HTTP), or `http(s)://host[:port][/prefix]`.
+        Bind it to `TELO_HOST_CONTAINER_ENGINE_URL` so a runner can point it at
+        the engine it serves.
+      type: string
+      pattern: "^(unix:///.+|tcp://[^/]+|https?://[^/].*)$"
+    token:
+      title: Token
+      description: >-
+        A bearer token sent with every request. Omitted or empty, no token is
+        sent — the reading of an unset `TELO_HOST_CONTAINER_ENGINE_TOKEN`,
+        which it is bound to through a secret.
+      type: string
+  examples:
+    - endpoint: !cel "variables.engineUrl"
+      token: !cel "secrets.engineToken"

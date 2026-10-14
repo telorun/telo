@@ -14,10 +14,14 @@ metadata:
     answers not found; every delete answers success; and no key whose delete
     answered success is visible afterwards.
 
-    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 include:
   - ./__fixtures__/write-race/model.yaml
 imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
   Race:
     source: ../../../graph-layers/tests/__fixtures__/write-race
     variables:
@@ -37,11 +41,9 @@ imports:
   Timer: ../../../timer
   Assert: ../../../assert
 variables:
-  dbHost: { env: DB_HOST, type: string, default: localhost }
-  dbPort: { env: DB_PORT, type: integer, default: 5432 }
-  dbUser: { env: DB_USER, type: string, default: postgres }
-  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
-  dbName: { env: DB_NAME, type: string, default: postgres }
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
 targets:
   - !ref reset
   - !ref appSchema
@@ -52,6 +54,13 @@ targets:
   - !ref deleter
   - !ref updater
   - !ref deleteRace
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
+  string(resources.Pg.endpoint.status.port) + '/postgres' +
+  '?options=-c%20search_path%3Dpublic'
 ---
 kind: Assert.Equals
 metadata: { name: check }
@@ -69,11 +78,8 @@ metadata: { name: mergerLeft }
 source: ./__fixtures__/write-race/racer.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   role: merge
   value: left
 ---
@@ -92,11 +98,8 @@ metadata: { name: mergerRight }
 source: ./__fixtures__/write-race/racer.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   role: merge
   value: right
 ---
@@ -130,11 +133,8 @@ metadata: { name: deleter }
 source: ./__fixtures__/write-race/racer.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   role: delete
 ---
 kind: Run.Loop
@@ -152,11 +152,8 @@ metadata: { name: updater }
 source: ./__fixtures__/write-race/racer.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   role: update
 ---
 kind: Run.Loop

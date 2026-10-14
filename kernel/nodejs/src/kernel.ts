@@ -84,7 +84,7 @@ import {
   modulesThatMoved,
   type ReconcileOutcome,
 } from "./reconcile.js";
-import { ambientInvokeContext } from "./evaluation-context.js";
+import { ambientInvokeContext, EvaluationContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
 import { bindModuleFunctions, type FunctionResolutionHost } from "./module-functions.js";
 import { refuseInvalidCallableInstance } from "./controllers/resource-definition/callable-guard.js";
@@ -2309,6 +2309,16 @@ export class Kernel implements IKernel {
       );
     }
     const accessorFieldsHeld = refuseNonChainAccessors(resourceLabel, resource, accessor);
+
+    // A startup read of observed state waits for its producer's `init()`.
+    if (compile.length && evalContext instanceof EvaluationContext) {
+      evalContext.deferPendingStartupReads(resourceLabel, resource, {
+        compile,
+        runtime,
+        regions,
+        accessor,
+      });
+    }
 
     // Expand compile-time CEL fields before passing to the controller.
     const expandedResource = compile.length

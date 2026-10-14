@@ -81,7 +81,8 @@ NON-INSTANTIABLE base — a contract with no default implementation that others
 `extends`; use it only when there is no default impl, e.g. `Sql.Connection`).
 Capabilities a kind can have:
 `Telo.Service` (init + run, long-lived), `Telo.Runnable` (run, one-shot),
-`Telo.Invocable` (invoke(inputs)), `Telo.Provider` (provide() a value),
+`Telo.Invocable` (invoke(inputs)), `Telo.Provider` (init, optional provide() of
+a value; no run),
 `Telo.Mount` (mounted into a service), `Telo.Type` (pure schema).
 
 NEVER write a resource whose `kind:` is an abstract — neither a capability
@@ -132,7 +133,17 @@ reports it with `ctx.setStatus({...})` from `run()` (or a handler it reaches),
 while `snapshot()` keeps returning only what the author configured — the two
 halves travel on separate channels, so neither shape is written twice.
 Reporting REPLACES the previous reading and is rejected before the resource
-has started. A `Telo.Abstract` may declare `status:` to mandate what its
+has started — except from a `Telo.Provider`, which has no `run()`: it reports
+from `init()` (where it may also acquire external resources, a connection or a
+container, each as an effect whose inverse releases it), and its reading is
+published when `init()` returns. So a Provider's status — and only a
+Provider's — is readable in a field that resolves at startup, such as another
+Provider's config:
+`connectionString: !interpolate "postgres://app@${{ resources.pg.status.host }}:${{ resources.pg.status.port }}/app"`.
+That read orders `pg` first; two Providers reading each other at startup are
+`DEPENDENCY_CYCLE`. A Service's or Runnable's status there is still
+`OBSERVED_STATE_IN_STARTUP_FIELD` — read it in a step's `inputs:` instead. So is a Provider declared in a `Run.Sequence`'s `with:`, read from a scoped sibling's startup field: scoped resources are created only when the scope opens.
+A `Telo.Abstract` may declare `status:` to mandate what its
 implementations report; an implementation's own block MERGES with it, and the
 consumer does not need to import the abstract's library to read either half.
 
@@ -3897,6 +3908,65 @@ reads end of input and exits on its own, which is how a clean exit after EOF is
 asserted. There is no `stdin:` field on `App.Instance`, and no dialogue-script
 kind: a fixed script cannot answer a question that only appears once the
 previous one is answered.
+
+### Starting a real service the test needs
+
+When a test needs a real database, queue or server — something a mock cannot
+stand in for — the test STARTS IT ITSELF as a disposable container, with the
+`container` module and an engine backend (`docker`), so the same file runs
+alone, in a suite and in a runner session with nothing set up beforehand.
+Bind the engine to the two environment variables a runner sets, and leave the
+local defaults:
+
+    variables:
+      engineUrl:
+        env: TELO_HOST_CONTAINER_ENGINE_URL
+        type: string
+        default: unix:///var/run/docker.sock
+    secrets:
+      engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+    ---
+    kind: Docker.Engine
+    metadata: { name: docker }
+    endpoint: !cel "variables.engineUrl"
+    token: !cel "secrets.engineToken"
+    ---
+    kind: Container.Instance
+    metadata: { name: database }
+    engine: !ref docker
+    image: pgvector/pgvector:pg18
+    user: "999:999"
+    env: { POSTGRES_PASSWORD: postgres }
+    ports: [5432]
+    readiness:
+      kind: Container.LogReady
+      text: database system is ready to accept connections
+      times: 2
+    lifetime: 2h
+    ---
+    kind: Container.Port
+    metadata: { name: databasePort }
+    container: !ref database
+    port: 5432
+    ---
+    kind: Postgres.Connection
+    metadata: { name: db }
+    connectionString: !cel >-
+      'postgres://postgres:postgres@' + resources.databasePort.status.host + ':' +
+      string(resources.databasePort.status.port) + '/postgres'
+
+`Container.Instance` and `Container.Port` are Providers: the container is
+pulled, started and awaited in `init()`, the port's address is its STATUS, and
+a Provider's status is readable in a startup field such as `connectionString`
+— the read orders the connection after the container. A `port` the container
+does not list under `ports` is a `telo check` error. The container is removed
+with its volumes when the test ends, and `lifetime` is when a container left
+by a killed process may be swept, so set it above the longest the test runs.
+Declare these at the top of the file (or import them), NEVER in a
+`Run.Sequence`'s `with:` — a scoped resource's startup fields cannot read a
+scoped sibling's status. To give the address to an application the test starts,
+pass it to an `App.Instance`'s `variables:`; to a `Test.Suite`'s tests, through
+its `env:` map (`DB_PORT: !cel "string(resources.databasePort.status.port)"`).
 
 ### Mocking an outbound API
 

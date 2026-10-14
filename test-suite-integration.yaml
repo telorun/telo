@@ -6,11 +6,14 @@
 # discovered from a directory the root suite's `**/tests/*.yaml` glob does not
 # reach (its own subdirectory) and are run by their own command.
 #
-# Two kinds live here. **A live PostgreSQL**: connection details come from the
-# environment, with defaults for a plain local server: DB_HOST, DB_PORT, DB_USER,
-# DB_PASSWORD, DB_NAME. The repo's docker-compose `db` service publishes on
-# `${DB_PORT:-5432}`, so a checkout whose 5432 is taken sets DB_PORT once in
-# `.env.local` and both compose and these tests follow it.
+# Two kinds live here. **A container engine**: a test that needs a database
+# starts its own — each PostgreSQL test imports
+# `modules/postgres/tests/__fixtures__/container`, which runs a disposable server
+# for that test alone and removes it when the test ends — so nothing has to be
+# running beforehand except the engine. The engine is reached at
+# TELO_HOST_CONTAINER_ENGINE_URL (default unix:///var/run/docker.sock), with
+# TELO_HOST_CONTAINER_ENGINE_TOKEN when it asks for one; a runner session sets
+# both to the engine it serves.
 #
 # **A live vendor API**: the `openai-live-*` tests. They skip silently with no
 # OPENAI_API_KEY, so they satisfied the clean-checkout rule literally while in

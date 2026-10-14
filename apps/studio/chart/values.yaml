@@ -20,6 +20,10 @@ imagePullSecrets: []
 
 replicas: 2
 
+# Accounts' https origin in this environment (no path). Studio reads it from
+# `/config.json` and lists the Telo products from `<accountsUrl>/v1/products`.
+accountsUrl: https://accounts.telo.run
+
 resources:
   requests:
     cpu: 20m

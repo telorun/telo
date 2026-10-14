@@ -431,42 +431,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: select
 
-    # The tests the root suite deliberately cannot hold: they need a live
-    # database. `test-suite.yaml` must pass on a clean checkout with nothing
-    # running, so a red module suite means the code is wrong rather than that
-    # something was not up — which is exactly what mixing these in would cost.
-    services:
-      postgres:
-        image: pgvector/pgvector:pg18
-        # Pulled as the project's account: anonymous pulls are limited per IP,
-        # and a hosted runner shares its IP with everyone else's jobs.
-        credentials:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        # Without this the job races the server: the first test would connect
-        # before Postgres finished its own init and fail on the connection
-        # rather than on anything under test.
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    # The same five variables the suite's manifests declare. Spelled out rather
-    # than left to their defaults so the connection this job uses is readable
-    # here, and so a developer whose 5432 is taken sets DB_PORT locally against
-    # the identical contract.
+    # The tests the root suite deliberately cannot hold: each starts the
+    # database it needs as a container of its own, through the runner's Docker
+    # engine at its default socket, and removes it when it ends. `test-suite.yaml`
+    # must pass on a clean checkout with nothing running, so a red module suite
+    # means the code is wrong rather than that something was not up — which is
+    # exactly what mixing these in would cost.
     env:
-      DB_HOST: localhost
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: postgres
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
     steps:
       - name: Checkout code
@@ -499,6 +471,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Anonymous pulls are limited per IP, and a hosted runner shares its IP
+      # with everyone else's jobs. The tests pull through the engine API, which
+      # carries no credentials, so the image they all run is pulled here as the
+      # project's account first and the tests find it present. A fork's pull
+      # request holds no secrets and pulls anonymously, as before.
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != '' && needs.select.outputs.integration_mode != 'none'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Pull the test database image
+        if: needs.select.outputs.integration_mode != 'none'
+        run: docker pull pgvector/pgvector:pg18
+
       - name: Run integration tests
         if: needs.select.outputs.integration_mode != 'none'
         shell: bash
@@ -507,6 +495,14 @@ jobs:
         run: |
           args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$SUITE_ARGS")
           pnpm run test:integration "${args[@]}"
+
+      # Every test removes its container when it ends; one left behind is a
+      # cleanup defect, not noise.
+      - name: Check no test container is left
+        if: needs.select.outputs.integration_mode != 'none'
+        run: |
+          left=$(docker ps -aq --filter label=run.telo.container.expires)
+          if [ -n "$left" ]; then docker ps -a --filter label=run.telo.container.expires; exit 1; fi
 
   unit:
     name: "Linux: package unit tests"

@@ -14,6 +14,9 @@ const engineDir = dirname(require.resolve("@telorun/language-server/package.json
 mkdirSync("dist/engine", { recursive: true });
 copyFileSync(join(engineDir, "dist", "language-server.mjs"), "dist/engine/language-server.mjs");
 
+// The file icon is the repo's one Telo mark, staged rather than copied by hand.
+copyFileSync("../../assets/telo.svg", "dist/file-icon.svg");
+
 /** @type {import("esbuild").BuildOptions} */
 const options = {
   entryPoints: ["src/extension.ts"],

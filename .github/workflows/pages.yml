@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'pages/**'
+      - 'assets/**'
   workflow_dispatch:
 
 permissions:

@@ -25,9 +25,17 @@ metadata:
     Ordering is the point, so the fixtures are numbered and the suite runs one at a
     time: discovery sorts by path, and `concurrency: 1` keeps that order.
 
-    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 imports:
+  Pg:
+    source: ../__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
   Test: ../../../test
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
 targets:
   - !ref boots
 ---
@@ -40,3 +48,7 @@ include:
 # of the suite above this one.
 exclude: []
 concurrency: 1
+# Every boot connects to the one server this test started.
+env:
+  DB_HOST: !cel "resources.Pg.endpoint.status.host"
+  DB_PORT: !cel "string(resources.Pg.endpoint.status.port)"

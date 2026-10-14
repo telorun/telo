@@ -12,9 +12,17 @@ metadata:
     bookkeeping tables, and a second boot of the same release changes nothing.
 
     Ordering is the point, so the fixtures are numbered and the suite runs one at
-    a time. NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+    a time. NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
   Test: ../../../test
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
 targets:
   - !ref boots
 ---
@@ -24,3 +32,7 @@ include:
   - "__fixtures__/storage-boots/*.yaml"
 exclude: []
 concurrency: 1
+# Every boot connects to the one server this test started.
+env:
+  DB_HOST: !cel "resources.Pg.endpoint.status.host"
+  DB_PORT: !cel "string(resources.Pg.endpoint.status.port)"

@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: BadEndpoint
+  version: 1.0.0
+imports:
+  Docker: ../..
+---
+kind: Docker.Engine
+metadata: { name: docker }
+endpoint: ftp://engine.example/

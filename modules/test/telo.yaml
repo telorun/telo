@@ -60,5 +60,15 @@ schema:
       description: >
         Maximum number of tests to run in parallel. Defaults to 3. Set to 1
         to force sequential execution.
+    env:
+      type: object
+      additionalProperties:
+        type: string
+      x-telo-eval: compile
+      description: >
+        Environment variables every test manifest runs with, winning over the
+        host environment the suite forwards and over the tests' .env files.
+        Evaluated at startup, so a value may be computed from another
+        resource — the address of a database the suite started for its tests.
   required:
     - metadata

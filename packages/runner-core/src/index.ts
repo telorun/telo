@@ -27,6 +27,20 @@ export {
   type WorkspaceCheckpoint,
 } from "./session/registry.js";
 export { WatchSupervisor, type WatchSupervisorDeps } from "./session/watch-supervisor.js";
+export {
+  SESSION_CONTAINER_LABEL,
+  SessionContainerFieldRefused,
+  SessionContainerNotFound,
+  type SessionContainerEngine,
+  type SessionContainerOutput,
+  type SessionContainerSpec,
+  type SessionContainerState,
+} from "./session-containers/session-container-engine.js";
+export {
+  ENGINE_TOKEN_ENV,
+  ENGINE_URL_ENV,
+  SessionContainers,
+} from "./session-containers/session-containers.js";
 export { RunProjection } from "./debug/run-projection.js";
 export {
   portKey,

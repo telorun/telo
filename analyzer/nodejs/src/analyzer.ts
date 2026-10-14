@@ -65,6 +65,7 @@ import {
   collectRunReachableNames,
   forwardedResourceKey,
   observedStateRead,
+  reportsFromInit,
   validateObservedStateDeclarations,
 } from "./validate-observed-state.js";
 import { computeSuggestKind } from "./kind-suggest.js";
@@ -196,6 +197,7 @@ import {
   governedCelEvalSites,
   kindCelEvalSites,
   NO_CEL_EVAL_SITES,
+  type CelEvalMode,
   type CelEvalSites,
 } from "./eval-paths.js";
 import { computedRefSlots, evaluatedField, refSlotComputedReason } from "./ref-slot-computed.js";
@@ -621,6 +623,41 @@ function pathCrossesNestedResource(root: unknown, path: string): boolean {
     }
   }
   return false;
+}
+
+/** The innermost inline nested resource a `walkCelExpressions` path crosses,
+ *  with the rest of the path below it — the field of THAT resource the CEL sits
+ *  in, which its own kind evaluates. */
+function nestedResourceAt(
+  root: unknown,
+  path: string,
+): { resource: ResourceManifest; path: string } | undefined {
+  const segments = [...path.matchAll(/\[(\d+)\]|([^.[\]]+)/g)].map((match) =>
+    match[1] !== undefined ? Number(match[1]) : match[2]!,
+  );
+  let node: unknown = root;
+  let found: { resource: ResourceManifest; at: number } | undefined;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const key = segments[i]!;
+    node = Array.isArray(node)
+      ? node[Number(key)]
+      : (node as Record<string, unknown> | undefined)?.[String(key)];
+    if (
+      node !== null &&
+      typeof node === "object" &&
+      !Array.isArray(node) &&
+      typeof (node as { kind?: unknown }).kind === "string"
+    ) {
+      found = { resource: node as ResourceManifest, at: i + 1 };
+    }
+  }
+  if (!found) return undefined;
+  const rest = segments
+    .slice(found.at)
+    .map((key) => (typeof key === "number" ? `[${key}]` : `.${key}`))
+    .join("")
+    .replace(/^\./, "");
+  return { resource: found.resource, path: rest };
 }
 
 /** Member-access chains in a CEL expression, or none when it doesn't parse.
@@ -2142,6 +2179,16 @@ export class StaticAnalyzer {
     const moduleScopes = { aliasesByModule, rootModules, libraries };
 
     const observedState = buildObservedStateIndex(allManifests, defs, aliases, moduleScopes);
+    const scopedDefs = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, moduleScopes);
+    /** How the kind of a resource declared inline below `host` evaluates the
+     *  field `path` crosses into — `undefined` when the path crosses none. */
+    const nestedEvalModeAt = (host: ResourceManifest, path: string): CelEvalMode | null | undefined => {
+      const nested = nestedResourceAt(host, path);
+      if (!nested) return undefined;
+      const module = host.metadata?.module as string | undefined;
+      const resolve: DefResolver = (kind) => scopedDefs.in(kind, module);
+      return celEvalModeAt(kindCelEvalSites(resolve(nested.resource.kind), resolve), nested.path);
+    };
     const reportsObservedState = [...observedState.values()].some((r) => r.status);
     const runReachable = reportsObservedState
       ? collectRunReachableNames(getCallGraph())
@@ -3402,10 +3449,10 @@ export class StaticAnalyzer {
             return;
           }
 
-          // Observed state exists only while the application runs, so a path
+          // Observed state exists only once its producer has started, so a path
           // through `.status` is illegal in a field that resolves at startup —
-          // and a resource nothing can start reports nothing, ever. Both are
-          // decided from the expression and the manifest alone.
+          // and a resource nothing can start reports nothing, ever. A Provider
+          // is the exception to both: it reports from `init()`.
           const readsObservedState = expressions.filter((x) => x.includes(OBSERVED_STATE_KEY));
           if (reportsObservedState && readsObservedState.length > 0) {
             for (const chain of readsObservedState.flatMap((x) =>
@@ -3427,6 +3474,30 @@ export class StaticAnalyzer {
                     ? forwardedResourceKey(readerModule, read.name)
                     : read.name,
               );
+
+              // A Provider reports from `init()`, which completes before any
+              // reader of it is created — so its status exists at startup and
+              // needs nothing to start it. An unresolved target is no Provider.
+              // One declared in a scope is created when the scope opens, which
+              // a startup field cannot see. Entry-module-scoped: a dependency's
+              // declaration is not the consumer's to fix. A reader outside the
+              // scope is `SCOPED_NAME_OUT_OF_REACH`'s to report.
+              if (reportsFromInit(reported?.capability)) {
+                if (!reported?.scope) continue;
+                const { kind, name, field } = reported.scope;
+                if (m.kind !== kind || m.metadata?.name !== name) continue;
+                const readerOwnModule = m.metadata?.module as string | undefined;
+                if (readerOwnModule && !rootModules.has(readerOwnModule)) continue;
+                if (evalMode !== "compile" && nestedEvalModeAt(m, path) !== "compile") continue;
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: "OBSERVED_STATE_IN_STARTUP_FIELD",
+                  source: SOURCE,
+                  message: `${m.kind}/${resource.name}: '${path}' is resolved once at startup, so '${chain.join(".")}' cannot be read there — '${read.name}' is declared in the '${field}' scope of ${kind}/${name ?? "(unnamed)"}, which is created only when that scope opens. Read reported values where the call happens: a step's inputs:, a request's url, a route handler, or a returns: expression.`,
+                  data: { resource, filePath, path },
+                });
+                continue;
+              }
 
               if (evalMode === "compile") {
                 diagnostics.push({

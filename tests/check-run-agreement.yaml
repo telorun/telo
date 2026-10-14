@@ -93,6 +93,11 @@ targets:
   - !ref hostPathInterpolatedAtRuntime
   - !ref dependencyCycle
   - !ref dependencyCycleAtRuntime
+  - !ref providerStatusAtStartup
+  - !ref serviceStatusAtStartup
+  - !ref serviceStatusAtStartupAtRuntime
+  - !ref scopedProviderStatusAtStartup
+  - !ref scopedProviderStatusAtStartupAtRuntime
   - !ref moduleCallNotCallable
   - !ref moduleCallNotCallableAtRuntime
   - !ref moduleCallMissing
@@ -699,6 +704,59 @@ metadata:
 source: ./__fixtures__/check-run-agreement/dependency-cycle/telo.yaml
 expect:
   runFails: "ERR_CIRCULAR_DEPENDENCY"
+---
+# A provider reports observed state from `init()`, so its status is readable in
+# another resource's startup field: clean at check, and the value is there at run.
+kind: Assert.Manifest
+metadata:
+  name: providerStatusAtStartup
+source: ./__fixtures__/check-run-agreement/provider-status/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A service reports only once it runs, so its status in a startup field is still
+# refused where the read is written…
+kind: Assert.Manifest
+metadata:
+  name: serviceStatusAtStartup
+source: ./__fixtures__/check-run-agreement/provider-status/service-lib/telo.yaml
+expect:
+  errors:
+    - code: OBSERVED_STATE_IN_STARTUP_FIELD
+      message: "'port' is resolved once at startup, so 'resources.listener.status.port' does not exist yet"
+---
+# …and by the kernel when it creates the reader, from a consumer whose
+# entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: serviceStatusAtStartupAtRuntime
+source: ./__fixtures__/check-run-agreement/provider-status/service-app.yaml
+expect:
+  errors: []
+  runFails: 'Expression !cel "resources.listener.status.port" failed'
+---
+# A provider declared in a `with:` scope is created when the scope opens, so its
+# status in a scoped sibling's startup field is refused where the read is
+# written…
+kind: Assert.Manifest
+metadata:
+  name: scopedProviderStatusAtStartup
+source: ./__fixtures__/check-run-agreement/provider-status/scoped-lib/telo.yaml
+expect:
+  errors:
+    - code: OBSERVED_STATE_IN_STARTUP_FIELD
+      message: "'first' is declared in the 'with' scope of Run.Sequence/check"
+---
+# …and by the kernel when the scope opens, from a consumer whose entry-scoped
+# check is silent.
+kind: Assert.Manifest
+metadata:
+  name: scopedProviderStatusAtStartupAtRuntime
+source: ./__fixtures__/check-run-agreement/provider-status/scoped-app.yaml
+expect:
+  errors: []
+  runFails: 'Expression !cel "resources.first.status.port" failed'
 ---
 # A CEL call through an import alias to an exported resource that is not a
 # function. Reported where the expression is written…

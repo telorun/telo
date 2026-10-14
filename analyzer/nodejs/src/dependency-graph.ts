@@ -4,14 +4,18 @@ import {
   buildCallGraph,
   nodeIdFor,
   projectToPairs,
+  resolveScopedName,
   type CallGraph,
   type ResourceGraphNode,
 } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { moduleAliasScope } from "./module-alias-scope.js";
+import { governedCelEvalSites } from "./eval-paths.js";
+import type { DefResolver } from "./extends-resolution.js";
+import { definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { readSuppliedResources } from "./resource-input.js";
+import { startupObservedStateReads } from "./validate-observed-state.js";
 
 export interface ResourceNode {
   kind: string;
@@ -55,6 +59,10 @@ const nodeKey = (kind: string, name: string) => `${kind}\0${name}`;
  * - **Pairs, not parallel edges.** This is the one consumer for which two slots
  *   naming the same target genuinely mean the same thing, so it collapses the
  *   multigraph itself instead of the graph erasing the distinction for everyone.
+ * - **Startup reads of observed state.** A compile-eval field reading
+ *   `resources.<name>.status` is evaluated when the reader is created, so the
+ *   producer — a Provider, which reports from `init()` — is initialized first.
+ *   A read across an import orders the reader after that import.
  */
 export function buildDependencyGraph(
   resources: ResourceManifest[],
@@ -88,6 +96,13 @@ export function buildDependencyGraph(
   for (const key of nodes.keys()) if (!deps.has(key)) deps.set(key, new Set());
 
   addResourceInputEdges(resources, nodes, deps);
+  const statusReadAliases = addStartupStatusReadEdges(
+    nodes,
+    deps,
+    registry,
+    aliases,
+    aliasesByModule,
+  );
 
   // --- Kahn's topological sort ---
   // in-degree[X] = number of X's dependencies (size of deps[X])
@@ -121,7 +136,9 @@ export function buildDependencyGraph(
   }
 
   if (sorted.length === nodes.size) {
-    return { order: creationOrder(resources, nodes, deps, aliases, aliasesByModule) };
+    return {
+      order: creationOrder(resources, nodes, deps, aliases, aliasesByModule, statusReadAliases),
+    };
   }
 
   const cycleKeys = findCycle(nodes.keys(), deps);
@@ -197,6 +214,7 @@ function creationOrder(
   deps: Map<string, Set<string>>,
   aliases: AliasResolver | undefined,
   aliasesByModule: Map<string, AliasResolver> | undefined,
+  statusReadAliases: ReadonlyMap<string, ReadonlySet<string>>,
 ): ResourceNode[] {
   const keyOf = new Map<ResourceManifest, string>();
   for (const [key, node] of nodes) keyOf.set(node.manifest, key);
@@ -253,7 +271,10 @@ function creationOrder(
     if (node.manifest.kind !== "Telo.Import") {
       const imports = importsByScope.get(scope);
       if (imports) {
-        for (const alias of referencedAliases(node.manifest)) {
+        for (const alias of [
+          ...referencedAliases(node.manifest),
+          ...(statusReadAliases.get(key) ?? []),
+        ]) {
           const target = imports.get(alias);
           if (target && target !== key) set.add(target);
         }
@@ -501,4 +522,58 @@ function addResourceInputEdges(
       if (target && target !== key) set.add(target);
     }
   }
+}
+
+/**
+ * Init-order edges for every observed-state read a resource makes in a field
+ * that resolves at startup. A bare name resolves among the module's own
+ * resources, same module first; a read through an import alias depends on that
+ * import, which is a hard edge where the import is a node of this graph and a
+ * creation-order edge — returned per reader — otherwise.
+ */
+function addStartupStatusReadEdges(
+  nodes: Map<string, ResourceNode>,
+  deps: Map<string, Set<string>>,
+  registry: DefinitionRegistry,
+  aliases: AliasResolver | undefined,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+): Map<string, Set<string>> {
+  const byName = new Map<string, Array<[string, ResourceNode]>>();
+  for (const entry of nodes) {
+    if (entry[1].kind === "Telo.Import") continue;
+    byName.set(entry[1].name, [...(byName.get(entry[1].name) ?? []), entry]);
+  }
+  const resolveDef: DefResolver = (kind, from) =>
+    definitionInScope(registry, kind, from?.metadata, aliases, aliasesByModule);
+
+  const aliasReads = new Map<string, Set<string>>();
+  for (const [key, node] of nodes) {
+    if (node.kind === "Telo.Import") continue;
+    const sites = governedCelEvalSites(
+      definitionInScope(registry, node.kind, node.manifest.metadata, aliases, aliasesByModule),
+      resolveDef,
+    );
+    if (!sites) continue;
+    const fromModule = declaringModuleOf(node.manifest);
+    for (const read of startupObservedStateReads(node.manifest, sites)) {
+      if (read.alias !== undefined) {
+        const importKey = nodeKey("Telo.Import", read.alias);
+        if (nodes.has(importKey)) {
+          if (importKey !== key) deps.get(key)!.add(importKey);
+        } else {
+          let set = aliasReads.get(key);
+          if (!set) aliasReads.set(key, (set = new Set()));
+          set.add(read.alias);
+        }
+        continue;
+      }
+      const target = resolveScopedName(
+        byName.get(read.name),
+        ([, candidate]) => declaringModuleOf(candidate.manifest),
+        fromModule,
+      );
+      if (target) deps.get(key)!.add(target[0]);
+    }
+  }
+  return aliasReads;
 }

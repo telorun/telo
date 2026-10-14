@@ -17,10 +17,14 @@ metadata:
     between. And two processes giving two revisions the same label leave it on
     exactly one: the other is refused GRAPH_REVISION_LABEL_EXISTS.
 
-    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 include:
   - ./__fixtures__/stack-processes/model.yaml
 imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
   Sql: ../../../sql
   Postgres: ../../../postgres
   Layers: ../..
@@ -31,11 +35,9 @@ imports:
   Timer: ../../../timer
   Assert: ../../../assert
 variables:
-  dbHost: { env: DB_HOST, type: string, default: localhost }
-  dbPort: { env: DB_PORT, type: integer, default: 5432 }
-  dbUser: { env: DB_USER, type: string, default: postgres }
-  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
-  dbName: { env: DB_NAME, type: string, default: postgres }
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
 targets:
   - !ref reset
   - !ref appSchema
@@ -50,6 +52,13 @@ targets:
   - !ref labellerOne
   - !ref labellerTwo
   - !ref oneLabel
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
+  string(resources.Pg.endpoint.status.port) + '/postgres' +
+  '?options=-c%20search_path%3Dpublic'
 ---
 kind: Assert.Equals
 metadata: { name: check }
@@ -104,11 +113,8 @@ metadata: { name: pinnerLeft }
 source: ./__fixtures__/stack-processes/pinner.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   name: pin-left
   base: left
 ---
@@ -127,11 +133,8 @@ metadata: { name: pinnerRight }
 source: ./__fixtures__/stack-processes/pinner.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   name: pin-right
   base: right
 ---
@@ -206,11 +209,8 @@ metadata: { name: publisher }
 source: ./__fixtures__/stack-processes/publisher.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   name: pin-race
 ---
 kind: Run.Loop
@@ -228,11 +228,8 @@ metadata: { name: writer }
 source: ./__fixtures__/stack-processes/writer.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   name: outside
 ---
 kind: Run.Loop
@@ -293,11 +290,8 @@ metadata: { name: labellerOne }
 source: ./__fixtures__/stack-processes/labeller.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   name: label-one
   revision: 1
 ---
@@ -316,11 +310,8 @@ metadata: { name: labellerTwo }
 source: ./__fixtures__/stack-processes/labeller.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   name: label-two
   revision: 2
 ---

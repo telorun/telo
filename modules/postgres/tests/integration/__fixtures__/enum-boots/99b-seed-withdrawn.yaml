@@ -16,11 +16,8 @@ imports:
   Run: ../../../../../run
   Assert: ../../../../../assert
 variables:
-  dbHost: { env: DB_HOST, type: string, default: localhost }
-  dbPort: { env: DB_PORT, type: integer, default: 5432 }
-  dbUser: { env: DB_USER, type: string, default: postgres }
-  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
-  dbName: { env: DB_NAME, type: string, default: postgres }
+  dbHost: { env: DB_HOST, type: string }
+  dbPort: { env: DB_PORT, type: integer }
   environment: { env: APP_ENV, type: string, default: production }
 targets:
   - !ref appSchema
@@ -29,8 +26,8 @@ targets:
 kind: Postgres.Connection
 metadata: { name: db }
 connectionString: !cel >-
-  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
-  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+  'postgres://postgres:postgres@' + variables.dbHost + ':' +
+  string(variables.dbPort) + '/postgres'
 ---
 # Carried forward unchanged from the earlier boots, so the only thing these two
 # boots change is the seed rows — otherwise the previous fixtures' tables would

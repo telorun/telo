@@ -26,6 +26,7 @@ const CONFIG: RunnerCoreConfig = {
     suspendedTtlMs: 3_600_000,
     checkpointMs: 3_600_000,
   },
+  sessionContainers: { enabled: false, max: 4 },
 };
 
 const CATALOG = JSON.stringify({

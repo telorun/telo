@@ -61,6 +61,15 @@ describe("buildSessionPod", () => {
     expect(container.securityContext).toMatchObject({ readOnlyRootFilesystem: true });
     expect(pod.spec!.automountServiceAccountToken).toBe(false);
   });
+
+  it("gives every container the resources a namespace quota requires", () => {
+    // A ResourceQuota on cpu / memory refuses the whole pod when ANY container,
+    // init containers included, declares no requests and limits for them.
+    for (const c of [...pod.spec!.initContainers!, ...pod.spec!.containers]) {
+      expect(c.resources?.requests).toMatchObject({ cpu: expect.any(String), memory: expect.any(String) });
+      expect(c.resources?.limits).toMatchObject({ cpu: expect.any(String), memory: expect.any(String) });
+    }
+  });
 });
 
 describe("buildAppPod", () => {

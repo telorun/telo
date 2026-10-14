@@ -149,6 +149,15 @@ unwind the frame but MUST NOT discard the instance: re-running construction woul
 repeat effects that construction, not initialization, performed — re-registering
 an import's alias, reloading its module, re-registering a template's children.
 
+**6.1.2 A `Telo.Provider` acquires in `init()`.** Every other capability
+performs its observable I/O in `run()`. A provider has no `run()` — its `init()`
+is where it becomes what it provides — so it MAY acquire external resources there
+(a connection, a container), provided each acquisition is an effect whose inverse
+releases it completely; §6.1 then leaves nothing behind when the attempt fails.
+It MAY also report observed state from `init()`: a runtime MUST publish that
+report only when `init()` returns, and MUST discard it with the attempt when
+`init()` fails or defers.
+
 **6.2 An inverse that refuses during pre-retry recovery withholds the resource.**
 The runtime MUST NOT retry it, and MUST report a failure naming both the `init()`
 error and the refusing inverse. Retrying from a state that could not be rolled
@@ -211,6 +220,8 @@ A conforming runtime:
    generator's inverses per completed step (§4);
 4. returns an idempotent, order-free `dispose()` (§5);
 5. recovers and discards on a failed `init()` — but keeps the instance on a
-   deferral — withholds on a refusing inverse, aggregates at teardown, and
-   refuses effects against a scope that has unwound (§6);
+   deferral — publishes a provider's `init()` report only when `init()` returns
+   and discards it with a failed or deferred attempt, withholds on a refusing
+   inverse, aggregates at teardown, and refuses effects against a scope that has
+   unwound (§6);
 6. keeps the detached drain outside the mechanism (§7).

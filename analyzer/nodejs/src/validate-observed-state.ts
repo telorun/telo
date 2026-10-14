@@ -1,6 +1,9 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { OBSERVED_STATE_KEY } from "@telorun/sdk";
-import { effectiveStatusSchema } from "./extends-resolution.js";
+import { celExpressionsOf, walkCelExpressions } from "@telorun/templating";
+import { accessChains } from "./cel-access-chains.js";
+import { celEvalModeAt, type CelEvalSites } from "./eval-paths.js";
+import { effectiveStatusSchema, inheritedCapability } from "./extends-resolution.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { parseExportEntry } from "./flatten-for-analyzer.js";
 import {
@@ -99,6 +102,42 @@ export function observedStateRead(chain: readonly string[]): ObservedStateRead |
 }
 
 /**
+ * Whether a resource of this (effective) capability reports observed state from
+ * `init()`. A `Telo.Provider` has no `run()`: its `init()` is where it becomes
+ * what it provides, so what it learns there is published when `init()` returns
+ * and is readable wherever a value resolves at startup. Every other capability
+ * reports only once it has started.
+ */
+export function reportsFromInit(capability: string | undefined): boolean {
+  return capability === "Telo.Provider";
+}
+
+/**
+ * Every observed-state read an expression of `manifest` makes in a field that
+ * resolves at startup (compile-eval), as `sites` place them. Such a read needs
+ * its producer initialized before the reader is created, so it is an init-order
+ * edge in `telo check` and a deferral in the kernel — one reader for both.
+ */
+export function startupObservedStateReads(
+  manifest: ResourceManifest,
+  sites: CelEvalSites,
+): ObservedStateRead[] {
+  if (sites.compile.length === 0) return [];
+  const reads: ObservedStateRead[] = [];
+  walkCelExpressions(manifest as Record<string, unknown>, "", (source, path, engine) => {
+    if (!source.includes(OBSERVED_STATE_KEY)) return;
+    if (celEvalModeAt(sites, path) !== "compile") return;
+    for (const expression of celExpressionsOf(engine, source)) {
+      for (const chain of accessChains(expression)) {
+        const read = observedStateRead(chain);
+        if (read) reads.push(read);
+      }
+    }
+  });
+  return reads;
+}
+
+/**
  * The names of every resource some slot can start.
  *
  * One question, one answer: a resource is run-reachable when a control-
@@ -125,15 +164,19 @@ export function collectRunReachableNames(graph: CallGraph): Set<string> {
 
 
 /** What a resource name resolves to for CEL purposes. `status` is present only
- *  when the kind declares one; `scoped` marks a resource declared inside an
- *  `x-telo-scope` slot, which resolves only within that scope's regions.
+ *  when the kind declares one; `capability` is the kind's effective capability
+ *  (through `extends`); `scoped` marks a resource declared inside an
+ *  `x-telo-scope` slot, which resolves only within that scope's regions, and
+ *  `scope` names that slot: the declaring resource and the field holding it.
  *  `forwardedFrom` marks a dependency's declaration, keyed by
  *  `forwardedResourceKey`: it is in no consumer's `resources`, but a read inside
  *  that dependency's own manifests still resolves to it. */
 export interface AnalyzedResource {
   kind: string;
   status?: Record<string, any>;
+  capability?: string;
   scoped?: boolean;
+  scope?: { kind: string; name?: string; field: string };
   forwardedFrom?: string;
 }
 
@@ -166,15 +209,18 @@ export function buildObservedStateIndex(
   const record = (
     kind: string,
     key: string,
-    scoped: boolean,
+    scope: AnalyzedResource["scope"],
     module?: string,
     forwardedFrom?: string,
   ): void => {
-    const status = effectiveStatusSchema(resolve.in(kind, module), resolve);
+    const definition = resolve.in(kind, module);
+    const status = effectiveStatusSchema(definition, resolve);
+    const capability = inheritedCapability(definition, resolve);
     out.set(key, {
       kind,
       ...(status ? { status } : {}),
-      ...(scoped ? { scoped } : {}),
+      ...(capability ? { capability } : {}),
+      ...(scope ? { scoped: true, scope } : {}),
       ...(forwardedFrom !== undefined ? { forwardedFrom } : {}),
     });
   };
@@ -191,7 +237,7 @@ export function buildObservedStateIndex(
     if (forwardedFrom === undefined && isForwardedDeclaration(manifest)) continue;
     const keyOf = (n: string) =>
       forwardedFrom === undefined ? n : forwardedResourceKey(forwardedFrom, n);
-    if (name) record(kind, keyOf(name), false, module, forwardedFrom);
+    if (name) record(kind, keyOf(name), undefined, module, forwardedFrom);
 
     const schema = resolve(kind)?.schema as Record<string, any> | undefined;
     if (!schema) continue;
@@ -201,14 +247,14 @@ export function buildObservedStateIndex(
         const scopedKind = (scopedEntry as ResourceManifest)?.kind;
         const scopedName = (scopedEntry as ResourceManifest)?.metadata?.name;
         if (typeof scopedKind === "string" && typeof scopedName === "string") {
-          record(scopedKind, keyOf(scopedName), true, forwardedFrom, forwardedFrom);
+          record(scopedKind, keyOf(scopedName), { kind, name, field: site.path }, forwardedFrom, forwardedFrom);
         }
       }
     }
   }
 
   for (const [alias, name, kind, module] of importedExports(manifests, aliases)) {
-    record(kind, `${alias}.${name}`, false, module);
+    record(kind, `${alias}.${name}`, undefined, module);
   }
   return out;
 }

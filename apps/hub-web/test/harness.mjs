@@ -1,8 +1,14 @@
 // Boots the production `server.mjs` against the built output and a stub hub,
 // both on port 0, for the `*.test.mjs` files beside this one.
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 const appDir = path.resolve(import.meta.dirname, "..");
 
@@ -25,6 +31,40 @@ export async function startStubHub() {
   stub.close = () => {
     server.closeAllConnections();
     return new Promise((resolve) => server.close(resolve));
+  };
+  return stub;
+}
+
+/** An HTTPS stub of the identity provider, since accounts' product list is
+ *  trusted only over https. Its certificate is made for this run and written
+ *  to `caFile`, which the hub-web under test trusts through
+ *  `NODE_EXTRA_CA_CERTS`. `handle` works as `startStubHub`'s does. */
+export async function startStubAccounts() {
+  const dir = await mkdtemp(path.join(tmpdir(), "hub-web-accounts-"));
+  const keyFile = path.join(dir, "key.pem");
+  const caFile = path.join(dir, "cert.pem");
+  await execFileAsync("openssl", [
+    "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
+    "-keyout", keyFile, "-out", caFile, "-days", "1",
+    "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1",
+  ]);
+  const stub = {
+    caFile,
+    handle: (req, res) => {
+      res.writeHead(500);
+      res.end();
+    },
+  };
+  const server = createHttpsServer(
+    { key: await readFile(keyFile), cert: await readFile(caFile) },
+    (req, res) => stub.handle(req, res, new URL(req.url, "https://stub")),
+  );
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  stub.origin = `https://127.0.0.1:${server.address().port}`;
+  stub.close = async () => {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dir, { recursive: true, force: true });
   };
   return stub;
 }

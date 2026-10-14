@@ -1,0 +1,33 @@
+# A provider's status read in another resource's startup field. `second` is
+# written before the provider it reads, so the read is what orders it after
+# `first`.
+kind: Telo.Application
+metadata:
+  name: ProviderStatusApp
+  version: 1.0.0
+imports:
+  Status: ./kinds
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref check
+---
+kind: Status.Endpoint
+metadata:
+  name: second
+port: !cel "resources.first.status.port"
+---
+kind: Status.Endpoint
+metadata:
+  name: first
+port: 1
+---
+kind: Run.Sequence
+metadata:
+  name: check
+steps:
+  - name: second
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "resources.second.status.port"
+      expected: 2001

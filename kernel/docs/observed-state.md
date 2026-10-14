@@ -1,5 +1,5 @@
 ---
-description: "Declared observed state: the status: block on a kind, the resources.<name>.status CEL segment, and where reported values may be read"
+description: "Declared observed state: the status: block on a kind, the resources.<name>.status CEL segment, providers reporting from init(), and where reported values may be read"
 ---
 
 # Observed state (`status:`)
@@ -10,7 +10,8 @@ thing:
 - **What its author configured** — the port you asked for, the base URL you
   wrote. Known before anything runs.
 - **What it observed** — the port the socket actually got, the endpoint a
-  negotiation produced. Known only once the resource is running.
+  negotiation produced. Known only once the resource is running — or, for a
+  `Telo.Provider`, once it has initialized.
 
 The first is published flat, at `resources.<name>.<field>`. The second is
 declared with a `status:` block on the kind and published under its own segment,
@@ -90,8 +91,9 @@ Rules the kernel enforces:
   now. A declared field the call omits reads as missing, which is the truth —
   declare a sometimes-absent field with a nullable type and report it as `null`.
 - **Reporting before the resource has started is an error**
-  (`ERR_OBSERVED_STATE_BEFORE_START`). `init()` performs no I/O, so there is
-  nothing observed to report there.
+  (`ERR_OBSERVED_STATE_BEFORE_START`) — for every capability but
+  `Telo.Provider`. Only a provider learns anything in `init()` (see
+  [Providers](#providers-report-from-init)).
 - **Every report is validated** against the kind's `status:` at the call that
   made it (`ERR_OBSERVED_STATE_INVALID`, or `ERR_OBSERVED_STATE_UNDECLARED` when
   the kind declares no block), so an invalid claim is refused where it was made
@@ -108,13 +110,52 @@ Rules the kernel enforces:
   (`ERR_OBSERVED_STATE_KEY_COLLISION`); a kind with no block may use the name
   freely.
 
+## Providers report from `init()`
+
+A `Telo.Provider` has no `run()`: its `init()` is where it becomes what it
+provides, so it may acquire external resources there — a connection, a container
+— as long as each acquisition is an effect whose inverse releases it completely,
+and it may report what it learned there with `ctx.setStatus(...)`:
+
+```ts
+init() {
+  return ctx.effect("container", async () => {
+    const container = await engine.start(config);
+    await ctx.setStatus({ host: container.host, port: container.port });
+    return { result: container, inverse: () => container.remove() };
+  });
+}
+```
+
+- The report is published when `init()` returns. A reading is never visible
+  while `init()` might still fail.
+- A failed or deferred `init()` discards its report with the attempt; the retry
+  reports afresh.
+- The reading is readable in a field that resolves at startup — the provider is
+  initialized before anything reading it is created — except from a resource
+  declared in the same `with:` scope: scoped resources are created when the
+  scope opens, which a startup field cannot see. The read is an init-order
+  edge: `telo check` reports a loop of such reads as `DEPENDENCY_CYCLE`, and the
+  kernel defers a reader whose provider has not initialized yet
+  (`ERR_LOCAL_REF_PENDING`).
+- A provider may keep reporting afterwards; the reading stays sticky.
+
+```yaml
+kind: Postgres.Connection
+metadata:
+  name: db
+connectionString: !interpolate "postgres://app@${{ resources.pgPort.status.host }}:${{ resources.pgPort.status.port }}/app"
+```
+
+Every other capability keeps the rules above unchanged.
+
 ## Reading it
 
-Observed state flows into **calls**, never into **configuration**. A resource is
-created before anything runs, so a field that resolves at startup can never take
-a reported value. Read it where the call happens: a step's `inputs:`, an
-invoke-time field like `Http.Request`'s `url`, a route handler, or a `returns:`
-expression.
+Observed state of anything but a provider flows into **calls**, never into
+**configuration**. Such a resource is created before anything runs, so a field
+that resolves at startup can never take its reported value. Read it where the
+call happens: a step's `inputs:`, an invoke-time field like `Http.Request`'s
+`url`, a route handler, or a `returns:` expression.
 
 ```yaml
 steps:
@@ -128,8 +169,8 @@ The analyzer rejects the rest before the application starts:
 
 | Diagnostic | When |
 | --- | --- |
-| `OBSERVED_STATE_IN_STARTUP_FIELD` | the read sits in a field annotated `x-telo-eval: compile` (or a `Telo.Provider` field, which is implicitly one) |
-| `OBSERVED_STATE_NEVER_RUN` | nothing can start the producing resource — it is in no `targets:` list and named by no step's `invoke:` |
+| `OBSERVED_STATE_IN_STARTUP_FIELD` | the read sits in a field annotated `x-telo-eval: compile` (or a `Telo.Provider` field, which is implicitly one), and the producer is not a `Telo.Provider` or is one declared in a `with:` scope (the message names the scope) |
+| `OBSERVED_STATE_NEVER_RUN` | nothing can start the producing resource — it is in no `targets:` list and named by no step's `invoke:` — and it is not a `Telo.Provider` |
 | `CEL_UNKNOWN_FIELD` | the field is not one the kind declares it reports |
 | `OBSERVED_STATE_REQUIRED_FORBIDDEN` | the `status:` block declares `required:` |
 
@@ -137,8 +178,9 @@ Cross-module reads are checked identically: an import's exported instances are
 typed under `resources.<Alias>.<name>.status`, so a typo there fails where it is
 written rather than at runtime.
 
-The first rule is purely syntactic — it inspects the access chain, not the
-topology — so it applies to every kind, declared or not.
+The first rule reads the access chain and the producer's capability — through
+`extends`, so a kind inheriting `Telo.Provider` counts — and a read whose target
+resolves to no declaration is refused, since nothing says it reports at startup.
 
 Genuine ordering is not decidable statically: a handler can be invoked from
 anywhere, so a runtime-evaluated read may legitimately run before the producing
@@ -156,7 +198,9 @@ whether its `run()` returned — can tell them apart:
   the producing module — it declares observed state and never calls
   `setStatus`; no change to the reading manifest fixes it, and the error names
   the module. Only reachable for a one-shot Runnable — a long-lived Service's
-  `run()` never returns, so it is never blamed for what is actually ordering.
+  `run()` never returns, so it is never blamed for what is actually ordering. A
+  provider that initialized without reporting is the same defect, and is named
+  the same way.
 
 All three raise `ERR_OBSERVED_STATE_UNAVAILABLE`. None yields an empty value or
 a bare key error.

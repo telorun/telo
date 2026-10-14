@@ -52,6 +52,9 @@ export function apiReason(err: unknown): string {
   if (cause === "quota") {
     return `the session namespace's resource quota is exhausted (${detail})`;
   }
+  if (cause === "pod-security") {
+    return `the session namespace's Pod Security standard refused the pod (${detail})`;
+  }
   if (cause === "rbac") {
     return `the runner is not permitted to do this (${detail}). The cluster operator must check the runner's RBAC.`;
   }
@@ -59,7 +62,7 @@ export function apiReason(err: unknown): string {
 }
 
 /**
- * Which of the two things a `403 Forbidden` means here.
+ * Which of the things a `403 Forbidden` means here.
  *
  * The status code alone cannot say: an RBAC denial and a `ResourceQuota`
  * rejection are both `403` with `reason: Forbidden`, and this chart ships a
@@ -73,11 +76,12 @@ export function apiReason(err: unknown): string {
  * text does not. An unrecognized 403 degrades to the neutral wording rather than
  * to a guess.
  */
-function refusalCause(err: unknown): "quota" | "rbac" | undefined {
+function refusalCause(err: unknown): "quota" | "pod-security" | "rbac" | undefined {
   const code = statusCode(err);
   if (code !== 401 && code !== 403) return undefined;
   const message = statusMessage(err);
   if (message && /exceeded quota|forbidden: failed quota/i.test(message)) return "quota";
+  if (message && /violates PodSecurity/i.test(message)) return "pod-security";
   if (!message || /\bis forbidden: User\b|\bcannot \w+ resource\b/i.test(message)) return "rbac";
   return undefined;
 }

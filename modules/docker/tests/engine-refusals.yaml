@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: DockerEngineRefusals
+  version: 1.0.0
+  description: |
+    An endpoint of a scheme the engine does not speak is refused by `telo
+    check`; an endpoint nothing answers on fails the container's start with
+    ERR_CONTAINER_ENGINE_UNREACHABLE, naming the container and the endpoint.
+    Needs no engine on the machine.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref unknownScheme
+  - !ref unreachable
+---
+kind: Assert.Manifest
+metadata: { name: unknownScheme }
+source: ./__fixtures__/bad-endpoint.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: endpoint
+---
+kind: Assert.Manifest
+metadata: { name: unreachable }
+source: ./__fixtures__/unreachable.yaml
+expect:
+  errors: []
+  runFails: 'Container.Instance "server": the container engine cannot be reached: cannot reach the engine at unix:///nonexistent/telo-test/docker.sock'

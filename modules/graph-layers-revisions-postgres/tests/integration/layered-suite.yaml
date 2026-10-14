@@ -10,10 +10,14 @@ metadata:
     layers it is built on, bottom-up, one move per layer — the diamond's two
     sides in a single call.
 
-    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 include:
   - ./__fixtures__/suite-model.yaml
 imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
   Suite:
     source: ../../../graph-layers/tests/__fixtures__/layered-suite
     resources:
@@ -36,11 +40,9 @@ imports:
   GraphLayers: ../../../graph-layers
   Run: ../../../run
 variables:
-  dbHost: { env: DB_HOST, type: string, default: localhost }
-  dbPort: { env: DB_PORT, type: integer, default: 5432 }
-  dbUser: { env: DB_USER, type: string, default: postgres }
-  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
-  dbName: { env: DB_NAME, type: string, default: postgres }
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
 targets:
   - !ref reset
   - !ref appSchema

@@ -39,6 +39,21 @@ describe("reapOrphanContainers", () => {
     ]);
   });
 
+  it("removes every container a previous runner's sessions started", async () => {
+    const removed: string[] = [];
+    await reapOrphanContainers(
+      fakeDocker(
+        [
+          { Id: "c0ffee", Names: ["/eager_turing"], Labels: { "run.telo.session": "abc" } },
+          { Id: "beef", Names: ["/unrelated"], Labels: { "run.telo.container.expires": "1" } },
+        ],
+        removed,
+      ),
+      log,
+    );
+    expect(removed).toEqual(["c0ffee"]);
+  });
+
   it("leaves containers that are not sessions alone", async () => {
     const removed: string[] = [];
     await reapOrphanContainers(

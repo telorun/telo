@@ -15,10 +15,14 @@ metadata:
     issued by another process ends a session running here: its next write is
     refused and the session fails GRAPH_DRAFT_CLOSED.
 
-    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
 include:
   - ./__fixtures__/cross-process/model.yaml
 imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
   Sql: ../../../sql
   Postgres: ../../../postgres
   Layers: ../..
@@ -29,11 +33,9 @@ imports:
   Timer: ../../../timer
   Assert: ../../../assert
 variables:
-  dbHost: { env: DB_HOST, type: string, default: localhost }
-  dbPort: { env: DB_PORT, type: integer, default: 5432 }
-  dbUser: { env: DB_USER, type: string, default: postgres }
-  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
-  dbName: { env: DB_NAME, type: string, default: postgres }
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
 targets:
   - !ref reset
   - !ref appSchema
@@ -46,6 +48,13 @@ targets:
   - !ref writerB
   - !ref hundredRevisions
   - !ref closedFromElsewhere
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
+  string(resources.Pg.endpoint.status.port) + '/postgres' +
+  '?options=-c%20search_path%3Dpublic'
 ---
 kind: Sql.Command
 metadata: { name: write }
@@ -142,11 +151,8 @@ metadata: { name: publisherA }
 source: ./__fixtures__/cross-process/publisher.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   pick: race-a
 ---
 kind: Run.Loop
@@ -164,11 +170,8 @@ metadata: { name: publisherB }
 source: ./__fixtures__/cross-process/publisher.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   pick: race-b
 ---
 kind: Run.Loop
@@ -222,11 +225,8 @@ metadata: { name: writerA }
 source: ./__fixtures__/cross-process/writer.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   name: wa
 ---
 kind: Run.Loop
@@ -244,11 +244,8 @@ metadata: { name: writerB }
 source: ./__fixtures__/cross-process/writer.yaml
 awaitStart: false
 variables:
-  dbHost: !cel "variables.dbHost"
-  dbPort: !cel "variables.dbPort"
-  dbUser: !cel "variables.dbUser"
-  dbPassword: !cel "variables.dbPassword"
-  dbName: !cel "variables.dbName"
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
   name: wb
 ---
 kind: Run.Loop
@@ -312,11 +309,8 @@ with:
     metadata: { name: closer }
     source: ./__fixtures__/cross-process/publisher.yaml
     variables:
-      dbHost: !cel "variables.dbHost"
-      dbPort: !cel "variables.dbPort"
-      dbUser: !cel "variables.dbUser"
-      dbPassword: !cel "variables.dbPassword"
-      dbName: !cel "variables.dbName"
+      dbHost: !cel "resources.Pg.endpoint.status.host"
+      dbPort: !cel "resources.Pg.endpoint.status.port"
       pick: closing
 targets:
   - !ref closer

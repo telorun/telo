@@ -120,6 +120,8 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
             { name: "app", mountPath: APP_DIR },
             { name: "tmp", mountPath: TMP_MOUNT },
           ],
+          // A namespace quota refuses a pod with any container lacking these.
+          resources,
           securityContext: hardenedContainerSecurity(),
         },
       ],

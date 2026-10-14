@@ -19,6 +19,7 @@ import type {
   WorkspaceCheckpointFile,
   WorkspaceTree,
 } from "./contract.js";
+import type { SessionContainerEngine } from "./session-containers/session-container-engine.js";
 
 /**
  * The seam between backend-neutral session machinery (routes, registry, SSE)
@@ -54,6 +55,11 @@ export interface RunnerBackend {
    *  backend's own labelling. Run once at boot — the session registry is
    *  in-memory, so a restart otherwise leaks running workloads. */
   reapOrphans?(): Promise<void>;
+
+  /** Runs the containers a session's workload starts through the engine core
+   *  serves it (`RUNNER_SESSION_CONTAINERS`). A runner turning that on over a
+   *  backend without one is refused at boot. */
+  readonly containers?: SessionContainerEngine;
 }
 
 /** One application container the backend must stand up. */

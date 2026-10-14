@@ -41,6 +41,10 @@ export interface ObservedStateInfo {
    *  whose `run()` stays pending — which is what separates "still coming up"
    *  from "finished and reported nothing". */
   completed: boolean;
+  /** True for a Provider, which reports from `init()` and has no `run()`: its
+   *  reading is published when `init()` returns, so a published reading with
+   *  no status is a producer that initialized without reporting. */
+  reportsFromInit?: boolean;
 }
 
 /** Read the marker off a published props / status object, if it carries one. */
@@ -119,6 +123,8 @@ export interface PublishOptions {
   started: boolean;
   /** Whether its `run()` has returned. */
   completed: boolean;
+  /** Whether the kind reports from `init()` (a Provider). */
+  reportsFromInit?: boolean;
 }
 
 /**
@@ -152,6 +158,7 @@ export function buildPublishedProps(
     fields: declaredStatusFields(opts.statusSchema),
     started: opts.started,
     completed: opts.completed,
+    ...(opts.reportsFromInit ? { reportsFromInit: true } : {}),
   };
   mark(flat, info);
 
@@ -181,6 +188,9 @@ export function buildPublishedProps(
  *    (a Service binding asynchronously); reorder or read later;
  *  - `run()` returned and it never reported → the producing module declares
  *    something it does not report, and no edit here fixes that.
+ *
+ * A Provider has no `run()`: once its reading is published its `init()` has
+ * returned, so a missing segment is the last of the three.
  */
 export function diagnoseObservedStateAccess(
   container: unknown,
@@ -190,6 +200,9 @@ export function diagnoseObservedStateAccess(
   if (!info) return null;
 
   if (missingKey === OBSERVED_STATE_KEY) {
+    if (info.reportsFromInit) {
+      return `'${info.name}' initialized without reporting its observed state, which ${info.kind} declares it reports (${formatFields(info.fields)}). This is a defect in the ${info.module ?? "producing"} module — its init() never called setStatus, and no change to this manifest will fix it.`;
+    }
     if (!info.started) {
       return `'${info.name}' reports ${formatFields(info.fields)} only while it is running, and it has not started yet. Read reported values where the call happens — a step's inputs:, a request's url, a route handler, or a returns: expression — and make sure '${info.name}' is listed in the targets: that runs before this value is read.`;
     }

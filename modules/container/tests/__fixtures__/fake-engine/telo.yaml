@@ -1,0 +1,25 @@
+# An engine that runs nothing: every container it is asked for is "running" at
+# once, each port bound on loopback at its own number. Lets a test reach the
+# kinds' own refusals with no engine on the machine.
+kind: Telo.Library
+metadata:
+  name: FakeEngine
+  version: 1.0.0
+  description: Fixture engine answering the container engine contract from memory.
+imports:
+  Container: ../../..
+exports:
+  kinds:
+    - Engine
+---
+kind: Telo.Definition
+metadata:
+  name: Engine
+  description: Answers the container engine contract from memory.
+capability: Telo.Provider
+extends: Container.Engine
+controllers:
+  - pkg:telo/local/js?path=./fake-engine.mjs#Engine
+schema:
+  type: object
+  additionalProperties: false
