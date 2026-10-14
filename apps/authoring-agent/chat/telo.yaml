@@ -32,18 +32,17 @@ metadata:
     Exported so the app and its tests drive the same handler. Parameterized by the
     OpenAI key, the model endpoint, the workspace directory and the agent's state
     directory, which holds `agent.sqlite`.
-# `Ai`, `OpenAI`, `AiMcp`, `Mcp`, `Run`, `Stream` and `HttpClient` come from the
-# checkout until `mcp-client` and `ai-mcp` publish their prompt support — the
-# first four for the prompt tools, the last three because the checkout's `ai`
-# and `openai` reach them by relative path. They are re-pinned together with
-# the application's `Mcp` and `Run` and the tests' copies: one module loaded
-# from both the checkout and OCI is two identities for one kind.
+# A module this library, the application and its tests all import is pinned to
+# ONE version everywhere — `Ai`, `OpenAI`, `AiMcp`, `Mcp`, `Run`, `Stream` and
+# `HttpClient` in particular, since `ai` and `openai` reach the last three: one
+# module loaded from two origins is two identities for one kind. When a change
+# needs one from the checkout, the whole set moves to the checkout together.
 imports:
-  Ai: ../../../modules/ai
-  OpenAI: ../../../modules/openai
-  HttpClient: ../../../modules/http-client
-  AiMcp: ../../../modules/ai-mcp
-  Mcp: ../../../modules/mcp-client
+  Ai: oci://ghcr.io/telorun/ai@0.28.0#sha256-zpi3w-6zWjD3HGhxoMJKItuFM4ELZa-NTVHOtFacRII
+  OpenAI: oci://ghcr.io/telorun/openai@0.13.0#sha256-Tt9DaH254A972an-WTH_mtJOy9HAuUuH_SK1_bfOvHM
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.24.0#sha256-LLWn670MIBui2xMZIrykj_6t0c3lIuyz29Uymbh12hQ
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.17.0#sha256-wMlnrVxgeWHAX6_f1pr7v059KzgjYHuICg5Ui68v2zc
   Fs: oci://ghcr.io/telorun/fs@0.14.0#sha256-N5xTrQgDJ91sb_XrS6mPLsH_g0_70yj1S3xBB_hLDdA
   TextDiff: oci://ghcr.io/telorun/text-diff@0.3.0#sha256-FaVk4PVZVI1-ryRkgdTmN1MNtEP1E8bjAXXl365nSW4
   Shell: oci://ghcr.io/telorun/shell@0.13.0#sha256-h4-z6gdCjduwxgU1n7o5eol8RYgsxBCS2iQcxpCV_u0
@@ -51,8 +50,8 @@ imports:
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
   RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
   RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.0#sha256-hUM8JPvjMJkMUEmXOXNkhvC5QxFe9VIQw_7rAXCuv9Y
-  Stream: ../../../modules/stream
-  Run: ../../../modules/run
+  Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
   Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
   KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.0#sha256-GmMDeJ2eYatJ0_ewaUI6A6bnfkqlphjd4YKWtqZ5d2Y
   Cache: oci://ghcr.io/telorun/cache@0.13.0#sha256-m85mbpiAnfwojpzTTF9I1yZeTF6KDLlCPEtadghO3nc
