@@ -117,7 +117,7 @@ steps:
         agentHubTools: !cel >-
           sort(steps.requests.result.filter(r, r.who == 'agent')[0].tools
             .filter(t, t in ['find_kinds', 'get_kinds', 'search_resources', 'get_module_manifest',
-                             'find_implementations', 'find_instances', 'list_libraries', 'guide_stub']))
+                             'find_implementations', 'find_instances', 'list_libraries', 'guide_build_ui']))
         searchTools: !cel "sort(steps.requests.result.filter(r, r.who == 'search')[0].tools)"
         shown: !cel >-
           [steps.shown.result.contains('FOUND\n- greet someone: Hello in oci://example.test/greeter — the only greeter'),
@@ -134,7 +134,7 @@ steps:
         totalTokens: !cel "steps.after.result.conversation.totalTokens"
       expected:
         callers: [agent, search, search, agent]
-        agentHubTools: [find_kinds, get_kinds, guide_stub]
+        agentHubTools: [find_kinds, get_kinds, guide_build_ui]
         # The stand-in serves no `find_implementations` / `find_instances`.
         searchTools: [search_resources]
         shown: [true, true, true, true]

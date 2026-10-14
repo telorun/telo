@@ -5850,13 +5850,10 @@ toolProviders:
   # The definitions of kinds the agent can already name. Searching the hub is
   # `find_kinds`' work: a search answers with far more text than the choice it
   # leads to, and whatever a tool returns here is re-sent on every later step.
+  # The `guide_…` tools are the hub's authoring guides, fetched only by a turn
+  # whose work one of them covers.
   - provider: !ref hubTools
-    include: [get_kinds]
-  # Every prompt the hub offers, as a `guide_<name>` tool: the hub's authoring
-  # guides, fetched only by a turn whose work one of them covers. No `include:`,
-  # so a guide the hub adds reaches the agent with no change here.
-  - provider: { kind: AiMcp.PromptToolProvider, client: !ref hub }
-    prefix: guide_
+    include: [get_kinds, guide_build_ui, guide_write_integration_tests, guide_design_library]
 ---
 # Chooses kinds, and nothing else: it searches the hub and names what answers
 # each need. It never writes a schema — `findKinds` fetches the definitions of

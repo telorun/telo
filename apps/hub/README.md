@@ -135,7 +135,7 @@ being linearized into a chain.
 | the whole catalogue (sitemaps) | `GET /modules?after=…&limit=…` (every ref `/module` answers for, paged by `seq`) |
 | register a module | `POST /register` (`{ ref }` → validate + schedule, `202`; open, no auth) |
 | poll a registration | `GET /register/status?ref=` |
-| MCP tools (`search_resources`, `get_kinds`, `list_libraries`, `get_module_manifest`, `get_module`, `list_module_versions`, `find_implementations`, `find_instances`, `find_dependents`, `list_categories`, `suggest_module_refs`) and prompts (`build_ui`, `write_integration_tests`, `design_library`) | `POST /mcp` |
+| MCP tools (`search_resources`, `get_kinds`, `list_libraries`, `get_module_manifest`, `get_module`, `list_module_versions`, `find_implementations`, `find_instances`, `find_dependents`, `list_categories`, `suggest_module_refs`, and the guide tools `guide_build_ui`, `guide_write_integration_tests`, `guide_design_library`) | `POST /mcp` |
 | liveness | `GET /health` |
 
 **Every keyed HTTP read has an MCP twin.** `get_module` mirrors `GET /module`,
@@ -178,17 +178,17 @@ HTTP twin.
   first sentence of its description, at most 160 characters), `kinds` and
   `instances`. Applications and deprecated modules are left out.
 
-**The endpoint also serves three authoring guides as MCP prompts** —
-`build_ui`, `write_integration_tests` and `design_library`. Each takes no
-arguments, and `prompts/get` answers one `user` message holding one text block:
-the guide, read from `guides/build-ui.md`, `guides/write-integration-tests.md`
-and `guides/design-library.md`. A guide says how to design and compose — a
-screen, a test that starts a real service as a container, a library — and
-sends its reader to `get_kinds` for every exact schema and import line, so it
-names no version and no pin. Each is kept at most 32768 UTF-8 bytes — the
-authoring agent's default tool-result bound, so it arrives whole there; an
-unknown name is refused as `-32602`.
-The `instructions:` text names the three.
+**The endpoint also serves three authoring guides as argument-less tools** —
+`guide_build_ui`, `guide_write_integration_tests` and `guide_design_library`,
+each answering one text block read from `guides/build-ui.md`,
+`guides/write-integration-tests.md` and `guides/design-library.md`. A guide
+says how to design and compose — a screen, a test that starts a real service as
+a container, a library — and sends its reader to `get_kinds` for every exact
+schema and import line, so it names no version and no pin. Each is kept at most
+32768 UTF-8 bytes — the authoring agent's default tool-result bound, so it
+arrives whole there.
+The `instructions:` text names the guide tools first and stays within 4096
+characters, the length past which a client may cut it (Claude Code does).
 
 `GET /modules` is deliberately HTTP-only: listing the whole catalogue is a crawler / site-build read that no
 manifest-authoring agent needs, and `search_resources` and `suggest_module_refs`

@@ -12,10 +12,10 @@ metadata:
       - `get_kinds` answers with the library's import line and one definition
         per asked kind, named as asked, carrying the marker HUB_DEFINITION;
       - `list_libraries` lists the one library.
-    It also offers one argument-less prompt, `stub`, whose description carries
-    the marker HUB_GUIDE_DESCRIPTION and whose one message is a fixed text
-    starting with the marker HUB_GUIDE_TEXT — the shape of the hub's authoring
-    guides.
+    It also offers one argument-less guide tool, `guide_build_ui`, whose
+    description carries the marker HUB_GUIDE_DESCRIPTION and whose answer is a
+    fixed text starting with the marker HUB_GUIDE_TEXT — the shape of the hub's
+    authoring guides.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.37.1#sha256-fsMx1S3zwc1NRXcfgq0EREu94R_vXUAWAieD7qB3bio
   Mcp: oci://ghcr.io/telorun/mcp-server@0.19.0#sha256-JczHRE8f0y-yyxl83FnOOsvlRj4AjwJUfyP-mCkC5ns
@@ -82,6 +82,18 @@ entries:
             json({'libraries': [{'ref': 'oci://example.test/greeter', 'name': 'Greeter',
                                  'summary': 'Greets people for ' + request.arguments.publisher + '.',
                                  'kinds': ['Hello']}]})
+  - name: guide_build_ui
+    description: HUB_GUIDE_DESCRIPTION How to write a stub. Read before writing one.
+    argumentsSchema: { type: object, properties: {}, additionalProperties: false }
+    handler: !ref nothing
+    inputs: {}
+    result:
+      content:
+        - type: text
+          text: |-
+            HUB_GUIDE_TEXT A stub guide.
+
+            A stub answers from a fixed text and is read whole.
 ---
 kind: Mcp.HttpEndpoint
 metadata: { name: endpoint }
@@ -90,22 +102,6 @@ serverInfo:
   version: 1.0.0
 tools:
   - !ref HubTools
-prompts:
-  - kind: Mcp.Prompts
-    entries:
-      - name: stub
-        description: HUB_GUIDE_DESCRIPTION How to write a stub. Read before writing one.
-        handler: !ref nothing
-        inputs: {}
-        result:
-          messages:
-            - role: user
-              content:
-                type: text
-                text: |-
-                  HUB_GUIDE_TEXT A stub guide.
-
-                  A stub answers from a fixed text and is read whole.
 ---
 kind: Http.Server
 metadata: { name: server }

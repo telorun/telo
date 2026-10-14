@@ -1,0 +1,128 @@
+kind: Telo.Application
+metadata:
+  name: HubE2EMcpGuides
+  version: 1.0.0
+  description: |
+    End-to-end tests for the authoring guides the hub serves on /mcp, run
+    against a live hub at http://localhost:8040. Each guide is an argument-less
+    tool (`guide_<name>`) whose `tools/call` answers one text block: the whole
+    guide, within 32768 UTF-8 bytes, the authoring agent's default tool-result
+    bound. The server instructions name the guide tools within 4096
+    characters, past which a client may cut them. Spoken as raw JSON-RPC, so
+    the server's own answer is what is asserted.
+imports:
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
+targets:
+  - !ref initialize_InstructionsNameTheGuidesWithinTheBound
+  - !ref toolsList_OffersTheThreeGuides
+  - !ref toolsCall_AnswersEachGuideWhole
+---
+# The endpoint answers as a server-sent event: the JSON-RPC message follows the
+# first `data: ` of the body.
+kind: HttpClient.Request
+metadata: { name: rpc }
+inputs:
+  url: http://localhost:8040/mcp
+  method: POST
+  headers:
+    content-type: application/json
+    accept: application/json, text/event-stream
+  responseType: text
+---
+kind: Run.Sequence
+metadata: { name: initialize_InstructionsNameTheGuidesWithinTheBound }
+steps:
+  - name: init
+    invoke: !ref rpc
+    inputs:
+      body:
+        jsonrpc: "2.0"
+        id: 1
+        method: initialize
+        params:
+          protocolVersion: "2025-06-18"
+          capabilities: {}
+          clientInfo: { name: hub-e2e, version: "0" }
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        [parseJson(steps.init.result.body.substring(
+          steps.init.result.body.indexOf('data: ') + 6)).result.instructions].map(i, {
+            'withinBound': size(i) <= 4096,
+            'namesGuides': ['guide_build_ui', 'guide_write_integration_tests', 'guide_design_library']
+              .all(n, i.contains('`' + n + '`'))})[0]
+      expected: { withinBound: true, namesGuides: true }
+---
+kind: Run.Sequence
+metadata: { name: toolsList_OffersTheThreeGuides }
+steps:
+  - name: list
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 2, method: tools/list }
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        parseJson(steps.list.result.body.substring(
+          steps.list.result.body.indexOf('data: ') + 6)).result.tools
+          .filter(t, t.name.startsWith('guide_'))
+          .map(t, {'name': t.name, 'description': t.description, 'inputSchema': t.inputSchema})
+      expected:
+        - name: guide_build_ui
+          description: >-
+            How to build a user interface for a Telo application with the ui and
+            ui-react modules: pages, tables, forms, actions, filters, surfaces and
+            themes, wired to the routes they call. Read before writing any screen.
+          inputSchema: { type: object, properties: {}, additionalProperties: false }
+        - name: guide_write_integration_tests
+          description: >-
+            How to write Telo tests that start a real service — a PostgreSQL
+            database, a queue, a server — as a disposable container, connect to
+            it and clean up, so the test runs alone, in a suite and in a runner
+            session. Read before writing a test that needs one.
+          inputSchema: { type: object, properties: {}, additionalProperties: false }
+        - name: guide_design_library
+          description: >-
+            How to design a Telo library: exporting kinds or ready-made instances,
+            templated kinds vs. extending one, abstract contracts, resources
+            borrowed from the importer, variables, lifecycle, naming, descriptions
+            and tests. Read before writing a Telo.Library.
+          inputSchema: { type: object, properties: {}, additionalProperties: false }
+---
+# Each guide tool answers one text block, starting with its heading and within
+# the 32768-byte bound.
+kind: Run.Sequence
+metadata: { name: toolsCall_AnswersEachGuideWhole }
+steps:
+  - name: buildUi
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 3, method: tools/call, params: { name: guide_build_ui, arguments: {} } }
+  - name: integrationTests
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 4, method: tools/call, params: { name: guide_write_integration_tests, arguments: {} } }
+  - name: library
+    invoke: !ref rpc
+    inputs:
+      body: { jsonrpc: "2.0", id: 5, method: tools/call, params: { name: guide_design_library, arguments: {} } }
+  - name: content
+    value: !cel >-
+      [steps.buildUi, steps.integrationTests, steps.library].map(s,
+        parseJson(s.result.body.substring(s.result.body.indexOf('data: ') + 6)).result.content)
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        steps.content.result.map(c, {
+          'shape': c.map(x, x.type),
+          'heading': c[0].text.split('\n')[0],
+          'withinBound': size(bytes(c[0].text)) <= 32768})
+      expected:
+        - { shape: [text], heading: "# Building a user interface", withinBound: true }
+        - { shape: [text], heading: "# Writing integration tests that start a real service", withinBound: true }
+        - { shape: [text], heading: "# Designing a library", withinBound: true }
