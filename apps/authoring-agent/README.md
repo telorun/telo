@@ -1079,14 +1079,14 @@ must declare.
 against the live hub, and imports the standard library at pinned published
 versions once a release is out (by in-repo path while a change to it is being
 built), so it also fails while a change has landed here but is not yet
-released and re-pinned. Today `Mcp` and `Run` (the application), `Mcp`,
-`AiMcp`, `Ai`, `OpenAI`, `Run`, `Stream` and `HttpClient` (the chat library), and
-the same names in every test that imports the chat library, come from the
-checkout until `mcp-client` and `ai-mcp` publish prompt support; they are
-re-pinned together, since a module loaded both from the checkout and from a
-published version is two identities for one kind. The live cases also fail until
-the hub serving its authoring guides is deployed: the agent lists the hub's
-prompts on its first turn, and a hub offering none refuses that call. Live cases skip themselves when `OPENAI_API_KEY` is
+released and re-pinned. `Mcp` and `Run` (the application), `Mcp`, `AiMcp`,
+`Ai`, `OpenAI`, `Run`, `Stream` and `HttpClient` (the chat library), and the same
+names in every test that imports the chat library, move together — all pinned
+to one version, or all from the checkout while a change to one of them is
+built — since a module loaded both from the checkout and from a published
+version is two identities for one kind. The live cases need a hub serving its
+authoring guides: the agent lists the hub's prompts on its first turn, and a
+hub offering none refuses that call. Live cases skip themselves when `OPENAI_API_KEY` is
 unset. CI never runs it on its own: it is the `Authoring Agent E2E` workflow,
 started by hand against a chosen branch.
 
