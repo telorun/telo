@@ -1,6 +1,6 @@
 {
   "name": "@telorun/container",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "private": true,
   "description": "Telo container module — the Container.Engine and Container.Readiness abstracts, the Instance, Port and LogReady kinds, and the engine and readiness contracts every implementation follows. Never published: the controller ships inside the module artifact as a pkg:telo/local/js bundle, and an implementation reaches the contracts through the module's exports.code specifier.",

@@ -6,8 +6,8 @@ type: application
 # moved by `telo release apply` — written by `scripts/stamp-chart-version.mjs`
 # in the Module Release PR and checked on every PR: the chart deploys exactly
 # one image, `telorun/hub`, tagged with that version.
-version: 0.14.0
-appVersion: "0.14.0"
+version: 0.15.0
+appVersion: "0.15.0"
 keywords:
   - telo
   - hub

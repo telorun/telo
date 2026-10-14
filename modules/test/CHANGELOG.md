@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 - 2026-10-14
+### Added
+* Test.Suite.env: environment variables every test manifest runs with, evaluated at startup so a value may be computed from another resource, such as the address of a database the suite's application started. It wins over the forwarded host environment and the tests' env files.
+
 ## 0.12.1 - 2026-10-08
 ### Fixed
 * Test discovery no longer walks directories it will discard: a directory an exclude pattern rules out whole (dir/** or dir/), and every node_modules, .git and .telo directory, is skipped instead of being listed and then filtered. The selected tests are unchanged; a suite over a checkout holding other worktrees starts in milliseconds instead of a minute.
