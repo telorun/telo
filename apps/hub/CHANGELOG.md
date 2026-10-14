@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0 - 2026-10-14
+### Added
+* The MCP endpoint serves three authoring guides as prompts — build_ui, write_integration_tests and design_library — each answering one user message with the guide's text (at most 32768 UTF-8 bytes), and the server instructions name them.
+
 ## 0.14.0 - 2026-10-13
 ### Added
 * A Helm chart, apps/hub/chart, published as oci://ghcr.io/telorun/charts/hub at the hub's own version. It deploys the hub alone as one unprivileged instance; the database, the manifest bucket and the embeddings server are supplied, and every credential is read from a named Secret.

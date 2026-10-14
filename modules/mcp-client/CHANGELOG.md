@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.0 - 2026-10-14
+### Added
+* Mcp.Client carries prompts/list and prompts/get: the method set is now tools/call, tools/list, prompts/list and prompts/get, and both Mcp.HttpClient and Mcp.StdioClient answer the two prompt methods with the server result payload, returned verbatim over both transports and unchecked against any result schema. Any other method is still refused by telo check at the call site.
+
 ## 0.16.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
