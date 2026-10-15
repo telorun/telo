@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: UnversionedRange
+  version: 0.0.0
+  description: States a version range on a need type that is not versioned.
+imports:
+  Kinds: ../kinds
+needs:
+  value:
+    kind: Kinds.Plain
+    version: ">=1.0.0"

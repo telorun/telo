@@ -1,0 +1,28 @@
+kind: Telo.Library
+metadata:
+  name: ObservingTemplate
+  version: 0.0.0
+  description: A templated kind declaring an observing slot, whose template controller cannot report.
+imports:
+  Kinds: ../kinds
+exports:
+  kinds: [Facade]
+---
+kind: Telo.Definition
+metadata:
+  name: Facade
+  description: Stands a plain value up beside a database it would have to verify.
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    access:
+      x-telo-ref:
+        kind: Kinds.DatabaseAccess
+        use: dependency
+        observes: [version]
+provide: !ref label
+resources:
+  - kind: Kinds.Plain
+    metadata: { name: label }
+    fields: { value: facade }

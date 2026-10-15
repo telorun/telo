@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata:
+  name: Wrapper
+  version: 0.0.0
+  description: Imports the same library under two aliases whose needs derive one environment name.
+imports:
+  HTTPServer: ../leaf
+  HttpServer: ../leaf

@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: Sessions
+  version: 0.0.0
+  description: One instance for the whole application, needing a signing key.
+lifecycle: shared
+imports:
+  Fx: ../../../types
+needs:
+  signingKey:
+    kind: Fx.SigningKey

@@ -178,6 +178,7 @@ export function refFieldEntryOf(
   if (slot.inline) entry.inline = true;
   if (slot.throwsThrough) entry.throwsThrough = true;
   if (slot.outputType) entry.outputType = slot.outputType;
+  if (slot.observes) entry.observes = slot.observes;
   return entry;
 }
 
@@ -193,6 +194,7 @@ export function refSlotOfEntry(entry: RefFieldEntry): RefSlot {
   if (entry.inputs !== undefined) slot.inputs = entry.inputs;
   if (entry.throwsThrough) slot.throwsThrough = true;
   if (entry.outputType) slot.outputType = entry.outputType;
+  if (entry.observes) slot.observes = entry.observes;
   return slot;
 }
 
@@ -899,6 +901,7 @@ export function siteRefEntry(site: ReachSite): RefFieldEntry {
     if (slot.inline) entry.inline = true;
     if (slot.throwsThrough) entry.throwsThrough = true;
     if (slot.outputType && !entry.outputType) entry.outputType = slot.outputType;
+    if (slot.observes && !entry.observes) entry.observes = slot.observes;
     valueBranches.push(...slot.valueBranches);
   }
   if (valueBranches.length > 0) entry.valueBranches = valueBranches;

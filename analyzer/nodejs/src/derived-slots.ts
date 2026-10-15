@@ -39,7 +39,7 @@ import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-
 import { readStepSlot } from "./step-slot.js";
 import { dispatchTargetOf } from "./template-body.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
-import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
+import { isKindDocument } from "./kind-declaration.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import {
   resolveScopeValues,
@@ -366,7 +366,7 @@ export function derivedSlotsOf(
     {
       aliases: ctx.aliases,
       aliasesByModule: ctx.aliasesByModule,
-      skipKinds: REF_VALIDATION_SKIP_KINDS,
+      skip: isKindDocument,
     },
   );
   return out;

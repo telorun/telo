@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata:
+  name: NeedTypes
+  version: 1.0.0
+exports:
+  kinds: [SigningKey]
+---
+kind: Telo.NeedType
+metadata:
+  name: SigningKey
+fields:
+  value: { type: string, x-telo-sensitive: true }
+required: [value]

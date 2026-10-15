@@ -1,0 +1,25 @@
+kind: Telo.Library
+metadata:
+  name: ReportTypes
+  version: 0.0.0
+  description: Need types the report fixture asks for.
+exports:
+  kinds: [DatabaseAccess, SigningKey]
+---
+kind: Telo.NeedType
+metadata: { name: DatabaseAccess }
+fields:
+  url: { type: string, x-telo-sensitive: true }
+  schema: { type: string }
+required: [url]
+parameters:
+  type: object
+  properties:
+    extensions: { type: array, items: { type: string } }
+  additionalProperties: false
+---
+kind: Telo.NeedType
+metadata: { name: SigningKey }
+fields:
+  value: { type: string, x-telo-sensitive: true }
+required: [value]

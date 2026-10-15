@@ -1,0 +1,148 @@
+kind: Telo.Application
+metadata:
+  name: NeedsConsumeTest
+  version: 1.0.0
+  description: |
+    A kind consumes a need's fulfilment whole at an observing reference slot:
+    it opens the fulfilment with ctx.resolveNeed, reports what it found with
+    ctx.verifyNeed, and the kernel compares that with the outermost need of the
+    whole-forward chain. The fixture consumer reports the version and features
+    it is handed in config, so nothing has to run behind it.
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref forwardedVerified
+  - !ref templateBodyVerified
+  - !ref narrowerForwardedRange
+  - !ref versionOutsideRange
+  - !ref featureMissing
+  - !ref observationMissing
+  - !ref observationNotSemver
+  - !ref pointerNotANeedSlot
+  - !ref observedFromEnvironmentChecks
+  - !ref hundredImports
+  - !ref rangeOutsideGrammar
+  - !ref featureNotListed
+  - !ref versionlessForwardedToVersioned
+  - !ref observesMisdeclared
+---
+# Forwarded whole through two libraries: the consumer is handed the outermost
+# need's constraints, and a version inside them boots.
+kind: Assert.Manifest
+metadata: { name: forwardedVerified }
+source: ./__fixtures__/needs/consume/run/forwarded.yaml
+expect:
+  errors: []
+  runs: true
+---
+# Opened only inside a templated kind's body, at the entry's observing slot: the
+# entry's reference to the module's need verifies it, and the entry is held to
+# the observation at boot. The templated kind itself declares no `observes`.
+kind: Assert.Manifest
+metadata: { name: templateBodyVerified }
+source: ./__fixtures__/needs/consume/run/templated.yaml
+expect:
+  errors: []
+  runs: true
+---
+# 15.4.0 is inside the inner library's '>=15.0.0' and outside the '>=16.0.0' it is
+# forwarded from — refused against the outermost, narrower range.
+kind: Assert.Manifest
+metadata: { name: narrowerForwardedRange }
+source: ./__fixtures__/needs/consume/run/narrower.yaml
+expect:
+  errors: []
+  runFails: "Need 'Outer.db' (type 'ConsumeKinds.DatabaseAccess') is not met: the fulfilment supplied from the field-by-field supply at import 'Outer' of module 'ConsumeNarrower' has version 15.4.0, outside '>=16.0.0'"
+---
+kind: Assert.Manifest
+metadata: { name: versionOutsideRange }
+source: ./__fixtures__/needs/consume/run/outside.yaml
+expect:
+  errors: []
+  runFails: "has version 14.0.0, outside '>=15.0.0'"
+---
+kind: Assert.Manifest
+metadata: { name: featureMissing }
+source: ./__fixtures__/needs/consume/run/feature-missing.yaml
+expect:
+  errors: []
+  runFails: "has no 'pgvector' among its features"
+---
+# Due by the end of startup whether or not the need states a constraint.
+kind: Assert.Manifest
+metadata: { name: observationMissing }
+source: ./__fixtures__/needs/consume/run/unobserved.yaml
+expect:
+  errors: []
+  runFails: "ConsumeKinds.Database 'db' reported no observation for '/access' by the end of its startup (when init() returns)"
+---
+kind: Assert.Manifest
+metadata: { name: observationNotSemver }
+source: ./__fixtures__/needs/consume/run/not-semver.yaml
+expect:
+  errors: []
+  runFails: "reports version \"15\", which is not semver"
+---
+kind: Assert.Manifest
+metadata: { name: pointerNotANeedSlot }
+source: ./__fixtures__/needs/consume/run/probe.yaml
+expect:
+  errors: []
+  runFails: "'/serverVersion' is not a reference slot of its kind"
+---
+# A root need forwarded through two libraries to an observing slot checks clean;
+# `needs-env.yaml` boots it with the environment it reads.
+kind: Assert.Manifest
+metadata: { name: observedFromEnvironmentChecks }
+source: ./__fixtures__/needs/env/observed.yaml
+expect:
+  errors: []
+---
+# The constraint walk runs once per declaring module, so a hundred imports of
+# one observing library check in linear time.
+kind: Assert.Manifest
+metadata: { name: hundredImports }
+source: ./__fixtures__/needs/consume/many.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: rangeOutsideGrammar }
+source: ./__fixtures__/needs/consume/diagnostics/bad-range.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Need 'access': 'version' is not a range of explicit comparators — '^15.0.0' is not accepted: '^' would admit 15.0.0 up to 16.0.0, and a need's range states both bounds as comparators. Write '>=15.0.0 <16.0.0'."
+    - code: NEED_PARAMETERS_INVALID
+      message: "is a disjunction. A need's range must be a conjunction of comparators, because a need forwarded whole must state a range within the one it supplies"
+---
+kind: Assert.Manifest
+metadata: { name: featureNotListed }
+source: ./__fixtures__/needs/consume/diagnostics/unknown-feature.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "feature \"timescale\" is not one need type 'Kinds.DatabaseAccess' lists"
+---
+kind: Assert.Manifest
+metadata: { name: versionlessForwardedToVersioned }
+source: ./__fixtures__/needs/consume/diagnostics/versionless-forward.yaml
+expect:
+  errors:
+    - code: NEED_FORWARD_INCOMPATIBLE
+      message: "requires version '>=15.0.0', and 'access' states no version"
+---
+# A token that is no constraint, a slot whose kind is no need type, and a
+# constraint the need type does not declare; an abstract's observing slot is a
+# contract and passes.
+kind: Assert.Manifest
+metadata: { name: observesMisdeclared }
+source: ./__fixtures__/needs/consume/diagnostics/observes.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_OBSERVES
+      message: "Telo.Definition 'UnknownToken': x-telo-ref at 'schema.properties.access' declares 'observes: [\"edition\"]'"
+    - code: X_TELO_REF_INVALID_OBSERVES
+      message: "its kind 'ConsumeKinds.Database' is not a need type"
+    - code: X_TELO_REF_INVALID_OBSERVES
+      message: "observes 'version', which need type 'ConsumeKinds.Plain' does not declare"

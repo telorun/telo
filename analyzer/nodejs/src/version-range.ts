@@ -29,6 +29,13 @@
  *    A grammar whose edges are undefined cannot be verified, and an unverifiable
  *    bound is what this design forbids everywhere else.
  *
+ * **A need's `version:` is read with the same grammar**, for a reason of its own:
+ * a range forwarded whole must lie within the range it supplies, and containment
+ * is decided over the one interval a conjunction bounds. The refusals whose
+ * reasons belong to `requires:` — the disjunction's (verification runs the CLI at
+ * the edges) and the caret's (Telo's own release generations) — are worded for
+ * the reading that asks ({@link RangeReading}).
+ *
  * **Prereleases compare by plain precedence**, with no equivalent of npm's rule
  * that a prerelease only satisfies a range mentioning one at the same
  * `[major, minor, patch]`. That rule exists to stop a caret range dragging a
@@ -73,6 +80,11 @@ export type VersionRangeResult =
   | { ok: true; range: VersionRange }
   | { ok: false; error: VersionRangeError };
 
+/** What a range is being read for, which decides how a refusal explains itself:
+ *  a module's `requires:` bounds the telo it runs on, a need's `version:` the
+ *  version of the fulfilment it accepts. */
+export type RangeReading = "requires" | "need";
+
 /** Operators longest-first, so `>=` is matched before `>`. */
 const OPERATORS: ComparatorOperator[] = [">=", "<=", ">", "<"];
 
@@ -99,7 +111,10 @@ function hintedRefusal(message: string, version: string): VersionRangeResult {
  * degrades to a permissive reading: a range this refuses is reported, not
  * silently treated as "no requirement".
  */
-export function parseVersionRange(raw: unknown): VersionRangeResult {
+export function parseVersionRange(
+  raw: unknown,
+  reading: RangeReading = "requires",
+): VersionRangeResult {
   if (typeof raw !== "string" || raw.trim() === "") {
     return refuse(`expected a version range string, got ${describe(raw)}`);
   }
@@ -107,8 +122,12 @@ export function parseVersionRange(raw: unknown): VersionRangeResult {
 
   if (text.includes("||")) {
     return refuse(
-      `'${text}' is a disjunction. A range must be a conjunction of comparators, because ` +
-        `verification runs the CLI at its lowest and highest bound and a disjunction has neither`,
+      reading === "need"
+        ? `'${text}' is a disjunction. A need's range must be a conjunction of comparators, ` +
+            `because a need forwarded whole must state a range within the one it supplies, and ` +
+            `containment is decided over the single interval a conjunction bounds`
+        : `'${text}' is a disjunction. A range must be a conjunction of comparators, because ` +
+            `verification runs the CLI at its lowest and highest bound and a disjunction has neither`,
     );
   }
   if (/\s-\s/.test(text)) {
@@ -128,10 +147,13 @@ export function parseVersionRange(raw: unknown): VersionRangeResult {
       const upper =
         parsed && parsed.major === 0 ? `0.${parsed.minor + 1}.0` : `${(parsed?.major ?? 0) + 1}.0.0`;
       return refuse(
-        `'${term}' is not accepted. Pre-1.0, '${term[0]}' allows only ${version} up to ` +
-          `${upper}, and Telo ships breaking changes as minor bumps — so it pins this module to ` +
-          `a single release generation, which is almost never what is meant`,
-        `>=${version}`,
+        reading === "need"
+          ? `'${term}' is not accepted: '${term[0]}' would admit ${version} up to ${upper}, and ` +
+              `a need's range states both bounds as comparators`
+          : `'${term}' is not accepted. Pre-1.0, '${term[0]}' allows only ${version} up to ` +
+              `${upper}, and Telo ships breaking changes as minor bumps — so it pins this module to ` +
+              `a single release generation, which is almost never what is meant`,
+        reading === "need" ? `>=${version} <${upper}` : `>=${version}`,
       );
     }
     // Any `x`/`*` placeholder, at any position — `*`, `x`, `1.x`, `1.2.x`,
@@ -249,6 +271,25 @@ export function rangeInterval(range: VersionRange): VersionInterval {
     ...(low ? { min: { version: low.raw, inclusive: low.operator === ">=" } } : {}),
     ...(high ? { max: { version: high.raw, inclusive: high.operator === "<=" } } : {}),
   };
+}
+
+/** True when every version `inner` admits, `outer` admits too — a narrower range
+ *  forwarded to a wider one. Decided on the two ranges' exact intervals. */
+export function rangeWithin(inner: VersionRange, outer: VersionRange): boolean {
+  const a = rangeInterval(inner);
+  const b = rangeInterval(outer);
+  const versionOf = (bound: VersionIntervalBound) => parseModuleVersion(bound.version)!;
+  if (b.min) {
+    if (!a.min) return false;
+    const cmp = compareParsedModuleVersions(versionOf(a.min), versionOf(b.min));
+    if (cmp < 0 || (cmp === 0 && a.min.inclusive && !b.min.inclusive)) return false;
+  }
+  if (b.max) {
+    if (!a.max) return false;
+    const cmp = compareParsedModuleVersions(versionOf(a.max), versionOf(b.max));
+    if (cmp > 0 || (cmp === 0 && a.max.inclusive && !b.max.inclusive)) return false;
+  }
+  return true;
 }
 
 /** True when no version can satisfy the range — `>=0.90.0 <0.80.0`. Reported

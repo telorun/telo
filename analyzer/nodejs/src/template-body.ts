@@ -34,6 +34,33 @@ export interface TemplateBody {
   definition: ResourceDefinition | undefined;
 }
 
+/** A `resources:` entry of a template body, before its kind is resolved. */
+export interface TemplateBodyEntry {
+  index: number;
+  /** Concrete path prefix of this entry (`resources[0]`). */
+  prefix: string;
+  manifest: ResourceManifest;
+  /** The kind as written, in the declaring module's alias scope. */
+  kind: string;
+}
+
+/** The `resources:` entries a manifest declares as a template body — empty for
+ *  anything that is not a `Telo.Definition` with a `resources:` array. */
+export function templateBodyEntries(m: ResourceManifest): TemplateBodyEntry[] {
+  if (m.kind !== "Telo.Definition") return [];
+  const bodies = (m as Record<string, unknown>).resources;
+  if (!Array.isArray(bodies)) return [];
+  const out: TemplateBodyEntry[] = [];
+  for (let i = 0; i < bodies.length; i++) {
+    const body = bodies[i];
+    if (!body || typeof body !== "object" || Array.isArray(body)) continue;
+    const kind = (body as { kind?: unknown }).kind;
+    if (typeof kind !== "string") continue;
+    out.push({ index: i, prefix: `resources[${i}]`, manifest: body as ResourceManifest, kind });
+  }
+  return out;
+}
+
 /** The template bodies a manifest declares — empty for anything that is not a
  *  `Telo.Definition` with a `resources:` array. */
 export function templateBodies(
@@ -42,31 +69,19 @@ export function templateBodies(
   aliases: AliasResolver | undefined,
   scopes: ModuleScopes | undefined,
 ): TemplateBody[] {
-  if (m.kind !== "Telo.Definition") return [];
-  const bodies = (m as Record<string, unknown>).resources;
-  if (!Array.isArray(bodies)) return [];
+  const entries = templateBodyEntries(m);
+  if (entries.length === 0) return [];
 
   // A nested kind is written through the alias scope of the module that DECLARED
   // the definition, never the consumer's — the same rule every other kind
   // resolution in a forwarded manifest follows.
   const scope = moduleAliasScope(m.metadata, aliases, scopes?.aliasesByModule);
 
-  const out: TemplateBody[] = [];
-  for (let i = 0; i < bodies.length; i++) {
-    const body = bodies[i];
-    if (!body || typeof body !== "object" || Array.isArray(body)) continue;
-    const kind = (body as { kind?: unknown }).kind;
-    if (typeof kind !== "string") continue;
+  return entries.map(({ index, prefix, manifest, kind }) => {
     const canonical = scope?.resolveKind(kind);
     const definition = registry.resolve(kind) ?? (canonical ? registry.resolve(canonical) : undefined);
-    out.push({
-      prefix: `resources[${i}]`,
-      scopePrefix: `$.resources[${i}]`,
-      manifest: body as ResourceManifest,
-      definition,
-    });
-  }
-  return out;
+    return { prefix, scopePrefix: `$.resources[${index}]`, manifest, definition };
+  });
 }
 
 /** What a definition's dispatch slot names: the `resources:` entry a `!ref` at

@@ -18,11 +18,22 @@ import {
   isCallableKind,
   isInheritedDelegation,
   isModuleKind,
+  isInjectedDeclaration,
+  inheritedCapability,
+  isNeedTableDiagnostic,
+  needGraphFromLoadedGraph,
+  observationDeadline,
+  needGraphScopeOf,
+  needTypeOf,
   nodeIdFor,
   Loader,
+  resolveNeedTable,
   resolveSignature,
+  type NeedTable,
+  type NeedTableEntry,
   StaticAnalyzer,
   withoutStandInFindings,
+  type AnalysisDiagnostic,
   type DefResolver,
   type DiffEntry,
   type LoadedGraph,
@@ -30,6 +41,7 @@ import {
   type ModuleSource,
   type SourceEntry,
   type StandIns,
+  isKindDocument,
 } from "@telorun/analyzer";
 import {
   ensureStagedEntry,
@@ -72,7 +84,9 @@ import { TELO_RUNTIME_VERSION } from "./telo-runtime-version.js";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventBus } from "./events.js";
 import { enableBigIntJson } from "./bigint-json.js";
-import { hostEnv, lockControllerEnv } from "./host-env.js";
+import { createLockedEnv, hostEnv, lockControllerEnv } from "./host-env.js";
+import { setEnvironmentNeeds } from "./controllers/module/environment-needs.js";
+import { needFulfilment } from "./need-fulfilment.js";
 import { KernelTracer } from "./tracing.js";
 import { KernelLogging, type LoggingManifestBlock } from "./logging/kernel-logging.js";
 import type { ScopeConfig } from "./logging/scope-config.js";
@@ -113,6 +127,8 @@ import { nodeCelHandlers } from "./cel-handlers.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import { injectAtSite } from "./dependency-injection.js";
+import { NeedObservations, trackNeedObservations } from "./need-observation.js";
+import { observingPointers } from "./need-resolution.js";
 import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-sentinels.js";
 import { refuseRelativeHostPaths } from "./host-paths.js";
 import { refuseMalformedFormats } from "./telo-format-results.js";
@@ -178,6 +194,49 @@ function findEnclosingPolicy(ctx: IEvaluationContext): ControllerPolicy | undefi
   return findEnclosingModule(ctx)?.getControllerPolicy();
 }
 
+/** Raise need refusals together with the rest of the analysis's errors, each
+ *  line naming its own code — the error's code is only the first refusal's — so
+ *  every one is findable on a child kernel's stderr. */
+function throwNeedRefusals(
+  refusals: ReadonlyArray<{
+    runtimeCode: string;
+    message: string;
+    filePath?: string;
+    path: string;
+    resource?: { kind: string; name: string };
+  }>,
+  others: readonly AnalysisDiagnostic[] = [],
+): never {
+  const [first] = refusals;
+  const rest = others.map(staticDiagnosticToRuntime);
+  throw new RuntimeError(
+    first!.runtimeCode,
+    [
+      ...refusals.map(
+        (p) => `${p.filePath ? `${p.filePath}: ` : ""}${p.message} (${p.runtimeCode})`,
+      ),
+      ...rest.map((d) => {
+        const filePath = d.origin?.filePath;
+        return `${filePath ? `${filePath}: ` : ""}${d.message}${d.code ? ` (${d.code})` : ""}`;
+      }),
+    ].join("\n"),
+    [
+      ...refusals.map((p) => ({
+        severity: "error" as const,
+        message: p.message,
+        code: p.runtimeCode,
+        ...(p.resource ? { resource: `${p.resource.kind}.${p.resource.name}` } : {}),
+        origin: {
+          ...(p.filePath !== undefined ? { filePath: p.filePath } : {}),
+          path: p.path,
+          ...(p.resource ? { resource: p.resource } : {}),
+        },
+      })),
+      ...rest,
+    ],
+  );
+}
+
 function throwInvalidState(operation: string, reason: string): never {
   throw new RuntimeError(
     "ERR_KERNEL_STATE_INVALID",
@@ -185,10 +244,6 @@ function throwInvalidState(operation: string, reason: string): never {
   );
 }
 
-/** Docs that register a KIND. `DefinitionRegistry` only ever adds, so a change
- *  to one of these cannot be reconciled into a running kernel — the previous
- *  registration would survive it. */
-const DEFINITION_KINDS: ReadonlySet<string> = new Set(["Telo.Definition", "Telo.Abstract"]);
 
 export interface KernelOptions {
   stdin?: NodeJS.ReadableStream;
@@ -245,6 +300,12 @@ export class Kernel implements IKernel {
   // Host env-var names the root Application binds via `variables`/`secrets`/
   // `ports`; the denied set for the `process.env` guardrail installed at boot.
   private _declaredEnvKeys: string[] = [];
+  /** The environment names of every need reaching the root — hidden, like a
+   *  declared binding, from `process.env`, and from `ctx.env` too: a need is
+   *  delivered to the module that declared it and is read nowhere else. */
+  private _needEnvKeys = new Set<string>();
+  /** The need table of the last load, which the environment is read against. */
+  private _needTable?: NeedTable;
   /** The `.telo` cache root for this load, resolved once in `load()` and
    *  threaded to the validator, analysis stamp, and npm install root. */
   private _cacheRoot?: string | null;
@@ -308,6 +369,9 @@ export class Kernel implements IKernel {
   readonly stdout: NodeJS.WritableStream;
   readonly stderr: NodeJS.WritableStream;
   readonly env: Record<string, string | undefined>;
+  /** What a controller reads as `ctx.env`: the host environment with every need's
+   *  environment name hidden. Set once the needs are read at load. */
+  private controllerEnv: Record<string, string | undefined>;
   /** The root Application's own command line, read against the `arg:` bindings
    *  it declares (`kernel/specs/application-arguments.md`). */
   readonly argv: string[];
@@ -328,6 +392,7 @@ export class Kernel implements IKernel {
     this.stdout = options.stdout ?? process.stdout;
     this.stderr = options.stderr ?? process.stderr;
     this.env = options.env ?? hostEnv();
+    this.controllerEnv = this.env;
     this.logging = new KernelLogging({
       env: this.env,
       stdout: this.stdout,
@@ -433,6 +498,12 @@ export class Kernel implements IKernel {
     return this.registry;
   }
 
+  /** The need table of the last load — what a need's outermost constraints and
+   *  source are read from when a controller resolves or verifies one. */
+  get needTable(): NeedTable | undefined {
+    return this._needTable;
+  }
+
   /** What an import normalizes, orders and — for a library the load did not
    *  reach — analyzes its library with: this kernel's analyzer, its one
    *  analysis registry, and the load-time flattened set as cross-module targets. */
@@ -517,6 +588,12 @@ export class Kernel implements IKernel {
     this.controllers.registerController(
       "Telo.Abstract",
       await import("./controllers/resource-definition/abstract-controller.js"),
+    );
+    // A need type registers the kind its fulfilments are, served by the
+    // kernel's need-type controller.
+    this.controllers.registerController(
+      "Telo.NeedType",
+      await import("./controllers/need/need-type-controller.js"),
     );
     const moduleController = await import("./controllers/module/module-controller.js");
     this.controllers.registerController("Telo.Application", moduleController);
@@ -783,7 +860,7 @@ export class Kernel implements IKernel {
     // registered and the running kernel enforcing a weaker contract than
     // `telo check` does against the same file — a divergence nothing reports.
     const movedKind = diff.entries.find((entry: DiffEntry) =>
-      DEFINITION_KINDS.has((entry.next ?? entry.previous)!.kind as string),
+      isKindDocument(entry.next ?? entry.previous),
     );
     if (movedKind) return halted("a resource kind definition changed");
 
@@ -815,8 +892,7 @@ export class Kernel implements IKernel {
     // kind registration is once per kernel (see `movedKind` above): its existing
     // instances would keep the controller built from the previous declaration.
     const impactedKind = [...impacted].find((name) => {
-      const kind = this.rootContext.declaredManifestFor(name)?.kind as string | undefined;
-      return kind !== undefined && DEFINITION_KINDS.has(kind);
+      return isKindDocument(this.rootContext.declaredManifestFor(name));
     });
     if (impactedKind) {
       return halted(`a resource kind definition is in the impact set: ${impactedKind}`);
@@ -1065,6 +1141,21 @@ export class Kernel implements IKernel {
       },
       this.registry,
     );
+    // The need table, over every module the load reached: each refusal decidable
+    // from the declarations is raised here, before any resource initializes, as
+    // its `ERR_` twin — so a load the analysis refused for a need-table problem
+    // (one of the entry's, or a dependency's reported at the import reaching it)
+    // reports the twins, beside every other error the analysis found, rather
+    // than the analysis's aggregate. A required need nothing supplies is refused
+    // only for a run.
+    const needTableRefused = errors.some(isNeedTableDiagnostic);
+    if (errors.length === 0 || needTableRefused) {
+      this._needTable = this.refuseNeedTable(
+        analysisGraph,
+        rootModuleDoc,
+        errors.filter((d) => !isNeedTableDiagnostic(d)),
+      );
+    }
     if (errors.length > 0) {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
@@ -1072,6 +1163,7 @@ export class Kernel implements IKernel {
         errors.map(staticDiagnosticToRuntime),
       );
     }
+
     if (analysisDir && writeCache && !skipValidation) {
       // Best-effort: stamp the verdict so subsequent loads hit the fast
       // path. A read-only filesystem (baked Docker image) reports the
@@ -1184,6 +1276,25 @@ export class Kernel implements IKernel {
     return { graph: analysisGraph, manifests: normalizedManifests, signatures };
   }
 
+  /** Resolve the need table of the whole loaded graph and raise its refusals
+   *  as their kernel twins, with `others` — the analysis's errors from outside
+   *  the table — in the same error. A need nothing supplies is not one of them:
+   *  the environment is read for it when the manifests are installed. */
+  private refuseNeedTable(
+    graph: LoadedGraph,
+    rootModuleDoc: ResourceManifest | undefined,
+    others: readonly AnalysisDiagnostic[],
+  ): NeedTable {
+    const table = resolveNeedTable(
+      needGraphFromLoadedGraph(
+        graph,
+        needGraphScopeOf(this.registry, rootModuleDoc?.metadata?.name as string | undefined),
+      ),
+    );
+    if (table.problems.length > 0) throwNeedRefusals(table.problems, others);
+    return table;
+  }
+
   /**
    * Install manifests into the root context: register each one, and apply what
    * a module doc carries — boot targets, module metadata, the application's
@@ -1262,23 +1373,77 @@ export class Kernel implements IKernel {
           }
         }
       }
+      // A `needs:` entry's kind-only stand-in is never created: the need is
+      // bound below to what the environment holds for it.
+      if (isInjectedDeclaration(manifest)) continue;
       this.rootContext.registerManifest(manifest);
     }
 
     if (rootApplicationManifest) {
-      this._declaredEnvKeys = collectDeclaredEnvKeys(
-        rootApplicationManifest as Record<string, any>,
+      const environment = this._needTable?.environment ?? [];
+      this._needEnvKeys = new Set(
+        environment.flatMap((entry) => Object.values(entry.fields ?? {}).map((field) => field.env)),
       );
-      const { variables, secrets, ports, help } = resolveApplicationEnv(
+      this._declaredEnvKeys = [
+        ...collectDeclaredEnvKeys(rootApplicationManifest as Record<string, any>),
+        ...this._needEnvKeys,
+      ];
+      const shapeOf = (entry: NeedTableEntry) =>
+        entry.need.type ? needTypeOf(this.registry.resolveDefinition(entry.need.type)) : undefined;
+      const { variables, secrets, ports, help, needs } = resolveApplicationEnv(
         rootApplicationManifest as Record<string, any>,
         this.env,
         this.sharedSchemaValidator,
         this._inputs,
         this.argv,
+        { entries: environment, shapeOf },
       );
       if (help !== undefined) {
         this._applicationHelp = help;
         return;
+      }
+      if (needs && needs.refusals.length > 0) {
+        throwNeedRefusals(
+          needs.refusals.map((refusal) => ({
+            runtimeCode: refusal.code,
+            message: refusal.message,
+            filePath: refusal.entry.filePath,
+            path: `needs.${refusal.entry.need.name}`,
+          })),
+        );
+      }
+      // A library's need is bound by the import that reaches it; the root's own
+      // are bound here, before anything that could read or forward one exists.
+      const fromEnvironment = needs?.values ?? new Map<string, Record<string, unknown> | null>();
+      setEnvironmentNeeds(this.rootContext, fromEnvironment);
+      for (const entry of environment) {
+        if (entry.via) continue;
+        const values = fromEnvironment.get(entry.path.join("."));
+        const shape = shapeOf(entry);
+        const manifest = normalizedManifests.find(
+          (m) => isInjectedDeclaration(m) && m.metadata?.name === entry.need.name,
+        );
+        // The table refused an unresolved type and the read refused an unmet
+        // need, so each of these is there for every need still standing.
+        if (values === undefined || !shape || !manifest) {
+          throw new Error(
+            `Need '${entry.need.name}' of the application reached binding without ` +
+              `${values === undefined ? "a value read for it" : !shape ? "a resolved need type" : "its declaration"}.`,
+          );
+        }
+        this.rootContext.bindNeed(
+          entry.need.name,
+          values === null
+            ? null
+            : { manifest, fulfilment: needFulfilment(entry.need.type!, shape, values) },
+        );
+      }
+      if (this._needEnvKeys.size > 0) {
+        this.controllerEnv = createLockedEnv(
+          this.env as NodeJS.ProcessEnv,
+          this._needEnvKeys,
+          (key) => this.warnNeedEnvRead("ctx.env", key),
+        );
       }
       if (Object.keys(variables).length > 0) {
         this.rootContext.setVariables(variables);
@@ -1510,6 +1675,10 @@ export class Kernel implements IKernel {
     // return earlier — so analysis/editor are unaffected. The denied set is
     // process-global and additive across in-process kernels.
     lockControllerEnv(this._declaredEnvKeys, (key) => {
+      if (this._needEnvKeys.has(key)) {
+        this.warnNeedEnvRead("process.env", key);
+        return;
+      }
       this.logging
         .kernelLogger()
         .warn(
@@ -2035,6 +2204,20 @@ export class Kernel implements IKernel {
     this.eventBus.on(event, handler);
   }
 
+  /** A controller read a need's environment name directly. A need is delivered
+   *  to the module that declared it, through its fields, and to nothing else. */
+  private warnNeedEnvRead(through: "process.env" | "ctx.env", key: string): void {
+    this.logging
+      .kernelLogger()
+      .warn(
+        `controller read ${through}.${key} — ${key} is a need's environment name, hidden from ` +
+          `every controller; the need's fields are read as resources.<need>.<field> in the ` +
+          `module that declares it.`,
+        { "telo.env.key": key },
+        { eventName: "telo.env.need_read" },
+      );
+  }
+
   private createControllerContext(kind: string): ControllerContext {
     return {
       on: (event: string, handler: (event: RuntimeEvent) => void | Promise<void>) =>
@@ -2071,7 +2254,7 @@ export class Kernel implements IKernel {
       moduleContext,
       resource.metadata,
       this.sharedSchemaValidator,
-      this.env,
+      this.controllerEnv,
       this.stdin,
       this.stdout,
       this.stderr,
@@ -2417,6 +2600,20 @@ export class Kernel implements IKernel {
       ...(originPointer === undefined ? {} : { pointer: originPointer }),
     });
     (ctx as ResourceContextImpl).bindResourceIdentity(handle, resolvedKind, processedResource);
+    // The observations this instance owes the kernel: one per concrete pointer
+    // at an observing slot, due by the deadline its capability has.
+    const observing = observingPointers(this.registry.referenceSitesOf(processedResource));
+    if (observing.size > 0) {
+      const tracker = new NeedObservations(
+        `${resolvedKind} '${(processedResource.metadata?.name as string | undefined) ?? "<unnamed>"}'`,
+        observationDeadline(
+          definition?.capability ?? inheritedCapability(definition, this.scopedDefResolver()),
+        ),
+        observing,
+      );
+      (ctx as ResourceContextImpl).bindNeedObservations(tracker);
+      trackNeedObservations(instance, tracker);
+    }
 
     // Bind the resolved invocation contract to the instance, here at the kernel's
     // single instance-production site — so every consumer holds an already

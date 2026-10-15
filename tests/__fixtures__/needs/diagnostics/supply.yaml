@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: BadSupply
+  version: 0.0.0
+  description: Supplies an imported library's needs with what their type does not accept.
+imports:
+  Orders:
+    source: ../orders
+    needs:
+      databaseAccess:
+        schema: 42
+        host: db.internal
+      cache: !ref archiveDatabase
+  Archive:
+    source: ../orders
+    needs:
+      databaseAccess:
+        url: !cel "variables.databasePort"
+variables:
+  databasePort:
+    env: DATABASE_PORT
+    type: integer
+    default: 5432

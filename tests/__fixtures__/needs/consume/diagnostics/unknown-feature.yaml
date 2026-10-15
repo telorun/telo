@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: UnknownFeature
+  version: 0.0.0
+  description: Asks for a feature its need type does not list.
+imports:
+  Kinds: ../kinds
+needs:
+  access:
+    kind: Kinds.DatabaseAccess
+    features: [timescale]

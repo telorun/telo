@@ -1,0 +1,65 @@
+# A versioned need type with features, and a kind that consumes a fulfilment of
+# it whole: it opens the fulfilment at its observing slot and reports the
+# version and the features it is HANDED IN CONFIG, so no server has to run for
+# the kernel's comparison to be exercised.
+kind: Telo.Library
+metadata:
+  name: ConsumeKinds
+  version: 0.0.0
+  description: >-
+    Test fixture: a versioned database-access need type with features, a plain
+    need type, and a provider that verifies a fulfilment against what it is told
+    the server is.
+exports:
+  kinds: [DatabaseAccess, Plain, Database]
+---
+kind: Telo.NeedType
+metadata:
+  name: DatabaseAccess
+  description: The address of a database, versioned, with optional extensions.
+fields:
+  url: { type: string, x-telo-sensitive: true }
+required: [url]
+version: semver
+features: [pgvector, postgis]
+---
+kind: Telo.NeedType
+metadata:
+  name: Plain
+  description: A value with no version and no features.
+fields:
+  value: { type: string }
+required: [value]
+---
+kind: Telo.Definition
+metadata:
+  name: Database
+  description: >-
+    Opens the database-access fulfilment at `access`, publishes what it was
+    handed, and reports `serverVersion` and `extensions` as what it observed.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./consumer.mjs#Database
+schema:
+  type: object
+  additionalProperties: false
+  required: [access]
+  properties:
+    access:
+      x-telo-ref:
+        kind: Self.DatabaseAccess
+        use: dependency
+        observes: [version, features]
+    serverVersion:
+      description: The version the controller reports as observed.
+      type: string
+    extensions:
+      description: The features the controller reports as observed.
+      type: array
+      items: { type: string }
+    report:
+      description: When false the controller reports nothing.
+      type: boolean
+    probe:
+      description: A pointer the controller resolves before its own slot.
+      type: string

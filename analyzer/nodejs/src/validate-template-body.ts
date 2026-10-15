@@ -1,4 +1,5 @@
 import { nearestName } from "./nearest-name.js";
+import { isKindDocument } from "./kind-declaration.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
@@ -90,7 +91,7 @@ export function validateTemplateBody(
       if (resolved) importedModules.add(resolved);
       continue;
     }
-    if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") continue;
+    if (isKindDocument(m)) continue;
     if (m.kind === "Telo.Library" || m.kind === "Telo.Application") continue;
     const mod = (m.metadata as { module?: string } | undefined)?.module;
     let set = instancesByModule.get(mod);

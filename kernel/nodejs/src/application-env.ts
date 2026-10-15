@@ -2,6 +2,8 @@ import {
   type ArgBinding,
   type DefResolver,
   describeArgBinding,
+  type NeedTableEntry,
+  type NeedTypeShape,
   effectiveAuthorSchema,
   readApplicationArguments,
   renderApplicationUsage,
@@ -41,6 +43,9 @@ export interface EnvResolutionResult {
   variables: Record<string, unknown>;
   secrets: Record<string, unknown>;
   ports: Record<string, number>;
+  /** What the environment holds for each need reaching the root unsupplied —
+   *  present when the caller asked for the needs to be read. */
+  needs?: NeedEnvironment;
   /** Set when the command line asked for `--help`: the application's usage,
    *  answered INSTEAD of resolving anything — nothing else in the result is
    *  populated, and the caller runs nothing. */
@@ -105,6 +110,7 @@ export function resolveApplicationEnv(
   validator: SchemaValidator,
   inputs?: ApplicationInputs,
   argv: readonly string[] = [],
+  needs?: NeedEnvironmentRequest,
 ): EnvResolutionResult {
   const errors: string[] = [];
   const declaredArguments = readApplicationArguments(manifest);
@@ -147,6 +153,7 @@ export function resolveApplicationEnv(
     inputs?.ports,
     channel("ports"),
   );
+  const needValues = needs ? resolveNeedEnvironment(needs, env, validator, errors) : undefined;
   if (errors.length > 0) {
     throw new RuntimeError(
       "ERR_MANIFEST_VALIDATION_FAILED",
@@ -154,8 +161,126 @@ export function resolveApplicationEnv(
         errors.map((e) => `  - ${e}`).join("\n"),
     );
   }
-  return { variables, secrets, ports };
+  return { variables, secrets, ports, ...(needValues ? { needs: needValues } : {}) };
 }
+
+/** The needs a root reads from the environment, and the type each is of. */
+export interface NeedEnvironmentRequest {
+  entries: readonly NeedTableEntry[];
+  shapeOf(entry: NeedTableEntry): NeedTypeShape | undefined;
+}
+
+/** A need the environment cannot fulfil: nothing set for a required one
+ *  (`ERR_NEED_UNMET`), or some fields set and a required one not
+ *  (`ERR_NEED_PARTIALLY_SUPPLIED`). */
+export interface NeedEnvironmentRefusal {
+  code: "ERR_NEED_UNMET" | "ERR_NEED_PARTIALLY_SUPPLIED";
+  message: string;
+  entry: NeedTableEntry;
+}
+
+export interface NeedEnvironment {
+  /** The decoded fields of each need the environment fulfils, by need path
+   *  (`Orders.databaseAccess`); `null` for an optional need with nothing set. */
+  values: Map<string, Record<string, unknown> | null>;
+  refusals: NeedEnvironmentRefusal[];
+}
+
+/**
+ * Read every need reaching the root unsupplied from the one environment name of
+ * each of its fields, and decode each value against the field's schema as a
+ * root variable's is. A value that does not decode joins `errors` — the
+ * application's `ERR_MANIFEST_VALIDATION_FAILED` — naming the variable and, for
+ * a sensitive field, never the value.
+ */
+function resolveNeedEnvironment(
+  request: NeedEnvironmentRequest,
+  env: Record<string, string | undefined>,
+  validator: SchemaValidator,
+  errors: string[],
+): NeedEnvironment {
+  const values = new Map<string, Record<string, unknown> | null>();
+  const refusals: NeedEnvironmentRefusal[] = [];
+  for (const entry of request.entries) {
+    const path = entry.path.join(".");
+    const fields = Object.entries(entry.fields ?? {});
+    const subject =
+      `Need '${path}' (type '${entry.need.type ?? entry.need.kind}', declared by module ` +
+      `'${entry.moduleName}')`;
+    const isSet = (name: string) => env[name] !== undefined && env[name] !== null;
+    const set = fields.filter(([, field]) => isSet(field.env));
+    if (set.length === 0) {
+      if (entry.need.optional) {
+        values.set(path, null);
+        continue;
+      }
+      const required = fields.filter(([, field]) => field.required).map(([, field]) => field.env);
+      const optional = fields.filter(([, field]) => !field.required).map(([, field]) => field.env);
+      refusals.push({
+        code: "ERR_NEED_UNMET",
+        entry,
+        message:
+          `${subject} is required and nothing supplies it. Set ` +
+          `${required.length > 0 ? required.join(", ") : "its environment variables"}` +
+          `${optional.length > 0 ? ` (optional: ${optional.join(", ")})` : ""}` +
+          (entry.via
+            ? `, supply it at the import that reaches it ('needs: { ${entry.need.name}: … }'), ` +
+              `or mark it 'optional: true'.`
+            : `, or mark it 'optional: true'.`),
+      });
+      continue;
+    }
+    const missing = fields.filter(([, field]) => field.required && !isSet(field.env));
+    if (missing.length > 0) {
+      refusals.push({
+        code: "ERR_NEED_PARTIALLY_SUPPLIED",
+        entry,
+        message:
+          `${subject} is set in the environment only in part: ` +
+          `${set.map(([, field]) => field.env).join(", ")} ${set.length === 1 ? "is" : "are"} set, ` +
+          `and the required ${missing.map(([, field]) => field.env).join(", ")} ` +
+          `${missing.length === 1 ? "is" : "are"} not. Set every required one, or none.`,
+      });
+      continue;
+    }
+    const shape = request.shapeOf(entry);
+    const decoded: Record<string, unknown> = {};
+    for (const [name, field] of set) {
+      const schema = shape?.fields[name] ?? {};
+      const label = `needs ${path}.${name}`;
+      try {
+        const coerced = coerce(
+          env[field.env] as string,
+          fieldEntryType(schema),
+          `environment variable ${field.env}`,
+          field.sensitive,
+        );
+        const value = decodeFromOutside(coerced, schema, validator);
+        const validation = validateResidual(value, schema, validator);
+        if (validation) {
+          errors.push(`${label}: environment variable ${field.env}: ${validation}`);
+          continue;
+        }
+        decoded[name] = value;
+      } catch (e) {
+        errors.push(`${label}: ${(e as Error).message}`);
+      }
+    }
+    values.set(path, decoded);
+  }
+  return { values, refusals };
+}
+
+/** How a field's environment text is read: by the JSON type its schema
+ *  declares (the first besides `null`), text when it declares none. */
+function fieldEntryType(schema: Record<string, unknown>): EntryType {
+  const declared = Array.isArray(schema.type)
+    ? (schema.type as unknown[]).find((t) => t !== "null")
+    : schema.type;
+  return ENTRY_TYPES.has(declared as EntryType) ? (declared as EntryType) : "string";
+}
+
+const ENTRY_TYPES = new Set<EntryType>(["string", "integer", "number", "boolean", "object", "array"]);
 
 /**
  * Collect the host env-var *names* the root Application binds — the `env:` key

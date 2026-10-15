@@ -52,6 +52,38 @@ fn refuses_a_manifest_exporting_trace_spans() {
     assert!(err.message.contains("exporting trace spans"), "{err}");
 }
 
+/// Needs are not implemented here: a library declaring them would run with each
+/// need silently unbound.
+#[test]
+fn refuses_a_library_declaring_needs() {
+    let mut kernel = Kernel::new();
+    let err = kernel
+        .load(&fixture("unsupported-needs"))
+        .expect_err("load must fail");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("`needs:`"), "{err}");
+}
+
+#[test]
+fn refuses_an_import_supplying_needs() {
+    let mut kernel = Kernel::new();
+    let err = kernel
+        .load(&fixture("unsupported-need-supply"))
+        .expect_err("load must fail");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("import 'Lib' passes `needs:`"), "{err}");
+}
+
+#[test]
+fn refuses_a_need_type_document() {
+    let mut kernel = Kernel::new();
+    let err = kernel
+        .load(&fixture("unsupported-need-type"))
+        .expect_err("load must fail");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("`Telo.NeedType` 'SigningKey'"), "{err}");
+}
+
 #[test]
 fn reports_a_kind_whose_controller_this_kernel_cannot_host() {
     let mut kernel = Kernel::new();

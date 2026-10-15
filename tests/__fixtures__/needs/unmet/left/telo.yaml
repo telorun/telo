@@ -1,0 +1,7 @@
+kind: Telo.Library
+metadata:
+  name: Left
+  version: 0.0.0
+  description: Reaches the shared library and supplies nothing.
+imports:
+  Sessions: ../../agreement/shared-conflict/sessions

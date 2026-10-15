@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata:
+  name: KindMismatch
+  version: 0.0.0
+  description: Supplies a need with a fulfilment of another need type.
+imports:
+  Fx: ../../../types
+  Orders:
+    source: ../../../orders
+    needs:
+      databaseAccess: !ref signer
+---
+kind: Fx.SigningKey
+metadata: { name: signer }
+fields:
+  value: not-a-real-key

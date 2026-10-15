@@ -1,0 +1,13 @@
+kind: Telo.Application
+metadata:
+  name: ConsumeNarrower
+  version: 1.0.0
+  description: >-
+    A version inside the inner library's range and outside the narrower one it
+    is forwarded from is refused against the outer, narrower range.
+imports:
+  Outer:
+    source: ../outer
+    variables: { serverVersion: "15.4.0" }
+    needs:
+      db: { url: "postgres://db.internal:5432/orders" }

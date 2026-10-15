@@ -1,0 +1,17 @@
+kind: Telo.Library
+metadata:
+  name: ForwardWiderVersion
+  version: 0.0.0
+  description: Forwards a need of a wider range than the one it supplies.
+imports:
+  Kinds: ../kinds
+  Orders:
+    source: ../orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: !ref access
+needs:
+  access:
+    kind: Kinds.DatabaseAccess
+    version: ">=14.0.0"
+    features: [pgvector]

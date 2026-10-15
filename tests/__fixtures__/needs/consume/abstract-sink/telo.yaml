@@ -1,0 +1,31 @@
+kind: Telo.Library
+metadata:
+  name: ObservingAbstractSink
+  version: 0.0.0
+  description: An abstract sink declaring an observing slot, implemented by a sink no deadline can hold to it.
+imports:
+  Kinds: ../kinds
+exports:
+  kinds: [Recorder, Writer]
+---
+kind: Telo.Abstract
+metadata:
+  name: Recorder
+  description: Writes records to a database it verifies.
+capability: Telo.Sink
+schema:
+  type: object
+  properties:
+    access:
+      x-telo-ref:
+        kind: Kinds.DatabaseAccess
+        use: dependency
+        observes: [version]
+---
+kind: Telo.Definition
+metadata:
+  name: Writer
+  description: Writes records to the database the abstract's slot holds.
+extends: Self.Recorder
+controllers:
+  - pkg:telo/local/js?path=./sink.mjs#Writer

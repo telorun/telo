@@ -66,7 +66,7 @@ repair.
 ### 🟢 `camelCase` for instances, steps and properties
 
 Everything read through a CEL scope: resource `metadata.name`, `Run` step names,
-and the keys of `variables:` / `secrets:` / `ports:`.
+and the keys of `variables:` / `secrets:` / `ports:` / `needs:`.
 
 - **Do:** `mainServer`, `usersDb`, `buildMessage`, `dbPassword`, `maxRetries`
 - **Don't:** `MainServer`, `users_db`, `prod-api`, `DB_PASSWORD`
@@ -97,6 +97,17 @@ no runtime instance: its name denotes a shape, referenced from `inputType:` /
 
 - **Do:** `Order`, `CreateUserRequest`
 - **Don't:** `order`, `createUserRequest`
+
+### 🟢 A need type is named for what its fulfilment hands over
+
+A need type (`Telo.NeedType`) is `<Thing>Access` when its fulfilment is the
+address and credentials of something outside the application, `<Thing>` being
+the exact unit the credentials are scoped to; it is the bare noun when the
+fulfilment is the thing itself on the host. The object's own name stays free for
+a kind that creates or owns it. See [Writing a need type](/extend/need-types).
+
+- **Do:** `Postgres.DatabaseAccess`, `Redis.ServerAccess`, `S3.BucketAccess`, `OpenAI.ApiAccess`
+- **Don't:** `Postgres.Database`, `Postgres.Credentials`, `Redis.Connection`
 
 ### 🟢 `kebab-case` for directories and published repository names
 

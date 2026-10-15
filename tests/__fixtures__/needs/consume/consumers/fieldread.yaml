@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: FieldReadConsumer
+  version: 1.0.0
+  description: Supplies the library's need field by field; the library's unverified constraint is reported at this import.
+imports:
+  Lib:
+    source: ../fieldread
+    needs:
+      access: { url: "postgres://db.internal/x" }

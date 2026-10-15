@@ -1,0 +1,25 @@
+kind: Telo.Library
+metadata:
+  name: ObservingSink
+  version: 0.0.0
+  description: A sink kind declaring an observing slot, which no deadline can hold it to.
+imports:
+  Kinds: ../kinds
+exports:
+  kinds: [Writer]
+---
+kind: Telo.Definition
+metadata:
+  name: Writer
+  description: Writes records to a database it would have to verify.
+capability: Telo.Sink
+controllers:
+  - pkg:telo/local/js?path=./sink.mjs#Writer
+schema:
+  type: object
+  properties:
+    access:
+      x-telo-ref:
+        kind: Kinds.DatabaseAccess
+        use: dependency
+        observes: [version]

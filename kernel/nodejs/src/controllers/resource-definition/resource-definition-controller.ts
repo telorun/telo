@@ -26,6 +26,7 @@ import { ControllerLoader } from "../../controller-loader.js";
 import { formatAjvErrors, validateResourceDefinition } from "../../manifest-schemas.js";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
+import { refuseInvalidObserves } from "./observes-guard.js";
 import { createTemplateController } from "./resource-template-controller.js";
 import type { RefPositionHost } from "../../refuse-computed-ref-slots.js";
 import { createInheritedController } from "./resource-inherited-controller.js";
@@ -60,6 +61,10 @@ type ResourceDefinitionResource = RuntimeResource & {
 class ResourceDefinition implements ResourceInstance {
   readonly kind: "ResourceDefinition" = "ResourceDefinition";
 
+  /** The schema the kind writes itself, before registration stamps the
+   *  inheritance-resolved one over it — kept across a deferred attempt. */
+  private ownSchema?: Record<string, any>;
+
   constructor(readonly resource: ResourceDefinitionResource) {}
 
   init(ctx: ResourceContext) {
@@ -74,6 +79,7 @@ class ResourceDefinition implements ResourceInstance {
   }
 
   private async registerKind(ctx: ResourceContext) {
+    this.ownSchema ??= this.resource.schema;
     const definingCtx = ctx.moduleContext;
     // Resolve an `extends`/kind target (alias or canonical form) to its
     // definition against the DEFINING library's scope — where the `extends`
@@ -171,6 +177,12 @@ class ResourceDefinition implements ResourceInstance {
         `Telo.Definition ${valueSchemaProblem.message}`,
       );
     }
+    refuseInvalidObserves(
+      this.resource as ResourceDefinitionManifest,
+      this.ownSchema as Record<string, unknown> | undefined,
+      this.resource.schema as Record<string, unknown> | undefined,
+      resolveDef,
+    );
 
     // `base:` is the construction mapping of a kind that has NO body of its own:
     // it is evaluated only on the inherited-controller path below, and a

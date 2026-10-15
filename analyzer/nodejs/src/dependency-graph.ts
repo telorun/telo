@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { isKindDocument } from "./kind-declaration.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import {
   buildCallGraph,
@@ -15,6 +16,8 @@ import { definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { readSuppliedResources } from "./resource-input.js";
+import { needSupplyOf, readSuppliedNeeds } from "./need-type.js";
+import { celResourceReads } from "./cel-access-chains.js";
 import { startupObservedStateReads } from "./validate-observed-state.js";
 
 export interface ResourceNode {
@@ -170,11 +173,7 @@ export function formatCycle(cycle: ReadonlyArray<ResourceNode>): string {
 
 // --- Internals ---
 
-const DECLARATION_KINDS: ReadonlySet<string> = new Set([
-  "Telo.Import",
-  "Telo.Definition",
-  "Telo.Abstract",
-]);
+
 
 /**
  * The order resources are created in: the dependency order, with the
@@ -230,7 +229,7 @@ function creationOrder(
     if (typeof name !== "string" || typeof m.kind !== "string" || isModuleKind(m.kind)) continue;
     let key = keyOf.get(m);
     if (key === undefined) {
-      if (!DECLARATION_KINDS.has(m.kind)) continue;
+      if (m.kind !== "Telo.Import" && !isKindDocument(m)) continue;
       key = nodeIdFor(m);
     }
     if (!all.has(key)) all.set(key, nodes.get(key) ?? { kind: m.kind, name, manifest: m });
@@ -239,7 +238,7 @@ function creationOrder(
       let imports = importsByScope.get(scope);
       if (!imports) importsByScope.set(scope, (imports = new Map()));
       imports.set(name, key);
-    } else if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") {
+    } else if (isKindDocument(m)) {
       const module = declaringModuleOf(m);
       if (module) definitions.set(`${module}.${name}`, key);
     }
@@ -462,11 +461,12 @@ function stronglyConnectedLoops(
 }
 
 /**
- * Boot-order edges for the one thing a `Telo.Import` does hold: the instances it
- * hands DOWN to its target library's declared `resources:` inputs.
+ * Boot-order edges for what a `Telo.Import` does hold: the instances it hands
+ * DOWN to its target library's declared `resources:` inputs, and the needs and
+ * fulfilments its `needs:` supplies read.
  *
- * An import is otherwise module wiring rather than a runtime node — it is in
- * `DEPENDENCY_GRAPH_SKIP_KINDS` and the call graph gives it no node at all — but
+ * An import is otherwise module wiring rather than a runtime node — the call
+ * graph skips it with the kind documents and gives it no node at all — but
  * a borrowed instance must exist before the import initializes, and a cycle
  * through one is a cycle like any other. The edges are added here rather than
  * read off the reference field map because the accepted KIND at this slot is
@@ -481,16 +481,19 @@ function addResourceInputEdges(
 ): void {
   // Every import that supplies inputs becomes a node FIRST, so a cross-module
   // reference below can resolve to the import that exports its target.
-  const imports: Array<{ key: string; supplied: Record<string, unknown> }> = [];
+  const imports: Array<{ key: string; targets: string[] }> = [];
   for (const m of resources) {
     if (m.kind !== "Telo.Import") continue;
     const alias = m.metadata?.name as string | undefined;
-    const supplied = readSuppliedResources(m);
-    if (!alias || Object.keys(supplied).length === 0) continue;
+    const targets = [
+      ...Object.values(readSuppliedResources(m)).map(suppliedResourceTarget),
+      ...needSupplyTargets(readSuppliedNeeds(m)),
+    ].filter((name): name is string => name !== undefined);
+    if (!alias || targets.length === 0) continue;
     const key = nodeKey(m.kind, alias);
     nodes.set(key, { kind: m.kind, name: alias, manifest: m });
     if (!deps.has(key)) deps.set(key, new Set<string>());
-    imports.push({ key, supplied });
+    imports.push({ key, targets });
   }
   if (imports.length === 0) return;
 
@@ -505,23 +508,42 @@ function addResourceInputEdges(
     if (alias && key && nodes.has(key)) byName.set(alias, key);
   }
 
-  for (const { key, supplied } of imports) {
+  for (const { key, targets } of imports) {
     const set = deps.get(key)!;
-    for (const value of Object.values(supplied)) {
-      const ref = value as { name?: unknown; alias?: unknown } | undefined;
-      // A CROSS-MODULE reference (`!ref Other.db`) names an instance exported by
-      // another import, never a local resource. Looking it up in the local name
-      // map would find an unrelated resource of the same name — a wrong edge,
-      // and possibly a phantom cycle — or nothing at all. What it depends on is
-      // the IMPORT that exports it, which is the projection
-      // `localDependencyNames` already makes at runtime.
-      const alias = typeof ref?.alias === "string" ? ref.alias : undefined;
-      const targetName =
-        alias && alias !== "Self" ? alias : typeof ref?.name === "string" ? ref.name : undefined;
-      const target = targetName ? byName.get(targetName) : undefined;
+    for (const targetName of targets) {
+      const target = byName.get(targetName);
       if (target && target !== key) set.add(target);
     }
   }
+}
+
+/** What a resource input depends on. A CROSS-MODULE reference (`!ref Other.db`)
+ *  names an instance exported by another import, never a local resource.
+ *  Looking it up in the local name map would find an unrelated resource of the
+ *  same name — a wrong edge, and possibly a phantom cycle — or nothing at all.
+ *  What it depends on is the IMPORT that exports it, which is the projection
+ *  `localDependencyNames` already makes at runtime. */
+function suppliedResourceTarget(value: unknown): string | undefined {
+  const ref = value as { name?: unknown; alias?: unknown } | undefined;
+  const alias = typeof ref?.alias === "string" ? ref.alias : undefined;
+  return alias && alias !== "Self" ? alias : typeof ref?.name === "string" ? ref.name : undefined;
+}
+
+/** What a `needs:` supply depends on: the need or fulfilment a whole supply
+ *  names, and every resource a field-by-field supply reads — its expressions
+ *  are evaluated when the import is created. */
+function needSupplyTargets(supplied: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const value of Object.values(supplied)) {
+    const supply = needSupplyOf(value);
+    if (supply.form === "whole") {
+      const { alias, name } = supply.target;
+      out.push(alias && alias !== "Self" ? alias : name);
+    } else if (supply.form === "fields") {
+      out.push(...celResourceReads({ fields: supply.fields } as unknown as ResourceManifest));
+    }
+  }
+  return out;
 }
 
 /**

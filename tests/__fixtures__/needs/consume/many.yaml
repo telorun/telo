@@ -1,0 +1,509 @@
+# One hundred imports of one library, each a module instance whose need is
+# verified at its own observing slot: the constraint walk runs once per
+# declaring module, so checking this stays linear in the closure.
+kind: Telo.Application
+metadata:
+  name: ConsumeManyImports
+  version: 1.0.0
+  description: A hundred isolated imports of one library that observes its need.
+imports:
+  Orders1:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db1.internal/orders" }
+  Orders2:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db2.internal/orders" }
+  Orders3:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db3.internal/orders" }
+  Orders4:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db4.internal/orders" }
+  Orders5:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db5.internal/orders" }
+  Orders6:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db6.internal/orders" }
+  Orders7:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db7.internal/orders" }
+  Orders8:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db8.internal/orders" }
+  Orders9:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db9.internal/orders" }
+  Orders10:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db10.internal/orders" }
+  Orders11:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db11.internal/orders" }
+  Orders12:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db12.internal/orders" }
+  Orders13:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db13.internal/orders" }
+  Orders14:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db14.internal/orders" }
+  Orders15:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db15.internal/orders" }
+  Orders16:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db16.internal/orders" }
+  Orders17:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db17.internal/orders" }
+  Orders18:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db18.internal/orders" }
+  Orders19:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db19.internal/orders" }
+  Orders20:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db20.internal/orders" }
+  Orders21:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db21.internal/orders" }
+  Orders22:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db22.internal/orders" }
+  Orders23:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db23.internal/orders" }
+  Orders24:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db24.internal/orders" }
+  Orders25:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db25.internal/orders" }
+  Orders26:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db26.internal/orders" }
+  Orders27:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db27.internal/orders" }
+  Orders28:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db28.internal/orders" }
+  Orders29:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db29.internal/orders" }
+  Orders30:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db30.internal/orders" }
+  Orders31:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db31.internal/orders" }
+  Orders32:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db32.internal/orders" }
+  Orders33:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db33.internal/orders" }
+  Orders34:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db34.internal/orders" }
+  Orders35:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db35.internal/orders" }
+  Orders36:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db36.internal/orders" }
+  Orders37:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db37.internal/orders" }
+  Orders38:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db38.internal/orders" }
+  Orders39:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db39.internal/orders" }
+  Orders40:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db40.internal/orders" }
+  Orders41:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db41.internal/orders" }
+  Orders42:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db42.internal/orders" }
+  Orders43:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db43.internal/orders" }
+  Orders44:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db44.internal/orders" }
+  Orders45:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db45.internal/orders" }
+  Orders46:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db46.internal/orders" }
+  Orders47:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db47.internal/orders" }
+  Orders48:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db48.internal/orders" }
+  Orders49:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db49.internal/orders" }
+  Orders50:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db50.internal/orders" }
+  Orders51:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db51.internal/orders" }
+  Orders52:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db52.internal/orders" }
+  Orders53:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db53.internal/orders" }
+  Orders54:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db54.internal/orders" }
+  Orders55:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db55.internal/orders" }
+  Orders56:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db56.internal/orders" }
+  Orders57:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db57.internal/orders" }
+  Orders58:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db58.internal/orders" }
+  Orders59:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db59.internal/orders" }
+  Orders60:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db60.internal/orders" }
+  Orders61:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db61.internal/orders" }
+  Orders62:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db62.internal/orders" }
+  Orders63:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db63.internal/orders" }
+  Orders64:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db64.internal/orders" }
+  Orders65:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db65.internal/orders" }
+  Orders66:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db66.internal/orders" }
+  Orders67:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db67.internal/orders" }
+  Orders68:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db68.internal/orders" }
+  Orders69:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db69.internal/orders" }
+  Orders70:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db70.internal/orders" }
+  Orders71:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db71.internal/orders" }
+  Orders72:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db72.internal/orders" }
+  Orders73:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db73.internal/orders" }
+  Orders74:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db74.internal/orders" }
+  Orders75:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db75.internal/orders" }
+  Orders76:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db76.internal/orders" }
+  Orders77:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db77.internal/orders" }
+  Orders78:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db78.internal/orders" }
+  Orders79:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db79.internal/orders" }
+  Orders80:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db80.internal/orders" }
+  Orders81:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db81.internal/orders" }
+  Orders82:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db82.internal/orders" }
+  Orders83:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db83.internal/orders" }
+  Orders84:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db84.internal/orders" }
+  Orders85:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db85.internal/orders" }
+  Orders86:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db86.internal/orders" }
+  Orders87:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db87.internal/orders" }
+  Orders88:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db88.internal/orders" }
+  Orders89:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db89.internal/orders" }
+  Orders90:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db90.internal/orders" }
+  Orders91:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db91.internal/orders" }
+  Orders92:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db92.internal/orders" }
+  Orders93:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db93.internal/orders" }
+  Orders94:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db94.internal/orders" }
+  Orders95:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db95.internal/orders" }
+  Orders96:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db96.internal/orders" }
+  Orders97:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db97.internal/orders" }
+  Orders98:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db98.internal/orders" }
+  Orders99:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db99.internal/orders" }
+  Orders100:
+    source: ./orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db100.internal/orders" }

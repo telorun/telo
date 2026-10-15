@@ -23,6 +23,7 @@
  *     use: call
  *     inputs: /inputs
  *     outputType: { … }                         # optional: what the target must return
+ *     observes: [version, features]             # optional: need constraints it reports
  */
 
 /** How control reaches a slot's target, relative to the declaring resource's own
@@ -134,6 +135,20 @@ export interface RefSlot {
    *  value of one shape or a reference, and a scalar is then a value, not a
    *  malformed reference. */
   valueBranches: Record<string, any>[];
+  /** The constraints of a need the declaring kind observes on the fulfilment it
+   *  opens at this slot (`version`, `features`) — reported to the kernel, which
+   *  compares them with the outermost need. Absent: the slot observes nothing.
+   *  Only recognised tokens are read; `observing-slot.ts` reports the rest. */
+  observes?: NeedConstraint[];
+}
+
+/** A constraint a need may state and a reference slot may observe. */
+export type NeedConstraint = "version" | "features";
+
+export const NEED_CONSTRAINTS: readonly NeedConstraint[] = ["version", "features"];
+
+export function isNeedConstraint(value: unknown): value is NeedConstraint {
+  return value === "version" || value === "features";
 }
 
 /** Every use a slot can take, flattening a case map. The conservative reading
@@ -254,6 +269,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   let inputs: string | undefined;
   let throwsThrough = false;
   let outputType: Record<string, any> | undefined;
+  const observes = new Set<NeedConstraint>();
 
   for (const carrier of nodes) {
     const annotation = carrier["x-telo-ref"];
@@ -267,6 +283,9 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
     if (typeof obj.inputs === "string") inputs ??= obj.inputs;
     if (obj.throwsThrough === true) throwsThrough = true;
     if (isSchemaObject(obj.outputType)) outputType ??= obj.outputType;
+    if (Array.isArray(obj.observes)) {
+      for (const token of obj.observes) if (isNeedConstraint(token)) observes.add(token);
+    }
   }
 
   const slot: RefSlot = {
@@ -279,6 +298,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   if (inputs !== undefined) slot.inputs = inputs;
   if (throwsThrough) slot.throwsThrough = true;
   if (outputType) slot.outputType = outputType;
+  if (observes.size > 0) slot.observes = NEED_CONSTRAINTS.filter((c) => observes.has(c));
   return slot;
 }
 
@@ -310,6 +330,7 @@ export function refSlotAnnotation(slot: RefSlot): Record<string, unknown> {
   if (slot.inputs !== undefined) annotation.inputs = slot.inputs;
   if (slot.throwsThrough) annotation.throwsThrough = true;
   if (slot.outputType) annotation.outputType = slot.outputType;
+  if (slot.observes) annotation.observes = [...slot.observes];
   return annotation;
 }
 

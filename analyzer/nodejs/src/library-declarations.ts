@@ -1,6 +1,8 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { isKindDocument } from "./kind-declaration.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { isModuleKind } from "./module-kinds.js";
+import { readNeeds } from "./need-type.js";
 import { readResourceInputs } from "./resource-input.js";
 
 /**
@@ -39,11 +41,12 @@ export function libraryDeclarations(documents: readonly ModuleDocuments[]): Libr
       const name = manifest.metadata?.name;
       if (isModuleKind(manifest.kind)) {
         for (const input of readResourceInputs(manifest)) inputs.add(key(library.module, input.name));
+        for (const need of readNeeds(manifest)) inputs.add(key(library.module, need.name));
         continue;
       }
       if (typeof name !== "string") continue;
       if (manifest.kind === "Telo.Import") imports.set(key(library.module, name), manifest);
-      else if (manifest.kind !== "Telo.Definition" && manifest.kind !== "Telo.Abstract") {
+      else if (!isKindDocument(manifest)) {
         declarations.set(key(library.module, name), manifest);
       }
     }

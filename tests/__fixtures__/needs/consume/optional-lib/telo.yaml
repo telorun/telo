@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata:
+  name: OptionalReferenced
+  version: 0.0.0
+  description: References an optional need at a kind's reference slot.
+imports:
+  Kinds: ../kinds
+needs:
+  access:
+    kind: Kinds.DatabaseAccess
+    optional: true
+---
+kind: Kinds.Database
+metadata: { name: db }
+access: !ref access
+serverVersion: "15.0.0"

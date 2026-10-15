@@ -15,6 +15,7 @@ import { RuntimeError } from "@telorun/sdk";
 import { formatAjvErrors, validateResourceAbstract } from "../../manifest-schemas.js";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
+import { refuseInvalidObserves } from "./observes-guard.js";
 import {
   forgetRegisteredDefinition,
   recordRegisteredDefinition,
@@ -105,6 +106,14 @@ class ResourceAbstract implements ResourceInstance {
         `Telo.Abstract ${valueSchemaProblem.message}`,
       );
     }
+    refuseInvalidObserves(
+      this.resource as unknown as ResourceDefinition,
+      this.resource.schema as Record<string, unknown> | undefined,
+      effectiveAuthorSchema(this.resource as unknown as ResourceDefinition, resolveDef) as
+        | Record<string, unknown>
+        | undefined,
+      resolveDef,
+    );
 
     ctx.registerDefinition(this.resource);
     recordRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy());

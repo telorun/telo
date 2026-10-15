@@ -1,0 +1,10 @@
+kind: Telo.Library
+metadata:
+  name: NeedingLib
+  version: 1.0.0
+imports:
+  Types: ../types
+needs:
+  signingKey:
+    kind: Types.SigningKey
+    optional: true

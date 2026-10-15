@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata:
+  name: SensitiveNotTrue
+  version: 0.0.0
+  description: A need type marking a field sensitive with a value other than true.
+exports:
+  kinds: [Credentials]
+---
+kind: Telo.NeedType
+metadata:
+  name: Credentials
+fields:
+  token: { type: string, x-telo-sensitive: "yes" }
+required: [token]

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
 import { Loader } from "../src/manifest-loader.js";
 import { StaticAnalyzer } from "../src/analyzer.js";
+import { needGraphFromLoadedGraph, resolveNeedTable } from "../src/need-table.js";
 import type { ManifestSource } from "../src/types.js";
 
 /** In-memory ManifestSource backed by a flat path → text map (mirrors
@@ -182,5 +183,30 @@ describe("reconcileModuleVersions via loadGraph", () => {
     expect(diagnostics.find((d) => d.code === "DUPLICATE_IMPORT_ALIAS")).toBeUndefined();
     // The additive skew reconciles silently — no version diagnostic.
     expect(graph.versionDiagnostics).toHaveLength(0);
+  });
+
+  it("leaves the losing version, and what only it imports, out of the need table", async () => {
+    const missingNeed = "needs:\n  thing:\n    kind: Self.Missing\n";
+    const files: Record<string, string> = {
+      "/ws/telo.yaml": app({ Shared: "oci://ghcr.io/telorun/shared@0.2.0", Sub: "oci://ghcr.io/telorun/sub@1.0.0" }),
+      "oci://ghcr.io/telorun/shared@0.2.0": lib("shared", "0.2.0"),
+      "oci://ghcr.io/telorun/sub@1.0.0": lib("sub", "1.0.0", { Old: "oci://ghcr.io/telorun/shared@0.1.0" }),
+      "oci://ghcr.io/telorun/shared@0.1.0":
+        lib("shared", "0.1.0", { Helper: "oci://ghcr.io/telorun/helper@1.0.0" }) + missingNeed,
+      "oci://ghcr.io/telorun/helper@1.0.0": lib("helper", "1.0.0") + missingNeed,
+    };
+
+    const graph = await loaderFor(files).loadGraph("/ws/telo.yaml", { desugarImports: true });
+    const table = resolveNeedTable(
+      needGraphFromLoadedGraph(graph, {
+        resolveKind: () => undefined,
+        needType: () => undefined,
+        isKind: () => false,
+      }),
+    );
+
+    expect(graph.overrides.has("oci://ghcr.io/telorun/shared@0.1.0")).toBe(true);
+    expect(graph.modules.has("oci://ghcr.io/telorun/helper@1.0.0")).toBe(true);
+    expect(table.problems).toEqual([]);
   });
 });

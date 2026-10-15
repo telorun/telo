@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata:
+  name: BadRange
+  version: 0.0.0
+  description: States a version range outside the comparator grammar.
+imports:
+  Kinds: ../kinds
+needs:
+  access:
+    kind: Kinds.DatabaseAccess
+    version: "^15.0.0"
+  replica:
+    kind: Kinds.DatabaseAccess
+    version: ">=15.0.0 <16.0.0 || >=17.0.0"

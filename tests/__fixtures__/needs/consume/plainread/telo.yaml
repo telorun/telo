@@ -1,0 +1,15 @@
+kind: Telo.Library
+metadata:
+  name: PlainRead
+  version: 0.0.0
+  description: States no constraint on its need and reads it by field only.
+imports:
+  Kinds: ../kinds
+needs:
+  access:
+    kind: Kinds.DatabaseAccess
+---
+kind: Kinds.Plain
+metadata: { name: label }
+fields:
+  value: !cel "resources.access.url"

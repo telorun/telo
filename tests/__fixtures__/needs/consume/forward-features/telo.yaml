@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata:
+  name: ForwardMissingFeature
+  version: 0.0.0
+  description: Forwards a need asking for fewer features than the one it supplies.
+imports:
+  Kinds: ../kinds
+  Orders:
+    source: ../orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: !ref access
+needs:
+  access:
+    kind: Kinds.DatabaseAccess
+    version: ">=15.0.0"

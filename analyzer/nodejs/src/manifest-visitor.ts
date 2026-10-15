@@ -148,8 +148,9 @@ export interface ManifestVisitor {
 export interface VisitOptions {
   aliases?: AliasResolver;
   aliasesByModule?: Map<string, AliasResolver>;
-  /** Resource kinds to skip entirely (kind blueprints, import metadata, …). */
-  skipKinds?: ReadonlySet<string>;
+  /** Documents to skip entirely — those that are no instance (a kind
+   *  document, import metadata, …), as the calling pass decides. */
+  skip?: (resource: ResourceManifest) => boolean;
   /** When true, ref sites include the slots an `x-telo-schema-from` anchor's
    *  schema declares (`notFoundHandler.returns[].content.{}.encoder`) — the
    *  sites the kernel injects. `SchemaFromSite` events are the kind's own
@@ -236,7 +237,7 @@ export function visitManifest(
   visitor: ManifestVisitor,
   options: VisitOptions = {},
 ): void {
-  const { aliases, aliasesByModule, skipKinds, expand, discoverNestedRefs } = options;
+  const { aliases, aliasesByModule, skip, expand, discoverNestedRefs } = options;
 
   const wantsRefs = !!visitor.onRef;
   const wantsScope = !!visitor.onScope;
@@ -246,7 +247,7 @@ export function visitManifest(
 
   for (const r of resources) {
     if (!r.metadata?.name || !r.kind) continue;
-    if (skipKinds?.has(r.kind)) continue;
+    if (skip?.(r)) continue;
 
     // A resource's own kind is written in the alias scope of the module that
     // DECLARED it — see `moduleAliasScope`, which is the one place that rule

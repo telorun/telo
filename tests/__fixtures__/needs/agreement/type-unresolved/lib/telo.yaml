@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: TypeUnresolved
+  version: 0.0.0
+  description: A need naming a kind that is no need type the import exports.
+imports:
+  Fx: ../../../types
+needs:
+  databaseAccess:
+    kind: Fx.DatabaseAcces
+    optional: true

@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: UnversionedConsumer
+  version: 1.0.0
+  description: Supplies a library stating a range on an unversioned need type.
+imports:
+  Lib:
+    source: ../unversioned
+    needs:
+      value: { value: "x" }

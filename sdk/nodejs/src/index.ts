@@ -24,6 +24,7 @@ export * from "./evaluation-context.js";
 export * from "./module-context.js";
 export * from "./effect.js";
 export * from "./resource-context.js";
+export type { NeedConstraints, NeedObservation, NeedResolution } from "./need-resolution.js";
 export * from "./resource-instance.js";
 export * from "./resource-manifest.js";
 export * from "./contract-errors.js";

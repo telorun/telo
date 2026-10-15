@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata:
+  name: RootFeaturesUnverified
+  version: 1.0.0
+  description: States a feature on its own need and forwards it whole to a library that reads it by field only.
+imports:
+  Kinds: ../kinds
+  Lib:
+    source: ../plainread
+    needs:
+      access: !ref access
+needs:
+  access:
+    kind: Kinds.DatabaseAccess
+    features: [pgvector]

@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { celHostScopeValue } from "./cel-host-scope-value.js";
 import { formatSpanCounter } from "./logging/span-id.js";
+import { settleNeedObservations } from "./need-observation.js";
 import { parseTraceParent } from "./logging/trace-parent.js";
 import {
   deriveContext,
@@ -1227,6 +1228,8 @@ export class EvaluationContext implements IEvaluationContext {
           // allocates nothing returns nothing; there is no `teardown()`, so an
           // allocation outside the chain is one nothing will reclaim.
           if (instance.init) await executeReturnedChain(await instance.init(ctx), scope);
+          // A Provider's startup ends here: every observing slot is reported.
+          settleNeedObservations(instance, "init");
         } catch (error) {
           // What this attempt reported is discarded with it: a deferral re-runs
           // `init()`, a failure builds a fresh instance.
@@ -2231,6 +2234,7 @@ export class EvaluationContext implements IEvaluationContext {
       const outputs = await (invokeCtx === ambient
         ? call()
         : cancellationStore.run(invokeCtx, call));
+      settleNeedObservations(instance, typeof instance.invoke === "function" ? "invoke" : "run");
       if (typeof instance.invoke !== "function") completedInstances.add(instance);
       await this.emit(`${name}.Invoked`, span("end", "ok", { inputs, outputs }));
       finish("ok", { outputs });
@@ -2581,6 +2585,7 @@ export class EvaluationContext implements IEvaluationContext {
         await executeReturnedChain(returned, effects);
       };
       await (isService || invokeCtx === ambient ? call() : cancellationStore.run(invokeCtx, call));
+      settleNeedObservations(instance, "run");
       // A one-shot Runnable that discovered something during run() publishes it
       // without an explicit call; a Service never reaches this until teardown.
       completedInstances.add(instance);

@@ -1,6 +1,6 @@
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, ships an application as a single executable with `telo package`, and publishes module artifacts to an OCI registry with `telo publish`.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, lists what an application reads from the environment with `telo needs report`, ships an application as a single executable with `telo package`, and publishes module artifacts to an OCI registry with `telo publish`.
 
 ## Installation
 
@@ -415,6 +415,19 @@ Inspect a module without importing it. `<ref>` is any form the runtime resolves:
 telo module versions oci://ghcr.io/telorun/console
 telo module kinds oci://ghcr.io/telorun/console@<version>
 ```
+
+---
+
+### `telo needs report <manifest>`
+
+Lists every need the application reads from the environment — each need reaching it that no import supplies, its own included — with the environment variable each field is read from, whether that name was bound by the application's `env:` or derived from the need path, and whether the field is required and sensitive. Nothing is booted and no value is printed: it is what whoever starts the application provisions from.
+
+```bash
+telo needs report ./shop
+telo needs report -o json ./shop
+```
+
+Under `-o json` it writes a versioned document (`reportVersion: 1`, a `needs` list of `path`, `declaredBy`, `type: { module, name }`, `version` (the range the need states, or `null`), `features` (the features it asks for, `[]` when none), `parameters`, `optional` and `fields`, each field `{ env, envSource, required, sensitive }`). An application the kernel would refuse has no report: the refusals are printed on stderr, nothing on stdout, and the command exits 1. See [Providing needs](/learn/providing-needs).
 
 ---
 

@@ -1,8 +1,10 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
+import { isKindDocument } from "./kind-declaration.js";
+import { isModuleKind } from "./module-kinds.js";
 import { moduleMetadataSchema } from "./module-metadata-scope.js";
 import { residualEntrySchemaMap } from "./residual-schema.js";
-import { applyObservedStateNode } from "./validate-observed-state.js";
+import { applyObservedStateNode, applyReadingNode } from "./validate-observed-state.js";
 
 /**
  * Kernel global names available in every CEL evaluation context at runtime.
@@ -22,13 +24,6 @@ export const KERNEL_GLOBAL_NAMES = [
   "ports",
   "module",
 ] as const;
-
-const SYSTEM_KINDS = new Set([
-  "Telo.Definition",
-  "Telo.Application",
-  "Telo.Library",
-  "Telo.Abstract",
-]);
 
 /** Kernel globals as ONE resource's declaring module sees them. */
 export interface KernelGlobalsIndex {
@@ -64,7 +59,10 @@ export function buildKernelGlobalsIndex(
    *  `buildObservedStateIndex`). Kinds that declare a `status:` get a typed,
    *  closed `status` node; every other resource node stays open, so no flat read
    *  that passes today can start failing. */
-  resources?: ReadonlyMap<string, { kind: string; status?: Record<string, any> }>,
+  resources?: ReadonlyMap<
+    string,
+    { kind: string; status?: Record<string, any>; reading?: Record<string, any> }
+  >,
   /** Which resources are functions. A function publishes no reading, so its
    *  name is absent from `resources` and a read of it is an unknown field. */
   functions?: { isFunction(manifest: ResourceManifest): boolean },
@@ -146,7 +144,15 @@ function buildModuleSchema(doc: ModuleGlobals | Record<string, any> | undefined)
 function buildResourcesSchema(
   manifests: ResourceManifest[],
   resources:
-    | ReadonlyMap<string, { kind: string; status?: Record<string, any>; forwardedFrom?: string }>
+    | ReadonlyMap<
+        string,
+        {
+          kind: string;
+          status?: Record<string, any>;
+          reading?: Record<string, any>;
+          forwardedFrom?: string;
+        }
+      >
     | undefined,
   entryModule: string | undefined,
   functions: { isFunction(manifest: ResourceManifest): boolean } | undefined,
@@ -171,9 +177,10 @@ function buildResourcesSchema(
     ) {
       continue;
     }
-    // Telo.Import snapshots are stored under resources.<alias> at runtime,
-    // so they appear here alongside regular resources.
-    if (SYSTEM_KINDS.has(m.kind)) continue;
+    // A kind document and a module document publish nothing. Telo.Import
+    // snapshots are stored under resources.<alias> at runtime, so they appear
+    // here alongside regular resources.
+    if (isKindDocument(m) || isModuleKind(m.kind)) continue;
     if (functions?.isFunction(m)) {
       withheld.add(name);
       continue;
@@ -186,13 +193,15 @@ function buildResourcesSchema(
   for (const [key, entry] of resources ?? []) {
     if (key.includes(".") || entry.forwardedFrom !== undefined || withheld.has(key)) continue;
     resourceProps[key] ??= { type: "object", additionalProperties: true };
-    if (entry.status) applyObservedStateNode(resourceProps, key, entry.status);
+    if (entry.reading) applyReadingNode(resourceProps, key, entry.reading);
+    else if (entry.status) applyObservedStateNode(resourceProps, key, entry.status);
   }
   // Imports' exported instances publish two levels deep (`resources.<Alias>.<name>`);
   // the alias node stays open so its other keys keep resolving.
   for (const [key, entry] of resources ?? []) {
-    if (!key.includes(".") || !entry.status || entry.forwardedFrom !== undefined) continue;
-    applyObservedStateNode(resourceProps, key, entry.status);
+    if (!key.includes(".") || entry.forwardedFrom !== undefined) continue;
+    if (entry.reading) applyReadingNode(resourceProps, key, entry.reading);
+    else if (entry.status) applyObservedStateNode(resourceProps, key, entry.status);
   }
 
   return { type: "object", properties: resourceProps, additionalProperties: false };

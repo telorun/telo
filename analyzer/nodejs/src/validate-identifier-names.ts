@@ -15,11 +15,12 @@ import {
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
 import {
-  TYPE_LEVEL_DOC_KINDS,
+  isTypeLevelDocument,
   checkName,
   type NameLevel,
   type NameViolation,
 } from "./identifier-name.js";
+import { isKindDocument } from "./kind-declaration.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 import { type AnalysisDiagnostic } from "./types.js";
 
@@ -79,7 +80,7 @@ export function validateIdentifierNames(
     if (ownModule && !rootModules.has(ownModule)) continue;
 
     const level = levelFor(manifest, resolveDef, ownModule);
-    push(out, checkName(name, level, surfaceFor(manifest.kind)), {
+    push(out, checkName(name, level, surfaceFor(manifest)), {
       kind: manifest.kind,
       name,
       filePath: metadata?.source as string | undefined,
@@ -93,10 +94,10 @@ export function validateIdentifierNames(
     // keys are the imported library's declarations, so a violation there is
     // the library author's, reported when their module is analyzed as a root.
     if (manifest.kind === "Telo.Application" || manifest.kind === "Telo.Library") {
-      // `resources:` joins them: a library's resource inputs are named in the
-      // same identifier space (`!ref connection`, `resources.connection`) and
-      // break the same way.
-      for (const field of ["variables", "secrets", "ports", "resources"] as const) {
+      // `resources:` and `needs:` join them: a library's resource inputs and
+      // needs are named in the same identifier space (`!ref connection`,
+      // `resources.connection`) and break the same way.
+      for (const field of ["variables", "secrets", "ports", "resources", "needs"] as const) {
         const block = (manifest as Record<string, unknown>)[field];
         if (!block || typeof block !== "object" || Array.isArray(block)) continue;
         for (const key of Object.keys(block as Record<string, unknown>)) {
@@ -171,7 +172,7 @@ export function levelFor(
   resolveDef: DefResolver & { in(kind: string, module?: string): ResourceDefinition | undefined },
   ownModule: string | undefined,
 ): NameLevel {
-  if (TYPE_LEVEL_DOC_KINDS.has(manifest.kind as string)) return "type";
+  if (isTypeLevelDocument(manifest)) return "type";
   // The top-level lookup is in the module that WROTE the `kind:` — a root one,
   // the others having been skipped above — while the chain walk re-scopes at
   // every hop, since an `extends` alias belongs to the file declaring it.
@@ -200,14 +201,12 @@ function signatureParamsOf(
 }
 
 /** The noun phrase a diagnostic uses as its subject. */
-function surfaceFor(kind: string): string {
-  switch (kind) {
+function surfaceFor(manifest: ResourceManifest): string {
+  if (isKindDocument(manifest)) return "kind name";
+  switch (manifest.kind) {
     case "Telo.Application":
     case "Telo.Library":
       return "module name";
-    case "Telo.Definition":
-    case "Telo.Abstract":
-      return "kind name";
     case "Telo.Import":
       return "import alias";
     default:
@@ -215,14 +214,16 @@ function surfaceFor(kind: string): string {
   }
 }
 
-function singular(field: "variables" | "secrets" | "ports" | "resources"): string {
+function singular(field: "variables" | "secrets" | "ports" | "resources" | "needs"): string {
   return field === "variables"
     ? "variable"
     : field === "secrets"
       ? "secret"
       : field === "ports"
         ? "port"
-        : "resource input";
+        : field === "needs"
+          ? "need"
+          : "resource input";
 }
 
 function push(

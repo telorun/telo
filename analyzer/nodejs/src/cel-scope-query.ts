@@ -24,6 +24,7 @@ import { DefinitionRegistry } from "./definition-registry.js";
 import { accessorSiteAt, governedCelEvalSites } from "./eval-paths.js";
 import { buildKernelGlobalsIndex } from "./kernel-globals.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { isKindDocument } from "./kind-declaration.js";
 import { isModuleKind } from "./module-kinds.js";
 import { navigateConcretePath } from "./manifest-path.js";
 import { kindAtPath } from "./validate-cel-context.js";
@@ -117,7 +118,7 @@ export class CelScopeQuery {
     }
     const scopes: ModuleScopes = { aliasesByModule, rootModules, libraries };
     const observedState = buildObservedStateIndex(manifests, defs, aliases, scopes);
-    const reportsObservedState = [...observedState.values()].some((r) => r.status);
+    const reportsObservedState = [...observedState.values()].some((r) => r.status || r.reading);
     const moduleFunctions = new ModuleFunctionIndex(
       manifests,
       defs,
@@ -342,7 +343,7 @@ export class CelScopeQuery {
       // by and a best-effort match is still better than none.
       const named = this.manifests.filter(
         (m) =>
-          (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") &&
+          isKindDocument(m) &&
           (m.metadata as { name?: string } | undefined)?.name === suffix,
       ) as Record<string, any>[];
       const target =

@@ -109,6 +109,7 @@ owner publishes, at the moment the owner publishes it.
 | `RESOURCE_INPUT_UNRESOLVED` | the import | the value is not a `!ref` to a resource this module declares |
 | `RESOURCE_INPUT_KIND_MISMATCH` | the import | the supplied resource's kind does not satisfy the declared constraint, transitively |
 | `RESOURCE_INPUT_EXPORTED` | the library | an input name also listed in `exports.resources` — an input is borrowed, so there is nothing to export |
+| `RESOURCE_INPUT_NEED_TYPE` | the library | the entry's kind is a need type — a value any level up the import tree may supply is a [need](/learn/declaring-a-need), declared under `needs:` |
 
 Init order falls out on its own: the import gains a dependency edge per injected
 target — to a local resource, or to the import that exports a cross-module one —
@@ -152,9 +153,9 @@ and which importer that is depends on init order. It is torn down after every
 other root child, so a borrower's own inverses still find it alive.
 
 **Every import of a singleton must agree.** One instantiation has one
-configuration, so two imports supplying different variables, secrets or resource
-instances is a conflict, naming both aliases and the key that differs — never the
-value of a secret. Reported as `SHARED_LIBRARY_CONFLICT` at `telo check` wherever
+configuration, so two imports supplying different variables, secrets, resource
+instances or [needs](/learn/declaring-a-need) is a conflict, naming both aliases
+and the key that differs — never the value of a secret or a need. Reported as `SHARED_LIBRARY_CONFLICT` at `telo check` wherever
 it is decidable there (literal values; references only within one module, since a
 name means the same instance only in one scope), and as
 `ERR_SHARED_LIBRARY_CONFLICT` at boot, which holds the resolved values and the

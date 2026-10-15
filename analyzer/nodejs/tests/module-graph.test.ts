@@ -16,6 +16,7 @@ import {
   isUnwired,
   type ModuleGraphDeps,
 } from "../src/module-graph.js";
+import { kindDeclarationOf } from "../src/kind-declaration.js";
 
 /** Every use the slots at one declared pattern can take — the registry's rule. */
 const usesOf = (entries: DeclaredReference["entries"]) => [
@@ -1194,6 +1195,25 @@ describe("the kind plane", () => {
     expect(kinds.find((k) => k.id === "notify.Webhook")!.exported).toBe(true);
     expect(kinds.find((k) => k.id === "notify.Slack")!.exported).toBe(false);
     expect(kinds.find((k) => k.id === "ai.Model")!.exported).toBeUndefined();
+  });
+
+  // A need type declares a kind its document does not spell out: it is drawn
+  // on this plane, through the kind-declaration reader, and never as a box.
+  it("draws a need type as a kind, with its fulfilments as its instances", () => {
+    const needType = {
+      kind: "Telo.NeedType",
+      metadata: { name: "Token", module: "notify" },
+      fields: { value: { type: "string" } },
+    };
+    const graph = fixtureWith(
+      [kindDeclarationOf(needType)],
+      [needType as never, { kind: "notify.Token", metadata: { name: "slackToken", module: "notify" } } as never],
+      root,
+    );
+    expect(graph.nodes.filter((n) => !n.root).map((n) => n.name)).toEqual(["slackToken"]);
+    const token = graph.kinds.find((k) => k.id === "notify.Token")!;
+    expect(token).toMatchObject({ abstract: false, capability: "Telo.Provider", template: false });
+    expect(token.instances).toEqual([named(graph, "slackToken").id]);
   });
 });
 

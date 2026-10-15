@@ -1,0 +1,13 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedNeedSupply
+  version: 1.0.0
+  description: |
+    Supplies an imported library's need at the import. This kernel binds no
+    needs, so the load must fail naming the import's `needs:` block.
+imports:
+  Lib:
+    source: ../unsupported-needs/lib
+    needs:
+      signingKey:
+        value: not-a-real-key

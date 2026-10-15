@@ -1,0 +1,24 @@
+kind: Telo.Library
+metadata:
+  name: NeedTyping
+  version: 0.0.0
+  description: Reads a field its need type does not declare, and an optional need unguarded.
+imports:
+  Fx: ../types
+  Run: ../../../../modules/run
+needs:
+  databaseAccess:
+    kind: Fx.DatabaseAccess
+  cache:
+    kind: Fx.DatabaseAccess
+    optional: true
+---
+kind: Run.Value
+metadata: { name: undeclaredField }
+value:
+  host: !cel "resources.databaseAccess.host"
+---
+kind: Run.Value
+metadata: { name: unguardedOptional }
+value:
+  url: !cel "resources.cache.url"

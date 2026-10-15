@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata:
+  name: Shop
+  version: 0.0.0
+  description: Declares a need of its own and forwards it whole to the library it imports.
+imports:
+  Fx: ../types
+  Orders:
+    source: ../orders
+    needs:
+      databaseAccess: !ref orderDatabase
+needs:
+  orderDatabase:
+    kind: Fx.DatabaseAccess
+exports:
+  resources: [Orders.describe]

@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: ForwardVersionConsumer
+  version: 1.0.0
+  description: Supplies a library forwarding a wider range than it supplies.
+imports:
+  Lib:
+    source: ../forward-version
+    needs:
+      access: { url: "postgres://db.internal/x" }

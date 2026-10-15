@@ -61,7 +61,7 @@ import {
 import { isStepSlot } from "./step-slot.js";
 import { isInlineResource, type RefFieldEntry } from "./reference-field-map.js";
 import { enclosingDefault, siteRefEntry, type ReachRef } from "./reference-reach.js";
-import { DEPENDENCY_GRAPH_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
+import { isKindDocumentOrImport } from "./system-kinds.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { moduleCallSites } from "./cel-access-chains.js";
 import { shapeFieldsOf } from "./contract-shapes.js";
@@ -765,7 +765,7 @@ export function buildCallGraph(
 
   for (const manifest of resources) {
     const name = manifest.metadata?.name;
-    if (!name || !manifest.kind || SYSTEM_KINDS.has(manifest.kind)) continue;
+    if (!name || !manifest.kind || isKindDocumentOrImport(manifest)) continue;
     const node: ResourceGraphNode = {
       type: "resource",
       id: nodeIdFor(manifest),
@@ -972,7 +972,7 @@ export function buildCallGraph(
     {
       aliases: options.aliases,
       aliasesByModule: options.aliasesByModule,
-      skipKinds: SYSTEM_KINDS,
+      skip: isKindDocumentOrImport,
       expand: true,
       discoverNestedRefs: true,
     },

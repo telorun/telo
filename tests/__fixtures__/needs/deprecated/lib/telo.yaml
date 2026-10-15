@@ -1,0 +1,17 @@
+kind: Telo.Library
+metadata:
+  name: TokenTypes
+  version: 0.0.0
+  description: A need type its author has deprecated.
+exports:
+  kinds: [LegacyToken]
+---
+kind: Telo.NeedType
+metadata:
+  name: LegacyToken
+  description: A token to sign with.
+  deprecated:
+    reason: Signing keys replaced tokens.
+fields:
+  value: { type: string }
+required: [value]

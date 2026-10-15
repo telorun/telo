@@ -6,7 +6,7 @@ import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { visitManifest } from "./manifest-visitor.js";
 import { isRefSourceSpelling } from "./ref-sentinel-target.js";
 import { isValueAtSlot } from "./reference-field-map.js";
-import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
+import { isKindDocument } from "./kind-declaration.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -118,7 +118,7 @@ export function validateReferenceForms(
     {
       aliases,
       aliasesByModule,
-      skipKinds: SYSTEM_KINDS,
+      skip: isKindDocument,
       expand: true,
       discoverNestedRefs: true,
     },

@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { isKindDocument } from "./kind-declaration.js";
 import { celExpressionsOf, walkCelExpressions } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -17,13 +18,11 @@ import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
 
-const DECLARATION_KINDS = new Set([
-  "Telo.Definition",
-  "Telo.Abstract",
-  "Telo.Application",
-  "Telo.Library",
-  "Telo.Import",
-]);
+const isDeclarationDocument = (m: { kind?: unknown }): boolean =>
+  m.kind === "Telo.Application" ||
+  m.kind === "Telo.Library" ||
+  m.kind === "Telo.Import" ||
+  isKindDocument(m);
 
 /**
  * `SCOPED_NAME_OUT_OF_REACH` — a declaration written inside a scope's region but
@@ -63,7 +62,7 @@ export function validateScopedNameReach(
   const out: AnalysisDiagnostic[] = [];
 
   for (const root of manifests) {
-    if (!root.kind || DECLARATION_KINDS.has(root.kind) || isForwardedDeclaration(root)) continue;
+    if (!root.kind || isDeclarationDocument(root) || isForwardedDeclaration(root)) continue;
     const meta = root.metadata as { name?: unknown; module?: unknown; source?: unknown } | undefined;
     if (typeof meta?.name !== "string") continue;
     const module = typeof meta.module === "string" ? meta.module : undefined;

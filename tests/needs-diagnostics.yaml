@@ -1,0 +1,96 @@
+kind: Telo.Application
+metadata:
+  name: NeedsDiagnosticsTest
+  version: 1.0.0
+  description: |
+    What `telo check` refuses about need types, needs and their supply that the
+    agreement suite does not already pin, each by its own code.
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref fieldReads
+  - !ref needTypeDeclaration
+  - !ref fieldBySupply
+  - !ref fulfilmentAsTarget
+  - !ref deprecatedNeedType
+  - !ref envFieldUndeclared
+  - !ref envSlotMismatch
+---
+# `resources.<need>` is typed from the need type's fields and closed; an
+# optional need may be null.
+kind: Assert.Manifest
+metadata: { name: fieldReads }
+source: ./__fixtures__/needs/typing/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'resources.databaseAccess.host' is not defined (available: url, schema)"
+    - code: CEL_NULLABLE_ACCESS
+      message: "'resources.cache' may be null"
+---
+# A sensitive field is redacted by its text, so it must hold text; `required:`
+# lists fields the type declares.
+kind: Assert.Manifest
+metadata: { name: needTypeDeclaration }
+source: ./__fixtures__/needs/diagnostics/bad-type/telo.yaml
+expect:
+  errors:
+    - code: SENSITIVE_ANNOTATION_INVALID
+      message: "requires a string field"
+    - code: NEED_FIELD_UNDECLARED
+      message: "'required' lists 'host', which is not one of its fields"
+---
+# A field-by-field supply is held to the target's need type — its keys, its
+# literals and the type of its expressions — and a whole supply names a need or
+# fulfilment of the importer.
+kind: Assert.Manifest
+metadata: { name: fieldBySupply }
+source: ./__fixtures__/needs/diagnostics/supply.yaml
+expect:
+  errors:
+    - code: NEED_FIELD_UNDECLARED
+      message: "field 'host' is not declared by need type 'NeedFixtures.DatabaseAccess'"
+    - code: NEED_SLOT_MISMATCH
+      message: "does not yield the required field 'url'"
+    - code: SCHEMA_VIOLATION
+      message: "field 'schema' does not match need type"
+    - code: UNRESOLVED_REFERENCE
+      message: "need 'cache' → 'archiveDatabase' names no need or fulfilment"
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'needs.databaseAccess.url' returns 'int' but the field expects 'string'"
+---
+# A fulfilment is a provider: nothing starts it.
+kind: Assert.Manifest
+metadata: { name: fulfilmentAsTarget }
+source: ./__fixtures__/needs/diagnostics/target.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "it declares 'Telo.Provider'"
+---
+# A need type its author deprecated warns where a fulfilment of it is declared.
+kind: Assert.Manifest
+metadata: { name: deprecatedNeedType }
+source: ./__fixtures__/needs/deprecated/telo.yaml
+expect:
+  errors: []
+  warnings:
+    - code: DEPRECATED_KIND
+      message: "Kind 'Tokens.LegacyToken' is deprecated: Signing keys replaced tokens."
+---
+# An application need's `env:` names fields of its type, and every required one.
+kind: Assert.Manifest
+metadata: { name: envFieldUndeclared }
+source: ./__fixtures__/needs/diagnostics/env-field-undeclared/telo.yaml
+expect:
+  errors:
+    - code: NEED_FIELD_UNDECLARED
+      message: "'env:' binds field 'host', which need type 'Fx.DatabaseAccess' does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: envSlotMismatch }
+source: ./__fixtures__/needs/diagnostics/env-slot-mismatch/telo.yaml
+expect:
+  errors:
+    - code: NEED_SLOT_MISMATCH
+      message: "'env:' does not bind the required field 'url'"

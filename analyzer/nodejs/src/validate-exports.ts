@@ -1,4 +1,5 @@
 import { nearestName } from "./nearest-name.js";
+import { isKindDocument } from "./kind-declaration.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -17,7 +18,7 @@ const SOURCE = "telo-analyzer";
  * the author who could fix it saw a clean check. Both entries are resolved here,
  * against what the library declares:
  *
- *  - a bare kind names a `Telo.Definition` / `Telo.Abstract` of this module, and
+ *  - a bare kind names a `Telo.Definition` / `Telo.Abstract` / `Telo.NeedType` of this module, and
  *    `Alias.Kind` re-exports through an import declared in this file
  *    (`EXPORT_KIND_UNKNOWN`). The one mistake that reads as intended — a bare
  *    name that IS a kind, of an imported module — gets the re-export spelling
@@ -69,7 +70,9 @@ export function validateExports(
         continue;
       }
       if (!own(m)) continue;
-      if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") declaredKinds.add(name);
+      if (isKindDocument(m)) {
+        declaredKinds.add(name);
+      }
       else if (m.kind === "Telo.Import") importAliases.set(name, meta.resolvedModuleName);
       else if (m.kind !== "Telo.Library" && m.kind !== "Telo.Application") instances.add(name);
     }
@@ -131,7 +134,8 @@ export function validateExports(
         report(
           "EXPORT_KIND_UNKNOWN",
           path,
-          `'exports.kinds: ${name}' names no Telo.Definition or Telo.Abstract of this library. ` +
+          `'exports.kinds: ${name}' names no Telo.Definition or Telo.Abstract of this library ` +
+            `(nor a Telo.NeedType). ` +
             `Declared: ${[...declaredKinds].join(", ") || "(none)"}.` +
             (suggestion ? ` Did you mean '${suggestion}'?` : ""),
           suggestion,

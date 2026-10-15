@@ -187,7 +187,9 @@
     "additionalProperties": false
   },
   "errors": [
-    "ERR_INVOKE_CANCELLED"
+    "ERR_INVOKE_CANCELLED",
+    "ERR_NEED_UNMET",
+    "ERR_NEED_OBSERVATION_INVALID"
   ],
   "synchronous": false,
   "reentrant": true

@@ -16,7 +16,7 @@ pub fn is_module_document(kind: &str) -> bool {
 }
 
 /// Kinds whose bodies `resolve_ref_sentinels` must not walk, mirroring the Node
-/// pass's `REF_RESOLUTION_SKIP_KINDS`.
+/// pass's rule: a kind-declaring document, or an import.
 ///
 /// A `Telo.Definition` is a blueprint, not an instance: a `!ref` inside one
 /// belongs to whatever the kind is instantiated *as*, and resolving it against

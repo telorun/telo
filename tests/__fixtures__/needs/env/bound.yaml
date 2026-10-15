@@ -1,0 +1,40 @@
+kind: Telo.Application
+metadata:
+  name: NeedsFromBoundNames
+  version: 1.0.0
+  description: |
+    The application's own need, read from the name its `env:` binds rather than
+    from the derived one, and supplied whole to the library — which then reads
+    nothing from its own derived names.
+imports:
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+  Fx: ../types
+  Orders:
+    source: ../orders
+    needs:
+      databaseAccess: !ref databaseAccess
+needs:
+  databaseAccess:
+    kind: Fx.DatabaseAccess
+    env: { url: DATABASE_URL }
+targets:
+  - !ref verify
+---
+kind: Run.Sequence
+metadata: { name: verify }
+steps:
+  - name: describe
+    invoke: !ref Orders.describe
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        root: !cel "resources.databaseAccess.url"
+        library: !cel "steps.describe.result"
+      expected:
+        root: postgres://bound.internal/main
+        library:
+          url: postgres://bound.internal/main
+          schema: public
+          cache: none

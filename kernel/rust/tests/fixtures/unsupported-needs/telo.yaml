@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedNeeds
+  version: 1.0.0
+  description: |
+    Imports a library declaring `needs:`. This kernel does not implement needs,
+    and running the library with its need silently unbound would be worse than
+    refusing — so the load must fail naming the block.
+imports:
+  Lib: ./lib

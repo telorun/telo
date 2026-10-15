@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: FieldReadForwarded
+  version: 1.0.0
+  description: >-
+    Forwards a need of its own, which it verifies itself, to a library that
+    verifies nothing: the library's own constraint is still unverified, under
+    this importer as under any other.
+imports:
+  Kinds: ../kinds
+  Lib:
+    source: ../fieldread
+    needs:
+      access: !ref access
+needs:
+  access:
+    kind: Kinds.DatabaseAccess
+    version: ">=15.0.0"
+---
+kind: Kinds.Database
+metadata: { name: db }
+access: !ref access
+serverVersion: "15.0.0"

@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: ConsumeEnvOutside
+  version: 1.0.0
+  description: >-
+    A root need read from DATABASE_URL, forwarded whole to the library whose
+    slot observes it, refused against the root's range. Run by the kernel's
+    unit tests, which set the environment.
+imports:
+  Kinds: ../kinds
+  Outer:
+    source: ../outer
+    variables: { serverVersion: "16.3.0" }
+    needs:
+      db: !ref databaseAccess
+needs:
+  databaseAccess:
+    kind: Kinds.DatabaseAccess
+    version: ">=17.0.0"
+    features: [pgvector]
+    env: { url: DATABASE_URL }

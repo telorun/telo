@@ -27,7 +27,6 @@ import {
   buildCelEnvironment,
   buildImportInputCelEnvironment,
   buildTypedCelEnvironment,
-  isKindDocument,
   parseCelSource,
   valueBrandHint,
   type CelHandlers,
@@ -83,7 +82,7 @@ import { FunctionBodyEvaluators } from "./function-body-evaluator.js";
 import { moduleCallDiagnostics, unboundSourceDiagnostics } from "./validate-module-calls.js";
 import { unboundCallReason, unboundCallSources } from "./unbound-call-site.js";
 import { normalizeInlineResources } from "./normalize-inline-resources.js";
-import { REF_RESOLUTION_SKIP_KINDS, REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
+import { isKindDocumentOrImport } from "./system-kinds.js";
 import { resolveRefSentinels, resolveShapeRefs } from "./resolve-ref-sentinels.js";
 import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema-ref-kinds.js";
 import { runZoneAnalysis, type ZoneExportCache } from "./resolve-zone-requirements.js";
@@ -250,6 +249,10 @@ import { validateProviderCoherence } from "./validate-provider-coherence.js";
 import { kindSatisfies, validateReferences } from "./validate-references.js";
 import { validateReferenceForms } from "./validate-reference-forms.js";
 import { isInjectedDeclaration } from "./resource-input.js";
+import { isKindDocument, kindDeclarationOf } from "./kind-declaration.js";
+import { needTableReportsFinding, needTypeOf } from "./need-type.js";
+import { importNeedsSlotSchema, needTableDiagnostics } from "./validate-needs.js";
+import { observesProblems } from "./observing-slot.js";
 import { validateResourceInputs } from "./validate-resource-inputs.js";
 import { validateExports } from "./validate-exports.js";
 import { validateTemplateBody } from "./validate-template-body.js";
@@ -277,7 +280,7 @@ const SELF_PREFIX = "Self.";
 function assertManifestPositions(manifests: ResourceManifest[]): void {
   for (let i = 0; i < manifests.length; i++) {
     const m = manifests[i];
-    if (REF_VALIDATION_SKIP_KINDS.has(m.kind)) continue;
+    if (isKindDocument(m)) continue;
     const meta = m.metadata as { source?: string; sourceLine?: number } | undefined;
     const okSource = typeof meta?.source === "string" && meta.source.length > 0;
     const okLine = typeof meta?.sourceLine === "number";
@@ -485,7 +488,7 @@ function validateStepInvokeReferences(
       continue;
     }
     const meta = r.metadata as { name?: unknown; module?: unknown };
-    if (typeof meta?.name !== "string" || REF_VALIDATION_SKIP_KINDS.has(r.kind)) continue;
+    if (typeof meta?.name !== "string" || isKindDocument(r)) continue;
     if (isForwardedDeclaration(r)) {
       if (typeof meta.module === "string") loadedModules.add(meta.module);
       continue;
@@ -557,7 +560,7 @@ function validateStepInvokeReferences(
     const meta = m.metadata as { name?: unknown; source?: unknown };
     if (
       typeof meta?.name !== "string" ||
-      REF_VALIDATION_SKIP_KINDS.has(m.kind) ||
+      isKindDocument(m) ||
       isForwardedDeclaration(m)
     )
       continue;
@@ -1162,7 +1165,7 @@ export class StaticAnalyzer {
     // stays invisible until another module also implements that abstract and flips the
     // reference check from lenient to strict. `Self` always maps a module to its own name.
     for (const m of manifests) {
-      if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
+      if (!isKindDocument(m)) continue;
       const ownModule = (m.metadata as { module?: string } | undefined)?.module;
       if (!ownModule || rootModules.has(ownModule)) continue;
       let libResolver = aliasesByModule.get(ownModule);
@@ -1340,7 +1343,15 @@ export class StaticAnalyzer {
       modules: projectionModules(defs, aliases, { aliasesByModule, rootModules, libraries }),
     };
     for (const m of manifests) {
-      if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
+      const declared = kindDeclarationOf(m);
+      if (!declared) continue;
+      // A need type registers the Provider kind its fulfilments are — the
+      // synthesized definition the kernel's need-type controller registers
+      // from the same document.
+      if (needTypeOf(declared)) {
+        defs.register(declared);
+        continue;
+      }
       const def = m as unknown as ResourceDefinition;
       const ownModule = (def.metadata as { module?: string } | undefined)?.module;
       const scopeResolver = declaringModuleScope(ownModule, aliases, {
@@ -1509,6 +1520,28 @@ export class StaticAnalyzer {
           moduleCallNamesOf(moduleCallNames, declarer),
         ),
       );
+    }
+
+    // `observes` on a reference slot, judged once every kind is registered: the
+    // slot's need type and the kind's own capability may be declared anywhere.
+    // The slot on the kind's own schema; its holder on the merged one, as the
+    // kernel judges it — a slot an abstract declares binds each implementation.
+    if (!options?.skipValidation) {
+      const resolveDef = (k: string) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
+      for (const declarer of ownRuleDeclarers) {
+        const module = (declarer.metadata as { module?: string } | undefined)?.module;
+        const registered =
+          (module ? defs.resolve(`${module}.${declarer.metadata?.name as string}`) : undefined) ??
+          (declarer as unknown as ResourceDefinition);
+        for (const problem of observesProblems(
+          registered,
+          (declarer as Record<string, unknown>).schema as Record<string, unknown> | undefined,
+          effectiveAuthorSchema(declarer as any, resolveDef) as Record<string, unknown> | undefined,
+          resolveDef,
+        ).problems) {
+          refSlotIssues.push({ ...problem, manifest: declarer });
+        }
+      }
     }
 
     if (!options?.skipValidation) {
@@ -2002,7 +2035,7 @@ export class StaticAnalyzer {
           const owner = (m.metadata as { module?: unknown } | undefined)?.module;
           const declared = m.metadata?.name;
           if (typeof owner !== "string" || typeof declared !== "string") continue;
-          if (REF_RESOLUTION_SKIP_KINDS.has(m.kind)) continue;
+          if (isKindDocumentOrImport(m)) continue;
           declaredByModule.set(`${owner}\0${declared}`, m);
         }
       }
@@ -2189,7 +2222,7 @@ export class StaticAnalyzer {
       const resolve: DefResolver = (kind) => scopedDefs.in(kind, module);
       return celEvalModeAt(kindCelEvalSites(resolve(nested.resource.kind), resolve), nested.path);
     };
-    const reportsObservedState = [...observedState.values()].some((r) => r.status);
+    const reportsObservedState = [...observedState.values()].some((r) => r.status || r.reading);
     const runReachable = reportsObservedState
       ? collectRunReachableNames(getCallGraph())
       : new Set<string>();
@@ -2608,6 +2641,19 @@ export class StaticAnalyzer {
         for (const slot of collectCelValueSlots(m, schema, "", namedShape)) {
           celReturnSlots.push({ manifest: m, resource, filePath, ...slot });
         }
+        // An import's field-by-field need supply is typed by the TARGET's need
+        // type, which the import's own schema cannot know.
+        const needSlots = importNeedsSlotSchema(
+          m as unknown as ResourceManifest,
+          (module, kind) =>
+            declaringModuleScope(module, aliases, { aliasesByModule, rootModules }).resolveKind(kind),
+          (kind) => defs.resolve(kind),
+        );
+        if (needSlots) {
+          for (const slot of collectCelValueSlots(m, needSlots, "", namedShape)) {
+            celReturnSlots.push({ manifest: m, resource, filePath, ...slot });
+          }
+        }
         // A kind's own schema may point a slot at a PROJECTION — of a resource it
         // references, or (the empty pointer) of this very declaration, which is
         // what types a table's seed rows against its own `columns:`. Resolved
@@ -2684,7 +2730,11 @@ export class StaticAnalyzer {
           defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k),
         );
         const parentKind = (definition as { extends?: string } | undefined)?.extends;
+        const fulfilment = needTypeOf(definition) !== undefined;
         for (const issue of issues) {
+          // An undeclared or missing field of a fulfilment is the need table's
+          // one report (`NEED_FIELD_UNDECLARED` / `NEED_SLOT_MISMATCH`).
+          if (fulfilment && needTableReportsFinding(issue)) continue;
           // Keyed on the STRUCTURED failure, never on the sentence: the field
           // names are derived from the parent, and matching them against the
           // validator's prose would break when the prose changes and mis-fire on
@@ -4095,6 +4145,21 @@ export class StaticAnalyzer {
         rootModules,
         (supplied, required, isDeclaration) =>
           kindSatisfies(supplied, required, defs, isDeclaration),
+      ),
+    );
+
+    // Need types, needs and every import that supplies one — the need table's
+    // refusals for the entry's own modules. The kernel raises the same table's
+    // `ERR_` twins at load, for every module.
+    diagnostics.push(
+      ...needTableDiagnostics(
+        allManifests as unknown as ResourceManifest[],
+        rootModules,
+        (module, kind) =>
+          declaringModuleScope(module, aliases, { aliasesByModule, rootModules }).resolveKind(kind),
+        (kind) => defs.resolve(kind),
+        options?.moduleDocuments ?? [],
+        (manifest) => defs.referenceSites(manifest, aliases, aliasesByModule),
       ),
     );
 

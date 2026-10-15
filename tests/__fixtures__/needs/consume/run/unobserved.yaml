@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata:
+  name: ConsumeUnobserved
+  version: 1.0.0
+  description: A consumer at an observing slot that reports nothing fails at the end of its startup, though no constraint is stated.
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.DatabaseAccess
+metadata: { name: access }
+fields: { url: "postgres://db.internal:5432/orders" }
+---
+kind: Kinds.Database
+metadata: { name: db }
+access: !ref access
+report: false

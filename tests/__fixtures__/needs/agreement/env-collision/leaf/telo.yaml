@@ -1,0 +1,10 @@
+kind: Telo.Library
+metadata:
+  name: Leaf
+  version: 0.0.0
+  description: Needs a database, which it leaves to whoever runs it.
+imports:
+  Fx: ../../../types
+needs:
+  dbAccess:
+    kind: Fx.DatabaseAccess

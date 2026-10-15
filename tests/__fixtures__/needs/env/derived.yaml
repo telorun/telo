@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata:
+  name: NeedsFromDerivedNames
+  version: 1.0.0
+  description: |
+    A library's needs that nothing supplies reach the root and are read from
+    their derived environment names: the need path's segments and the field.
+    An optional need with nothing set reads null.
+imports:
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+  Orders: ../orders
+targets:
+  - !ref verify
+---
+kind: Run.Sequence
+metadata: { name: verify }
+steps:
+  - name: describe
+    invoke: !ref Orders.describe
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.describe.result"
+      expected:
+        url: postgres://derived.internal/orders
+        schema: sales
+        cache: none

@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: EnvSlotMismatch
+  version: 0.0.0
+  description: An application need whose `env:` map leaves a required field of its type unbound.
+imports:
+  Fx: ../../types
+needs:
+  databaseAccess:
+    kind: Fx.DatabaseAccess
+    env: { schema: DATABASE_SCHEMA }

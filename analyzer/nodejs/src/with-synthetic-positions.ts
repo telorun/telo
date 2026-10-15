@@ -1,5 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
+import { isKindDocument } from "./kind-declaration.js";
 
 /**
  * Stamp `metadata.source` and `metadata.sourceLine` on every non-system
@@ -31,7 +31,7 @@ export function withSyntheticPositions(
   source: string = "<programmatic>",
 ): ResourceManifest[] {
   return manifests.map((m, i) => {
-    if (REF_VALIDATION_SKIP_KINDS.has(m.kind)) return m;
+    if (isKindDocument(m)) return m;
     const meta = m.metadata as { source?: string; sourceLine?: number } | undefined;
     const hasSource = typeof meta?.source === "string" && meta.source.length > 0;
     const hasLine = typeof meta?.sourceLine === "number";

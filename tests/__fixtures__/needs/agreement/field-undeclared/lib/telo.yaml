@@ -1,0 +1,13 @@
+kind: Telo.Library
+metadata:
+  name: FieldUndeclared
+  version: 0.0.0
+  description: A fulfilment writing a field its need type does not declare.
+imports:
+  Fx: ../../../types
+---
+kind: Fx.DatabaseAccess
+metadata: { name: mainDatabase }
+fields:
+  url: postgres://localhost/main
+  host: localhost

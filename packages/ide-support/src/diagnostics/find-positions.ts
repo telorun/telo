@@ -6,9 +6,10 @@ import type { LoadedGraph, PositionIndex } from "@telorun/analyzer";
  *  inline against per-manifest metadata fields.
  *
  *  Resolution order:
- *    1. `data.resource.{kind,name}` → search every LoadedFile in the graph
- *       for the doc with matching kind+name. Returns that file's source +
- *       its positions for the matching doc index.
+ *    1. `data.resource.{kind,name}` → the doc with matching kind+name, in
+ *       the file `data.filePath` names when it names one — two modules may
+ *       declare the same name — otherwise in any LoadedFile of the graph.
+ *       Returns that file's source + its positions for the matching doc index.
  *    2. `data.filePath` → match the owning LoadedFile by canonical source.
  *
  *  Returns `undefined` if the diagnostic carries no usable identity. */
@@ -24,7 +25,10 @@ export function findPositions(
   if (!data) return undefined;
 
   if (data.resource?.kind && data.resource.name) {
-    const result = findByResource(graph, data.resource.kind, data.resource.name);
+    const result =
+      (data.filePath !== undefined
+        ? findByResource(graph, data.resource.kind, data.resource.name, data.filePath)
+        : undefined) ?? findByResource(graph, data.resource.kind, data.resource.name);
     if (result) return result;
   }
 
@@ -40,9 +44,11 @@ function findByResource(
   graph: LoadedGraph,
   kind: string,
   name: string,
+  inFile?: string,
 ): { file: string; positionIndex?: PositionIndex; sourceLine?: number } | undefined {
   for (const mod of graph.modules.values()) {
     for (const file of [mod.owner, ...mod.partials]) {
+      if (inFile !== undefined && file.source !== inFile) continue;
       for (let i = 0; i < file.manifests.length; i++) {
         const m = file.manifests[i];
         if (!m) continue;

@@ -509,6 +509,120 @@ const IMPORT_RESOURCE_INPUTS_SCHEMA = {
   additionalProperties: {},
 };
 
+/** A `Telo.Library`'s declared needs — what it asks whoever runs it for, each a
+ *  typed request naming a need type. Kind-only, like a resource input, plus the
+ *  literal `parameters` the type admits and whether the module runs without one.
+ *  See `analyzer/nodejs/src/need-type.ts`. */
+const NEED_ENTRY_PROPERTIES = {
+  kind: { type: "string" },
+  parameters: { type: "object" },
+  version: {
+    type: "string",
+    description:
+      "The version range the fulfilment must be within, as explicit comparators (`>=15.0.0`). Legal only when the need type is versioned.",
+  },
+  features: {
+    type: "array",
+    description: "The features the fulfilment must carry — names the need type lists.",
+    items: { type: "string" },
+    uniqueItems: true,
+  },
+  optional: { type: "boolean" },
+  description: { type: "string" },
+};
+
+/** A library's need carries no `env:` — accepted here only so the need table
+ *  can refuse it as `LIBRARY_ENV_KEY_REJECTED`, naming the repair. */
+const LIBRARY_NEEDS_SCHEMA = {
+  type: "object",
+  additionalProperties: {
+    type: "object",
+    required: ["kind"],
+    properties: { ...NEED_ENTRY_PROPERTIES, env: {} },
+    additionalProperties: false,
+  },
+};
+
+/** An Application's needs: the same entries, plus `env:` — field → the name of
+ *  the environment variable it is read from, in place of the derived one. */
+const APPLICATION_NEEDS_SCHEMA = {
+  type: "object",
+  additionalProperties: {
+    type: "object",
+    required: ["kind"],
+    properties: {
+      ...NEED_ENTRY_PROPERTIES,
+      env: {
+        type: "object",
+        additionalProperties: { type: "string", minLength: 1 },
+      },
+    },
+    additionalProperties: false,
+  },
+};
+
+/** The importer's side: need name → a `!ref` to a need or fulfilment of the
+ *  importer (whole), or a map of the type's fields (field by field). Left open
+ *  because the accepted fields are declared by the target's need type; the
+ *  need table (`need-table.ts`) checks them. Field values are evaluated once, in
+ *  the importer's scope, when the import is created. */
+const IMPORT_NEEDS_SCHEMA = {
+  type: "object",
+  additionalProperties: {},
+};
+
+/** `Telo.NeedType` — a kind a module can ask for: the fields a fulfilment
+ *  hands over, which are required, and what a need may state as parameters.
+ *  Registers `<Module>.<Name>` as a `Telo.Provider` kind served by the kernel's
+ *  need-type controller (`need-type.ts`, `needTypeDefinition`). */
+const NEED_TYPE_SCHEMA = withSchemaFragments({
+  type: "object",
+  properties: {
+    kind: { type: "string" },
+    metadata: {
+      type: "object",
+      properties: { name: { type: "string" }, description: { type: "string" } },
+      required: ["name"],
+      additionalProperties: true,
+    },
+    fields: {
+      title: "Fields",
+      description:
+        "What a fulfilment hands over, as a JSON Schema property map. A field may be `x-telo-sensitive: true`, which a string field must be to hold a credential.",
+      type: "object",
+      additionalProperties: { $ref: manifestFragmentRef("JsonSchema7") },
+    },
+    required: {
+      title: "Required fields",
+      description: "The fields every fulfilment must yield.",
+      type: "array",
+      items: { type: "string" },
+      uniqueItems: true,
+    },
+    parameters: {
+      title: "Parameters",
+      description: "JSON Schema of the literal parameters a need of this type may state.",
+      $ref: manifestFragmentRef("JsonSchema7"),
+    },
+    version: {
+      title: "Version",
+      description:
+        "`semver` when fulfilments are versioned: a need may then state a version range, which a consumer observing `version` verifies.",
+      enum: ["semver"],
+    },
+    features: {
+      title: "Features",
+      description:
+        "The closed list of feature names a fulfilment may carry; a need may ask for a subset, which a consumer observing `features` verifies.",
+      type: "array",
+      items: { type: "string", minLength: 1 },
+      uniqueItems: true,
+    },
+  },
+  required: ["metadata", "fields"],
+  additionalProperties: false,
+});
+
 export const KERNEL_BUILTINS: ResourceDefinition[] = [
   { kind: "Telo.Abstract", metadata: { name: "Template", module: "Telo" } },
   // "Control can be transferred to this" — the parent of Invocable and Runnable,
@@ -764,6 +878,12 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
   },
   {
     kind: "Telo.Definition",
+    metadata: { name: "NeedType", module: "Telo" },
+    capability: "Telo.Template",
+    schema: NEED_TYPE_SCHEMA,
+  },
+  {
+    kind: "Telo.Definition",
     metadata: { name: "Definition", module: "Telo" },
     capability: "Telo.Template",
     // Top-level shape stays open (`additionalProperties: true`) so this change
@@ -927,6 +1047,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         variables: { type: "object" },
         secrets: { type: "object" },
         resources: IMPORT_RESOURCE_INPUTS_SCHEMA,
+        needs: IMPORT_NEEDS_SCHEMA,
         runtime: {
           oneOf: [
             { type: "string" },
@@ -1081,6 +1202,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                   variables: { type: "object" },
                   secrets: { type: "object" },
                   resources: IMPORT_RESOURCE_INPUTS_SCHEMA,
+                  needs: IMPORT_NEEDS_SCHEMA,
                   runtime: {
                     oneOf: [
                       { type: "string" },
@@ -1142,6 +1264,9 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             },
           },
         },
+        // What the application asks whoever runs it for — each read from the
+        // environment at load, under the name `env:` binds or the derived one.
+        needs: APPLICATION_NEEDS_SCHEMA,
         // Inbound ports the Application listens on. A name-keyed map mirroring
         // `variables`: each entry binds a host env var (`env:`) that supplies a
         // port integer (implicitly typed `integer`, 1–65535), with an optional
@@ -1232,6 +1357,9 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         // requires from whoever imports it. Library-only — an Application is a
         // root with no importer, so it owns its instances outright.
         resources: LIBRARY_RESOURCE_INPUTS_SCHEMA,
+        // What this library asks whoever runs it for — typed requests a need
+        // type describes, supplied at the import or bubbled to the root.
+        needs: LIBRARY_NEEDS_SCHEMA,
         include: {
           type: "array",
           items: { type: "string" },
@@ -1265,6 +1393,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                   variables: { type: "object" },
                   secrets: { type: "object" },
                   resources: IMPORT_RESOURCE_INPUTS_SCHEMA,
+                  needs: IMPORT_NEEDS_SCHEMA,
                   runtime: {
                     oneOf: [
                       { type: "string" },

@@ -1,0 +1,57 @@
+kind: Telo.Library
+metadata:
+  name: ObservesMisdeclared
+  version: 0.0.0
+  description: Kinds declaring observing slots the need type cannot back.
+imports:
+  Kinds: ../kinds
+---
+kind: Telo.Definition
+metadata:
+  name: UnknownToken
+  description: Observes something that is not a need constraint.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=../kinds/consumer.mjs#Database
+schema:
+  type: object
+  properties:
+    access:
+      x-telo-ref: { kind: Kinds.DatabaseAccess, use: dependency, observes: [edition] }
+---
+kind: Telo.Definition
+metadata:
+  name: NotANeed
+  description: Observes at a slot whose kind is not a need type.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=../kinds/consumer.mjs#Database
+schema:
+  type: object
+  properties:
+    database:
+      x-telo-ref: { kind: Kinds.Database, use: dependency, observes: [version] }
+---
+kind: Telo.Definition
+metadata:
+  name: Undeclared
+  description: Observes a version on a need type that is not versioned.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=../kinds/consumer.mjs#Database
+schema:
+  type: object
+  properties:
+    value:
+      x-telo-ref: { kind: Kinds.Plain, use: dependency, observes: [version] }
+---
+kind: Telo.Abstract
+metadata:
+  name: Store
+  description: An abstract may declare an observing slot as a contract its implementations inherit.
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    access:
+      x-telo-ref: { kind: Kinds.DatabaseAccess, use: dependency, observes: [version, features] }

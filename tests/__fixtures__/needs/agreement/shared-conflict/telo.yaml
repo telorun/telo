@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: SharedNeedConflict
+  version: 0.0.0
+  description: Two imports of one shared library supplying its need with different literals.
+imports:
+  First:
+    source: ./sessions
+    needs:
+      signingKey: { value: first-key }
+  Second:
+    source: ./sessions
+    needs:
+      signingKey: { value: second-key }

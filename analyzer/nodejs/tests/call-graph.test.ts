@@ -147,6 +147,22 @@ describe("buildCallGraph — edges are per slot", () => {
   });
 });
 
+describe("buildCallGraph — kind documents", () => {
+  it("gives a document declaring a kind no resource node, an abstract included", () => {
+    const resources = [
+      { kind: "test.Echo", metadata: { name: "Source" } },
+      { kind: "Telo.Definition", metadata: { name: "Echo" } },
+      { kind: "Telo.Abstract", metadata: { name: "Store" } },
+      { kind: "Telo.NeedType", metadata: { name: "Access" }, fields: {} },
+      { kind: "Telo.Import", metadata: { name: "Lib" } },
+    ] as unknown as ResourceManifest[];
+
+    const graph = buildCallGraph(resources, registryOf(echoDef));
+
+    expect([...graph.nodes.keys()]).toEqual([resourceId("test.Echo", "Source")]);
+  });
+});
+
 describe("buildCallGraph — x-telo-scope descent", () => {
   const scopedSeqDef = {
     kind: "Telo.Definition",

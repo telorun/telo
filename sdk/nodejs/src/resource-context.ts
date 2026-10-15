@@ -14,6 +14,7 @@ import { ControllerPolicy } from "./controller-policy.js";
 import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleContext } from "./module-context.js";
 import type { KindRef } from "./ref.js";
+import type { NeedObservation, NeedResolution } from "./need-resolution.js";
 import { ResourceInstance } from "./resource-instance.js";
 import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeResource } from "./runtime-resource.js";
@@ -304,6 +305,22 @@ export interface ResourceContext extends ControllerContext {
     describe: () => string,
     expects?: string,
   ): T;
+  /**
+   * The need fulfilment held at a reference slot of this resource's own kind,
+   * named by a JSON Pointer into this resource's manifest (`/access`). A
+   * fulfilment is never handed over as an instance: this is how a kind opens
+   * the whole thing. Any pointer that is not such a slot is `ERR_REF_UNRESOLVED`.
+   */
+  resolveNeed(pointer: string): NeedResolution;
+  /**
+   * Report what this resource observed on the fulfilment at `pointer` — one
+   * member per constraint its slot `observes`. The kernel compares it with the
+   * outermost need and rejects a mismatch with `ERR_NEED_UNMET`; a malformed
+   * report, or one at a slot that does not observe, is
+   * `ERR_NEED_OBSERVATION_INVALID`. Every observing slot must be reported by
+   * the end of startup.
+   */
+  verifyNeed(pointer: string, observation: NeedObservation): void;
   /**
    * The manifest a name was DECLARED with, resolved in the context that OWNS
    * this resource — the same order {@link resolveRef} uses, so a declaration

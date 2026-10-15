@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: Undeclared
+  version: 0.0.0
+  description: Supplies a need its import does not declare.
+imports:
+  Orders:
+    source: ../../../orders
+    needs:
+      databaseAccess: { url: postgres://localhost/orders }
+      databse: { url: postgres://localhost/typo }

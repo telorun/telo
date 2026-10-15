@@ -672,13 +672,18 @@ export class CelScopeResolver {
     };
     const moduleNames = moduleCallNamesOf(this.inputs.moduleCallNames ?? NO_MODULE_CALL_NAMES, m);
 
-    const cached = contextSchema === null ? this.typedEnvByManifest.get(m) : undefined;
+    // An import's `needs:` supply is evaluated in the importer's scope like any
+    // startup field — `resources` included — unlike its config-only
+    // `variables:` / `secrets:`, so the two never share an environment.
+    const importNeeds = m.kind === "Telo.Import" && site.path.startsWith("needs.");
+    const cached =
+      contextSchema === null && !importNeeds ? this.typedEnvByManifest.get(m) : undefined;
     let env: CelEnvironment;
     if (cached) {
       env = cached;
     } else if (parameterScope) {
       env = buildParameterCelEnvironment(celEnv, contextSchema);
-    } else if (m.kind === "Telo.Import") {
+    } else if (m.kind === "Telo.Import" && !importNeeds) {
       // A `Telo.Import`'s variables/secrets are a config-only contract evaluated
       // in the IMPORTING module's scope, so they type from the owning module doc
       // and drop `resources`/`env`, making a reference to either an error.
@@ -704,7 +709,7 @@ export class CelScopeResolver {
           celType: entry.function.celType,
         })),
       );
-      if (contextSchema === null) this.typedEnvByManifest.set(m, env);
+      if (contextSchema === null && !importNeeds) this.typedEnvByManifest.set(m, env);
     }
 
     return {

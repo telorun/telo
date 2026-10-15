@@ -1,0 +1,117 @@
+kind: Telo.Application
+metadata:
+  name: NeedsTest
+  version: 1.0.0
+  description: |
+    A library declares typed needs; whoever imports it supplies each one whole
+    or field by field, or leaves it to bubble up. Each import of an isolated
+    library is a module instance of its own, with fulfilments of its own.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+  Fx: ./__fixtures__/needs/types
+  # Field by field, with literals.
+  Orders:
+    source: ./__fixtures__/needs/orders
+    needs:
+      databaseAccess:
+        url: postgres://app:secret@db.internal:5432/orders
+        schema: sales
+  # Whole, by `!ref` to a fulfilment this application declares — for the
+  # optional need too.
+  Archive:
+    source: ./__fixtures__/needs/orders
+    needs:
+      databaseAccess: !ref archiveDatabase
+      cache: !ref archiveDatabase
+  # Field by field, computed from a fulfilment of this module; the library
+  # forwards its own need to the one it imports.
+  Shop:
+    source: ./__fixtures__/needs/shop
+    needs:
+      orderDatabase:
+        url: !interpolate "${{ resources.archiveDatabase.url }}?replica=1"
+targets:
+  - !ref suppliedFieldByField
+  - !ref suppliedWhole
+  - !ref forwardedWhole
+  - !ref selfSuppliedReads
+  - !ref unmetNested
+  - !ref unmetShared
+---
+# A self-supplied fulfilment: an ordinary resource of the need-type kind.
+kind: Fx.DatabaseAccess
+metadata: { name: archiveDatabase }
+fields:
+  url: !cel "'postgres://archive.internal:5432/' + 'archive'"
+---
+kind: Run.Sequence
+metadata: { name: suppliedFieldByField }
+steps:
+  - name: describe
+    invoke: !ref Orders.describe
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.describe.result"
+      expected:
+        url: postgres://app:secret@db.internal:5432/orders
+        schema: sales
+        cache: none
+---
+kind: Run.Sequence
+metadata: { name: suppliedWhole }
+steps:
+  - name: describe
+    invoke: !ref Archive.describe
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.describe.result"
+      expected:
+        url: postgres://archive.internal:5432/archive
+        schema: public
+        cache: postgres://archive.internal:5432/archive
+---
+kind: Run.Sequence
+metadata: { name: forwardedWhole }
+steps:
+  - name: describe
+    invoke: !ref Shop.describe
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.describe.result"
+      expected:
+        url: postgres://archive.internal:5432/archive?replica=1
+        schema: public
+        cache: none
+---
+kind: Run.Sequence
+metadata: { name: selfSuppliedReads }
+steps:
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.archiveDatabase"
+      expected:
+        url: postgres://archive.internal:5432/archive
+---
+# A required need nothing supplies is refused at load, by its need path — the
+# need's name beneath each importer's alias — naming every environment variable
+# that would supply it.
+kind: Assert.Manifest
+metadata: { name: unmetNested }
+source: ./__fixtures__/needs/unmet/nested.yaml
+expect:
+  errors: []
+  runFails: "Need 'Wrapper.Orders.databaseAccess' (type 'NeedFixtures.DatabaseAccess', declared by module 'Orders') is required and nothing supplies it. Set TELO_NEED_WRAPPER__ORDERS__DATABASE_ACCESS__URL (optional: TELO_NEED_WRAPPER__ORDERS__DATABASE_ACCESS__SCHEMA)"
+---
+# A shared library's need sits beneath the library's own name, directly under
+# the root, whichever aliases reach it.
+kind: Assert.Manifest
+metadata: { name: unmetShared }
+source: ./__fixtures__/needs/unmet/shared.yaml
+expect:
+  errors: []
+  runFails: "Need 'Sessions.signingKey'"

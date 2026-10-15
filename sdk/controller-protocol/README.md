@@ -8,7 +8,9 @@ while inside one.
 
 `generation.json` holds the protocol generation these files describe. It is the
 number both carriers report in their handshake and the one an artifact writes as
-`abi=telo-<n>`.
+`abi=telo-<n>`. Every `Session.Hello` a valid vector carries states exactly that
+number, which `pnpm run check:controller-protocol` checks: a bump is complete only
+when the vectors describe the new generation too.
 
 The normative document is `kernel/specs/controller-protocol.md`: it says what each
 operation MEANS, pins the framed carrier byte-exactly, and carries the inventory
@@ -85,7 +87,7 @@ vector proving the two carriers agree about it.
 
 **Adding a message is a generation bump.** The generation is a complete message
 set, which is why the handshake refuses a mismatch instead of negotiating down: a
-kernel that spoke "generation 5 minus two messages" would fail at the moment a
+kernel that spoke "generation 6 minus two messages" would fail at the moment a
 controller reached for one, arbitrarily far from the pairing that accepted it.
 
 ## Where the conformance vectors live, and why not in `kernel/specs/`
