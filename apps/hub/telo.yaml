@@ -1692,70 +1692,51 @@ metadata:
   name: mcpHttp
 serverInfo:
   name: telo-hub
-  # Restated for now. `!cel "module.version"` is what this should be — the
-  # binding exists — but `serverInfo` on the PINNED mcp-server is not yet a CEL
-  # slot. The annotation is in this repo's `modules/mcp-server`; switching here
-  # waits on publishing that and moving the pin.
-  version: 0.6.2
+  version: !cel "module.version"
 instructions: !literal |
   This MCP server is the **Telo hub** — federated discovery over Telo modules
   hosted on any registry or OCI host. Telo is a declarative runtime: YAML
   manifests describe desired state; the kernel resolves resources and runs a
   controller per kind. CEL expressions are written as `!cel "..."` tags.
 
+  ## Guides — read before writing
+  Each guide tool takes no arguments and returns one authoring guide: how to
+  design and compose, never field schemas. Call the one that covers the work
+  before writing its first file:
+  - `guide_build_ui` — any screen: pages, tables, forms, actions, filters.
+  - `guide_write_integration_tests` — a test that starts a real service (a
+    database, a queue) as a container.
+  - `guide_design_library` — any `Telo.Library`: what to export, how to make a
+    kind, the importer contract.
+
   Fetch these for full context:
   - https://telo.run/llms.txt — guide & kind reference.
   - https://telo.run/examples.md — working example manifests.
   - https://telo.run/cel.md — CEL function reference.
 
-  ## Tools
-  - `search_resources(query | queries, limit?, category?, entry?, publisher?)` — find what
-    can do a job: resource KINDS to declare and ready-made INSTANCES to
-    reference, ranked together and grouped under the module that owns them.
-    Pass every need at once as `queries`. Write a kind hit as
-    `<YourAlias>.<name>`; reference an instance hit (`entry: instance`) as
-    `!ref <YourAlias>.<name>` or call it as `<YourAlias>.<name>(…)`. Pass
-    `entry` including `application` to find runnable APPLICATIONS too, which
-    are run by pinned ref or with `App.Instance` and never imported. Search
-    UNFILTERED first: `category` is an open, author-declared vocabulary and a
-    guessed slug is rejected outright.
-  - `get_kinds(kinds: [{ref, kind, version?}])` — the definitions of exactly
-    the kinds you name, across modules: each module's `imports:` line with its
-    version and integrity pin, each kind's `Telo.Definition` — the EXACT field
-    shapes you must produce — and every shape or parent kind it reaches.
-  - `list_libraries(publisher?)` — every tracked library in one line each:
-    ref, name, summary, exported kinds and instances.
-  - `get_module_manifest(ref, version?)` — a tracked module's whole `telo.yaml`
-    by location ref. Use `get_kinds` unless you need the entire module.
-  - `get_module(ref, version?)` — keyed facts about one module (license,
-    repository, deprecation, runtime reach, every exported kind/instance,
-    every tracked version) without parsing manifest YAML.
-  - `list_module_versions(ref)` — every tracked version, newest first, with the
-    `integrity` pin to write after `@<version>#` in an `imports:` entry.
-  - `find_implementations(ref, kind)` — every exported kind extending a given
-    contract (e.g. backends of `Sql.Connection`), across module boundaries.
-  - `find_instances(ref, kind)` — every ready-made instance of a kind that any
-    module exports (e.g. the language models an OCR recognizer takes). A kind
-    hit's `instances` count says when there are some; packs of instances are
-    listed here rather than as search results of their own.
-  - `find_dependents(ref, limit?, offset?)` — the tracked modules importing a
-    given module, one line each, with the `total`: working uses of its kinds.
-  - `list_categories(category?)` — browse the domain facet directly, or check
-    a slug/label exists before passing it to `search_resources`.
-  - `suggest_module_refs(query)` — fuzzy ref typeahead for a half-remembered or
-    misspelled ref; not semantic search over capability.
-
   ## Composing an application
-  1. `search_resources` with every capability you need as `queries`;
+  1. `search_resources` with every capability you need as `queries`: resource
+     KINDS to declare and ready-made INSTANCES to reference, grouped under the
+     module that owns them. Search UNFILTERED first — `category` is an open,
+     author-declared vocabulary and a guessed slug is rejected outright.
      `find_implementations` once you have an abstract kind and need a concrete
      backend; `find_instances` when a kind you need has ready-made instances.
-  2. `get_kinds` for every kind you will declare, in one call; read the
-     `Telo.Definition` schemas — never guess fields from a kind name.
+  2. `get_kinds` for every kind you will declare, in one call: each module's
+     `imports:` line with its version and integrity pin, and each kind's
+     `Telo.Definition` — the EXACT field shapes you must produce. Never guess
+     fields from a kind name.
   3. Write one `Telo.Application`. Declare dependencies in the `imports` map
-     with the lines `get_kinds` returned (PascalCase alias → `ref@version#pin`,
-     e.g. `S3: oci://ghcr.io/acme/telo-s3@1.2.0#sha256-…`). A hit's kind
-     suffix is written as `<YourAlias>.<suffix>` — the prefix is the alias you
-     chose, never a fixed name. `targets` lists the runnables/services to start.
+     with the lines `get_kinds` returned (PascalCase alias → `ref@version#pin`).
+     Write a kind hit as `<YourAlias>.<name>` and reference an instance hit as
+     `!ref <YourAlias>.<name>` (call a function one as `<YourAlias>.<name>(…)`)
+     — the prefix is the alias you chose, never a fixed name. `targets` lists
+     the runnables/services to start.
+
+  An application hit (`entry: application`) is run by pinned ref or with
+  `App.Instance`, never imported. The other tools — `list_libraries`,
+  `get_module`, `get_module_manifest`, `list_module_versions`,
+  `find_dependents`, `list_categories`, `suggest_module_refs` — each say when
+  to use them.
 
   ## Must-know
   - No `spec:` wrapper — resource fields sit at the doc top level.
@@ -1764,56 +1745,45 @@ instructions: !literal |
   - Tag dynamic leaves with `!cel`, not whole inline collections.
   - Install/run resolve against the module's own host — the hub only stores
     discovery metadata and cached manifests, never artifact payloads.
-
-  ## Guides
-  Three prompts (no arguments) each return one authoring guide — how to
-  design and compose, not field schemas, which always come from `get_kinds`.
-  Fetch the one that covers the work before writing its first file:
-  - `build_ui` — any screen: pages, tables, forms, actions, filters.
-  - `write_integration_tests` — a test that starts a real service (a
-    database, a queue) as a container.
-  - `design_library` — any `Telo.Library`: what to export, how to make a kind,
-    the importer contract.
+# The authoring guides, one argument-less tool each. A guide is plain text kept
+# at most 32768 UTF-8 bytes, so a client bounding a tool result at that size
+# receives it whole.
 tools:
   - !ref HubTools
-# The authoring guides, one argument-less prompt each. A guide is plain text
-# kept at most 32768 UTF-8 bytes, so a client bounding a tool result at that
-# size receives it whole.
-prompts:
-  - kind: Mcp.Prompts
+  - kind: Mcp.Tools
     entries:
-      - name: build_ui
+      - name: guide_build_ui
         description: >-
           How to build a user interface for a Telo application with the ui and
           ui-react modules: pages, tables, forms, actions, filters, surfaces and
           themes, wired to the routes they call. Read before writing any screen.
+        argumentsSchema: { type: object, properties: {}, additionalProperties: false }
         handler: { kind: Run.Value, value: {} }
         inputs: {}
         result:
-          messages:
-            - role: user
-              content: { type: text, text: !include-text guides/build-ui.md }
-      - name: write_integration_tests
+          content:
+            - { type: text, text: !include-text guides/build-ui.md }
+      - name: guide_write_integration_tests
         description: >-
           How to write Telo tests that start a real service — a PostgreSQL
           database, a queue, a server — as a disposable container, connect to
           it and clean up, so the test runs alone, in a suite and in a runner
           session. Read before writing a test that needs one.
+        argumentsSchema: { type: object, properties: {}, additionalProperties: false }
         handler: { kind: Run.Value, value: {} }
         inputs: {}
         result:
-          messages:
-            - role: user
-              content: { type: text, text: !include-text guides/write-integration-tests.md }
-      - name: design_library
+          content:
+            - { type: text, text: !include-text guides/write-integration-tests.md }
+      - name: guide_design_library
         description: >-
           How to design a Telo library: exporting kinds or ready-made instances,
           templated kinds vs. extending one, abstract contracts, resources
           borrowed from the importer, variables, lifecycle, naming, descriptions
           and tests. Read before writing a Telo.Library.
+        argumentsSchema: { type: object, properties: {}, additionalProperties: false }
         handler: { kind: Run.Value, value: {} }
         inputs: {}
         result:
-          messages:
-            - role: user
-              content: { type: text, text: !include-text guides/design-library.md }
+          content:
+            - { type: text, text: !include-text guides/design-library.md }

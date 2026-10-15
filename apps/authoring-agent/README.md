@@ -1045,12 +1045,12 @@ The tools are the security boundary, and they are declared:
   model responses, 6 by default) searches the hub and names kinds, and their
   definitions are then fetched from the hub directly — the search results
   never enter the authoring agent's context. That agent's token usage is part
-  of the turn's own (`tokens` on the turn, the settled budget amount). Every
-  prompt the hub serves — its authoring guides on building a user interface,
-  writing tests that start a real service, and designing a library — is a
-  `guide_<name>` tool the agent calls before writing the first file of the
-  work a guide covers; a guide the hub adds becomes a tool with no change to
-  the agent.
+  of the turn's own (`tokens` on the turn, the settled budget amount). The
+  hub's authoring guides on building a user interface, writing tests that start
+  a real service, and designing a library are hub tools (`guide_build_ui`,
+  `guide_write_integration_tests`, `guide_design_library`) the agent calls
+  before writing the first file of the work a guide covers; a guide the hub
+  adds is offered once its name joins the agent's list of hub tools.
 
 A deployment whose callers are trusted can widen `teloVerbs` at the import.
 
@@ -1084,9 +1084,9 @@ released and re-pinned. `Mcp` and `Run` (the application), `Mcp`, `AiMcp`,
 names in every test that imports the chat library, move together — all pinned
 to one version, or all from the checkout while a change to one of them is
 built — since a module loaded both from the checkout and from a published
-version is two identities for one kind. The live cases need a hub serving its
-authoring guides: the agent lists the hub's prompts on its first turn, and a
-hub offering none refuses that call. Live cases skip themselves when `OPENAI_API_KEY` is
+version is two identities for one kind. `reads-ui-guide.yaml` fails until the
+hub serving the guide tools is deployed: the agent's hub tools leave out a name
+the hub does not serve. Live cases skip themselves when `OPENAI_API_KEY` is
 unset. CI never runs it on its own: it is the `Authoring Agent E2E` workflow,
 started by hand against a chosen branch.
 
@@ -1095,10 +1095,10 @@ a local stand-in for the responses endpoint reached through `MODEL_ENDPOINT`: it
 
 `find-kinds.yaml` and `guide-tools.yaml` run discovery against
 `chat/tests/__fixtures__/hub-stub`, a local stand-in for the hub serving its
-three discovery tools and one prompt, `stub`. The first pins what a `find_kinds`
-call shows the agent and what it costs; the second that the prompt is offered
-as `guide_stub` with its description and no parameters, that a call returns its
-text whole, and that the call adds no usage. `reads-ui-guide.yaml` is the live
+three discovery tools and one stub guide tool, `guide_build_ui`. The first pins
+what a `find_kinds` call shows the agent and what it costs; the second that the
+guide is offered with its description and no parameters, that a call returns
+its text whole, and that the call adds no usage. `reads-ui-guide.yaml` is the live
 counterpart: asked for an app with a screen, the agent calls `guide_build_ui`
 before the first write of a manifest declaring `UiReact.App`.
 

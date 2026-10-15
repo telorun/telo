@@ -1,0 +1,5 @@
+modules:
+  apps/authoring-agent: Added
+body: The agent reads the hub's authoring guides through the hub's guide tools
+  (guide_build_ui, guide_write_integration_tests, guide_design_library) instead of
+  turning the hub's MCP prompts into tools.
