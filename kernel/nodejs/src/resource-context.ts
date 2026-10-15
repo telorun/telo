@@ -32,6 +32,8 @@ import {
   type EffectBody,
   type EffectChain,
   type BrowserEntryFiles,
+  type NeedObservation,
+  type NeedResolution,
 } from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
 import { declarationOfInstance } from "./instance-declaration.js";
@@ -43,9 +45,23 @@ import {
   type DeclaredScalarPath,
   type NamedContractShape,
   type ReachPosition,
+  needTypeOf,
+  outermostNeedEntry,
+  type NeedConstraint,
+  type NeedTableEntry,
 } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
+import { isNeedFulfilment, type NeedFulfilment } from "./need-fulfilment.js";
+import type { NeedObservations } from "./need-observation.js";
+import {
+  checkObservation,
+  compareObservation,
+  constraintsOf,
+  observedAt,
+  referenceSiteAt,
+} from "./need-resolution.js";
+import { handleOfInstance, mintResourceHandle } from "./resource-handle.js";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { bigIntView } from "./bigint-schema-view.js";
@@ -420,6 +436,9 @@ export class ResourceContextImpl implements ResourceContext {
 
   #self: ResourceHandle | undefined;
   #zones: ZoneContext | undefined;
+  /** The manifest the instance was created from — the object Phase-5 injection
+   *  mutates, which a need's pointer is read against. */
+  #manifest: Record<string, unknown> | undefined;
 
   /** Kernel-internal: stamped at `create()`, the moment the instance exists. */
   bindResourceIdentity(
@@ -428,6 +447,7 @@ export class ResourceContextImpl implements ResourceContext {
     manifest: Record<string, unknown>,
   ): void {
     this.#self = handle;
+    this.#manifest = manifest;
     // The kind is NOT restated here. It is set at construction — the single
     // production site always has it — and `#log` is memoized on first access, so
     // a late assignment could not reach a logger a controller already holds. A
@@ -625,8 +645,108 @@ export class ResourceContextImpl implements ResourceContext {
     //    the same order `contextForName` and `ScopeContext.getInstance` use —
     //    scope-local first, module as the fallback — or CEL and `!ref` disagree
     //    about what a name means inside a scope.
+    //
+    // A need's fulfilment is never an instance a controller holds: it is read by
+    // field (`resources.<need>.<field>`), so a reference reaching one is refused
+    // here, whichever shape it arrives in.
     const normalized = isRefSentinel(value) ? this.ensureKindRef(value) : value;
-    return resolveRefInstance(normalized, this, guard, describe, expects);
+    const refusingNeeds = (candidate: unknown): candidate is T => {
+      if (isNeedFulfilment(candidate)) {
+        throw new RuntimeError(
+          "ERR_REF_UNRESOLVED",
+          `${describe()} references a need's fulfilment (need type '${candidate.type}'), which is ` +
+            `never handed to a controller as an instance. Read its fields through CEL — ` +
+            `\`resources.<need>.<field>\` — instead.`,
+        );
+      }
+      return guard(candidate);
+    };
+    return resolveRefInstance(normalized, this, refusingNeeds, describe, expects);
+  }
+
+  /** The observations this resource owes, set by the kernel at `create()`. */
+  #needObservations: NeedObservations | undefined;
+
+  /** Kernel-internal: the observing slots this resource must report on. */
+  bindNeedObservations(tracker: NeedObservations): void {
+    this.#needObservations = tracker;
+  }
+
+  /** The fulfilment at a reference slot of this resource's own kind, named by
+   *  JSON Pointer, and the need it fulfils when the slot names one. */
+  private needAt(pointer: string): {
+    label: string;
+    fulfilment: NeedFulfilment;
+    observes: NeedConstraint[];
+    needPath?: string[];
+  } {
+    const label = `${this.#resolvedKind ?? "resource"} '${(this.metadata?.name as string) ?? "<unnamed>"}'`;
+    const manifest = this.#manifest;
+    if (!manifest) {
+      throw new RuntimeError(
+        "ERR_RESOURCE_IDENTITY_UNBOUND",
+        `[${this.metadata.name}] needs are unavailable inside create() — they are opened from init() on`,
+      );
+    }
+    const site = referenceSiteAt(
+      this.kernel.getAnalysisRegistry().referenceSitesOf(manifest as unknown as ResourceManifest),
+      pointer,
+    );
+    if (!site) {
+      throw new RuntimeError(
+        "ERR_REF_UNRESOLVED",
+        `${label}: '${pointer}' is not a reference slot of its kind, so it holds no need to resolve.`,
+      );
+    }
+    const value = isRefSentinel(site.data) ? this.ensureKindRef(site.data) : site.data;
+    const fulfilment = resolveRefInstance(
+      value,
+      this,
+      isNeedFulfilment,
+      () => `${label}: '${pointer}'`,
+      "a need's fulfilment",
+    );
+    const ref = value as { name: string; alias?: string };
+    let needPath: string[] | undefined;
+    const module = this.moduleContext as unknown as {
+      needPath?: readonly string[];
+      isNeed?(name: string): boolean;
+    };
+    if ((!ref.alias || ref.alias === "Self") && module.isNeed?.(ref.name)) {
+      needPath = [...(module.needPath ?? []), ref.name];
+    }
+    return { label, fulfilment, observes: observedAt(site), ...(needPath ? { needPath } : {}) };
+  }
+
+  private outermostNeed(needPath: string[] | undefined): NeedTableEntry | undefined {
+    const table = this.kernel.needTable;
+    return needPath && table ? outermostNeedEntry(table, needPath) : undefined;
+  }
+
+  resolveNeed(pointer: string): NeedResolution {
+    const { fulfilment, needPath } = this.needAt(pointer);
+    const target =
+      handleOfInstance(fulfilment) ??
+      mintResourceHandle(fulfilment, fulfilment.type, needPath?.at(-1) ?? pointer);
+    const outermost = this.outermostNeed(needPath);
+    const parameters = outermost?.need.parameters;
+    return {
+      target,
+      fields: { ...fulfilment.fields },
+      sensitive: [...fulfilment.sensitiveFields],
+      constraints: constraintsOf(outermost),
+      ...(parameters && typeof parameters === "object" && !Array.isArray(parameters)
+        ? { parameters: { ...(parameters as Record<string, unknown>) } }
+        : {}),
+    };
+  }
+
+  verifyNeed(pointer: string, observation: NeedObservation): void {
+    const { label, fulfilment, observes, needPath } = this.needAt(pointer);
+    const checked = checkObservation(label, pointer, observes, observation);
+    this.#needObservations?.record(pointer);
+    const shape = needTypeOf(this.kernel.getAnalysisRegistry().resolveDefinition(fulfilment.type));
+    compareObservation(this.outermostNeed(needPath), fulfilment.type, shape?.features ?? [], checked);
   }
 
   /** Name lookup with scope-local precedence, for {@link resolveRefInstance}. */

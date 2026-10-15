@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: NeedsObservedFromEnvironment
+  version: 1.0.0
+  description: |
+    A root need read from the environment, forwarded whole through a library to
+    the one whose slot observes it: the constraints the consumer is handed, and
+    compared against, are the root's — the outermost need of the chain.
+imports:
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+  Kinds: ../consume/kinds
+  Outer:
+    source: ../consume/outer
+    variables: { serverVersion: "16.3.0" }
+    needs:
+      db: !ref databaseAccess
+needs:
+  databaseAccess:
+    kind: Kinds.DatabaseAccess
+    version: ">=16.1.0"
+    features: [pgvector]
+    env: { url: CONSUME_DATABASE_URL }
+targets:
+  - !ref verify
+---
+kind: Run.Sequence
+metadata: { name: verify }
+steps:
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.Outer.db"
+      expected:
+        url: postgres://observed.internal/orders
+        sensitive: [url]
+        constraints: { version: ">=16.1.0", features: [pgvector] }

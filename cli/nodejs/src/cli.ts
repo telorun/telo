@@ -12,6 +12,7 @@ import { checkCommand } from "./commands/check.js";
 import { installCommand } from "./commands/install.js";
 import { migrateCommand } from "./commands/migrate.js";
 import { moduleCommand } from "./commands/module.js";
+import { needsCommand } from "./commands/needs.js";
 import { packageCommand } from "./commands/package.js";
 import { publishCommand } from "./commands/publish.js";
 import { releaseCommand } from "./commands/release.js";
@@ -33,6 +34,7 @@ const COMMANDS: Record<string, (yargs: Argv) => Argv> = {
   install: installCommand,
   migrate: migrateCommand,
   module: moduleCommand,
+  needs: needsCommand,
   package: packageCommand,
   publish: publishCommand,
   release: releaseCommand,

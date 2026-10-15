@@ -169,7 +169,7 @@ describe("visitManifest", () => {
     expect(refs).toEqual([]);
   });
 
-  it("skips kinds named in skipKinds", () => {
+  it("skips the documents its skip predicate names", () => {
     const reg = registry();
     const resources: ResourceManifest[] = [
       { kind: "demo.Job", metadata: { name: "a" } },
@@ -181,7 +181,7 @@ describe("visitManifest", () => {
       resources,
       reg._context().definitions!,
       { onResourceEnter: (e) => visited.push(e.source.kind) },
-      { aliases: reg._context().aliases, skipKinds: new Set(["Telo.Definition"]) },
+      { aliases: reg._context().aliases, skip: (r) => r.kind === "Telo.Definition" },
     );
 
     expect(visited).toEqual(["demo.Job"]);

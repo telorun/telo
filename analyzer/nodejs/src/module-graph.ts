@@ -69,6 +69,7 @@ import { findZoneProviders } from "./resolve-zone-containment.js";
 import type { RefUse } from "./ref-slot.js";
 import { canonicalJson } from "./canonical-json.js";
 import { isForwardedShape } from "./forwarded-declaration.js";
+import { isKindDocument, kindDeclarationOf } from "./kind-declaration.js";
 import { accessChains } from "./cel-access-chains.js";
 import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
 import { selfForwardPath } from "./template-forward.js";
@@ -581,13 +582,11 @@ export interface BuildModuleGraphOptions {
  * the entry module's is minted as the ROOT, and an imported library's is not an
  * instance at all.
  */
-const DECLARATION_KINDS: ReadonlySet<string> = new Set([
-  "Telo.Definition",
-  "Telo.Abstract",
-  "Telo.Import",
-  "Telo.Application",
-  "Telo.Library",
-]);
+const isDeclarationDocument = (manifest: ResourceManifest): boolean =>
+  manifest.kind === "Telo.Import" ||
+  manifest.kind === "Telo.Application" ||
+  manifest.kind === "Telo.Library" ||
+  isKindDocument(manifest);
 
 const moduleOf = (manifest: ResourceManifest): string | undefined =>
   (manifest.metadata as { module?: string } | undefined)?.module;
@@ -823,7 +822,7 @@ export function buildModuleGraph(
   const manifestById = new Map<string, ResourceManifest>();
   for (const manifest of resources) {
     const name = manifest.metadata?.name;
-    if (typeof name !== "string" || !manifest.kind || DECLARATION_KINDS.has(manifest.kind)) continue;
+    if (typeof name !== "string" || !manifest.kind || isDeclarationDocument(manifest)) continue;
     if (root && manifest === options.root) continue;
     // Carried across an import only so a contract resolves; nothing in this
     // module declares or reaches it.
@@ -841,7 +840,7 @@ export function buildModuleGraph(
   const scopedByOwner = new Map<string, Map<string, string[]>>();
   for (const graphNode of callGraph.nodes.values()) {
     if (graphNode.type !== "resource") continue;
-    if (DECLARATION_KINDS.has(graphNode.kind)) continue;
+    if (isDeclarationDocument(graphNode.manifest)) continue;
     if (graphNode.scoped) {
       // A `with:`-scoped resource is declared inside another's body, so it is in
       // no manifest list of its own — the call graph is where it exists.
@@ -2161,13 +2160,13 @@ function buildKindPlane(
 
   const out: GraphKind[] = [];
   for (const manifest of resources) {
-    const docKind = manifest.kind as string;
-    if (docKind !== "Telo.Definition" && docKind !== "Telo.Abstract") continue;
+    const declared = kindDeclarationOf(manifest);
+    if (!declared) continue;
     const name = manifest.metadata?.name as string | undefined;
     if (!name) continue;
     const module = moduleOf(manifest);
     const id = module ? `${module}.${name}` : name;
-    const record = manifest as unknown as Record<string, unknown>;
+    const record = declared as unknown as Record<string, unknown>;
     const extendsName = typeof record.extends === "string" ? record.extends : undefined;
     const parent = extendsName ? deps.definition(extendsName, module) : undefined;
     const parentModule = parent ? moduleOf(parent as unknown as ResourceManifest) : undefined;
@@ -2176,7 +2175,7 @@ function buildKindPlane(
     const kind: GraphKind = {
       id,
       name,
-      abstract: docKind === "Telo.Abstract",
+      abstract: declared.kind === "Telo.Abstract",
       instances: instancesByKind.get(id) ?? [],
       template: TEMPLATE_FIELDS.some((f) => record[f] !== undefined),
       own: !!options.entryModule && module === options.entryModule,
@@ -2283,7 +2282,7 @@ export function templateModule(
   for (const declared of moduleResources) {
     const name = declared.metadata?.name;
     if (typeof name !== "string" || typeof declared.kind !== "string") continue;
-    if (DECLARATION_KINDS.has(declared.kind)) continue;
+    if (isDeclarationDocument(declared)) continue;
     if (moduleOf(declared) !== module || entryNames.has(name) || !referenced.has(name)) continue;
     resources.push({
       ...declared,

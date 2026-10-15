@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata:
+  name: Relay
+  version: 0.0.0
+  description: Forwards its need whole to a library that reads it by field only.
+imports:
+  Kinds: ../kinds
+  Plain:
+    source: ../plainread
+    needs:
+      access: !ref access
+needs:
+  access:
+    kind: Kinds.DatabaseAccess

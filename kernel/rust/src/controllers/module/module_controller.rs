@@ -21,6 +21,9 @@ use telo_analyzer::{
 };
 
 use crate::controllers::module::import_controller::parse_import;
+
+/// The built-in document a need type is declared with.
+const NEED_TYPE: &str = "Telo.NeedType";
 use crate::controllers::resource_definition::resource_definition_controller::register_definition;
 use crate::error::KernelError;
 use crate::evaluation_context::EvaluationContext;
@@ -88,6 +91,8 @@ pub fn load_module(
             kind_of(second).unwrap_or("")
         )));
     }
+
+    reject_need_types(&documents, &loaded.source)?;
 
     let imports = load_imports(env, module_doc, &loaded.source)?;
 
@@ -179,6 +184,7 @@ const UNSUPPORTED_MODULE_FIELDS: &[(&str, &str)] = &[
     ("include", "loading partial files into the module scope"),
     ("lifecycle", "lifecycle selection"),
     ("resources", "resource inputs supplied by the importer"),
+    ("needs", "needs, which a host or an importer supplies"),
     ("tracing", "exporting trace spans"),
 ];
 
@@ -190,6 +196,25 @@ fn reject_unsupported_module_fields(module_doc: &Value, source: &str) -> Result<
                 format!("'{source}' declares `{field}:`; this kernel does not implement {what} yet"),
             ));
         }
+    }
+    Ok(())
+}
+
+/// A `Telo.NeedType` registers a kind whose resources are need fulfilments, which
+/// this kernel does not implement. Refused by name rather than as an unknown
+/// built-in kind, so the message says what is missing.
+fn reject_need_types(documents: &[Value], source: &str) -> Result<(), KernelError> {
+    for document in documents.iter().skip(1) {
+        if kind_of(document) != Some(NEED_TYPE) {
+            continue;
+        }
+        let name = name_of(document).unwrap_or("<unnamed>");
+        return Err(KernelError::new(
+            "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+            format!(
+                "'{source}' declares `{NEED_TYPE}` '{name}'; this kernel does not implement need types yet"
+            ),
+        ));
     }
     Ok(())
 }

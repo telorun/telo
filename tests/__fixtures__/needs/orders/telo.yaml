@@ -1,0 +1,24 @@
+kind: Telo.Library
+metadata:
+  name: Orders
+  version: 0.0.0
+  description: Needs a database, and a cache it runs without.
+imports:
+  Fx: ../types
+  Run: ../../../../modules/run
+needs:
+  databaseAccess:
+    kind: Fx.DatabaseAccess
+    parameters: { extensions: [pgvector] }
+  cache:
+    kind: Fx.DatabaseAccess
+    optional: true
+exports:
+  resources: [describe]
+---
+kind: Run.Value
+metadata: { name: describe }
+value:
+  url: !cel "resources.databaseAccess.url"
+  schema: !cel "has(resources.databaseAccess.schema) ? resources.databaseAccess.schema : 'public'"
+  cache: !cel "resources.cache == null ? 'none' : resources.cache.url"

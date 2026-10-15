@@ -375,13 +375,28 @@ importer.
   one instance: two libraries that each import a third get two of everything
   in it — two connections where one was meant, and a writer and a reader that
   never see each other's work.
+- **`needs`** — what the library depends on but cannot create (a database's
+  address and credentials, a signing key), each entry naming a **need type**:
+  `needs: { databaseAccess: { kind: Fx.DatabaseAccess, version?, features?, optional?, parameters? } }` — a stated `version` / `features` must reach a reference slot that `observes` it (`NEED_CONSTRAINT_UNVERIFIED`).
+  Prefer a need over `variables` / `secrets` for such a dependency: it is
+  typed, an importer that does not use it writes nothing, and a sensitive
+  field is redacted wherever it reaches. Inside, read it by field —
+  `resources.databaseAccess.url` — or hand it whole to a kind's reference slot
+  that takes its need type (`!ref databaseAccess`). The
+  importer supplies it whole (`needs: { databaseAccess: !ref <its own need or
+  fulfilment> }`) or field by field (`needs: { databaseAccess: { url: … } }`);
+  one nobody supplies bubbles up to the application, which reads it from the environment at load (`TELO_NEED_<PATH>__<FIELD>`, or the name an application need's `env:` binds); a required one with none set is
+  `ERR_NEED_UNMET`. A need type is a `Telo.NeedType` document (`fields`,
+  `required`, `parameters`) exported through `exports.kinds`, named for what
+  its fulfilment hands over — `<Thing>Access` for the address and credentials
+  of something outside the application.
 - **`lifecycle`** — `isolated` (the default) gives every import declaration
   its own instantiation: right for a library whose instances are the
   importer's (a client, a formatter, a test fixture). `shared` gives the whole
   application one instantiation that every import, at any depth, resolves to:
   right for a library that **owns** something several others need. Every
-  import of a shared library must then agree on its configuration
-  (`SHARED_LIBRARY_CONFLICT`).
+  import of a shared library must then agree on its configuration and its
+  needs (`SHARED_LIBRARY_CONFLICT`).
 
 ## Names, descriptions and metadata
 

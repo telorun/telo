@@ -43,7 +43,8 @@ export interface RefSlotIssue {
     | "X_TELO_REF_DYNAMIC_SELECTOR"
     | "X_TELO_REF_UNKNOWN_KEY"
     | "X_TELO_REF_INVALID_THROWS_THROUGH"
-    | "X_TELO_REF_INVALID_OUTPUT_TYPE";
+    | "X_TELO_REF_INVALID_OUTPUT_TYPE"
+    | "X_TELO_REF_INVALID_OBSERVES";
   /** The definition (schema issues) or resource (selector issues) at fault. */
   manifest: ResourceManifest;
   /** Schema path of the slot (schema issues) or concrete value path of the
@@ -203,7 +204,14 @@ function checkAnnotation(
 
 /** Every key the structured `x-telo-ref` form accepts — the write side of
  *  `readRefSlot`'s read side. Adding one belongs in both. */
-const REF_ANNOTATION_KEYS = new Set(["kind", "use", "inputs", "throwsThrough", "outputType"]);
+const REF_ANNOTATION_KEYS = new Set([
+  "kind",
+  "use",
+  "inputs",
+  "throwsThrough",
+  "outputType",
+  "observes",
+]);
 
 /** True when a node is a reference slot: it carries `x-telo-ref` directly or on
  *  an `anyOf`/`oneOf` branch. */
@@ -221,6 +229,16 @@ function carriesRefAnnotation(obj: Record<string, unknown>): boolean {
     }
   }
   return false;
+}
+
+/** Every reference-slot node of a definition schema, with its schema path —
+ *  the walk {@link validateRefSlotDeclarations} reports along. */
+export function forEachRefSlotNode(
+  schema: unknown,
+  path: string,
+  onSlot: (node: Record<string, unknown>, path: string) => void,
+): void {
+  walkSchema(schema, path, new Set(), new Set(), onSlot);
 }
 
 /** Walk a definition schema, invoking `onSlot` for every node that carries an

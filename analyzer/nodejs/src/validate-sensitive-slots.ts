@@ -10,6 +10,7 @@ import {
   type WrittenAt,
 } from "./contract-mark-reach.js";
 import { sensitivePaths } from "./invocation-contract.js";
+import { isNeedTypeDoc, readNeedTypeShape } from "./need-type.js";
 
 /**
  * `x-telo-sensitive` where nothing reads it.
@@ -59,9 +60,20 @@ export function validateSensitiveSlots(
   const reached = new Set<object>();
   const resolveRef = namedShapeResolver(manifests);
   for (const site of contractSites(manifests)) sensitivePaths(site.schema, resolveRef, reached);
+  // A need type's fields are the other place the mark is read: the kernel adds
+  // a sensitive field's value to the redaction set of every module context the
+  // fulfilment reaches. What the mark may be there — `true`, on a text field —
+  // is the need table's refusal, which the kernel twins at load for every module.
+  const needFields = new Set<object>();
+  for (const manifest of manifests) {
+    if (!isNeedTypeDoc(manifest)) continue;
+    for (const schema of Object.values(readNeedTypeShape(manifest).fields)) {
+      if (Object.hasOwn(schema, ANNOTATION)) needFields.add(schema);
+    }
+  }
 
   for (const [node, written] of marks) {
-    if (!own(written)) continue;
+    if (!own(written) || needFields.has(node)) continue;
     const value = (node as Record<string, unknown>)[ANNOTATION];
     const path = written.path.join(".");
     if (value !== true) {

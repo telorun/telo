@@ -1,4 +1,5 @@
 import type { CelEnvironment, CelNode } from "@telorun/cel";
+import { isKindDocument } from "./kind-declaration.js";
 import { CEL_ENGINE, celExpressionsOf, isTaggedSentinel } from "@telorun/templating";
 import {
   AMBIENT_CONTRACT_ERROR_CODES,
@@ -690,7 +691,7 @@ export function validateThrowsCoverage(
 
   for (const manifest of allManifests) {
     if (!manifest.kind || !manifest.metadata?.name) continue;
-    if (manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract") continue;
+    if (isKindDocument(manifest)) continue;
     // A scoped declaration is reported against the document it is WRITTEN in —
     // its owner's — at its own position inside that owner's scope array, because
     // position lookup finds a TOP-LEVEL doc by (kind, name) and a scoped

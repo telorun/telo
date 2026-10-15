@@ -1,0 +1,25 @@
+kind: Telo.Library
+metadata:
+  name: ConsumeOrders
+  version: 0.0.0
+  description: Needs a PostgreSQL-like database of at least 15.0.0 with pgvector, and opens it whole.
+imports:
+  Kinds: ../kinds
+variables:
+  serverVersion: { type: string }
+  extensions:
+    type: array
+    items: { type: string }
+needs:
+  databaseAccess:
+    kind: Kinds.DatabaseAccess
+    version: ">=15.0.0"
+    features: [pgvector]
+exports:
+  resources: [db]
+---
+kind: Kinds.Database
+metadata: { name: db }
+access: !ref databaseAccess
+serverVersion: !cel "variables.serverVersion"
+extensions: !cel "variables.extensions"

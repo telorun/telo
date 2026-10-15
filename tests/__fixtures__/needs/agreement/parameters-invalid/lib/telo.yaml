@@ -1,0 +1,12 @@
+kind: Telo.Library
+metadata:
+  name: ParametersInvalid
+  version: 0.0.0
+  description: A need stating parameters its type does not admit.
+imports:
+  Fx: ../../../types
+needs:
+  databaseAccess:
+    kind: Fx.DatabaseAccess
+    optional: true
+    parameters: { extensions: pgvector }

@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: SinkConsumer
+  version: 1.0.0
+  description: Imports a library whose kind is refused when registered; this check is entry-scoped.
+imports:
+  Lib: ../sink

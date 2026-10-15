@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: NeedsFieldsApp
+  version: 0.0.0
+imports:
+  Orders:
+    source: ./orders
+    needs:
+      databaseAccess:
+        url: postgres://app:secret@db.internal:5432/orders
+        schema: sales

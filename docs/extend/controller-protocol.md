@@ -127,15 +127,38 @@ blocks its reader on dispatch. If you are writing a carrier rather than a
 controller, this is the rule to get right first; nothing in a manifest will tell
 you that you got it wrong.
 
-## Generations, and `abi=telo-5`
+## Needs: opening a fulfilment, reporting what you found
+
+A kind that consumes a need whole declares a reference slot whose kind is a need
+type, and its controller never holds the fulfilment as an instance. It **asks**:
+`Need.Resolve` names the slot by a JSON Pointer into its own manifest and gets the
+fulfilment back as a value — its fields, which of them are sensitive, and the
+constraints and parameters of the outermost need it came through. Only a slot of
+your own kind answers; any other pointer is `ERR_REF_UNRESOLVED`.
+
+If the slot `observes` the need's `version` or `features`, you report what you
+found on the real thing with `Need.Verify` — the version as semver text, the
+features present — and **the kernel compares**. Never compare a range in your
+controller: a mismatch comes back as `ERR_NEED_UNMET`, already worded and carrying
+the need, its type, where its value came from and the required against the actual
+in `data`. The report is due by the end of your startup (when `init()` returns for
+a provider, `run()` for a service, the first `run()` or `invoke()` otherwise),
+whether or not the need states a constraint; missing it, or reporting a version
+that is not semver, is `ERR_NEED_OBSERVATION_INVALID`. In Node the two messages
+are `ctx.resolveNeed(pointer)` and `ctx.verifyNeed(pointer, observation)` — see
+[a kind that consumes and verifies a need](./consuming-needs.md).
+
+## Generations, and `abi=telo-6`
 
 Generation `3` is the shape shipping today: JSON in ABI buffers, described only by
-the ABI crate's layout. Generation `5` is the one this specification defines, and
-it is the generation in which the C ABI carries the protocol's messages. (`4` was
-withdrawn before any carrier spoke it: its value encoding named the typed frame's
-millisecond timestamp payload, which is now RFC 3339 with a trimmed nanosecond
-fraction.)
+the ABI crate's layout. Generation `6` is the one this specification defines, and
+it is the generation in which the C ABI carries the protocol's messages. `4` and
+`5` were withdrawn before any carrier spoke them: `4`'s value encoding named the
+typed frame's millisecond timestamp payload (now RFC 3339 with a trimmed
+nanosecond fraction), and `6` is `5` plus the two need messages. Every handshake
+in the vectors states `6`, and `pnpm run check:controller-protocol` refuses a
+conformance vector whose handshake states another generation.
 
-**Do not write `abi=telo-5` into a module yet.** The ABI carrier has not landed,
+**Do not write `abi=telo-6` into a module yet.** The ABI carrier has not landed,
 and a kernel meeting that declaration refuses it. Published `abi=telo-3`
 candidates stay valid — specifying a new generation does not retire the old one.

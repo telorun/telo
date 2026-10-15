@@ -290,6 +290,48 @@ targets:
   - !ref browserEntryUnknownAtRuntime
   - !ref browserExportUnknown
   - !ref browserExportUnknownAtRuntime
+  - !ref needTypeUnresolved
+  - !ref needTypeUnresolvedAtRuntime
+  - !ref needParametersInvalid
+  - !ref needParametersInvalidAtRuntime
+  - !ref needFieldUndeclared
+  - !ref needFieldUndeclaredAtRuntime
+  - !ref needSlotMismatch
+  - !ref needSlotMismatchAtRuntime
+  - !ref resourceInputNeedType
+  - !ref resourceInputNeedTypeAtRuntime
+  - !ref needUndeclared
+  - !ref needUndeclaredAtRuntime
+  - !ref needForwardIncompatible
+  - !ref needForwardIncompatibleAtRuntime
+  - !ref needKindMismatch
+  - !ref needKindMismatchAtRuntime
+  - !ref needDuplicateName
+  - !ref needDuplicateNameAtRuntime
+  - !ref needSharedConflict
+  - !ref needSharedConflictAtRuntime
+  - !ref needLibraryEnvKeyRejected
+  - !ref needLibraryEnvKeyRejectedAtRuntime
+  - !ref needEnvNameCollision
+  - !ref needEnvNameCollisionAtRuntime
+  - !ref observesOnSink
+  - !ref observesOnSinkAtRuntime
+  - !ref observesOnTemplate
+  - !ref observesOnTemplateAtRuntime
+  - !ref needConstraintUnverified
+  - !ref needConstraintUnverifiedSuppliedAtRuntime
+  - !ref needConstraintUnverifiedForwardedAtRuntime
+  - !ref needConstraintUnverifiedRootForward
+  - !ref needConstraintUnverifiedTwoLevels
+  - !ref needConstraintUnverifiedFeatures
+  - !ref needOptionalReferenced
+  - !ref needOptionalReferencedAtRuntime
+  - !ref needForwardWiderVersion
+  - !ref needForwardWiderVersionAtRuntime
+  - !ref needForwardMissingFeature
+  - !ref needForwardMissingFeatureAtRuntime
+  - !ref needVersionOnUnversioned
+  - !ref needVersionOnUnversionedAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -3063,3 +3105,485 @@ source: ./__fixtures__/check-run-agreement/browser-entry/unknown-export/telo.yam
 expect:
   errors: []
   runFails: "BrowserKinds.Widget/widget: 'export: Missing' is not an export the browser entry '@fixture/own' declares"
+---
+# NEEDS. The need table is one reader: `telo check` reports a refusal at the
+# module that wrote it, and the kernel raises its `ERR_` twin at load — for a
+# dependency too, before any resource initializes. Each defect is pinned at the
+# library, and from a consumer: the consumer's check builds every imported
+# library whole and reports a library's defect once, at the import that reaches
+# it, and its run fails with the kernel's twin.
+kind: Assert.Manifest
+metadata:
+  name: needTypeUnresolved
+source: ./__fixtures__/needs/agreement/type-unresolved/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_TYPE_UNRESOLVED
+      message: "names kind 'Fx.DatabaseAcces', which does not resolve to a need type"
+---
+kind: Assert.Manifest
+metadata:
+  name: needTypeUnresolvedAtRuntime
+source: ./__fixtures__/needs/agreement/type-unresolved/telo.yaml
+expect:
+  errors:
+    - code: NEED_TYPE_UNRESOLVED
+      message: "Imported library 'TypeUnresolved', reached through import 'Lib'"
+  runFails: "ERR_NEED_TYPE_UNRESOLVED"
+---
+kind: Assert.Manifest
+metadata:
+  name: needParametersInvalid
+source: ./__fixtures__/needs/agreement/parameters-invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "parameters do not satisfy need type 'Fx.DatabaseAccess'"
+---
+kind: Assert.Manifest
+metadata:
+  name: needParametersInvalidAtRuntime
+source: ./__fixtures__/needs/agreement/parameters-invalid/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Imported library 'ParametersInvalid', reached through import 'Lib'"
+  runFails: "ERR_NEED_PARAMETERS_INVALID"
+---
+kind: Assert.Manifest
+metadata:
+  name: needFieldUndeclared
+source: ./__fixtures__/needs/agreement/field-undeclared/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_FIELD_UNDECLARED
+      message: "field 'host' is not declared by need type 'NeedFixtures.DatabaseAccess'"
+---
+kind: Assert.Manifest
+metadata:
+  name: needFieldUndeclaredAtRuntime
+source: ./__fixtures__/needs/agreement/field-undeclared/telo.yaml
+expect:
+  errors:
+    - code: NEED_FIELD_UNDECLARED
+      message: "Imported library 'FieldUndeclared', reached through import 'Lib'"
+  runFails: "ERR_NEED_FIELD_UNDECLARED"
+---
+kind: Assert.Manifest
+metadata:
+  name: needSlotMismatch
+source: ./__fixtures__/needs/agreement/slot-mismatch/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_SLOT_MISMATCH
+      message: "does not yield the required field 'url'"
+---
+kind: Assert.Manifest
+metadata:
+  name: needSlotMismatchAtRuntime
+source: ./__fixtures__/needs/agreement/slot-mismatch/telo.yaml
+expect:
+  errors:
+    - code: NEED_SLOT_MISMATCH
+      message: "Imported library 'SlotMismatch', reached through import 'Lib'"
+  runFails: "ERR_NEED_SLOT_MISMATCH"
+---
+kind: Assert.Manifest
+metadata:
+  name: resourceInputNeedType
+source: ./__fixtures__/needs/agreement/resource-input-need-type/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_INPUT_NEED_TYPE
+      message: "declare it under 'needs:'"
+---
+kind: Assert.Manifest
+metadata:
+  name: resourceInputNeedTypeAtRuntime
+source: ./__fixtures__/needs/agreement/resource-input-need-type/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_INPUT_NEED_TYPE
+      message: "Imported library 'ResourceInputNeedType', reached through import 'Lib'"
+  runFails: "ERR_RESOURCE_INPUT_NEED_TYPE"
+---
+kind: Assert.Manifest
+metadata:
+  name: needUndeclared
+source: ./__fixtures__/needs/agreement/undeclared/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_UNDECLARED
+      message: "supplies need 'databse', which module 'Orders' does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: needUndeclaredAtRuntime
+source: ./__fixtures__/needs/agreement/undeclared/telo.yaml
+expect:
+  errors:
+    - code: NEED_UNDECLARED
+      message: "Imported library 'Undeclared', reached through import 'Lib'"
+  runFails: "ERR_NEED_UNDECLARED"
+---
+kind: Assert.Manifest
+metadata:
+  name: needForwardIncompatible
+source: ./__fixtures__/needs/agreement/forward-incompatible/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_FORWARD_INCOMPATIBLE
+      message: "'databaseAccess' is an optional need, which may be absent"
+---
+kind: Assert.Manifest
+metadata:
+  name: needForwardIncompatibleAtRuntime
+source: ./__fixtures__/needs/agreement/forward-incompatible/telo.yaml
+expect:
+  errors:
+    - code: NEED_FORWARD_INCOMPATIBLE
+      message: "Imported library 'ForwardIncompatible', reached through import 'Lib'"
+  runFails: "ERR_NEED_FORWARD_INCOMPATIBLE"
+---
+kind: Assert.Manifest
+metadata:
+  name: needKindMismatch
+source: ./__fixtures__/needs/agreement/kind-mismatch/lib/telo.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "is need type 'NeedFixtures.DatabaseAccess', and 'signer' is 'Fx.SigningKey'"
+---
+kind: Assert.Manifest
+metadata:
+  name: needKindMismatchAtRuntime
+source: ./__fixtures__/needs/agreement/kind-mismatch/telo.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Imported library 'KindMismatch', reached through import 'Lib'"
+  runFails: "ERR_REFERENCE_KIND_MISMATCH"
+---
+kind: Assert.Manifest
+metadata:
+  name: needDuplicateName
+source: ./__fixtures__/needs/agreement/duplicate-name/lib/telo.yaml
+expect:
+  errors:
+    - code: DUPLICATE_RESOURCE_NAME
+      message: "need 'mainDatabase' collides with resource Fx.DatabaseAccess/mainDatabase"
+---
+kind: Assert.Manifest
+metadata:
+  name: needDuplicateNameAtRuntime
+source: ./__fixtures__/needs/agreement/duplicate-name/telo.yaml
+expect:
+  errors:
+    - code: DUPLICATE_RESOURCE_NAME
+      message: "Imported library 'DuplicateName', reached through import 'Lib'"
+  runFails: "ERR_DUPLICATE_RESOURCE"
+---
+# Two imports of one shared library disagreeing on `needs:` — refused at check
+# where the values are literals…
+kind: Assert.Manifest
+metadata:
+  name: needSharedConflict
+source: ./__fixtures__/needs/agreement/shared-conflict/telo.yaml
+expect:
+  errors:
+    - code: SHARED_LIBRARY_CONFLICT
+      message: "they supply different values for needs.signingKey"
+---
+# …and by the kernel where they are known only at load.
+kind: Assert.Manifest
+metadata:
+  name: needSharedConflictAtRuntime
+source: ./__fixtures__/needs/agreement/shared-conflict/computed.yaml
+expect:
+  errors: []
+  runFails: "ERR_SHARED_LIBRARY_CONFLICT"
+---
+# A library's need binds no environment name: only the application being run
+# reads the environment.
+kind: Assert.Manifest
+metadata:
+  name: needLibraryEnvKeyRejected
+source: ./__fixtures__/needs/agreement/library-env/lib/telo.yaml
+expect:
+  errors:
+    - code: LIBRARY_ENV_KEY_REJECTED
+      message: "needs/databaseAccess: 'env:' is only permitted on Telo.Application needs"
+---
+kind: Assert.Manifest
+metadata:
+  name: needLibraryEnvKeyRejectedAtRuntime
+source: ./__fixtures__/needs/agreement/library-env/telo.yaml
+expect:
+  errors:
+    - code: LIBRARY_ENV_KEY_REJECTED
+      message: "Imported library 'LibraryEnv', reached through import 'Lib'"
+  runFails: "ERR_LIBRARY_ENV_KEY_REJECTED"
+---
+# A sensitive need-type field must hold text, since its value is redacted by its
+# text. Refused at the library (`needs-diagnostics.yaml`), at the import a
+# consumer reaches it through, and by the kernel at load.
+kind: Assert.Manifest
+metadata:
+  name: needSensitiveNonTextAtRuntime
+source: ./__fixtures__/needs/agreement/sensitive-non-text/telo.yaml
+expect:
+  errors:
+    - code: SENSITIVE_ANNOTATION_INVALID
+      message: "Imported library 'SensitiveNonText', reached through import 'Lib'"
+  runFails: "ERR_SENSITIVE_ANNOTATION_INVALID"
+---
+# …and the mark is `true`, since anything else reads as "not sensitive".
+kind: Assert.Manifest
+metadata:
+  name: needSensitiveNotTrueAtRuntime
+source: ./__fixtures__/needs/agreement/sensitive-not-true/telo.yaml
+expect:
+  errors:
+    - code: SENSITIVE_ANNOTATION_INVALID
+      message: "Imported library 'SensitiveNotTrue', reached through import 'Lib': 'x-telo-sensitive' must be `true`"
+  runFails: "ERR_SENSITIVE_ANNOTATION_INVALID"
+---
+# Each environment name is read for one value. Decided at the root: statically
+# where the root's own imports derive the names…
+kind: Assert.Manifest
+metadata:
+  name: needEnvNameCollision
+source: ./__fixtures__/needs/agreement/env-collision/telo.yaml
+expect:
+  errors:
+    - code: NEED_ENV_NAME_COLLISION
+      message: "Need 'HttpServer.dbAccess' field 'url' reads environment variable 'TELO_NEED_HTTP_SERVER__DB_ACCESS__URL' (derived), which need 'HTTPServer.dbAccess' field 'url' reads too"
+    - code: NEED_ENV_NAME_COLLISION
+      message: "which variables.schema reads too"
+---
+# …and two imports deep, where the analysis builds every imported library
+# whole, as the kernel does.
+kind: Assert.Manifest
+metadata:
+  name: needEnvNameCollisionAtRuntime
+source: ./__fixtures__/needs/agreement/env-collision/consumer.yaml
+expect:
+  errors:
+    - code: NEED_ENV_NAME_COLLISION
+      message: "Need 'Wrapper.HttpServer.dbAccess' field 'url' reads environment variable 'TELO_NEED_WRAPPER__HTTP_SERVER__DB_ACCESS__URL' (derived), which need 'Wrapper.HTTPServer.dbAccess' field 'url' reads too"
+  runFails: "ERR_NEED_ENV_NAME_COLLISION"
+---
+# `observes` is legal only on a kind the kernel can hold to a deadline — a Telo.Provider,
+# Service, Runnable or Invocable with a controller of its own — refused statically at
+# the kind and when the kernel registers it, a dependency's included.
+kind: Assert.Manifest
+metadata:
+  name: observesOnSink
+source: ./__fixtures__/needs/consume/sink/telo.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_OBSERVES
+      message: "kind capability 'Telo.Sink' has no moment the observation is due"
+---
+kind: Assert.Manifest
+metadata:
+  name: observesOnSinkAtRuntime
+source: ./__fixtures__/needs/consume/consumers/sink.yaml
+expect:
+  errors: []
+  runFails: "ERR_X_TELO_REF_INVALID_OBSERVES"
+---
+kind: Assert.Manifest
+metadata:
+  name: observesOnTemplate
+source: ./__fixtures__/needs/consume/template/telo.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_OBSERVES
+      message: "its instances are served by the kernel's template controller"
+---
+kind: Assert.Manifest
+metadata:
+  name: observesOnTemplateAtRuntime
+source: ./__fixtures__/needs/consume/consumers/template.yaml
+expect:
+  errors: []
+  runFails: "ERR_X_TELO_REF_INVALID_OBSERVES"
+---
+# An implementation is judged against the slots its abstract declares, as the
+# kernel judges its merged schema: a templated implementation and a sink both
+# inherit an observing slot they cannot honour.
+kind: Assert.Manifest
+metadata:
+  name: observesInheritedByTemplate
+source: ./__fixtures__/needs/consume/abstract-template/telo.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_OBSERVES
+      message: "Telo.Definition 'Facade': x-telo-ref at 'schema.properties.access', inherited from Telo.Abstract 'Store', declares 'observes', but its instances are served by the kernel's template controller"
+---
+kind: Assert.Manifest
+metadata:
+  name: observesInheritedByTemplateAtRuntime
+source: ./__fixtures__/needs/consume/consumers/abstract-template.yaml
+expect:
+  errors: []
+  runFails: "ERR_X_TELO_REF_INVALID_OBSERVES"
+---
+kind: Assert.Manifest
+metadata:
+  name: observesInheritedBySink
+source: ./__fixtures__/needs/consume/abstract-sink/telo.yaml
+expect:
+  errors:
+    - code: X_TELO_REF_INVALID_OBSERVES
+      message: "Telo.Definition 'Writer': x-telo-ref at 'schema.properties.access', inherited from Telo.Abstract 'Recorder', declares 'observes', but kind capability 'Telo.Sink' has no moment the observation is due"
+---
+kind: Assert.Manifest
+metadata:
+  name: observesInheritedBySinkAtRuntime
+source: ./__fixtures__/needs/consume/consumers/abstract-sink.yaml
+expect:
+  errors: []
+  runFails: "ERR_X_TELO_REF_INVALID_OBSERVES"
+---
+# A stated constraint must reach a slot observing it, through the module's own
+# reference slots and every need it is forwarded to whole, downward only — so a
+# library gets one verdict for its own needs under every importer.
+kind: Assert.Manifest
+metadata:
+  name: needConstraintUnverified
+source: ./__fixtures__/needs/consume/fieldread/telo.yaml
+expect:
+  errors:
+    - code: NEED_CONSTRAINT_UNVERIFIED
+      message: "Need 'access' states 'version', and nothing verifies it"
+---
+kind: Assert.Manifest
+metadata:
+  name: needConstraintUnverifiedSuppliedAtRuntime
+source: ./__fixtures__/needs/consume/consumers/fieldread.yaml
+expect:
+  errors:
+    - code: NEED_CONSTRAINT_UNVERIFIED
+      message: "Imported library 'FieldRead', reached through import 'Lib'"
+  runFails: "ERR_NEED_CONSTRAINT_UNVERIFIED"
+---
+kind: Assert.Manifest
+metadata:
+  name: needConstraintUnverifiedForwardedAtRuntime
+source: ./__fixtures__/needs/consume/consumers/fieldread-forwarded.yaml
+expect:
+  errors:
+    - code: NEED_CONSTRAINT_UNVERIFIED
+      message: "Imported library 'FieldRead', reached through import 'Lib'"
+  runFails: "ERR_NEED_CONSTRAINT_UNVERIFIED"
+---
+# A root need's constraint forwarded whole into a library that observes nothing —
+# one level, two levels, and for features — is judged by the root's own check,
+# which builds every imported library whole.
+kind: Assert.Manifest
+metadata:
+  name: needConstraintUnverifiedRootForward
+source: ./__fixtures__/needs/consume/consumers/root-version.yaml
+expect:
+  errors:
+    - code: NEED_CONSTRAINT_UNVERIFIED
+      message: "Need 'access' states 'version', and nothing verifies it"
+  runFails: "ERR_NEED_CONSTRAINT_UNVERIFIED"
+---
+kind: Assert.Manifest
+metadata:
+  name: needConstraintUnverifiedTwoLevels
+source: ./__fixtures__/needs/consume/consumers/root-two-levels.yaml
+expect:
+  errors:
+    - code: NEED_CONSTRAINT_UNVERIFIED
+      message: "Need 'access' states 'version', and nothing verifies it"
+  runFails: "ERR_NEED_CONSTRAINT_UNVERIFIED"
+---
+kind: Assert.Manifest
+metadata:
+  name: needConstraintUnverifiedFeatures
+source: ./__fixtures__/needs/consume/consumers/root-features.yaml
+expect:
+  errors:
+    - code: NEED_CONSTRAINT_UNVERIFIED
+      message: "Need 'access' states 'features', and nothing verifies it"
+  runFails: "ERR_NEED_CONSTRAINT_UNVERIFIED"
+---
+kind: Assert.Manifest
+metadata:
+  name: needOptionalReferenced
+source: ./__fixtures__/needs/consume/optional-lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_OPTIONAL_REFERENCED
+      message: "'access' references need 'access', which is optional"
+---
+kind: Assert.Manifest
+metadata:
+  name: needOptionalReferencedAtRuntime
+source: ./__fixtures__/needs/consume/consumers/optional.yaml
+expect:
+  errors:
+    - code: NEED_OPTIONAL_REFERENCED
+      message: "Imported library 'OptionalReferenced', reached through import 'Lib'"
+  runFails: "ERR_NEED_OPTIONAL_REFERENCED"
+---
+kind: Assert.Manifest
+metadata:
+  name: needForwardWiderVersion
+source: ./__fixtures__/needs/consume/forward-version/telo.yaml
+expect:
+  errors:
+    - code: NEED_FORWARD_INCOMPATIBLE
+      message: "requires version '>=15.0.0', and 'access' states '>=14.0.0', which is not within it"
+---
+kind: Assert.Manifest
+metadata:
+  name: needForwardWiderVersionAtRuntime
+source: ./__fixtures__/needs/consume/consumers/forward-version.yaml
+expect:
+  errors:
+    - code: NEED_FORWARD_INCOMPATIBLE
+      message: "Imported library 'ForwardWiderVersion', reached through import 'Lib'"
+  runFails: "ERR_NEED_FORWARD_INCOMPATIBLE"
+---
+kind: Assert.Manifest
+metadata:
+  name: needForwardMissingFeature
+source: ./__fixtures__/needs/consume/forward-features/telo.yaml
+expect:
+  errors:
+    - code: NEED_FORWARD_INCOMPATIBLE
+      message: "requires the features 'pgvector', and 'access' does not ask for 'pgvector'"
+---
+kind: Assert.Manifest
+metadata:
+  name: needForwardMissingFeatureAtRuntime
+source: ./__fixtures__/needs/consume/consumers/forward-features.yaml
+expect:
+  errors:
+    - code: NEED_FORWARD_INCOMPATIBLE
+      message: "Imported library 'ForwardMissingFeature', reached through import 'Lib'"
+  runFails: "ERR_NEED_FORWARD_INCOMPATIBLE"
+---
+kind: Assert.Manifest
+metadata:
+  name: needVersionOnUnversioned
+source: ./__fixtures__/needs/consume/unversioned/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "states a version, but need type 'Kinds.Plain' is not versioned"
+---
+kind: Assert.Manifest
+metadata:
+  name: needVersionOnUnversionedAtRuntime
+source: ./__fixtures__/needs/consume/consumers/unversioned.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Imported library 'UnversionedRange', reached through import 'Lib'"
+  runFails: "ERR_NEED_PARAMETERS_INVALID"

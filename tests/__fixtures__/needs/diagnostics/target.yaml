@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: FulfilmentTarget
+  version: 0.0.0
+  description: Lists a fulfilment as a boot target, which nothing can start.
+imports:
+  Fx: ../types
+targets:
+  - !ref mainDatabase
+---
+kind: Fx.DatabaseAccess
+metadata: { name: mainDatabase }
+fields:
+  url: postgres://localhost/main

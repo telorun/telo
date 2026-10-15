@@ -1,0 +1,7 @@
+kind: Telo.Library
+metadata:
+  name: Wrapper
+  version: 0.0.0
+  description: Imports a library and supplies none of its needs, so they bubble to the root.
+imports:
+  Orders: ../orders

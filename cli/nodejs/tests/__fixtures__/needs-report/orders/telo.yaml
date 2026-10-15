@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: Orders
+  version: 0.0.0
+  description: Needs a database with an extension.
+imports:
+  Types: ../types
+needs:
+  databaseAccess:
+    kind: Types.DatabaseAccess
+    parameters: { extensions: [pgvector] }

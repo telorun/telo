@@ -2,6 +2,7 @@ import type { EvaluationContext as IEvaluationContext, ResourceInstance } from "
 import { RuntimeError } from "@telorun/sdk";
 import type { ModuleContext } from "../../module-context.js";
 import type { ParsedExportEntry } from "@telorun/analyzer";
+import type { NeedSupplyValue } from "./import-controller.js";
 
 /**
  * LIBRARY SINGLETONS — one instantiation of a `lifecycle: shared` library per
@@ -43,6 +44,10 @@ export interface SharedLibrary {
    *  compared by IDENTITY: two imports handing down different instances of the
    *  same kind is exactly the split a singleton exists to prevent. */
   readonly resources: ReadonlyMap<string, ResourceInstance>;
+  /** The needs the instantiating import supplied — a fulfilment handed down
+   *  whole is compared by IDENTITY, a field-by-field supply by its values, and
+   *  an unsupplied need agrees only with another unsupplied one. */
+  readonly needs: ReadonlyMap<string, NeedSupplyValue>;
   readonly declaredVariables: Record<string, any>;
   readonly declaredSecrets: Record<string, any>;
   readonly exportEntries: readonly ParsedExportEntry[];
@@ -96,6 +101,7 @@ export function assertSharedInputsAgree(
   variables: Record<string, unknown>,
   secrets: Record<string, unknown>,
   resources: ReadonlyMap<string, { instance: ResourceInstance }>,
+  needs: ReadonlyMap<string, NeedSupplyValue>,
 ): void {
   const conflict = (block: string, key: string, detail?: string): never => {
     throw new RuntimeError(
@@ -122,6 +128,17 @@ export function assertSharedInputsAgree(
       conflict("resources", key, "different instances");
     }
   }
+  // A need's values are withheld like a secret's: a field may be sensitive.
+  for (const key of union([...entry.needs.keys()], [...needs.keys()])) {
+    if (!sameSupply(entry.needs.get(key), needs.get(key))) conflict("needs", key);
+  }
+}
+
+function sameSupply(a: NeedSupplyValue | undefined, b: NeedSupplyValue | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  if (a.form === "whole" && b.form === "whole") return a.fulfilment === b.fulfilment;
+  if (a.form === "fields" && b.form === "fields") return sameValue(a.values, b.values);
+  return false;
 }
 
 /** Reject a per-import override a singleton has no room for. The analyzer

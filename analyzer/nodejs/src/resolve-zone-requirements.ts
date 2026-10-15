@@ -762,6 +762,8 @@ export function runZoneAnalysis(args: ZoneAnalysisArgs): AnalysisDiagnostic[] {
   // Per-library export contracts, derived over each library's own documents.
   const seeds = new Map<string, ZoneRequirementSpec[]>();
   for (const docs of args.moduleDocuments ?? []) {
+    // A library exporting no instance has no export contract to derive.
+    if (docs.exportedNames.length === 0) continue;
     const contracts = deriveLibraryExportRequirements(
       docs,
       defs,

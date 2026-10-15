@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata:
+  name: VersionlessForward
+  version: 0.0.0
+  description: Forwards a need stating no version to one that states a range.
+imports:
+  Kinds: ../kinds
+  Orders:
+    source: ../orders
+    variables: { serverVersion: "15.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: !ref access
+needs:
+  access:
+    kind: Kinds.DatabaseAccess
+    features: [pgvector]

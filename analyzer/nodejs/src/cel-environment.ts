@@ -6,6 +6,7 @@ import {
 } from "@telorun/cel";
 import { VALUE_TYPES, type ResourceManifest } from "@telorun/sdk";
 import { celNamespaceNames, registerValueBrands } from "@telorun/templating";
+import { isKindDocument } from "./kind-declaration.js";
 import { authoredModuleMetadata, moduleMetadataSchema } from "./module-metadata-scope.js";
 import { jsonSchemaToCelType, VALUE_BRAND_BASE } from "./schema-compat.js";
 import { inferredStepsCelSchema, registerTypedSteps } from "./step-result-inference.js";
@@ -288,21 +289,6 @@ export function buildParameterCelEnvironment(
     env.registerVariable(name, jsonSchemaToCelType(propSchema as Record<string, any>));
   }
   return env;
-}
-
-/**
- * A kind document — whose CEL is written for whoever instantiates the kind, not
- * evaluated in the declaring module's own scope.
- *
- * Its `examples:` show a consumer's route reading `request` and `result`, its
- * `description`s show `!cel "secrets.API_KEY"`, and a rule condition reads the
- * `self` / `referrer` its own evaluator binds. None of those names are in scope
- * where they are WRITTEN, and all of them are correct where they are READ — so
- * every check that asks "is this name in scope here" has to stand down on these
- * documents, or it reports errors nobody can fix without deleting the example.
- */
-export function isKindDocument(manifest: ResourceManifest): boolean {
-  return manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract";
 }
 
 /**

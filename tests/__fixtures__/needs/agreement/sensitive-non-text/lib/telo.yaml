@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata:
+  name: SensitiveNonText
+  version: 0.0.0
+  description: A need type marking a field sensitive that holds no text to redact.
+exports:
+  kinds: [Credentials]
+---
+kind: Telo.NeedType
+metadata:
+  name: Credentials
+fields:
+  token: { type: object, x-telo-sensitive: true }
+required: [token]

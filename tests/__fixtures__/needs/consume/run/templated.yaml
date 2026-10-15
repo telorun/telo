@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: ConsumeTemplatedRun
+  version: 1.0.0
+  description: A need opened and verified at an observing slot inside a templated kind's body.
+imports:
+  Templated:
+    source: ../templated
+    variables: { serverVersion: "16.1.0" }
+    needs:
+      databaseAccess: { url: "postgres://db.internal:5432/orders" }

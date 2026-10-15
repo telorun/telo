@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: ConsumeProbe
+  version: 1.0.0
+  description: Resolving a pointer that is not a need slot of the kind is refused, naming the pointer.
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.DatabaseAccess
+metadata: { name: access }
+fields: { url: "postgres://db.internal:5432/orders" }
+---
+kind: Kinds.Database
+metadata: { name: db }
+access: !ref access
+serverVersion: "15.0.0"
+probe: /serverVersion

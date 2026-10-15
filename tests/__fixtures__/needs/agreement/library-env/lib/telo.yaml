@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: LibraryEnv
+  version: 0.0.0
+  description: A library need binding an environment name, which only an application may.
+imports:
+  Fx: ../../../types
+needs:
+  databaseAccess:
+    kind: Fx.DatabaseAccess
+    env: { url: DATABASE_URL }

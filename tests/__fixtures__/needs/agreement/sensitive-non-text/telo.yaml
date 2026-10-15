@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: SensitiveNonTextConsumer
+  version: 0.0.0
+  description: Imports the library beside it, whose need type the kernel refuses at load.
+imports:
+  Lib: ./lib

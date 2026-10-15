@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: UnmetNested
+  version: 0.0.0
+  description: A required need two imports deep that nothing supplies.
+imports:
+  Wrapper: ../wrapper

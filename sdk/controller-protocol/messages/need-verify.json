@@ -1,0 +1,65 @@
+{
+  "name": "Need.Verify",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "pointer": {
+        "description": "A JSON Pointer into the asking instance's manifest, naming a reference slot of its own kind.",
+        "type": "string",
+        "pattern": "^(/([^/~]|~[01])*)+$"
+      },
+      "observation": {
+        "description": "What the consumer found on the real thing behind the fulfilment: the actual version as semver text, the features present.",
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "description": "Report what the consumer observed on the fulfilment at an observing slot of its own kind, one member per constraint the slot observes. The kernel compares it with the outermost need of the whole-forward chain; no controller compares a range.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "pointer": {
+        "$ref": "#/definitions/pointer"
+      },
+      "observation": {
+        "$ref": "#/definitions/observation"
+      }
+    },
+    "required": [
+      "instance",
+      "pointer",
+      "observation"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The observation satisfies the need.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_REF_UNRESOLVED",
+    "ERR_NEED_OBSERVATION_INVALID",
+    "ERR_NEED_UNMET"
+  ],
+  "synchronous": true,
+  "reentrant": false
+}

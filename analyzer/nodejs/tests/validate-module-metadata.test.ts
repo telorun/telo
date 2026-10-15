@@ -106,6 +106,17 @@ describe("kind-doc metadata", () => {
   it("does not invent module-only fields for a kind doc", () => {
     expect(codes([definition({ version: "1.0.0" })])).toEqual([]);
   });
+
+  // A need type declares a kind its document does not spell out, so it is
+  // recognised as a kind document through the kind-declaration reader.
+  it("checks a need type's metadata as a kind doc's", () => {
+    const needType = {
+      kind: "Telo.NeedType",
+      metadata: { name: "Token", source: "file:///sql/telo.yaml", descriptoin: "A token." },
+      fields: { value: { type: "string" } },
+    } as unknown as ResourceManifest;
+    expect(codes([needType])).toEqual(["METADATA_UNKNOWN_FIELD"]);
+  });
 });
 
 describe("deprecation", () => {

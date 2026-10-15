@@ -3,6 +3,7 @@ import { isTaggedSentinel } from "@telorun/templating";
 
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { isKindDocument } from "./kind-declaration.js";
 import { distance } from "./levenshtein.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -118,7 +119,7 @@ export function validateModuleMetadata(
 
   for (const manifest of manifests) {
     const isModuleDoc = manifest.kind === "Telo.Application" || manifest.kind === "Telo.Library";
-    const isKindDoc = manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract";
+    const isKindDoc = isKindDocument(manifest);
     if (!isModuleDoc && !isKindDoc) continue;
 
     const metadata = manifest.metadata as Record<string, unknown> | undefined;

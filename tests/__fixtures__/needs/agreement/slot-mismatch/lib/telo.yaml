@@ -1,0 +1,12 @@
+kind: Telo.Library
+metadata:
+  name: SlotMismatch
+  version: 0.0.0
+  description: A fulfilment missing a field its need type requires.
+imports:
+  Fx: ../../../types
+---
+kind: Fx.DatabaseAccess
+metadata: { name: mainDatabase }
+fields:
+  schema: main

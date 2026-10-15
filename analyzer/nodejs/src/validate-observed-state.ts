@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { isKindDocument } from "./kind-declaration.js";
 import { OBSERVED_STATE_KEY } from "@telorun/sdk";
 import { celExpressionsOf, walkCelExpressions } from "@telorun/templating";
 import { accessChains } from "./cel-access-chains.js";
@@ -14,14 +15,14 @@ import {
 import type { CallGraph } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { reachSites } from "./reference-reach.js";
+import { injectedNeedOf, needReadingSchema, needTypeOf } from "./need-type.js";
 
-const SYSTEM_KINDS = new Set([
-  "Telo.Definition",
-  "Telo.Abstract",
-  "Telo.Import",
-  "Telo.Application",
-  "Telo.Library",
-]);
+/** A document that declares a kind, a module or an import — no resource. */
+const isSystemDocument = (m: { kind?: unknown }): boolean =>
+  m.kind === "Telo.Import" ||
+  m.kind === "Telo.Application" ||
+  m.kind === "Telo.Library" ||
+  isKindDocument(m);
 
 /**
  * The `status:` block's own schema — a plain JSON Schema, structurally. The one
@@ -174,6 +175,10 @@ export function collectRunReachableNames(graph: CallGraph): Set<string> {
 export interface AnalyzedResource {
   kind: string;
   status?: Record<string, any>;
+  /** What `resources.<name>` reads as, CLOSED, when the kind declares its
+   *  reading — a need type's fields. Absent for every other kind, whose flat
+   *  reading stays open. */
+  reading?: Record<string, any>;
   capability?: string;
   scoped?: boolean;
   scope?: { kind: string; name?: string; field: string };
@@ -212,13 +217,16 @@ export function buildObservedStateIndex(
     scope: AnalyzedResource["scope"],
     module?: string,
     forwardedFrom?: string,
+    optionalNeed = false,
   ): void => {
     const definition = resolve.in(kind, module);
     const status = effectiveStatusSchema(definition, resolve);
     const capability = inheritedCapability(definition, resolve);
+    const needType = needTypeOf(definition);
     out.set(key, {
       kind,
       ...(status ? { status } : {}),
+      ...(needType ? { reading: needReadingSchema(needType, optionalNeed) } : {}),
       ...(capability ? { capability } : {}),
       ...(scope ? { scoped: true, scope } : {}),
       ...(forwardedFrom !== undefined ? { forwardedFrom } : {}),
@@ -228,7 +236,7 @@ export function buildObservedStateIndex(
   for (const manifest of manifests) {
     const kind = manifest.kind as string | undefined;
     const name = manifest.metadata?.name as string | undefined;
-    if (!kind || SYSTEM_KINDS.has(kind)) continue;
+    if (!kind || isSystemDocument(manifest)) continue;
     const module = manifest.metadata?.module as string | undefined;
     // A dependency's declarations publish into ITS module's `resources`, not this
     // one's: they are keyed by that module, and an export is also indexed under
@@ -237,7 +245,16 @@ export function buildObservedStateIndex(
     if (forwardedFrom === undefined && isForwardedDeclaration(manifest)) continue;
     const keyOf = (n: string) =>
       forwardedFrom === undefined ? n : forwardedResourceKey(forwardedFrom, n);
-    if (name) record(kind, keyOf(name), undefined, module, forwardedFrom);
+    if (name) {
+      record(
+        kind,
+        keyOf(name),
+        undefined,
+        module,
+        forwardedFrom,
+        injectedNeedOf(manifest)?.optional === true,
+      );
+    }
 
     const schema = resolve(kind)?.schema as Record<string, any> | undefined;
     if (!schema) continue;
@@ -295,7 +312,7 @@ function* importedExports(
   for (const m of manifests) {
     const module = m.metadata?.module as string | undefined;
     const name = m.metadata?.name as string | undefined;
-    if (!module || !name || SYSTEM_KINDS.has(m.kind as string)) continue;
+    if (!module || !name || isSystemDocument(m)) continue;
     const forwarded = (m.metadata as { forwardedExport?: boolean } | undefined)?.forwardedExport;
     if (!forwarded && !declaredByModule.get(module)?.has(name)) continue;
     let byName = exportsByModule.get(module);
@@ -323,13 +340,37 @@ export function buildObservedStateResourcesSchema(
   open: boolean,
 ): Record<string, any> {
   const properties: Record<string, any> = {};
-  for (const [key, { status, forwardedFrom }] of index) {
-    if (!status || forwardedFrom !== undefined) continue;
-    applyObservedStateNode(properties, key, status);
+  for (const [key, { status, reading, forwardedFrom }] of index) {
+    if (forwardedFrom !== undefined) continue;
+    if (reading) applyReadingNode(properties, key, reading);
+    else if (status) applyObservedStateNode(properties, key, status);
   }
   return open
     ? { type: "object", additionalProperties: true, properties }
     : { type: "object", properties };
+}
+
+/**
+ * Write a CLOSED reading for one index key into a `resources` property map —
+ * a fulfilment's fields, which are all it publishes. A dotted key is an
+ * import's exported instance, two levels deep, as for observed state.
+ */
+export function applyReadingNode(
+  properties: Record<string, any>,
+  key: string,
+  reading: Record<string, any>,
+): void {
+  const dot = key.indexOf(".");
+  if (dot < 0) {
+    properties[key] = reading;
+    return;
+  }
+  const aliasNode = (properties[key.slice(0, dot)] ??= {
+    type: "object",
+    additionalProperties: true,
+    properties: {},
+  });
+  (aliasNode.properties ??= {})[key.slice(dot + 1)] = reading;
 }
 
 /**

@@ -269,7 +269,7 @@ interface SuppliedConfig {
   readonly blocks: ReadonlyMap<string, Record<string, unknown>>;
 }
 
-const SUPPLIED_BLOCKS = ["variables", "secrets", "resources"] as const;
+const SUPPLIED_BLOCKS = ["variables", "secrets", "resources", "needs"] as const;
 
 /**
  * Two imports of ONE `lifecycle: shared` library supplying different values.
@@ -289,7 +289,8 @@ const SUPPLIED_BLOCKS = ["variables", "secrets", "resources"] as const;
  *    different modules may not.
  *  - A `resources:` entry names a resource by name, which means the same
  *    instance only when both imports were DECLARED in the same module — so a
- *    cross-module pair is left to the runtime.
+ *    cross-module pair is left to the runtime. A need supplied whole by `!ref`
+ *    is the same case.
  *
  * Grouped by the target's RESOLVED SOURCE, the identity the kernel keys its
  * singleton registry on; `resolvedModuleName` would collapse two versions of one
@@ -340,6 +341,15 @@ function sharedLibraryConflicts(
         const b = later.blocks.get(block)!;
         for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
           if (findDynamicLeaf(a[key]) || findDynamicLeaf(b[key])) continue;
+          // A need supplied whole names a need or fulfilment of the importer —
+          // the same one only within one module, like a resource input.
+          if (
+            block === "needs" &&
+            (isRefSentinel(a[key]) || isRefSentinel(b[key])) &&
+            first!.module !== later.module
+          ) {
+            continue;
+          }
           if (sameSuppliedValue(a[key], b[key])) continue;
           out.push({
             severity: DiagnosticSeverity.Error,

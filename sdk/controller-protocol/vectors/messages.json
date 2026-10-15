@@ -729,6 +729,58 @@
       }
     },
     {
+      "message": "Need.Resolve",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "pointer": "/access"
+      }
+    },
+    {
+      "message": "Need.Resolve",
+      "part": "response",
+      "body": {
+        "constraints": {
+          "features": [
+            "pgvector"
+          ],
+          "version": ">=15.0.0"
+        },
+        "fields": {
+          "url": "postgres://db.internal:5432/orders"
+        },
+        "sensitive": [
+          "url"
+        ],
+        "target": {
+          "id": "h7",
+          "ref": {
+            "kind": "Orders.DatabaseAccess",
+            "name": "databaseAccess"
+          }
+        }
+      }
+    },
+    {
+      "message": "Need.Verify",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "observation": {
+          "features": [
+            "pgvector"
+          ],
+          "version": "14.11.0"
+        },
+        "pointer": "/access"
+      }
+    },
+    {
+      "message": "Need.Verify",
+      "part": "response",
+      "body": {}
+    },
+    {
       "message": "Ref.Declaration",
       "part": "request",
       "body": {
@@ -998,7 +1050,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": 4,
+        "generation": 6,
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1012,7 +1064,7 @@
       "message": "Session.Hello",
       "part": "response",
       "body": {
-        "generation": 4,
+        "generation": 6,
         "controller": {
           "telo": "0.103.2",
           "runtime": {
@@ -1358,7 +1410,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": "4",
+        "generation": "6",
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1370,7 +1422,7 @@
       "pointer": "/generation"
     },
     {
-      "name": "a handshake below the generation this specification defines",
+      "name": "a handshake stating a generation older than the handshake itself",
       "message": "Session.Hello",
       "part": "request",
       "body": {
@@ -1390,7 +1442,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": 4,
+        "generation": 6,
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1581,6 +1633,30 @@
         "exitCode": "0"
       },
       "pointer": "/exitCode"
+    },
+    {
+      "name": "a need named by a slot that is not a JSON Pointer",
+      "message": "Need.Resolve",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "pointer": "access"
+      },
+      "pointer": "/pointer"
+    },
+    {
+      "name": "an observation reporting something no need constrains",
+      "message": "Need.Verify",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "observation": {
+          "edition": "enterprise",
+          "version": "15.0.0"
+        },
+        "pointer": "/access"
+      },
+      "pointer": "/observation"
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { ResourceInstance, RuntimeError } from "@telorun/sdk";
+import { isNeedFulfilment } from "./need-fulfilment.js";
 
 /** One concrete reference site: the value written there and where it sits. */
 export interface InjectionSite {
@@ -59,5 +60,9 @@ export function injectAtSite(
   const candidate = ref as Record<string, unknown>;
   if (typeof candidate.kind !== "string" || typeof candidate.name !== "string") return;
   const instance = resolveInto(candidate);
-  if (instance) (site.holder as Record<string | number, unknown>)[site.key!] = instance;
+  // A need's fulfilment stays a reference: a controller opens it through
+  // `ctx.resolveNeed`, never as an instance it holds.
+  if (instance && !isNeedFulfilment(instance)) {
+    (site.holder as Record<string | number, unknown>)[site.key!] = instance;
+  }
 }

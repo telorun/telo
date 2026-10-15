@@ -57,7 +57,9 @@
     "additionalProperties": false
   },
   "errors": [
-    "ERR_EFFECT_SCOPE_CLOSED"
+    "ERR_EFFECT_SCOPE_CLOSED",
+    "ERR_NEED_UNMET",
+    "ERR_NEED_OBSERVATION_INVALID"
   ],
   "synchronous": false,
   "reentrant": true

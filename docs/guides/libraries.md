@@ -103,7 +103,9 @@ Hej, World!
 ```
 
 An import entry is either a bare source string (`Console: oci://…`) or the
-object form above when you need to pass `variables:` / `secrets:`. Either way
+object form above when you need to pass `variables:` / `secrets:` — or supply
+the library's typed `needs:`, a database or a signing key it asks for (see
+[Declaring a need](/learn/declaring-a-need)). Either way
 the alias is yours to choose: it is the prefix on every kind and every
 cross-module reference in the importing file, so the library never dictates what
 you call it.
@@ -231,3 +233,5 @@ a copy that can drift.
   refs, and transports.
 - [Configuring an application](/learn/configuration) — the configuration
   boundary this page relies on.
+- [Declaring a need](/learn/declaring-a-need) — what a library asks whoever runs
+  it for, and how an import supplies it.

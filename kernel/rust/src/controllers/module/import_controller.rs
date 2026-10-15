@@ -35,7 +35,7 @@ pub fn parse_import(
     let (source, runtime) = match entry {
         Value::String(source) => (source.as_str(), None),
         Value::Object(map) => {
-            for unsupported in ["variables", "secrets", "resources"] {
+            for unsupported in ["variables", "secrets", "resources", "needs"] {
                 if map.contains_key(unsupported) {
                     return Err(KernelError::new(
                         "ERR_UNSUPPORTED_MANIFEST_FEATURE",

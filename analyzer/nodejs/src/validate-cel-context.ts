@@ -7,6 +7,7 @@ import {
   parseCanonicalTypeSchemaId,
 } from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import { kindDeclarationOf } from "./kind-declaration.js";
 import { parameterContextProperties, readParams } from "./callable-signature.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { withRefSlotsAsReadings } from "./ref-slot-reading.js";
@@ -116,9 +117,9 @@ function typeCapableNames(allManifests: Record<string, any>[]): Set<string> {
   if (cached) return cached;
   const names = new Set<string>();
   for (const def of [...KERNEL_BUILTINS, ...allManifests] as Record<string, any>[]) {
-    if (def?.kind !== "Telo.Definition" && def?.kind !== "Telo.Abstract") continue;
-    if (def.capability !== "Telo.Type") continue;
-    const name = def.metadata?.name;
+    const declared = kindDeclarationOf(def) as Record<string, any> | undefined;
+    if (declared?.capability !== "Telo.Type") continue;
+    const name = declared.metadata?.name;
     if (typeof name === "string") names.add(name);
   }
   typeKindNames.set(allManifests, names);

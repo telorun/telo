@@ -23,6 +23,7 @@ import { errorTypeOf, isCompiledValue, predicateResult } from "@telorun/sdk";
 import { MODULE_CALL_DISPATCH_KEY } from "@telorun/templating";
 import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleFunctionTable, splitQualifiedCall } from "./module-functions.js";
+import type { NeedFulfilment } from "./need-fulfilment.js";
 
 /** Where a call through an import alias stands. */
 export type ImportedFunctionTarget =
@@ -745,7 +746,95 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
       // Unspellable in CEL, so reachable only through a module call's dispatch.
       [MODULE_CALL_DISPATCH_KEY]: this.functions.dispatch,
     };
-    this._secretValues = collectSecretValues(this._secrets);
+    this.refreshSecretValues();
+  }
+
+  /**
+   * Values this context redacts beyond its own `secrets:` — the sensitive fields
+   * of every need fulfilment that reaches it.
+   *
+   * The redaction set is ONE object for the context's lifetime, refilled in
+   * place: a logging scope holds it by reference from the moment the scope is
+   * configured, and a fulfilment bound after that must still reach every line
+   * the scope writes.
+   */
+  private readonly redactedValues = new Set<string>();
+
+  addRedactedValues(values: Iterable<string>): void {
+    let added = false;
+    for (const value of values) {
+      if (typeof value !== "string" || value.length === 0 || this.redactedValues.has(value)) continue;
+      this.redactedValues.add(value);
+      added = true;
+    }
+    if (added) this.refreshSecretValues();
+  }
+
+  private refreshSecretValues(): void {
+    const values = this._secretValues;
+    values.clear();
+    for (const value of collectSecretValues(this._secrets)) values.add(value);
+    for (const value of this.redactedValues) values.add(value);
+  }
+
+  /** Where this module instance sits in the import tree — the prefix of each of
+   *  its needs' paths: empty at the root, `[...importer, alias]` for an
+   *  isolated import, `[<LibraryName>]` for a shared library. */
+  needPath: readonly string[] = [];
+
+  /** Needs bound to no fulfilment — an optional need nothing supplied. */
+  private readonly absentNeeds = new Set<string>();
+  /** Every need this module declares that is bound, absent ones included. */
+  private readonly boundNeeds = new Set<string>();
+
+  /**
+   * Bind a need this module declares to the fulfilment that satisfies it, or —
+   * for an optional need nothing supplies — to nothing, so `resources.<need>`
+   * reads `null`.
+   *
+   * Borrowed, never owned: a fulfilment belongs to whoever supplied it, so this
+   * context never tears it down. Its reading is its fields, fixed once it
+   * exists, so it is published here directly rather than mirrored. Returns the
+   * inverse, for the reason {@link adoptBorrowedResource} does.
+   */
+  bindNeed(
+    name: string,
+    binding: { manifest: ResourceManifest; fulfilment: NeedFulfilment } | null,
+  ): () => void {
+    this.boundNeeds.add(name);
+    if (binding === null) {
+      this.absentNeeds.add(name);
+      this._resources = { ...this._resources, [name]: null };
+      this._rebuildContext();
+      return () => {
+        this.boundNeeds.delete(name);
+        this.absentNeeds.delete(name);
+        this.clearPublishedReading(name);
+      };
+    }
+    this.resourceInstances.set(name, { resource: binding.manifest, instance: binding.fulfilment });
+    this.borrowedResources.add(name);
+    this.declaredManifests.set(name, binding.manifest);
+    this.addRedactedValues(binding.fulfilment.sensitiveValues);
+    this.setResource(name, binding.fulfilment.snapshot());
+    return () => {
+      this.boundNeeds.delete(name);
+      this.borrowedResources.delete(name);
+      this.resourceInstances.delete(name);
+      this.declaredManifests.delete(name);
+      this.clearPublishedReading(name);
+    };
+  }
+
+  /** Whether `name` is a need of this module — its place in the need table is
+   *  then `[...needPath, name]`. */
+  isNeed(name: string): boolean {
+    return this.boundNeeds.has(name);
+  }
+
+  /** Whether `name` is a need of this module bound to nothing. */
+  isAbsentNeed(name: string): boolean {
+    return this.absentNeeds.has(name);
   }
 
   override async invoke<TInputs>(

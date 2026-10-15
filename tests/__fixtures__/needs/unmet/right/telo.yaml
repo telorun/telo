@@ -1,0 +1,7 @@
+kind: Telo.Library
+metadata:
+  name: Right
+  version: 0.0.0
+  description: Reaches the shared library under another alias and supplies nothing.
+imports:
+  Auth: ../../agreement/shared-conflict/sessions

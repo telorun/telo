@@ -1,10 +1,16 @@
 import {
   authoredModuleMetadata,
+  celResourceReads,
   foldIntegrity,
   isInjectedDeclaration,
+  isKindDocument,
+  needSupplyOf,
+  needTypeOf,
   parseExportEntry,
   readLibraryLifecycle,
+  readNeeds,
   readResourceInputs,
+  readSuppliedNeeds,
   readSuppliedResources,
 } from "@telorun/analyzer";
 import type { ParsedExportEntry } from "@telorun/analyzer";
@@ -17,6 +23,8 @@ import { ModuleContext } from "../../module-context.js";
 import { isDefaultPolicy, normalizeRuntime } from "../../runtime-registry.js";
 import { resolveLibraryScope } from "./library-scope.js";
 import { isDefinitionRegistered } from "../resource-definition/registered-definitions.js";
+import { isNeedFulfilment, needFulfilment, type NeedFulfilment } from "../../need-fulfilment.js";
+import { environmentNeed } from "./environment-needs.js";
 import {
   assertNoSharedOverride,
   assertSharedInputsAgree,
@@ -39,6 +47,10 @@ export async function create(
   // cause. Resolving first is what keeps a deferral cheap: a fetch, a parse and
   // a full analysis pass would otherwise be redone on every pass.
   const borrowed = resolveBorrowedResources(resource, ctx);
+  // The needs this import supplies, resolved and evaluated in the IMPORTER's
+  // scope for the same reason: a fulfilment named here that is not created yet
+  // is a deferral.
+  const supplies = resolveNeedSupplies(resource, ctx);
 
   const rawSource: string = resource.module ?? resource.source;
   // A directly-authored Telo.Import may carry integrity as a sibling field;
@@ -73,7 +85,7 @@ export async function create(
   const registry = sharedLibraries(ctx.moduleContext);
   const alreadyShared = registry.get(resolvedUrl);
   if (alreadyShared) {
-    return borrowSharedLibrary(alreadyShared, alias, resource, borrowed, ctx);
+    return borrowSharedLibrary(alreadyShared, alias, resource, borrowed, supplies, ctx);
   }
 
   // The library's scope is the kernel's own analysis registry seen from inside
@@ -112,6 +124,22 @@ export async function create(
   validateRequiredInputs(moduleManifest.secrets ?? {}, resource.secrets ?? {}, "secrets");
   const declaredInputs = readResourceInputs(moduleManifest);
   validateResourceInputs(declaredInputs, borrowed, targetModule);
+  // Where this module instance sits in the import tree, which is what names its
+  // needs: beneath the importer's own path, or — for a singleton — beneath the
+  // library's name directly under the root.
+  const needPath = readLibraryLifecycle(moduleManifest) === "shared"
+    ? [targetModule]
+    : [...(ctx.moduleContext as unknown as ModuleContext).needPath, alias];
+  // What fulfils each need the library declares — the need table refused every
+  // defect here at load; these are its backstops for a load that never ran it.
+  const needBindings = bindNeedSupplies(
+    moduleManifest,
+    supplies,
+    scope.registry,
+    alias,
+    needPath,
+    ctx,
+  );
 
   // Evaluate the import's variables/secrets ONCE against the IMPORTER's config
   // scope, instead of baking the raw compiled-value objects verbatim. Resolution
@@ -170,6 +198,7 @@ export async function create(
   childCtx.setModuleMetadata(
     authoredModuleMetadata(moduleManifest.metadata as Record<string, unknown> | undefined),
   );
+  childCtx.needPath = needPath;
 
   // A singleton is spawned under the ROOT, never under whichever import reached
   // it first: otherwise tearing that importer down would close a library two
@@ -274,6 +303,25 @@ export async function create(
       .perform();
   }
 
+  // Each need is bound under its name the same way, before the library's
+  // resources register: `!ref <need>` resolves, `resources.<need>.<field>`
+  // reads, and a resource named like a need fails as the duplicate it is.
+  if (needBindings.size > 0) {
+    await ctx
+      .effect(`needs ${alias}`, async () => {
+        const inverses = [...needBindings].map(([name, binding]) =>
+          childCtx.bindNeed(name, binding),
+        );
+        return {
+          result: undefined,
+          inverse: () => {
+            for (const undo of inverses) undo();
+          },
+        };
+      })
+      .perform();
+  }
+
   const policy = (child as ModuleContext).getControllerPolicy();
   for (const manifest of manifests) {
     // The kind-only stand-ins the loader synthesizes behind a `resources:` entry
@@ -284,7 +332,7 @@ export async function create(
     // this library already registered is not created again. What differs per
     // import — the context a template body runs in — is resolved per instance.
     if (
-      (manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract") &&
+      isKindDocument(manifest) &&
       isDefinitionRegistered(ctx.moduleContext, manifest, policy)
     ) {
       continue;
@@ -397,6 +445,7 @@ export async function create(
         variables: importVariables,
         secrets: importSecrets,
         resources: new Map([...borrowed].map(([name, b]) => [name, b.instance])),
+        needs: supplies,
         declaredVariables: (moduleManifest.variables ?? {}) as Record<string, any>,
         declaredSecrets: (moduleManifest.secrets ?? {}) as Record<string, any>,
         exportEntries,
@@ -512,6 +561,7 @@ function borrowSharedLibrary(
   alias: string,
   resource: any,
   borrowed: Map<string, BorrowedResource>,
+  supplies: ReadonlyMap<string, NeedSupplyValue>,
   ctx: BuiltinControllerContext,
 ): ResourceInstance {
   assertNoSharedOverride(resource, alias, entry.module);
@@ -525,7 +575,7 @@ function borrowSharedLibrary(
   );
   validateRequiredInputs(entry.declaredVariables, importVariables, "variables");
   validateRequiredInputs(entry.declaredSecrets, importSecrets, "secrets");
-  assertSharedInputsAgree(entry, alias, importVariables, importSecrets, borrowed);
+  assertSharedInputsAgree(entry, alias, importVariables, importSecrets, borrowed, supplies);
 
   const childCtx = entry.context;
   const exportedResourceNames = [...entry.exportedResourceNames];
@@ -695,4 +745,203 @@ function validateResourceInputs(
         `${declared.map((d) => d.name).join(", ") || "(none)"}.`,
     );
   }
+}
+
+/** One need an import supplies, resolved in the importer's scope: a fulfilment
+ *  handed down whole (null for an optional need of the importer bound to
+ *  nothing), or the evaluated values of a field-by-field supply. */
+export type NeedSupplyValue =
+  | { form: "whole"; source: string; fulfilment: NeedFulfilment | null }
+  | { form: "fields"; values: Record<string, unknown> };
+
+/**
+ * Resolve every `needs:` entry this import supplies, in the IMPORTER's scope.
+ *
+ * Whole: the `!ref` names a need or a fulfilment the importer declares. A name
+ * registered but not yet created defers (`ERR_LOCAL_REF_PENDING`); one naming
+ * nothing is `ERR_REF_UNRESOLVED`. Field by field: the values are evaluated
+ * here, once, after every resource they read has been created.
+ */
+function resolveNeedSupplies(
+  resource: any,
+  ctx: BuiltinControllerContext,
+): Map<string, NeedSupplyValue> {
+  const out = new Map<string, NeedSupplyValue>();
+  const alias = resource.metadata.name as string;
+  const importer = ctx.moduleContext as unknown as ModuleContext;
+  const pending = (name: string, label: string): never => {
+    throw new RuntimeError(
+      "ERR_LOCAL_REF_PENDING",
+      `Import '${alias}': need '${label}' reads '${name}', which is not available yet ` +
+        `(deferring to a later init pass).`,
+    );
+  };
+  for (const [name, value] of Object.entries(readSuppliedNeeds(resource))) {
+    const supply = needSupplyOf(value);
+    if (supply.form === "invalid") {
+      throw new RuntimeError(
+        "ERR_NEED_SLOT_MISMATCH",
+        `Import '${alias}': need '${name}' must be a '!ref' to a need or fulfilment this module ` +
+          `declares, or a map of the need type's fields.`,
+      );
+    }
+    if (supply.form === "fields") {
+      for (const read of celResourceReads({ fields: supply.fields } as unknown as ResourceManifest)) {
+        if (importer.hasManifest(read) && !importer.resourceInstances.has(read)) pending(read, name);
+      }
+      const values = (ctx.expandValue(supply.fields, {}) as Record<string, unknown>) ?? {};
+      out.set(name, { form: "fields", values });
+      continue;
+    }
+    const target = supply.target;
+    if (target.alias !== undefined && target.alias !== "Self") {
+      throw new RuntimeError(
+        "ERR_REF_UNRESOLVED",
+        `Import '${alias}': need '${name}' → '${target.source}' names another module's resource. A ` +
+          `need is supplied whole by a '!ref' to a need or fulfilment this module declares.`,
+      );
+    }
+    if (importer.isAbsentNeed(target.name)) {
+      out.set(name, { form: "whole", source: target.source, fulfilment: null });
+      continue;
+    }
+    const instance = importer.resourceInstances.get(target.name)?.instance;
+    if (!instance) {
+      if (importer.hasManifest(target.name)) pending(target.name, name);
+      throw new RuntimeError(
+        "ERR_REF_UNRESOLVED",
+        `Import '${alias}': need '${name}' → '${target.source}' names no need or fulfilment this ` +
+          `module declares.`,
+      );
+    }
+    if (!isNeedFulfilment(instance)) {
+      throw new RuntimeError(
+        "ERR_REFERENCE_KIND_MISMATCH",
+        `Import '${alias}': need '${name}' → '${target.source}' is not a need or a fulfilment of ` +
+          `a need type.`,
+      );
+    }
+    out.set(name, { form: "whole", source: target.source, fulfilment: instance });
+  }
+  return out;
+}
+
+/**
+ * Bind each need the library declares to what fulfils it: the fulfilment an
+ * import handed down whole, a fulfilment built from its field-by-field supply
+ * (owned by the importer, whose redaction set its sensitive values join), one
+ * built from what the environment holds for a need nothing supplies (owned by
+ * the library, whose context it is bound in), or — for an optional need with
+ * none of those — nothing.
+ */
+function bindNeedSupplies(
+  moduleManifest: ResourceManifest,
+  supplies: ReadonlyMap<string, NeedSupplyValue>,
+  libraryRegistry: { resolveKind(kind: string): string | undefined; resolveDefinition(kind: string): any },
+  alias: string,
+  needPath: readonly string[],
+  ctx: BuiltinControllerContext,
+): Map<string, { manifest: ResourceManifest; fulfilment: NeedFulfilment } | null> {
+  const out = new Map<string, { manifest: ResourceManifest; fulfilment: NeedFulfilment } | null>();
+  const targetModule = moduleManifest.metadata.name as string;
+  const needs = readNeeds(moduleManifest);
+  const declared = new Set(needs.map((need) => need.name));
+  for (const name of supplies.keys()) {
+    if (declared.has(name)) continue;
+    throw new RuntimeError(
+      "ERR_NEED_UNDECLARED",
+      `Import '${alias}' supplies need '${name}', which module '${targetModule}' does not declare. ` +
+        `Declared needs: ${[...declared].join(", ") || "(none)"}.`,
+    );
+  }
+  for (const need of needs) {
+    const type = libraryRegistry.resolveKind(need.kind) ?? need.kind;
+    const shape = needTypeOf(libraryRegistry.resolveDefinition(type));
+    if (!shape) {
+      throw new RuntimeError(
+        "ERR_NEED_TYPE_UNRESOLVED",
+        `Module '${targetModule}': need '${need.name}' names kind '${need.kind}', which is not a ` +
+          `need type.`,
+      );
+    }
+    const manifest = {
+      kind: need.kind,
+      metadata: { name: need.name, module: targetModule },
+    } as unknown as ResourceManifest;
+    const supply = supplies.get(need.name);
+    if (!supply) {
+      const path = [...needPath, need.name];
+      const fromEnvironment = environmentNeed(ctx.moduleContext, path);
+      if (fromEnvironment) {
+        out.set(need.name, { manifest, fulfilment: needFulfilment(type, shape, fromEnvironment) });
+        continue;
+      }
+      if (need.optional) {
+        out.set(need.name, null);
+        continue;
+      }
+      throw new RuntimeError(
+        "ERR_NEED_UNMET",
+        `Need '${path.join(".")}' (type '${type}', declared by module '${targetModule}') is ` +
+          `required and nothing supplies it. Supply it at the import ('needs: { ${need.name}: … }'), ` +
+          `or mark it 'optional: true'.`,
+      );
+    }
+    if (supply.form === "whole") {
+      if (supply.fulfilment === null) {
+        if (!need.optional) {
+          throw new RuntimeError(
+            "ERR_NEED_FORWARD_INCOMPATIBLE",
+            `Import '${alias}': need '${need.name}' is required by module '${targetModule}', and ` +
+              `'${supply.source}' is an optional need nothing supplied.`,
+          );
+        }
+        out.set(need.name, null);
+        continue;
+      }
+      if (supply.fulfilment.type !== type) {
+        throw new RuntimeError(
+          "ERR_REFERENCE_KIND_MISMATCH",
+          `Import '${alias}': need '${need.name}' is need type '${type}', and '${supply.source}' ` +
+            `is '${supply.fulfilment.type}'.`,
+        );
+      }
+      out.set(need.name, { manifest, fulfilment: supply.fulfilment });
+      continue;
+    }
+    for (const key of Object.keys(supply.values)) {
+      if (key in shape.fields) continue;
+      throw new RuntimeError(
+        "ERR_NEED_FIELD_UNDECLARED",
+        `Import '${alias}': need '${need.name}': field '${key}' is not declared by need type ` +
+          `'${type}'. Fields: ${Object.keys(shape.fields).join(", ") || "(none)"}.`,
+      );
+    }
+    const missing = shape.required.filter((field) => supply.values[field] === undefined);
+    if (missing.length > 0) {
+      throw new RuntimeError(
+        "ERR_NEED_SLOT_MISMATCH",
+        `Import '${alias}': need '${need.name}' does not yield the required field(s) ` +
+          `${missing.map((f) => `'${f}'`).join(", ")} of need type '${type}'.`,
+      );
+    }
+    try {
+      ctx.validateSchema(supply.values, {
+        type: "object",
+        properties: shape.fields,
+      });
+    } catch (err) {
+      throw new RuntimeError(
+        "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
+        `Import '${alias}': need '${need.name}' does not match need type '${type}': ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    const fulfilment = needFulfilment(type, shape, supply.values);
+    // An anonymous fulfilment is the importer's, so its values are redacted
+    // there as well as in every context it is bound to.
+    (ctx.moduleContext as unknown as ModuleContext).addRedactedValues(fulfilment.sensitiveValues);
+    out.set(need.name, { manifest, fulfilment });
+  }
+  return out;
 }

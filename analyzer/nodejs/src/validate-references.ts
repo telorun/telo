@@ -12,7 +12,7 @@ import {
 } from "./reference-field-map.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
-import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
+import { isKindDocument } from "./kind-declaration.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } from "./types.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -20,6 +20,8 @@ import { isModuleKind } from "./module-kinds.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { resolveScopedName } from "./call-graph.js";
 import { isInjectedDeclaration } from "./resource-input.js";
+import { injectedNeedOf } from "./need-type.js";
+import { NEED_TABLE_MARK } from "./validate-needs.js";
 import { outsideScopesOf } from "./scope-declarations.js";
 import { isForwardedDeclaration, isForwardedExport } from "./forwarded-declaration.js";
 import { CallableFlagsIndex } from "./callable-flags.js";
@@ -35,6 +37,7 @@ const SOURCE = "telo-analyzer";
  *  so calling all three "resource name" describes two of them wrongly. */
 function describeNamed(m: ResourceManifest, name: string): string {
   if (m.kind === "Telo.Import") return `import alias '${name}'`;
+  if (injectedNeedOf(m)) return `need '${name}'`;
   if (isModuleKind(m.kind)) return `this module's own name (${m.kind} '${name}')`;
   return `resource ${m.kind}/${name}`;
 }
@@ -137,6 +140,17 @@ function duplicateNameDiagnostics(
                 end: { line: dupMeta.sourceLine, character: Number.MAX_SAFE_INTEGER },
               }
             : undefined;
+        // A need is written as a `needs:` key on the module doc, which is where
+        // the squiggle belongs.
+        const needOwner = injectedNeedOf(dup)
+          ? (dup.metadata as { module?: string } | undefined)?.module
+          : undefined;
+        const ownerDoc = needOwner
+          ? resources.find((r) => isModuleKind(r.kind) && r.metadata?.name === needOwner)
+          : undefined;
+        // A need's collision is the need table's refusal too, which the kernel
+        // raises as its twin: marked, so a load reports it once.
+        const needTable = injectedNeedOf(dup) || injectedNeedOf(first) ? { [NEED_TABLE_MARK]: true } : {};
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
           code: "DUPLICATE_RESOURCE_NAME",
@@ -146,12 +160,20 @@ function duplicateNameDiagnostics(
             `${describeNamed(first, name)} declared earlier — the kernel registers both ` +
             `under '${name}' in one namespace, so boot fails with ERR_DUPLICATE_RESOURCE. ` +
             `Rename one of them.`,
-          ...(range ? { range } : {}),
-          data: {
-            resource: { kind: dup.kind, name },
-            filePath: dupMeta?.source,
-            path: "metadata.name",
-          },
+          ...(range && !ownerDoc ? { range } : {}),
+          data: ownerDoc
+            ? {
+                resource: { kind: ownerDoc.kind, name: needOwner as string },
+                filePath: dupMeta?.source,
+                path: `needs.${name}`,
+                ...needTable,
+              }
+            : {
+                resource: { kind: dup.kind, name },
+                filePath: dupMeta?.source,
+                path: "metadata.name",
+                ...needTable,
+              },
         });
       }
     }
@@ -340,7 +362,7 @@ export function validateReferences(
       if (typeof m === "string") loadedModules.add(m);
       continue;
     }
-    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || !isForwardedExport(r)) continue;
+    if (!r.metadata?.name || isKindDocument(r) || !isForwardedExport(r)) continue;
     const m = moduleOf(r);
     if (!m) continue;
     byModuleName.set(`${m}\0${r.metadata.name as string}`, r);
@@ -352,7 +374,7 @@ export function validateReferences(
   const byNameAll = new Map<string, ResourceManifest[]>();
   const seen = new Set<string>();
   for (const r of resources) {
-    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || r.kind === "Telo.Import" || isForeign(r))
+    if (!r.metadata?.name || isKindDocument(r) || r.kind === "Telo.Import" || isForeign(r))
       continue;
     const name = r.metadata.name as string;
     // `analyze()` guarantees both fields are present on non-system manifests.
@@ -652,7 +674,7 @@ export function validateReferences(
         }
       },
     },
-    { aliases, aliasesByModule, skipKinds: SYSTEM_KINDS, expand: true },
+    { aliases, aliasesByModule, skip: isKindDocument, expand: true },
   );
 
   // Phase 3b — x-telo-schema-from validation.
@@ -785,7 +807,7 @@ export function validateReferences(
         }
       },
     },
-    { aliases, aliasesByModule, skipKinds: SYSTEM_KINDS },
+    { aliases, aliasesByModule, skip: isKindDocument },
   );
 
   return diagnostics;

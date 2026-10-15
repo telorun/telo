@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: ConsumeOutside
+  version: 1.0.0
+  description: A consumer observing a version outside the need's range.
+imports:
+  Orders:
+    source: ../orders
+    variables: { serverVersion: "14.0.0", extensions: [pgvector] }
+    needs:
+      databaseAccess: { url: "postgres://db.internal:5432/orders" }

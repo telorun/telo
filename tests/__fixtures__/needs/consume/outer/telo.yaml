@@ -1,0 +1,23 @@
+kind: Telo.Library
+metadata:
+  name: ConsumeOuter
+  version: 0.0.0
+  description: Asks for a narrower range than the library it forwards its need to.
+imports:
+  Kinds: ../kinds
+  Orders:
+    source: ../orders
+    variables:
+      serverVersion: !cel "variables.serverVersion"
+      extensions: [pgvector]
+    needs:
+      databaseAccess: !ref db
+variables:
+  serverVersion: { type: string }
+needs:
+  db:
+    kind: Kinds.DatabaseAccess
+    version: ">=16.0.0"
+    features: [pgvector]
+exports:
+  resources: [Orders.db]

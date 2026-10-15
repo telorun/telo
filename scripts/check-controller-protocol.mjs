@@ -254,6 +254,74 @@ if (generation !== undefined && !Number.isInteger(generation?.generation)) {
   fail(`${GENERATION_PATH}: must hold \`{ "generation": <integer> }\`.`);
 }
 
+// --- every vector describes the declared generation ---------------------------
+//
+// A handshake in a vector states the generation it speaks. A bump whose vectors
+// still describe another generation is not a complete bump, so every
+// `Session.Hello` a valid row carries must name the one `generation.json`
+// declares. An `invalid` row is deliberately wrong and is not read.
+
+const VECTORS_DIR = "sdk/controller-protocol/vectors";
+if (Number.isInteger(generation?.generation)) {
+  const declared = generation.generation;
+  const helloGeneration = (payload) =>
+    payload && typeof payload === "object"
+      ? (payload.ok && typeof payload.ok === "object" ? payload.ok.generation : payload.generation)
+      : undefined;
+  const checkHello = (where, value) => {
+    if (value !== declared) {
+      fail(
+        `${where}: a Session.Hello states generation ${JSON.stringify(value)}, and ${GENERATION_PATH} ` +
+          `declares ${declared}. Bring the vector to the declared generation.`,
+      );
+    }
+  };
+  // Every row read here is one the vectors declare valid — a frame a reader
+  // refuses lives in `framing.json`'s `undecodable` table, which has no `meta`.
+  const fromMeta = (where, meta) => {
+    let envelope;
+    try {
+      envelope = JSON.parse(meta);
+    } catch (error) {
+      fail(`${where}: 'meta' is not the JSON of an envelope — ${error.message}`);
+      return;
+    }
+    if (envelope?.type === "Session.Hello") checkHello(where, helloGeneration(envelope.payload));
+  };
+  const readVectors = (file) => {
+    try {
+      return JSON.parse(readFileSync(join(repoRoot, VECTORS_DIR, file), "utf8"));
+    } catch (error) {
+      fail(`${VECTORS_DIR}/${file}: not readable as JSON — ${error.message}`);
+      return undefined;
+    }
+  };
+  const messages = readVectors("messages.json");
+  (messages?.valid ?? []).forEach((row, i) => {
+    if (row.message === "Session.Hello") checkHello(`${VECTORS_DIR}/messages.json valid[${i}]`, row.body?.generation);
+  });
+  const framing = readVectors("framing.json");
+  (framing?.frames ?? []).forEach((row, i) => fromMeta(`${VECTORS_DIR}/framing.json frames[${i}]`, row.meta));
+  const sequences = readVectors("sequences.json");
+  (sequences?.sequences ?? []).forEach((row, i) =>
+    (row.frames ?? []).forEach((frame, j) =>
+      fromMeta(`${VECTORS_DIR}/sequences.json sequences[${i}].frames[${j}]`, frame.meta),
+    ),
+  );
+  const equivalence = readVectors("carrier-equivalence.json");
+  (equivalence?.rows ?? []).forEach((row, i) => {
+    const where = `${VECTORS_DIR}/carrier-equivalence.json rows[${i}]`;
+    fromMeta(where, row.framed?.meta);
+    if (row.message === "Session.Hello" && typeof row.payload === "string") {
+      try {
+        checkHello(where, helloGeneration(JSON.parse(row.payload)));
+      } catch {
+        fail(`${where}: 'payload' is not JSON.`);
+      }
+    }
+  });
+}
+
 // ----------------------------------------------------------------------------
 
 if (failures.length > 0) {

@@ -1,0 +1,12 @@
+kind: Telo.Library
+metadata:
+  name: BadNeedTypes
+  version: 0.0.0
+  description: A need type whose sensitive field holds no text, and whose required list names no field.
+---
+kind: Telo.NeedType
+metadata:
+  name: ServerAccess
+fields:
+  port: { type: integer, x-telo-sensitive: true }
+required: [port, host]

@@ -1,0 +1,27 @@
+kind: Telo.Application
+metadata:
+  name: ConsumeForwarded
+  version: 1.0.0
+  description: A need forwarded whole through two libraries, opened and verified at the inner one's slot.
+imports:
+  Run: ../../../../../modules/run
+  Assert: ../../../../../modules/assert
+  Outer:
+    source: ../outer
+    variables: { serverVersion: "16.2.0" }
+    needs:
+      db: { url: "postgres://db.internal:5432/orders" }
+targets:
+  - !ref verify
+---
+kind: Run.Sequence
+metadata: { name: verify }
+steps:
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.Outer.db"
+      expected:
+        url: postgres://db.internal:5432/orders
+        sensitive: [url]
+        constraints: { version: ">=16.0.0", features: [pgvector] }

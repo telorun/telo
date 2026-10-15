@@ -2201,9 +2201,10 @@ to say.
   (`../../libs/greetings` — see Workspace layout). The standard library lives at
   `oci://ghcr.io/telorun/<name>`, but take the ref from the hub tools rather
   than composing it. Object form
-  `{ source, variables?, secrets?, resources? }`
+  `{ source, variables?, secrets?, resources?, needs? }`
   forwards values into the library — `resources:` supplies the INSTANCES the
-  target library declares it needs (see its top-level `resources:` block). Reference an imported kind as
+  target library declares it needs (see its top-level `resources:` block), and
+  `needs:` supplies its typed NEEDS (see its top-level `needs:` block). Reference an imported kind as
   `kind: <Alias>.<KindName>`, and an imported instance as
   `!ref <Alias>.<name>`.
 - `variables:` / `secrets:` — NAME-KEYED MAPS. Each entry binds an `env:` var
@@ -2857,6 +2858,80 @@ to say.
   be supplied. An injected resource is BORROWED — the application tears it
   down, never the library. A module using this block needs
   `requires: {telo: ">=0.83.0"}`.
+- `needs:` (a TOP-LEVEL block of a Library or an Application) — what the module asks whoever
+  runs it for, each entry naming a NEED TYPE:
+  `needs: { databaseAccess: { kind: Fx.DatabaseAccess, version?, features?, parameters?, optional? } }`.
+  Use it — not `variables:` / `secrets:` — for something the library depends on
+  but cannot create: the address and credentials of a database, a signing key.
+  Inside the library a need is an ordinary name read BY FIELD in CEL:
+  `!cel "resources.databaseAccess.url"`. Its fields are typed and closed from
+  the need type (`CEL_UNKNOWN_FIELD`); an `optional: true` need may be null, so
+  guard it (`resources.cache == null ? … : resources.cache.url`). A need is
+  never handed to a controller as an instance: put `!ref <need>` only at a
+  reference slot whose kind IS that need type (a kind that consumes the whole
+  fulfilment, e.g. a connection's `access:`), never at any other slot
+  (`REFERENCE_KIND_MISMATCH`), and NEVER `!ref` an `optional: true` need at a
+  reference slot (`NEED_OPTIONAL_REFERENCED`).
+
+  `version: ">=15.0.0"` (explicit comparators only — never `^` / `~` / `||` /
+  a bare version; legal only on a need type declaring `version: semver`) and
+  `features: [pgvector]` (names the type lists) constrain the fulfilment. Each
+  stated constraint MUST reach a reference slot that `observes` it — the need
+  passed whole to such a consumer in the module (a resource, an inline one, or
+  an entry of a templated kind's `resources:` body), or forwarded whole to a
+  library need that reaches one — or it is `NEED_CONSTRAINT_UNVERIFIED`. Reading
+  a need by field never verifies anything; a pure provisioning request (a size,
+  a region) belongs in `parameters:`. A need forwarded whole must state at least
+  what it supplies — a range within the target's, every feature it asks for
+  (`NEED_FORWARD_INCOMPATIBLE`); the outermost (narrowest) need is the one the
+  kernel enforces, refusing a mismatch at the consumer with `ERR_NEED_UNMET`.
+
+  The importer supplies a need at the import's object form, in one of two
+  forms: FIELD BY FIELD, a map of the type's fields, each a literal or CEL over
+  the importer's own scope —
+  `imports: { Orders: { source: ./orders, needs: { databaseAccess: { url: !cel "variables.dbUrl" } } } }` —
+  or WHOLE, a `!ref` to a need or fulfilment of the importer's own
+  (`needs: { databaseAccess: !ref orderDatabase }`), which is how a library
+  forwards its own need to a library it imports. A fulfilment you write
+  yourself is a resource of the need-type kind with `fields:`
+  (`kind: Fx.DatabaseAccess`, `metadata: { name: mainDatabase }`,
+  `fields: { url: … }`). A need nobody supplies bubbles up to the application,
+  which reads it from the ENVIRONMENT at load — one variable per field, named
+  `TELO_NEED_` + its path's segments and the field in upper snake case joined
+  by `__` (`Orders.databaseAccess` field `url` →
+  `TELO_NEED_ORDERS__DATABASE_ACCESS__URL`). A REQUIRED one with none set is
+  `ERR_NEED_UNMET` naming every variable to set; some set and a required one
+  not is `ERR_NEED_PARTIALLY_SUPPLIED`. `telo needs report <manifest>` lists
+  them with nothing booted. A `Telo.Application` declares `needs:` too, and is
+  the only module whose need may choose its variable with `env:`
+  (`needs: { databaseAccess: { kind: Fx.DatabaseAccess, env: { url: DATABASE_URL } } }`);
+  to give a library's need a chosen name, declare an application need with
+  `env:` and supply it to the import whole (`!ref databaseAccess`). NEVER write
+  `env:` on a library's need (`LIBRARY_ENV_KEY_REJECTED`), and never read a
+  need's variable yourself — it is hidden from every controller. Two fields
+  reading one name is `NEED_ENV_NAME_COLLISION`. The supply must match the type:
+  every required field and no other (`NEED_SLOT_MISMATCH` /
+  `NEED_FIELD_UNDECLARED`), a whole supply of the same type
+  (`REFERENCE_KIND_MISMATCH`), never an optional need into a required one
+  (`NEED_FORWARD_INCOMPATIBLE`), only keys the library declares
+  (`NEED_UNDECLARED`). A `resources:` entry of a need type is
+  `RESOURCE_INPUT_NEED_TYPE`.
+- `kind: Telo.NeedType` — declares a need type a library exports through
+  `exports.kinds`: `fields` (a JSON Schema property map of what a fulfilment
+  hands over; a credential field is `type: string` with
+  `x-telo-sensitive: true`, and is then redacted in logs wherever it reaches),
+  `required` (field names), `parameters` (the schema of a need's literal
+  `parameters:`), `version: semver` when fulfilments are versioned, `features`
+  (the closed list of feature names a need may ask for). A kind that consumes
+  a fulfilment whole declares `x-telo-ref: { kind: Self.<NeedType>, use:
+  dependency, observes: [version, features] }` — only on a Provider / Service /
+  Runnable / Invocable kind with its own controller (`X_TELO_REF_INVALID_OBSERVES`
+  otherwise); its controller opens it with `ctx.resolveNeed("/<slot>")` and
+  reports what it found with `ctx.verifyNeed("/<slot>", { version, features })`
+  by the end of its startup, and the kernel compares. Name it for what its fulfilment hands over:
+  `<Thing>Access` for the address and credentials of something outside the
+  application (`DatabaseAccess`, `ServerAccess`, `BucketAccess`), the bare noun
+  for the thing itself on the host.
 - `lifecycle:` (Library only) — `isolated` (DEFAULT) or `shared`. This is the
   OTHER half of the same problem: `resources:` hands one instance DOWN to
   several libraries, `lifecycle: shared` lets several libraries reach ONE
@@ -2871,7 +2946,7 @@ to say.
   importer's — a client configured per consumer, a codec, a formatter.
 
   Every import of a singleton must agree: two imports supplying different
-  `variables:` / `secrets:` / `resources:` is a hard error, and a per-import
+  `variables:` / `secrets:` / `resources:` / `needs:` is a hard error, and a per-import
   `logging:` or `runtime:` on such an import is rejected. Same
   `requires: {telo: ">=0.83.0"}` floor.
 

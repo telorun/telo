@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata:
+  name: ResourceInputNeedTypeConsumer
+  version: 0.0.0
+  description: Hands the library a fulfilment for its input; this check reports the library's defect at the import, and the kernel refuses the library at load.
+imports:
+  Fx: ../../types
+  Lib:
+    source: ./lib
+    resources:
+      databaseAccess: !ref mainDatabase
+---
+kind: Fx.DatabaseAccess
+metadata: { name: mainDatabase }
+fields:
+  url: postgres://localhost/main

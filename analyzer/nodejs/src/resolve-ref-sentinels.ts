@@ -3,7 +3,8 @@ import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { KindResolver } from "./module-alias-scope.js";
 import type { ReachSite } from "./reference-reach.js";
-import { REF_RESOLUTION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
+import { isKindDocument } from "./kind-declaration.js";
+import { isKindDocumentOrImport } from "./system-kinds.js";
 import {
   isForwardedDeclaration,
   isForwardedExport,
@@ -116,7 +117,7 @@ function resolveReferences(
   const byName = new Map<string, ResourceManifest>();
   const byModuleName = new Map<string, ResourceManifest>();
   for (const r of resources) {
-    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind)) continue;
+    if (!r.metadata?.name || isKindDocumentOrImport(r)) continue;
     const name = r.metadata.name as string;
     if (isForeign(r)) {
       if (isForwardedExport(r)) byModuleName.set(`${moduleOf(r)}\0${name}`, r);
@@ -125,7 +126,7 @@ function resolveReferences(
     }
   }
   for (const r of crossModuleTargets) {
-    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind) || !isForwardedExport(r)) continue;
+    if (!r.metadata?.name || isKindDocumentOrImport(r) || !isForwardedExport(r)) continue;
     byModuleName.set(`${moduleOf(r)}\0${r.metadata.name as string}`, r);
   }
 
@@ -175,7 +176,7 @@ function resolveReferences(
   // it resolves in the module whose names the reference was written in.
   const byDeclaringModule = new Map<string, ResourceManifest>();
   for (const r of resources) {
-    if (!r.metadata?.name || SYSTEM_KINDS.has(r.kind)) continue;
+    if (!r.metadata?.name || isKindDocumentOrImport(r)) continue;
     byDeclaringModule.set(`${moduleOf(r) ?? ""}\0${r.metadata.name as string}`, r);
   }
 
@@ -301,14 +302,14 @@ function resolveReferences(
       continue;
     }
     // A kind document's own ref slots belong to definition-schema validation
-    // rather than to a resource's value tree, which is why it is in the skip
-    // set. Its CONTRACT and SIGNATURE are the exception, for the reason
+    // rather than to a resource's value tree, which is why it is skipped. Its
+    // CONTRACT and SIGNATURE are the exception, for the reason
     // `Telo.Import`'s `resources:` block is: `inputType` / `outputType` and
     // `params[].schema` / `returns.schema` hold a `!ref` to a `Telo.JsonSchema`,
     // and it resolves there exactly as it does on an instance. Only those
     // subtrees are walked — the rest of the document keeps its unresolved
     // references.
-    if (SYSTEM_KINDS.has(r.kind)) {
+    if (isKindDocument(r)) {
       if (r.kind === "Telo.Definition" || r.kind === "Telo.Abstract") {
         walkShapeFields(r, KIND_SHAPE_FIELDS);
       }

@@ -5,7 +5,7 @@
  * WHERE the slots are, and which concrete sites of a resource they reach, is
  * `reference-reach.ts`: the one enumeration every consumer reads.
  */
-import { type RefUse, type RefUseCases, readRefSlot } from "./ref-slot.js";
+import { type NeedConstraint, type RefUse, type RefUseCases, readRefSlot } from "./ref-slot.js";
 import {
   reachOfSchema,
   valueBranchSchema,
@@ -60,6 +60,8 @@ export interface RefFieldEntry {
   throwsThrough?: boolean;
   /** See {@link RefSlot.outputType}. */
   outputType?: Record<string, any>;
+  /** See {@link RefSlot.observes}. */
+  observes?: NeedConstraint[];
 }
 
 /** Everything the throws view records at one field path — the reach's. */

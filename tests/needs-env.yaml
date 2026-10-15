@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata:
+  name: NeedsEnvTest
+  version: 1.0.0
+  description: |
+    A need reaching the root unsupplied is read at load from exactly one
+    environment name per field: the one the root's `env:` binds, otherwise the
+    one derived from its need path. Each fixture runs in a kernel of its own,
+    with the environment below.
+imports:
+  Test: ../modules/test
+targets:
+  - !ref fromEnvironment
+---
+kind: Test.Suite
+metadata: { name: fromEnvironment }
+include:
+  - "__fixtures__/needs/env/*.yaml"
+# These fixtures ARE the test, so the default fixture exclusion is dropped.
+exclude: []
+env:
+  TELO_NEED_ORDERS__DATABASE_ACCESS__URL: postgres://derived.internal/orders
+  TELO_NEED_ORDERS__DATABASE_ACCESS__SCHEMA: sales
+  # Bound by `bound.yaml`'s `env:`, which replaces its derived name below.
+  DATABASE_URL: postgres://bound.internal/main
+  TELO_NEED_DATABASE_ACCESS__URL: postgres://derived.internal/unread
+  # Bound by `observed.yaml`'s `env:`.
+  CONSUME_DATABASE_URL: postgres://observed.internal/orders

@@ -75,7 +75,7 @@ an incompatible controller and an incompatible peer are the same fact, discovere
 at different moments, and a second code would only invite a caller to handle one
 and not the other.
 
-### 0.3 Generation `telo-5`
+### 0.3 Generation `telo-6`
 
 One generation counter covers both carriers, reported in the handshake (§4.1) and
 written into a native controller's PURL as `abi=telo-<n>`.
@@ -84,20 +84,23 @@ written into a native controller's PURL as `abi=telo-<n>`.
   buffers across the C ABI, described only by the ABI crate's own layout. This
   specification does **not** retroactively describe it, and a generation `3`
   controller keeps loading exactly as it does today.
-- **Generation `4` is withdrawn, and nothing ever spoke it.** It was the first
-  generation this specification defined, and its value encoding named the typed
-  frame's millisecond timestamp payload. No carrier implemented it and no
-  artifact could declare it, so it is superseded rather than kept readable.
-- **Generation `5` is the generation this specification defines.** It is the
-  generation in which the C ABI carries this protocol's messages rather than a
-  contract of its own; its value encoding is `durable-execution.md` §6's typed
-  frame, whose timestamp payload is RFC 3339 with a trimmed nanosecond fraction.
-  It is the value in `sdk/controller-protocol/generation.json`.
-- **No artifact may declare `abi=telo-5` until the ABI carrier lands.** A
+- **Generations `4` and `5` are withdrawn, and nothing ever spoke either.** `4`
+  was the first generation this specification defined, and its value encoding
+  named the typed frame's millisecond timestamp payload. `5` moved the value
+  encoding to `durable-execution.md` §6's typed frame. No carrier implemented
+  either and no artifact could declare one, so each is superseded rather than
+  kept readable.
+- **Generation `6` is the generation this specification defines.** It is `5`'s
+  message set plus the two need operations (§7.5), with the same value
+  encoding: `durable-execution.md` §6's typed frame, whose timestamp payload is
+  RFC 3339 with a trimmed nanosecond fraction. It is the value in
+  `sdk/controller-protocol/generation.json`, and every `Session.Hello` a
+  conformance vector carries states it.
+- **No artifact may declare `abi=telo-6` until the ABI carrier lands.** A
   declaration reaching a kernel that does not implement the carrier MUST be
   refused with `ERR_CONTROLLER_HOST_INCOMPATIBLE`. Until then the ABI crate's
   `TELO_ABI_VERSION` stays `3`, which is what keeps the published `abi=telo-3`
-  controller candidates valid: specifying `5` does not retire `3`.
+  controller candidates valid: specifying `6` does not retire `3`.
 
 ### 0.4 Related specifications
 
@@ -266,6 +269,8 @@ One row per message, in the lexical order of the file names in
 | `Module.ControllerFile` | `controller-to-kernel` | `9. Host facilities` | no | no |
 | `Module.File` | `controller-to-kernel` | `9. Host facilities` | no | no |
 | `Native.File` | `controller-to-kernel` | `9. Host facilities` | no | no |
+| `Need.Resolve` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
+| `Need.Verify` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
 | `Ref.Declaration` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
 | `Ref.Ensure` | `controller-to-kernel` | `7. Resolution & schema` | no | no |
 | `Ref.Resolve` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
@@ -500,7 +505,11 @@ answers with the generation it speaks and its own — its telo version, and the
 name and version of the runtime it runs on.
 
 A generation mismatch MUST be refused with `ERR_CONTROLLER_HOST_INCOMPATIBLE`,
-naming both generations. A runtime MUST NOT negotiate down to an older
+naming both generations. So a handshake's `generation` admits every generation
+from `4`, the first that defines this message, with no upper bound, and no
+generation change narrows it: a peer stating a generation this end does not
+speak has sent a valid handshake, and is refused as a mismatch, never as a
+refused message (§3.5). A runtime MUST NOT negotiate down to an older
 generation: a generation is a complete message set, and half of one is not a
 protocol.
 
@@ -854,6 +863,50 @@ MUST have refused, before the instance is created, any value at such a field tha
 is neither a plain chain rooted at one of the field's declared bindings nor a
 literal holding no expression.
 
+### 7.5 Needs
+
+A need's fulfilment crosses as a **value**, in every realm — never live and never
+as a proxy. A kind that consumes one whole declares a reference slot whose kind is
+a need type, and its controller opens what the slot holds by asking.
+
+`Need.Resolve` names the slot by a JSON Pointer into the asking instance's
+manifest (`/access`). The kernel answers only when that pointer is a reference
+slot of the instance's **own kind** whose target is a need's fulfilment, so a
+controller cannot reach another module's fulfilment; any other pointer is
+`ERR_REF_UNRESOLVED`, naming the pointer. The answer carries the fulfilment's
+resource handle, its fields as a typed frame, the names of the fields that are
+sensitive as delivered, and the constraints (`version`, `features`) and
+`parameters` of the **outermost need** of the whole-forward chain the fulfilment
+came through — the need whose constraints are enforced. A slot referencing a
+fulfilment directly, with no need in the chain, carries none. The answer carries
+no environment name and no source.
+
+`Need.Verify` reports what the consumer observed on the real thing behind the
+fulfilment — the actual version as semver text, the features present — one
+member per constraint its slot `observes`. **The consumer observes, the kernel
+decides**: the kernel compares the observation with the outermost need, and a
+controller MUST NOT compare a range itself. Success answers nothing. A mismatch
+is `ERR_NEED_UNMET`, whose structured `data` holds `need` (the need path),
+`type`, `source` (`env`, `declaration` or `host`), `required` and `actual`. An
+observation at a slot that does not observe, a member for a constraint the slot
+does not observe, an observed constraint left out, or a version that is not
+semver is `ERR_NEED_OBSERVATION_INVALID`, naming the kind and the slot. Observed
+features the need type does not list are ignored.
+
+**The observation is due by the end of the consumer's startup**, whether or not
+the need states a constraint: when `Controller.Init` answers for a
+`Telo.Provider`, when `Controller.Run` answers for a `Telo.Service`, when the
+first `Controller.Run` answers for a `Telo.Runnable` and the first
+`Controller.Invoke` for a `Telo.Invocable`. A slot on a kind of any other
+capability cannot declare `observes`. An observing slot not reported by then is
+`ERR_NEED_OBSERVATION_INVALID`.
+
+The kernel stays the authority that redacts: every sensitive fulfilment value
+joins the redaction set of every module context it reaches. The sensitivity
+marks let an SDK hold a marked field in a value that prints `[redacted]` where no
+kernel sees the output, and a runtime recording protocol traffic censors every
+field `Need.Resolve` marks.
+
 ## 8. Channels
 
 A **channel** is a one-way, flow-controlled byte stream between the two ends,
@@ -996,6 +1049,9 @@ codes cross unchanged and are not listed here.
 | `ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE` | an interpolation hole held a value CEL cannot convert to text | `Value.Expand` |
 | `ERR_HOST_PATH_RELATIVE` | a computed value at a host-path slot was not absolute | `Value.Expand` |
 | `ERR_MODULE_FILES_UNAVAILABLE` | a module file could not be staged or is unpinned | `Module.File`, `Module.ControllerFile` |
+| `ERR_REF_UNRESOLVED` | a pointer names no reference slot of the asking instance's kind, or one whose target is not a need's fulfilment | `Need.Resolve`, `Need.Verify` |
+| `ERR_NEED_UNMET` | an observation does not satisfy the outermost need; `data` holds `need`, `type`, `source`, `required` and `actual` | `Need.Verify`, and the entry point whose controller reported it: `Controller.Init`, `Controller.Run`, `Controller.Invoke` |
+| `ERR_NEED_OBSERVATION_INVALID` | an observation at a slot that does not observe, one missing or extra member, or a version that is not semver; or an observing slot left unreported when the entry point its deadline names returns | `Need.Verify`, and that entry point: `Controller.Init`, `Controller.Run`, `Controller.Invoke` |
 | `ERR_NATIVE_FILE_UNAVAILABLE` | no `native:` entry of that name matches the host, or its staged file could not be brought to its pin | `Native.File` |
 
 `ERR_DURABLE_SUSPENDED` and `ERR_INVOKE_CANCELLED` are **signals, not errors**.
@@ -1024,16 +1080,19 @@ A conforming runtime:
    `ERR_CONTROLLER_HOST_INCOMPATIBLE` (§0.2);
 2. reports one generation in the handshake for both carriers and refuses a
    mismatch rather than negotiating down (§0.3, §4.1);
-3. encodes every value as the typed frame of `kernel/specs/durable-execution.md`
+3. compares a need's constraints kernel-side only, answering `Need.Resolve`
+   for a need-type slot of the asking instance's own kind and nothing else, and
+   holding every observing slot to its deadline (§7.5);
+4. encodes every value as the typed frame of `kernel/specs/durable-execution.md`
    §6, and invents no second encoding (§1.3);
-4. frames exactly as §3.1 says, refuses a `length` over `MAX_FRAME_LENGTH` before
+5. frames exactly as §3.1 says, refuses a `length` over `MAX_FRAME_LENGTH` before
    reading the body, and refuses a `Channel.Data` whose `byteLength` disagrees
    with the frame;
-5. carries `session`, `id`, `type` and the payload on the envelope, partitions ids
+6. carries `session`, `id`, `type` and the payload on the envelope, partitions ids
    by parity, and sends no response for a notification (§3.2);
-6. reads without blocking on dispatch, so a reentrant request is served while a
+7. reads without blocking on dispatch, so a reentrant request is served while a
    synchronous one is outstanding (§3.4, §6.7);
-7. treats a refused frame or message as terminal for the carrier instance,
+8. treats a refused frame or message as terminal for the carrier instance,
    recorded once as `ERR_CONTROLLER_PROTOCOL_VIOLATION` when the kernel refused
    it or a controller on the ABI carrier refused it through `refuse` — a request,
    a notification or the kernel's response to its own request, inside or outside
@@ -1041,19 +1100,19 @@ A conforming runtime:
    its connection; ends a carrier instance only on one of those carrier events,
    never on a code a response carried; and never resynchronises and never
    restarts a host silently (§3.5);
-8. keeps the carrier process's own output separate from a controller's standard
+9. keeps the carrier process's own output separate from a controller's standard
    streams, and never carries the protocol over the process's own streams (§3.6);
-9. drives an effect chain as §5.4 states — lazy, stepwise, inverses registered as
-   they are produced, reverted LIFO by handle, never interpreted;
-10. dispatches every invocation through the kernel's chokepoint, in both
+10. drives an effect chain as §5.4 states — lazy, stepwise, inverses registered as
+    they are produced, reverted LIFO by handle, never interpreted;
+11. dispatches every invocation through the kernel's chokepoint, in both
     directions (§6.1), and carries no durable run handle across (§6.2);
-11. pushes cancellation rather than requiring a poll to cross (§6.3), and
+12. pushes cancellation rather than requiring a poll to cross (§6.3), and
     re-raises both signals out of everything that catches (§10);
-12. owns compiled values kernel-side, writes a compiled node as
+13. owns compiled values kernel-side, writes a compiled node as
     `{"$teloCompiled": …}`, and evaluates no Telo expression on the controller end
     (§7.4);
-13. bounds every channel by credit in bytes, delivers `Channel.Data` in `seq`
+14. bounds every channel by credit in bytes, delivers `Channel.Data` in `seq`
     order, and distinguishes an abnormal close from end-of-input (§8);
-14. starts a child manifest as its own session and runs no kernel inside a
+15. starts a child manifest as its own session and runs no kernel inside a
     controller host (§9.2);
-15. executes all four vector files, in every language that implements a carrier.
+16. executes all four vector files, in every language that implements a carrier.

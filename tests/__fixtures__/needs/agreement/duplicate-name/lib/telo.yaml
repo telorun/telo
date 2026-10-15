@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata:
+  name: DuplicateName
+  version: 0.0.0
+  description: A need named like a resource of the same module.
+imports:
+  Fx: ../../../types
+needs:
+  mainDatabase:
+    kind: Fx.DatabaseAccess
+    optional: true
+---
+kind: Fx.DatabaseAccess
+metadata: { name: mainDatabase }
+fields:
+  url: postgres://localhost/main

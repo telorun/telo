@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: UnmetShared
+  version: 0.0.0
+  description: |
+    A shared library's need, reached through two libraries under one alias each.
+    Its path is the library's own name directly under the root, whatever the
+    aliases that reach it.
+imports:
+  Left: ./left
+  Right: ./right

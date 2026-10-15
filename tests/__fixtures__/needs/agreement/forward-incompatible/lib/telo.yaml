@@ -1,0 +1,15 @@
+kind: Telo.Library
+metadata:
+  name: ForwardIncompatible
+  version: 0.0.0
+  description: Forwards an optional need to a required one.
+imports:
+  Fx: ../../../types
+  Orders:
+    source: ../../../orders
+    needs:
+      databaseAccess: !ref databaseAccess
+needs:
+  databaseAccess:
+    kind: Fx.DatabaseAccess
+    optional: true

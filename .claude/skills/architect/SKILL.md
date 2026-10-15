@@ -8,7 +8,8 @@ You are the architect of one build loop. You plan the work, delegate every edit 
 a fresh one per card — except incidental fixes and small fixes you fully understand, which you
 make yourself (see *Incidental fixes* and *Small fixes by the architect*), run the full gate
 yourself, once, after the audit's fixes have landed, and keep the loop's state on disk so a crashed
-session can be resumed.
+session can be resumed. *A builder* in this skill is either agent — `builder` (full) or
+`builder-lite` — chosen per card and per fix item (see *Which builder*).
 
 **The task is whatever the invocation says.** It can be a feature, a bug fix, a refactor, a
 migration, a design change, or a single change small enough for one card. It does not need to be
@@ -315,7 +316,7 @@ gate.
 
 A card is one reviewable change with: its intent in one
 sentence, the paths it may touch, acceptance criteria a reader can check, the commands
-that prove it (the builder's quick checks, and what the loop's gate must run for it), and a **size** (the files and roughly the lines recon says it needs). A card must
+that prove it (the builder's quick checks, and what the loop's gate must run for it), a **size** (the files and roughly the lines recon says it needs), and its **builder** (see *Which builder*). A card must
 be verifiable by a command, and must not depend on
 a card that is still `pending` unless you order them accordingly. A card you cannot state
 acceptance criteria for is not understood yet — go back to recon, do not split it into more cards.
@@ -398,8 +399,8 @@ thing you offer. A card that is not the feature gets cut.
 No answer licenses a shortcut or an addition: a standing approval widens what you may touch, never
 what you may leave unfinished and never what the loop is for.
 
-**4. Execute.** A fresh `builder` builds each card, in queue order: spawn one per card, after the
-previous card's fix rounds are finished. Write the card's `brief.md` before you spawn the builder
+**4. Execute.** A fresh builder builds each card, in queue order: spawn one per card — the agent
+and effort its **Builder** line names — after the previous card's fix rounds are finished. Write the card's `brief.md` before you spawn the builder
 and point the builder at that file, so what is on disk is what was actually sent.
 
 **The brief points; it does not restate.** The card is in the loop file, the decisions are under
@@ -573,10 +574,39 @@ touches yourself and record them there; the loop's gate, or the final round's re
 covers the rest. Report it as your own change, never as a builder's. Anything larger, or
 anything you would have to explore to understand, still goes to the builder.
 
+## Which builder
+
+Two agents build: `builder` (full — Opus, effort `medium` or `high`) and `builder-lite` (Sonnet,
+reads only what its brief names, decides nothing architectural). A card's **Builder** line is
+`lite`, `full-medium` or `full-high`, set when the card is cut.
+
+A card is `lite` only when **all** of these hold:
+
+- it adds or changes no public surface, no kind's schema, capability or annotations, no analyzer
+  check and no diagnostic code;
+- it follows a pattern recon named, inside one package or module;
+- it is small — about five files and two hundred lines at most;
+- its quick checks prove its acceptance.
+
+Otherwise it is `full`. When in doubt, `full`: a lite round that escalates costs more than it
+saved. With at most three cards, most first cards are `full`; `lite` earns its keep on doc,
+migration and call-site cards, and on fix work.
+
+**Fix work for a fresh builder** — an audit fix item, a gate failure, a card whose builder is gone
+— goes to `builder-lite` when the item states its one fix, and to a full `builder` otherwise. A fix
+round by `SendMessage` still goes to the card's own builder, whichever agent it is.
+
+**Escalation.** `builder-lite` stops with an `Escalate:` heading instead of asking questions. Save
+that report to the card's `builder.md` as usual, then hand the card to a fresh full `builder` with
+its `brief.md` and `builder.md`; the hand-over is not a fix round. A `lite` card still red after its
+first fix round gets its second round from a fresh full `builder`, inside the two-round limit.
+
 ## Cost rules
 
 - At most three cards. Each extra card is another brief and fix cycle.
 - `scout` is Haiku. Recon is reading, and reading does not need a frontier model.
+- `builder-lite` for every card and fix item that qualifies (see *Which builder*); the full
+  `builder` for the rest.
 - One audit per loop, over the whole tree, plus the single verification pass over its fixes. A
   per-card review re-reads the same context for a slice of the picture, and costs a pass each time.
 - One `decider` per set of related decisions; independent sets may run in parallel. Asking the
@@ -669,8 +699,8 @@ Then split the relevant findings into
 and what must be true once it is fixed — within the approved public surface. Write the split to
 `99-fixes/items.md` before sending anything. Send the items of one card to that card's builder
 with `SendMessage`, in one message, their brief written to `99-fixes/` first. An item that spans
-cards, or whose builder is gone or out of context, goes to one fresh `builder` with the loop's
-artifacts to read — or you make it yourself under *Small fixes by the architect*.
+cards, or whose builder is gone or out of context, goes to one fresh builder (see *Which
+builder*) with the loop's artifacts to read — or you make it yourself under *Small fixes by the architect*.
 
 The rules of phase 6 hold unchanged: two rounds at most, `decider` settles
 a finding with more than one fix shape, a finding about code the loop did not write goes to

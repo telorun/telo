@@ -1,0 +1,10 @@
+kind: Telo.Library
+metadata:
+  name: ResourceInputNeedType
+  version: 0.0.0
+  description: A resource input constrained to a need type, which belongs under needs.
+imports:
+  Fx: ../../../types
+resources:
+  databaseAccess:
+    kind: Fx.DatabaseAccess

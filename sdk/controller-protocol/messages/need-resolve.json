@@ -1,0 +1,139 @@
+{
+  "name": "Need.Resolve",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "pointer": {
+        "description": "A JSON Pointer into the asking instance's manifest, naming a reference slot of its own kind.",
+        "type": "string",
+        "pattern": "^(/([^/~]|~[01])*)+$"
+      }
+    },
+    "description": "Open the need fulfilment held at a reference slot of the asking instance's own kind. The kernel answers only when the pointer is such a slot and its target is a need type, so a controller cannot reach another module's fulfilment; any other pointer is ERR_REF_UNRESOLVED.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "pointer": {
+        "$ref": "#/definitions/pointer"
+      }
+    },
+    "required": [
+      "instance",
+      "pointer"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "refIdentity": {
+        "description": "Where an instance was declared: its kind, its name, and the declaration site.",
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "origin": {
+            "type": "object",
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^(/([^/~]|~[01])*)*$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "resourceHandle": {
+        "description": "A live resource instance, by the id the kernel minted for it.",
+        "type": "object",
+        "required": [
+          "id",
+          "ref"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref": {
+            "$ref": "#/definitions/refIdentity"
+          }
+        },
+        "additionalProperties": false
+      },
+      "constraints": {
+        "description": "A need's constraints: a version range in explicit comparators, and the feature names a fulfilment must carry.",
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "description": "The fulfilment, as a value: its handle, its fields as a typed frame, the names of the fields sensitive as delivered, and the constraints and parameters of the outermost need of the whole-forward chain it came through. It carries no environment name and no source.",
+    "type": "object",
+    "properties": {
+      "target": {
+        "$ref": "#/definitions/resourceHandle"
+      },
+      "fields": {
+        "type": "object"
+      },
+      "sensitive": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "constraints": {
+        "$ref": "#/definitions/constraints"
+      },
+      "parameters": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "target",
+      "fields",
+      "sensitive",
+      "constraints"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_REF_UNRESOLVED"
+  ],
+  "synchronous": true,
+  "reentrant": false
+}

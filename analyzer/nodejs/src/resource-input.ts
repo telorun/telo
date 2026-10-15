@@ -33,7 +33,7 @@ export interface ResourceInput {
 /** Marker stamped on a synthesized kind-only declaration (see
  *  {@link injectedDeclarations}). Read through {@link isInjectedDeclaration} —
  *  never by testing the field. */
-const INJECTED = "xTeloInjected";
+export const INJECTED = "xTeloInjected";
 
 /** Read a module document's `resources:` block. Returns `[]` for an
  *  `Telo.Application` (which has no such block), for a library that declares

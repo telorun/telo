@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: ConsumeFeatureMissing
+  version: 1.0.0
+  description: A consumer observing a server without a feature the need asks for.
+imports:
+  Orders:
+    source: ../orders
+    variables: { serverVersion: "15.0.0", extensions: [postgis] }
+    needs:
+      databaseAccess: { url: "postgres://db.internal:5432/orders" }

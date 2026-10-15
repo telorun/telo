@@ -21,6 +21,7 @@ export {
     selectModuleManifestsForAnalysis,
     stampExportedKinds,
     stampReExportedKinds,
+    stampRequiredNeeds,
     stampRequiredResources,
     stampResolvedSource,
     stampSharedLifecycle,
@@ -66,6 +67,55 @@ export {
   readSuppliedResources,
 } from "./resource-input.js";
 export type { LibraryLifecycle, ResourceInput } from "./resource-input.js";
+// Which kind a document declares, and its definition — the one answer every
+// consumer reads instead of testing a document's `kind:`.
+export { isKindDocument, kindDeclarationOf } from "./kind-declaration.js";
+// Need types and needs, read once for `telo check`, the kernel and the report.
+export {
+  injectedNeedDeclarations,
+  injectedNeedOf,
+  isNeedTypeDoc,
+  isTextFieldSchema,
+  NEED_TYPE_CONTROLLER_ENTRY,
+  NEED_TYPE_KIND,
+  needReadingSchema,
+  needSupplyOf,
+  needTypeOf,
+  readNeeds,
+  readNeedTypeShape,
+  readSuppliedNeeds,
+  sensitiveNeedFields,
+} from "./need-type.js";
+export type { NeedDeclaration, NeedSupply, NeedTypeShape } from "./need-type.js";
+export {
+  constraintObservations,
+  needEntryAt,
+  needFeatures,
+  needGraphFromLoadedGraph,
+  needGraphFromManifests,
+  needGraphScopeOf,
+  needVersionRange,
+  outermostNeedEntry,
+  resolveNeedTable,
+} from "./need-table.js";
+export { isNeedTableDiagnostic } from "./validate-needs.js";
+export {
+  OBSERVATION_DEADLINES,
+  observationDeadline,
+  observesProblems,
+} from "./observing-slot.js";
+export type { ObservationDeadline, ObservesProblem } from "./observing-slot.js";
+export type {
+  NeedEnvField,
+  NeedGraph,
+  NeedGraphReference,
+  NeedGraphScope,
+  NeedProblem,
+  NeedSupplyForm,
+  NeedTable,
+  NeedTableEntry,
+} from "./need-table.js";
+export { derivedNeedEnvName, envNameSegment, NEED_ENV_PREFIX } from "./need-env-name.js";
 export {
   BINDINGS_ANNOTATION,
   bindingContextProperties,
@@ -76,12 +126,13 @@ export {
 export type { BindingSites } from "./cel-bindings.js";
 export {
   CEL_RESERVED_WORDS,
-  TYPE_LEVEL_DOC_KINDS,
   checkName,
+  isTypeLevelDocument,
 } from "./identifier-name.js";
 export type { NameLevel, NameViolation } from "./identifier-name.js";
 export {
   applyObservedStateNode,
+  applyReadingNode,
   buildObservedStateIndex,
   buildObservedStateResourcesSchema,
   collectRunReachableNames,
@@ -283,7 +334,9 @@ export { resolveContractValueSchemas } from "./value-schema-slot.js";
 export type { ValueSchemaHost } from "./value-schema-slot.js";
 export {
   hasDeclaredUse,
+  isNeedConstraint,
   isRefSlot,
+  NEED_CONSTRAINTS,
   isRefUse,
   possibleUses,
   readRefSlot,
@@ -292,7 +345,7 @@ export {
   rewriteRefSlotKinds,
   transfersControl,
 } from "./ref-slot.js";
-export type { RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
+export type { NeedConstraint, RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
 export { isStepSlot, readStepSlot, STEP_FRAGMENT } from "./step-slot.js";
 export type { StepSlot } from "./step-slot.js";
 export { readDeprecation } from "./deprecation.js";
@@ -339,6 +392,7 @@ export {
   parseVersionRange,
   rangeAccepts,
   rangeInterval,
+  rangeWithin,
   upperBound,
 } from "./version-range.js";
 export type {

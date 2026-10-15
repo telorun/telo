@@ -19,6 +19,8 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/guides/configuration", label: "Configuring an application" },
         { type: "doc", id: "docs/guides/logging-basics", label: "Logging basics" },
         { type: "doc", id: "docs/guides/libraries", label: "Libraries" },
+        { type: "doc", id: "docs/guides/declaring-a-need", label: "Declaring a need" },
+        { type: "doc", id: "docs/guides/providing-needs", label: "Providing needs" },
         { type: "doc", id: "docs/guides/workspaces", label: "Workspaces" },
         { type: "doc", id: "docs/guides/editor-telo-version", label: "Editing against a telo version" },
         { type: "doc", id: "cli/README", label: "Installation & CLI" },
@@ -72,6 +74,8 @@ const sidebars: SidebarsConfig = {
           id: "docs/extend/library-resource-inputs",
           label: "Sharing Across Libraries",
         },
+        { type: "doc", id: "docs/extend/need-types", label: "Need Types" },
+        { type: "doc", id: "docs/extend/consuming-needs", label: "Consuming Needs" },
         { type: "doc", id: "docs/extend/execution-zones", label: "Execution Zones" },
         {
           type: "doc",

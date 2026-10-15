@@ -1,0 +1,40 @@
+kind: Telo.Library
+metadata:
+  name: ConsumeTemplated
+  version: 0.0.0
+  description: Opens its need whole inside a templated kind's body, at the entry's observing slot.
+imports:
+  Kinds: ../kinds
+variables:
+  serverVersion: { type: string }
+needs:
+  databaseAccess:
+    kind: Kinds.DatabaseAccess
+    version: ">=15.0.0"
+    features: [pgvector]
+exports:
+  resources: [store]
+---
+# The templated kind declares no `observes` of its own: its body entry's kind does.
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: Stands a database up over the library's need.
+capability: Telo.Provider
+schema:
+  type: object
+  additionalProperties: false
+  required: [serverVersion]
+  properties:
+    serverVersion: { type: string }
+provide: !ref db
+resources:
+  - kind: Kinds.Database
+    metadata: { name: db }
+    access: !ref databaseAccess
+    serverVersion: !cel "self.serverVersion"
+    extensions: [pgvector]
+---
+kind: Self.Store
+metadata: { name: store }
+serverVersion: !cel "variables.serverVersion"

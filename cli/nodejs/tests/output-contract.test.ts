@@ -51,6 +51,10 @@ const CASES: Array<{ name: string; args: string[] }> = [
   { name: "module versions", args: ["module", "versions", "-o", "json", MODULE] },
   { name: "module kinds", args: ["module", "kinds", "-o", "json", MODULE] },
   { name: "module resources", args: ["module", "resources", "-o", "json", MODULE] },
+  {
+    name: "needs report",
+    args: ["needs", "report", "-o", "json", path.join(ROOT, "cli/nodejs/tests/__fixtures__/needs-report")],
+  },
 ];
 
 describe("-o json output contract", () => {

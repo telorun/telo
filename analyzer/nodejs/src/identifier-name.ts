@@ -69,6 +69,7 @@
  * Browser-safe: pure string predicates, no I/O, no Node built-ins.
  */
 
+import { isKindDocument } from "./kind-declaration.js";
 import { DiagnosticSeverity } from "./types.js";
 
 /**
@@ -135,16 +136,18 @@ export function isTypeLevelName(name: string): boolean {
   return first !== undefined && first >= "A" && first <= "Z";
 }
 
-/** Document kinds whose `metadata.name` is type-level. Everything else
- *  declaring a name is a resource instance, whose level is decided by its
- *  kind's capability (see {@link NameLevel}). */
-export const TYPE_LEVEL_DOC_KINDS: ReadonlySet<string> = new Set([
-  "Telo.Application",
-  "Telo.Library",
-  "Telo.Definition",
-  "Telo.Abstract",
-  "Telo.Import",
-]);
+/** True when a document's `metadata.name` is type-level: a module, an import
+ *  alias, or a kind (`kindDeclarationOf`). Everything else declaring a name is
+ *  a resource instance, whose level is decided by its kind's capability (see
+ *  {@link NameLevel}). */
+export function isTypeLevelDocument(doc: { kind?: unknown }): boolean {
+  return (
+    doc.kind === "Telo.Application" ||
+    doc.kind === "Telo.Library" ||
+    doc.kind === "Telo.Import" ||
+    isKindDocument(doc)
+  );
+}
 
 export interface NameViolation {
   /** Which tier failed. Callers use it to suppress a tier another check

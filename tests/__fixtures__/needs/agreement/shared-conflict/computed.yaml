@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: SharedNeedConflictComputed
+  version: 0.0.0
+  description: |
+    The same disagreement written as expressions, which are known only at load —
+    so the check is silent and the kernel's comparison of the evaluated values
+    refuses it.
+imports:
+  First:
+    source: ./sessions
+    needs:
+      signingKey: { value: !cel "'first' + '-key'" }
+  Second:
+    source: ./sessions
+    needs:
+      signingKey: { value: !cel "'second' + '-key'" }

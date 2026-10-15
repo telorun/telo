@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata:
+  name: DeprecatedNeedType
+  version: 0.0.0
+  description: Declares a fulfilment of a need type its author has deprecated.
+imports:
+  Tokens: ./lib
+---
+kind: Tokens.LegacyToken
+metadata: { name: signing }
+fields:
+  value: abc

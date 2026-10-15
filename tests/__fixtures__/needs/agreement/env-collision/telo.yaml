@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata:
+  name: EnvCollision
+  version: 0.0.0
+  description: |
+    Two aliases one word boundary apart derive one environment name for the
+    same need — `HTTPServer.dbAccess` and `HttpServer.dbAccess` both read
+    TELO_NEED_HTTP_SERVER__DB_ACCESS__URL — and a variable binds a need's name.
+imports:
+  HTTPServer: ./leaf
+  HttpServer: ./leaf
+variables:
+  schema:
+    env: TELO_NEED_HTTP_SERVER__DB_ACCESS__SCHEMA
+    type: string
+    default: public

@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: OptionalConsumer
+  version: 1.0.0
+  description: Supplies a library that references its optional need at a slot.
+imports:
+  Lib:
+    source: ../optional-lib
+    needs:
+      access: { url: "postgres://db.internal/x" }

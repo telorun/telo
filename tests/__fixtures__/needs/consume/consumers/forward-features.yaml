@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: ForwardFeaturesConsumer
+  version: 1.0.0
+  description: Supplies a library forwarding fewer features than it supplies.
+imports:
+  Lib:
+    source: ../forward-features
+    needs:
+      access: { url: "postgres://db.internal/x" }

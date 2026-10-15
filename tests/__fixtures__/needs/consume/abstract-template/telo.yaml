@@ -1,0 +1,34 @@
+kind: Telo.Library
+metadata:
+  name: ObservingAbstractTemplate
+  version: 0.0.0
+  description: An abstract declaring an observing slot, implemented by a templated kind whose template controller cannot report.
+imports:
+  Kinds: ../kinds
+exports:
+  kinds: [Store, Facade]
+---
+kind: Telo.Abstract
+metadata:
+  name: Store
+  description: Stands something up beside a database it verifies.
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    access:
+      x-telo-ref:
+        kind: Kinds.DatabaseAccess
+        use: dependency
+        observes: [version]
+---
+kind: Telo.Definition
+metadata:
+  name: Facade
+  description: Stands a plain value up beside the database the abstract's slot holds.
+extends: Self.Store
+provide: !ref label
+resources:
+  - kind: Kinds.Plain
+    metadata: { name: label }
+    fields: { value: facade }

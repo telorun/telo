@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedNeedType
+  version: 1.0.0
+  description: |
+    Declares a need type. This kernel registers no need-type kinds, so the load
+    must fail naming the document rather than skipping it.
+---
+kind: Telo.NeedType
+metadata:
+  name: SigningKey
+fields:
+  value: { type: string, x-telo-sensitive: true }
+required: [value]

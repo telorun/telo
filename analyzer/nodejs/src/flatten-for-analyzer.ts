@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { isKindDocument } from "./kind-declaration.js";
 import type { LoadedGraph, LoadedModule } from "./loaded-types.js";
 import type { LoadedFile } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
@@ -9,6 +10,7 @@ import {
   readResourceInputs,
   type ResourceInput,
 } from "./resource-input.js";
+import { injectedNeedDeclarations, readNeeds, type NeedDeclaration } from "./need-type.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { forwardedShapeFieldsOf, refSentinelsIn } from "./contract-shapes.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
@@ -33,6 +35,12 @@ export function parseExportEntry(entry: string): ParsedExportEntry {
   return dot > 0 ? { name: entry.slice(dot + 1), alias: entry.slice(0, dot) } : { name: entry };
 }
 
+/** The documents a library's consumer needs whatever it uses: the kinds it
+ *  declares and its imports. */
+function declaresKindOrImport(m: { kind?: unknown }): boolean {
+  return m.kind === "Telo.Import" || isKindDocument(m);
+}
+
 /** The import-boundary forwarding rule, shared by `flattenForAnalyzer` (the
  *  CLI / kernel loader path) and telo studio's workspace projection so the
  *  two cannot drift. Given one module's stamped manifests and whether that
@@ -42,7 +50,7 @@ export function parseExportEntry(entry: string): ParsedExportEntry {
  *  - **Root module** — every manifest is local; returned unchanged. The root's
  *    internals (CEL / schema / refs) are validated in full.
  *  - **Imported module** — only `Telo.Definition` / `Telo.Abstract` /
- *    `Telo.Import` docs cross unconditionally, plus the instances named in the
+ *    `Telo.NeedType` / `Telo.Import` docs cross unconditionally, plus the instances named in the
  *    module's `exports.resources` (stamped `metadata.forwardedExport: true`).
  *    The module doc and internal (unexported) instances are dropped — they
  *    belong to that module's own analysis pass.
@@ -83,7 +91,7 @@ export function selectModuleManifestsForAnalysis(
 
   const out: ResourceManifest[] = [];
   for (const m of moduleManifests) {
-    if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract" || m.kind === "Telo.Import") {
+    if (declaresKindOrImport(m)) {
       out.push(withModuleGlobals(m, moduleGlobals));
     } else if (
       !isModuleKind(m.kind) &&
@@ -135,14 +143,15 @@ function forwardedInternalCalls(
   for (const m of moduleManifests) {
     const name = m.metadata?.name;
     if (typeof name !== "string" || isModuleKind(m.kind)) continue;
-    if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract" || m.kind === "Telo.Import") {
-      continue;
-    }
+    if (declaresKindOrImport(m)) continue;
     byName.set(name, m);
   }
   const present = new Set(
     forwarded
-      .filter((m) => !isModuleKind(m.kind) && m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract")
+      .filter(
+        (m) =>
+          !isModuleKind(m.kind) && !isKindDocument(m),
+      )
       .map((m) => m.metadata?.name as string),
   );
   // Only calls through the library's own names are followed, so only those are
@@ -196,9 +205,7 @@ function forwardedContractShapes(
   for (const m of moduleManifests) {
     const name = m.metadata?.name;
     if (typeof name !== "string" || isModuleKind(m.kind)) continue;
-    if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract" || m.kind === "Telo.Import") {
-      continue;
-    }
+    if (declaresKindOrImport(m)) continue;
     byName.set(name, m);
   }
   const present = new Set(
@@ -568,6 +575,8 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
   /** Each library's declared `resources:` block, by module name — the inward
    *  half, stamped onto its importers below. */
   const requiredResources = new Map<string, readonly ResourceInput[]>();
+  /** Each library's declared `needs:` block, by module name. */
+  const requiredNeeds = new Map<string, readonly NeedDeclaration[]>();
   /** Libraries declaring `lifecycle: shared` — a singleton every import
    *  resolves to, so a per-import override of it is a contradiction. */
   const sharedModules = new Set<string>();
@@ -588,6 +597,8 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
     kindModules.push({ module: moduleName, exportsKinds: libDoc.exports?.kinds });
     const inputs = readResourceInputs(libDoc);
     if (inputs.length > 0) requiredResources.set(moduleName, inputs);
+    const needs = readNeeds(libDoc);
+    if (needs.length > 0) requiredNeeds.set(moduleName, needs);
     const hostPaths = hostPathInputsOf(libDoc as unknown as Record<string, unknown>);
     if (Object.keys(hostPaths).length > 0) hostPathInputs.set(moduleName, hostPaths);
     if (readLibraryLifecycle(libDoc) === "shared") sharedModules.add(moduleName);
@@ -627,6 +638,7 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
   stampReExportedKinds(imports, exportedKinds);
   stampExportedKinds(imports, declaredKinds);
   stampRequiredResources(imports, requiredResources, aliasToModule);
+  stampRequiredNeeds(imports, requiredNeeds);
   stampSharedLifecycle(imports, sharedModules);
   stampDeclaredResources(imports, declaredResources);
   for (const { manifest, targetModule } of imports) {
@@ -714,6 +726,44 @@ export function stampRequiredResources(
   }
 }
 
+/** One need of an import's target, as stamped by {@link stampRequiredNeeds}:
+ *  its kind as the target WROTE it — resolved by the reader in the target's own
+ *  alias scope, which the analysis holds, so a kind the target reaches through a
+ *  re-export resolves to its true owner. */
+export interface RequiredNeed {
+  kind: string;
+  optional: boolean;
+  parameters?: unknown;
+  version?: unknown;
+  features?: unknown;
+}
+
+/** Stamp `metadata.requiredNeeds` — the target library's declared `needs:` —
+ *  onto every `Telo.Import` whose target declares any: the consumer's pass sees
+ *  the flattened list, from which the library doc is gone. Keyed by need name;
+ *  an entry carries no `name` field, so it can never read as a resolved
+ *  reference. */
+export function stampRequiredNeeds(
+  imports: ReadonlyArray<{ manifest: ResourceManifest; targetModule: string }>,
+  declared: ReadonlyMap<string, readonly NeedDeclaration[]>,
+): void {
+  for (const { manifest, targetModule } of imports) {
+    const needs = declared.get(targetModule);
+    if (!needs?.length) continue;
+    const table: Record<string, RequiredNeed> = {};
+    for (const need of needs) {
+      table[need.name] = {
+        kind: need.kind,
+        optional: need.optional,
+        ...(need.parameters !== undefined ? { parameters: need.parameters } : {}),
+        ...(need.version !== undefined ? { version: need.version } : {}),
+        ...(need.features !== undefined ? { features: need.features } : {}),
+      };
+    }
+    (manifest.metadata as Record<string, unknown>).requiredNeeds = table;
+  }
+}
+
 /** `Alias.Kind` → `<owning module>.Kind` in the DECLARING library's scope.
  *  `Self.` names the library itself and `Telo.` the kernel built-ins, both of
  *  which cross no import edge. An unresolvable prefix is returned unchanged. */
@@ -736,8 +786,9 @@ function canonicalizeInputKind(
  *  per-library export derivation (`AnalysisOptions.moduleDocuments`) — the
  *  flat list above deliberately drops library internals, and the zone
  *  projection needs the internal dispatch chain to derive an export's open
- *  requirements. Only libraries that actually export instances are included:
- *  a library exporting nothing has no export contract to derive. */
+ *  requirements. EVERY imported library is included, whatever it exports: each
+ *  consumer selects what it reads (the zone stage, the libraries exporting
+ *  instances; the need graph, every library's declarations and imports). */
 export function collectModuleDocuments(graph: LoadedGraph): ModuleDocuments[] {
   const out: ModuleDocuments[] = [];
   for (const [source, mod] of graph.modules) {
@@ -752,7 +803,6 @@ export function collectModuleDocuments(graph: LoadedGraph): ModuleDocuments[] {
       if (typeof entry !== "string") continue;
       exportedNames.push(parseExportEntry(entry).name);
     }
-    if (exportedNames.length === 0) continue;
     out.push({
       module: moduleName,
       sourceId: mod.owner.source,
@@ -790,7 +840,11 @@ function collectModuleManifests(mod: LoadedModule): ResourceManifest[] {
   // borrowed instance itself.
   const moduleDoc = all.find((m) => isModuleKind(m.kind));
   if (moduleDoc) {
-    all.push(...injectedDeclarations(moduleDoc, moduleDoc.metadata?.name as string | undefined));
+    const ownModule = moduleDoc.metadata?.name as string | undefined;
+    all.push(...injectedDeclarations(moduleDoc, ownModule));
+    // A `needs:` entry is the same kind of stand-in: a declaration in the
+    // module's scope, bound at load to whatever fulfils it.
+    all.push(...injectedNeedDeclarations(moduleDoc, ownModule));
   }
   return all;
 }

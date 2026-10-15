@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: EnvCollisionConsumer
+  version: 0.0.0
+  description: Imports the wrapper; the collision is two imports deep, so only the kernel refuses it.
+imports:
+  Wrapper: ./wrapper

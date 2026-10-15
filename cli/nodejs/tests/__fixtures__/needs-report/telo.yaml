@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: Shop
+  version: 1.0.0
+imports:
+  Types: ./types
+  # Supplied by nothing: read from its derived names.
+  Orders: ./orders
+  # Supplied at the import: not read from the environment, so not listed.
+  Archive:
+    source: ./orders
+    needs:
+      databaseAccess:
+        url: postgres://archive.internal/archive
+needs:
+  sessionKey:
+    kind: Types.SigningKey
+    env: { value: SESSION_KEY }
+  audit:
+    kind: Types.DatabaseAccess
+    optional: true
