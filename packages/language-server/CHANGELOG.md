@@ -1,5 +1,7 @@
 # @telorun/language-server
 
+## 0.117.0
+
 ## 0.116.0
 
 ### Patch Changes

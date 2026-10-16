@@ -1,5 +1,32 @@
 # @telorun/cli
 
+## 0.117.0
+
+### Minor Changes
+
+- 972e899: A kind can consume a need's fulfilment whole and verify the need's constraints. `Telo.NeedType` gains `version: semver` and `features: [names]`, and a need may state `version` (a range in explicit comparators, `>=15.0.0`, whose refusals explain themselves in need terms) and `features` (names its type lists). A reference slot whose kind is a need type takes the fulfilment whole, and `x-telo-ref` gains `observes: [version, features]`: the kind reports what it found and the kernel compares it with the outermost need of the whole-forward chain. In Node a controller opens the fulfilment with `ctx.resolveNeed(pointer)` — its handle, fields, sensitive field names, and the outermost need's constraints and parameters — and reports with `ctx.verifyNeed(pointer, { version, features })`; a mismatch is `ERR_NEED_UNMET`, whose `data` holds `need`, `type`, `source`, `required` and `actual`. An observing slot not reported by the end of startup (`init()` for a provider, `run()` for a service, the first `run()` / `invoke()` otherwise), or a malformed report, is `ERR_NEED_OBSERVATION_INVALID`. Phase-5 injection no longer places a fulfilment in a slot.
+
+  `telo check` refuses `X_TELO_REF_INVALID_OBSERVES` (an `observes` that is malformed, on a non-need slot, naming a constraint the type does not declare, or on a kind with no observation deadline or no controller of its own — `ERR_X_TELO_REF_INVALID_OBSERVES` at definition registration), `NEED_CONSTRAINT_UNVERIFIED` (a stated constraint reaching no observing slot among the module's resources, their inline declarations and its templated kinds' body entries, or through a whole forward), `NEED_OPTIONAL_REFERENCED` (an optional need at a reference slot), and the version / features cases of `NEED_FORWARD_INCOMPATIBLE` and `NEED_PARAMETERS_INVALID`, each raised by the kernel at load as its `ERR_` twin — including when the analysis refused the load, which now reports the twin rather than `ERR_MANIFEST_VALIDATION_FAILED`. The analysis builds every imported library whole (`collectModuleDocuments` returns every imported library, and the zone stage selects the ones exporting instances), and reports an imported library's need-table defect once at the `imports:` entry that reaches it. `telo needs report` entries gain `version` (or `null`) and `features`.
+
+  The controller protocol moves to generation `telo-6`, withdrawing `5`: two messages, `Need.Resolve` and `Need.Verify`; every conformance vector, every handshake included, states `6`, which `check:controller-protocol` now verifies.
+
+- 972e899: Needs reaching the root are read from the environment, and `telo needs report` lists them. A `Telo.Application` declares `needs:` as a library does, plus `env: { <field>: <NAME> }` choosing the variable a field is read from. Every need reaching the root unsupplied — the application's own included — is read at load, before any resource initializes, from exactly one environment variable per field: the bound name, otherwise `TELO_NEED_` + the need path's segments and the field in upper snake case joined by `__` (`Orders.databaseAccess` field `url` → `TELO_NEED_ORDERS__DATABASE_ACCESS__URL`; `HTTPServer` → `HTTP_SERVER`). A supply at an import wins over the environment. Values are decoded against the field's schema as a root variable's are, a failure joining the application's `ERR_MANIFEST_VALIDATION_FAILED` without printing a sensitive value; some variables of a need set and a required one not is `ERR_NEED_PARTIALLY_SUPPLIED`; a required need with none set is `ERR_NEED_UNMET`, now naming every variable to set; an optional one is `null`. Those names are hidden by exact name from `process.env` and `ctx.env`. `telo check` reports `NEED_ENV_NAME_COLLISION` (two need fields reading one name, or one a `variables:` / `secrets:` / `ports:` entry binds; `ERR_NEED_ENV_NAME_COLLISION` at load), `LIBRARY_ENV_KEY_REJECTED` for a library need's `env:` (`ERR_LIBRARY_ENV_KEY_REJECTED`), and `NEED_FIELD_UNDECLARED` / `NEED_SLOT_MISMATCH` for an `env:` map. `telo needs report <manifest>` prints, with nothing booted, every need read from the environment with its fields' variables; `-o json` writes a versioned document (`reportVersion: 1`, `needs[]` of `path`, `declaredBy`, `type { module, name }`, `parameters`, `optional`, `fields { env, envSource, required, sensitive }`).
+
+  The analyzer's need table now lists those needs as `environment` (replacing `unmet`; a need's supply form `unsupplied` is now `environment`), each with its fields' environment names, and exports `needGraphScopeOf`, `derivedNeedEnvName`, `envNameSegment` and `NEED_ENV_PREFIX`.
+
+### Patch Changes
+
+- Updated dependencies [972e899]
+- Updated dependencies [972e899]
+- Updated dependencies [972e899]
+- Updated dependencies [972e899]
+- Updated dependencies [f3071ab]
+  - @telorun/analyzer@0.117.0
+  - @telorun/kernel@0.117.0
+  - @telorun/ide-support@0.117.0
+  - @telorun/sdk@0.117.0
+  - @telorun/templating@0.117.0
+
 ## 0.116.0
 
 ### Patch Changes
