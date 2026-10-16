@@ -14,7 +14,9 @@ targets:
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: postgres://postgres:postgres@localhost:5432/postgres
+access:
+  kind: Postgres.DatabaseAccess
+  fields: { url: postgres://postgres:postgres@localhost:5432/postgres }
 ---
 kind: Postgres.Table
 metadata: { name: roles }

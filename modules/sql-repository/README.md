@@ -26,12 +26,13 @@ metadata: { name: users-api, version: 1.0.0 }
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.13.0
   SqlRepository: oci://ghcr.io/telorun/sql-repository@0.7.0
-secrets:
-  DATABASE_URL: { env: DATABASE_URL, type: string }
+  Postgres: oci://ghcr.io/telorun/postgres@0.9.0
+needs:
+  databaseAccess: { kind: Postgres.DatabaseAccess, env: { url: DATABASE_URL } }
 ---
-kind: Sql.Connection
+kind: Postgres.Connection
 metadata: { name: Db }
-connectionString: !cel "secrets.DATABASE_URL"
+access: !ref databaseAccess
 ---
 kind: SqlRepository.Read
 metadata: { name: FindUsers }

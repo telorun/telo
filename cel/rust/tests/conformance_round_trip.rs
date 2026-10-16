@@ -38,7 +38,7 @@ use telorun_cel::{
 const NODE_COUNTS: [(&str, usize, usize, usize, usize); 6] = [
     ("language.json", 1814, 1814, 0, 0),
     ("catalog.json", 178, 178, 0, 0),
-    ("types.json", 64, 64, 0, 0),
+    ("types.json", 74, 74, 0, 0),
     ("holes.json", 82, 5, 77, 2),
     ("module-calls.json", 53, 49, 4, 0),
     ("verdicts.json", 109, 92, 17, 2),

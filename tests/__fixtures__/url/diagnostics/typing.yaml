@@ -1,0 +1,32 @@
+# A URL's members are its fields, closed; a member written as an expression is typed
+# against its member; and a URL is not text where text is wanted.
+kind: Telo.Application
+metadata:
+  name: UrlTyping
+  version: 1.0.0
+imports:
+  Fx: ../kinds
+variables:
+  port: { env: TELO_TEST_URL_PORT, type: integer, default: 5432 }
+---
+kind: Fx.DatabaseAccess
+metadata: { name: database }
+fields:
+  url: postgres://db.internal/orders
+---
+kind: Fx.DatabaseAccess
+metadata: { name: unknownField }
+fields:
+  url: postgres://db.internal/orders
+  label: !cel "resources.database.url.nope"
+---
+kind: Fx.DatabaseAccess
+metadata: { name: urlAsText }
+fields:
+  url: postgres://db.internal/orders
+  label: !cel "resources.database.url"
+---
+kind: Fx.DatabaseAccess
+metadata: { name: mistypedMember }
+fields:
+  url: { scheme: postgres, host: !cel "variables.port" }

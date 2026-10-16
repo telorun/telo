@@ -52,13 +52,10 @@ import { celMapFromEntries } from "./cel-map-value.js";
 import {
   boolOperand,
   callSiteOf,
-  hasMember,
+  memberReadsOf,
   optionalEntry,
   readHostValue,
   readName,
-  readNameChain,
-  readThrough,
-  searchNameChain,
   type CelStep,
   type CompileTarget,
 } from "./backend-runtime.js";
@@ -412,11 +409,15 @@ export function storedEmittedModule(
  * The runtime support library an emitted module's factory takes: every operation the
  * emitted code calls, bound to this environment.
  *
- * Each entry is the function the **closure backend** calls for the same operation —
- * literally the same reference — which is what makes "the two backends answer identically"
- * a property of the wiring rather than a hope the tests confirm.
+ * Each entry is the function the **closure backend** calls for the same operation — the same
+ * reference, or for a member read the same seam function bound to the same environment's
+ * host fields — which is what makes "the two backends answer identically" a property of
+ * the wiring rather than a hope the tests confirm.
  */
 export function emitterRuntime(target: CompileTarget): EmittedRuntime {
+  // The member reads carry the environment's host fields, bound once, so the emitted text
+  // names the seam alone and is the same whatever the environment declares.
+  const { hasMember, readNameChain, readThrough, searchNameChain } = memberReadsOf(target);
   return {
     asyncValueRefused,
     boolOperand,

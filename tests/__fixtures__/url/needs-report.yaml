@@ -1,0 +1,11 @@
+# An application whose need's address is a URL — a value type declaring its password
+# sensitive — read from the environment.
+kind: Telo.Application
+metadata:
+  name: UrlNeedsReport
+  version: 1.0.0
+imports:
+  Fx: ./kinds
+needs:
+  databaseAccess:
+    kind: Fx.DatabaseAccess

@@ -1,0 +1,31 @@
+# Literals a `Telo.Url` slot refuses statically, each with what is wrong and never
+# the value: text that does not read, a scheme the slot's argument does not admit,
+# a member that cannot stand, and a literal member beside an expression.
+kind: Telo.Application
+metadata:
+  name: UrlLiterals
+  version: 1.0.0
+imports:
+  Fx: ../kinds
+variables:
+  dbHost: { env: TELO_TEST_URL_DB_HOST, type: string, default: db.internal }
+---
+kind: Fx.DatabaseAccess
+metadata: { name: notAUrl }
+fields:
+  url: not a url
+---
+kind: Fx.DatabaseAccess
+metadata: { name: wrongScheme }
+fields:
+  url: mysql://root:hunter2@db/app
+---
+kind: Fx.DatabaseAccess
+metadata: { name: badMember }
+fields:
+  url: { scheme: postgres, host: db, port: 70000 }
+---
+kind: Fx.DatabaseAccess
+metadata: { name: literalBesideExpression }
+fields:
+  url: { scheme: mysql, host: !cel "variables.dbHost" }

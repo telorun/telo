@@ -6,9 +6,11 @@ metadata:
   license: MIT
   categories: [Storage]
   description: |
-    Connects an application to a PostgreSQL database over a standard `postgres://`
-    URL, with TLS modes and a pooled set of connections shared by every query,
-    statement, transaction and migration the application runs.
+    Connects an application to a PostgreSQL database it asks for as a typed need —
+    the address with its credentials, a minimum server version and the extensions
+    it relies on, each verified against the live server at start-up — with TLS
+    modes and a pooled set of connections shared by every query, statement,
+    transaction and migration the application runs.
 requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
@@ -17,23 +19,50 @@ requires:
   # `x-telo-ref` as the removed string-reference form, so it rejects every
   # consumer's `type: text` and tells its author to write `!ref text`. Verified
   # by execution against 0.82.0.
-  telo: ">=0.82.1"
+  # 0.117.0: `DatabaseAccess` is a `Telo.NeedType` whose `url` is a `Telo.Url`, and
+  # `Connection.access` observes it (`observes:`). 0.116.0 rejects the document
+  # kind (`UNDEFINED_KIND`) and the `observes` key (`X_TELO_REF_UNKNOWN_KEY`).
+  # Verified by execution against 0.116.0.
+  telo: ">=0.117.0"
 imports:
   Sql: ../sql
 exports:
   kinds:
+    - DatabaseAccess
     - Connection
     - Table
     - Enum
     - Schema
 ---
+kind: Telo.NeedType
+metadata:
+  name: DatabaseAccess
+  description: >-
+    Access to a PostgreSQL database: its address with the credentials to sign in,
+    as a URL. A need may ask for a minimum server version and for the pgvector and
+    PostGIS extensions, and the connection opened over it checks both against the
+    live server when the application starts.
+version: semver
+features: [pgvector, postgis]
+fields:
+  url:
+    title: URL
+    description: >-
+      The database's address — `postgres://` or `postgresql://` — with its user,
+      password, host, port and database name. TLS and other libpq settings go in
+      its query (`sslmode=require`).
+    x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+    x-telo-sensitive: true
+required: [url]
+---
 kind: Telo.Definition
 metadata:
   name: Connection
   description: >-
-    A pooled connection to a PostgreSQL database, configured by a `postgres://` URL
-    with the usual TLS modes and pool sizing, and shared by every operation that
-    references it.
+    A pooled connection to a PostgreSQL database, opened over a database-access
+    need with the usual TLS modes and pool sizing, and shared by every operation
+    that references it. At start-up it reports the server's version and available
+    extensions, so a need asking for more refuses to start.
 capability: Telo.Provider
 extends: Sql.Connection
 controllers:
@@ -42,21 +71,27 @@ schema:
   type: object
   additionalProperties: false
   required:
-    - connectionString
+    - access
   examples:
-    - connectionString: postgres://user:password@localhost:5432/mydb?sslmode=require
-    - connectionString: postgres://user:password@localhost:5432/mydb
+    - access: !ref databaseAccess
+    - access: !ref databaseAccess
       pool:
         min: 2
         max: 20
   properties:
-    connectionString:
-      title: Connection String
-      type: string
+    access:
+      title: Access
       description: >-
-        PostgreSQL connection URL — `postgres://` or `postgresql://`. TLS is
-        configured with the standard libpq `?sslmode=` query parameter
-        (`disable`, `require`, `verify-ca`, `verify-full`).
+        The database to connect to: a need of this module's database-access type, or
+        a fulfilment of it. The connection reads the server's version and available
+        extensions when it starts and reports them, so a need's `version:` and
+        `features:` are checked against the live server. TLS is configured with the
+        standard libpq `sslmode` query parameter of the URL (`disable`, `require`,
+        `verify-ca`, `verify-full`).
+      x-telo-ref:
+        kind: Self.DatabaseAccess
+        use: dependency
+        observes: [version, features]
     pool:
       title: Pool
       description: Database connection pool configuration.

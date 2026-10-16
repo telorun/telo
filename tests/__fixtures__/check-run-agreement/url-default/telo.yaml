@@ -1,0 +1,12 @@
+# A `Telo.Url` variable whose `default:` the slot's scheme argument refuses: `telo check`
+# reports it as the type's own code, and the kernel refuses the same default at boot.
+kind: Telo.Application
+metadata:
+  name: UrlDefault
+  version: 1.0.0
+variables:
+  databaseUrl:
+    env: TELO_TEST_URL_DEFAULT
+    type: string
+    x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+    default: "mysql://db.internal/app"

@@ -4,6 +4,8 @@ import { MemorySource } from "../src/manifest-sources/memory-source.js";
 import type { ModuleContext } from "../src/module-context.js";
 import { NeedFulfilment } from "../src/need-fulfilment.js";
 import { ResourceContextImpl } from "../src/resource-context.js";
+import { resolveApplicationEnv } from "../src/application-env.js";
+import { SchemaValidator } from "../src/schema-validator.js";
 
 class Capture {
   readonly chunks: string[] = [];
@@ -202,6 +204,89 @@ ${extra}`;
       undefined,
     ]);
     await kernel.teardown();
+  });
+});
+
+describe("a Telo.Url read from the environment", () => {
+  const types = `kind: Telo.Library
+metadata:
+  name: Db
+exports:
+  kinds: [Access]
+---
+kind: Telo.NeedType
+metadata:
+  name: Access
+fields:
+  url:
+    x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+required: [url]
+`;
+  const app = `kind: Telo.Application
+metadata:
+  name: EnvUrls
+imports:
+  Db: memory://types
+variables:
+  replica:
+    env: REPLICA_URL
+    type: string
+    x-telo-type: Telo.Url
+needs:
+  database:
+    kind: Db.Access
+    env: { url: DATABASE_URL }
+`;
+  const load = async (env: Record<string, string>) => {
+    const memory = new MemorySource();
+    memory.set("app", app);
+    memory.set("types", types);
+    const kernel = new Kernel({ sources: [memory], env, stderr: new Capture().stream });
+    await kernel.load("memory://app");
+    return kernel;
+  };
+
+  it("joins a value that does not read, or that the slot's scheme refuses, to the application's validation failure as ERR_URL_INVALID, naming the variable and never the value", async () => {
+    const failure = load({ DATABASE_URL: "mysql://root:hunter2@db/app", REPLICA_URL: "postgres://root:s3cret@db/app#top" });
+    await expect(failure).rejects.toMatchObject({ code: "ERR_MANIFEST_VALIDATION_FAILED" });
+    const message = ((await failure.catch((e) => e)) as Error).message;
+    expect(message).toContain(
+      "needs database.url: environment variable DATABASE_URL: ERR_URL_INVALID: not a Telo.Url — its scheme must be one of postgres, postgresql",
+    );
+    expect(message).toContain(
+      "replica: environment variable REPLICA_URL: ERR_URL_INVALID: not a Telo.Url — it holds a fragment ('#')",
+    );
+    expect(message).not.toContain("hunter2");
+    expect(message).not.toContain("s3cret");
+  });
+
+  it("refuses a default the slot's scheme refuses the same way", () => {
+    const refusal = (() => {
+      try {
+        resolveApplicationEnv(
+          {
+            metadata: { name: "DefaultUrl" },
+            variables: {
+              databaseUrl: {
+                env: "DATABASE_URL",
+                type: "string",
+                "x-telo-type": { name: "Telo.Url", scheme: { enum: ["postgres", "postgresql"] } },
+                default: "mysql://root:hunter2@db/app",
+              },
+            },
+          },
+          {},
+          new SchemaValidator(),
+        );
+      } catch (error) {
+        return error as { code: string; message: string };
+      }
+    })();
+    expect(refusal?.code).toBe("ERR_MANIFEST_VALIDATION_FAILED");
+    expect(refusal?.message).toContain(
+      "databaseUrl: ERR_URL_INVALID: not a Telo.Url — its scheme must be one of postgres, postgresql",
+    );
+    expect(refusal?.message).not.toContain("hunter2");
   });
 });
 

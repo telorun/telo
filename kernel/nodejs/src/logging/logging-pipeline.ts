@@ -225,7 +225,7 @@ export class LoggingPipeline {
 
     redactAttributes(normalized.attributes, scope.redaction);
 
-    const error = options?.error === undefined ? undefined : toErrorValue(options.error);
+    const error = options?.error === undefined ? undefined : toErrorValue(options.error, scope.redaction.censor);
     redactError(error, scope.redaction);
 
     const timestamp = options?.timestamp ?? nowUnixNano();

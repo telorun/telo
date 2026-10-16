@@ -16,6 +16,7 @@
 
 import { CEL_VALUE_TYPE, isCelError } from "@telorun/cel";
 import { withLegacyDurationMethods } from "./legacy-value-classes.js";
+import { composeUrl, isUrlValue, readUrlText, urlMemberRefusal, writeUrlText } from "./url-text.js";
 import {
   durationNanosFromText,
   formatTimestamp,
@@ -35,6 +36,22 @@ export interface PlainEncoding {
   decode(text: string): unknown | undefined;
   /** The canonical text of a value of the type this encoding belongs to. */
   encode(value: unknown): string;
+  /** Why `text` is not in this encoding, or nothing when it is — worded without quoting
+   *  the text, which may hold a credential. Absent where `form` says all there is. */
+  readonly refusal?: (text: string) => string | undefined;
+  /** For the encoding of a value type that declares `members`: building a value from them. */
+  readonly members?: MembersCodec;
+}
+
+/**
+ * How a value type that declares `members` is built from an object of them — the second
+ * authoring form beside its text. Each refusal is worded without quoting a value.
+ */
+export interface MembersCodec {
+  /** The value an object of members builds, or why it builds none. */
+  compose(members: Readonly<Record<string, unknown>>): { readonly value: unknown } | { readonly refusal: string };
+  /** Why one member's value cannot stand, or nothing when it can or is absent. */
+  memberRefusal(name: string, value: unknown): string | undefined;
 }
 
 const BASE64URL = /^[A-Za-z0-9_-]*$/;
@@ -133,11 +150,30 @@ const celDuration: PlainEncoding = {
   },
 };
 
+const urlText: PlainEncoding = {
+  form: "an absolute URL (postgres://user:password@db.internal:5432/orders), each component percent-encoded where RFC 3986 requires",
+  schema: { type: "string", format: "uri" },
+  decode(text) {
+    const read = readUrlText(text);
+    return "value" in read ? read.value : undefined;
+  },
+  encode(value) {
+    if (!isUrlValue(value)) throw new TypeError("url-text encodes a URL value");
+    return writeUrlText(value);
+  },
+  refusal(text) {
+    const read = readUrlText(text);
+    return "refusal" in read ? read.refusal : undefined;
+  },
+  members: { compose: composeUrl, memberRefusal: urlMemberRefusal },
+};
+
 /** Every plain encoding this runtime implements, keyed by an entry's `encoding`. */
 export const PLAIN_ENCODINGS: Readonly<Record<string, PlainEncoding>> = {
   base64url,
   rfc3339,
   "cel-duration": celDuration,
+  "url-text": urlText,
 };
 
 /** The plain encoding `name`, which `consumer` (a writer or reader built on it)

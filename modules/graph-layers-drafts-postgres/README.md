@@ -32,10 +32,12 @@ imports:
   Layers: oci://ghcr.io/telorun/graph-layers-drafts-postgres@<version>
   Graph: oci://ghcr.io/telorun/graph@<version>
   GraphLayers: oci://ghcr.io/telorun/graph-layers@<version>
+needs:
+  databaseAccess: { kind: Postgres.DatabaseAccess, env: { url: DATABASE_URL } }
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel "secrets.databaseUrl"
+access: !ref databaseAccess
 ---
 kind: Layers.NodeTable
 metadata: { name: people }

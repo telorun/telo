@@ -4,8 +4,11 @@ import {
   OBSERVED_STATE_KEY,
   readValueTypeSlot,
   VALUE_TYPES,
+  X_TELO_TYPE,
 } from "@telorun/sdk";
 import type { CelEnvironment } from "@telorun/cel";
+import { memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
+import { valueTypeRefusalCode } from "./schema-error-report.js";
 import {
   CEL_ENGINE,
   celExpressionsOf,
@@ -234,6 +237,8 @@ import {
   leadingRelativeLiteral,
 } from "./host-path-slot.js";
 import { validateImportHostPaths } from "./validate-import-host-paths.js";
+import { validateImportInputs } from "./validate-import-inputs.js";
+import { importInputsJoinSchema } from "./import-inputs.js";
 import { validateModuleMetadata } from "./validate-module-metadata.js";
 import { validateRequires } from "./validate-requires.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
@@ -843,6 +848,17 @@ function declaredCelSlots(
       );
     }
   } else if (data !== null && typeof data === "object") {
+    // An object of a value type's members: each member is a slot of its own, typed
+    // by the member's schema with the slot's argument laid over it.
+    const members = membersSlotOf(entered.schema);
+    if (members) {
+      const schemas = memberSlotSchemas(members);
+      for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+        if (!schemas[k]) continue;
+        slots.push(...declaredCelSlots(v, schemas[k]!, path ? `${path}.${k}` : k, schemas[k]!, external));
+      }
+      return slots;
+    }
     // An undeclared member is a map value, typed by the first conjunct that
     // says what one is and read in that conjunct's own document.
     const mapConjunct = conjuncts.find((conjunct) =>
@@ -2298,6 +2314,15 @@ export class StaticAnalyzer {
         kernelGlobals,
       ),
     );
+    // Every literal an import supplies, held to the entry the library declares.
+    diagnostics.push(
+      ...validateImportInputs(
+        allManifests as unknown as ResourceManifest[],
+        rootModules,
+        options?.moduleDocuments ?? [],
+        defs,
+      ),
+    );
 
     // Fallback context for CEL in a slot with no `x-telo-context` annotation:
     // everything stays open except the typed `.status` nodes, so unknown-field
@@ -2654,6 +2679,17 @@ export class StaticAnalyzer {
             celReturnSlots.push({ manifest: m, resource, filePath, ...slot });
           }
         }
+        // An import's `variables:` / `secrets:` are typed by the library's declared
+        // entries — an expression joined against the entry it fills.
+        const inputSlots =
+          !ownModule || rootModules.has(ownModule)
+            ? importInputsJoinSchema(m as unknown as ResourceManifest, options?.moduleDocuments ?? [])
+            : undefined;
+        if (inputSlots) {
+          for (const slot of collectCelValueSlots(m, inputSlots, "", namedShape)) {
+            celReturnSlots.push({ manifest: m, resource, filePath, ...slot });
+          }
+        }
         // A kind's own schema may point a slot at a PROJECTION — of a resource it
         // references, or (the empty pointer) of this very declaration, which is
         // what types a table's seed rows against its own `columns:`. Resolved
@@ -2748,6 +2784,19 @@ export class StaticAnalyzer {
             inherited.length > 0 && parentKind
               ? ` — ${inherited.map((f) => `'${f}'`).join(", ")} ${inherited.length > 1 ? "come" : "comes"} from '${parentKind}', which this kind extends without a 'base:' mapping, so the parent's required fields stay on this kind's author surface. Add 'base:' to set them internally; that also narrows the surface to this kind's own schema.`
               : "";
+          // A value type admitting text refuses one that does not read under its
+          // own code (`URL_INVALID`), the reason already in the message.
+          const textRefusal = valueTypeRefusalCode(issue);
+          if (textRefusal !== undefined) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: textRefusal,
+              source: SOURCE,
+              message: `${m.kind}/${resource.name}: ${issue.message}`,
+              data: { resource, filePath, path: issue.path },
+            });
+            continue;
+          }
           // A relative literal at a host-path slot is its own finding, with the
           // repair that is right when the path names a file of the module.
           if (issue.valueType && VALUE_TYPES.get(issue.valueType)?.fromHost !== undefined) {
@@ -4145,6 +4194,7 @@ export class StaticAnalyzer {
         rootModules,
         (supplied, required, isDeclaration) =>
           kindSatisfies(supplied, required, defs, isDeclaration),
+        options?.moduleDocuments ?? [],
       ),
     );
 

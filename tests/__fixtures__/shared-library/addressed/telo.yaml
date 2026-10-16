@@ -1,0 +1,19 @@
+kind: Telo.Library
+metadata:
+  name: SharedAddressed
+  version: 1.0.0
+  description: "Test fixture: a singleton that takes a URL as a config input."
+lifecycle: shared
+imports:
+  Run: ../../../../modules/run
+variables:
+  url:
+    x-telo-type: Telo.Url
+exports:
+  resources: [hostOf]
+---
+kind: Run.Sequence
+metadata: { name: hostOf }
+steps: []
+outputs:
+  host: !cel "variables.url.host"

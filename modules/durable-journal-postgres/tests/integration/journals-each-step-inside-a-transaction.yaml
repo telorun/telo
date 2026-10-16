@@ -46,9 +46,7 @@ targets:
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
-  string(resources.Pg.endpoint.status.port) + '/postgres'
+access: !ref Pg.databaseAccess
 ---
 # The journal under test — on the SAME connection the transaction below opens,
 # which is the whole condition. Point it at another database and the attestation

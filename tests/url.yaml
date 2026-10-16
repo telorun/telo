@@ -1,0 +1,442 @@
+kind: Telo.Application
+metadata:
+  name: UrlTest
+  version: 1.0.0
+  description: |
+    A `Telo.Url` is written as its text or as an object of its members, which the type
+    escapes, and either way it is one value: its members read as CEL fields, its text
+    is `string(url)`, and a member written as an expression is built in once the
+    expression is evaluated. A call's argument and a result are built when the call is
+    dispatched; one that does not build is the contract's catchable, never-retried
+    `ERR_INPUT_INVALID`, carrying the type's entry and no part of the value, and a
+    refusal of another field beside a URL that builds quotes it censored. A kind
+    opening a fulfilment holding one receives the value
+    and is told the field is sensitive, since the URL carries a password; the URL's
+    text and its password are redacted in a log line of the module that declares the
+    fulfilment and of the library it is bound to, and a root variable's password is
+    redacted as text too, as is one nested inside a root variable or secret. A URL built
+    when a call is dispatched joins no redaction
+    set: any log line writing it is censored whole, in whichever module logs it, while
+    its host is not. A URL an import supplies as text, nested in an object or not, or a
+    library's default holds, is a URL inside the library, and is redacted in the
+    library's and the importer's scope.
+logging:
+  level: info
+  sinks:
+    # A literal path: `Telo.FileSink.destination` is not a CEL slot.
+    - kind: Telo.FileSink
+      destination: /tmp/telo-url-redaction.jsonl
+      flush_interval: 20ms
+imports:
+  Fx: ./__fixtures__/url/kinds
+  Reporter:
+    source: ./__fixtures__/url/reporter
+    needs:
+      databaseAccess: !ref objectDatabase
+  Vars:
+    source: ./__fixtures__/url/variables
+    variables:
+      url: postgres://imp:1mp0rt-pw@db.internal/orders
+      db: { url: postgres://nest:n3sted-pw@db.internal/orders }
+      label: hello
+      anything: { shape: open }
+      cap: !cel "duration('2s')"
+  Log: ../modules/log
+  Fs: ../modules/fs
+  Timer: ../modules/timer
+  Run: ../modules/run
+  Assert: ../modules/assert
+variables:
+  dbHost: { env: TELO_TEST_URL_DB_HOST, type: string, default: db.internal }
+  rootUrl:
+    env: TELO_TEST_URL_ROOT_URL
+    type: string
+    x-telo-type: Telo.Url
+    default: postgres://root:r00t-pw@db.internal/orders
+  rootDb:
+    env: TELO_TEST_URL_ROOT_DB
+    type: object
+    properties:
+      url: { x-telo-type: Telo.Url }
+    default: { url: "postgres://root:n3sted-r00t-pw@db.internal/orders" }
+secrets:
+  rootSecretDb:
+    env: TELO_TEST_URL_ROOT_SECRET_DB
+    type: object
+    properties:
+      url: { x-telo-type: Telo.Url }
+    default: { url: "postgres://root:n3sted-s3cret-pw@db.internal/orders" }
+targets:
+  - !ref members
+  - !ref consumed
+  - !ref dispatched
+  - !ref dispatchRefused
+  - !ref refusedOnce
+  - !ref produced
+  - !ref imported
+  - !ref redacted
+---
+# The text, its password escaped as RFC 3986 requires.
+kind: Fx.DatabaseAccess
+metadata: { name: textDatabase }
+fields:
+  url: postgres://app:p%40ss%2Fw%3Ard@db.internal:5432/orders?sslmode=require
+---
+# The same URL as an object of its members: the password is written as it is, and one
+# member is an expression.
+kind: Fx.DatabaseAccess
+metadata: { name: objectDatabase }
+fields:
+  url:
+    scheme: postgres
+    host: !cel "variables.dbHost"
+    port: 5432
+    user: app
+    password: "p@ss/w:rd"
+    path: /orders
+    query: { sslmode: require }
+---
+kind: Fx.DatabaseAccess
+metadata: { name: bareDatabase }
+fields:
+  url: POSTGRES://db.internal
+---
+# Text an expression builds is read through the type's encoding at creation.
+kind: Fx.DatabaseAccess
+metadata: { name: builtDatabase }
+fields:
+  url: !interpolate "postgresql://${{ variables.dbHost }}:6432/orders"
+
+---
+kind: Fx.Database
+metadata: { name: consumer }
+access: !ref objectDatabase
+---
+kind: Run.Sequence
+metadata: { name: members }
+steps:
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        text:
+          scheme: !cel "resources.textDatabase.url.scheme"
+          host: !cel "resources.textDatabase.url.host"
+          port: !cel "resources.textDatabase.url.port"
+          user: !cel "resources.textDatabase.url.user"
+          password: !cel "resources.textDatabase.url.password"
+          path: !cel "resources.textDatabase.url.path"
+          query: !cel "resources.textDatabase.url.query"
+        object:
+          scheme: !cel "resources.objectDatabase.url.scheme"
+          host: !cel "resources.objectDatabase.url.host"
+          port: !cel "resources.objectDatabase.url.port"
+          user: !cel "resources.objectDatabase.url.user"
+          password: !cel "resources.objectDatabase.url.password"
+          path: !cel "resources.objectDatabase.url.path"
+          query: !cel "resources.objectDatabase.url.query"
+        sameText: !cel "string(resources.textDatabase.url) == string(resources.objectDatabase.url)"
+        written: !interpolate "${{ resources.objectDatabase.url }}"
+        # A member the URL does not hold is absent, not an empty value.
+        built: !cel "[resources.builtDatabase.url.scheme, resources.builtDatabase.url.host, string(resources.builtDatabase.url.port)]"
+        bare:
+          password: !cel "has(resources.bareDatabase.url.password)"
+          port: !cel "resources.bareDatabase.url.?port.orValue(5432)"
+          text: !cel "string(resources.bareDatabase.url)"
+      expected:
+        text:
+          scheme: postgres
+          host: db.internal
+          port: 5432
+          user: app
+          password: "p@ss/w:rd"
+          path: /orders
+          query: { sslmode: require }
+        object:
+          scheme: postgres
+          host: db.internal
+          port: 5432
+          user: app
+          password: "p@ss/w:rd"
+          path: /orders
+          query: { sslmode: require }
+        sameText: true
+        written: postgres://app:p%40ss%2Fw%3Ard@db.internal:5432/orders?sslmode=require
+        built: [postgresql, db.internal, "6432"]
+        bare:
+          password: false
+          port: 5432
+          text: postgres://db.internal
+---
+# A kind opening the fulfilment whole receives the URL value, and the field marked
+# sensitive: the type declares its password sensitive and this URL holds one.
+kind: Run.Sequence
+metadata: { name: consumed }
+steps:
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        host: !cel "resources.consumer.url.host"
+        text: !cel "resources.consumer.text"
+        sensitive: !cel "resources.consumer.sensitive"
+      expected:
+        host: db.internal
+        text: postgres://app:p%40ss%2Fw%3Ard@db.internal:5432/orders?sslmode=require
+        sensitive: [url]
+---
+# A call's argument at a `Telo.Url` input is built when the call is dispatched: text an
+# expression produced arrives as the URL it reads as.
+kind: Run.Sequence
+metadata: { name: hostOf }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [url]
+    properties:
+      url:
+        x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+steps:
+  - name: host
+    value: !cel "inputs.url.host"
+outputs:
+  host: !cel "steps.host.result"
+---
+kind: Run.Sequence
+metadata: { name: dispatched }
+steps:
+  - name: call
+    invoke: !ref hostOf
+    inputs:
+      url: !interpolate "postgres://app@${{ variables.dbHost }}/orders"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.call.result"
+      expected: { host: db.internal }
+---
+# An argument that does not build is the contract's own `ERR_INPUT_INVALID`: catchable
+# by name, never re-attempted by a retry policy, and carrying the type's entry — its
+# pointer, `ERR_URL_INVALID` and the reason — with no part of the value.
+kind: Run.Sequence
+metadata: { name: dispatchRefused }
+steps:
+  - name: attempt
+    try:
+      - name: call
+        invoke: !ref hostOf
+        inputs:
+          url: !interpolate "mysql://app:s3cret@${{ variables.dbHost }}/orders"
+        retry: { attempts: 3, initialDelay: 1 }
+    catch:
+      - name: caught
+        value: !cel >-
+          {
+            'code': error.code,
+            'issues': error.data.issues.map(i, {'pointer': i.pointer, 'code': i.code, 'reason': i.reason}),
+            'quotesPassword': error.message.contains('s3cret') || json(error.data).contains('s3cret')
+          }
+  # The validator's message quotes the arguments it refuses: the URL is written censored.
+  - name: otherFieldAttempt
+    try:
+      - name: otherFieldCall
+        invoke: !ref taggedHostOf
+        inputs:
+          url: !interpolate "postgres://app:s3cret@${{ variables.dbHost }}/orders"
+          tag: !cel "'ab'"
+    catch:
+      - name: otherFieldCaught
+        value: !cel >-
+          {
+            'code': error.code,
+            'censored': error.message.contains('"url":"[redacted]"'),
+            'quotesPassword': error.message.contains('s3cret')
+          }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        unbuilt: !cel "steps.caught.result"
+        otherField: !cel "steps.otherFieldCaught.result"
+      expected:
+        unbuilt:
+          code: ERR_INPUT_INVALID
+          issues:
+            - pointer: /url
+              code: ERR_URL_INVALID
+              reason: its scheme must be one of postgres, postgresql
+          quotesPassword: false
+        otherField:
+          code: ERR_INPUT_INVALID
+          censored: true
+          quotesPassword: false
+---
+# A URL that builds, beside a field the contract refuses.
+kind: Run.Sequence
+metadata: { name: taggedHostOf }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [url, tag]
+    properties:
+      url: { x-telo-type: Telo.Url }
+      tag: { type: string, minLength: 5 }
+steps: []
+---
+kind: Assert.Events
+metadata: { name: refusedOnce }
+filter:
+  - type: "hostOf.InvokeRejected"
+expect:
+  - event: hostOf.InvokeRejected
+    times: 1
+---
+# A result is built too: a template's `result:` producing URL text at an `outputType`
+# `Telo.Url` slot hands its caller the URL.
+kind: Telo.Definition
+metadata: { name: Address }
+capability: Telo.Invocable
+schema: { type: object }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [url]
+    properties:
+      url:
+        x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: text }
+    steps:
+      - name: text
+        value: postgresql://app@db.internal:6432/orders
+    outputs:
+      text: !cel "steps.text.result"
+invoke: !ref text
+result:
+  url: !cel "result.text"
+---
+kind: Run.Sequence
+metadata: { name: produced }
+steps:
+  - name: call
+    invoke: { kind: Self.Address }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.call.result.url.host, string(steps.call.result.url.port)]"
+      expected: [db.internal, "6432"]
+---
+# An import's variable written as text, and a library default holding text, are URLs
+# inside the library.
+kind: Run.Sequence
+metadata: { name: imported }
+steps:
+  - name: hosts
+    invoke: !ref Vars.hosts
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.hosts.result"
+      expected:
+        url: db.internal
+        fallback: fallback.internal
+        label: hello
+        anything: { shape: open }
+        cap: 2s
+---
+kind: Run.Sequence
+metadata: { name: redacted }
+with:
+  - kind: Fs.File
+    metadata: { name: readLog }
+steps:
+  - name: marker
+    value: !cel "'url-' + uuidv4()"
+  - name: emit
+    invoke: { kind: Log.Emit }
+    inputs:
+      level: info
+      message: !cel "steps.marker.result"
+      attributes:
+        host: !cel "resources.objectDatabase.url.host"
+        password: !cel "resources.objectDatabase.url.password"
+        text: !cel "string(resources.objectDatabase.url)"
+        rootPassword: !cel "variables.rootUrl.password"
+        rootNestedPassword: !cel "variables.rootDb.url.password"
+        rootSecretNestedPassword: !cel "secrets.rootSecretDb.url.password"
+  - name: report
+    invoke: !ref Reporter.report
+    inputs:
+      marker: !cel "steps.marker.result"
+  # A URL built when the call is dispatched: nothing built it before.
+  - name: dispatchedLog
+    invoke: { kind: Fx.LogUrl }
+    inputs:
+      marker: !cel "steps.marker.result"
+      url: !interpolate "postgres://dispatch:d1spatch-pw@${{ variables.dbHost }}/orders"
+  # A URL another module built when called, logged here.
+  - name: issued
+    invoke: !ref Reporter.issue
+    inputs:
+      password: l1brary-pw
+      host: !cel "variables.dbHost"
+  - name: issuedLog
+    invoke: { kind: Fx.LogUrl }
+    inputs:
+      marker: !cel "steps.marker.result"
+      url: !cel "steps.issued.result.url"
+  # A URL an import supplied as text, logged whole and by its password in the library's
+  # scope and in this one.
+  - name: libraryVariable
+    invoke: !ref Vars.report
+    inputs:
+      marker: !cel "steps.marker.result"
+  - name: importedLog
+    invoke: { kind: Log.Emit }
+    inputs:
+      level: info
+      message: !cel "steps.marker.result"
+      attributes:
+        importedPassword: !cel "resources.Vars.variables.url.password"
+        importedNestedPassword: !cel "resources.Vars.variables.db.url.password"
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "250ms", value: {} }
+  - name: read
+    invoke: !ref readLog
+    inputs: { path: /tmp/telo-url-redaction.jsonl }
+  - name: records
+    value: !cel >-
+      steps.read.result.content.split('\n')
+        .filter(line, line.contains(steps.marker.result))
+        .map(line, parseJson(line))
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      # A record of the application carries no scope; the library's carries its alias.
+      actual: !cel "steps.records.result.map(r, {'scope': has(r.scope) ? r.scope : 'application', 'attributes': r.attributes})"
+      expected:
+        - scope: application
+          attributes:
+            host: db.internal
+            password: "[redacted]"
+            text: "[redacted]"
+            rootPassword: "[redacted]"
+            rootNestedPassword: "[redacted]"
+            rootSecretNestedPassword: "[redacted]"
+        - scope: Reporter
+          attributes: { host: db.internal, password: "[redacted]", text: "[redacted]" }
+        - scope: application
+          attributes: { host: db.internal, url: "[redacted]" }
+        - scope: application
+          attributes: { host: db.internal, url: "[redacted]" }
+        - scope: Vars
+          attributes: { host: db.internal, url: "[redacted]" }
+        - scope: Vars
+          attributes: { password: "[redacted]", nestedPassword: "[redacted]" }
+        - scope: application
+          attributes: { importedPassword: "[redacted]", importedNestedPassword: "[redacted]" }

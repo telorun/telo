@@ -141,10 +141,16 @@ init() {
 - A provider may keep reporting afterwards; the reading stays sticky.
 
 ```yaml
-kind: Postgres.Connection
+kind: Postgres.DatabaseAccess
 metadata:
-  name: db
-connectionString: !interpolate "postgres://app@${{ resources.pgPort.status.host }}:${{ resources.pgPort.status.port }}/app"
+  name: appDatabase
+fields:
+  url:
+    scheme: postgres
+    host: !cel "resources.pgPort.status.host"
+    port: !cel "resources.pgPort.status.port"
+    user: app
+    path: /app
 ```
 
 Every other capability keeps the rules above unchanged.

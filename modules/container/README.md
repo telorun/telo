@@ -74,9 +74,16 @@ port: 5432
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + resources.databasePort.status.host + ':' +
-  string(resources.databasePort.status.port) + '/postgres'
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "resources.databasePort.status.host"
+      port: !cel "resources.databasePort.status.port"
+      user: postgres
+      password: postgres
+      path: /postgres
 ```
 
 ## Reference

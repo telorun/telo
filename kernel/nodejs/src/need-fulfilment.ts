@@ -1,6 +1,6 @@
 import { sensitiveNeedFields, type NeedTypeShape } from "@telorun/analyzer";
 import type { ControllerInstance, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { RuntimeError } from "@telorun/sdk";
+import { membersEntryOfValue, plainScalar, redactedTextsOf, RuntimeError } from "@telorun/sdk";
 
 /**
  * A FULFILMENT — the values that satisfy a need, as one instance of the kernel's
@@ -41,19 +41,35 @@ export function isNeedFulfilment(value: unknown): value is NeedFulfilment {
   return typeof value === "object" && value !== null && fulfilments.has(value);
 }
 
-/** Build a fulfilment of `shape` from its field values. */
+/**
+ * Build a fulfilment of `shape` from its field values.
+ *
+ * A field marked `x-telo-sensitive` is sensitive whole: its text joins the redaction set,
+ * a value of a type with members written as its plain encoding's text. A field whose value
+ * type declares a sensitive member (a URL's password) is sensitive when its value holds
+ * one: then its whole text and that member join the set, and the field is marked sensitive
+ * as delivered.
+ */
 export function needFulfilment(
   type: string,
   shape: NeedTypeShape,
   fields: Record<string, unknown>,
 ): NeedFulfilment {
   const sensitive: string[] = [];
-  const names = sensitiveNeedFields(shape);
-  for (const name of names) {
+  const names: string[] = [];
+  for (const name of sensitiveNeedFields(shape)) {
     const value = fields[name];
-    if (typeof value === "string" && value.length > 0) sensitive.push(value);
+    const members = redactedTextsOf(value);
+    if (shape.fields[name]?.["x-telo-sensitive"] === true) {
+      names.push(name);
+      const text = typeof value === "string" ? value : membersEntryOfValue(value) ? plainScalar(value) : undefined;
+      if (typeof text === "string" && text.length > 0) sensitive.push(text);
+    } else if (members.length > 0) {
+      names.push(name);
+    }
+    sensitive.push(...members);
   }
-  return new NeedFulfilment(type, fields, sensitive, names);
+  return new NeedFulfilment(type, fields, [...new Set(sensitive)], names);
 }
 
 /** What a module context offers a fulfilment: the redaction set its sensitive

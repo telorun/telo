@@ -9,21 +9,44 @@
 
 use crate::cel_value_identity::{Duration, Timestamp};
 
-/// One plain encoding: its symbol, and how the text is written, for a message
-/// pointing an author at the form.
+/// One plain encoding: its symbol, how the text is written, for a message pointing
+/// an author at the form, and whether it builds a value from an object of members —
+/// which an entry declaring `members` requires of its encoding.
 #[derive(Debug, Clone, Copy)]
 pub struct PlainEncoding {
     pub name: &'static str,
     pub form: &'static str,
+    pub composes: bool,
 }
 
 /// Every plain encoding this runtime implements — the closed set an entry's
 /// `encoding` may name, identical to the Node table.
 pub const PLAIN_ENCODINGS: &[PlainEncoding] = &[
-    PlainEncoding { name: "base64url", form: "base64url text without padding" },
-    PlainEncoding { name: "rfc3339", form: "RFC 3339 text (2026-01-15T09:30:00Z)" },
-    PlainEncoding { name: "cel-duration", form: "a CEL duration string within ±315576000000s (1h30m, 250ms, 5400s)" },
+    PlainEncoding { name: "base64url", form: "base64url text without padding", composes: false },
+    PlainEncoding { name: "rfc3339", form: "RFC 3339 text (2026-01-15T09:30:00Z)", composes: false },
+    PlainEncoding {
+        name: "cel-duration",
+        form: "a CEL duration string within ±315576000000s (1h30m, 250ms, 5400s)",
+        composes: false,
+    },
+    PlainEncoding {
+        name: "url-text",
+        form: "an absolute URL (postgres://user:password@db.internal:5432/orders), each component percent-encoded where RFC 3986 requires",
+        composes: true,
+    },
 ];
+
+/// The members a host value written in `encoding` holds, or `None` when its payload is
+/// not that encoding's value or the encoding builds no value from members.
+pub fn host_members(
+    encoding: &str,
+    host: &telorun_cel_value::CelHostValue,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    match encoding {
+        "url-text" => host.payload().downcast_ref::<url_text::Url>().map(url_text::members),
+        _ => None,
+    }
+}
 
 /// `base64url` — bytes as base64url without padding.
 pub mod base64url {
@@ -225,6 +248,431 @@ pub mod cel_duration {
     }
 }
 
+/// `url-text` — the plain encoding of `Telo.Url`, and how a URL is built from its
+/// members. The Rust half of `sdk/nodejs/src/url-text.ts`: both read, write and build
+/// every row of `sdk/value-types/encodings/url-text.json` alike, refusals word for word.
+pub mod url_text {
+    use serde_json::{Map, Value};
+
+    /// The members a URL holds, unescaped. The query is ordered by key, compared as
+    /// UTF-16 code units, which is the order its text writes it in.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Url {
+        pub scheme: String,
+        pub host: Option<String>,
+        pub port: Option<u16>,
+        pub user: Option<String>,
+        pub password: Option<String>,
+        pub path: Option<String>,
+        pub query: Option<Vec<(String, String)>>,
+    }
+
+    /// The member names, in the order a refusal lists them.
+    pub const MEMBER_NAMES: [&str; 7] = ["scheme", "host", "port", "user", "password", "path", "query"];
+
+    const SUB_DELIMS: &[u8] = b"!$&'()*+,;=";
+
+    fn is_unreserved(c: u8) -> bool {
+        c.is_ascii_alphanumeric() || matches!(c, b'-' | b'.' | b'_' | b'~')
+    }
+    fn user_or_host_char(c: u8) -> bool {
+        is_unreserved(c) || SUB_DELIMS.contains(&c)
+    }
+    fn password_char(c: u8) -> bool {
+        user_or_host_char(c) || c == b':'
+    }
+    fn path_char(c: u8) -> bool {
+        user_or_host_char(c) || matches!(c, b':' | b'@' | b'/')
+    }
+    fn query_char(c: u8) -> bool {
+        (is_unreserved(c) || SUB_DELIMS.contains(&c) || matches!(c, b':' | b'@' | b'/' | b'?')) && c != b'&'
+    }
+
+    fn is_scheme(text: &str) -> bool {
+        let mut bytes = text.bytes();
+        matches!(bytes.next(), Some(c) if c.is_ascii_alphabetic())
+            && bytes.all(|c| c.is_ascii_alphanumeric() || matches!(c, b'+' | b'.' | b'-'))
+    }
+
+    fn is_ipv4(text: &str) -> bool {
+        let octets: Vec<&str> = text.split('.').collect();
+        octets.len() == 4
+            && octets.iter().all(|octet| {
+                !octet.is_empty()
+                    && octet.len() <= 3
+                    && octet.bytes().all(|c| c.is_ascii_digit())
+                    && (octet.len() == 1 || !octet.starts_with('0'))
+                    && octet.parse::<u16>().is_ok_and(|n| n <= 255)
+            })
+    }
+
+    /// An IPv6 address in RFC 4291 text form, no zone.
+    fn is_ipv6(text: &str) -> bool {
+        let halves: Vec<&str> = text.split("::").collect();
+        if halves.len() > 2 {
+            return false;
+        }
+        let groups: Vec<&str> =
+            halves.iter().flat_map(|half| if half.is_empty() { vec![] } else { half.split(':').collect() }).collect();
+        let mut count = 0;
+        for (index, group) in groups.iter().enumerate() {
+            if index == groups.len() - 1 && group.contains('.') {
+                if !is_ipv4(group) {
+                    return false;
+                }
+                count += 2;
+                continue;
+            }
+            if group.is_empty() || group.len() > 4 || !group.bytes().all(|c| c.is_ascii_hexdigit()) {
+                return false;
+            }
+            count += 1;
+        }
+        if halves.len() == 2 { count <= 7 } else { count == 8 }
+    }
+
+    /// The text a component's written form holds, or `None` for a character the
+    /// component does not admit raw, a malformed escape, or bytes that are not UTF-8.
+    fn unescape(written: &str, admits: fn(u8) -> bool) -> Option<String> {
+        let input = written.as_bytes();
+        let mut bytes = Vec::with_capacity(input.len());
+        let mut at = 0;
+        while at < input.len() {
+            let c = input[at];
+            if c == b'%' {
+                let hex = input.get(at + 1..at + 3)?;
+                if !hex.iter().all(u8::is_ascii_hexdigit) {
+                    return None;
+                }
+                bytes.push(u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()?);
+                at += 3;
+                continue;
+            }
+            if !admits(c) {
+                return None;
+            }
+            bytes.push(c);
+            at += 1;
+        }
+        String::from_utf8(bytes).ok()
+    }
+
+    /// A component's canonical written form: every byte that is not unreserved, escaped.
+    fn escape(text: &str, keep_slash: bool) -> String {
+        let mut out = String::with_capacity(text.len());
+        for &c in text.as_bytes() {
+            if is_unreserved(c) || (keep_slash && c == b'/') {
+                out.push(c as char);
+            } else {
+                out.push_str(&format!("%{c:02X}"));
+            }
+        }
+        out
+    }
+
+    fn compare_code_units(a: &str, b: &str) -> std::cmp::Ordering {
+        a.encode_utf16().cmp(b.encode_utf16())
+    }
+
+    fn path_refusal(path: &str, authority: bool) -> Option<&'static str> {
+        if authority && !path.is_empty() && !path.starts_with('/') {
+            return Some("its path must begin with '/' when it has a host");
+        }
+        if !authority && path.starts_with("//") {
+            return Some("its path may not begin with '//' when it has no host");
+        }
+        None
+    }
+
+    const PORT_REFUSAL: &str = "its port is not a number from 1 to 65535";
+
+    fn port_of(digits: &str) -> Result<u16, String> {
+        if digits.is_empty() || !digits.bytes().all(|c| c.is_ascii_digit()) {
+            return Err(PORT_REFUSAL.into());
+        }
+        let trimmed = digits.trim_start_matches('0');
+        match trimmed.parse::<u32>() {
+            Ok(port) if (1..=65535).contains(&port) && trimmed.len() <= 5 => Ok(port as u16),
+            _ => Err(PORT_REFUSAL.into()),
+        }
+    }
+
+    /// The URL `text` writes, or why it writes none.
+    pub fn read(text: &str) -> Result<Url, String> {
+        if text.contains('#') {
+            return Err("it holds a fragment ('#'), which a Telo.Url does not carry".into());
+        }
+        let Some(colon) = text.find(':').filter(|&colon| is_scheme(&text[..colon])) else {
+            return Err("it does not begin with a scheme ('postgres:', 'https:')".into());
+        };
+        let mut url = Url {
+            scheme: text[..colon].to_ascii_lowercase(),
+            host: None,
+            port: None,
+            user: None,
+            password: None,
+            path: None,
+            query: None,
+        };
+        let mut rest = &text[colon + 1..];
+        if let Some(mark) = rest.find('?') {
+            url.query = Some(read_query(&rest[mark + 1..])?);
+            rest = &rest[..mark];
+        }
+        let mut path = rest;
+        if let Some(after) = rest.strip_prefix("//") {
+            let (authority, remainder) = match after.find('/') {
+                Some(end) => (&after[..end], &after[end..]),
+                None => (after, ""),
+            };
+            path = remainder;
+            read_authority(authority, &mut url)?;
+        }
+        let unescaped = unescape(path, path_char)
+            .ok_or("its path holds a character that must be percent-encoded, or a malformed escape")?;
+        if let Some(refusal) = path_refusal(&unescaped, url.host.is_some()) {
+            return Err(refusal.into());
+        }
+        url.path = Some(unescaped).filter(|path| !path.is_empty());
+        if url.query.as_ref().is_some_and(Vec::is_empty) {
+            url.query = None;
+        }
+        Ok(url)
+    }
+
+    fn read_authority(authority: &str, url: &mut Url) -> Result<(), String> {
+        let mut host_port = authority;
+        if let Some(at) = authority.rfind('@') {
+            let userinfo = &authority[..at];
+            host_port = &authority[at + 1..];
+            let (user, password) = match userinfo.find(':') {
+                Some(split) => (unescape(&userinfo[..split], user_or_host_char), Some(unescape(&userinfo[split + 1..], password_char))),
+                None => (unescape(userinfo, user_or_host_char), None),
+            };
+            let (Some(user), Some(password)) = (user, password.map_or(Some(None), |p| p.map(Some))) else {
+                return Err("its user information holds a character that must be percent-encoded ('@', '/', '?' …), or a malformed escape".into());
+            };
+            url.user = Some(user);
+            url.password = password;
+        }
+        let mut port = "";
+        let host = if let Some(bracketed) = host_port.strip_prefix('[') {
+            let Some(close) = bracketed.find(']') else {
+                return Err("its host opens '[' and never closes it".into());
+            };
+            let host = &bracketed[..close];
+            if !is_ipv6(host) {
+                return Err("its bracketed host is not an IPv6 address".into());
+            }
+            let after = &bracketed[close + 1..];
+            if !after.is_empty() {
+                let Some(digits) = after.strip_prefix(':') else {
+                    return Err("its host is followed by something other than a port".into());
+                };
+                port = digits;
+            }
+            host.to_string()
+        } else {
+            let written = match host_port.rfind(':') {
+                Some(split) => {
+                    port = &host_port[split + 1..];
+                    &host_port[..split]
+                }
+                None => host_port,
+            };
+            let unescaped = unescape(written, user_or_host_char)
+                .ok_or("its host holds a character that must be percent-encoded, or a malformed escape")?;
+            if unescaped.contains(':') {
+                return Err("its host holds ':' outside brackets, which only an IPv6 address may".into());
+            }
+            unescaped
+        };
+        url.host = Some(host);
+        if !port.is_empty() {
+            url.port = Some(port_of(port)?);
+        }
+        Ok(())
+    }
+
+    fn read_query(written: &str) -> Result<Vec<(String, String)>, String> {
+        let mut query: Vec<(String, String)> = Vec::new();
+        for pair in written.split('&').filter(|pair| !pair.is_empty()) {
+            let (key, value) = match pair.find('=') {
+                Some(split) => (unescape(&pair[..split], query_char), unescape(&pair[split + 1..], query_char)),
+                None => (unescape(pair, query_char), Some(String::new())),
+            };
+            let (Some(key), Some(value)) = (key, value) else {
+                return Err("its query holds a character that must be percent-encoded, or a malformed escape".into());
+            };
+            if key.is_empty() {
+                return Err("its query holds an entry with no key".into());
+            }
+            if query.iter().any(|(held, _)| *held == key) {
+                return Err("its query repeats a key".into());
+            }
+            query.push((key, value));
+        }
+        query.sort_by(|a, b| compare_code_units(&a.0, &b.0));
+        Ok(query)
+    }
+
+    /// The canonical text of a URL.
+    pub fn write(url: &Url) -> String {
+        let mut text = format!("{}:", url.scheme);
+        if let Some(host) = &url.host {
+            text.push_str("//");
+            if let Some(user) = &url.user {
+                text.push_str(&escape(user, false));
+                if let Some(password) = &url.password {
+                    text.push(':');
+                    text.push_str(&escape(password, false));
+                }
+                text.push('@');
+            }
+            if host.contains(':') {
+                text.push_str(&format!("[{host}]"));
+            } else {
+                text.push_str(&escape(host, false));
+            }
+            if let Some(port) = url.port {
+                text.push_str(&format!(":{port}"));
+            }
+        }
+        if let Some(path) = &url.path {
+            text.push_str(&escape(path, true));
+        }
+        if let Some(query) = url.query.as_ref().filter(|query| !query.is_empty()) {
+            let mut pairs = query.clone();
+            pairs.sort_by(|a, b| compare_code_units(&a.0, &b.0));
+            let written: Vec<String> =
+                pairs.iter().map(|(key, value)| format!("{}={}", escape(key, false), escape(value, false))).collect();
+            text.push('?');
+            text.push_str(&written.join("&"));
+        }
+        text
+    }
+
+    /// The members a URL holds, by name — the object form its text is written from.
+    pub fn members(url: &Url) -> Map<String, Value> {
+        let mut out = Map::new();
+        out.insert("scheme".into(), url.scheme.clone().into());
+        if let Some(host) = &url.host {
+            out.insert("host".into(), host.clone().into());
+        }
+        if let Some(port) = url.port {
+            out.insert("port".into(), port.into());
+        }
+        if let Some(user) = &url.user {
+            out.insert("user".into(), user.clone().into());
+        }
+        if let Some(password) = &url.password {
+            out.insert("password".into(), password.clone().into());
+        }
+        if let Some(path) = &url.path {
+            out.insert("path".into(), path.clone().into());
+        }
+        if let Some(query) = &url.query {
+            out.insert(
+                "query".into(),
+                Value::Object(query.iter().map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect()),
+            );
+        }
+        out
+    }
+
+    /// Why one member's value cannot stand in a URL, or `None` when it can.
+    fn member_refusal(name: &str, value: &Value) -> Option<String> {
+        match name {
+            "port" => {
+                let port = match value {
+                    Value::Number(number) => number
+                        .as_i64()
+                        .or_else(|| number.as_f64().filter(|f| f.fract() == 0.0 && f.abs() < 1e6).map(|f| f as i64)),
+                    _ => None,
+                };
+                (!port.is_some_and(|port| (1..=65535).contains(&port)))
+                    .then(|| "its 'port' member is not an integer from 1 to 65535".to_string())
+            }
+            "query" => {
+                let Value::Object(entries) = value else {
+                    return Some("its 'query' member is not a map of strings to strings".into());
+                };
+                for (key, held) in entries {
+                    if key.is_empty() {
+                        return Some("its 'query' member holds an entry with no key".into());
+                    }
+                    if !held.is_string() {
+                        return Some("its 'query' member is not a map of strings to strings".into());
+                    }
+                }
+                None
+            }
+            _ => {
+                let Value::String(text) = value else {
+                    return Some(format!("its '{name}' member is not text"));
+                };
+                if name == "scheme" && !is_scheme(text) {
+                    return Some("its 'scheme' member is not a scheme (a letter, then letters, digits, '+', '-' or '.')".into());
+                }
+                if name == "host" && text.contains(':') && !is_ipv6(text) {
+                    return Some("its 'host' member holds ':' and is not an IPv6 address (written without brackets)".into());
+                }
+                None
+            }
+        }
+    }
+
+    /// The URL an object of members builds, or why it builds none — the Node codec's
+    /// `composeUrl`, refusal for refusal.
+    pub fn compose(members: &Map<String, Value>) -> Result<Url, String> {
+        for name in members.keys() {
+            if !MEMBER_NAMES.contains(&name.as_str()) {
+                return Err(format!("'{name}' is not one of its members ({})", MEMBER_NAMES.join(", ")));
+            }
+        }
+        for name in MEMBER_NAMES {
+            if let Some(refusal) = members.get(name).and_then(|value| member_refusal(name, value)) {
+                return Err(refusal);
+            }
+        }
+        let text = |name: &str| members.get(name).and_then(Value::as_str).map(str::to_string);
+        let Some(scheme) = text("scheme") else {
+            return Err("it has no 'scheme' member".into());
+        };
+        let host = text("host");
+        for name in ["user", "password", "port"] {
+            if members.contains_key(name) && host.is_none() {
+                return Err(format!("its '{name}' member needs a 'host' (write host: \"\" for an empty one)"));
+            }
+        }
+        if members.contains_key("password") && !members.contains_key("user") {
+            return Err("its 'password' member needs a 'user' (write user: \"\" for an empty one)".into());
+        }
+        let path = text("path").unwrap_or_default();
+        if let Some(refusal) = path_refusal(&path, host.is_some()) {
+            return Err(refusal.into());
+        }
+        let query = members.get("query").and_then(Value::as_object).map(|entries| {
+            let mut pairs: Vec<(String, String)> =
+                entries.iter().map(|(key, value)| (key.clone(), value.as_str().unwrap_or_default().to_string())).collect();
+            pairs.sort_by(|a, b| compare_code_units(&a.0, &b.0));
+            pairs
+        });
+        Ok(Url {
+            scheme: scheme.to_ascii_lowercase(),
+            host,
+            port: members.get("port").and_then(|value| match value {
+                Value::Number(number) => number.as_i64().or_else(|| number.as_f64().map(|f| f as i64)),
+                _ => None,
+            }).map(|port| port as u16),
+            user: text("user"),
+            password: text("password"),
+            path: Some(path).filter(|path| !path.is_empty()),
+            query: query.filter(|query| !query.is_empty()),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,6 +735,38 @@ mod tests {
         assert_eq!(span("20000000000s").as_deref(), Some("20000000000s"));
         assert_eq!(span("315576000001s"), None);
         assert_eq!(span(&format!("1{}h", "0".repeat(40))), None);
+    }
+
+    /// The shared vectors of `sdk/value-types/encodings/url-text.json`, which the Node
+    /// SDK runs too: every text read to its members or refused with its reason, every
+    /// object of members built or refused, and every value written canonically.
+    #[test]
+    fn answers_the_shared_url_text_vectors() {
+        use serde_json::Value;
+        let vectors: Value =
+            serde_json::from_str(include_str!("../../../value-types/encodings/url-text.json")).unwrap();
+        let members_of = |url: &url_text::Url| -> Value { Value::Object(url_text::members(url)) };
+        for row in vectors["decode"].as_array().unwrap() {
+            let text = row["text"].as_str().unwrap();
+            match (url_text::read(text), row.get("refusal")) {
+                (Err(refusal), Some(expected)) => assert_eq!(refusal, expected.as_str().unwrap(), "{text}"),
+                (Ok(url), None) => {
+                    assert_eq!(members_of(&url), row["members"], "{text}");
+                    let canonical = url_text::write(&url);
+                    assert_eq!(canonical, row["canonical"].as_str().unwrap(), "{text}");
+                    assert_eq!(url_text::read(&canonical), Ok(url), "{text}");
+                }
+                (answer, _) => panic!("{text}: answered {answer:?} where the vector records {row}"),
+            }
+        }
+        for row in vectors["compose"].as_array().unwrap() {
+            let members = row["members"].as_object().unwrap();
+            match (url_text::compose(members), row.get("refusal")) {
+                (Err(refusal), Some(expected)) => assert_eq!(refusal, expected.as_str().unwrap(), "{row}"),
+                (Ok(url), None) => assert_eq!(url_text::write(&url), row["canonical"].as_str().unwrap(), "{row}"),
+                (answer, _) => panic!("answered {answer:?} where the vector records {row}"),
+            }
+        }
     }
 
     #[test]

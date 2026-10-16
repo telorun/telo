@@ -1,0 +1,12 @@
+# A field-by-field supply at an import is held to the need type's URL as a
+# resource's own field is.
+kind: Telo.Application
+metadata:
+  name: UrlImportSupply
+  version: 1.0.0
+imports:
+  Reporter:
+    source: ../reporter
+    needs:
+      databaseAccess:
+        url: mysql://db/app

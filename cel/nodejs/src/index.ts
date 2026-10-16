@@ -358,7 +358,7 @@ export {
   UNSUPPORTED_CONTAINER,
   UNSUPPORTED_KEY,
 } from "./member-read.js";
-export type { Lookup } from "./member-read.js";
+export type { HostFields, Lookup } from "./member-read.js";
 
 export {
   celMatches,

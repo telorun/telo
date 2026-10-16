@@ -46,9 +46,7 @@ targets:
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
-  string(resources.Pg.endpoint.status.port) + '/postgres'
+access: !ref Pg.databaseAccess
 ---
 # Its OWN tables, not shared with the sibling test. Two journals over one prefix
 # are two applications sharing a store: this one runs a RESUMER, which polls for

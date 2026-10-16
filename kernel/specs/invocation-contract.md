@@ -272,10 +272,12 @@ any member a consumer reaches for.
 
 On a bound `invoke()` a runtime MUST, in this order:
 
-1. produce the effective inputs (§4.2);
+1. produce the effective inputs (§4.2), building each value of a type declaring
+   `members` (§4.6);
 2. validate them against the input contract, if one resolved;
 3. dispatch;
-4. validate the result against the output contract, if one resolved.
+4. build each value of a type declaring `members` in the result, then validate it
+   against the output contract, if one resolved.
 
 Validation MUST happen inside the dispatch span, so a violation is attributed to
 the call it belongs to.
@@ -389,6 +391,9 @@ against the schema the site resolves to:
 - a resource's own configuration, against its kind's schema;
 - an Application `variables:` / `secrets:` env value, and the `default:` standing
   in for an unset one, against that entry's residual schema;
+- an import's `variables:` / `secrets:`, and the library `default:` standing in for
+  an entry the import does not supply, against the library's declared entry —
+  decoded when the import initializes, then validated against that entry;
 - every slot a resource writes whose schema comes from ELSEWHERE — a call's
   argument map (a step's `inputs:`, the map a reference slot names through its
   `inputs:` pointer, a template definition's top-level `inputs:`, a boot target's
@@ -413,6 +418,22 @@ schema borrowed from another kind. A COMPUTED value is never decoded (it must
 already be the instance), and neither is text an embedding tag produced: a
 runtime MUST decode before it resolves embeds, so a file's contents are never
 read as an encoding.
+
+A value type declaring `members` (`Telo.Url`) is BUILT, not only decoded: its text,
+or an object of its members, becomes the instance, held to the slot's type
+arguments. Beyond the sites above, a conforming runtime MUST build such a value in
+BOTH directions of a bound contract — a call's arguments before they are validated,
+a result before it is validated — since an expression may produce the text or the
+object at either, and a transport's inbound value through the same context service.
+A value built at a contract boundary joins no redaction set — a set grows by one
+text per distinct value, and a dispatch site sees a new value per call — and is
+protected by the value rule of the logging spec (`kernel/specs/logging.md` §14),
+which every observability writer applies wherever the value is written. One that
+does not build is the TYPE's
+refusal, but at a contract boundary it is never raised in place of the direction's
+code: it is carried INSIDE `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` (§5.1), as
+an entry of the error's data, so the set of codes a dispatch can raise stays the
+closed ambient union whatever value types exist.
 
 A HOST PATH (`Telo.HostPath`, a `json` value type declaring `fromHost`) is
 absolute wherever it is held, and the `x-telo-type` assertion refuses a relative
@@ -474,6 +495,26 @@ block, leaving an author unable to match it or to rethrow it faithfully.
 The message MUST identify the target, the direction, and the offending detail. A
 caller several steps away cannot otherwise tell which boundary rejected the value
 or which side supplied it.
+
+A value type's own refusal at a contract boundary — a value of a type declaring
+`members` that does not build (§4.6) — MUST be raised as the direction's code, never
+as the type's own: the type's code (its `acceptsText.code`, `ERR_`-prefixed, e.g.
+`ERR_URL_INVALID`) is data an entry declares, and raising it at dispatch would widen
+what every dispatch can throw with every new value type, beyond what any `catches:`
+list, coverage check or retry exclusion can model. The error's data MUST carry one
+entry per value that did not build, under `issues`, each holding its `pointer` (a
+JSON Pointer into the inputs or the result, `/url`), the type's `code` and its
+`reason`, and — for a transport's answer — the dotted `path` and a `message`; the
+rendered text MUST carry the same entries (`/url: ERR_URL_INVALID: not a Telo.Url —
+<reason>`). Neither MAY quote the value, which may hold a credential. The same
+entry is what an application's `ERR_MANIFEST_VALIDATION_FAILED` carries for an
+environment value or a `default:` of the type; at a resource's creation, at an
+import's field-by-field need supply and at an import's `variables:` / `secrets:`
+(§4.6) the type's code is raised as itself, naming the import and the variable
+there. Any other mismatch between an import's supply and the library's declared
+entry is `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED` (a relative host path
+`ERR_HOST_PATH_RELATIVE`), naming the import, the variable and the failed keyword,
+rendered from the failure's issue rather than from a message quoting the value.
 
 ### 5.2 Status against declared unions
 

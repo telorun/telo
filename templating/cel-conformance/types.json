@@ -2235,6 +2235,488 @@
           "message": "this value holds no members"
         }
       }
+    },
+    {
+      "id": "types/Url/field_read",
+      "tag": "cel",
+      "source": "u.host",
+      "declarations": {
+        "u": "Telo.Url"
+      },
+      "bindings": {
+        "u": {
+          "$cel": "host",
+          "type": "Telo.Url",
+          "value": {
+            "host": "db.internal",
+            "path": "/orders",
+            "port": {
+              "$telo": "int",
+              "value": "5432"
+            },
+            "query": {
+              "sslmode": "require"
+            },
+            "scheme": "postgres",
+            "user": "app"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [
+            "u"
+          ],
+          "volatile": false
+        },
+        "value": "db.internal"
+      }
+    },
+    {
+      "id": "types/Url/field_integer",
+      "tag": "cel",
+      "source": "u.port",
+      "declarations": {
+        "u": "Telo.Url"
+      },
+      "bindings": {
+        "u": {
+          "$cel": "host",
+          "type": "Telo.Url",
+          "value": {
+            "host": "db.internal",
+            "path": "/orders",
+            "port": {
+              "$telo": "int",
+              "value": "5432"
+            },
+            "query": {
+              "sslmode": "require"
+            },
+            "scheme": "postgres",
+            "user": "app"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [
+            "u"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "int",
+          "value": "5432"
+        }
+      }
+    },
+    {
+      "id": "types/Url/field_map",
+      "tag": "cel",
+      "source": "u.query.sslmode",
+      "declarations": {
+        "u": "Telo.Url"
+      },
+      "bindings": {
+        "u": {
+          "$cel": "host",
+          "type": "Telo.Url",
+          "value": {
+            "host": "db.internal",
+            "path": "/orders",
+            "port": {
+              "$telo": "int",
+              "value": "5432"
+            },
+            "query": {
+              "sslmode": "require"
+            },
+            "scheme": "postgres",
+            "user": "app"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [
+            "u"
+          ],
+          "volatile": false
+        },
+        "value": "require"
+      }
+    },
+    {
+      "id": "types/Url/field_index",
+      "tag": "cel",
+      "source": "u['path']",
+      "declarations": {
+        "u": "Telo.Url"
+      },
+      "bindings": {
+        "u": {
+          "$cel": "host",
+          "type": "Telo.Url",
+          "value": {
+            "host": "db.internal",
+            "path": "/orders",
+            "port": {
+              "$telo": "int",
+              "value": "5432"
+            },
+            "query": {
+              "sslmode": "require"
+            },
+            "scheme": "postgres",
+            "user": "app"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [
+            "u"
+          ],
+          "volatile": false
+        },
+        "value": "/orders"
+      }
+    },
+    {
+      "id": "types/Url/presence_has",
+      "tag": "cel",
+      "source": "has(u.password)",
+      "declarations": {
+        "u": "Telo.Url"
+      },
+      "bindings": {
+        "u": {
+          "$cel": "host",
+          "type": "Telo.Url",
+          "value": {
+            "host": "db.internal",
+            "path": "/orders",
+            "port": {
+              "$telo": "int",
+              "value": "5432"
+            },
+            "query": {
+              "sslmode": "require"
+            },
+            "scheme": "postgres",
+            "user": "app"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [
+            "u"
+          ],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/Url/presence_select",
+      "tag": "cel",
+      "source": "u.?port",
+      "declarations": {
+        "u": "Telo.Url"
+      },
+      "bindings": {
+        "u": {
+          "$cel": "host",
+          "type": "Telo.Url",
+          "value": {
+            "host": "db.internal",
+            "path": "/orders",
+            "port": {
+              "$telo": "int",
+              "value": "5432"
+            },
+            "query": {
+              "sslmode": "require"
+            },
+            "scheme": "postgres",
+            "user": "app"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "optional<int>",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "u"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional",
+          "value": {
+            "$telo": "int",
+            "value": "5432"
+          }
+        }
+      }
+    },
+    {
+      "id": "types/Url/presence_select_absent",
+      "tag": "cel",
+      "source": "u.?password",
+      "declarations": {
+        "u": "Telo.Url"
+      },
+      "bindings": {
+        "u": {
+          "$cel": "host",
+          "type": "Telo.Url",
+          "value": {
+            "host": "db.internal",
+            "path": "/orders",
+            "port": {
+              "$telo": "int",
+              "value": "5432"
+            },
+            "query": {
+              "sslmode": "require"
+            },
+            "scheme": "postgres",
+            "user": "app"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "optional<string>",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [
+            "u"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/Url/absent_field_read",
+      "tag": "cel",
+      "source": "u.password",
+      "declarations": {
+        "u": "Telo.Url"
+      },
+      "bindings": {
+        "u": {
+          "$cel": "host",
+          "type": "Telo.Url",
+          "value": {
+            "host": "db.internal",
+            "path": "/orders",
+            "port": {
+              "$telo": "int",
+              "value": "5432"
+            },
+            "query": {
+              "sslmode": "require"
+            },
+            "scheme": "postgres",
+            "user": "app"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [
+            "u"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "no such key: \"password\""
+        }
+      }
+    },
+    {
+      "id": "types/Url/unknown_field",
+      "tag": "cel",
+      "source": "u.nope",
+      "declarations": {
+        "u": "Telo.Url"
+      },
+      "bindings": {
+        "u": {
+          "$cel": "host",
+          "type": "Telo.Url",
+          "value": {
+            "host": "db.internal",
+            "path": "/orders",
+            "port": {
+              "$telo": "int",
+              "value": "5432"
+            },
+            "query": {
+              "sslmode": "require"
+            },
+            "scheme": "postgres",
+            "user": "app"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "\"nope\" is not a field of Telo.Url (fields: scheme, host, port, user, password, path, query)"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [
+            "u"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "no such key: \"nope\""
+        }
+      }
+    },
+    {
+      "id": "types/Url/string_rendering",
+      "tag": "cel",
+      "source": "string(u)",
+      "declarations": {
+        "u": "Telo.Url"
+      },
+      "bindings": {
+        "u": {
+          "$cel": "host",
+          "type": "Telo.Url",
+          "value": {
+            "host": "db.internal",
+            "path": "/orders",
+            "port": {
+              "$telo": "int",
+              "value": "5432"
+            },
+            "query": {
+              "sslmode": "require"
+            },
+            "scheme": "postgres",
+            "user": "app"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "string",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 9,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [
+            "u"
+          ],
+          "volatile": false
+        },
+        "value": "string({\"$cel\":\"host\",\"type\":\"Telo.Url\",\"value\":{\"host\":\"db.internal\",\"path\":\"/orders\",\"port\":{\"$telo\":\"int\",\"value\":\"5432\"},\"query\":{\"sslmode\":\"require\"},\"scheme\":\"postgres\",\"user\":\"app\"}})"
+      }
     }
   ]
 }

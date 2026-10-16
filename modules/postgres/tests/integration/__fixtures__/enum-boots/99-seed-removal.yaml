@@ -30,9 +30,16 @@ targets:
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + variables.dbHost + ':' +
-  string(variables.dbPort) + '/postgres'
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: !cel "variables.dbPort"
+      user: postgres
+      password: postgres
+      path: /postgres
 ---
 # Carried forward unchanged from the earlier boots, so the only thing these two
 # boots change is the seed rows — otherwise the previous fixtures' tables would

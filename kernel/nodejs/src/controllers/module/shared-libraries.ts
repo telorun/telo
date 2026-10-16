@@ -1,5 +1,5 @@
 import type { EvaluationContext as IEvaluationContext, ResourceInstance } from "@telorun/sdk";
-import { RuntimeError } from "@telorun/sdk";
+import { holdsSensitiveMember, plainScalar, RuntimeError } from "@telorun/sdk";
 import type { ModuleContext } from "../../module-context.js";
 import type { ParsedExportEntry } from "@telorun/analyzer";
 import type { NeedSupplyValue } from "./import-controller.js";
@@ -174,6 +174,11 @@ function sameValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a === undefined || b === undefined) return false;
   if (a === null || b === null) return false;
+  // A built value (a URL, an instant, bytes) is the value its plain encoding
+  // writes, so two equal ones are one value however each was written.
+  const plainA = plainScalar(a);
+  const plainB = plainScalar(b);
+  if (plainA !== undefined || plainB !== undefined) return plainA === plainB;
   if (Array.isArray(a) || Array.isArray(b)) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
     return a.every((item, i) => sameValue(item, b[i]));
@@ -189,6 +194,9 @@ function sameValue(a: unknown, b: unknown): boolean {
 
 function render(value: unknown): string {
   if (typeof value === "string") return value;
+  if (holdsSensitiveMember(value)) return "[redacted]";
+  const plain = plainScalar(value);
+  if (plain !== undefined) return String(plain);
   try {
     return JSON.stringify(value) ?? String(value);
   } catch {

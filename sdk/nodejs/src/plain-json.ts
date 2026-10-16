@@ -7,8 +7,8 @@
  * reader recovers the type from the schema it was promised. The typed frame
  * (`typed-frame.ts`) is the other half, for readers that are a Telo runtime.
  *
- * - a timestamp, a duration and bytes are their plain encoding's text
- *   ({@link PLAIN_ENCODINGS});
+ * - a timestamp, a duration, bytes and a value of a type declaring `members` (a URL)
+ *   are their plain encoding's text ({@link PLAIN_ENCODINGS});
  * - a `uint` is its decimal digits, as an int64 is;
  * - NaN and ±Infinity are the strings `"NaN"`, `"Infinity"` and `"-Infinity"` —
  *   JSON has no number for them, and these are the spellings the protobuf JSON
@@ -27,8 +27,8 @@
  */
 import { isCelDuration, isCelMap, isCelRecord, isCelTimestamp, isCelUint } from "./cel-value-identity.js";
 import { InvokeError } from "./invoke-error.js";
-import { requirePlainEncoding } from "./plain-encoding.js";
-import { plainEncodingOf } from "./value-type.js";
+import { PLAIN_ENCODINGS, requirePlainEncoding } from "./plain-encoding.js";
+import { membersEntryOfValue, plainEncodingOf } from "./value-type.js";
 
 const bytesEncoding = requirePlainEncoding("base64url", "The plain JSON writer");
 const timestampEncoding = requirePlainEncoding("rfc3339", "The plain JSON writer");
@@ -52,6 +52,8 @@ export function plainScalar(value: unknown): string | number | bigint | undefine
   if (isCelDuration(value)) return durationEncoding.encode(value);
   if (isCelTimestamp(value)) return timestampEncoding.encode(value);
   if (value instanceof Uint8Array) return bytesEncoding.encode(value);
+  const members = membersEntryOfValue(value);
+  if (members) return PLAIN_ENCODINGS[members.encoding!]!.encode(value);
   return undefined;
 }
 

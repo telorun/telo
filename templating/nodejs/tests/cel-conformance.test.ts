@@ -17,7 +17,7 @@
  * second answer to a row.
  */
 import { readdirSync, readFileSync } from "node:fs";
-import { valueBrandBases } from "@telorun/sdk";
+import { celTypeOfValueType, VALUE_TYPES, valueBrandBases } from "@telorun/sdk";
 import { catalogGuardedNames, RE2_PATTERN_ERROR_KINDS } from "@telorun/cel";
 import { describe, expect, it } from "vitest";
 import { buildCelEnvironment } from "../src/cel/environment.js";
@@ -176,11 +176,15 @@ describe("CEL conformance vectors", () => {
     expect(RE2_PATTERN_ERROR_KINDS.filter((kind) => !pinned.has(kind))).toEqual([]);
   });
 
-  it("declares a variable of every nominal brand in some types.json row", () => {
+  it("declares a variable of every nominal brand and every type with members in some types.json row", () => {
     const declared = new Set(
       typeRows.flatMap((row) => Object.values(row.declarations ?? {}).flatMap(declaredTypes)),
     );
-    expect(Object.keys(valueBrandBases()).filter((brand) => !declared.has(brand))).toEqual([]);
+    const registered = [
+      ...Object.keys(valueBrandBases()),
+      ...[...VALUE_TYPES.values()].filter((entry) => entry.members !== undefined).map(celTypeOfValueType),
+    ];
+    expect(registered.filter((type) => !declared.has(type))).toEqual([]);
   });
 
   /**

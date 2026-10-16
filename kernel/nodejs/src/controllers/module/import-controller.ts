@@ -12,6 +12,7 @@ import {
   readResourceInputs,
   readSuppliedNeeds,
   readSuppliedResources,
+  membersSlotOf,
 } from "@telorun/analyzer";
 import type { ParsedExportEntry } from "@telorun/analyzer";
 import type { ResourceInstance, ResourceManifest } from "@telorun/sdk";
@@ -19,6 +20,8 @@ import { RuntimeError, TEARDOWN_LAST } from "@telorun/sdk";
 import { publishedPropsOf } from "../../evaluation-context.js";
 import type { BuiltinControllerContext } from "../../internal-context.js";
 import { buildScopeConfig, type LoggingManifestBlock } from "../../logging/kernel-logging.js";
+import { membersRefusal, settleMembersValue, type SchemaAccepts } from "../../members-values.js";
+import { settleImportInputs } from "./import-inputs.js";
 import { ModuleContext } from "../../module-context.js";
 import { isDefaultPolicy, normalizeRuntime } from "../../runtime-registry.js";
 import { resolveLibraryScope } from "./library-scope.js";
@@ -162,14 +165,16 @@ export async function create(
   // var with a default but no override reaches a `${{ variables.X }}` template as
   // a missing key, even though analysis validated the reference against the
   // (defaulted) contract.
-  const importVariables = applyDefaults(
-    (ctx.expandValue(resource.variables, {}) as Record<string, unknown>) ?? {},
-    moduleManifest.variables ?? {},
+  // Then read against the library's declared entries — decoded, built and
+  // validated (`settleImportInputs`), the one decode site an import is.
+  const settledInputs = settleImportBlocks(
+    resource,
+    (moduleManifest.variables ?? {}) as Record<string, unknown>,
+    (moduleManifest.secrets ?? {}) as Record<string, unknown>,
+    alias,
+    ctx,
   );
-  const importSecrets = applyDefaults(
-    (ctx.expandValue(resource.secrets, {}) as Record<string, unknown>) ?? {},
-    moduleManifest.secrets ?? {},
-  );
+  const { variables: importVariables, secrets: importSecrets } = settledInputs;
   const childCtx = new ModuleContext(
     // The LIBRARY's own manifest URL, not the importer's. `source` is what every
     // module-relative file reference is measured from — `ctx.resolveModuleFile`
@@ -199,6 +204,12 @@ export async function create(
     authoredModuleMetadata(moduleManifest.metadata as Record<string, unknown> | undefined),
   );
   childCtx.needPath = needPath;
+  // A built value holding a sensitive member (a URL's password) is redacted in the
+  // library's context and the importer's — the import is a load-time site.
+  if (settledInputs.redacted.length > 0) {
+    childCtx.addRedactedValues(settledInputs.redacted);
+    (ctx.moduleContext as unknown as ModuleContext).addRedactedValues(settledInputs.redacted);
+  }
 
   // A singleton is spawned under the ROOT, never under whichever import reached
   // it first: otherwise tearing that importer down would close a library two
@@ -565,14 +576,17 @@ function borrowSharedLibrary(
   ctx: BuiltinControllerContext,
 ): ResourceInstance {
   assertNoSharedOverride(resource, alias, entry.module);
-  const importVariables = applyDefaults(
-    (ctx.expandValue(resource.variables, {}) as Record<string, unknown>) ?? {},
+  const settledInputs = settleImportBlocks(
+    resource,
     entry.declaredVariables,
-  );
-  const importSecrets = applyDefaults(
-    (ctx.expandValue(resource.secrets, {}) as Record<string, unknown>) ?? {},
     entry.declaredSecrets,
+    alias,
+    ctx,
   );
+  const { variables: importVariables, secrets: importSecrets } = settledInputs;
+  if (settledInputs.redacted.length > 0) {
+    (ctx.moduleContext as unknown as ModuleContext).addRedactedValues(settledInputs.redacted);
+  }
   validateRequiredInputs(entry.declaredVariables, importVariables, "variables");
   validateRequiredInputs(entry.declaredSecrets, importSecrets, "secrets");
   assertSharedInputsAgree(entry, alias, importVariables, importSecrets, borrowed, supplies);
@@ -625,6 +639,42 @@ function borrowSharedLibrary(
           await (entry.initialized ??= entry.build());
           return { result: undefined };
         }),
+  };
+}
+
+/** An import's `variables:` / `secrets:`, evaluated in the importer's scope,
+ *  defaulted from the library's declaration and settled against it. */
+function settleImportBlocks(
+  resource: any,
+  declaredVariables: Record<string, unknown>,
+  declaredSecrets: Record<string, unknown>,
+  alias: string,
+  ctx: BuiltinControllerContext,
+): { variables: Record<string, unknown>; secrets: Record<string, unknown>; redacted: string[] } {
+  const compile = (schema: Record<string, any>) => ctx.createSchemaValidator(schema);
+  const external = (ref: string) => ctx.lookupSchema(ref) as Record<string, any> | undefined;
+  const variables = settleImportInputs(
+    applyDefaults((ctx.expandValue(resource.variables, {}) as Record<string, unknown>) ?? {}, declaredVariables),
+    declaredVariables,
+    "variables",
+    alias,
+    compile,
+    acceptsWith(ctx),
+    external,
+  );
+  const secrets = settleImportInputs(
+    applyDefaults((ctx.expandValue(resource.secrets, {}) as Record<string, unknown>) ?? {}, declaredSecrets),
+    declaredSecrets,
+    "secrets",
+    alias,
+    compile,
+    acceptsWith(ctx),
+    external,
+  );
+  return {
+    variables: variables.values,
+    secrets: secrets.values,
+    redacted: [...variables.redacted, ...secrets.redacted],
   };
 }
 
@@ -925,8 +975,25 @@ function bindNeedSupplies(
           `${missing.map((f) => `'${f}'`).join(", ")} of need type '${type}'.`,
       );
     }
+    // A field of a type with members (a URL) reads its text, or an object of its
+    // members whose expressions the importer evaluated, and is held to its slot's
+    // arguments; anything else is the type's own refusal, naming the field.
+    const values: Record<string, unknown> = { ...supply.values };
+    for (const [field, schema] of Object.entries(shape.fields)) {
+      const slot = membersSlotOf(schema);
+      if (!slot || values[field] === undefined) continue;
+      const settled = settleMembersValue(schema, slot, values[field], acceptsWith(ctx));
+      if ("reason" in settled) {
+        throw membersRefusal(
+          slot,
+          `Import '${alias}': need '${need.name}'`,
+          `field '${field}' is not a ${slot.entry.name}: ${settled.reason}`,
+        );
+      }
+      values[field] = settled.value;
+    }
     try {
-      ctx.validateSchema(supply.values, {
+      ctx.validateSchema(values, {
         type: "object",
         properties: shape.fields,
       });
@@ -937,11 +1004,16 @@ function bindNeedSupplies(
           `${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    const fulfilment = needFulfilment(type, shape, supply.values);
+    const fulfilment = needFulfilment(type, shape, values);
     // An anonymous fulfilment is the importer's, so its values are redacted
     // there as well as in every context it is bound to.
     (ctx.moduleContext as unknown as ModuleContext).addRedactedValues(fulfilment.sensitiveValues);
     out.set(need.name, { manifest, fulfilment });
   }
   return out;
+}
+
+/** A controller context's validator as the question an argument check asks. */
+function acceptsWith(ctx: BuiltinControllerContext): SchemaAccepts {
+  return (schema, value) => ctx.createSchemaValidator(schema).isValid(value);
 }

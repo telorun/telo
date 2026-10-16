@@ -52,6 +52,9 @@ pub struct Parameter {
     /// kernel consumes it yet; it has no CEL engine and does not type an
     /// iteration body.
     pub element: bool,
+    /// The member this parameter's argument constrains — a schema the member's value
+    /// must satisfy. Only on an entry declaring `members`.
+    pub member: Option<String>,
     pub description: Option<String>,
 }
 
@@ -78,6 +81,13 @@ pub struct ValueType {
     /// validation rather than asserted. Exemption is from VALIDATION, never from
     /// TYPING.
     pub live: bool,
+    /// Non-live `instance` only — the members a value holds, each a JSON Schema: its
+    /// fields, its object authoring form and, through `x-telo-sensitive`, what of it
+    /// is redacted. Its encoding builds a value from them.
+    pub members: Option<serde_json::Map<String, Value>>,
+    /// Non-live `instance` with an encoding only — the code a text that does not read
+    /// is refused under (`ERR_`-prefixed at runtime).
+    pub accepts_text: Option<String>,
     pub parameters: Vec<Parameter>,
     pub description: String,
 }
@@ -105,6 +115,7 @@ fn bindings() -> &'static HashMap<&'static str, Binding> {
             ("duration", Binding { rust_type: "Duration" }),
             ("stream", Binding { rust_type: "Stream" }),
             ("timestamp", Binding { rust_type: "Timestamp" }),
+            ("url", Binding { rust_type: "plain_encoding::url_text::Url" }),
         ])
     })
 }
@@ -133,6 +144,7 @@ const ENTRY_FILES: &[(&str, &str)] = &[
     ("telo-timestamp.json", include_str!("../../../value-types/telo-timestamp.json")),
     ("telo-udp-port.json", include_str!("../../../value-types/telo-udp-port.json")),
     ("telo-uint64.json", include_str!("../../../value-types/telo-uint64.json")),
+    ("telo-url.json", include_str!("../../../value-types/telo-url.json")),
 ];
 
 /// The closed key vocabulary an entry is written in. Mirrors the Node reader's
@@ -148,6 +160,8 @@ const ENTRY_KEYS: &[&str] = &[
     "encoding",
     "fromHost",
     "live",
+    "members",
+    "acceptsText",
     "parameters",
     "description",
     "$comment",
@@ -256,7 +270,7 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
                     if let Some(map) = item.as_object() {
                         for key in map.keys() {
                             assert!(
-                                matches!(key.as_str(), "name" | "description" | "element"),
+                                matches!(key.as_str(), "name" | "description" | "element" | "member"),
                                 "Invalid value-type entry '{file}': a parameter has no key '{key}'"
                             );
                         }
@@ -273,6 +287,7 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
                         .get("element")
                         .and_then(Value::as_bool)
                         .unwrap_or(false),
+                    member: item.get("member").and_then(Value::as_str).map(str::to_owned),
                     description: item
                         .get("description")
                         .and_then(Value::as_str)
@@ -293,6 +308,62 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
         panic!("Invalid value-type entry '{file}': at most one parameter may declare 'element'");
     }
 
+    // `members` and `acceptsText`, by the Node reader's rules: an entry refused on one
+    // runtime is refused on the other.
+    let members = obj.get("members").map(|raw| {
+        assert!(
+            representation == Representation::Instance && !live,
+            "Invalid value-type entry '{file}': 'members' belongs to a non-live 'instance' representation"
+        );
+        let members = raw
+            .as_object()
+            .filter(|members| !members.is_empty())
+            .unwrap_or_else(|| panic!("Invalid value-type entry '{file}': 'members' must be a non-empty mapping of member names to schemas"));
+        for (member, schema) in members {
+            let mut chars = member.chars();
+            assert!(
+                matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+                    && chars.all(|c| c.is_ascii_alphanumeric() || c == '_'),
+                "Invalid value-type entry '{file}': member '{member}' is not spelled as a name, which a CEL field must be"
+            );
+            assert!(schema.is_object(), "Invalid value-type entry '{file}': member '{member}' must be a schema");
+        }
+        if let Some(name) = encoding.as_deref() {
+            assert!(
+                PLAIN_ENCODINGS.iter().any(|encoding| encoding.name == name && encoding.composes),
+                "Invalid value-type entry '{file}': encoding '{name}' builds no value from members, so 'members' could not be authored"
+            );
+        }
+        members.clone()
+    });
+    let accepts_text = obj.get("acceptsText").map(|raw| {
+        assert!(
+            representation == Representation::Instance && !live && encoding.is_some(),
+            "Invalid value-type entry '{file}': 'acceptsText' belongs to a non-live 'instance' with an 'encoding'"
+        );
+        let object = raw
+            .as_object()
+            .filter(|object| object.keys().all(|key| key == "code"))
+            .unwrap_or_else(|| panic!("Invalid value-type entry '{file}': 'acceptsText' is a mapping holding exactly 'code'"));
+        let code = object.get("code").and_then(Value::as_str).unwrap_or_default();
+        let mut chars = code.chars();
+        assert!(
+            matches!(chars.next(), Some(c) if c.is_ascii_uppercase())
+                && chars.all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'),
+            "Invalid value-type entry '{file}': 'acceptsText.code' '{code}' is not spelled as a diagnostic code"
+        );
+        code.to_owned()
+    });
+    for parameter in &parameters {
+        if let Some(member) = &parameter.member {
+            assert!(
+                members.as_ref().is_some_and(|members| members.contains_key(member)),
+                "Invalid value-type entry '{file}': parameter '{}' binds 'member: {member}', which is not one of its 'members'",
+                parameter.name
+            );
+        }
+    }
+
     ValueType {
         name,
         representation,
@@ -302,6 +373,8 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
         encoding,
         from_host,
         live,
+        members,
+        accepts_text,
         parameters,
         description: string("description").unwrap_or_default(),
     }
@@ -365,6 +438,28 @@ pub fn is_bytes_slot(schema: &Value) -> bool {
     value_type_of(schema).is_some_and(|e| e.binding.as_deref() == Some("bytes"))
 }
 
+/// True when a value holds a member its type's entry marks `x-telo-sensitive` (a URL
+/// holding a password) — what an observability writer asks before writing a value.
+/// Read from the entry, never from a type name; the Node SDK's `holdsSensitiveMember`.
+pub fn holds_sensitive_member(value: &telorun_cel_value::CelValue) -> bool {
+    let telorun_cel_value::CelValue::Host(host) = value else {
+        return false;
+    };
+    let Some(entry) = host.type_name().and_then(|name| value_types().get(name)) else {
+        return false;
+    };
+    let (Some(members), Some(encoding)) = (&entry.members, &entry.encoding) else {
+        return false;
+    };
+    let Some(held) = crate::plain_encoding::host_members(encoding, host) else {
+        return false;
+    };
+    members.iter().any(|(name, schema)| {
+        schema.get("x-telo-sensitive") == Some(&Value::Bool(true))
+            && held.get(name).and_then(Value::as_str).is_some_and(|text| !text.is_empty())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,9 +477,15 @@ mod tests {
             "Telo.Timestamp",
             "Telo.UdpPort",
             "Telo.Uint64",
+            "Telo.Url",
         ] {
             assert!(types.contains_key(name), "{name} missing from the vocabulary");
         }
+        let url = &types["Telo.Url"];
+        assert_eq!(url.encoding.as_deref(), Some("url-text"));
+        assert_eq!(url.accepts_text.as_deref(), Some("URL_INVALID"));
+        assert_eq!(url.parameters[0].member.as_deref(), Some("scheme"));
+        assert_eq!(url.members.as_ref().unwrap()["password"]["x-telo-sensitive"], serde_json::json!(true));
         assert_eq!(types["Telo.Timestamp"].encoding.as_deref(), Some("rfc3339"));
         assert_eq!(types["Telo.Uint64"].cel_type.as_deref(), Some("uint"));
         assert!(types["Telo.Stream"].encoding.is_none());
@@ -399,6 +500,24 @@ mod tests {
         assert!(is_instance_slot(&json!({ "x-telo-type": "Telo.Bytes" })));
         // A `json` representation is ordinary data its own schema validates.
         assert!(!is_instance_slot(&json!({ "x-telo-type": "Telo.TcpPort" })));
+    }
+
+    #[test]
+    fn answers_from_the_entry_whether_a_value_holds_a_sensitive_member() {
+        let url = |text: &str| {
+            telorun_cel_value::CelValue::Host(
+                telorun_cel_value::CelHostValue::named(
+                    "Telo.Url",
+                    std::sync::Arc::new(crate::plain_encoding::url_text::read(text).unwrap()),
+                )
+                .unwrap(),
+            )
+        };
+        assert!(holds_sensitive_member(&url("postgres://app:p%40ss@db/orders")));
+        assert!(!holds_sensitive_member(&url("postgres://app@db/orders")));
+        assert!(!holds_sensitive_member(&telorun_cel_value::CelValue::String(
+            "postgres://app:p@db".into()
+        )));
     }
 
     #[test]

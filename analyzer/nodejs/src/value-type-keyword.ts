@@ -92,7 +92,7 @@ export const ANNOTATION_KEYWORDS = [
 /** Folded into the kernel's validator cache key. Bump it with any change to the
  *  code or messages {@link valueTypeKeyword} emits: a validator compiled before
  *  the change is otherwise served from disk unchanged. */
-export const VALUE_TYPE_KEYWORD_VERSION = 4;
+export const VALUE_TYPE_KEYWORD_VERSION = 5;
 
 /** How an AJV instance treats a `live` value type. */
 export interface TeloKeywordOptions {
@@ -122,7 +122,11 @@ export interface TeloKeywordOptions {
  *    because iterating a stream to check it is precisely what the exemption is
  *    for. Statically ({@link TeloKeywordOptions.assertLive}) it is asserted like
  *    any other instance, which checks what the value IS and never iterates it;
- *  - every other instance is ASSERTED against the constructor its binding names.
+ *  - every other instance is ASSERTED against the constructor its binding names —
+ *    and, for a type whose parameter binds a member (a URL's `scheme`), the
+ *    member a value holds is held to the slot's argument, a schema, through a
+ *    subschema of this keyword, so the argument is any JSON Schema and is checked
+ *    by the same validator wherever the value is validated.
  *
  * An unknown name emits nothing here. It is a hard diagnostic in the analyzer
  * (`X_TELO_TYPE_UNKNOWN`), which is where a name can be reported against the
@@ -134,6 +138,9 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
     keyword: X_TELO_TYPE,
     // Both spellings: a bare name, or the object form carrying type arguments.
     schemaType: ["string", "object"],
+    // A member held to an argument is judged by a subschema whose findings this
+    // keyword drops in favour of its own single refusal.
+    trackErrors: true,
     code(cxt: any) {
       const entry: ValueTypeEntry | undefined = readValueTypeSlot({
         [X_TELO_TYPE]: cxt.schema,
@@ -177,7 +184,35 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
         ref: binding.holds,
         code: codegen`require("@telorun/sdk").VALUE_TYPE_BINDINGS[${entry.binding!}].holds`,
       });
-      cxt.pass(codegen`${holds}(${cxt.data})`);
+      const bound = boundMemberArguments(entry, cxt.schema);
+      if (bound.length === 0) {
+        cxt.pass(codegen`${holds}(${cxt.data})`);
+        return;
+      }
+      // A member a slot argument binds is held to that argument — a schema — where
+      // the value holds the member at all. One error, this keyword's, whatever
+      // inside the argument refused it: the refusal is about the value type.
+      const valid = cxt.gen.let("valid", codegen`${holds}(${cxt.data})`);
+      for (const { parameter, member } of bound) {
+        cxt.gen.if(codegen`${valid} && ${cxt.data}[${member}] !== undefined`, () => {
+          const accepted = cxt.gen.name("valid");
+          cxt.subschema(
+            {
+              keyword: X_TELO_TYPE,
+              schemaProp: parameter,
+              dataProp: member,
+              compositeRule: true,
+              createErrors: false,
+              allErrors: false,
+            },
+            accepted,
+          );
+          cxt.gen.if(codegen`!${accepted}`, () => cxt.gen.assign(valid, false));
+        });
+      }
+      // What the argument raised is this keyword's refusal, reported once below.
+      cxt.reset();
+      cxt.pass(valid);
     },
     error: {
       message: (cxt: any) => {
@@ -190,6 +225,7 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
         }
         if (!entry) return "must be a declared value type";
         if (entry.fromHost !== undefined) return hostPathRelativeMessage(entry);
+        if (entry.members !== undefined) return membersMessage(entry, cxt.schema);
         const celType = celScalarTypeOf(entry);
         const range = celType === undefined ? undefined : CEL_SCALAR_FORMS[celType]?.range;
         if (range) return `must be a ${entry.name}, ${range.describe}`;
@@ -203,10 +239,46 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
       },
       // The failed type's name travels with the error, so a consumer keys on
       // WHAT failed (a relative host path) rather than on the sentence.
+      // A slot's type arguments travel too, where it has any, so the one explaining a
+      // refusal of a members type can say which argument refused the value.
       params: (cxt: any) =>
-        codegen`{valueType: ${readValueTypeSlot({ [X_TELO_TYPE]: cxt.schema })?.name ?? ""}}`,
+        typeof cxt.schema === "object" && cxt.schema !== null
+          ? codegen`{valueType: ${readValueTypeSlot({ [X_TELO_TYPE]: cxt.schema })?.name ?? ""}, typeArguments: ${cxt.schemaValue}}`
+          : codegen`{valueType: ${readValueTypeSlot({ [X_TELO_TYPE]: cxt.schema })?.name ?? ""}}`,
     },
   } as KeywordDefinition;
+}
+
+/** The parameters of `entry` that bind a member and that the annotation `written`
+ *  supplies an argument for, written as a schema. */
+function boundMemberArguments(
+  entry: ValueTypeEntry,
+  written: unknown,
+): { parameter: string; member: string }[] {
+  if (typeof written !== "object" || written === null) return [];
+  return entry.parameters.flatMap((parameter) => {
+    const argument = (written as Record<string, unknown>)[parameter.name];
+    return parameter.member !== undefined && typeof argument === "object" && argument !== null
+      ? [{ parameter: parameter.name, member: parameter.member }]
+      : [];
+  });
+}
+
+/** What a value at a slot of a type with members must be — the keyword's own words,
+ *  which the analyzer and the kernel replace with the reason once they hold the value. */
+function membersMessage(entry: ValueTypeEntry, written: unknown): string {
+  const encoding = entry.encoding === undefined ? undefined : PLAIN_ENCODINGS[entry.encoding];
+  const constrained = boundMemberArguments(entry, written).map(({ parameter, member }) => {
+    const argument = (written as Record<string, Record<string, unknown>>)[parameter]!;
+    return Array.isArray(argument.enum)
+      ? `its ${member} one of ${argument.enum.map((item) => String(item)).join(", ")}`
+      : `its ${member} as the slot's '${parameter}' argument says`;
+  });
+  return (
+    `must be a ${entry.name}${constrained.length > 0 ? `, ${constrained.join(" and ")}` : ""} — written as ` +
+    `its text (${encoding?.form ?? "its plain encoding"}) or as an object of its members ` +
+    `(${Object.keys(entry.members!).join(", ")})`
+  );
 }
 
 /** Why a relative path is refused at a host-path slot, and the two ways to

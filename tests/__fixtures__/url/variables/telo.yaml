@@ -1,0 +1,70 @@
+# Takes a database address from its importer as a variable, and one nested inside an
+# object variable, and holds a fallback one as a default: all are URLs inside the
+# library, however they were written.
+kind: Telo.Library
+metadata:
+  name: UrlVariables
+  version: 0.0.0
+  description: >-
+    Test fixture: a library reading the host of a URL variable its importer supplies as
+    text and of one its own default holds, and logging the supplied ones from its scope.
+imports:
+  Fx: ../kinds
+  Log: ../../../../modules/log
+  Run: ../../../../modules/run
+variables:
+  url:
+    x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+  fallback:
+    x-telo-type: Telo.Url
+    default: postgresql://fallback.internal:6432/reports
+  db:
+    type: object
+    properties:
+      url: { x-telo-type: Telo.Url }
+  # Declarations with no string `type`: each is held as its own schema, never
+  # read as a property map.
+  label:
+    type: [string, "null"]
+  anything: {}
+  # An instance type beside the `type:` of its plain encoding: the value is the
+  # instance, so `type:` never refuses it.
+  cap:
+    type: string
+    x-telo-type: Telo.Duration
+exports:
+  resources: [hosts, report]
+---
+kind: Run.Sequence
+metadata: { name: hosts }
+steps: []
+outputs:
+  url: !cel "variables.url.host"
+  fallback: !cel "variables.fallback.host"
+  label: !cel "variables.label"
+  anything: !cel "variables.anything"
+  cap: !cel "string(variables.cap)"
+---
+kind: Run.Sequence
+metadata: { name: report }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [marker]
+    properties:
+      marker: { type: string }
+steps:
+  - name: whole
+    invoke: { kind: Fx.LogUrl }
+    inputs:
+      marker: !cel "inputs.marker"
+      url: !cel "variables.url"
+  - name: password
+    invoke: { kind: Log.Emit }
+    inputs:
+      level: info
+      message: !cel "inputs.marker"
+      attributes:
+        password: !cel "variables.url.password"
+        nestedPassword: !cel "variables.db.url.password"

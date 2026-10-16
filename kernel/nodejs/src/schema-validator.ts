@@ -18,22 +18,38 @@ import {
   type SchemaNodeFindings,
   type TeloFormatEntry,
 } from "@telorun/analyzer";
-import { CEL_SCALAR_FORMS, PLAIN_ENCODINGS, VALUE_TYPES, X_TELO_TYPE } from "@telorun/sdk";
+import {
+  CEL_SCALAR_FORMS,
+  holdsSensitiveMember,
+  membersEntryOfValue,
+  PLAIN_ENCODINGS,
+  plainScalar,
+  VALUE_TYPES,
+  X_TELO_TYPE,
+} from "@telorun/sdk";
 import { bigIntView, mergeFilledDefaults } from "./bigint-schema-view.js";
 import { realmRequire } from "./controller-loaders/realm.js";
+import { REDACTED } from "./instance-sensitive-paths.js";
 import { readVersion, reportUndeterminableVersion } from "./runtime-versions.js";
 import { formatAjvErrors } from "./manifest-schemas.js";
 import { ruleCondition, stampRuleCallNames } from "./type-rule-condition.js";
 
 /** Render a value for an error message without ever throwing — the offending
  *  data may be cyclic, and a throw here would REPLACE the validation failure
- *  with an unrelated error naming no field. */
+ *  with an unrelated error naming no field. A value holding a member its type
+ *  declares sensitive (a URL's password) is written as the censor, whoever built
+ *  it (logging §14), and one holding none as its text. */
 export function describeValue(data: unknown): string {
   try {
-    return JSON.stringify(data) ?? String(data);
+    return JSON.stringify(data, describedValue) ?? String(data);
   } catch {
     return String(data);
   }
+}
+
+function describedValue(_key: string, held: unknown): unknown {
+  if (holdsSensitiveMember(held)) return REDACTED;
+  return membersEntryOfValue(held) ? plainScalar(held) : held;
 }
 
 /** A value its schema refuses, carrying the reduced, path-anchored issues the

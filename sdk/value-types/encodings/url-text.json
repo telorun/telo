@@ -1,0 +1,447 @@
+{
+  "$comment": "The url-text plain encoding (Telo.Url), pinned for every runtime: each runtime's codec reads every 'decode' text to the members it lists, or refuses it with exactly the reason given, and writes those members as 'canonical'; and builds every 'compose' object of members into the value whose canonical text is given, or refuses it with exactly the reason given. A port is written as a JSON number; a member that is absent is absent. A reason never quotes a value, since a URL routinely carries a password.",
+  "decode": [
+    {
+      "text": "postgres://app:s3cret@db.internal:5432/orders?sslmode=require",
+      "members": {
+        "scheme": "postgres",
+        "host": "db.internal",
+        "port": 5432,
+        "user": "app",
+        "password": "s3cret",
+        "path": "/orders",
+        "query": {
+          "sslmode": "require"
+        }
+      },
+      "canonical": "postgres://app:s3cret@db.internal:5432/orders?sslmode=require"
+    },
+    {
+      "text": "POSTGRES://db/orders",
+      "members": {
+        "scheme": "postgres",
+        "host": "db",
+        "path": "/orders"
+      },
+      "canonical": "postgres://db/orders"
+    },
+    {
+      "text": "postgres://app:p%40ss%2Fw%3Ard@db/orders",
+      "members": {
+        "scheme": "postgres",
+        "host": "db",
+        "user": "app",
+        "password": "p@ss/w:rd",
+        "path": "/orders"
+      },
+      "canonical": "postgres://app:p%40ss%2Fw%3Ard@db/orders"
+    },
+    {
+      "text": "postgres://app:a:b@db",
+      "members": {
+        "scheme": "postgres",
+        "host": "db",
+        "user": "app",
+        "password": "a:b"
+      },
+      "canonical": "postgres://app:a%3Ab@db"
+    },
+    {
+      "text": "postgres:///orders",
+      "members": {
+        "scheme": "postgres",
+        "host": "",
+        "path": "/orders"
+      },
+      "canonical": "postgres:///orders"
+    },
+    {
+      "text": "postgres://",
+      "members": {
+        "scheme": "postgres",
+        "host": ""
+      },
+      "canonical": "postgres://"
+    },
+    {
+      "text": "http://[::1]:8080/",
+      "members": {
+        "scheme": "http",
+        "host": "::1",
+        "port": 8080,
+        "path": "/"
+      },
+      "canonical": "http://[::1]:8080/"
+    },
+    {
+      "text": "mailto:someone@example.com",
+      "members": {
+        "scheme": "mailto",
+        "path": "someone@example.com"
+      },
+      "canonical": "mailto:someone%40example.com"
+    },
+    {
+      "text": "https://h/?b=2&a=&c",
+      "members": {
+        "scheme": "https",
+        "host": "h",
+        "path": "/",
+        "query": {
+          "a": "",
+          "b": "2",
+          "c": ""
+        }
+      },
+      "canonical": "https://h/?a=&b=2&c="
+    },
+    {
+      "text": "https://h/caf%C3%A9",
+      "members": {
+        "scheme": "https",
+        "host": "h",
+        "path": "/café"
+      },
+      "canonical": "https://h/caf%C3%A9"
+    },
+    {
+      "text": "http://h:/x",
+      "members": {
+        "scheme": "http",
+        "host": "h",
+        "path": "/x"
+      },
+      "canonical": "http://h/x"
+    },
+    {
+      "text": "http://h:080",
+      "members": {
+        "scheme": "http",
+        "host": "h",
+        "port": 80
+      },
+      "canonical": "http://h:80"
+    },
+    {
+      "text": "x://h?options=-c%20a=b",
+      "members": {
+        "scheme": "x",
+        "host": "h",
+        "query": {
+          "options": "-c a=b"
+        }
+      },
+      "canonical": "x://h?options=-c%20a%3Db"
+    },
+    {
+      "text": "ftp://anon@h",
+      "members": {
+        "scheme": "ftp",
+        "host": "h",
+        "user": "anon"
+      },
+      "canonical": "ftp://anon@h"
+    },
+    {
+      "text": "ftp://:pw@h",
+      "members": {
+        "scheme": "ftp",
+        "host": "h",
+        "user": "",
+        "password": "pw"
+      },
+      "canonical": "ftp://:pw@h"
+    },
+    {
+      "text": "https://h?",
+      "members": {
+        "scheme": "https",
+        "host": "h"
+      },
+      "canonical": "https://h"
+    },
+    {
+      "text": "https://h/a,b",
+      "members": {
+        "scheme": "https",
+        "host": "h",
+        "path": "/a,b"
+      },
+      "canonical": "https://h/a%2Cb"
+    },
+    {
+      "text": "https://h?a=1&&b=2",
+      "members": {
+        "scheme": "https",
+        "host": "h",
+        "query": {
+          "a": "1",
+          "b": "2"
+        }
+      },
+      "canonical": "https://h?a=1&b=2"
+    },
+    {
+      "text": "not a url",
+      "refusal": "it does not begin with a scheme ('postgres:', 'https:')"
+    },
+    {
+      "text": "postgres://db/orders#top",
+      "refusal": "it holds a fragment ('#'), which a Telo.Url does not carry"
+    },
+    {
+      "text": "postgres://app:p@ss@db/orders",
+      "refusal": "its user information holds a character that must be percent-encoded ('@', '/', '?' …), or a malformed escape"
+    },
+    {
+      "text": "postgres://db:99999/orders",
+      "refusal": "its port is not a number from 1 to 65535"
+    },
+    {
+      "text": "postgres://db:0",
+      "refusal": "its port is not a number from 1 to 65535"
+    },
+    {
+      "text": "postgres://db:abc",
+      "refusal": "its port is not a number from 1 to 65535"
+    },
+    {
+      "text": "https://h/?a=1&a=2",
+      "refusal": "its query repeats a key"
+    },
+    {
+      "text": "https://h/?=1",
+      "refusal": "its query holds an entry with no key"
+    },
+    {
+      "text": "https://h/a b",
+      "refusal": "its path holds a character that must be percent-encoded, or a malformed escape"
+    },
+    {
+      "text": "https://h/%zz",
+      "refusal": "its path holds a character that must be percent-encoded, or a malformed escape"
+    },
+    {
+      "text": "https://h/%FF",
+      "refusal": "its path holds a character that must be percent-encoded, or a malformed escape"
+    },
+    {
+      "text": "http://[::1",
+      "refusal": "its host opens '[' and never closes it"
+    },
+    {
+      "text": "http://[zz]/",
+      "refusal": "its bracketed host is not an IPv6 address"
+    },
+    {
+      "text": "http://[::1]x",
+      "refusal": "its host is followed by something other than a port"
+    },
+    {
+      "text": "1http://h",
+      "refusal": "it does not begin with a scheme ('postgres:', 'https:')"
+    },
+    {
+      "text": "://h",
+      "refusal": "it does not begin with a scheme ('postgres:', 'https:')"
+    },
+    {
+      "text": "https://a%3Ab/",
+      "refusal": "its host holds ':' outside brackets, which only an IPv6 address may"
+    },
+    {
+      "text": "http://[a:b]/",
+      "refusal": "its bracketed host is not an IPv6 address"
+    },
+    {
+      "text": "http://[2001:DB8::1]:5432/x",
+      "members": {
+        "scheme": "http",
+        "host": "2001:DB8::1",
+        "port": 5432,
+        "path": "/x"
+      },
+      "canonical": "http://[2001:DB8::1]:5432/x"
+    },
+    {
+      "text": "http://[::ffff:10.0.0.1]",
+      "members": {
+        "scheme": "http",
+        "host": "::ffff:10.0.0.1"
+      },
+      "canonical": "http://[::ffff:10.0.0.1]"
+    }
+  ],
+  "compose": [
+    {
+      "members": {
+        "scheme": "postgres",
+        "host": "db.internal",
+        "port": 5432,
+        "user": "app",
+        "password": "p@ss/w:rd",
+        "path": "/orders",
+        "query": {
+          "sslmode": "require"
+        }
+      },
+      "canonical": "postgres://app:p%40ss%2Fw%3Ard@db.internal:5432/orders?sslmode=require"
+    },
+    {
+      "members": {
+        "scheme": "Postgres",
+        "host": ""
+      },
+      "canonical": "postgres://"
+    },
+    {
+      "members": {
+        "scheme": "https",
+        "host": "::1",
+        "path": "/"
+      },
+      "canonical": "https://[::1]/"
+    },
+    {
+      "members": {
+        "scheme": "postgres",
+        "host": "db",
+        "user": "",
+        "password": "only-a-password"
+      },
+      "canonical": "postgres://:only-a-password@db"
+    },
+    {
+      "members": {
+        "scheme": "https",
+        "host": "h",
+        "path": "/a b/ü",
+        "query": {
+          "a key": "a&b=c"
+        }
+      },
+      "canonical": "https://h/a%20b/%C3%BC?a%20key=a%26b%3Dc"
+    },
+    {
+      "members": {
+        "host": "h"
+      },
+      "refusal": "it has no 'scheme' member"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "port": 5432
+      },
+      "refusal": "its 'port' member needs a 'host' (write host: \"\" for an empty one)"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "host": "h",
+        "password": "p"
+      },
+      "refusal": "its 'password' member needs a 'user' (write user: \"\" for an empty one)"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "host": "h",
+        "port": 70000
+      },
+      "refusal": "its 'port' member is not an integer from 1 to 65535"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "host": "h",
+        "port": 1.5
+      },
+      "refusal": "its 'port' member is not an integer from 1 to 65535"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "host": "h",
+        "port": "5432"
+      },
+      "refusal": "its 'port' member is not an integer from 1 to 65535"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "nope": 1
+      },
+      "refusal": "'nope' is not one of its members (scheme, host, port, user, password, path, query)"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "host": "h",
+        "path": "rel"
+      },
+      "refusal": "its path must begin with '/' when it has a host"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "path": "//a"
+      },
+      "refusal": "its path may not begin with '//' when it has no host"
+    },
+    {
+      "members": {
+        "scheme": "1x"
+      },
+      "refusal": "its 'scheme' member is not a scheme (a letter, then letters, digits, '+', '-' or '.')"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "query": {
+          "a": 1
+        }
+      },
+      "refusal": "its 'query' member is not a map of strings to strings"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "query": {
+          "": "v"
+        }
+      },
+      "refusal": "its 'query' member holds an entry with no key"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "query": [
+          "a"
+        ]
+      },
+      "refusal": "its 'query' member is not a map of strings to strings"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "host": "a:b"
+      },
+      "refusal": "its 'host' member holds ':' and is not an IPv6 address (written without brackets)"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "host": "::ffff:10.0.0.1"
+      },
+      "canonical": "x://[::ffff:10.0.0.1]"
+    },
+    {
+      "members": {
+        "scheme": "x",
+        "host": 5
+      },
+      "refusal": "its 'host' member is not text"
+    }
+  ]
+}

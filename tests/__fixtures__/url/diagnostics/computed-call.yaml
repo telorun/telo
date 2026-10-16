@@ -1,0 +1,34 @@
+# A call's argument at a `Telo.Url` input that an expression produced is built when the
+# call is dispatched, and refused there as the contract's violation when it is not one.
+kind: Telo.Application
+metadata:
+  name: UrlComputedCall
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+variables:
+  address: { env: TELO_TEST_URL_ADDRESS, type: string, default: "mysql://db/app" }
+targets:
+  - !ref caller
+---
+kind: Run.Sequence
+metadata: { name: hostOf }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [url]
+    properties:
+      url:
+        x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+steps:
+  - name: host
+    value: !cel "inputs.url.host"
+---
+kind: Run.Sequence
+metadata: { name: caller }
+steps:
+  - name: call
+    invoke: !ref hostOf
+    inputs:
+      url: !cel "variables.address"

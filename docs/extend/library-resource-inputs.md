@@ -35,6 +35,16 @@ imports:
     variables: { minScore: !cel "variables.vectorMinScore" }
 ```
 
+A supplied variable or secret — and the library's own `default:`, standing in for
+one the import leaves out — is read against the entry the library declares, for
+every value type: text in a type's encoding is decoded (an RFC 3339 string at a
+`Telo.Timestamp` entry is a timestamp inside the library, a URL's text a `Telo.Url`),
+then the value is validated. A literal the entry refuses is `SCHEMA_VIOLATION` at the
+import that wrote it (`URL_INVALID` for a URL, `HOST_PATH_RELATIVE` for a relative
+host path), an expression of the wrong type `CEL_TYPE_ERROR`, and the kernel refuses
+the same supply when the import initializes, naming the import and the variable and
+never the value.
+
 ## What it is for
 
 Instances used to flow **up** and never **down**. `exports.resources` hands an
@@ -155,7 +165,9 @@ other root child, so a borrower's own inverses still find it alive.
 **Every import of a singleton must agree.** One instantiation has one
 configuration, so two imports supplying different variables, secrets, resource
 instances or [needs](/learn/declaring-a-need) is a conflict, naming both aliases
-and the key that differs — never the value of a secret or a need. Reported as `SHARED_LIBRARY_CONFLICT` at `telo check` wherever
+and the key that differs — never the value of a secret or a need. Two values are the
+same when they are equal as the import builds them, so two spellings of one URL or
+one instant agree. Reported as `SHARED_LIBRARY_CONFLICT` at `telo check` wherever
 it is decidable there (literal values; references only within one module, since a
 name means the same instance only in one scope), and as
 `ERR_SHARED_LIBRARY_CONFLICT` at boot, which holds the resolved values and the

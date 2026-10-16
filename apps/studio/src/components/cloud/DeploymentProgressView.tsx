@@ -62,10 +62,10 @@ export function DeploymentProgressView({ progress }: { progress: DeploymentProgr
         <ol className="max-h-40 space-y-0.5 overflow-y-auto text-xs">
           {events.map((event) => (
             <li key={event.seq} className="flex gap-2">
-              <span className="w-16 shrink-0 tabular-nums text-muted-foreground">
+              <span className="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground">
                 {timeOf(event.at)}
               </span>
-              <span className="min-w-0 break-words">{event.message}</span>
+              <span className="min-w-0 wrap-anywhere">{event.message}</span>
             </li>
           ))}
         </ol>
@@ -74,7 +74,7 @@ export function DeploymentProgressView({ progress }: { progress: DeploymentProgr
         <div className="space-y-1">
           <p className="text-destructive">{deployment.error.message}</p>
           {deployment.error.detail && (
-            <p className="break-words font-mono text-xs text-muted-foreground">
+            <p className="wrap-anywhere font-mono text-xs text-muted-foreground">
               {deployment.error.detail}
             </p>
           )}

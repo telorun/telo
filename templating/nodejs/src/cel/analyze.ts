@@ -4,7 +4,7 @@ import {
   receiverMacroBinding,
   type CelNode,
 } from "@telorun/cel";
-import { isLiveSlot } from "@telorun/sdk";
+import { isLiveSlot, membersOf } from "@telorun/sdk";
 import { moduleCallOf } from "./module-call.js";
 
 /**
@@ -517,7 +517,10 @@ export function validateChainAgainstSchema(
       current = element;
       continue;
     }
-    const props: Record<string, any> | undefined = current.properties;
+    // A value type declaring members is read by those members alone: they are its
+    // fields, closed as the CEL type the type registers.
+    const members = membersOf(current);
+    const props: Record<string, any> | undefined = members ?? current.properties;
     if (!props) return null;
     if (key in props) {
       const propSchema = props[key];
@@ -528,7 +531,7 @@ export function validateChainAgainstSchema(
       current = propSchema;
       continue;
     }
-    if (current.additionalProperties === true) return null;
+    if (!members && current.additionalProperties === true) return null;
     const path = chain.slice(0, i + 1).join(".");
     const available = Object.keys(props).join(", ");
     return `'${path}' is not defined (available: ${available})`;

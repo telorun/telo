@@ -52,13 +52,18 @@ The walk is bounded by `hnsw.max_scan_tuples` (20,000 by default): a filter so s
 ```yaml
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.13.0
-  Postgres: oci://ghcr.io/telorun/postgres@0.2.1
+  Postgres: oci://ghcr.io/telorun/postgres@0.9.0
   VectorStore: oci://ghcr.io/telorun/vector-store@0.4.0
   VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.3.0
+needs:
+  databaseAccess:
+    kind: Postgres.DatabaseAccess
+    features: [pgvector]
+    env: { url: DATABASE_URL }
 ---
 kind: Postgres.Connection
 metadata: { name: Db }
-connectionString: !cel "secrets.dbConnection"
+access: !ref databaseAccess
 ---
 kind: VectorStorePgvector.Store
 metadata: { name: Index }

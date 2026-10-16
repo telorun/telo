@@ -32,8 +32,10 @@ import {
   isCelTimestamp,
   isCelUint,
 } from "./cel-value-identity.js";
+import { celTypeNameOf } from "@telorun/cel";
 import { PLAIN_ENCODINGS, type PlainEncoding } from "./plain-encoding.js";
 import { Stream } from "./stream.js";
+import { composeUrl, isUrlValue, URL_TYPE_KEY } from "./url-text.js";
 import { VALUE_TYPE_ENTRY_FILES } from "./value-types/entries/index.js";
 
 export const X_TELO_TYPE = "x-telo-type";
@@ -58,6 +60,10 @@ export interface ValueTypeParameter {
    *  same reason `live` is a field and not a check against `Telo.Stream`. At
    *  most one parameter per entry may carry it. */
   readonly element?: boolean;
+  /** The member this parameter's argument constrains: the argument is a schema the
+   *  member's value must satisfy, while the member's CEL type stays what `members`
+   *  declares. Only on an entry declaring `members`. */
+  readonly member?: string;
   readonly description?: string;
 }
 
@@ -84,6 +90,16 @@ export interface ValueTypeEntry {
   /** An instance whose consumption has effects, so it is exempt from validation
    *  rather than asserted. Exemption is from VALIDATION, never from TYPING. */
   readonly live: boolean;
+  /** Non-live `instance` only — the members a value holds, each a JSON Schema: the
+   *  CEL fields of its type, the object authoring form beside its text, and, through
+   *  `x-telo-sensitive: true`, which members are redacted. Its encoding builds a value
+   *  from them ({@link PlainEncoding.members}). */
+  readonly members?: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+  /** Non-live `instance` with an encoding only — a CEL `string` stands at a slot of the
+   *  type and is read through the encoding when the resource holding it is created. A
+   *  value that does not read is refused under `code` (statically) and `ERR_<code>` at
+   *  runtime. */
+  readonly acceptsText?: { readonly code: string };
   readonly parameters: readonly ValueTypeParameter[];
   readonly description: string;
 }
@@ -142,6 +158,11 @@ export const VALUE_TYPE_BINDINGS: Readonly<Record<string, ValueTypeBinding>> = {
     holds: isCelTimestamp,
     celType: "google.protobuf.Timestamp",
     placeholder: () => celTimestampFromMillis(0),
+  },
+  url: {
+    holds: isUrlValue,
+    celType: URL_TYPE_KEY,
+    placeholder: () => (composeUrl({ scheme: "x" }) as { value: unknown }).value,
   },
 };
 
@@ -288,10 +309,17 @@ const ENTRY_KEYS = [
   "encoding",
   "fromHost",
   "live",
+  "members",
+  "acceptsText",
   "parameters",
   "description",
   "$comment",
 ] as const;
+
+/** How a member is named: it is read in CEL as a field. */
+const MEMBER_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** How a refusal code is spelled — the static code; `ERR_` prefixes it at runtime. */
+const REFUSAL_CODE = /^[A-Z][A-Z0-9_]*$/;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -313,7 +341,7 @@ function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
       throw new ValueTypeEntryError(file, `parameters[${i}] must be a mapping`);
     }
     for (const key of Object.keys(entry)) {
-      if (key !== "name" && key !== "description" && key !== "element") {
+      if (key !== "name" && key !== "description" && key !== "element" && key !== "member") {
         throw new ValueTypeEntryError(file, `parameters[${i}] has no key '${key}'`);
       }
     }
@@ -324,6 +352,7 @@ function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
     return {
       name,
       ...(entry.element === true ? { element: true as const } : {}),
+      ...(entry.member === undefined ? {} : { member: requireString(file, entry, "member") }),
       ...(entry.description === undefined
         ? {}
         : { description: requireString(file, entry, "description") }),
@@ -443,6 +472,18 @@ export function parseValueTypeEntry(file: string, data: unknown): ValueTypeEntry
     }
   }
 
+  const members = readMembers(file, data, representation);
+  const acceptsText = readAcceptsText(file, data, representation);
+  const parameters = readParameters(file, data.parameters);
+  for (const parameter of parameters) {
+    if (parameter.member !== undefined && !(members && parameter.member in members)) {
+      throw new ValueTypeEntryError(
+        file,
+        `parameter '${parameter.name}' binds 'member: ${parameter.member}', which is not one of its 'members'`,
+      );
+    }
+  }
+
   const entry: ValueTypeEntry = {
     name,
     representation,
@@ -457,10 +498,66 @@ export function parseValueTypeEntry(file: string, data: unknown): ValueTypeEntry
           ...(data.encoding === undefined ? {} : { encoding: data.encoding as string }),
         }),
     live: data.live === true,
-    parameters: readParameters(file, data.parameters),
+    ...(members === undefined ? {} : { members }),
+    ...(acceptsText === undefined ? {} : { acceptsText }),
+    parameters,
     description: requireString(file, data, "description"),
   };
   return entry;
+}
+
+/** A non-live instance's members, each a schema node, or nothing when it declares none. */
+function readMembers(
+  file: string,
+  data: Record<string, unknown>,
+  representation: string,
+): Record<string, Record<string, unknown>> | undefined {
+  if (data.members === undefined) return undefined;
+  if (representation !== "instance" || data.live === true) {
+    throw new ValueTypeEntryError(file, "'members' belongs to a non-live 'instance' representation");
+  }
+  if (!isPlainObject(data.members) || Object.keys(data.members).length === 0) {
+    throw new ValueTypeEntryError(file, "'members' must be a non-empty mapping of member names to schemas");
+  }
+  const members: Record<string, Record<string, unknown>> = {};
+  for (const [member, schema] of Object.entries(data.members)) {
+    if (!MEMBER_NAME.test(member)) {
+      throw new ValueTypeEntryError(file, `member '${member}' is not spelled as a name, which a CEL field must be`);
+    }
+    if (!isPlainObject(schema)) throw new ValueTypeEntryError(file, `member '${member}' must be a schema`);
+    members[member] = schema;
+  }
+  // A value built from members is built by the encoding, so an encoding that cannot is a
+  // type whose object form nothing could read.
+  const encoding = typeof data.encoding === "string" ? PLAIN_ENCODINGS[data.encoding] : undefined;
+  if (encoding && !encoding.members) {
+    throw new ValueTypeEntryError(
+      file,
+      `encoding '${data.encoding as string}' builds no value from members, so 'members' could not be authored`,
+    );
+  }
+  return members;
+}
+
+/** Whether a CEL string stands at the type's slot, and the code its refusal carries. */
+function readAcceptsText(
+  file: string,
+  data: Record<string, unknown>,
+  representation: string,
+): { code: string } | undefined {
+  if (data.acceptsText === undefined) return undefined;
+  if (representation !== "instance" || data.live === true || data.encoding === undefined) {
+    throw new ValueTypeEntryError(file, "'acceptsText' belongs to a non-live 'instance' with an 'encoding'");
+  }
+  const raw = data.acceptsText;
+  if (!isPlainObject(raw) || Object.keys(raw).some((key) => key !== "code")) {
+    throw new ValueTypeEntryError(file, "'acceptsText' is a mapping holding exactly 'code'");
+  }
+  const code = requireString(file, raw, "code");
+  if (!REFUSAL_CODE.test(code)) {
+    throw new ValueTypeEntryError(file, `'acceptsText.code' '${code}' is not spelled as a diagnostic code`);
+  }
+  return { code };
 }
 
 function buildRegistry(): ReadonlyMap<string, ValueTypeEntry> {
@@ -640,6 +737,64 @@ export function plainEncodingOf(schema: unknown): PlainEncoding | undefined {
 export function decodePlainText(schema: unknown, text: string): unknown {
   const decoded = plainEncodingOf(schema)?.decode(text);
   return decoded === undefined ? text : decoded;
+}
+
+/** The members of the value type a schema node declares, or undefined when it declares
+ *  none or a type without members. */
+export function membersOf(schema: unknown): Readonly<Record<string, Readonly<Record<string, unknown>>>> | undefined {
+  return valueTypeOf(schema)?.members;
+}
+
+/** The members an entry marks `x-telo-sensitive: true` — what is redacted of a value. */
+export function sensitiveMembersOf(entry: ValueTypeEntry): string[] {
+  return Object.entries(entry.members ?? {})
+    .filter(([, schema]) => schema["x-telo-sensitive"] === true)
+    .map(([member]) => member);
+}
+
+/** Each declared type with members, by the CEL type its values carry. */
+const MEMBERS_ENTRIES: ReadonlyMap<string, ValueTypeEntry> = new Map(
+  [...VALUE_TYPES.values()]
+    .filter((entry) => entry.members !== undefined)
+    .map((entry) => [celTypeOfValueType(entry), entry] as const),
+);
+
+/** The entry a value is an instance of, where its type declares members — read off the
+ *  value's own type key. */
+export function membersEntryOfValue(value: unknown): ValueTypeEntry | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const key = celTypeNameOf(value);
+  return key === undefined ? undefined : MEMBERS_ENTRIES.get(key);
+}
+
+/** The sensitive members a value of a type declaring members holds, as their texts. */
+function sensitiveTextsHeld(value: unknown, entry: ValueTypeEntry): string[] {
+  return sensitiveMembersOf(entry)
+    .map((member) => (value as Record<string, unknown>)[member])
+    .filter((text): text is string => typeof text === "string" && text.length > 0);
+}
+
+/**
+ * Whether a value holds a member its type's entry marks `x-telo-sensitive` (a URL holding
+ * a password) — what every observability writer asks before writing a value, wherever it
+ * was built. Read from the entry, never from a type name.
+ */
+export function holdsSensitiveMember(value: unknown): boolean {
+  const entry = membersEntryOfValue(value);
+  return entry !== undefined && sensitiveTextsHeld(value, entry).length > 0;
+}
+
+/**
+ * The texts that must never be printed of a value whose type declares members: its whole
+ * text, and each sensitive member it holds — or nothing, when it holds none. A value of a
+ * type with no sensitive member is not secret by its type.
+ */
+export function redactedTextsOf(value: unknown): string[] {
+  const entry = membersEntryOfValue(value);
+  if (!entry) return [];
+  const held = sensitiveTextsHeld(value, entry);
+  if (held.length === 0) return [];
+  return [PLAIN_ENCODINGS[entry.encoding!]!.encode(value), ...held];
 }
 
 /** The CEL type a brand degrades to where the consuming slot declares none —

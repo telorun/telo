@@ -24,6 +24,10 @@ import {
 } from "./resource-input.js";
 import { findDynamicLeaf } from "./resource-rule.js";
 import { validateAgainstSchema } from "./schema-compat.js";
+import { membersSlotOf } from "./members-value-slot.js";
+import { valueTypeRefusalCode } from "./schema-error-report.js";
+import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
+import type { StandIns } from "./stand-in-findings.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { isRefSentinel } from "@telorun/templating";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
@@ -297,10 +301,10 @@ function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report):
       report(
         module,
         "SENSITIVE_ANNOTATION_INVALID",
-        `'x-telo-sensitive' on a need-type field requires a string field: the value is redacted ` +
-          `by replacing its text wherever it is printed, which a ${JSON.stringify(
-            schema.type ?? "untyped",
-          )} value has none of. Declare the field 'type: string', or remove the mark.`,
+        `'x-telo-sensitive' on a need-type field requires a string field, or a value type ` +
+          `written as text: the value is redacted by replacing its text wherever it is printed, ` +
+          `which a ${JSON.stringify(schema.type ?? "untyped")} value has none of. Declare the ` +
+          `field 'type: string', or remove the mark.`,
         { manifest: doc, resource: { kind: NEED_TYPE_KIND, name }, path: `fields.${field}` },
       );
     }
@@ -696,7 +700,26 @@ function checkSupply(
       // import evaluates it.
       for (const [field, written] of Object.entries(supply.fields)) {
         const schema = shape.fields[field];
-        if (!schema || findDynamicLeaf(written)) continue;
+        if (!schema) continue;
+        // A value type with members reads its text, or an object of its members
+        // whose expressions stand in as their members: a literal that does not
+        // build, or that an argument refuses, is the type's own refusal.
+        const members = membersSlotOf(schema);
+        if (members) {
+          const standIns: StandIns = new Map();
+          const value = substituteDecodedCelFields(written, schema, undefined, { standIns });
+          if (standIns.has("")) continue;
+          const [issue] = validateAgainstSchema(value, schema);
+          if (!issue) continue;
+          report(
+            module,
+            valueTypeRefusalCode(issue) ?? "SCHEMA_VIOLATION",
+            `Import '${imp.alias}': need '${key}': field '${field}' ${issue.message.replace(/^\/\s*/, "")}.`,
+            { ...anchor, path: `${path}.${field}` },
+          );
+          continue;
+        }
+        if (findDynamicLeaf(written)) continue;
         const [issue] = validateAgainstSchema(written, schema);
         if (!issue) continue;
         report(

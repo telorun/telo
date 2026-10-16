@@ -1,4 +1,4 @@
-import { isAbsoluteHostPath, type ResourceManifest } from "@telorun/sdk";
+import type { ResourceManifest } from "@telorun/sdk";
 import { isTaggedSentinel, plainChainOf, producedTypeOf } from "@telorun/templating";
 import { holdsHostPath } from "./host-path-slot.js";
 import type { KernelGlobalsIndex } from "./kernel-globals.js";
@@ -13,7 +13,8 @@ const SOURCE = "telo-analyzer";
  *
  * A library's value comes from its importer's manifest, never from the host, so
  * the library resolves nothing: whatever reaches a host-path input must already
- * be absolute. A value read from the importer's own variable declared as
+ * be absolute. A literal is the import-inputs pass's, which holds every supplied
+ * literal to the library's declaration. A value read from the importer's own variable declared as
  * something else (`type: string`) carries relative text through unresolved and
  * is refused inside the library at creation — in a file the importer did not
  * write. `HOST_PATH_UNTYPED_SOURCE` says so at the import instead. Which of the
@@ -39,31 +40,11 @@ export function validateImportHostPaths(
       resource: { kind: manifest.kind, name: String(metadata.name ?? "") },
       filePath: typeof metadata.source === "string" ? metadata.source : undefined,
     };
-    for (const [input, constants] of Object.entries(inputs as Record<string, string[]>)) {
+    for (const input of Object.keys(inputs as Record<string, string[]>)) {
       const [block, name] = input.split(".") as ["variables" | "secrets", string];
       const supplied = (manifest as Record<string, any>)[block]?.[name];
-      // A literal is the importer's text, handed to a library that resolves
-      // nothing: it must already be absolute, or be one of the constants the
-      // input accepts beside a path.
-      if (
-        typeof supplied === "string" &&
-        !constants.includes(supplied) &&
-        !isAbsoluteHostPath(supplied)
-      ) {
-        out.push({
-          severity: DiagnosticSeverity.Error,
-          code: "HOST_PATH_RELATIVE",
-          source: SOURCE,
-          message:
-            `Telo.Import/${String(metadata.name ?? "")}: '${supplied}' is passed to ` +
-            `'${input}', a Telo.HostPath in the imported library, which resolves nothing it ` +
-            `is given. Write a file that ships with this module as !module-path <path>, or ` +
-            `pass a variable of this application declared x-telo-type: Telo.HostPath, which ` +
-            `resolves a relative value against the working directory.`,
-          data: { ...where, path: input, fix: { replacement: supplied, tag: "module-path" } },
-        });
-        continue;
-      }
+      // A literal is held to the library's declaration by the import-inputs
+      // pass (`validate-import-inputs.ts`), which reports a relative one.
       if (isTaggedSentinel(supplied) && producedTypeOf(supplied.engine)?.type === "string") {
         out.push({
           severity: DiagnosticSeverity.Error,

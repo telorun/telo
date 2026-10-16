@@ -1,0 +1,15 @@
+# Text an expression produces is read at creation, and refused there when it is not
+# a URL — naming the field, never the value.
+kind: Telo.Application
+metadata:
+  name: UrlComputed
+  version: 1.0.0
+imports:
+  Fx: ../kinds
+variables:
+  address: { env: TELO_TEST_URL_ADDRESS, type: string, default: "postgres://root:hunter2@db/app#top" }
+---
+kind: Fx.DatabaseAccess
+metadata: { name: database }
+fields:
+  url: !cel "variables.address"

@@ -1,0 +1,98 @@
+kind: Telo.Application
+metadata:
+  name: PostgresDatabaseAccess
+  version: 1.0.0
+  description: |
+    A connection opened over a database-access need, against a real PostgreSQL.
+
+    The container fixture's exported access opens the server's default database;
+    a password holding `@`, `/` and `:` authenticates when the URL is written as
+    an object of its members, escaped by the type; a need the server meets
+    starts, and one asking for more than the server is — a newer version, an
+    extension it does not have — is refused at the connection's start, naming
+    where its address came from. The needs run as applications of their own,
+    reading the address from `DATABASE_URL`.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
+imports:
+  Pg:
+    source: ../__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  Postgres: ../..
+  Sql: ../../../sql
+  Run: ../../../run
+  Assert: ../../../assert
+  Test: ../../../test
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref connects
+  - !ref escapedPassword
+  - !ref refusals
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Run.Sequence
+metadata: { name: connects }
+steps:
+  - name: whoAndWhere
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: "SELECT current_user::text AS who, current_database()::text AS database"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.whoAndWhere.result.rows"
+      expected: [{ who: postgres, database: postgres }]
+---
+# The role is created first, so the connection signing in as it is scoped to the
+# step that needs it rather than started with the application.
+kind: Run.Sequence
+metadata: { name: escapedPassword }
+steps:
+  - name: createRole
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: "CREATE ROLE telo_escape LOGIN PASSWORD 'p@ss/w:rd'"
+  - name: signIn
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: Postgres.Connection
+          metadata: { name: asRole }
+          access:
+            kind: Postgres.DatabaseAccess
+            fields:
+              url:
+                scheme: postgres
+                host: !cel "resources.Pg.endpoint.status.host"
+                port: !cel "resources.Pg.endpoint.status.port"
+                user: telo_escape
+                password: "p@ss/w:rd"
+                path: /postgres
+        - kind: Sql.Query
+          metadata: { name: currentUser }
+          connection: !ref asRole
+      steps:
+        - name: who
+          invoke: !ref currentUser
+          inputs: { sql: "SELECT current_user::text AS who" }
+        - name: check
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual: !cel "steps.who.result.rows"
+            expected: [{ who: telo_escape }]
+---
+kind: Test.Suite
+metadata: { name: refusals }
+include:
+  - "__fixtures__/database-access/*.yaml"
+# These fixtures ARE the test, so the default fixture exclusion is dropped.
+exclude: []
+env:
+  DATABASE_URL: !interpolate "postgres://postgres:postgres@${{ resources.Pg.endpoint.status.host }}:${{ resources.Pg.endpoint.status.port }}/postgres"

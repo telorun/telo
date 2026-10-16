@@ -12,6 +12,7 @@ import { gatherPropertySchemas } from "./schema-walk.js";
 import { navigateSchemaToExprPath } from "./schema-compat.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
+import { valueTypeRefusalCode } from "./schema-error-report.js";
 import { plainChainOf } from "@telorun/templating";
 import { isLiveSlot } from "@telorun/sdk";
 import { manifestFragmentOf } from "./manifest-schemas.js";
@@ -27,8 +28,9 @@ export interface StepInputIssue {
   path: string;
   targetLabel: string;
   message: string;
-  /** Set when the issue is not a contract shape violation. */
-  code?: "LIVE_VALUE_RETRIED";
+  /** Set when the issue is not a contract shape violation: a live value retried, or a
+   *  value type's own refusal (`URL_INVALID`). */
+  code?: string;
 }
 
 /**
@@ -277,10 +279,12 @@ function checkCallSite(
       missingRequired(issue) ? containerOf(issue.path) : issue.path,
       filled,
     );
+    const code = valueTypeRefusalCode(issue);
     out.push({
       path: anchor ? `${site.path}.${anchor}` : site.path,
       targetLabel,
       message: issue.message,
+      ...(code ? { code } : {}),
     });
   }
   return out;

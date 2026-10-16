@@ -1,4 +1,11 @@
-import { toPlainJson, type AnyValue, type SpanOutcome, type SpanRecord } from "@telorun/sdk";
+import {
+  holdsSensitiveMember,
+  toPlainJson,
+  type AnyValue,
+  type SpanOutcome,
+  type SpanRecord,
+} from "@telorun/sdk";
+import { REDACTED } from "./instance-sensitive-paths.js";
 import { formatSpanCounter } from "./logging/span-id.js";
 
 /**
@@ -39,7 +46,8 @@ export function spanRecordOf(span: FinishedSpan): SpanRecord | undefined {
   const attributes: Record<string, AnyValue> = {};
   for (const [key, value] of Object.entries(span.attributes)) {
     if (value === undefined) continue;
-    attributes[key] = toPlainJson(value) as AnyValue;
+    // A value holding a member its type declares sensitive is censored (logging §14).
+    attributes[key] = holdsSensitiveMember(value) ? REDACTED : (toPlainJson(value) as AnyValue);
   }
   return {
     traceId: span.traceId,

@@ -23,10 +23,12 @@ imports:
   Postgres: oci://ghcr.io/telorun/postgres@<version>
   KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@<version>
   Idempotency: oci://ghcr.io/telorun/idempotency@<version>
+needs:
+  databaseAccess: { kind: Postgres.DatabaseAccess, env: { url: DATABASE_URL } }
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel "secrets.databaseUrl"
+access: !ref databaseAccess
 ---
 kind: KvStoreSql.Store
 metadata: { name: store }

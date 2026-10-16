@@ -1,6 +1,8 @@
 import { isCelRecord, isCompiledValue } from "@telorun/sdk";
 import {
   celPlaceholderForSchema,
+  memberSlotSchemas,
+  membersSlotOf,
   type ExternalSchemaResolver,
   producedPlaceholder,
   readStandIn,
@@ -170,16 +172,25 @@ export function stripCompiledValues(
       // AJV validates would fail the very value type the slot declares.
       if (!isCelRecord(value)) return value;
 
-      const props = collectSchemaProperties(resolved);
+      // An object of a value type's members holding an expression stands in as the
+      // value its members build, each expression standing in as its member — the
+      // analyzer's own reading (`substituteCelFields`).
+      const members = membersSlotOf(resolved);
+      const props = members ? memberSlotSchemas(members) : collectSchemaProperties(resolved);
       return walkGuarded(value, () => {
         const out: Record<string, unknown> = {};
         for (const [k, val] of Object.entries(value as Record<string, unknown>)) {
+          const child = props[k] ?? undeclaredKeySchema(resolved, k) ?? {};
           out[k] = walk(
             val,
-            props[k] ?? undeclaredKeySchema(resolved, k) ?? {},
-            nodeRoot,
+            child,
+            members ? child : nodeRoot,
             `${pointer}/${k.replace(/~/g, "~0").replace(/\//g, "~1")}`,
           );
+        }
+        if (members) {
+          const built = members.codec.compose(out);
+          return "value" in built ? built.value : out;
         }
         return out;
       });

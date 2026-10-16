@@ -1,8 +1,8 @@
 /**
  * A dialect row driven through its tag engine's own seams: `analyze` in the
- * dialect environment with the nominal brands, the row's declarations and its
- * JSON Schema inputs; then `compile` and evaluate without them, a row's module
- * functions bound as the dispatch table.
+ * dialect environment — which carries every value type's CEL face — with the row's
+ * declarations and its JSON Schema inputs; then `compile` and evaluate without them,
+ * a row's module functions bound as the dispatch table.
  *
  * **A module name is now a NAMESPACE on the environment**, declared with whatever the row
  * says the host knows about each qualified function and left **open**, because whether such
@@ -11,6 +11,7 @@
  * own declarations instead of asking a callback per call.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
+import { registerValueTypes } from "../src/cel/value-types.js";
 import { RuntimeError } from "@telorun/sdk";
 import {
   catalogImplementation,
@@ -24,7 +25,6 @@ import {
 import { builtinEngines } from "../src/builtins.js";
 import { buildCelLanguageEnvironment, type CelHandlers } from "../src/cel/environment.js";
 import { MODULE_CALL_DISPATCH_KEY, type ModuleCallDispatch } from "../src/cel/module-call.js";
-import { registerValueBrands } from "../src/cel/value-brands.js";
 import type { AnalyzeEnv, TemplatingEngine } from "../src/engine.js";
 import { typedFrameText, type ConformanceValue, type ConformanceValueCodec } from "./cel-conformance-value.js";
 
@@ -190,6 +190,7 @@ export function dispatchTracingEnvironment(
       });
     }
   }
+  registerValueTypes(env);
   return env.registerType({ name: "Stream", base: "dyn" });
 }
 
@@ -235,7 +236,6 @@ function withModuleNames(env: CelEnvironment, modules: DialectModules | undefine
 
 function staticEnvironment(env: CelEnvironment, row: DialectRow, codec: ConformanceValueCodec): CelEnvironment {
   const cloned = env.clone();
-  registerValueBrands(cloned);
   for (const [name, type] of Object.entries(row.declarations ?? {})) cloned.registerVariable(name, type);
   return withModuleNames(withFunctions(cloned, row, codec), row.modules);
 }
@@ -328,7 +328,7 @@ function dispatchTableOf(
   );
 }
 
-/** The runtime half: `compile` without declarations or brands, then evaluation
+/** The runtime half: `compile` without declarations, then evaluation
  *  with the bindings as the activation and the row's module functions bound as
  *  the dispatch table. */
 export async function evaluateDialectRow(

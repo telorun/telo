@@ -1,0 +1,36 @@
+# A call site passing a literal whose scheme the target's `Telo.Url` input refuses:
+# `telo check` reports it here as the type's own code, and the kernel refuses the same
+# argument when the call is dispatched, carrying the type's code inside the contract's.
+kind: Telo.Library
+metadata:
+  name: UrlCallSite
+  version: 1.0.0
+  description: >-
+    Fixture library whose call site passes a database address the target's URL input
+    refuses, which both telo check and the kernel refuse.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [caller]
+---
+kind: Run.Sequence
+metadata: { name: hostOf }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [url]
+    properties:
+      url:
+        x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+steps:
+  - name: host
+    value: !cel "inputs.url.host"
+---
+kind: Run.Sequence
+metadata: { name: caller }
+steps:
+  - name: call
+    invoke: !ref hostOf
+    inputs:
+      url: mysql://root:hunter2@db.internal/app

@@ -747,7 +747,10 @@
           "version": ">=15.0.0"
         },
         "fields": {
-          "url": "postgres://db.internal:5432/orders"
+          "url": {
+            "$telo": "Telo.Url",
+            "value": "postgres://app:p%40ss@db.internal:5432/orders"
+          }
         },
         "sensitive": [
           "url"

@@ -1,0 +1,14 @@
+# Hands the library text where it declares an integer.
+kind: Telo.Library
+metadata:
+  name: ImportInputsIntegerMid
+  version: 1.0.0
+  description: >-
+    Fixture library passing text to a library's integer variable, which both telo check
+    and the kernel refuse.
+imports:
+  Lib:
+    source: ../lib
+    variables:
+      url: postgres://app@db.internal/orders
+      pool: x

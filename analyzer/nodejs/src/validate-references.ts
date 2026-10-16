@@ -5,6 +5,7 @@ import { celEvalModeAt, kindCelEvalSites, NO_CEL_EVAL_SITES } from "./eval-paths
 import { computedRefSlots, evaluatedField } from "./ref-slot-computed.js";
 import type { DefResolver } from "./extends-resolution.js";
 import { isSchemaFromSite, schemaFromIsKindDecidable, schemaFromSites } from "./schema-from-sites.js";
+import { valueTypeRefusalCode } from "./schema-error-report.js";
 import {
   isInlineResource,
   satisfiesSiteValue,
@@ -772,12 +773,12 @@ export function validateReferences(
           });
           if (site.form !== "anchored") {
             const against = site.form === "instance" ? site.source : `schema from '${site.source}'`;
-            for (const issue of registry.validateWithRefs(substituted, site.schema, standIns)) {
+            for (const issue of registry.validateResourceConfig(substituted, site.schema, standIns)) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
-                code: "DEPENDENT_SCHEMA_MISMATCH",
+                code: valueTypeRefusalCode(issue) ?? "DEPENDENT_SCHEMA_MISMATCH",
                 source: SOURCE,
-                message: `${resourceLabel}: '${site.path}' does not match ${against}: ${issue}`,
+                message: `${resourceLabel}: '${site.path}' does not match ${against}: ${issue.message}`,
                 data: { resource: resourceData, filePath, path: site.path },
               });
             }
@@ -789,7 +790,7 @@ export function validateReferences(
           for (const issue of registry.validateResourceConfig(substituted, site.schema, standIns)) {
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
-              code: "DEPENDENT_SCHEMA_MISMATCH",
+              code: valueTypeRefusalCode(issue) ?? "DEPENDENT_SCHEMA_MISMATCH",
               source: SOURCE,
               message: `${resourceLabel}: '${site.path}' does not match schema from '${site.source}': ${issue.message}`,
               data: {

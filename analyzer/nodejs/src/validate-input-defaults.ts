@@ -4,6 +4,7 @@ import { hostAnchorFor } from "./host-path-slot.js";
 import { decodePlainLiterals, mapTextLeaves } from "./plain-literal-decoding.js";
 import { residualEntrySchema } from "./residual-schema.js";
 import { validateAgainstSchema } from "./schema-compat.js";
+import { valueTypeRefusalCode } from "./schema-error-report.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -17,10 +18,10 @@ const ANCHORED = "/";
  * static twin of the kernel's resolution, which validates the default it falls
  * back to and refuses the whole application at boot when it does not fit.
  *
- * An Application binding's default is host TEXT's stand-in, so it is read the
- * way the kernel reads it: decoded through each instance type's plain encoding
- * and checked against the residual schema. A Library's default is an ordinary
- * JSON Schema annotation, checked against the rest of its entry.
+ * Either is read the way the kernel reads it: decoded through each instance
+ * type's plain encoding — an Application binding's default as host TEXT's
+ * stand-in against the residual schema, a Library's as what the import site
+ * builds when its importer supplies nothing, against the rest of its entry.
  *
  * Entry-module-scoped: a dependency's inputs are its author's to fix.
  */
@@ -47,7 +48,7 @@ export function validateInputDefaults(
         const { default: fallback, ...rest } = entry;
         const schema = binding ? residualEntrySchema(entry) : rest;
         const value = mapTextLeaves(
-          binding ? decodePlainLiterals(structuredClone(fallback), schema) : structuredClone(fallback),
+          decodePlainLiterals(structuredClone(fallback), schema),
           schema,
           (slot, text) => (hostAnchorFor(slot, text) !== undefined ? ANCHORED : text),
         );
@@ -56,7 +57,7 @@ export function validateInputDefaults(
           const text = issue.message.replace(/^\/ /, "");
           out.push({
             severity: DiagnosticSeverity.Error,
-            code: "DEFAULT_INVALID",
+            code: valueTypeRefusalCode(issue) ?? "DEFAULT_INVALID",
             source: SOURCE,
             message:
               `${manifest.kind}/${name}: the default of ${block}.${key} ${text}. ` +

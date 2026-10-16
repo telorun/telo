@@ -61,6 +61,11 @@ it looks, are in [the Node implementation notes](../nodejs/docs/connection-lifet
 
 The manifest is the shared surface: `healthCheckMs` and `maxLifetimeMs` mean the
 same thing in every runtime, and connection-level transport settings (TLS via
-`sslmode`, and libpq's `keepalives*` / `connect_timeout`) stay in the
-`connectionString`, where they already have one standard spelling every
+`sslmode`, and libpq's `keepalives*` / `connect_timeout`) stay in the query of the
+database-access URL, where they already have one standard spelling every
 PostgreSQL driver understands.
+
+Every implementation also reports, when a connection starts, the server's version
+and the features whose extensions the server has available, so the runtime can
+check a database-access need's `version:` and `features:` before the application
+serves anything (see the README's "Database access").

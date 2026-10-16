@@ -152,15 +152,25 @@ not list under `ports` is refused by `telo check`
 (`CONTAINER_PORT_NOT_EXPOSED`).
 
 Both are providers, so their status is readable in a **startup field** of
-another resource — a connection string — and the read orders the reader after
-the container:
+another resource — the address of a database — and the read orders the reader
+after the container. A PostgreSQL connection is opened over a database-access
+fulfilment, whose URL is written as its members so the type escapes them:
 
 ```yaml
+kind: Postgres.DatabaseAccess
+metadata: { name: databaseAccess }
+fields:
+  url:
+    scheme: postgres
+    host: !cel "resources.endpoint.status.host"
+    port: !cel "resources.endpoint.status.port"
+    user: postgres
+    password: postgres
+    path: /postgres
+---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + resources.endpoint.status.host + ':' +
-  string(resources.endpoint.status.port) + '/postgres'
+access: !ref databaseAccess
 ```
 
 **Declare the engine, the container and the port at the top level of a file,
@@ -188,6 +198,7 @@ metadata:
 imports:
   Container: oci://ghcr.io/telorun/container@<version>#<pin>
   Docker: oci://ghcr.io/telorun/docker@<version>#<pin>
+  Postgres: oci://ghcr.io/telorun/postgres@<version>#<pin>
 variables:
   engineUrl:
     type: string
@@ -197,7 +208,7 @@ secrets:
     type: string
     description: The bearer token the engine asks for; empty for none.
 exports:
-  resources: [server, endpoint]
+  resources: [server, endpoint, databaseAccess]
 ---
 kind: Docker.Engine
 metadata: { name: engine }
@@ -222,12 +233,25 @@ kind: Container.Port
 metadata: { name: endpoint }
 container: !ref server
 port: 5432
+---
+kind: Postgres.DatabaseAccess
+metadata: { name: databaseAccess }
+fields:
+  url:
+    scheme: postgres
+    host: !cel "resources.endpoint.status.host"
+    port: !cel "resources.endpoint.status.port"
+    user: postgres
+    password: postgres
+    path: /postgres
 ```
 
 A library reads no environment: its `variables:` / `secrets:` carry no
 `env:`. The **test** binds the two environment variables and passes them
-down at the import. Exporting `server` as well as `endpoint` lets a test that
-needs only "the server is up" depend on it; most read the port.
+down at the import. Exporting `databaseAccess` lets a test connect with
+`access: !ref Pg.databaseAccess`; `server` lets one that needs only "the
+server is up" depend on it, and `endpoint` gives one that needs the address
+itself the host and port.
 
 ## The test
 
@@ -262,9 +286,7 @@ targets:
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
-  string(resources.Pg.endpoint.status.port) + '/postgres'
+access: !ref Pg.databaseAccess
 ---
 kind: Run.Sequence
 metadata: { name: placesAnOrder }
@@ -289,8 +311,8 @@ steps:
       expected: [{ sku: ABC, quantity: 2 }]
 ```
 
-- The imported fixture's exports are read as `resources.Pg.endpoint.status…`
-  and referenced as `!ref Pg.server`.
+- The imported fixture's exports are referenced as `!ref Pg.databaseAccess`
+  and `!ref Pg.server`, and read as `resources.Pg.endpoint.status…`.
 - The library under test declares the connection it needs as a resource
   input (`resources: { connection: { kind: Sql.Connection } }` on its
   `Telo.Library`) and the test supplies one. That is why a library never
@@ -347,7 +369,23 @@ on, never written down:
   ```
 
   Each boot declares `dbHost: { env: DB_HOST, type: string }` and
-  `dbPort: { env: DB_PORT, type: integer }`.
+  `dbPort: { env: DB_PORT, type: integer }`, and connects over an inline
+  fulfilment built from them:
+
+  ```yaml
+  kind: Postgres.Connection
+  metadata: { name: db }
+  access:
+    kind: Postgres.DatabaseAccess
+    fields:
+      url:
+        scheme: postgres
+        host: !cel "variables.dbHost"
+        port: !cel "variables.dbPort"
+        user: postgres
+        password: postgres
+        path: /postgres
+  ```
 
 ## Keeping tests independent
 

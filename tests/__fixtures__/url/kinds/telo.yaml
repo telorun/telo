@@ -1,0 +1,61 @@
+# A need type whose address is a `Telo.Url` restricted to PostgreSQL schemes, a kind
+# that opens a fulfilment of it whole and publishes what it was handed, and one that
+# logs the URL it is called with.
+kind: Telo.Library
+metadata:
+  name: UrlFixtures
+  version: 0.0.0
+  description: >-
+    Test fixture: a database-access need type whose address is a URL restricted to
+    PostgreSQL schemes, a provider that opens a fulfilment and publishes its address, and
+    an invocable that logs a URL it is called with.
+exports:
+  kinds: [DatabaseAccess, Database, LogUrl]
+---
+kind: Telo.NeedType
+metadata:
+  name: DatabaseAccess
+  description: The address of a PostgreSQL database, credentials included.
+fields:
+  url:
+    x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+  label: { type: string }
+required: [url]
+---
+kind: Telo.Definition
+metadata:
+  name: Database
+  description: >-
+    Opens the database-access fulfilment at `access` and publishes the URL it was handed,
+    its host, its text and which fields the kernel marked sensitive.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./consumer.mjs#Database
+schema:
+  type: object
+  additionalProperties: false
+  required: [access]
+  properties:
+    access:
+      x-telo-ref:
+        kind: Self.DatabaseAccess
+        use: dependency
+---
+kind: Telo.Definition
+metadata:
+  name: LogUrl
+  description: >-
+    Writes one log line from its own scope carrying the URL it is called with, whole, and
+    that URL's host.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./consumer.mjs#LogUrl
+schema: { type: object, additionalProperties: false }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [marker, url]
+    properties:
+      marker: { type: string }
+      url: { x-telo-type: Telo.Url }

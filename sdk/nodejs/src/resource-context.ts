@@ -344,7 +344,12 @@ export interface ResourceContext extends ControllerContext {
    * the runtime reads a YAML literal with. Text such a slot's encoding does not
    * read is refused with `ERR_INPUT_INVALID`, naming the slot and the form, its
    * `data.issues` listing each refusal as `{ path, message }` with a dotted path
-   * inside the value. The value is decoded in place and returned.
+   * inside the value. A value of a type declaring `members` (`Telo.Url`) is built
+   * — its text, or an object of its members — and held to its slot's arguments;
+   * one that does not build is an issue that also carries its `pointer`, the
+   * type's `code` (`ERR_URL_INVALID`) and its `reason`, never the value. A built
+   * one joins no redaction set: every log, trace and span writer censors a value
+   * holding a sensitive member by value. The value is decoded in place and returned.
    *
    * Every slot the schema declares `integer` (or another CEL scalar form) comes
    * back in that form — a JSON `12` at an `integer` slot is an int64 — so CEL

@@ -82,8 +82,13 @@ fulfilment came through: when an application forwards its own `>=16.0.0` need to
 a library asking `>=15.0.0`, the consumer inside the library is handed
 `>=16.0.0`, because that is what is enforced. A slot referencing a self-supplied
 fulfilment directly, with no need in between, has no constraints.
-`sensitive` names the fields marked `x-telo-sensitive`; their values are already
-in the redaction set of every module context the fulfilment reaches.
+`sensitive` names the fields that are sensitive as delivered — those marked
+`x-telo-sensitive`, and a field whose value type declares a sensitive member when
+its value holds one (a `Telo.Url` carrying a password) — and their values are
+already in the redaction set of every module context the fulfilment reaches. A
+`Telo.Url` field arrives as a URL value: read its members as properties
+(`access.fields.url.host`) and hand a client its text with `toPlainJson(url)`
+from `@telorun/sdk`.
 
 ## Reporting what you found
 

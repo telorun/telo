@@ -15,6 +15,7 @@ import {
   resolveContractValueSchemas,
   type ProjectionFailure,
   type DefResolver,
+  reachesMembersSlot,
   withLiveValuesSkipped,
 } from "@telorun/analyzer";
 import type { ResourceDefinition, ResourceInstance, ResourceManifest } from "@telorun/sdk";
@@ -30,6 +31,14 @@ import {
  *  twin of `SPAN_ATTRIBUTE_INVALID` / `SPAN_ATTRIBUTE_MISPLACED`. */
 export const ERR_SPAN_ATTRIBUTE_INVALID = "ERR_SPAN_ATTRIBUTE_INVALID";
 import { typeReferenceKey } from "./type-field-schema.js";
+import {
+  buildMembersValues,
+  copyPlainContainers,
+  membersEntryText,
+  membersIssues,
+  type MembersBuild,
+  type MembersRefusalEntry,
+} from "./members-values.js";
 
 /**
  * Binds a resource's resolved invocation contract to its dispatch entry points,
@@ -73,6 +82,9 @@ export interface ContractValidatorFactory {
    *  a named type — the one path that survives stripping a stream property from
    *  a named contract without abandoning its invariants. */
   withRules(name: string | undefined, schema: Record<string, any>): { validate(value: unknown): void };
+  /** Whether a value satisfies a schema node — what holds a value of a type with
+   *  members to a slot's type arguments. */
+  accepts(schema: Record<string, any>, value: unknown): boolean;
 }
 
 export interface BoundContract {
@@ -95,6 +107,16 @@ export interface BoundContract {
    *  `ERR_SCHEMA_PROJECTION_UNRESOLVED` for one that cannot resolve. Compiling
    *  stays lazy. */
   resolveProjections(): void;
+  /** `value` with every value of a type with members the contract declares built
+   *  from the text or the object of members the call produced, on a copy — `value`
+   *  itself when the contract declares no such slot — with every one that did not
+   *  build. */
+  buildMembers(value: unknown): { value: unknown } & MembersBuild;
+  /** `value` as a trace payload shows it: every value of a type with members built as
+   *  the call would build it, and one that does not build replaced by `censor` — on a
+   *  copy, `value` itself when the contract declares no such slot. What a built one
+   *  then shows is the payload writer's value rule. */
+  payloadView(value: unknown, censor: string): unknown;
 }
 
 const CONTRACT_ERROR: Record<ContractDirection, string> = {
@@ -171,6 +193,8 @@ export function resolveBoundContract(
   let paths: string[][] | undefined;
   let scalars: DeclaredScalarPath[] | undefined;
   let sensitive: string[][] | undefined;
+  /** The stripped schema, when it reaches a slot of a type with members. */
+  let members: Record<string, any> | undefined;
   let spanAttributes: SpanAttributePath[] | undefined;
   let shaped: { schema: Record<string, any>; projected: Record<string, any> } | undefined;
 
@@ -233,6 +257,7 @@ export function resolveBoundContract(
     const { schema, projected } = shape();
     const stripped = withLiveValuesSkipped(projected, factory.resolveRef);
     paths = defaultBearingPaths(stripped, factory.resolveRef);
+    members = reachesMembersSlot(stripped, factory.resolveRef) ? stripped : undefined;
     scalars = declaredScalarPaths(stripped, factory.resolveRef);
     // Read off the STRIPPED schema like the other two, so a marked node behind a
     // live value is not reported: nothing walks into a stream to redact it.
@@ -284,6 +309,19 @@ export function resolveBoundContract(
     sensitivePaths: () => {
       resolve();
       return sensitive ?? [];
+    },
+    buildMembers: (value: unknown) => {
+      resolve();
+      if (!members) return { value, redacted: [], refusals: [] };
+      const built = copyPlainContainers(value);
+      return { value: built, ...buildMembersValues(built, members, factory.accepts, factory.resolveRef) };
+    },
+    payloadView: (value: unknown, censor: string) => {
+      resolve();
+      if (!members) return value;
+      const built = copyPlainContainers(value);
+      const { refusals } = buildMembersValues(built, members, factory.accepts, factory.resolveRef);
+      return refusals.reduce((view, entry) => writeAtPointer(view, entry.pointer, censor), built);
     },
     spanAttributes: () => {
       resolve();
@@ -401,6 +439,45 @@ export function contractViolation(
   );
 }
 
+/** `root` with `value` written at a JSON Pointer of plain containers, the root itself
+ *  replaced at `/`. Writes into `root`, which the caller owns. */
+function writeAtPointer(root: unknown, pointer: string, value: unknown): unknown {
+  const segments = pointer
+    .split("/")
+    .slice(1)
+    .filter((segment) => segment !== "")
+    .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+  if (segments.length === 0) return value;
+  let node = root as Record<string, unknown>;
+  for (const segment of segments.slice(0, -1)) {
+    const next = node?.[segment];
+    if (typeof next !== "object" || next === null) return root;
+    node = next as Record<string, unknown>;
+  }
+  node[segments[segments.length - 1]!] = value;
+  return root;
+}
+
+/**
+ * A value of a type with members that does not build at a contract boundary, raised as
+ * the direction's ambient code — never as the type's own, which would widen what every
+ * dispatch can throw — with each value's entry (pointer, the type's code, the reason)
+ * in its data and its text. The value itself is never quoted.
+ */
+export function membersContractViolation(
+  direction: ContractDirection,
+  describeTarget: () => string,
+  refusals: readonly MembersRefusalEntry[],
+): InvokeError {
+  const side = direction === "inputType" ? "inputs" : "result";
+  return new InvokeError(
+    CONTRACT_ERROR[direction],
+    `${describeTarget()}: ${side} do not satisfy the declared ${direction}: ` +
+      refusals.map((entry) => `${entry.pointer}: ${membersEntryText(entry)}`).join("; "),
+    { issues: membersIssues(refusals) },
+  );
+}
+
 /** Codes the validator itself raises for a STRUCTURAL failure. Anything else
  *  carrying a code came from a declared rule and belongs to its author. */
 const STRUCTURAL_VALIDATION_CODES = new Set([
@@ -435,6 +512,18 @@ export function bindContract(instance: ResourceInstance, binding: ContractBindin
   const { input, output, describeTarget } = binding;
   if (!input && !output) return;
 
+  // Values of a type with members a call produced arrive as text or an object of
+  // members and are built here, in both directions, as at creation; one that does not
+  // build is the direction's ambient violation, the type's entry carried. A built one
+  // joins no redaction set: every observability writer censors it by the value rule.
+  const built = (contract: BoundContract, value: unknown): unknown => {
+    const build = contract.buildMembers(value);
+    if (build.refusals.length > 0) {
+      throw membersContractViolation(contract.direction, describeTarget, build.refusals);
+    }
+    return build.value;
+  };
+
   if (typeof instance.invoke === "function") {
     const original = instance.invoke.bind(instance) as (
       inputs: any,
@@ -465,14 +554,16 @@ export function bindContract(instance: ResourceInstance, binding: ContractBindin
         // `bigint-schema-view.ts` documents. Where the resource evaluates CEL over
         // these inputs, its context reads them normalized (`withTypedInputs`).
         effective = copyForDefaults(inputs, input.defaultPaths());
+        effective = built(input, effective);
         try {
           input.validate(effective);
         } catch (error) {
           throw contractViolation("inputType", describeTarget, error);
         }
       }
-      const result = await original(effective, ...rest);
+      const produced = await original(effective, ...rest);
       if (output) {
+        const result = built(output, produced);
         try {
           output.validate(result);
         } catch (error) {
@@ -485,14 +576,14 @@ export function bindContract(instance: ResourceInstance, binding: ContractBindin
         // costs nothing there.
         return normalizeDeclaredScalars(result, output.scalarPaths());
       }
-      return result;
+      return produced;
     };
   }
 
   if (output && typeof instance.provide === "function") {
     const original = instance.provide.bind(instance) as (...args: unknown[]) => Promise<unknown>;
     instance.provide = async (...args: unknown[]) => {
-      const result = await original(...args);
+      const result = built(output, await original(...args));
       try {
         output.validate(result);
       } catch (error) {

@@ -28,6 +28,8 @@
  * would mean re-implementing AJV's resolution.
  */
 
+import { VALUE_TYPES, X_TELO_TYPE } from "@telorun/sdk";
+import { membersSlotOf, membersValueRefusal } from "./members-value-slot.js";
 import { describeTeloFormatFailure, TELO_FORMATS, teloFormatFailure } from "./telo-format.js";
 
 /** An AJV error object. Structurally typed — the analyzer and the kernel hand
@@ -596,13 +598,53 @@ export function explainFormatErrors(
   });
 }
 
+/**
+ * Replace the `x-telo-type` keyword's message for a value type that declares members with
+ * the REASON the value at its path is not one — the text that does not read, the member
+ * that cannot stand, the argument that refuses it — worded without the value. Like a
+ * format's reason, it needs the value, which AJV's error carries only under `verbose`; the
+ * caller hands over the root it validated, and without it the keyword's text stays.
+ */
+export function explainValueTypeErrors(
+  errors: AjvErrorLike[] | null | undefined,
+  data: unknown,
+): AjvErrorLike[] | null | undefined {
+  if (!errors || data === undefined) return errors;
+  return errors.map((err) => {
+    if (err.keyword !== X_TELO_TYPE) return err;
+    const annotation = err.params?.typeArguments ?? err.params?.valueType;
+    const slot = membersSlotOf({ [X_TELO_TYPE]: annotation });
+    if (!slot) return err;
+    return { ...err, message: `is not a ${slot.entry.name}: ${membersValueRefusal(slot, valueAt(data, err.instancePath))}` };
+  });
+}
+
+/**
+ * The code a finding reports under when it is a value type's own refusal: the
+ * `acceptsText.code` of the type whose `x-telo-type` keyword raised it (`URL_INVALID`),
+ * or undefined for every other finding. The one reader every site asks — a resource's
+ * own field, a call site's `inputs:`, a schema-derived slot, a need supply, a `default:`
+ * — so one literal has one code wherever it is written; the kernel's twin is the same
+ * code `ERR_`-prefixed.
+ */
+export function valueTypeRefusalCode(issue: Pick<SchemaIssue, "keyword" | "valueType">): string | undefined {
+  if (issue.keyword !== X_TELO_TYPE || !issue.valueType) return undefined;
+  return VALUE_TYPES.get(issue.valueType)?.acceptsText?.code;
+}
+
+/** Both explanations a refusal can take from the validated value. */
+function explained(errors: AjvErrorLike[] | null | undefined, data: unknown): AjvErrorLike[] | null | undefined {
+  return explainValueTypeErrors(explainFormatErrors(errors, data), data);
+}
+
 /** Reduced, path-anchored issues — what a diagnostic list is built from.
- *  `data` is the value that was validated, read to explain a Telo format. */
+ *  `data` is the value that was validated, read to explain a Telo format or a value
+ *  type's refusal. */
 export function schemaIssues(
   errors: AjvErrorLike[] | null | undefined,
   data?: unknown,
 ): SchemaIssue[] {
-  return reduceSchemaErrors(explainFormatErrors(errors, data)).map((err) => {
+  return reduceSchemaErrors(explained(errors, data)).map((err) => {
     const { missingProperty: missing, valueType } = err.params ?? {};
     return {
       message: formatSingleError(err),
@@ -616,7 +658,7 @@ export function schemaIssues(
 
 /** Reduced, rendered as one sentence — what a thrown runtime error carries. */
 export function formatAjvErrors(errors: AjvErrorLike[] | null | undefined, data?: unknown): string {
-  const reduced = reduceSchemaErrors(explainFormatErrors(errors, data));
+  const reduced = reduceSchemaErrors(explained(errors, data));
   if (reduced.length === 0) return "Unknown schema error";
   return reduced.map(formatSingleError).join("; ");
 }

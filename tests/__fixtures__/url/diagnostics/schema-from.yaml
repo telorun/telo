@@ -1,0 +1,42 @@
+# A literal at a slot whose schema another kind's shape gives (`x-telo-schema-from`),
+# whose scheme that shape's argument refuses.
+kind: Telo.Application
+metadata:
+  name: UrlSchemaFrom
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Carrier
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+schema:
+  type: object
+  $defs:
+    Payload:
+      type: object
+      required: [url]
+      properties:
+        url: { x-telo-type: { name: Telo.Url, scheme: { enum: [postgres] } } }
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+extends: Run.Value
+schema:
+  type: object
+  required: [payload]
+  properties:
+    payload:
+      type: object
+      x-telo-schema-from: "Self.Carrier/$defs/Payload"
+base:
+  value: !cel "self.payload.url.host"
+---
+kind: Self.Holder
+metadata: { name: holder }
+payload:
+  url: mysql://db/app

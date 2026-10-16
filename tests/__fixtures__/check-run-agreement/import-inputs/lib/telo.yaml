@@ -1,0 +1,14 @@
+# Declares what its importer supplies: a PostgreSQL address and a pool size.
+kind: Telo.Library
+metadata:
+  name: ImportInputsLib
+  version: 1.0.0
+  description: >-
+    Fixture library declaring a PostgreSQL URL variable and an integer variable its
+    importer supplies.
+variables:
+  url:
+    x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+  pool:
+    type: integer
+    default: 4

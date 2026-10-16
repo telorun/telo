@@ -12,10 +12,15 @@
  *
  * **A row's two halves are independent, as the format says.** The static half checks
  * against the row's declarations plus the nominal types; the runtime half evaluates
- * against the bindings with **neither** — at runtime a value of a nominal type IS its
- * base, which is exactly why a row can record a refusal at check and a value at
- * evaluation (`p + 1` over a port). Checking first, as the language rows are driven, would
- * make every such row answer an error and compare nothing.
+ * against the bindings with the nominal types registered too but **no** declarations — a
+ * value of a brand IS its base at runtime, which is exactly why a row can record a refusal
+ * at check and a value at evaluation (`p + 1` over a port), while a value of a type that
+ * declares fields carries its own type key and is read through them. Every conversion and
+ * member a host type declares is bound at runtime to a conformance implementation
+ * answering `<name>(<conformance text of each argument>)`, the handler set's rule, so a
+ * row pins that a call on such a value reaches the host's registration and what it was
+ * handed. Checking first, as the language rows are driven, would make every row recording
+ * a refusal at check and a value at evaluation answer an error and compare nothing.
  *
  * What it holds the engine to, per row:
  *
@@ -108,8 +113,8 @@ export function conformanceHandlers(): CelCatalogHandlers {
 
 /**
  * The dialect environment: the language environment plus the function catalog, with the
- * conformance handler set installed. The nominal types are NOT here — they belong to the
- * static half alone, which is the one place a row declares one.
+ * conformance handler set installed. The nominal types are NOT here: each half registers
+ * them on a clone of its own (`staticEnvironment`, `runtimeEnvironment`).
  */
 export function dialectEnvironment(): CelEnvironment {
   const environment = new CelEnvironment({
@@ -238,6 +243,32 @@ function staticEnvironment(
   return environment;
 }
 
+/**
+ * The environment a row is EVALUATED in: the host's nominal types, each conversion and
+ * member it declares bound to a conformance implementation, and no declarations.
+ */
+export function runtimeEnvironment(
+  base: CelEnvironment,
+  hostTypes: readonly NominalTypeDefinition[],
+): CelEnvironment {
+  const environment = base.clone();
+  for (const definition of hostTypes) {
+    environment.registerType(definition);
+    for (const written of [...(definition.conversions ?? []), ...(definition.members ?? [])]) {
+      const signature = written.replace(/\bSelf\b/g, definition.name);
+      const name = /^(?:[^(]*\.)?([A-Za-z_][A-Za-z0-9_]*)\(/.exec(signature)?.[1] ?? signature;
+      environment.registerFunction(signature, {
+        implementation: (ctx, ...args) =>
+          `${name}(${args
+            .filter((value) => value !== undefined)
+            .map((value) => conformanceText(value as CelValue))
+            .join(", ")})`,
+      });
+    }
+  }
+  return environment;
+}
+
 function activationOf(row: DialectRow): Record<string, CelValue> {
   const activation: Record<string, CelValue> = Object.create(null) as Record<string, CelValue>;
   for (const [name, node] of Object.entries(row.bindings ?? {})) {
@@ -311,6 +342,7 @@ export function replayDialectRows(
     ),
   );
   const base = dialectEnvironment();
+  const runtime = runtimeEnvironment(base, options.hostTypes);
   let driven = 0;
   let matched = 0;
   let typesCompared = 0;
@@ -339,7 +371,7 @@ export function replayDialectRows(
       } else typesCompared += 1;
     }
 
-    const answer = evaluated(base, row);
+    const answer = evaluated(runtime, row);
     const disagreement = agreementWith(answer, row.expect);
     if (disagreement !== undefined) problems.push(disagreement);
     else if (row.expect.error !== undefined) {

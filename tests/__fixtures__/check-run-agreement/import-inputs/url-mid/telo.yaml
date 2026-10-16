@@ -1,0 +1,14 @@
+# Hands the library a URL its declaration refuses. `telo check` reports it here, at
+# the import that wrote it; the kernel refuses it when the import initializes.
+kind: Telo.Library
+metadata:
+  name: ImportInputsUrlMid
+  version: 1.0.0
+  description: >-
+    Fixture library passing a MySQL URL to a library variable restricted to PostgreSQL
+    schemes, which both telo check and the kernel refuse.
+imports:
+  Lib:
+    source: ../lib
+    variables:
+      url: mysql://app:m1d-pw@db.internal/orders

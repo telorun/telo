@@ -15,10 +15,11 @@
 //! general-purpose reader answers each of those differently.
 //!
 //! The value domain it is defined over is `telorun-cel-value`'s: [`CelValue`] here
-//! is that crate's union, re-exported. Four of its variants have no frame — a type
-//! value, an optional, an error and a host value are refused on write — and a map
-//! has two representations: an untagged object reads as a `CelRecord`, a tagged map
-//! as a `CelMap`.
+//! is that crate's union, re-exported. Three of its variants have no frame — a type
+//! value, an optional and an error are refused on write — and neither has a host value,
+//! except one of a value type declaring `members` (`Telo.Url`), which is tagged with
+//! its type name and carries its plain encoding's text. A map has two representations:
+//! an untagged object reads as a `CelRecord`, a tagged map as a `CelMap`.
 //!
 //! [`to_frame`] and [`from_frame`] carry any serde type through the frame
 //! (`typed_frame/serde_bridge.rs`).
@@ -34,7 +35,8 @@ use telorun_cel_value::{cel_map_from_entries, json_quote, CelDuration, CelMap, C
 
 pub use telorun_cel_value::CelValue;
 
-use crate::plain_encoding::{base64url, cel_duration, rfc3339};
+use crate::plain_encoding::{base64url, cel_duration, rfc3339, url_text};
+use crate::value_type::value_types;
 use json_reader::{Json, JsonReader, JsonText};
 
 pub use serde_bridge::{from_frame, from_value, to_frame, to_value};
@@ -50,9 +52,59 @@ pub const TAG_TIMESTAMP: &str = "google.protobuf.Timestamp";
 pub const TAG_DURATION: &str = "google.protobuf.Duration";
 pub const TAG_MAP: &str = "map";
 
-/// The closed tag vocabulary. A frame carrying any other tag is refused.
+/// The tags of the CEL value domain's own types. The closed vocabulary is these, then
+/// one per value type declaring `members` ([`members_tags`]).
 pub const TYPED_FRAME_TAGS: &[&str] =
     &[TAG_INT, TAG_UINT, TAG_DOUBLE, TAG_BYTES, TAG_TIMESTAMP, TAG_DURATION, TAG_MAP];
+
+/// Each value type declaring `members`, by the tag its values are written under — its
+/// name — with the plain encoding its payload is, derived from the entries.
+fn members_tags() -> &'static [(String, String)] {
+    static TAGS: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
+    TAGS.get_or_init(|| {
+        let mut tags: Vec<(String, String)> = value_types()
+            .values()
+            .filter(|entry| entry.members.is_some())
+            .map(|entry| (entry.name.clone(), entry.encoding.clone().unwrap_or_default()))
+            .collect();
+        tags.sort();
+        tags
+    })
+}
+
+fn members_encoding(tag: &str) -> Option<&'static str> {
+    members_tags().iter().find(|(name, _)| name == tag).map(|(_, encoding)| encoding.as_str())
+}
+
+/// The payload text of a host value of a type declaring `members`, or `None` when its
+/// payload is not that encoding's value.
+fn members_payload(encoding: &str, host: &telorun_cel_value::CelHostValue) -> Option<String> {
+    match encoding {
+        "url-text" => host.payload().downcast_ref::<url_text::Url>().map(url_text::write),
+        _ => None,
+    }
+}
+
+/// The host value a payload of a type declaring `members` reads as, or why it reads none.
+fn members_value(tag: &str, encoding: &str, text: &str) -> Option<CelValue> {
+    match encoding {
+        "url-text" => url_text::read(text)
+            .ok()
+            .filter(|url| url_text::write(url) == text)
+            .and_then(|url| telorun_cel_value::CelHostValue::named(tag, std::sync::Arc::new(url)).ok())
+            .map(CelValue::Host),
+        _ => None,
+    }
+}
+
+fn known_tags() -> String {
+    TYPED_FRAME_TAGS
+        .iter()
+        .map(|tag| (*tag).to_string())
+        .chain(members_tags().iter().map(|(name, _)| name.clone()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
 
 pub const ERR_TYPED_FRAME_UNENCODABLE: &str = "ERR_TYPED_FRAME_UNENCODABLE";
 pub const ERR_TYPED_FRAME_UNDECODABLE: &str = "ERR_TYPED_FRAME_UNDECODABLE";
@@ -162,7 +214,16 @@ fn write_value(value: &CelValue, path: &mut Vec<String>) -> Result<String, Typed
         CelValue::Type(_) => return Err(unencodable(path, "is a type value")),
         CelValue::Optional(_) => return Err(unencodable(path, "is an optional")),
         CelValue::Error(_) => return Err(unencodable(path, "is an error value")),
-        CelValue::Host(_) => return Err(unencodable(path, "is a host value")),
+        CelValue::Host(host) => {
+            let payload = host
+                .type_name()
+                .and_then(|name| members_encoding(name).map(|encoding| (name, encoding)))
+                .and_then(|(name, encoding)| members_payload(encoding, host).map(|text| (name, text)));
+            match payload {
+                Some((name, text)) => tagged(name, &json_quote(&text)),
+                None => return Err(unencodable(path, "is a host value")),
+            }
+        }
     })
 }
 
@@ -378,12 +439,10 @@ fn read_tagged(members: &[(JsonText, Json)], path: &mut Vec<String>) -> Result<C
         ));
     };
     let tag = tag.lossy();
-    if !TYPED_FRAME_TAGS.contains(&tag.as_str()) {
+    let members = members_encoding(&tag);
+    if !TYPED_FRAME_TAGS.contains(&tag.as_str()) && members.is_none() {
         path.push(TYPED_FRAME_TAG.into());
-        return Err(undecodable(
-            path,
-            format!("names the tag '{tag}', which is not one of {}", TYPED_FRAME_TAGS.join(", ")),
-        ));
+        return Err(undecodable(path, format!("names the tag '{tag}', which is not one of {}", known_tags())));
     }
     path.push("value".into());
     let value = if tag == TAG_MAP {
@@ -392,7 +451,12 @@ fn read_tagged(members: &[(JsonText, Json)], path: &mut Vec<String>) -> Result<C
         let Json::Text(text) = payload else {
             return Err(undecodable(path, format!("is not a string, and a '{tag}' payload is text")));
         };
-        read_scalar(&tag, &text.lossy(), path)?
+        match members {
+            Some(encoding) => members_value(&tag, encoding, &text.lossy()).ok_or_else(|| {
+                undecodable(path, format!("is not a {tag} in its canonical written form"))
+            })?,
+            None => read_scalar(&tag, &text.lossy(), path)?,
+        }
     };
     path.pop();
     Ok(value)
@@ -528,6 +592,13 @@ mod tests {
                 cel_map_from_entries(body.as_array().unwrap().iter().map(|pair| (notation(&pair[0]), notation(&pair[1]))))
                     .unwrap(),
             ),
+            "url" => CelValue::Host(
+                telorun_cel_value::CelHostValue::named(
+                    "Telo.Url",
+                    std::sync::Arc::new(url_text::compose(body.as_object().unwrap()).unwrap()),
+                )
+                .unwrap(),
+            ),
             other => panic!("unknown notation '{other}'"),
         }
     }
@@ -543,7 +614,14 @@ mod tests {
             let value = notation(&vector["value"]);
             let frame = vector["frame"].as_str().unwrap();
             assert_eq!(encode_typed_frame(&value).unwrap(), frame, "{}", vector["name"]);
-            assert_eq!(decode_typed_frame(frame).unwrap(), value, "{}", vector["name"]);
+            let read = decode_typed_frame(frame).unwrap();
+            // A host value is one value only as the same object, so a URL read back is
+            // compared by the frame it writes — the frame's own one-to-one rule.
+            if matches!(value, CelValue::Host(_)) {
+                assert_eq!(encode_typed_frame(&read).unwrap(), frame, "{}", vector["name"]);
+            } else {
+                assert_eq!(read, value, "{}", vector["name"]);
+            }
         }
     }
 

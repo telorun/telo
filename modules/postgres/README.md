@@ -6,14 +6,24 @@ Every `sql` operation (`Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transac
 
 ## Usage
 
+An application asks for the database it needs and connects over that need:
+
 ```yaml
+kind: Telo.Application
+metadata: { name: Shop, version: 1.0.0 }
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.13.0
-  Postgres: oci://ghcr.io/telorun/postgres@0.1.0
+  Postgres: oci://ghcr.io/telorun/postgres@0.9.0
+needs:
+  databaseAccess:
+    kind: Postgres.DatabaseAccess
+    version: ">=15.0.0"
+    features: [pgvector]
+    env: { url: DATABASE_URL }
 ---
 kind: Postgres.Connection
 metadata: { name: Db }
-connectionString: !cel "secrets.DATABASE_URL"
+access: !ref databaseAccess
 pool: { min: 2, max: 20, idleTimeoutMs: 10000 }
 ---
 kind: Sql.Query
@@ -23,11 +33,63 @@ inputs:
   sql: !sql "SELECT id, email FROM users WHERE id = ${{ request.params.id }}"
 ```
 
+`DATABASE_URL=postgres://app:secret@db.internal:5432/shop telo run .` supplies it;
+without `env:` the variable is derived from the need's path
+(`TELO_NEED_DATABASE_ACCESS__URL`), and `telo needs report` lists it. See
+[Declaring a need](../../docs/guides/declaring-a-need.md) and
+[Providing needs](../../docs/guides/providing-needs.md).
+
+## Database access
+
+`Postgres.DatabaseAccess` is the need type: what a database hands an application.
+
+| Member | Description |
+| --- | --- |
+| `url` (field, required) | A `Telo.Url` whose scheme is `postgres` or `postgresql`, carrying the user, password, host, port and database (`path`). Sensitive: its text and password are redacted from every log line. TLS and any other libpq setting go in its query — `sslmode` takes `disable`, `require`, `verify-ca` or `verify-full`. |
+| `version` | A need may state a range of server versions, in explicit comparators (`>=15.0.0`). |
+| `features` | A need may ask for `pgvector` and `postgis`. |
+
+**Verified at start-up.** When a connection starts it reads the server's version
+(`server_version_num`, as `<major>.<minor>.0` from PostgreSQL 10 on and
+`<major>.<minor>.<patch>` before it) and which of the features' extensions the
+server has available (`pg_available_extensions`: `vector` for `pgvector`, `postgis`
+for `postgis`), and reports both. The runtime compares them with the need: a
+server outside the range, or one without an extension the need lists, refuses
+the connection's start with `ERR_NEED_UNMET`, naming the variable or the
+declaration the address came from, the range and the version found. An
+extension counts when it is available, installed or not, so a fresh database
+an application sets up itself (`Postgres.Schema`'s `extensions:`) is accepted.
+An address that cannot be reached fails as the connection error it is.
+
+**Supplying it without the environment.** A fulfilment is a resource of the need
+type, written inline where it is used once. The URL is its text, or an object of
+its members — each a literal or an expression — that the type escapes, so a
+password holding `@`, `/` or `:` is written as it is:
+
+```yaml
+kind: Postgres.Connection
+metadata: { name: Db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: 5432
+      user: app
+      password: !cel "secrets.dbPassword"
+      path: /shop
+      query: { sslmode: require }
+```
+
+A library importing `postgres` declares the need and lets its importer supply
+it, whole (`needs: { databaseAccess: !ref databaseAccess }`) or field by field.
+
 ## Schema
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `connectionString` | string | yes | `postgres://` / `postgresql://` URL. TLS via the libpq `?sslmode=` parameter (`disable`, `require`, `verify-ca`, `verify-full`). |
+| `access` | reference | yes | A `Postgres.DatabaseAccess` need, or a fulfilment of it. Its version and features are verified when the connection starts. |
 | `pool.min` | integer | no | Minimum pooled connections (default 1). |
 | `pool.max` | integer | no | Maximum pooled connections (default 10). |
 | `pool.idleTimeoutMs` | integer | no | Milliseconds before idle connections close. |

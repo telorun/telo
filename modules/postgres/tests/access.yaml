@@ -1,0 +1,50 @@
+kind: Telo.Application
+metadata:
+  name: PostgresAccess
+  version: 1.0.0
+  description: |
+    A connection is opened over `access` alone. The removed `connectionString` is
+    refused, and so is a connection without `access`: by `telo check` at the
+    library declaring them, and by the kernel when they are created for a
+    consumer whose own check is silent. An address nothing listens on fails as a
+    connection error, never as an unmet need.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref refusedAtCheck
+  - !ref connectionStringRefusedAtCreation
+  - !ref accessRequiredAtCreation
+  - !ref unreachable
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCheck }
+source: ./__fixtures__/access/legacy/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Postgres.Connection/beside: / must NOT have additional properties ('connectionString' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Postgres.Connection/insteadOf: / is missing required property 'access'"
+    - code: SCHEMA_VIOLATION
+      message: "Postgres.Connection/insteadOf: / must NOT have additional properties ('connectionString' is not allowed)"
+---
+kind: Assert.Manifest
+metadata: { name: connectionStringRefusedAtCreation }
+source: ./__fixtures__/access/legacy-app.yaml
+expect:
+  errors: []
+  runFails: "/ must NOT have additional properties ('connectionString' is not allowed)"
+---
+kind: Assert.Manifest
+metadata: { name: accessRequiredAtCreation }
+source: ./__fixtures__/access/legacy-app.yaml
+expect:
+  errors: []
+  runFails: "/ is missing required property 'access'"
+---
+kind: Assert.Manifest
+metadata: { name: unreachable }
+source: ./__fixtures__/access/unreachable.yaml
+expect:
+  errors: []
+  runFails: "Postgres.Connection db: connect ECONNREFUSED 127.0.0.1:1"

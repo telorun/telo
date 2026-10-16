@@ -42,7 +42,7 @@ export * from "./log-severity.js";
 export * from "./logger.js";
 export * from "./network-fetch.js";
 export * from "./observed-state.js";
-export { PLAIN_ENCODINGS, type PlainEncoding } from "./plain-encoding.js";
+export { PLAIN_ENCODINGS, type MembersCodec, type PlainEncoding } from "./plain-encoding.js";
 export * from "./plain-json.js";
 export * from "./runtime-error.js";
 export * from "./runtime-event.js";

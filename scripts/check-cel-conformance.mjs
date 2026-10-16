@@ -12,9 +12,9 @@
  * `registerType`. So the types are handed over here, as the engine's own registration
  * shape, and the driver refuses a row declaring a name this list does not carry rather
  * than inventing one. The authority for the list is `sdk/value-types/*.json` (the `base`
- * of each `representation: json` entry, and `fromHost`, which is what may be extended with
- * `joinPath`) plus the live stream type the tag layer registers under the bare name
- * `Stream`.
+ * of each `representation: json` entry, `fromHost`, which is what may be extended with
+ * `joinPath`, and the `members` of an `instance` entry, which are its fields) plus the live
+ * stream type the tag layer registers under the bare name `Stream`.
  */
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -41,6 +41,22 @@ const hostTypes = [
   },
   // A live handle: no base conversion, no member, so reading anything of it is refused.
   { name: "Stream", base: "dyn" },
+  // `members` in its value-type entry: a value of it carries its own type key and is read
+  // through these fields, and `string()` renders it as its plain encoding's text.
+  {
+    name: "Telo.Url",
+    base: "dyn",
+    fields: {
+      scheme: "string",
+      host: "string",
+      port: "int",
+      user: "string",
+      password: "string",
+      path: "string",
+      query: "map<string, string>",
+    },
+    conversions: ["string(Self): string"],
+  },
 ];
 
 const result = spawnSync("pnpm", ["--filter", "@telorun/cel", "run", "test:conformance"], {

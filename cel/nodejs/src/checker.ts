@@ -17,7 +17,7 @@
  */
 
 import type { CelExpression } from "./cel-expression.js";
-import type { CelType, RecordType } from "./cel-type.js";
+import type { CelType, NominalType, RecordType } from "./cel-type.js";
 import {
   admitsNull,
   assignable,
@@ -404,6 +404,7 @@ class Checker implements MacroHost {
       );
     }
     if (operand.kind === "record") return this.recordMemberType(operand, field, range);
+    if (operand.kind === "nominal" && operand.fields) return this.fieldType(operand, field, range);
     if (operand.kind === "map") {
       if (!assignable(STRING, operand.key)) {
         this.report(
@@ -427,6 +428,22 @@ class Checker implements MacroHost {
     this.report(
       "CEL_UNKNOWN_FIELD",
       `${JSON.stringify(field)} is not declared here${declared.length === 0 ? "" : ` (declared: ${declared.join(", ")})`}`,
+      range,
+    );
+    return DYN;
+  }
+
+  /**
+   * A field of a host's named type: the type its definition declares, and any other name is
+   * unknown — the definition is the type's whole member set, as a closed record's
+   * properties are.
+   */
+  private fieldType(type: NominalType, field: string, range: SourceRange): CelType {
+    const held = type.fields!.get(field);
+    if (held) return held;
+    this.report(
+      "CEL_UNKNOWN_FIELD",
+      `${JSON.stringify(field)} is not a field of ${formatType(type)} (fields: ${[...type.fields!.keys()].join(", ")})`,
       range,
     );
     return DYN;
@@ -481,6 +498,19 @@ class Checker implements MacroHost {
       const literal = node.index.kind === "literal" && node.index.literal.type === "string";
       if (literal) {
         return this.recordMemberType(operand, (node.index as { literal: { value: string } }).literal.value, node.index.range);
+      }
+      return DYN;
+    }
+    if (operand.kind === "nominal" && operand.fields) {
+      if (node.index.kind === "literal" && node.index.literal.type === "string") {
+        return this.fieldType(operand, (node.index as { literal: { value: string } }).literal.value, node.index.range);
+      }
+      if (!assignable(index, STRING) && !isDyn(index)) {
+        this.report(
+          "CEL_TYPE_ERROR",
+          `${formatType(operand)} is read by field name, and this index is ${formatType(index)}`,
+          node.index.range,
+        );
       }
       return DYN;
     }
@@ -914,6 +944,7 @@ function presenceBranches(
 function holdsMembers(type: CelType): boolean {
   if (isDyn(type) || type.kind === "parameter") return true;
   if (type.kind === "record" || type.kind === "map") return true;
+  if (type.kind === "nominal") return type.fields !== undefined;
   if (type.kind === "optional") return holdsMembers(type.value);
   if (type.kind === "union") return type.members.some(holdsMembers);
   return false;
@@ -923,6 +954,7 @@ function holdsMembers(type: CelType): boolean {
 function holdsElements(type: CelType): boolean {
   if (isDyn(type) || type.kind === "parameter") return true;
   if (type.kind === "record" || type.kind === "map" || type.kind === "list") return true;
+  if (type.kind === "nominal") return type.fields !== undefined;
   if (type.kind === "optional") return holdsElements(type.value);
   if (type.kind === "union") return type.members.some(holdsElements);
   return false;

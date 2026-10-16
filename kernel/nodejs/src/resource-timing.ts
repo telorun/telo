@@ -30,6 +30,14 @@ export function isListened(emit: EmitEvent, event: string): boolean {
   return listenerQueries.get(emit)?.(event) === true;
 }
 
+/** Whether `event` emitted through `emit` may reach a listener — what a site asks
+ *  before building an event's payload, rather than a measurement. An `emit` the event
+ *  bus does not back may, since what it does with the event is unknown. */
+export function mayReachListener(emit: EmitEvent, event: string): boolean {
+  const query = listenerQueries.get(emit);
+  return query === undefined || query(event);
+}
+
 /** Where a timed window started: the clock, and the memory in use. */
 export interface TimingStart {
   readonly at: bigint;

@@ -121,3 +121,35 @@ function redactAt(node: unknown, path: readonly string[], index: number): unknow
   if (!(segment in object)) return node;
   return { ...object, [segment]: redactAt(object[segment], path, index + 1) };
 }
+
+/** Instance → how one direction's payload is shown: its values of a type with members
+ *  built as the dispatch builds them (`BoundContract.payloadView`). Recorded beside the
+ *  sensitive paths, lazily, for the same reason. */
+const payloadViews = new WeakMap<object, Partial<Record<ContractDirection, (value: unknown) => unknown>>>();
+
+export function recordPayloadView(
+  instance: object,
+  direction: ContractDirection,
+  view: (value: unknown) => unknown,
+): void {
+  const entry = payloadViews.get(instance) ?? {};
+  if (entry[direction] !== undefined) return;
+  entry[direction] = view;
+  payloadViews.set(instance, entry);
+}
+
+/**
+ * `value` as one direction of a live instance's payload shows it — itself where the
+ * instance's contract declares no value of a type with members, and withheld whole where
+ * the contract cannot be resolved, for the reason {@link sensitivePathsOfInstance} gives.
+ */
+export function payloadViewOf(instance: unknown, direction: ContractDirection, value: unknown): unknown {
+  if (!instance || typeof instance !== "object") return value;
+  const view = payloadViews.get(instance as object)?.[direction];
+  if (!view) return value;
+  try {
+    return view(value);
+  } catch {
+    return REDACTED;
+  }
+}

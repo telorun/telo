@@ -1,0 +1,22 @@
+kind: Telo.Library
+metadata:
+  name: LegacyConnection
+  version: 0.0.0
+  description: >-
+    Connections written with the removed `connectionString`: one beside `access`,
+    and one in place of it.
+imports:
+  Postgres: ../../../..
+exports:
+  resources: [beside, insteadOf]
+---
+kind: Postgres.Connection
+metadata: { name: beside }
+access:
+  kind: Postgres.DatabaseAccess
+  fields: { url: postgres://postgres:postgres@127.0.0.1:1/postgres }
+connectionString: postgres://postgres:postgres@127.0.0.1:1/postgres
+---
+kind: Postgres.Connection
+metadata: { name: insteadOf }
+connectionString: postgres://postgres:postgres@127.0.0.1:1/postgres

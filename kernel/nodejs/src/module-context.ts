@@ -19,7 +19,14 @@ import type {
   ResourceManifest,
 } from "@telorun/sdk";
 import type { EmitEvent, InstanceFactory } from "@telorun/sdk";
-import { errorTypeOf, isCompiledValue, predicateResult } from "@telorun/sdk";
+import {
+  errorTypeOf,
+  isCompiledValue,
+  membersEntryOfValue,
+  plainScalar,
+  predicateResult,
+  redactedTextsOf,
+} from "@telorun/sdk";
 import { MODULE_CALL_DISPATCH_KEY } from "@telorun/templating";
 import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleFunctionTable, splitQualifiedCall } from "./module-functions.js";
@@ -42,7 +49,13 @@ function collectSecretValues(secrets: Record<string, unknown>): Set<string> {
   for (const value of Object.values(secrets)) {
     if (typeof value === "string" && value.length > 0) {
       values.add(value);
+      continue;
     }
+    // A secret of a type with members (a URL) is secret whole, written as its text,
+    // and each sensitive member it holds is redacted on its own too.
+    const text = membersEntryOfValue(value) ? plainScalar(value) : undefined;
+    if (typeof text === "string" && text.length > 0) values.add(text);
+    for (const held of redactedTextsOf(value)) values.add(held);
   }
   return values;
 }

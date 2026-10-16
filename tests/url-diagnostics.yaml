@@ -1,0 +1,125 @@
+kind: Telo.Application
+metadata:
+  name: UrlDiagnosticsTest
+  version: 1.0.0
+  description: |
+    What a `Telo.Url` slot refuses, and where. A literal that does not read, or whose
+    scheme the slot's argument does not admit, is `URL_INVALID` at `telo check` wherever
+    it is written — a resource's own field, an import's field-by-field supply or
+    `variables:`, a call's `inputs:`, a slot typed by another field or by another
+    kind's shape, a variable's `default:` — and an expression that is not text is a type error, while a finding
+    that is not about the URL keeps its site's code. An expression's text, or a member an
+    expression builds, is refused when its resource is created or its import initialized,
+    as `ERR_URL_INVALID`, and at a call's dispatch as `ERR_INPUT_INVALID` carrying it.
+    Every refusal names the field and never the value. A URL's members are its fields,
+    closed, and a URL is not text.
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref literals
+  - !ref typing
+  - !ref importSupply
+  - !ref importVariables
+  - !ref computed
+  - !ref computedMember
+  - !ref computedSupply
+  - !ref computedCall
+  - !ref sites
+  - !ref schemaFrom
+---
+kind: Assert.Manifest
+metadata: { name: literals }
+source: ./__fixtures__/url/diagnostics/literals.yaml
+expect:
+  errors:
+    - code: URL_INVALID
+      message: "Fx.DatabaseAccess/notAUrl: /fields/url is not a Telo.Url: it does not begin with a scheme"
+    - code: URL_INVALID
+      message: "Fx.DatabaseAccess/wrongScheme: /fields/url is not a Telo.Url: its scheme must be one of postgres, postgresql"
+    - code: URL_INVALID
+      message: "Fx.DatabaseAccess/badMember: /fields/url is not a Telo.Url: its 'port' member is not an integer from 1 to 65535"
+    - code: URL_INVALID
+      message: "Fx.DatabaseAccess/literalBesideExpression: /fields/url is not a Telo.Url: its scheme must be one of postgres, postgresql"
+---
+kind: Assert.Manifest
+metadata: { name: typing }
+source: ./__fixtures__/url/diagnostics/typing.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'resources.database.url.nope' is not defined (available: scheme, host, port, user, password, path, query)"
+    - code: CEL_TYPE_ERROR
+      message: "source is 'Telo.Url', target expects 'string'"
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'fields.url.host' returns 'int' but the field expects 'string'"
+---
+kind: Assert.Manifest
+metadata: { name: importVariables }
+source: ./__fixtures__/url/diagnostics/import-variables.yaml
+expect:
+  errors:
+    - code: URL_INVALID
+      message: "Telo.Import/Wrong: /variables/url is not a Telo.Url: its scheme must be one of postgres, postgresql"
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'variables.url' returns 'int'"
+---
+kind: Assert.Manifest
+metadata: { name: importSupply }
+source: ./__fixtures__/url/diagnostics/import-supply.yaml
+expect:
+  errors:
+    - code: URL_INVALID
+      message: "Import 'Reporter': need 'databaseAccess': field 'url' is not a Telo.Url: its scheme must be one of postgres, postgresql"
+  runFails: "ERR_URL_INVALID"
+---
+kind: Assert.Manifest
+metadata: { name: computed }
+source: ./__fixtures__/url/diagnostics/computed.yaml
+expect:
+  errors: []
+  runFails: "UrlFixtures.DatabaseAccess/database: /fields/url is not a Telo.Url: it holds a fragment ('#'), which a Telo.Url does not carry"
+---
+kind: Assert.Manifest
+metadata: { name: computedMember }
+source: ./__fixtures__/url/diagnostics/computed-member.yaml
+expect:
+  errors: []
+  runFails: "/fields/url is not a Telo.Url: its 'port' member is not an integer from 1 to 65535"
+---
+kind: Assert.Manifest
+metadata: { name: computedSupply }
+source: ./__fixtures__/url/diagnostics/computed-supply.yaml
+expect:
+  errors: []
+  runFails: "Import 'Reporter': need 'databaseAccess': field 'url' is not a Telo.Url: its scheme must be one of postgres, postgresql"
+---
+kind: Assert.Manifest
+metadata: { name: computedCall }
+source: ./__fixtures__/url/diagnostics/computed-call.yaml
+expect:
+  errors: []
+  runFails: "Run.Sequence/hostOf: inputs do not satisfy the declared inputType: /url: ERR_URL_INVALID: not a Telo.Url — its scheme must be one of postgres, postgresql"
+---
+kind: Assert.Manifest
+metadata: { name: sites }
+source: ./__fixtures__/url/diagnostics/sites.yaml
+expect:
+  errors:
+    - code: URL_INVALID
+      message: "the default of variables.fallback is not a Telo.Url: its scheme must be one of postgres, postgresql"
+    - code: URL_INVALID
+      message: "Fx.DatabaseAccess/database: /fields/url is not a Telo.Url: its scheme must be one of postgres, postgresql"
+    - code: URL_INVALID
+      message: "inputs at 'steps[0].inputs.url' do not satisfy hostOf's declared inputType: /url is not a Telo.Url: its scheme must be one of postgres, postgresql"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[1].inputs' do not satisfy hostOf's declared inputType: / is missing required property 'label'"
+    - code: URL_INVALID
+      message: "`outputs` does not satisfy the type declared at `outputType`: /url is not a Telo.Url: its scheme must be one of postgres, postgresql"
+---
+kind: Assert.Manifest
+metadata: { name: schemaFrom }
+source: ./__fixtures__/url/diagnostics/schema-from.yaml
+expect:
+  errors:
+    - code: URL_INVALID
+      message: "Self.Holder/holder: 'payload' does not match schema from 'Self.Carrier/$defs/Payload': /url is not a Telo.Url: its scheme must be one of postgres"

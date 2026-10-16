@@ -130,7 +130,7 @@ export function PublishDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="grid-cols-[minmax(0,1fr)] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {target.deployTo
@@ -208,7 +208,7 @@ export function PublishDialog({
             {diagnostics.length > 0 && (
               <ul className="max-h-48 list-disc overflow-y-auto pl-5 text-xs">
                 {diagnostics.map((diagnostic, index) => (
-                  <li key={index} className="break-words">
+                  <li key={index} className="wrap-anywhere">
                     {diagnosticLine(diagnostic)}
                   </li>
                 ))}

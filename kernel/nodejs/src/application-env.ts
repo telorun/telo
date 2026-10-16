@@ -9,6 +9,7 @@ import {
   renderApplicationUsage,
   residualEntrySchema,
   withLiveValuesSkipped,
+  membersSlotOf,
 } from "@telorun/analyzer";
 import type {
   ResourceContext,
@@ -20,6 +21,7 @@ import { RuntimeError } from "@telorun/sdk";
 import { parseApplicationArguments } from "./application-arguments.js";
 import { create as createJsonSchemaType } from "./controllers/type/json-schema-controller.js";
 import { decodeHostValue } from "./host-paths.js";
+import { acceptsBy, membersEntryText, membersRefusalEntry, settleMembersValue } from "./members-values.js";
 import { SchemaValidator } from "./schema-validator.js";
 import { resolveTypeFieldSchema } from "./type-field-schema.js";
 
@@ -256,6 +258,11 @@ function resolveNeedEnvironment(
           field.sensitive,
         );
         const value = decodeFromOutside(coerced, schema, validator);
+        const refused = membersEnvRefusal(value, schema, validator);
+        if (refused) {
+          errors.push(`${label}: environment variable ${field.env}: ${refused}`);
+          continue;
+        }
         const validation = validateResidual(value, schema, validator);
         if (validation) {
           errors.push(`${label}: environment variable ${field.env}: ${validation}`);
@@ -569,7 +576,9 @@ function resolveBlock(
     // See the note in `resolvePorts`: a supplied value is a value, not text, so
     // it is validated against the same residual schema but never coerced.
     if (supplied && Object.hasOwn(supplied, name)) {
-      const validation = validateResidual(supplied[name], residual, validator);
+      const validation =
+        membersEnvRefusal(supplied[name], residual, validator) ??
+        validateResidual(supplied[name], residual, validator);
       if (validation) errors.push(`${name}: ${validation}`);
       else out[name] = supplied[name];
       continue;
@@ -579,7 +588,8 @@ function resolveBlock(
       if (entry.default !== undefined) {
         // Decoded on a copy: the default is the manifest's own literal.
         const fallback = decodeFromOutside(structuredClone(entry.default), residual, validator);
-        const validation = validateResidual(fallback, residual, validator);
+        const validation =
+          membersEnvRefusal(fallback, residual, validator) ?? validateResidual(fallback, residual, validator);
         if (validation) {
           errors.push(`${name}: ${validation}`);
         } else {
@@ -599,6 +609,11 @@ function resolveBlock(
       continue;
     }
 
+    const refused = membersEnvRefusal(coerced, residual, validator);
+    if (refused) {
+      errors.push(`${name}: ${host.source}: ${refused}`);
+      continue;
+    }
     const validation = validateResidual(coerced, residual, validator);
     if (validation) {
       errors.push(`${name}: ${validation}`);
@@ -710,6 +725,24 @@ function decodeFromOutside(
     residual as Record<string, any>,
     (ref) => validator.getSchema(ref) as Record<string, any> | undefined,
   );
+}
+
+/**
+ * Why a value arriving from outside at a slot of a type with members is not one — its text
+ * not reading, or a member the slot's argument refuses — as the entry of the application's
+ * refusal: the type's own `ERR_` code, then the reason, never the value. Undefined when
+ * the slot is of no such type or the value is one.
+ */
+function membersEnvRefusal(
+  value: unknown,
+  schema: Record<string, unknown>,
+  validator: SchemaValidator,
+): string | undefined {
+  const slot = membersSlotOf(schema);
+  if (!slot) return undefined;
+  const settled = settleMembersValue(schema as Record<string, any>, slot, value, acceptsBy(validator));
+  if (!("reason" in settled)) return undefined;
+  return membersEntryText(membersRefusalEntry(slot, "/", settled.reason));
 }
 
 /** Render a raw env value for inclusion in an error message. Secret values

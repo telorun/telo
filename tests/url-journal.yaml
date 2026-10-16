@@ -1,0 +1,136 @@
+kind: Telo.Application
+metadata:
+  name: UrlJournalTest
+  version: 1.0.0
+  description: |
+    A `Telo.Url` a step records is journaled as its typed frame — tagged with its type,
+    its text the payload — so the execution that resumes the run is handed a URL and
+    reads its members as fields. Recorded as bare text it would come back a string,
+    and `steps.address.result.host` would fail on the resume.
+
+    The assertion runs on the RESUME: the address is recorded before the run parks,
+    so the step reading it back was handed it by the journal.
+imports:
+  Fx: ./__fixtures__/url/kinds
+  Durable: ../modules/durable
+  Local: ../modules/durable-local
+  Journal: ../modules/durable-journal-file
+  Run: ../modules/run
+  Assert: ../modules/assert
+variables:
+  journalDir:
+    env: TELO_TEST_URL_JOURNAL_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/url-journal-test
+targets:
+  - !ref test
+---
+kind: Fx.DatabaseAccess
+metadata: { name: database }
+fields:
+  url: { scheme: postgres, host: db.internal, port: 5432, user: app, password: "p@ss/w:rd", path: /orders }
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journalDir"
+---
+kind: Durable.Await
+metadata: { name: approval }
+token: !cel "'url:' + inputs.ticket"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ok]
+    additionalProperties: false
+    properties:
+      ok: { type: boolean }
+---
+kind: Local.Workflow
+metadata: { name: record }
+journal: !ref journal
+runId: !cel "'url:' + inputs.ticket"
+inputs:
+  ticket: !cel "inputs.ticket"
+steps:
+  - name: address
+    value: !cel "resources.database.url"
+  - name: wait
+    invoke: !ref approval
+    inputs:
+      ticket: !cel "inputs.ticket"
+  # Runs for the first time on the RESUME, over the address the journal handed back.
+  - name: check
+    value:
+      host: !cel "steps.address.result.host"
+      port: !cel "steps.address.result.port"
+      password: !cel "steps.address.result.password"
+      text: !cel "string(steps.address.result)"
+---
+kind: Local.Status
+metadata: { name: status }
+journal: !ref journal
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # One ticket per process, so a journal directory left behind by an earlier run
+  # holds nothing this run could replay from.
+  - name: ticket
+    value: !cel "'u' + string(nowMillis())"
+  - name: start
+    invoke: !ref record
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: parked
+    invoke: !ref status
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: untilParked
+    while: !cel "steps.parked.result.status != 'parked'"
+    maxIterations: 200
+    do:
+      - name: parked
+        invoke: !ref status
+        inputs:
+          run: !cel "steps.start.result.runId"
+  - name: deliver
+    invoke:
+      kind: Local.Deliver
+      journal: !ref journal
+      await: !ref approval
+      token: !cel "'url:' + inputs.ticket"
+      payload:
+        ok: true
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: resume
+    invoke: !ref record
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: finished
+    invoke:
+      kind: Local.Result
+      journal: !ref journal
+      wait: 15s
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: assertReplayed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        replayed: !cel "steps.finished.result.replayed"
+        check: !cel "steps.finished.result.result.steps.check.result"
+        # The run's result is a recorded value too, read back as a URL.
+        resultHost: !cel "steps.finished.result.result.steps.address.result.host"
+      expected:
+        status: completed
+        replayed: true
+        check:
+          host: db.internal
+          port: 5432
+          password: "p@ss/w:rd"
+          text: "postgres://app:p%40ss%2Fw%3Ard@db.internal:5432/orders"
+        resultHost: db.internal

@@ -1238,7 +1238,37 @@ only form specified normatively.
   need it, but MUST NOT be the default.
 - Default censor token: `"[redacted]"`.
 - Values bound to the manifest's `secrets:` MUST be redacted automatically,
-  without configuration.
+  without configuration — a secret of a value type written as text (`Telo.Url`)
+  by that text.
+- **Member sensitivity.** A value type may declare a member sensitive
+  (`x-telo-sensitive` on one of its `members`: a `Telo.Url`'s `password`). Two
+  rules follow, and neither depends on a mark on the slot:
+  - **The value rule.** Every observability writer — a log record's attributes and
+    error, a trace payload, a span attribute, the runner events built from them, and
+    a refusal message a runtime renders from the value it refuses — MUST write a
+    value holding such a member as the censor, keeping its key,
+    wherever the value was built and whichever context writes it. Whether a value
+    holds one is answered from the type's entry, never from a type name. A value of
+    such a type holding none is written as its plain encoding's text. A transport
+    body, the typed frame, a durable journal and a protocol frame are not
+    observability writers: their reader is the application or a runtime, and they
+    carry the value intact.
+  - **The load-time rule.** Where a runtime decodes or builds such a value before
+    traffic starts — a resource's configuration at creation, an environment value or
+    `default:` at load, a need fulfilment, an import's supply (`variables:` /
+    `secrets:` and a library `default:`, need fields), at any depth of what it
+    decodes — the member's text and the
+    value's whole text MUST also join the automatic set of the context owning it and
+    of every context the value is bound to, so text an author derives from it (the
+    member read into a string, the value's text) is redacted too. Such sets are
+    bounded by the manifest. A value built at dispatch — a contract argument, a
+    result, a transport's inbound value — MUST NOT join any set, since a set would
+    grow with every call.
+  Text an author derives from a value built at dispatch is the author's own string
+  and is not covered: following it would take taint tracking no polyglot runtime
+  can carry across host code. A member that is not sensitive (a URL's `host`) is
+  never redacted by either rule. A need-type field marked `x-telo-sensitive` whose
+  value is of such a type is redacted whole, by its text.
 - **Redaction paths MUST NOT originate from user input.**
 
 ### 14.1 The grammar is closed
