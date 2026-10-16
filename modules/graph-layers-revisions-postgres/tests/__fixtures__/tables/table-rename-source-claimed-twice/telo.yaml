@@ -9,7 +9,9 @@ imports:
 kind: Postgres.Connection
 metadata: { name: db }
 # Never connected: the declaration is refused before anything reaches it.
-connectionString: postgres://unused:unused@localhost:1/unused
+access:
+  kind: Postgres.DatabaseAccess
+  fields: { url: postgres://unused:unused@localhost:1/unused }
 ---
 kind: Layers.NodeTable
 metadata: { name: people }

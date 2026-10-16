@@ -8,9 +8,15 @@
 #       variables: { engineUrl: !cel "variables.engineUrl" }
 #       secrets: { engineToken: !cel "secrets.engineToken" }
 #
-# and the test connects to
-#   'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
-#   string(resources.Pg.endpoint.status.port) + '/postgres'
+# and the test connects through the access it exports:
+#
+#   kind: Postgres.Connection
+#   metadata: { name: db }
+#   access: !ref Pg.databaseAccess
+#
+# A test that needs the address itself reads resources.Pg.endpoint.status.host /
+# .port; the credentials are the image's own, user, password and database all
+# `postgres`.
 #
 # The importer binds `engineUrl` to TELO_HOST_CONTAINER_ENGINE_URL (default
 # unix:///var/run/docker.sock) and `engineToken` to
@@ -26,6 +32,7 @@ metadata:
 imports:
   Container: ../../../../container
   Docker: ../../../../docker
+  Postgres: ../../..
 variables:
   engineUrl:
     type: string
@@ -38,6 +45,7 @@ exports:
   resources:
     - server
     - endpoint
+    - databaseAccess
 ---
 kind: Docker.Engine
 metadata: { name: engine }
@@ -65,3 +73,15 @@ kind: Container.Port
 metadata: { name: endpoint }
 container: !ref server
 port: 5432
+---
+# The server's default database as the image's own superuser.
+kind: Postgres.DatabaseAccess
+metadata: { name: databaseAccess }
+fields:
+  url:
+    scheme: postgres
+    host: !cel "resources.endpoint.status.host"
+    port: !cel "resources.endpoint.status.port"
+    user: postgres
+    password: postgres
+    path: /postgres

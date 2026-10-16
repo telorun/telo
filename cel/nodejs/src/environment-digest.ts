@@ -10,7 +10,7 @@
  * face.
  *
  * So every line below is a fact about what the environment *is*: every function signature
- * surviving registration and removal, every named type with its base and parameters, every
+ * surviving registration and removal, every named type with its base, parameters and fields, every
  * variable with its name and type, every namespace with the functions it declares, and
  * every option value. The lines are sorted, so the order they were produced in cannot
  * reach the digest.
@@ -92,7 +92,9 @@ export function environmentListing(environment: DigestedEnvironment): readonly s
     );
   }
   for (const held of definitions.types) {
-    lines.push(`type ${held.name} ${held.base} ${canonicalJson(held.parameters)}`);
+    // A field decides whether a read of it checks clean, so two environments differing
+    // only in a type's fields must not share an emitted module.
+    lines.push(`type ${held.name} ${held.base} ${canonicalJson(held.parameters)} ${canonicalJson(held.fields ?? null)}`);
   }
   for (const held of definitions.namespaces) {
     // Openness is part of the surface, not a convenience: it decides whether an undeclared

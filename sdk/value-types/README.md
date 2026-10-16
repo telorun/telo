@@ -31,7 +31,9 @@ An entry declares **how the value is represented** and nothing about any runtime
 | `encoding`       | Non-live `instance` only, required: the symbolic name of the one plain JSON form. |
 | `fromHost`       | `json` over `string` only: the anchor a host-supplied relative path resolves against. Makes the type a host path. |
 | `live`           | An instance whose consumption has effects, so it is exempt from validation.    |
-| `parameters`     | Named type parameters. Each is optional and defaults to *any*.                 |
+| `members`        | Non-live `instance` only: the members a value holds, each a JSON Schema. They are the CEL fields of its type, its object authoring form beside its text, and — through `x-telo-sensitive: true` — what of it is redacted. Its encoding must build a value from them. |
+| `acceptsText`    | Non-live `instance` with an `encoding` only: `{ code }`. A CEL `string` stands at a slot of the type and is read through the encoding when the resource holding it is created, or — at a contract — when the call is dispatched. Every refusal of the type is `code` statically, at every site a literal is written (a resource field, a call's `inputs:`, a schema-derived slot, a need supply, an import's `variables:` / `secrets:`, a `default:`), and `ERR_<code>` at runtime: raised as itself at creation and at an import, carried as an entry inside `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` at a contract boundary and inside `ERR_MANIFEST_VALIDATION_FAILED` at load. |
+| `parameters`     | Named type parameters. Each is optional and defaults to *any*. A parameter's own keys: `name`, `description`, `element` (its argument is what iterating a value yields) and `member` (its argument is a schema the member of that name must satisfy). |
 | `description`    | What `telo cel types` and the generated docs section print.                    |
 
 `binding` is deliberately **not** a constructor name — that is a fact about one
@@ -74,6 +76,38 @@ at all until `!module-path` resolves it to one. A host path is extended with
 the machine running it; `+` would make it a plain string, which is refused where
 a host path is required.
 
+## Types with members
+
+An instance declaring `members` (`Telo.Url`) carries its own CEL type: its value is
+a host object holding its members, under its own type key, and the members are the
+type's FIELDS — read by `.`, `.?` and `has()`, an undeclared one `CEL_UNKNOWN_FIELD`.
+`string(value)` is its plain encoding's text. The CEL face is registered from the
+entry alone, on every environment, so no runtime names the type in code.
+
+It is written two ways, both read through its encoding: as its TEXT, or as an
+OBJECT of its members, each a literal or an expression, escaped by the encoding.
+`acceptsText` also admits a CEL `string` wherever the type is wanted, built into the
+value when its resource is created or, for a call's argument or result, when the call is
+dispatched. A parameter
+binding a member (`scheme` binds `scheme`) takes a schema as its argument —
+`x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }` — and a
+value whose member it refuses is refused like one that does not read, the refusal
+listing the `enum`; the member's CEL type stays what `members` declares.
+
+A member marked `x-telo-sensitive: true` (a URL's `password`) makes a value holding
+it secret: every log record, trace payload and span attribute writes such a value as
+`[redacted]` wherever it was built (the SDK's `holdsSensitiveMember`, read from this
+entry), and where the kernel decodes or builds one at load — a resource's
+configuration, an environment value, a fulfilment, an import's supply — its whole text
+and that member also join the redaction set, so text derived from it is redacted too.
+A value built at dispatch joins no set. A need-type field of the type is sensitive in
+`telo needs report` and marked sensitive by `Need.Resolve` when its value holds one.
+
+A value of such a type crosses the typed frame tagged with its type's name, its
+payload its plain encoding's text (`{"$telo":"Telo.Url","value":"<url-text>"}`), so a
+journaled or delivered one comes back the same type. The frame's tag set is the
+domain's own plus one per such entry, derived rather than listed.
+
 ## Plain encodings
 
 `encoding` names the canonical JSON form of an instance, as a symbol each runtime
@@ -87,6 +121,13 @@ error.
 | `base64url`    | base64url without padding           | the same form                     |
 | `rfc3339`      | RFC 3339 in UTC with a trailing `Z`, fraction trimmed | RFC 3339 with any offset and one to nine fractional digits |
 | `cel-duration` | seconds with an `s` suffix (`5400s`) | any CEL duration string (`1h30m`) within ±315576000000s |
+| `url-text`     | the scheme in lower case; each component's bytes that are not RFC 3986 unreserved percent-encoded with upper-case hex, a path keeping its `/`; an IPv6 host in brackets; the query ordered by key | any absolute URL RFC 3986 reads, with no fragment and no repeated query key |
+
+`url-text` is pinned for every runtime by `encodings/url-text.json` beside the
+entries — texts read to their members or refused with their reason, objects of
+members built or refused — which the Node and Rust codecs both run. A subdirectory,
+so the entry copy, which reads this directory's own `*.json`, never takes it for an
+entry.
 
 CEL's `string(duration)` — and so a duration in an `!interpolate` hole — renders
 through `cel-duration`, and `string(timestamp)` through `rfc3339`, so each reads the

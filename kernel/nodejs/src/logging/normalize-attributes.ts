@@ -1,4 +1,5 @@
 import {
+  holdsSensitiveMember,
   isCelMap,
   isLogValuer,
   plainMapKey,
@@ -151,6 +152,13 @@ export function normalizeAttributes(
 
     if (value instanceof Uint8Array) {
       write(task, value);
+      continue;
+    }
+
+    // A value holding a member its type declares sensitive (a URL's password) is
+    // censored whole wherever it was built (§14) — one built per call is in no set.
+    if (holdsSensitiveMember(value)) {
+      write(task, censor);
       continue;
     }
 

@@ -34,20 +34,17 @@ import {
 import { namespaceMacroBinding, receiverMacroBinding } from "./comprehension-bindings.js";
 import { isMacroCall } from "./macro-check.js";
 import { celIterable } from "./member-read.js";
-import type { CelStep, CompileTarget } from "./backend-runtime.js";
+import type { CelStep, CompileTarget, MemberReads } from "./backend-runtime.js";
 import {
   boolOperand,
   callSiteOf,
   CelCompileError,
+  memberReadsOf,
   plainMemberChain,
-  hasMember,
   optionalEntry,
   prefixCandidates,
   readHostValue,
   readName,
-  readNameChain,
-  readThrough,
-  searchNameChain,
 } from "./backend-runtime.js";
 import { optionalOfNonZero } from "./runtime-library.js";
 import type { CallForm } from "./signature.js";
@@ -80,7 +77,13 @@ export function compileTree(root: CelNode, target: CompileTarget): CompiledTree 
 class Compiler {
   slots = 0;
 
-  constructor(private readonly target: CompileTarget) {}
+  /** The seam's member reads with this environment's host fields bound — the very
+   *  functions the emitter's runtime hands a loaded module. */
+  private readonly reads: MemberReads;
+
+  constructor(private readonly target: CompileTarget) {
+    this.reads = memberReadsOf(target);
+  }
 
   compile(node: CelNode, scope: Binding | undefined): CelStep {
     switch (node.kind) {
@@ -141,6 +144,7 @@ class Compiler {
     const declaredSplit = splitDeclaredChain(segments, declares);
     if (declaredSplit) {
       const { name, rest } = declaredSplit;
+      const { readNameChain } = this.reads;
       return (frame) => readNameChain(frame.activation, constants, name, rest, range);
     }
     // Nothing declares a prefix of this chain, so there is nothing to split it on and the
@@ -148,6 +152,7 @@ class Compiler {
     // conformance row that binds a dotted key reads this way.
     const candidates = prefixCandidates(segments);
     const written = segments.join(".");
+    const { searchNameChain } = this.reads;
     return (frame) => searchNameChain(frame.activation, constants, candidates, written, range);
   }
 
@@ -213,6 +218,7 @@ class Compiler {
     if (chain) return this.qualifiedChainStep(chain, node.range);
     const operand = this.compile(node.operand, scope);
     const { field, optional, range } = node;
+    const { readThrough } = this.reads;
     return (frame) => {
       const held = operand(frame);
       if (isCelError(held)) return held;
@@ -224,6 +230,7 @@ class Compiler {
     const operand = this.compile(node.operand, scope);
     const index = this.compile(node.index, scope);
     const { optional, range } = node;
+    const { readThrough } = this.reads;
     return (frame) => {
       const held = operand(frame);
       if (isCelError(held)) return held;
@@ -417,6 +424,7 @@ class Compiler {
     const operand = this.compile(argument.operand, scope);
     const { field } = argument;
     const { range } = node;
+    const { hasMember } = this.reads;
     return (frame) => {
       const held = operand(frame);
       if (isCelError(held)) return held;

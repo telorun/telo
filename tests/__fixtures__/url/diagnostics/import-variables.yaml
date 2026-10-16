@@ -1,0 +1,16 @@
+# An import's `variables:` are held to the URL the library declares: a literal the
+# library's scheme refuses, and an expression that is not text, are each refused at the
+# import that wrote them.
+kind: Telo.Application
+metadata:
+  name: UrlImportVariables
+  version: 1.0.0
+imports:
+  Wrong:
+    source: ../variables
+    variables:
+      url: mysql://app@db.internal/orders
+  Computed:
+    source: ../variables
+    variables:
+      url: !cel "6432"

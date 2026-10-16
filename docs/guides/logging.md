@@ -189,8 +189,15 @@ imports:
 
 ## Redaction
 
-Values bound to `secrets:` are redacted automatically, with no configuration.
-Beyond that, name paths explicitly:
+Values bound to `secrets:` are redacted automatically, with no configuration. So
+is any value whose type declares a sensitive member — a `Telo.Url` holding a
+password is written as `[redacted]` in every log record, trace and span attribute,
+and in an error message quoting a value it refuses, wherever it was built and
+whichever module logs it, while its `host` is not. A URL read at load (a resource's
+configuration, an environment variable, a need's fulfilment, an import's variable,
+or one nested inside any of these) also redacts its password and its text where they
+are logged as plain strings; a URL built per call does not, so log the URL rather
+than text you derive from it. Beyond that, name paths explicitly:
 
 ```yaml
 logging:

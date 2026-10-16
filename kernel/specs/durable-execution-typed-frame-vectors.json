@@ -197,6 +197,21 @@
         ]
       },
       "frame": "{\"events\":[{\"at\":{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"2026-01-15T09:30:00.25Z\"},\"size\":{\"$telo\":\"int\",\"value\":\"3\"}}],\"meta\":{\"$telo\":\"map\",\"value\":[[\"$telo\",\"not a tag\"]]}}"
+    },
+    {
+      "name": "url",
+      "value": {
+        "url": {
+          "scheme": "postgres",
+          "host": "db.internal",
+          "port": 5432,
+          "user": "app",
+          "password": "p@ss/w:rd",
+          "path": "/orders",
+          "query": { "sslmode": "require" }
+        }
+      },
+      "frame": "{\"$telo\":\"Telo.Url\",\"value\":\"postgres://app:p%40ss%2Fw%3Ard@db.internal:5432/orders?sslmode=require\"}"
     }
   ],
   "undecodable": [
@@ -260,6 +275,9 @@
       "frame": "{\"$telo\":\"map\",\"value\":[[\"a\",1]]}",
       "path": "/value"
     },
+    { "name": "url payload not text", "frame": "{\"$telo\":\"Telo.Url\",\"value\":{}}", "path": "/value" },
+    { "name": "url not canonical", "frame": "{\"$telo\":\"Telo.Url\",\"value\":\"POSTGRES://db\"}", "path": "/value" },
+    { "name": "url that does not read", "frame": "{\"$telo\":\"Telo.Url\",\"value\":\"postgres://db#top\"}", "path": "/value" },
     { "name": "nested payload", "frame": "[{\"a\":{\"$telo\":\"uint\",\"value\":\"x\"}}]", "path": "/0/a/value" },
     { "name": "unpaired surrogate", "frame": "\"\\ud800\"", "path": "" },
     { "name": "unpaired surrogate in a key", "frame": "{\"\\ud800\":1}", "path": "/\ufffd" },

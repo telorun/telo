@@ -1,0 +1,19 @@
+# A `Telo.Url` slot holding a literal whose scheme the slot's argument does not
+# admit: `telo check` reports it here, and the kernel refuses the same value when it
+# creates the resource.
+kind: Telo.Library
+metadata:
+  name: UrlInvalid
+  version: 1.0.0
+  description: >-
+    Fixture library declaring a database address whose scheme its URL slot refuses,
+    which both telo check and the kernel refuse.
+imports:
+  Fx: ../../../url/kinds
+exports:
+  resources: [database]
+---
+kind: Fx.DatabaseAccess
+metadata: { name: database }
+fields:
+  url: mysql://root:hunter2@db.internal/app

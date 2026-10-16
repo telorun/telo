@@ -23,10 +23,17 @@ targets:
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + variables.dbHost + ':' +
-  string(variables.dbPort) + '/postgres' +
-  '?options=-c%20search_path%3Dpublic'
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: !cel "variables.dbPort"
+      user: postgres
+      password: postgres
+      path: /postgres
+      query: { options: "-c search_path=public" }
 ---
 kind: Layers.NodeTable
 metadata: { name: people }

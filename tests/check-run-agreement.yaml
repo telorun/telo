@@ -332,6 +332,15 @@ targets:
   - !ref needForwardMissingFeatureAtRuntime
   - !ref needVersionOnUnversioned
   - !ref needVersionOnUnversionedAtRuntime
+  - !ref urlInvalid
+  - !ref urlInvalidAtRuntime
+  - !ref urlCallSite
+  - !ref urlCallSiteAtRuntime
+  - !ref urlDefault
+  - !ref importVariableUrl
+  - !ref importVariableUrlAtRuntime
+  - !ref importVariableType
+  - !ref importVariableTypeAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -1550,7 +1559,7 @@ source: ./__fixtures__/check-run-agreement/host-path-import-literal/mid/telo.yam
 expect:
   errors:
     - code: HOST_PATH_RELATIVE
-      message: "'./public' is passed to 'variables.siteDir'"
+      message: "/variables/siteDir must be an absolute Telo.HostPath"
       fix: "./public"
 ---
 # …and refused by the kernel inside the library, from a consumer whose
@@ -3587,3 +3596,100 @@ expect:
     - code: NEED_PARAMETERS_INVALID
       message: "Imported library 'UnversionedRange', reached through import 'Lib'"
   runFails: "ERR_NEED_PARAMETERS_INVALID"
+---
+# A literal at a `Telo.Url` slot whose scheme the slot's argument does not admit is
+# refused under the type's own code, naming the field and the schemes, never the
+# value…
+kind: Assert.Manifest
+metadata:
+  name: urlInvalid
+source: ./__fixtures__/check-run-agreement/url-invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: URL_INVALID
+      message: "/fields/url is not a Telo.Url: its scheme must be one of postgres, postgresql"
+---
+# …and refused by the kernel at creation, from a consumer whose entry-scoped check
+# is silent about the library's internals.
+kind: Assert.Manifest
+metadata:
+  name: urlInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/url-invalid/telo.yaml
+expect:
+  runFails: "ERR_URL_INVALID"
+---
+# A `Telo.Url` literal at a call site's `inputs:` reports the type's own code at the
+# library that writes it…
+kind: Assert.Manifest
+metadata:
+  name: urlCallSite
+source: ./__fixtures__/check-run-agreement/url-call-site/lib/telo.yaml
+expect:
+  errors:
+    - code: URL_INVALID
+      message: "do not satisfy hostOf's declared inputType: /url is not a Telo.Url: its scheme must be one of postgres, postgresql"
+---
+# …and the kernel refuses the same argument at dispatch, the type's code carried inside
+# the contract's, from a consumer whose entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: urlCallSiteAtRuntime
+source: ./__fixtures__/check-run-agreement/url-call-site/telo.yaml
+expect:
+  errors: []
+  runFails: "ERR_URL_INVALID: not a Telo.Url — its scheme must be one of postgres, postgresql"
+---
+# A `Telo.Url` variable's `default:` reports the type's own code. Only a root
+# Application's default is ever read at boot, and its own analysis refuses the load
+# before the kernel reads it, so no manifest reaches the kernel's own refusal
+# (`ERR_URL_INVALID` inside `ERR_MANIFEST_VALIDATION_FAILED`); that half is pinned in
+# `kernel/nodejs/tests/needs.test.ts`.
+kind: Assert.Manifest
+metadata:
+  name: urlDefault
+source: ./__fixtures__/check-run-agreement/url-default/telo.yaml
+expect:
+  errors:
+    - code: URL_INVALID
+      message: "the default of variables.databaseUrl is not a Telo.Url: its scheme must be one of postgres, postgresql"
+---
+# An import's `variables:` are held to the entries the library declares: a URL the
+# entry refuses reports the type's own code at the import that wrote it…
+kind: Assert.Manifest
+metadata:
+  name: importVariableUrl
+source: ./__fixtures__/check-run-agreement/import-inputs/url-mid/telo.yaml
+expect:
+  errors:
+    - code: URL_INVALID
+      message: "Telo.Import/Lib: /variables/url is not a Telo.Url: its scheme must be one of postgres, postgresql"
+---
+# …and the kernel refuses it when the import initializes, naming the import and the
+# variable, from a consumer whose entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: importVariableUrlAtRuntime
+source: ./__fixtures__/check-run-agreement/import-inputs/url-app.yaml
+expect:
+  errors: []
+  runFails: "ERR_URL_INVALID"
+---
+# Any other mismatch with the library's declaration — text given for an integer — is a
+# schema violation at the import…
+kind: Assert.Manifest
+metadata:
+  name: importVariableType
+source: ./__fixtures__/check-run-agreement/import-inputs/integer-mid/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Import/Lib: /variables/pool must be integer"
+---
+# …and the kernel's schema failure when the import initializes.
+kind: Assert.Manifest
+metadata:
+  name: importVariableTypeAtRuntime
+source: ./__fixtures__/check-run-agreement/import-inputs/integer-app.yaml
+expect:
+  errors: []
+  runFails: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED"

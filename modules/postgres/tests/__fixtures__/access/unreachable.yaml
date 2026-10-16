@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata:
+  name: UnreachableDatabase
+  version: 1.0.0
+  description: |
+    A connection to an address nothing listens on fails as the connection error
+    it is, before any version is observed.
+imports:
+  Postgres: ../../..
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields: { url: postgres://postgres:postgres@127.0.0.1:1/postgres }

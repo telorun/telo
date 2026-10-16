@@ -13,6 +13,7 @@ import {
   valueTypePlaceholder,
 } from "@telorun/sdk";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { memberSlotSchema, memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
 import { ManifestRootSchema } from "./manifest-schemas.js";
 import { deepEquals } from "./migrations/match.js";
 import { schemaIssues, type SchemaIssue } from "./schema-error-report.js";
@@ -241,6 +242,9 @@ function compare(
   if (Boolean(sourceType) !== Boolean(targetType)) {
     const declared = (sourceType ?? targetType)!;
     const other = sourceType ? target : source;
+    // A target admitting text is satisfied by a source declaring a string: it is read
+    // through the target's encoding where it arrives, and refused there if it does not.
+    if (targetType?.entry?.acceptsText !== undefined && source.type === "string") return;
     // A `fromHost` type is made only by anchoring, so its base does not satisfy
     // it: a target declaring one is refused by any source that says what it is.
     if (
@@ -517,6 +521,8 @@ export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<strin
   const liveSlot = slotEntry?.representation === "instance" && slotEntry.live === true;
   if (slotEntry?.representation === "instance") {
     if (celTypeOfValueType(slotEntry) === celType) return true;
+    // Text stands where the type admits it, read through its encoding at creation.
+    if (slotEntry.acceptsText !== undefined && celType === "string") return true;
     if (!liveSlot) return false;
   }
   // And the reverse: an instance's CEL type is no JSON type, so it satisfies no
@@ -701,6 +707,23 @@ function enterStandInNode(
   return { ...node, open: seen };
 }
 
+/** The stand-in for a CEL leaf at a slot of a type declaring members: the binding's
+ *  own stand-in with every member an argument binds standing in as that argument
+ *  admits, so the stand-in satisfies the slot's assertion as the binding's does. */
+function membersPlaceholder(schema: Record<string, any>): unknown | undefined {
+  const slot = membersSlotOf(schema);
+  if (!slot) return undefined;
+  const base = slot.binding.placeholder?.();
+  if (base === undefined) return undefined;
+  const members: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const parameter of slot.entry.parameters) {
+    if (parameter.member === undefined || slot.args[parameter.name] === undefined) continue;
+    members[parameter.member] = celPlaceholderForSchema(memberSlotSchema(slot, parameter.member)!);
+  }
+  const built = slot.codec.compose(members);
+  return "value" in built ? built.value : base;
+}
+
 /** The stand-in for a CEL leaf at a `live` slot. Static analysis asserts a live
  *  type like any instance type (a literal can never be one), so the leaf's
  *  stand-in has to satisfy the binding's own assertion — which the BINDING
@@ -743,7 +766,7 @@ function standIn(
   // reference passes. The stand-in comes from the binding table, so a new
   // instance type brings its own rather than adding a branch here; a `live` type
   // declares none, because nothing validates it at dispatch.
-  const placeholder = valueTypePlaceholder(schema) ?? liveValuePlaceholder(schema);
+  const placeholder = membersPlaceholder(schema) ?? valueTypePlaceholder(schema) ?? liveValuePlaceholder(schema);
   if (placeholder !== undefined) return placeholder;
   // A host path must be absolute, so its stand-in is one; whether the expression
   // really yields an absolute path is only known once it is evaluated.
@@ -931,12 +954,16 @@ export function producedPlaceholder(
   slot: Record<string, any>,
   options: StandInOptions = {},
 ): unknown {
-  const format =
+  const folded =
     produced.type === "string"
-      ? teloFormatOf(
-          foldedConstraints(slot, options.root ?? slot, standInBuild(options.external), new Set()),
-        )
+      ? foldedConstraints(slot, options.root ?? slot, standInBuild(options.external), new Set())
       : undefined;
+  // Text a tag always builds stands where a value type admits text: it is read through
+  // the type's encoding when the resource is created, so it stands in as the value.
+  if (folded !== undefined && valueTypeOf(folded)?.acceptsText !== undefined) {
+    return membersPlaceholder(folded) ?? valueTypePlaceholder(folded);
+  }
+  const format = folded !== undefined ? teloFormatOf(folded) : undefined;
   return format !== undefined ? format.standIn : celPlaceholderForSchema(produced);
 }
 
@@ -1276,14 +1303,23 @@ export function substituteCelFields(
     // its brand lives under and the slot's own assertion then refuses the value
     // this walk produced.
     if (!isCelRecord(data)) return data;
-    const props = collectProperties(resolved);
+    // An object of members holding an expression is built once the expression is
+    // evaluated, so it stands in as the value its members build with each expression
+    // standing in as its member — a literal member that cannot stand is then still
+    // the slot's refusal, and one an argument constrains is held to it.
+    const members = membersSlotOf(resolved);
+    const props = members ? memberSlotSchemas(members) : collectProperties(resolved);
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-      result[k] = substituteCelFields(v, (props[k] ?? undeclaredKeySchema(resolved, k) ?? {}) as Record<string, any>, root, {
+      result[k] = substituteCelFields(v, (props[k] ?? undeclaredKeySchema(resolved, k) ?? {}) as Record<string, any>, members ? undefined : root, {
         standIns,
         pointer: `${pointer}/${k.replace(/~/g, "~0").replace(/\//g, "~1")}`,
         external,
       });
+    }
+    if (members) {
+      const built = members.codec.compose(result);
+      return "value" in built ? built.value : result;
     }
     return result;
   }

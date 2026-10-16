@@ -1,0 +1,14 @@
+# A field-by-field supply the importer evaluates is built and held to the need type's
+# URL when the import is initialized.
+kind: Telo.Application
+metadata:
+  name: UrlComputedSupply
+  version: 1.0.0
+imports:
+  Reporter:
+    source: ../reporter
+    needs:
+      databaseAccess:
+        url: !cel "variables.address"
+variables:
+  address: { env: TELO_TEST_URL_ADDRESS, type: string, default: "mysql://db/app" }

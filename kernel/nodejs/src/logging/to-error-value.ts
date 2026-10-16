@@ -1,4 +1,4 @@
-import type { ErrorValue } from "@telorun/sdk";
+import { holdsSensitiveMember, type ErrorValue } from "@telorun/sdk";
 
 /**
  * Normalize any thrown value into the record's structured error —
@@ -11,12 +11,14 @@ import type { ErrorValue } from "@telorun/sdk";
 
 const MAX_CAUSE_DEPTH = 10;
 
-export function toErrorValue(thrown: unknown, maxDepth = MAX_CAUSE_DEPTH): ErrorValue {
+/** `censor` replaces every value holding a member its type declares sensitive (a URL's
+ *  password) wherever a thrown value is written out (§14). */
+export function toErrorValue(thrown: unknown, censor: string, maxDepth = MAX_CAUSE_DEPTH): ErrorValue {
   const seen = new Set<unknown>();
   let depth = 0;
   let current: unknown = thrown;
 
-  const root = shallowErrorValue(current);
+  const root = shallowErrorValue(current, censor);
   let tail = root;
   seen.add(current);
 
@@ -28,7 +30,7 @@ export function toErrorValue(thrown: unknown, maxDepth = MAX_CAUSE_DEPTH): Error
       return root;
     }
     seen.add(cause);
-    const next = shallowErrorValue(cause);
+    const next = shallowErrorValue(cause, censor);
     tail.cause = next;
     tail = next;
     current = cause;
@@ -44,7 +46,7 @@ export function toErrorValue(thrown: unknown, maxDepth = MAX_CAUSE_DEPTH): Error
   return root;
 }
 
-function shallowErrorValue(thrown: unknown): ErrorValue {
+function shallowErrorValue(thrown: unknown, censor: string): ErrorValue {
   if (thrown instanceof Error) {
     const code = (thrown as { code?: unknown }).code;
     return {
@@ -63,7 +65,7 @@ function shallowErrorValue(thrown: unknown): ErrorValue {
           ? record.name
           : "Error";
     const message =
-      typeof record.message === "string" ? record.message : safeStringify(thrown);
+      typeof record.message === "string" ? record.message : safeStringify(thrown, censor);
     return {
       type,
       message,
@@ -80,9 +82,11 @@ function causeOf(value: unknown): unknown {
   return cause === undefined || cause === null ? undefined : cause;
 }
 
-function safeStringify(value: unknown): string {
+function safeStringify(value: unknown, censor: string): string {
   try {
-    return JSON.stringify(value) ?? String(value);
+    return (
+      JSON.stringify(value, (_key, held) => (holdsSensitiveMember(held) ? censor : held)) ?? String(value)
+    );
   } catch {
     return String(value);
   }

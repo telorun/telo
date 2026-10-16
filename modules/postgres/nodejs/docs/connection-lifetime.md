@@ -54,3 +54,19 @@ allocated, so starting the timer during construction would leave one nobody
 owns.
 
 `pool.maxLifetimeMs` maps straight onto `pg-pool`'s `maxLifetimeSeconds`.
+
+## Opening and observing
+
+The pool is built in `init()`, not in `create()`: the address comes from the
+database-access fulfilment at `access`, which `ctx.resolveNeed("/access")` opens
+from `init()` on. Its URL value is handed to `pg` as its text (`toPlainJson`),
+so every member is escaped by the value's own encoding; `sslmode` is read off
+that text and turned into `pg`'s `ssl` option. kysely is given a pool factory,
+which it calls on the first connection — the base's proving effect — after the
+pool exists.
+
+Between proving the pool and starting the sweep, one statement reads
+`server_version_num` and the available extensions among `vector` and `postgis`,
+and `ctx.verifyNeed("/access", …)` reports them. The controller compares no
+range: a mismatch is the kernel's `ERR_NEED_UNMET`, which fails this `init()` and
+unwinds the pool.

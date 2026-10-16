@@ -41,6 +41,7 @@ import {
   decodePlainLiterals,
   declaredScalarPaths,
   normalizeDeclaredScalars,
+  reachesMembersSlot,
   registerTeloKeywords,
   type DeclaredScalarPath,
   type NamedContractShape,
@@ -89,6 +90,7 @@ import { stampRuleCallNames } from "./type-rule-condition.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { KernelRuntimeSeam } from "./runtime-seam.js";
 import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
+import { acceptsBy, buildMembersValues, membersEntryText, membersIssues } from "./members-values.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
 
@@ -258,6 +260,7 @@ export class ResourceContextImpl implements ResourceContext {
     if (!reading) {
       reading = {
         decodes: plainSchemaOf(schema) !== schema,
+        members: reachesMembersSlot(schema, schemaForRef),
         scalars: declaredScalarPaths(schema, schemaForRef),
       };
       this.plainReadings.set(schema, reading);
@@ -266,6 +269,20 @@ export class ResourceContextImpl implements ResourceContext {
     // validated it against this schema, so only the declared scalars move.
     if (!reading.decodes) return normalizeDeclaredScalars(value, reading.scalars);
     const decoded = decodePlainLiterals(value, schema, schemaForRef);
+    // A value of a type with members (a URL) is built and held to its slot's arguments
+    // as at a contract boundary: one that does not build is `ERR_INPUT_INVALID` carrying
+    // the type's entry. A built one joins no redaction set — one per request would grow
+    // without bound — and every observability writer censors it by the value rule.
+    if (reading.members) {
+      const build = buildMembersValues(decoded, schema, acceptsBy(this.validator), schemaForRef);
+      if (build.refusals.length > 0) {
+        throw new InvokeError(
+          ERR_INPUT_INVALID,
+          build.refusals.map((entry) => `${entry.pointer}: ${membersEntryText(entry)}`).join("; "),
+          { issues: membersIssues(build.refusals) },
+        );
+      }
+    }
     try {
       this.validator.compile(schema, { persist: false }).validate(decoded);
     } catch (error) {
@@ -283,7 +300,7 @@ export class ResourceContextImpl implements ResourceContext {
 
   private readonly plainReadings = new WeakMap<
     object,
-    { decodes: boolean; scalars: readonly DeclaredScalarPath[] }
+    { decodes: boolean; members: boolean; scalars: readonly DeclaredScalarPath[] }
   >();
 
   registerSchema(name: string, schema: object): void {

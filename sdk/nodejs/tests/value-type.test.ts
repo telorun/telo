@@ -3,12 +3,16 @@ import { celDurationFromNanos, celTimestamp, celUint } from "../src/cel-value-id
 import { PLAIN_ENCODINGS } from "../src/plain-encoding.js";
 import {
   CEL_SCALAR_FORMS,
+  holdsSensitiveMember,
   hostAnchorOf,
   isAbsoluteHostPath,
   markExactRendering,
   parseValueTypeEntry,
+  redactedTextsOf,
+  sensitiveMembersOf,
   VALUE_TYPES,
 } from "../src/value-type.js";
+import { composeUrl } from "../src/url-text.js";
 
 describe("value-type vocabulary", () => {
   it("reads every entry, with an encoding on each non-live instance and none elsewhere", () => {
@@ -23,6 +27,7 @@ describe("value-type vocabulary", () => {
       "Telo.Timestamp": "rfc3339",
       "Telo.UdpPort": undefined,
       "Telo.Uint64": undefined,
+      "Telo.Url": "url-text",
     });
     expect(VALUE_TYPES.get("Telo.Uint64")?.celType).toBe("uint");
   });
@@ -87,6 +92,68 @@ describe("value-type vocabulary", () => {
       });
     expect(hostPath({ base: "integer", fromHost: "working-directory" })).toThrow(/needs a 'string' base/);
     expect(hostPath({ fromHost: "home-directory" })).toThrow(/is not an anchor this runtime knows/);
+  });
+});
+
+describe("a value type with members", () => {
+  const instance = (fields: Record<string, unknown>) => () =>
+    parseValueTypeEntry("members.json", {
+      name: "Telo.Members",
+      representation: "instance",
+      binding: "url",
+      encoding: "url-text",
+      description: "x",
+      ...fields,
+    });
+
+  it("reads members, a text refusal code and a member-bound parameter", () => {
+    const entry = VALUE_TYPES.get("Telo.Url")!;
+    expect(Object.keys(entry.members!)).toEqual(["scheme", "host", "port", "user", "password", "path", "query"]);
+    expect(entry.acceptsText).toEqual({ code: "URL_INVALID" });
+    expect(entry.parameters).toMatchObject([{ name: "scheme", member: "scheme" }]);
+    expect(sensitiveMembersOf(entry)).toEqual(["password"]);
+  });
+
+  it("refuses members anywhere but a non-live instance whose encoding builds from them", () => {
+    expect(instance({ members: {} })).toThrow(/non-empty mapping/);
+    expect(instance({ members: { "a-b": {} } })).toThrow(/is not spelled as a name/);
+    expect(() =>
+      parseValueTypeEntry("json-members.json", {
+        name: "Telo.JsonMembers",
+        representation: "json",
+        base: "string",
+        members: { a: {} },
+        description: "x",
+      }),
+    ).toThrow(/belongs to a non-live 'instance'/);
+    expect(instance({ encoding: "rfc3339", members: { a: {} } })).toThrow(/builds no value from members/);
+  });
+
+  it("refuses a text refusal code that is no code, and a parameter bound to no member", () => {
+    expect(instance({ acceptsText: { code: "url-invalid" } })).toThrow(/is not spelled as a diagnostic code/);
+    expect(instance({ acceptsText: { code: "X", extra: 1 } })).toThrow(/holding exactly 'code'/);
+    expect(instance({ members: { a: {} }, parameters: [{ name: "p", member: "b" }] })).toThrow(
+      /binds 'member: b', which is not one of its 'members'/,
+    );
+  });
+
+  it("names the texts a URL holding a password must never print, and none for one without", () => {
+    const secret = (composeUrl({ scheme: "postgres", host: "db", user: "app", password: "p@ss" }) as { value: unknown }).value;
+    expect(redactedTextsOf(secret)).toEqual(["postgres://app:p%40ss@db", "p@ss"]);
+    const open = (composeUrl({ scheme: "postgres", host: "db" }) as { value: unknown }).value;
+    expect(redactedTextsOf(open)).toEqual([]);
+    expect(redactedTextsOf("postgres://app:p@db")).toEqual([]);
+  });
+
+  it("answers from the entry whether a value holds a sensitive member", () => {
+    const secret = (composeUrl({ scheme: "postgres", host: "db", user: "app", password: "p@ss" }) as { value: unknown }).value;
+    const open = (composeUrl({ scheme: "postgres", host: "db", user: "app" }) as { value: unknown }).value;
+    expect([secret, open, "postgres://app:p@db", { password: "p" }].map(holdsSensitiveMember)).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ]);
   });
 });
 

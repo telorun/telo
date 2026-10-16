@@ -18,6 +18,7 @@ import {
   registerFunctionCatalog,
   type CelCatalogHandlers,
 } from "@telorun/cel";
+import { registerValueTypes } from "./value-types.js";
 
 /** The nine functions the host answers for. The engine's own seam, re-exported so a
  *  consumer naming it does not have to name the engine. */
@@ -80,10 +81,12 @@ export function celBuiltinFunctions(): ReturnType<CelEnvironment["definitions"]>
   return buildCelLanguageEnvironment().definitions().functions;
 }
 
-/** Telo's dialect: the language, the function catalog, and the live `Stream` type. */
+/** Telo's dialect: the language, the function catalog, every value type's CEL face, and
+ *  the live `Stream` type. */
 export function buildCelEnvironment(handlers: Partial<CelHandlers> = {}): CelEnvironment {
   const environment = buildCelLanguageEnvironment();
   registerFunctionCatalog(environment, { handlers: { ...STUB_HANDLERS, ...handlers } });
+  registerValueTypes(environment);
   // A live handle: `dyn` underneath with no conversion and no member, so reading anything
   // off one is refused at check. It needs no constructor — identity by class is what the
   // engine replaced, and at runtime a stream is whatever the producer handed over.

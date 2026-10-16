@@ -466,6 +466,19 @@ stand where the named type is wanted — which is exactly what a slot wanting on
 an engine typing by wrapper class cannot express. A type argument that differs is
 `CEL_TYPE_ARGUMENT_MISMATCH`, not a widening. `Self` inside a definition names the type being defined.
 
+**A named type may declare FIELDS** (`NominalTypeDefinition.fields`, a name → type expression),
+carried on the registered type itself (`NominalType.fields`) so every reader holding the type knows
+them. They are read by `.`, `.?`, `has()` and a literal index, typed as declared; a name the type
+does not declare is `CEL_UNKNOWN_FIELD`, as a closed record's is, and a type declaring none still
+holds no members. At evaluation a value carrying the type's key is read through the one member-read
+seam, which answers a declared field from the value's **own** entries — absent is `no_such_key`,
+or absence in a presence form — and answers nothing else of it, its type key included: the seam is
+handed the environment's field table (`CompileTarget.nominalFields`, `HostFields`), and both
+backends take the member reads bound to it (`memberReadsOf`), the emitter's runtime under the
+seam's own names so the emitted text is the same whatever an environment declares. A conversion
+such a type needs (`string(Self)`) is the host's ordinary `registerFunction` with an implementation,
+dispatched on the value's own key. The environment digest carries each type's fields.
+
 **Two seams let a host's vocabulary in, and only two**: `registerType`, and the `resolveSchemaType`
 resolver asked at every schema node **before** the structural rules, with the document the node belongs to.
 No host type name appears in this package.
@@ -818,8 +831,9 @@ the key cannot see. `RUNTIME_BINDINGS` is the whole contract, one table the emit
 canonical **ordered** list of expression sources — the order being part of the identity, because the
 factory answers functions by position. The digest
 (`environment-digest.ts`) is over the environment's **resolved listing**, never its registration history:
-every function signature surviving registration and removal, every named type with its base and
-parameters, every variable with its type, every namespace with its functions, every option value, sorted.
+every function signature surviving registration and removal, every named type with its base,
+parameters and fields, every variable with its type, every namespace with its functions, every option
+value, sorted.
 Keying on the history would fragment the cache into one entry per way of arriving at the same
 environment.
 
@@ -989,7 +1003,7 @@ kind is written down and measured rather than absorbed into an exclusion.
 
 **A fourth driver answers the dialect files** (`conformance/dialect-replay.ts`, with the positions each
 file needs in `catalog-replay.ts` and `types-replay.ts`): `catalog.json`'s 178 rows and `types.json`'s
-64, replayed in place, under the same completeness rule — every row answered, corrected with a cited
+74, replayed in place, under the same completeness rule — every row answered, corrected with a cited
 authority, or excluded with one of the same five reasons, which **do not grow**. **Each file's row
 count is pinned** (`CATALOG_ROWS`, `TYPES_ROWS`), because a row that is DELETED leaves every other
 number in the report true — the one change a per-row driver cannot see. Today each file has
@@ -1007,10 +1021,14 @@ Three things about it are worth keeping:
   That is what lets the gate be driven by the host's own rows while the package stays free of a host type
   name.
 - **A row's two halves are independent, as the format says**: the static half checks against the row's
-  declarations plus the nominal types, and the runtime half evaluates against its bindings with
-  **neither**, because at runtime a value of a nominal type IS its base. Checking first, as a language row
-  is driven, would make every row that records a refusal at check and a value at evaluation (`p + 1` over
-  a port) answer an error and compare nothing.
+  declarations plus the nominal types, and the runtime half evaluates against its bindings with the
+  nominal types too but **no** declarations — a brand's value IS its base, while a value of a type that
+  declares fields carries its own key and is read through them. Every conversion and member a host type
+  declares is bound at runtime to a conformance implementation answering `<name>(<conformance text of
+  each argument>)`, so a `string()` row pins that dispatch reached the host's registration and what it
+  was handed. The conformance value carries such a value as `{"$cel": "host", "type", "value"}`, its
+  type name and entries. Checking first, as a language row is driven, would make every row that records a
+  refusal at check and a value at evaluation (`p + 1` over a port) answer an error and compare nothing.
 - **What it compares, and what it declares it does not.** The verdict and, for a clean row, the recorded
   type; the value, written canonically; that a row recorded as failing fails — and, where the recorded
   message is one the CATALOG words (`<function>: …`, 52 rows) or the recorded diagnostic is a
@@ -1136,7 +1154,9 @@ filter is a result waiting to be re-derived by hand.
   (an unregistered NAME in a readable expression is `CelUnknownTypeNameError`, a verdict for a caller
   that holds its source, never a refusal to register)
 - A schema or a field map as a type → `src/json-schema-type.ts`
-- A host's own named type → `src/nominal-type.ts`, and `registerType` in `src/environment.ts`
+- A host's own named type → `src/nominal-type.ts`, and `registerType` in `src/environment.ts`; its
+  fields read at check → `fieldType` in `src/checker.ts`, at evaluation → `celLookup` in
+  `src/member-read.ts` with `memberReadsOf` in `src/backend-runtime.ts`
 - Registration, override, removal and overload resolution → `src/function-registry.ts`, `src/signature.ts`
 - A namespace, what it declares and what it withholds → `registerNamespace` in `src/environment.ts`
   (`NamespaceFunctionDeclaration`, `NamespaceOptions`), `qualifiedCallType` in `src/checker.ts`,

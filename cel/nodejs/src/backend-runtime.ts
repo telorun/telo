@@ -48,6 +48,7 @@ import {
   isCelOptional,
 } from "./cel-value.js";
 import type { FunctionRegistry, Resolution, ResolutionFailure } from "./function-registry.js";
+import type { HostFields } from "./member-read.js";
 import { celHas, celLookup, celRead, lookupAbsence, lookupError } from "./member-read.js";
 import type { CelCallContext, CelImplementation } from "./runtime-library.js";
 import { implementationOf } from "./runtime-library.js";
@@ -101,6 +102,8 @@ export interface CompileTarget {
   readonly constants: ReadonlyMap<string, CelValue>;
   /** How many type arguments a host's named type takes, for dispatch on one of its values. */
   readonly nominalArity: (name: string) => number | undefined;
+  /** The fields a host's named type declares, which the member-read seam answers of its values. */
+  readonly nominalFields: HostFields;
   /**
    * Whether a host DECLARED this name — including a dotted one. It decides where a chain
    * splits, at compile time, through the same function the checker uses.
@@ -147,6 +150,7 @@ export function readNameChain(
   name: string,
   rest: readonly string[],
   range: SourceRange,
+  fields?: HostFields,
 ): CelValue {
   let held: CelValue;
   if (activationHolds(activation, name)) held = readHostValue(activation[name], range);
@@ -157,7 +161,7 @@ export function readNameChain(
   }
   for (const field of rest) {
     if (isCelError(held)) return held;
-    held = readThrough(held, field, false, range);
+    held = readThrough(held, field, false, range, fields);
   }
   return held;
 }
@@ -188,11 +192,12 @@ export function searchNameChain(
   candidates: readonly ChainCandidate[],
   written: string,
   range: SourceRange,
+  fields?: HostFields,
 ): CelValue {
   for (let at = 0; at < candidates.length; at += 1) {
     const candidate = candidates[at]!;
     if (!activationHolds(activation, candidate.name) && !constants.has(candidate.name)) continue;
-    return readNameChain(activation, constants, candidate.name, candidate.rest, range);
+    return readNameChain(activation, constants, candidate.name, candidate.rest, range, fields);
   }
   return celError("no_such_variable", `no such variable: ${written}`, range);
 }
@@ -237,6 +242,7 @@ export function readThrough(
   key: CelValue,
   optionalForm: boolean,
   range: SourceRange,
+  fields?: HostFields,
 ): CelValue {
   // The shape nearly every read has — a record's own string-keyed entry — decided by asking
   // what the container is ONCE. The general path below is three total steps, so it reads the
@@ -259,13 +265,13 @@ export function readThrough(
   }
   if (isCelOptional(container)) {
     if (!container.present) return celNone();
-    return optionalRead(container.held as CelValue, key, optionalForm, range);
+    return optionalRead(container.held as CelValue, key, optionalForm, range, fields);
   }
-  if (optionalForm) return optionalRead(container, key, true, range);
+  if (optionalForm) return optionalRead(container, key, true, range, fields);
   // **A member read is a door a host value comes through**, and the value it answers is
   // whatever the host put inside its own object: `readHostValue` is what refuses a thenable
   // there, rather than the aggregate, the operator or the exit that happens to see it next.
-  return readHostValue(celRead(container, key, range), range);
+  return readHostValue(celRead(container, key, range, fields), range);
 }
 
 /**
@@ -278,8 +284,9 @@ function optionalRead(
   key: CelValue,
   presence: boolean,
   range: SourceRange,
+  fields?: HostFields,
 ): CelValue {
-  const found = celLookup(container, key);
+  const found = celLookup(container, key, fields);
   if (typeof found !== "symbol") {
     const held = readHostValue(found, range);
     // A value that must be awaited is refused rather than carried as a present optional.
@@ -294,11 +301,53 @@ function optionalRead(
  * answer `false` for rather than erroring. An absent optional has no members, and a
  * present one is asked about what it holds.
  */
-export function hasMember(container: CelValue, field: CelValue, range: SourceRange): CelValue {
+export function hasMember(
+  container: CelValue,
+  field: CelValue,
+  range: SourceRange,
+  fields?: HostFields,
+): CelValue {
   if (isCelOptional(container)) {
-    return container.present ? celHas(container.held as CelValue, field, range) : false;
+    return container.present ? celHas(container.held as CelValue, field, range, fields) : false;
   }
-  return celHas(container, field, range);
+  return celHas(container, field, range, fields);
+}
+
+/**
+ * The member reads of one environment: the seam's functions with the environment's host
+ * fields bound, so a backend reads a host value's declared fields without either backend
+ * passing them at a call site. The emitter's runtime hands these over under the seam's own
+ * names, so the text it writes is the same whatever the environment declares.
+ */
+export interface MemberReads {
+  readonly readThrough: (container: CelValue, key: CelValue, optionalForm: boolean, range: SourceRange) => CelValue;
+  readonly hasMember: (container: CelValue, field: CelValue, range: SourceRange) => CelValue;
+  readonly readNameChain: (
+    activation: CelActivation,
+    constants: ReadonlyMap<string, CelValue>,
+    name: string,
+    rest: readonly string[],
+    range: SourceRange,
+  ) => CelValue;
+  readonly searchNameChain: (
+    activation: CelActivation,
+    constants: ReadonlyMap<string, CelValue>,
+    candidates: readonly ChainCandidate[],
+    written: string,
+    range: SourceRange,
+  ) => CelValue;
+}
+
+export function memberReadsOf(target: CompileTarget): MemberReads {
+  const fields = target.nominalFields;
+  return {
+    readThrough: (container, key, optionalForm, range) => readThrough(container, key, optionalForm, range, fields),
+    hasMember: (container, field, range) => hasMember(container, field, range, fields),
+    readNameChain: (activation, constants, name, rest, range) =>
+      readNameChain(activation, constants, name, rest, range, fields),
+    searchNameChain: (activation, constants, candidates, written, range) =>
+      searchNameChain(activation, constants, candidates, written, range, fields),
+  };
 }
 
 // --- operands --------------------------------------------------------------

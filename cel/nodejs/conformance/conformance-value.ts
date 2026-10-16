@@ -3,7 +3,8 @@
  * engine's domain and written back out of it.
  *
  * It is the typed frame (`kernel/specs/durable-execution.md` §6) held as a JSON value,
- * plus two `$cel` forms for a type value and an optional. Writing is **canonical** — one
+ * plus three `$cel` forms: a type value, an optional, and a value of a host's own named
+ * type — its type name and its entries, since the engine has no encoding of its own for one. Writing is **canonical** — one
  * text per value — so comparing a row's recorded answer against the engine's is a
  * comparison of two texts, and a difference of CEL *type* is a difference of text: an
  * int, a uint and a double never encode alike, NaN and `-0` are written as tags, and a
@@ -19,9 +20,12 @@
  */
 
 import {
+  CEL_VALUE_KEYS,
+  CEL_VALUE_TYPE,
   celMapFromEntries,
   celNone,
   celSome,
+  celTypeNameOf,
   celTypeValue,
   celUint,
   formatDuration,
@@ -145,6 +149,15 @@ export function encodeConformanceValue(value: CelValue): ConformanceValue {
     return encodeMap(Object.keys(value).map((key) => [key, value[key] as CelValue]));
   }
   if (isCelError(value)) throw new ConformanceValueError(`an error is not a value: ${value.message}`);
+  const host = celTypeNameOf(value);
+  if (host !== undefined && !(CEL_VALUE_KEYS as readonly string[]).includes(host)) {
+    const entries = value as unknown as Record<string, CelValue>;
+    return {
+      [CEL_TAG]: "host",
+      type: host,
+      value: encodeMap(Object.keys(entries).map((key) => [key, entries[key]!])),
+    };
+  }
   throw new ConformanceValueError("this value is of no CEL type");
 }
 
@@ -198,7 +211,26 @@ function decodeCel(node: { [key: string]: ConformanceValue }): CelValue {
   if (form === "optional") {
     return node.value === undefined ? celNone() : celSome(decodeConformanceValue(node.value));
   }
+  if (form === "host" && typeof node.type === "string" && isEntryMap(node.value)) {
+    if ((CEL_VALUE_KEYS as readonly string[]).includes(node.type)) {
+      throw new ConformanceValueError(`${JSON.stringify(node.type)} is a type of the engine's own values, not a host's`);
+    }
+    const value: Record<string | symbol, CelValue> = { [CEL_VALUE_TYPE]: node.type };
+    for (const key of Object.keys(node.value)) value[key] = decodeConformanceValue(node.value[key]!);
+    return value as unknown as CelValue;
+  }
   throw new ConformanceValueError(`${JSON.stringify(node)} is not a '${CEL_TAG}' form`);
+}
+
+/** A plain JSON object of entries — what a host value's `value` holds. */
+function isEntryMap(node: ConformanceValue | undefined): node is { [key: string]: ConformanceValue } {
+  return (
+    node !== null &&
+    typeof node === "object" &&
+    !Array.isArray(node) &&
+    !Object.prototype.hasOwnProperty.call(node, CEL_TAG) &&
+    !Object.prototype.hasOwnProperty.call(node, FRAME_TAG)
+  );
 }
 
 function decodeFrame(node: { [key: string]: ConformanceValue }): CelValue {

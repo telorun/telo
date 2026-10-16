@@ -1,5 +1,6 @@
 import { isTaggedSentinel } from "@telorun/templating";
 import { decodePlainText, isCelRecord, isCompiledValue } from "@telorun/sdk";
+import { membersSlotOf, readMembersLiteral } from "./members-value-slot.js";
 import {
   collectProperties,
   type ExternalSchemaResolver,
@@ -16,7 +17,9 @@ import {
  *
  * A YAML literal is one of the places a value arrives from outside Telo, so it
  * is the one place such text is read; the slot holds the instance everywhere
- * else. Text the encoding does not accept is left as written, and the value-type
+ * else. A slot of a type declaring `members` reads an object of literal members
+ * too, built by the same encoding; one holding an expression is built once the
+ * expression is evaluated. Text the encoding does not accept is left as written, and the value-type
  * assertion that runs next refuses it, naming the form. Shared by the kernel at
  * resource creation and by `telo check` before validating a resource, so both
  * choose the same union branch, stop at the same reference slots and decode the
@@ -32,7 +35,14 @@ export function decodePlainLiterals(
   external?: ExternalSchemaResolver,
   rootSchema: Record<string, any> = schema,
 ): unknown {
-  return mapTextLeaves(value, schema, decodePlainText, external, rootSchema);
+  return mapTextLeaves(value, schema, decodePlainText, external, rootSchema, undefined, composeLiteralMembers);
+}
+
+/** An object of literal members at a slot of a type declaring them, built — or
+ *  undefined, leaving the walk to descend. */
+function composeLiteralMembers(schema: Record<string, any>, record: Record<string, unknown>): unknown {
+  const slot = membersSlotOf(schema);
+  return slot ? readMembersLiteral(slot, record) : undefined;
 }
 
 /** What a text leaf becomes, given the schema node it sits at and its JSON
@@ -42,6 +52,10 @@ export type TextLeafMapper = (schema: Record<string, any>, text: string, pointer
 /** Sees every node the walk reaches, whatever its type, with the schema node it
  *  sits at — for a question about a slot rather than about its text. */
 export type SchemaNodeVisitor = (schema: Record<string, any>, node: unknown, pointer: string) => void;
+
+/** What a plain record becomes, given the schema node it sits at and its JSON
+ *  Pointer — or undefined to descend into it as a container. */
+export type RecordMapper = (schema: Record<string, any>, record: Record<string, unknown>, pointer: string) => unknown;
 
 /**
  * The walk {@link decodePlainLiterals} runs, with the leaf rule supplied: every
@@ -58,6 +72,7 @@ export function mapTextLeaves(
   external?: ExternalSchemaResolver,
   rootSchema: Record<string, any> = schema,
   visit?: SchemaNodeVisitor,
+  record?: RecordMapper,
 ): unknown {
   const walk = (
     node: unknown,
@@ -85,16 +100,18 @@ export function mapTextLeaves(
     // the decoded value and descending into its fields would decode its parts
     // against the slot's own schema.
     if (!isCelRecord(node)) return node;
+    const mapped = record?.(here, node as Record<string, unknown>, pointer);
+    if (mapped !== undefined) return mapped;
     const properties = collectProperties(here);
     const additional =
       here.additionalProperties && typeof here.additionalProperties === "object"
         ? (here.additionalProperties as Record<string, any>)
         : undefined;
-    const record = node as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
+    const entries = node as Record<string, unknown>;
+    for (const key of Object.keys(entries)) {
       const child = properties[key] ?? additional;
       if (child) {
-        record[key] = walk(record[key], child, root, `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`);
+        entries[key] = walk(entries[key], child, root, `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`);
       }
     }
     return node;

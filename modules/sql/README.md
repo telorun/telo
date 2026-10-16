@@ -39,14 +39,14 @@ kind: Telo.Application
 metadata: { name: users-api, version: 1.0.0 }
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.13.0
-  Postgres: oci://ghcr.io/telorun/postgres@0.1.0
+  Postgres: oci://ghcr.io/telorun/postgres@0.9.0
 targets: [ !ref appSchema ]
-secrets:
-  DATABASE_URL: { env: DATABASE_URL, type: string }
+needs:
+  databaseAccess: { kind: Postgres.DatabaseAccess, env: { url: DATABASE_URL } }
 ---
 kind: Postgres.Connection
 metadata: { name: Db }
-connectionString: !cel "secrets.DATABASE_URL"
+access: !ref databaseAccess
 pool: { min: 2, max: 20, idleTimeoutMs: 10000 }
 ---
 kind: Postgres.Table
@@ -68,11 +68,11 @@ reclaim: { afterVersions: 3, afterDuration: 30d }
 
 `Sql.Connection` is an abstract contract; pick the concrete kind for your driver. Every other kind references the connection by name (`connection: !ref Db`) and stays driver-agnostic.
 
-**`Postgres.Connection`** — `connectionString` is a `postgres://` / `postgresql://` URL (e.g. `postgres://user:pass@host:5432/db`). TLS uses the standard libpq `sslmode` query parameter: `?sslmode=require` encrypts without verifying the server certificate (suitable for managed Postgres that self-signs), while `?sslmode=verify-ca` / `?sslmode=verify-full` verify it; omitting it (or `?sslmode=disable`) connects without TLS. The `pool` knobs (`min`, `max`, `idleTimeoutMs`, `connectionTimeoutMs`) tune the connection pool.
+**`Postgres.Connection`** — `access` is a `Postgres.DatabaseAccess` need (or a fulfilment of it) whose `url` is a `postgres://` / `postgresql://` URL (e.g. `postgres://user:pass@host:5432/db`), written as text or as an object of its members; the server's version and extensions are checked against the need's `version:` and `features:` when the connection starts. TLS uses the standard libpq `sslmode` query parameter: `?sslmode=require` encrypts without verifying the server certificate (suitable for managed Postgres that self-signs), while `?sslmode=verify-ca` / `?sslmode=verify-full` verify it; omitting it (or `?sslmode=disable`) connects without TLS. The `pool` knobs (`min`, `max`, `idleTimeoutMs`, `connectionTimeoutMs`) tune the connection pool.
 
 **`SQLite.Connection`** — `file` is the database path (e.g. `./data.db`); its parent directory is auto-created on connect. Omit `file`, or set `:memory:`, for an ephemeral in-memory database.
 
-The engine family is fixed by the kind, not sniffed from a string at runtime. Keep the connection *target* in the environment as usual — e.g. `Postgres.Connection` with `connectionString: !cel "secrets.DATABASE_URL"`.
+The engine family is fixed by the kind, not sniffed from a string at runtime. Keep the connection *target* in the environment as usual — e.g. a root need `databaseAccess: { kind: Postgres.DatabaseAccess, env: { url: DATABASE_URL } }` and `Postgres.Connection` with `access: !ref databaseAccess`.
 
 `Sql.Connection` itself is abstract and has no controller — declaring `kind: Sql.Connection` fails with **"No controller registered"**. Always instantiate a concrete kind (`Postgres.Connection` / `SQLite.Connection`); reference the abstract only in `x-telo-ref` slots (which you don't write — they're in the kind schemas).
 

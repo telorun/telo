@@ -20,6 +20,7 @@ import {
 import { CEL_VALUE_TYPE } from "@telorun/cel";
 import { isInvokeError } from "../src/invoke-error.js";
 import { decodeTypedFrame, encodeTypedFrame } from "../src/typed-frame.js";
+import { composeUrl } from "../src/url-text.js";
 
 const SPECS = new URL("../../../kernel/specs/", import.meta.url);
 
@@ -93,6 +94,11 @@ function build(notation: Notation): unknown {
       return entries.every(([key]) => typeof key === "string")
         ? Object.fromEntries(entries)
         : celMapFromEntries(entries.flat() as never);
+    }
+    case "url": {
+      const built = composeUrl(body as Record<string, unknown>);
+      if (!("value" in built)) throw new Error(`a url notation that builds no URL: ${built.refusal}`);
+      return built.value;
     }
   }
   throw new Error(`Unknown value notation '${type}'`);

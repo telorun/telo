@@ -150,8 +150,8 @@ from `init()` (where it may also acquire external resources, a connection or a
 container, each as an effect whose inverse releases it), and its reading is
 published when `init()` returns. So a Provider's status — and only a
 Provider's — is readable in a field that resolves at startup, such as another
-Provider's config:
-`connectionString: !interpolate "postgres://app@${{ resources.pg.status.host }}:${{ resources.pg.status.port }}/app"`.
+Provider's config, such as a database-access fulfilment's URL members:
+`url: { scheme: postgres, host: !cel "resources.pg.status.host", port: !cel "resources.pg.status.port", user: app, path: /app }`.
 That read orders `pg` first; two Providers reading each other at startup are
 `DEPENDENCY_CYCLE`. A Service's or Runnable's status there is still
 `OBSERVED_STATE_IN_STARTUP_FIELD` — read it in a step's `inputs:` instead. So is a Provider declared in a `Run.Sequence`'s `with:`, read from a scoped sibling's startup field: scoped resources are created only when the scope opens.
@@ -1309,6 +1309,38 @@ One annotation says what the value at a slot is, beyond what JSON Schema's
     `type: integer`.
   - `Telo.HostPath` — an absolute path on the machine running the app (a
     plain `string` in CEL), declared over `type: string`. See "Paths" below.
+  - `Telo.Url` — a URL that may carry credentials, held as its members
+    `scheme`, `host`, `port`, `user`, `password`, `path` and `query` (a map of
+    string to string), each read in CEL as a FIELD (`url.host`, `url.?port`,
+    `has(url.password)`; any other name is `CEL_UNKNOWN_FIELD`). `string(url)`
+    is its text. Write it as its text (`postgres://app:p%40ss@db:5432/orders`,
+    each component percent-encoded where RFC 3986 requires) or — whenever any
+    part is a value of yours, a password above all — as an OBJECT of members,
+    each a literal or a `!cel`, which the type escapes:
+    `url: { scheme: postgres, host: !cel "variables.dbHost", port: 5432,
+    user: app, password: !cel "secrets.dbPassword", path: /orders }`. Never
+    assemble the text with `+` or `!interpolate` from a password. A `string`
+    (a variable, an `!interpolate`) is accepted where a `Telo.Url` is wanted and
+    read as its text when the resource is created, or — at a call's `inputs:`
+    or a template's `result:` — when the call is dispatched. Declare it with no `type:`
+    in a kind's schema or a library input (`x-telo-type: Telo.Url`) — a root
+    Application `variables:` / `secrets:` entry still writes `type: string` beside
+    it; restrict the scheme with the `scheme` argument,
+    a schema: `x-telo-type: { name: Telo.Url, scheme: { enum: [postgres,
+    postgresql] } }`. A literal that does not read, or whose scheme the slot
+    refuses, is `URL_INVALID` wherever it is written (a field, a call's `inputs:`,
+    an import's `variables:`, a `default:`); a computed one `ERR_URL_INVALID` at creation, and at a call's
+    dispatch `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` (catch those; the entry in
+    `error.data.issues` carries `code: ERR_URL_INVALID` and the reason). A URL
+    holding a password prints `[redacted]` in every log, trace and span attribute,
+    wherever it was built (its host does not); one read at load also redacts its
+    password and text when logged as strings, but one built per call does not —
+    log the URL, not text derived from it. A need field holding one is sensitive.
+    An import's `variables:` / `secrets:` are read against the library's declared
+    entries for every type (text decoded, then validated): a mismatch is
+    `SCHEMA_VIOLATION` (`URL_INVALID` for a URL) at the import, and the kernel
+    refuses it when the import initializes. A `Telo.Url` is not a `string`: pass
+    `string(url)` where text is wanted (`CEL_TYPE_ERROR` otherwise).
 
 A type ARGUMENT is an ordinary schema node, so it nests with no new grammar: a
 built-in name, an inline shape, another parameterized type, or a `!ref` to a
@@ -1323,8 +1355,8 @@ it the way you reference anything named — `of: !ref File`, or
 
 Three rules follow, all yours to obey when authoring:
 
-  - A literal at a `Telo.Bytes`, `Telo.Timestamp` or `Telo.Duration` slot is
-    TEXT in that type's encoding — base64url without padding for bytes, RFC
+  - A literal at a `Telo.Bytes`, `Telo.Timestamp`, `Telo.Duration` or
+    `Telo.Url` slot is TEXT in that type's encoding — base64url without padding for bytes, RFC
     3339 for a timestamp, a CEL duration string for a duration — and is read
     into the value where it is written; text the encoding does not read is a
     `telo check` error. A computed value (`!cel`) must already BE the value.
@@ -2202,7 +2234,9 @@ to say.
   `oci://ghcr.io/telorun/<name>`, but take the ref from the hub tools rather
   than composing it. Object form
   `{ source, variables?, secrets?, resources?, needs? }`
-  forwards values into the library — `resources:` supplies the INSTANCES the
+  forwards values into the library — `variables:` / `secrets:` must satisfy the
+  entries the library declares (a value type's text is decoded first; a mismatch
+  is `SCHEMA_VIOLATION` at the import), `resources:` supplies the INSTANCES the
   target library declares it needs (see its top-level `resources:` block), and
   `needs:` supplies its typed NEEDS (see its top-level `needs:` block). Reference an imported kind as
   `kind: <Alias>.<KindName>`, and an imported instance as
@@ -2256,6 +2290,20 @@ to say.
   `reclaim: { afterVersions, afterDuration }` policy has been met, and with no
   policy nothing is ever dropped. `SQLite.Schema` has no `schema:` field (one
   namespace); `Postgres.Schema` names one, defaulting to `public`.
+
+  **A PostgreSQL connection is opened over a NEED, never a connection string**
+  (`connectionString` no longer exists; writing it is `SCHEMA_VIOLATION`).
+  `Postgres.Connection.access` is required and takes a `Postgres.DatabaseAccess`
+  need or fulfilment, whose one field `url` is a `Telo.Url` (scheme `postgres` /
+  `postgresql`, TLS as `query: { sslmode: require }`). The type declares
+  `version: semver` and `features: [pgvector, postgis]`; the connection reports
+  the server's version and available extensions when it starts, so a need
+  stating `version: ">=15.0.0"` / `features: [pgvector]` is checked against the
+  live server (`ERR_NEED_UNMET` otherwise). An application declares
+  `needs: { databaseAccess: { kind: Postgres.DatabaseAccess, env: { url: DATABASE_URL } } }`
+  and writes `access: !ref databaseAccess`; a library declares the need and
+  lets its importer supply it; a fulfilment used once is written inline at
+  `access:` (`{ kind: Postgres.DatabaseAccess, fields: { url: { scheme: postgres, host: …, user: …, password: !cel "secrets.dbPassword", path: /app } } }`).
 
   The imperative pre-pass bucket is `prepare:` (formerly `beforeMigrations:`,
   which still loads and is rewritten): data preparation for a narrowing the

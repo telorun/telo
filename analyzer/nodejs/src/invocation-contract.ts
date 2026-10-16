@@ -20,6 +20,7 @@ import {
   effectiveContractField,
 } from "./extends-resolution.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { membersSlotOf } from "./members-value-slot.js";
 import { resolveRefIn } from "./schema-compat.js";
 import { isTypeKind, resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import { resolveContractValueSchemas, type ValueSchemaHost } from "./value-schema-slot.js";
@@ -516,6 +517,40 @@ export function defaultBearingPaths(
 
   walk(schema, [], [], schema);
   return out;
+}
+
+/**
+ * Whether a contract reaches a slot of a value type declaring `members` (`Telo.Url`)
+ * anywhere — properties, items, map values, union and intersection branches, through
+ * `$ref`. A contract that does is one whose arguments are built from text or an object
+ * of members when they cross it.
+ */
+export function reachesMembersSlot(
+  schema: Record<string, any>,
+  resolveRef?: (ref: string) => Record<string, any> | undefined,
+): boolean {
+  const walk = (node: unknown, chain: readonly object[], within: Record<string, any> | undefined): boolean => {
+    if (!node || typeof node !== "object" || chain.includes(node)) return false;
+    let s = node as Record<string, any>;
+    let document = within;
+    if (typeof s.$ref === "string" && (resolveRef || s.$ref.startsWith("#"))) {
+      const followed = contractRefTarget(s.$ref, document, resolveRef);
+      if (!followed || chain.includes(followed.target)) return false;
+      s = { ...followed.target, ...s, $ref: undefined };
+      document = followed.document;
+    }
+    if (membersSlotOf(s)) return true;
+    const here = [...chain, node as object];
+    const children: unknown[] = [
+      ...Object.values((s.properties ?? {}) as Record<string, unknown>),
+      ...Object.values((s.patternProperties ?? {}) as Record<string, unknown>),
+      s.additionalProperties,
+      s.items,
+      ...(["allOf", "anyOf", "oneOf"] as const).flatMap((key) => (Array.isArray(s[key]) ? s[key] : [])),
+    ];
+    return children.some((child) => walk(child, here, document));
+  };
+  return walk(schema, [], schema);
 }
 
 /**

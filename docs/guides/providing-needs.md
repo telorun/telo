@@ -85,7 +85,7 @@ version, never changed:
 | `fields.<field>.env` | The one environment variable the field is read from. |
 | `fields.<field>.envSource` | `bound` — named by the application's `env:`; `derived` — from the need path. |
 | `fields.<field>.required` | Whether the need type requires the field. |
-| `fields.<field>.sensitive` | Whether the need type marks the field `x-telo-sensitive`: its value is redacted wherever it is logged. |
+| `fields.<field>.sensitive` | Whether the field is sensitive — the need type marks it `x-telo-sensitive`, or its value type declares a sensitive member (a `Telo.Url`'s password): its value is redacted wherever it is logged. |
 
 A module location (`declaredBy`, `type.module`) is a registry or URL location
 with no `@<version>` and no `#<pin>`, or — for a module on the filesystem — its

@@ -28,9 +28,16 @@ targets:
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + variables.dbHost + ':' +
-  string(variables.dbPort) + '/postgres'
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: !cel "variables.dbPort"
+      user: postgres
+      password: postgres
+      path: /postgres
 ---
 kind: Postgres.Enum
 metadata: { name: messageRole }

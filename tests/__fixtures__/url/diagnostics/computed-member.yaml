@@ -1,0 +1,15 @@
+# A member an expression produces is built in at creation, and refused there when it
+# cannot stand.
+kind: Telo.Application
+metadata:
+  name: UrlComputedMember
+  version: 1.0.0
+imports:
+  Fx: ../kinds
+variables:
+  port: { env: TELO_TEST_URL_PORT, type: integer, default: 70000 }
+---
+kind: Fx.DatabaseAccess
+metadata: { name: database }
+fields:
+  url: { scheme: postgres, host: db, port: !cel "variables.port" }

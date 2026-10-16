@@ -75,6 +75,7 @@ export {
   injectedNeedDeclarations,
   injectedNeedOf,
   isNeedTypeDoc,
+  holdsSensitiveMembers,
   isTextFieldSchema,
   NEED_TYPE_CONTROLLER_ENTRY,
   NEED_TYPE_KIND,
@@ -233,6 +234,7 @@ export {
   declaredScalarPaths,
   normalizeDeclaredScalars,
   PERMISSIVE_CONTRACT,
+  reachesMembersSlot,
   resolveContract,
   resolveContractSchema,
   sensitivePaths,
@@ -556,10 +558,12 @@ export type { NodeValidatingAjv, SchemaNodeValidatorOptions } from "./schema-nod
 export {
   ajvErrorToPath,
   explainFormatErrors,
+  explainValueTypeErrors,
   formatAjvErrors,
   formatSingleError,
   reduceSchemaErrors,
   schemaIssues,
+  valueTypeRefusalCode,
 } from "./schema-error-report.js";
 export type { AjvErrorLike, SchemaIssue } from "./schema-error-report.js";
 export { visitManifest } from "./manifest-visitor.js";
@@ -631,9 +635,23 @@ export type {
 export {
   decodePlainLiterals,
   mapTextLeaves,
+  type RecordMapper,
   type SchemaNodeVisitor,
   type TextLeafMapper,
 } from "./plain-literal-decoding.js";
+export {
+  boundArgumentRefusal,
+  memberSlotSchema,
+  memberSlotSchemas,
+  membersAuthoringSchema,
+  membersRefusalCode,
+  membersRefusalMessage,
+  membersSlotOf,
+  membersValueRefusal,
+  readMembersLiteral,
+  readMembersValue,
+  type MembersSlot,
+} from "./members-value-slot.js";
 export { holdsHostPath, hostAnchorFor } from "./host-path-slot.js";
 export {
   compiledResultSlots,

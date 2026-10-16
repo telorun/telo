@@ -13,6 +13,8 @@ import {
   flattenForAnalyzer,
   formatAjvErrors,
   flattenLoadedModule,
+  valueTypeRefusalCode,
+  schemaIssues,
   implicitEvalSites,
   callableBodyField,
   isCallableKind,
@@ -86,7 +88,8 @@ import { EventBus } from "./events.js";
 import { enableBigIntJson } from "./bigint-json.js";
 import { createLockedEnv, hostEnv, lockControllerEnv } from "./host-env.js";
 import { setEnvironmentNeeds } from "./controllers/module/environment-needs.js";
-import { needFulfilment } from "./need-fulfilment.js";
+import { needFulfilment, type RedactionHost } from "./need-fulfilment.js";
+import { acceptsBy, buildMembersValues, redactedTextsWithin } from "./members-values.js";
 import { KernelTracer } from "./tracing.js";
 import { KernelLogging, type LoggingManifestBlock } from "./logging/kernel-logging.js";
 import type { ScopeConfig } from "./logging/scope-config.js";
@@ -113,7 +116,7 @@ import {
   recordDeclarationScope,
 } from "./declaration-scope.js";
 import { declarationOfInstance, recordInstanceDeclaration } from "./instance-declaration.js";
-import { recordSensitivePaths } from "./instance-sensitive-paths.js";
+import { recordPayloadView, recordSensitivePaths, REDACTED } from "./instance-sensitive-paths.js";
 import { recordSpanAttributes } from "./instance-span-attributes.js";
 import {
   assertSinkContract,
@@ -1447,9 +1450,16 @@ export class Kernel implements IKernel {
       }
       if (Object.keys(variables).length > 0) {
         this.rootContext.setVariables(variables);
+        // A variable is not secret, but a value of a type with sensitive members (a URL
+        // carrying a password) holds one, so its text and that member are redacted,
+        // wherever it sits inside the variable.
+        this.rootContext.addRedactedValues(redactedTextsWithin(variables));
       }
       if (Object.keys(secrets).length > 0) {
         this.rootContext.setSecrets(secrets);
+        // A secret is redacted whole only at its top level; one of such a type nested
+        // inside it is redacted by its text and sensitive members.
+        this.rootContext.addRedactedValues(redactedTextsWithin(secrets));
       }
       if (Object.keys(ports).length > 0) {
         this.rootContext.setPorts(ports);
@@ -2464,6 +2474,18 @@ export class Kernel implements IKernel {
             })
           : undefined;
       if (remaining?.length !== 0) {
+        // A value type admitting text refuses a literal that does not build under its
+        // own code, naming the field and the reason — never the value, which may hold
+        // a credential.
+        const issues = remaining
+          ? schemaIssues(remaining, stripped)
+          : error instanceof SchemaValidationError
+            ? error.issues
+            : [];
+        const refusal = issues.find((issue) => valueTypeRefusalCode(issue) !== undefined);
+        if (refusal) {
+          throw new RuntimeError(`ERR_${valueTypeRefusalCode(refusal)}`, `${resourceLabel}: ${refusal.message}`);
+        }
         const reason = remaining
           ? `Invalid value passed: ${describeValue(stripped)}. Error: ${formatAjvErrors(remaining, stripped)}`
           : error instanceof Error
@@ -2511,6 +2533,23 @@ export class Kernel implements IKernel {
           unevaluated,
         ) as ResourceManifest)
       : resource;
+    // A value of a type with members an expression produced — text, or an object of
+    // members — is built only now, and every one the resource holds is held to its
+    // slot's arguments; its whole text and sensitive members join the redaction set
+    // of the context owning the resource.
+    const { redacted: redactedMembers, refusals: membersRefused } = buildMembersValues(
+      expandedResource as Record<string, unknown>,
+      configSchema as Record<string, any>,
+      acceptsBy(this.sharedSchemaValidator),
+      schemaForRef,
+    );
+    const [unbuilt] = membersRefused;
+    if (unbuilt) {
+      throw new RuntimeError(
+        unbuilt.code,
+        `${resourceLabel}: ${unbuilt.pointer} is not a ${unbuilt.type}: ${unbuilt.reason}`,
+      );
+    }
     // Validation saw an expression's placeholder; its result is known only now.
     if (compile.length) {
       refuseRelativeHostPaths(
@@ -2543,6 +2582,7 @@ export class Kernel implements IKernel {
     const processedResource = withAccessorBindings(expandedResource, accessorFieldsHeld);
 
     const moduleCtx = this.findModuleContext(evalContext);
+    if (redactedMembers.length > 0) (moduleCtx as unknown as RedactionHost).addRedactedValues(redactedMembers);
     // A value naming a browser entry's export names one the resource's own
     // module declares. Same reader as `BROWSER_ENTRY_UNKNOWN` / `BROWSER_EXPORT_UNKNOWN`.
     const exportSites = browserExportSites(configSchema as Record<string, any>, processedResource);
@@ -2759,6 +2799,8 @@ export class Kernel implements IKernel {
       resolveRef: (ref: string) => impl.lookupSchema(ref) as Record<string, any> | undefined,
       withRules: (name: string | undefined, schema: Record<string, any>) =>
         impl.createTypeValidatorWithRules(name, schema),
+      accepts: (schema: Record<string, any>, value: unknown) =>
+        impl.createSchemaValidator(schema).isValid(value),
     }) as ContractValidatorFactory;
 
     const resolveDef = this.scopedDefResolver();
@@ -2841,9 +2883,11 @@ export class Kernel implements IKernel {
     // it, and the trace site has only the instance. Lazily, so a contract is
     // still compiled on first dispatch rather than at create time.
     if (input) recordSensitivePaths(instance, "inputType", () => input.sensitivePaths());
+    if (input) recordPayloadView(instance, "inputType", (value) => input.payloadView(value, REDACTED));
     if (input) recordSpanAttributes(instance, "inputType", () => input.spanAttributes());
     if (input) impl.setInputScalarPaths(() => input.scalarPaths());
     if (output) recordSensitivePaths(instance, "outputType", () => output.sensitivePaths());
+    if (output) recordPayloadView(instance, "outputType", (value) => output.payloadView(value, REDACTED));
     if (output) recordSpanAttributes(instance, "outputType", () => output.spanAttributes());
 
     bindContract(instance, {

@@ -1,0 +1,16 @@
+# One instantiation, two importers writing one URL two ways: equal as built, so they
+# agree — the comparison is by the value's plain encoding, never by what was written.
+kind: Telo.Application
+metadata:
+  name: SharedLibraryAgreesBuilt
+  version: 1.0.0
+imports:
+  First:
+    source: ./addressed
+    variables: { url: POSTGRES://db.internal/orders }
+  Second:
+    source: ./addressed
+    variables: { url: postgres://db.internal/orders }
+targets:
+  - name: host
+    invoke: !ref Second.hostOf

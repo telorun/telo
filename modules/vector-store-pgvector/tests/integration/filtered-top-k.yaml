@@ -42,17 +42,13 @@ targets:
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
-  string(resources.Pg.endpoint.status.port) + '/postgres'
+access: !ref Pg.databaseAccess
 ---
 # One connection, so a setting a match left behind would be read back by the
 # next statement.
 kind: Postgres.Connection
 metadata: { name: singleDb }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
-  string(resources.Pg.endpoint.status.port) + '/postgres'
+access: !ref Pg.databaseAccess
 pool: { min: 1, max: 1 }
 ---
 # Provisions the table and its index at start-up.

@@ -5,7 +5,7 @@ import {
   type CelValue,
 } from "@telorun/cel";
 import { VALUE_TYPES, type ResourceManifest } from "@telorun/sdk";
-import { celNamespaceNames, registerValueBrands } from "@telorun/templating";
+import { celNamespaceNames } from "@telorun/templating";
 import { isKindDocument } from "./kind-declaration.js";
 import { authoredModuleMetadata, moduleMetadataSchema } from "./module-metadata-scope.js";
 import { jsonSchemaToCelType, VALUE_BRAND_BASE } from "./schema-compat.js";
@@ -149,15 +149,9 @@ export function buildTypedCelEnvironment(
   rootModuleManifest?: ResourceManifest,
 ): CelEnvironment {
   try {
+    // Every value type's CEL face — a brand, a type with fields — is the base
+    // environment's own (`buildCelEnvironment`), the same at check and at run.
     const env = baseEnv.clone();
-
-    // Register nominal value brands (TcpPort/UdpPort/…) on the *clone* so the
-    // type-checker can distinguish structurally-identical values. The base env
-    // (shared with the kernel runtime) is untouched — a branded value flows as
-    // a plain integer at runtime, so only static checking needs these. A
-    // nominal type is declared, never implemented: the engine takes the
-    // conversions and members as signatures, so no runtime constructor exists.
-    registerValueBrands(env);
 
     // `variables` / `secrets`: the DECLARING module's blocks, which is the
     // contract the resource's CEL is evaluated against at runtime. Read the
@@ -282,7 +276,6 @@ export function buildParameterCelEnvironment(
   contextSchema: Record<string, any> | null,
 ): CelEnvironment {
   const env = baseEnv.clone();
-  registerValueBrands(env);
   for (const [name, propSchema] of Object.entries(
     (contextSchema?.properties ?? {}) as Record<string, any>,
   )) {
@@ -293,7 +286,7 @@ export function buildParameterCelEnvironment(
 
 /**
  * What a checker rejection of an expression reading a brand should add: the
- * operations {@link registerValueBrands} gives it. A brand is a type of its own,
+ * operations the base environment registers for it. A brand is a type of its own,
  * so an operator its base accepts (`+` on a string) finds no overload, and the
  * checker's wording says only that. The brand comes from the engine's checked
  * `readTypes`, never from the checker's wording.
@@ -342,7 +335,6 @@ export function buildImportInputCelEnvironment(
   moduleManifest: ResourceManifest | undefined,
 ): CelEnvironment {
   const env = baseEnv.clone();
-  registerValueBrands(env);
   const mod = moduleManifest as Record<string, unknown> | undefined;
   // Typing variables/secrets from the importer's schema can fail on a malformed
   // schema; degrade those to permissive `map` if so — but never lose the

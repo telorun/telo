@@ -42,10 +42,18 @@ export interface NominalTypeDefinition {
   readonly conversions?: readonly string[];
   /** Member signatures, e.g. `Self.scaled(int): Self`. */
   readonly members?: readonly string[];
+  /**
+   * The fields a value of the type carries, by name, each a type expression. A field is
+   * read by `.`, `.?` and `has()`; a name the definition does not declare is an unknown
+   * field. A value of the type holds them as its OWN entries, beside its type key, and
+   * the member-read seam answers no other entry of it.
+   */
+  readonly fields?: Readonly<Record<string, string>>;
   readonly description?: string;
 }
 
 const NAME = /^[A-Za-z_][A-Za-z0-9_.]*$/;
+const FIELD = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const PARAMETER = /^[A-Z]$/;
 const LANGUAGE_NAMES = new Set([
   "dyn",
@@ -79,6 +87,8 @@ export interface RegisteredType {
   readonly parameters: readonly string[];
   /** The type with its own parameters applied — what `Self` resolves to. */
   readonly self: NominalType;
+  /** The names of its declared fields, for the member-read seam; absent when it declares none. */
+  readonly fieldNames?: ReadonlySet<string>;
 }
 
 export function validateTypeName(name: string): void {
@@ -130,7 +140,31 @@ export function buildRegisteredType(
       `the base of ${definition.name} does not read as a type: ${(cause as Error).message}`,
     );
   }
-  return { definition, base, parameters, self: { ...self, base } };
+  const fields = definition.fields === undefined ? undefined : readFields(definition, withSelf);
+  return {
+    definition,
+    base,
+    parameters,
+    self: { ...self, base, ...(fields ? { fields } : {}) },
+    ...(fields ? { fieldNames: new Set(fields.keys()) } : {}),
+  };
+}
+
+function readFields(definition: NominalTypeDefinition, resolve: NominalResolver): ReadonlyMap<string, CelType> {
+  const fields = new Map<string, CelType>();
+  for (const [name, text] of Object.entries(definition.fields!)) {
+    if (!FIELD.test(name)) {
+      throw new CelTypeRegistrationError(`field ${JSON.stringify(name)} of ${definition.name} is not spelled as a name`);
+    }
+    try {
+      fields.set(name, parseTypeExpression(text, resolve));
+    } catch (cause) {
+      throw new CelTypeRegistrationError(
+        `field ${JSON.stringify(name)} of ${definition.name} does not read as a type: ${(cause as Error).message}`,
+      );
+    }
+  }
+  return fields;
 }
 
 /** The signatures a definition declares, as text, in registration order. */

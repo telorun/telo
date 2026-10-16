@@ -120,7 +120,7 @@ secrets:
 Downstream resources reference values the same way as with `Config.Variables` / `Config.Secrets`:
 
 ```yaml
-connectionString: !cel "resources.AppConfig.dbConnection"
+url: !cel "resources.AppConfig.dbConnection"
 port: !cel "resources.AppConfig.port"
 ```
 

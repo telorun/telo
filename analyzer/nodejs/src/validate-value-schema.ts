@@ -1,3 +1,4 @@
+import { valueTypeRefusalCode } from "./schema-error-report.js";
 import { valueSchemaSites } from "./derived-slots.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import { type ExternalSchemaResolver, type SchemaIssue } from "./schema-compat.js";
@@ -61,6 +62,9 @@ export function collectValueSchemaIssues(
     });
     for (const issue of validator.validate(substituted, schema, standIns)) {
       issues.push({
+        // A value type's own refusal keeps what names it, so it reports under the
+        // type's code wherever the slot is.
+        ...(valueTypeRefusalCode(issue) ? { keyword: issue.keyword, valueType: issue.valueType } : {}),
         message: `\`${path}\` does not satisfy the type declared at \`${from}\`: ${issue.message}`,
         path: issue.path ? `${path}.${issue.path}` : path,
       });

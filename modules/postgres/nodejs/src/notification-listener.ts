@@ -5,7 +5,7 @@
  * subscribed, so taking one from the pool would permanently consume one of
  * `max` — and kysely hands out no raw `pg.Client` to attach a `notification`
  * handler to anyway. This opens its own client from the same configuration, so
- * a caller declares one `connectionString` and gets both halves.
+ * a caller declares one `access` and gets both halves.
  *
  * **A wake is an optimization, never the correctness path.** The consumer this
  * exists for — a durable journal's resumer — already polls, and a notification

@@ -1,5 +1,9 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { plainScalar } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
+import { importInputsSchema } from "./import-inputs.js";
+import type { ModuleDocuments } from "./module-documents.js";
+import { decodePlainLiterals } from "./plain-literal-decoding.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { findDynamicLeaf } from "./resource-rule.js";
@@ -58,6 +62,9 @@ export function validateResourceInputs(
     requiredKind: string,
     suppliedIsDeclaration: boolean,
   ) => boolean,
+  /** The imported libraries' documents, whose declared `variables:` /
+   *  `secrets:` a supplied literal is decoded against before two are compared. */
+  documents: readonly ModuleDocuments[] = [],
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
 
@@ -256,7 +263,7 @@ export function validateResourceInputs(
     }
   }
 
-  out.push(...sharedLibraryConflicts(manifests, isOwn));
+  out.push(...sharedLibraryConflicts(manifests, isOwn, documents));
 
   return out;
 }
@@ -299,6 +306,7 @@ const SUPPLIED_BLOCKS = ["variables", "secrets", "resources", "needs"] as const;
 function sharedLibraryConflicts(
   manifests: ResourceManifest[],
   isOwn: (module: string | undefined) => boolean,
+  documents: readonly ModuleDocuments[],
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   const byTarget = new Map<string, SuppliedConfig[]>();
@@ -310,13 +318,27 @@ function sharedLibraryConflicts(
       | undefined;
     if (meta?.sharedLibrary !== true || !meta.name || !meta.resolvedSource) continue;
     const blocks = new Map<string, Record<string, unknown>>();
+    // A variable or secret is the value the import builds from what is written —
+    // decoded against the library's declaration — so two spellings of one value
+    // agree, as at runtime.
+    const inputs = importInputsSchema(m, documents);
     for (const block of SUPPLIED_BLOCKS) {
       const value = (m as Record<string, unknown>)[block];
-      blocks.set(
-        block,
+      const written =
         value && typeof value === "object" && !Array.isArray(value)
           ? (value as Record<string, unknown>)
-          : {},
+          : {};
+      const declared = inputs?.properties?.[block]?.properties as Record<string, any> | undefined;
+      blocks.set(
+        block,
+        Object.fromEntries(
+          Object.entries(written).map(([key, held]) => [
+            key,
+            declared?.[key] && !findDynamicLeaf(held)
+              ? decodePlainLiterals(structuredClone(held), declared[key])
+              : held,
+          ]),
+        ),
       );
     }
     const bucket = byTarget.get(meta.resolvedSource);
@@ -386,6 +408,10 @@ function sharedLibraryConflicts(
 function sameSuppliedValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a === undefined || b === undefined || a === null || b === null) return false;
+  // A decoded value (a URL, an instant, bytes) is the text its plain encoding writes.
+  const plainA = plainScalar(a);
+  const plainB = plainScalar(b);
+  if (plainA !== undefined || plainB !== undefined) return plainA === plainB;
   if (Array.isArray(a) || Array.isArray(b)) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
     return a.every((item, i) => sameSuppliedValue(item, b[i]));

@@ -57,10 +57,17 @@ targets:
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
-  string(resources.Pg.endpoint.status.port) + '/postgres' +
-  '?options=-c%20search_path%3Dpublic'
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "resources.Pg.endpoint.status.host"
+      port: !cel "resources.Pg.endpoint.status.port"
+      user: postgres
+      password: postgres
+      path: /postgres
+      query: { options: "-c search_path=public" }
 ---
 kind: Assert.Equals
 metadata: { name: check }

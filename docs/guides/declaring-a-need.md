@@ -74,7 +74,8 @@ nothing has to observe.
 
 A field the need type marks `x-telo-sensitive` is redacted — printed as
 `[redacted]` — in the logs of the importer that supplied it and of every library
-it reaches, as a `secrets:` value is.
+it reaches, as a `secrets:` value is. So is a `Telo.Url` field's password, and
+the URL's whole text when it holds one; its host is not.
 
 ## Supplying a need at the import
 

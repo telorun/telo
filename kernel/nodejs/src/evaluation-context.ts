@@ -34,7 +34,7 @@ import {
   type SpanSettleDetail,
   nowUnixNano,
 } from "@telorun/sdk";
-import { errorTypeOf, RuntimeError } from "@telorun/sdk";
+import { errorTypeOf, membersEntryOfValue, RuntimeError } from "@telorun/sdk";
 import {
   celResourceReads,
   concreteEvalPaths,
@@ -48,17 +48,20 @@ import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
 import { moduleCallsOf } from "./module-functions.js";
 import { impactClosure, reverseTopologicalOrder } from "./resource-edges.js";
 import {
+  mayReachListener,
   RESOURCE_CREATE_COMPLETED,
   RESOURCE_INITIALIZATION_COMPLETED,
   resourceTiming,
   startTiming,
 } from "./resource-timing.js";
 import {
+  payloadViewOf,
   REDACTED,
   redactSensitive,
   sensitivePathsOfInstance,
 } from "./instance-sensitive-paths.js";
 import { spanAttributesOf } from "./instance-span-attributes.js";
+import { censorSensitiveMembers, defineCensoredEntries } from "./sensitive-member-censor.js";
 import { spanRecordOf, type FinishedSpan } from "./span-export.js";
 import type { KernelTracer } from "./tracing.js";
 import {
@@ -206,6 +209,12 @@ export function buildResolvedProperties(
     if (isCompiledValue(value)) return writtenExpression(value) ?? "[expression]";
     if (isResolvedRef(value)) return { kind: value.kind, name: value.name };
     if (typeof value === "string") return scrub(value);
+    // A value of a type with members: censored when it holds a sensitive one, its
+    // text otherwise (logging §14).
+    if (membersEntryOfValue(value)) {
+      const written = censorSensitiveMembers(value, "[secret]");
+      return typeof written === "string" ? scrub(written) : written;
+    }
     if (Array.isArray(value)) return value.map(visit);
     if (value && typeof value === "object") {
       // A live instance injected into a ref slot (e.g. a template child whose
@@ -1965,9 +1974,9 @@ export class EvaluationContext implements IEvaluationContext {
         // no event, and precisely the cancellation an operator is looking for
         // during a watch-session save. No span ids: this refusal happens before
         // any span is opened, and `tracePayload` omits an undefined one.
-        await this.emit(
+        await this.emitSpan(
           `${name}.InvokeCancelled`,
-          this.tracePayload(kind, name, undefined, undefined, undefined, "invoke", "end", "cancelled", {
+          () => this.tracePayload(kind, name, undefined, undefined, undefined, "invoke", "end", "cancelled", {
             reason,
           }),
         );
@@ -2056,8 +2065,9 @@ export class EvaluationContext implements IEvaluationContext {
     phase: "start" | "end",
     outcome: SpanOutcome | undefined,
     detail: Record<string, unknown>,
+    views?: Readonly<Record<string, (value: unknown) => unknown>>,
   ): Record<string, unknown> {
-    return {
+    const payload: Record<string, unknown> = {
       traceId,
       // The counter stays a cheap integer internally; hex is a fixed-width
       // render performed only here, at the encoding boundary, and only for
@@ -2076,8 +2086,17 @@ export class EvaluationContext implements IEvaluationContext {
       ...(outcome !== undefined ? { outcome } : {}),
       ref: { kind, name, id: this.resourceId(kind, name) },
       ...(this.owner ? { owner: this.owner } : {}),
-      ...detail,
     };
+    // Inputs, outputs, error data and scope may hold a value built at dispatch, which
+    // no redaction set knows: each is written by the value rule (logging §14).
+    defineCensoredEntries(payload, detail, REDACTED, views);
+    return payload;
+  }
+
+  /** Emit a trace event whose payload is built only when something may listen: an
+   *  `Invoked` goes out on every dispatch, and nothing is subscribed to most. */
+  protected async emitSpan(event: string, payload: () => Record<string, unknown>): Promise<void> {
+    if (mayReachListener(this.emit, event)) await this.emit(event, payload());
   }
 
   /** Hand a finished span to the attached trace sinks, when there are any. */
@@ -2175,6 +2194,12 @@ export class EvaluationContext implements IEvaluationContext {
       }
       return out;
     };
+    // A value of a type with members is shown as the dispatch builds it, so text at a
+    // `Telo.Url` slot carrying a password is censored like the value it becomes.
+    const payloadViews = {
+      inputs: (value: unknown) => payloadViewOf(instance, "inputType", value),
+      outputs: (value: unknown) => payloadViewOf(instance, "outputType", value),
+    };
     const span = (
       phase: "start" | "end",
       outcome: SpanOutcome | undefined,
@@ -2190,6 +2215,7 @@ export class EvaluationContext implements IEvaluationContext {
         phase,
         outcome,
         phase === "end" && rootScope ? { ...hide(detail), context: rootScope } : hide(detail),
+        payloadViews,
       );
     // When tracing, a derived context carries the new id down the tree so nested
     // invokes read it as their parent; it is never `=== ambient`, so the call
@@ -2203,7 +2229,7 @@ export class EvaluationContext implements IEvaluationContext {
     // Pre-dispatch gate: a sub-invoke reached after the tree was cancelled is
     // refused without ever touching the controller.
     if (token.isCancelled) {
-      await this.emit(`${name}.InvokeCancelled`, span("end", "cancelled", { inputs, reason: token.reason }));
+      await this.emitSpan(`${name}.InvokeCancelled`, () => span("end", "cancelled", { inputs, reason: token.reason }));
       finish("cancelled", { cancellationReason: token.reason ?? "cancelled" });
       throw new RuntimeError(
         "ERR_INVOKE_CANCELLED",
@@ -2213,7 +2239,7 @@ export class EvaluationContext implements IEvaluationContext {
 
     // Start span — only under tracing, so non-traced behaviour stays exactly
     // one terminal event per call (subscribers to `<name>.Invoked` are unaffected).
-    if (tracing) await this.emit(`${name}.Invoking`, span("start", undefined, { inputs }));
+    if (tracing) await this.emitSpan(`${name}.Invoking`, () => span("start", undefined, { inputs }));
 
     try {
       // Only (re)establish the ALS scope when the token differs from the ambient
@@ -2236,7 +2262,7 @@ export class EvaluationContext implements IEvaluationContext {
         : cancellationStore.run(invokeCtx, call));
       settleNeedObservations(instance, typeof instance.invoke === "function" ? "invoke" : "run");
       if (typeof instance.invoke !== "function") completedInstances.add(instance);
-      await this.emit(`${name}.Invoked`, span("end", "ok", { inputs, outputs }));
+      await this.emitSpan(`${name}.Invoked`, () => span("end", "ok", { inputs, outputs }));
       finish("ok", { outputs });
       return outputs;
     } catch (err) {
@@ -2244,7 +2270,7 @@ export class EvaluationContext implements IEvaluationContext {
       // observable event family rather than masquerading as a rejection/failure.
       if (isCancellationError(err)) {
         const reason = err instanceof Error ? err.message : String(err);
-        await this.emit(`${name}.InvokeCancelled`, span("end", "cancelled", { inputs, reason }));
+        await this.emitSpan(`${name}.InvokeCancelled`, () => span("end", "cancelled", { inputs, reason }));
         finish("cancelled", { cancellationReason: reason });
         throw err;
       }
@@ -2261,32 +2287,32 @@ export class EvaluationContext implements IEvaluationContext {
       // invocation neither succeeded nor failed, and a trace that recorded it
       // as failed would say the run broke every time it waited.
       if (isSuspension(err)) {
-        await this.emit(
+        await this.emitSpan(
           `${name}.InvokeParked`,
-          span("end", "parked", { inputs, path: err.path, resource: err.resource }),
+          () => span("end", "parked", { inputs, path: err.path, resource: err.resource }),
         );
         finish("parked");
         throw err;
       }
       if (isInvokeError(err)) {
         const detail = { inputs, code: err.code, message: err.message, data: err.data };
-        await this.emit(`${name}.InvokeRejected`, span("end", "rejected", detail));
+        await this.emitSpan(`${name}.InvokeRejected`, () => span("end", "rejected", detail));
         const declaredCodes = this.getDeclaredThrowCodes(kind);
         if (declaredCodes && !declaredCodes.has(err.code)) {
-          await this.emit(`${name}.InvokeRejected.Undeclared`, span("end", "rejected", detail));
+          await this.emitSpan(`${name}.InvokeRejected.Undeclared`, () => span("end", "rejected", detail));
         }
         finish("rejected", { errorType: err.code });
         throw err;
       }
       if (err instanceof Error) {
-        await this.emit(
+        await this.emitSpan(
           `${name}.InvokeFailed`,
-          span("end", "failed", { inputs, name: err.name, message: err.message }),
+          () => span("end", "failed", { inputs, name: err.name, message: err.message }),
         );
       } else {
-        await this.emit(
+        await this.emitSpan(
           `${name}.InvokeFailed`,
-          span("end", "failed", { inputs, name: "UnknownError", message: String(err) }),
+          () => span("end", "failed", { inputs, name: "UnknownError", message: String(err) }),
         );
       }
       finish("failed", { errorType: errorTypeOf(err) });
@@ -2434,7 +2460,7 @@ export class EvaluationContext implements IEvaluationContext {
         { ...detail, ...extra },
       );
 
-    await this.emit(`${opts.ref.name}.Requesting`, payload("start", undefined));
+    await this.emitSpan(`${opts.ref.name}.Requesting`, () => payload("start", undefined));
     // Derived so the span context keeps whatever `base` carries beyond the span
     // ids — with tracing off this method returns `base` unchanged, and tracing
     // must not change what propagates.
@@ -2454,9 +2480,9 @@ export class EvaluationContext implements IEvaluationContext {
           attributes["telo.cancellation.reason"] = ctx.cancellation.reason ?? "cancelled";
         }
         const end = { ...extra, ...(Object.keys(attributes).length > 0 ? { attributes } : {}) };
-        await this.emit(
+        await this.emitSpan(
           `${opts.ref.name}.Request`,
-          payload("end", outcome, rootScope ? { ...end, context: rootScope } : end),
+          () => payload("end", outcome, rootScope ? { ...end, context: rootScope } : end),
         );
         this.exportSpan({
           name: opts.label ?? opts.ref.name,
@@ -2547,7 +2573,7 @@ export class EvaluationContext implements IEvaluationContext {
 
     // Refuse a target reached after the boot run was cancelled.
     if (token.isCancelled) {
-      await this.emit(`${name}.RunCancelled`, span("end", "cancelled", { reason: token.reason }));
+      await this.emitSpan(`${name}.RunCancelled`, () => span("end", "cancelled", { reason: token.reason }));
       finish("cancelled", { cancellationReason: token.reason ?? "cancelled" });
       throw new RuntimeError(
         "ERR_INVOKE_CANCELLED",
@@ -2555,7 +2581,7 @@ export class EvaluationContext implements IEvaluationContext {
       );
     }
 
-    if (tracing) await this.emit(`${name}.Running`, span("start", undefined, {}));
+    if (tracing) await this.emitSpan(`${name}.Running`, () => span("start", undefined, {}));
 
     // Marked before the call, not after: a Service's `run()` stays pending for
     // the process lifetime, and reporting what it discovered while listening is
@@ -2590,7 +2616,7 @@ export class EvaluationContext implements IEvaluationContext {
       // without an explicit call; a Service never reaches this until teardown.
       completedInstances.add(instance);
       await this.publishSnapshot(name);
-      await this.emit(`${name}.Run`, span("end", "ok", {}));
+      await this.emitSpan(`${name}.Run`, () => span("end", "ok", {}));
       finish("ok");
     } catch (err) {
       // A run that did not complete leaves nothing of its own behind: its frame
@@ -2609,7 +2635,7 @@ export class EvaluationContext implements IEvaluationContext {
           : {};
       if (isCancellationError(err)) {
         const reason = err instanceof Error ? err.message : String(err);
-        await this.emit(`${name}.RunCancelled`, span("end", "cancelled", { reason, ...recovery }));
+        await this.emitSpan(`${name}.RunCancelled`, () => span("end", "cancelled", { reason, ...recovery }));
         finish("cancelled", { cancellationReason: reason });
         throw err;
       }
@@ -2617,7 +2643,7 @@ export class EvaluationContext implements IEvaluationContext {
         err instanceof Error
           ? { name: err.name, message: err.message }
           : { name: "UnknownError", message: String(err) };
-      await this.emit(`${name}.RunFailed`, span("end", "failed", { ...detail, ...recovery }));
+      await this.emitSpan(`${name}.RunFailed`, () => span("end", "failed", { ...detail, ...recovery }));
       finish("failed", { errorType: errorTypeOf(err) });
       throw err;
     }

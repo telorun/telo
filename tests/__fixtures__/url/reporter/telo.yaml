@@ -1,0 +1,62 @@
+# Asks for a database's address and logs it from its own scope: the URL's text and
+# its password are redacted here too, since the fulfilment is bound to this module.
+# It also hands its caller a URL it builds when it is called.
+kind: Telo.Library
+metadata:
+  name: UrlReporter
+  version: 0.0.0
+  description: >-
+    Test fixture: a library that needs a database address and logs its host, its
+    password and its whole text from its own scope, and returns a URL it builds per call.
+imports:
+  Fx: ../kinds
+  Log: ../../../../modules/log
+  Run: ../../../../modules/run
+needs:
+  databaseAccess:
+    kind: Fx.DatabaseAccess
+exports:
+  resources: [report, issue]
+---
+kind: Run.Sequence
+metadata: { name: report }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [marker]
+    properties:
+      marker: { type: string }
+steps:
+  - name: emit
+    invoke: { kind: Log.Emit }
+    inputs:
+      level: info
+      message: !cel "inputs.marker"
+      attributes:
+        host: !cel "resources.databaseAccess.url.host"
+        password: !cel "resources.databaseAccess.url.password"
+        text: !cel "string(resources.databaseAccess.url)"
+---
+# A URL built when this resource is called, in this module, and returned to a caller in
+# another: no redaction set holds it.
+kind: Run.Sequence
+metadata: { name: issue }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [password, host]
+    properties:
+      password: { type: string }
+      host: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [url]
+    properties:
+      url: { x-telo-type: Telo.Url }
+steps: []
+outputs:
+  url: !interpolate "postgres://lib:${{ inputs.password }}@${{ inputs.host }}/orders"

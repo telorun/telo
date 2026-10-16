@@ -2,7 +2,7 @@
 # author can act on it: the resource-input constraint at the library that
 # declared it, the three supply failures at the import that made them, and a
 # per-import override of a library that is instantiated once, and two imports of
-# one singleton that disagree.
+# one singleton that disagree — or agree, written two ways.
 kind: Telo.Application
 metadata:
   name: ResourceInputsDiagnostics
@@ -16,6 +16,7 @@ targets:
   - !ref unknownInput
   - !ref sharedOverride
   - !ref sharedConflict
+  - !ref sharedAgreesBuilt
 ---
 kind: Assert.Manifest
 metadata:
@@ -70,3 +71,11 @@ expect:
   errors:
     - code: SHARED_LIBRARY_CONFLICT
       message: "different values for variables.label"
+---
+kind: Assert.Manifest
+metadata:
+  name: sharedAgreesBuilt
+source: ./__fixtures__/shared-library/agree-built.yaml
+expect:
+  errors: []
+  runs: true

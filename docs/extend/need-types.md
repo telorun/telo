@@ -99,10 +99,29 @@ A field marked `x-telo-sensitive: true` holds a credential. Its value joins the
 redaction set of the module context that owns the fulfilment and of every
 module context bound to it, so it is printed as `[redacted]` wherever a log
 line carries it, exactly as a `secrets:` value is. Redaction replaces the
-value's text, so the mark must be `true` and the field `type: string`
+value's text, so the mark must be `true` and the field must hold text — `type:
+string`, or a value type written as its text such as `Telo.Url`
 (`SENSITIVE_ANNOTATION_INVALID` otherwise — reported in an importer's check at
 the import that reaches the library, and refused at load as
 `ERR_SENSITIVE_ANNOTATION_INVALID`).
+
+A field typed `Telo.Url` needs no mark to keep its credentials out of logs: the
+type declares its `password` member sensitive, so a URL holding one has its
+password and its whole text redacted the same way, the field is listed
+sensitive by `telo needs report`, and `ctx.resolveNeed` marks it sensitive
+whenever the value holds a password. Its `host` stays readable. Restrict the
+scheme with the type's `scheme` argument:
+
+```yaml
+fields:
+  url:
+    x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+```
+
+A fulfilment writes such a field as the URL's text or as an object of its members
+(`scheme`, `host`, `port`, `user`, `password`, `path`, `query`), which the type
+escapes; a value it refuses is `URL_INVALID`, or `ERR_URL_INVALID` once an
+expression produces it.
 
 ## Naming a need type
 

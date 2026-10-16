@@ -10,7 +10,9 @@ imports:
 kind: Postgres.Connection
 metadata: { name: db }
 # Never connected: this fixture is only ever checked.
-connectionString: postgres://unused:unused@localhost:1/unused
+access:
+  kind: Postgres.DatabaseAccess
+  fields: { url: postgres://unused:unused@localhost:1/unused }
 ---
 kind: Current.NodeTable
 metadata: { name: people }

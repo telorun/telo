@@ -501,12 +501,17 @@ the CEL type.
   other map — one with an `int`, `uint` or `bool` key, or with the key `$telo` —
   is tagged `map`, its value a list of `[key, value]` pairs. That is what keeps
   the frame one-to-one: an object member named `$telo` is always a tag.
+- A value of a value type that declares `members` (`sdk/value-types/`; `Telo.Url`
+  today) carries its own CEL type, so it is tagged with that type's name, its
+  payload the type's plain encoding: `{"$telo":"Telo.Url","value":"<url-text>"}`.
+  Writing it as its bare text instead would read back as a `string`, and a
+  replayed `steps.x.result.url.host` would then fail.
 
 A tagged value carries exactly the two members `$telo` and `value`.
 
 **The domain.** Each runtime maps each CEL type to its own representation; in
-Node `int` is a `bigint`, `uint` the SDK's `UnsignedInt`, `bytes` a `Uint8Array`,
-a timestamp a `Date`, a duration the SDK's `Duration`, a list an array and a map a
+Node `int` is a `bigint`, `uint` a value-domain record (`isCelUint`), `bytes` a `Uint8Array`,
+a timestamp a value-domain record (`isCelTimestamp`), a duration a value-domain record (`isCelDuration`), a list an array and a map a
 plain object or a `Map`. A writer MUST refuse, with
 `ERR_TYPED_FRAME_UNENCODABLE` and the JSON Pointer of the offending node inside
 the value, anything else a host value can be:
@@ -574,8 +579,12 @@ reader may round away.
 
 ### 6.3 Tag vocabulary
 
-The vocabulary is closed. A new tag is a change to this specification, and a
-reader refuses a tag it does not know rather than reading the object as a map.
+The vocabulary is closed: the tags below, plus one per value type declaring
+`members`, named and encoded by its entry — so a runtime derives that part of the
+set from the entries it reads rather than from a list of its own. A new tag is a
+change to this specification or to the entries, and a reader refuses a tag it does
+not know rather than reading the object as a map — an older reader refuses a newer
+type's tag by name, with no frame generation to bump.
 
 | Tag | CEL type | Payload |
 | --- | --- | --- |
@@ -586,6 +595,7 @@ reader refuses a tag it does not know rather than reading the object as a map.
 | `google.protobuf.Timestamp` | `google.protobuf.Timestamp` | RFC 3339 in UTC with a `Z` suffix: `YYYY-MM-DDTHH:MM:SS`, and, when the instant is not whole, `.` and one to nine digits with no trailing zero (`2026-01-15T07:30:00Z`, `2026-01-15T07:30:00.5Z`, `2026-01-15T07:30:00.000000001Z`) |
 | `google.protobuf.Duration` | `google.protobuf.Duration` | Seconds with an `s` suffix: an optional `-`, whole seconds with no leading zero, and, when not whole, `.` and up to nine digits with no trailing zero (`5400s`, `-1.5s`, `0.000000001s`) |
 | `map` | `map` | A list of `[key, value]` pairs, each a frame |
+| `Telo.Url` | `Telo.Url` | Its `url-text`: the scheme in lower case, each component's bytes that are not RFC 3986 unreserved percent-encoded with upper-case hex (a path keeps its `/`), the host of an IPv6 address in brackets, and the query's entries ordered by key, compared as UTF-16 code units (`postgres://app:p%40ss@db.internal:5432/orders?sslmode=require`) |
 
 **A timestamp and a duration are both nanosecond, and both trim.** The fraction is
 absent when the value is whole and carries no trailing zero otherwise, so one
@@ -606,6 +616,7 @@ the slot's declared schema, and `$telo` never appears.
 | `google.protobuf.Timestamp` | RFC 3339 in UTC, as the payload in §6.3 | RFC 3339 with any offset and one to nine fractional digits; a tenth is refused, never rounded |
 | `google.protobuf.Duration` | Seconds, as the payload in §6.3 | Any CEL duration string (`1h30m`) |
 | `bytes` | Base64url without padding | The same form |
+| `Telo.Url` | Its `url-text`, as the payload in §6.3 | Any absolute URL RFC 3986 reads with no fragment and no repeated query key; the vectors at `sdk/value-types/encodings/url-text.json` pin both directions |
 | `int`, `uint` | Its exact decimal digits, as a JSON number | A JSON number |
 
 An `int` or `uint` follows `kernel/specs/invocation-contract.md` §4.4: exact
@@ -643,7 +654,9 @@ node:
 - `{"duration":{"seconds":"<decimal>","nanos":<number>}}`, `nanos` carrying the
   sign of `seconds`;
 - `{"list":[<value>, …]}`;
-- `{"map":[[<key>, <value>], …]}`, in the order given — the writer orders them.
+- `{"map":[[<key>, <value>], …]}`, in the order given — the writer orders them;
+- `{"url":{<member>: <value>, …}}`, a URL value of exactly the members given — each
+  a string, the port a JSON number and the query an object of strings.
 
 Values a runtime writes and reads:
 
@@ -695,6 +708,7 @@ Values a runtime writes and reads:
 | map int keys | `{"map":[[{"int":"10"},{"string":"ten"}],[{"int":"2"},{"string":"two"}],[{"int":"-1"},{"string":"minus one"}]]}` | `{"$telo":"map","value":[[{"$telo":"int","value":"-1"},"minus one"],[{"$telo":"int","value":"10"},"ten"],[{"$telo":"int","value":"2"},"two"]]}` |
 | map mixed key types | `{"map":[[{"uint":"3"},{"string":"y"}],[{"int":"2"},{"string":"x"}],[{"bool":true},{"null":null}],[{"string":"a"},{"double":1.5}]]}` | `{"$telo":"map","value":[["a",1.5],[true,null],[{"$telo":"int","value":"2"},"x"],[{"$telo":"uint","value":"3"},"y"]]}` |
 | nested | `{"map":[[{"string":"meta"},{"map":[[{"string":"$telo"},{"string":"not a tag"}]]}],[{"string":"events"},{"list":[{"map":[[{"string":"size"},{"int":"3"}],[{"string":"at"},{"timestamp":{"seconds":"1768469400","nanos":250000000}}]]}]}]]}` | `{"events":[{"at":{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T09:30:00.25Z"},"size":{"$telo":"int","value":"3"}}],"meta":{"$telo":"map","value":[["$telo","not a tag"]]}}` |
+| url | `{"url":{"scheme":"postgres","host":"db.internal","port":5432,"user":"app","password":"p@ss/w:rd","path":"/orders","query":{"sslmode":"require"}}}` | `{"$telo":"Telo.Url","value":"postgres://app:p%40ss%2Fw%3Ard@db.internal:5432/orders?sslmode=require"}` |
 
 Frames a runtime refuses to read:
 
@@ -728,6 +742,9 @@ Frames a runtime refuses to read:
 | map key repeated | `{"$telo":"map","value":[[true,1],[true,2]]}` | `"/value/1/0"` |
 | map int and uint keys of one number | `{"$telo":"map","value":[[{"$telo":"int","value":"2"},1],[{"$telo":"uint","value":"2"},2]]}` | `"/value/1/0"` |
 | map tagged with plain string keys | `{"$telo":"map","value":[["a",1]]}` | `"/value"` |
+| url payload not text | `{"$telo":"Telo.Url","value":{}}` | `"/value"` |
+| url not canonical | `{"$telo":"Telo.Url","value":"POSTGRES://db"}` | `"/value"` |
+| url that does not read | `{"$telo":"Telo.Url","value":"postgres://db#top"}` | `"/value"` |
 | nested payload | `[{"a":{"$telo":"uint","value":"x"}}]` | `"/0/a/value"` |
 | unpaired surrogate | `"\ud800"` | `""` |
 | unpaired surrogate in a key | `{"\ud800":1}` | `"/�"` |

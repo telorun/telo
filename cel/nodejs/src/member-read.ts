@@ -24,7 +24,7 @@
 
 import { celMapKeys, mapKeyIdentity } from "./cel-map-value.js";
 import type { CelValue } from "./cel-value.js";
-import { celError, isCelMap, isCelRecord, isCelUint, type CelError } from "./cel-value.js";
+import { celError, celTypeNameOf, isCelMap, isCelRecord, isCelUint, type CelError } from "./cel-value.js";
 import type { SourceRange } from "./syntax-tree.js";
 
 /**
@@ -56,11 +56,22 @@ function indexOf(key: CelValue): bigint | undefined {
 }
 
 /**
+ * The fields a host's registered named type declares, by the type key its values carry —
+ * or nothing, for a type that declares none. A lookup without it reads no host value's
+ * members at all.
+ */
+export type HostFields = (typeName: string) => ReadonlySet<string> | undefined;
+
+/**
  * The single lookup. It is total over the value domain: a container that holds no members
  * at all answers `UNSUPPORTED_CONTAINER` rather than falling back to a property read that
  * might find `length`, `name`, `call` or `apply`.
+ *
+ * A value of a host's named type that declares fields answers exactly those, from its own
+ * entries: a declared field it does not hold is `MISSING`, as is any other name, so neither
+ * its type key nor anything inherited is ever reachable.
  */
-export function celLookup(container: CelValue, key: CelValue): Lookup {
+export function celLookup(container: CelValue, key: CelValue, fields?: HostFields): Lookup {
   if (typeof key === "string" && isCelRecord(container)) {
     // An OWN entry, never an inherited one: a host's object is data here.
     return Object.prototype.hasOwnProperty.call(container, key)
@@ -80,12 +91,26 @@ export function celLookup(container: CelValue, key: CelValue): Lookup {
     return container[Number(at)] as CelValue;
   }
   if (isCelRecord(container)) return UNSUPPORTED_KEY;
+  const declared = fields && typeof container === "object" && container !== null
+    ? fields(celTypeNameOf(container) ?? "")
+    : undefined;
+  if (declared) {
+    if (typeof key !== "string") return UNSUPPORTED_KEY;
+    return declared.has(key) && Object.prototype.hasOwnProperty.call(container, key)
+      ? ((container as unknown as Record<string, CelValue>)[key] as CelValue)
+      : MISSING;
+  }
   return UNSUPPORTED_CONTAINER;
 }
 
 /** The value at a key, or the error a failed lookup is. */
-export function celRead(container: CelValue, key: CelValue, range?: SourceRange): CelValue | CelError {
-  const found = celLookup(container, key);
+export function celRead(
+  container: CelValue,
+  key: CelValue,
+  range?: SourceRange,
+  fields?: HostFields,
+): CelValue | CelError {
+  const found = celLookup(container, key, fields);
   if (typeof found !== "symbol") return found;
   return lookupError(found, key, range);
 }
@@ -139,8 +164,13 @@ export function lookupError(found: symbol, key: CelValue, range?: SourceRange): 
  * holds no members answers `false` exactly as a missing key does: it has no member to
  * find. Only an unusable key is a mistake in the question itself.
  */
-export function celHas(container: CelValue, key: CelValue, range?: SourceRange): boolean | CelError {
-  const found = celLookup(container, key);
+export function celHas(
+  container: CelValue,
+  key: CelValue,
+  range?: SourceRange,
+  fields?: HostFields,
+): boolean | CelError {
+  const found = celLookup(container, key, fields);
   if (typeof found !== "symbol") return true;
   if (lookupAbsence(found, true)) return false;
   return lookupError(found, key, range);

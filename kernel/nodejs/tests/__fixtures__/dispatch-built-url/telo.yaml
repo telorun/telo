@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: DispatchBuiltUrl
+  version: 1.0.0
+imports:
+  Run: ../../../../../modules/run
+---
+# A contract argument typed `Telo.Url`, marked nothing: a caller's text is built into the
+# URL when the call is dispatched.
+kind: Run.Sequence
+metadata: { name: hostOf }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [url]
+    properties:
+      url: { x-telo-type: Telo.Url }
+steps:
+  - name: host
+    value: !cel "inputs.url.host"
+outputs:
+  host: !cel "steps.host.result"

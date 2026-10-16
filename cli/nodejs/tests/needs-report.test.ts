@@ -97,6 +97,17 @@ describe("telo needs report", () => {
     ]);
   });
 
+  it("reports a field sensitive when its value type declares a sensitive member, unmarked", () => {
+    // The url field is a `Telo.Url`, whose password the type declares sensitive.
+    const fixture = path.join(ROOT, "tests/__fixtures__/url/needs-report.yaml");
+    const { stdout, status } = runCli(["needs", "report", "-o", "json", fixture]);
+    expect(status).toBe(0);
+    expect(JSON.parse(stdout).needs[0].fields).toEqual({
+      url: field("TELO_NEED_DATABASE_ACCESS__URL", "derived", true, true),
+      label: field("TELO_NEED_DATABASE_ACCESS__LABEL", "derived", false, false),
+    });
+  });
+
   it("gives no report for an application the kernel would refuse, naming the refusal", () => {
     // The collision is two imports deep, where only the whole-graph table sees it.
     const fixture = path.join(ROOT, "tests/__fixtures__/needs/agreement/env-collision/consumer.yaml");

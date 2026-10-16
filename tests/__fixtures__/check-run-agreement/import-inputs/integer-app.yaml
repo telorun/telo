@@ -1,0 +1,7 @@
+# Consumes the middle library, whose import the kernel refuses.
+kind: Telo.Application
+metadata:
+  name: ImportInputsIntegerApp
+  version: 1.0.0
+imports:
+  Mid: ./integer-mid

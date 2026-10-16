@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { sensitiveMembersOf, valueTypeOf } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
 import { INJECTED } from "./resource-input.js";
@@ -154,13 +155,22 @@ export function needReadingSchema(
 /** The field names whose values are sensitive — marked `x-telo-sensitive`. */
 export function sensitiveNeedFields(shape: NeedTypeShape): string[] {
   return Object.entries(shape.fields)
-    .filter(([, schema]) => schema["x-telo-sensitive"] === true)
+    .filter(([, schema]) => schema["x-telo-sensitive"] === true || holdsSensitiveMembers(schema))
     .map(([name]) => name);
 }
 
+/** True when a field's value type declares a sensitive member (a URL's
+ *  `password`), which makes the field sensitive whenever its value holds one. */
+export function holdsSensitiveMembers(schema: Record<string, unknown>): boolean {
+  const entry = valueTypeOf(schema);
+  return entry !== undefined && sensitiveMembersOf(entry).length > 0;
+}
+
 /** True when a field schema holds text, which is what substring redaction can
- *  honour. */
+ *  honour: a string, or a value type whose plain encoding is its text. */
 export function isTextFieldSchema(schema: Record<string, unknown>): boolean {
+  const entry = valueTypeOf(schema);
+  if (entry !== undefined) return entry.representation === "instance" && entry.encoding !== undefined;
   const type = schema.type;
   if (type === "string") return true;
   if (Array.isArray(type)) {

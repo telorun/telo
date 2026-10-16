@@ -46,9 +46,7 @@ targets:
 ---
 kind: Postgres.Connection
 metadata: { name: db }
-connectionString: !cel >-
-  'postgres://postgres:postgres@' + resources.Pg.endpoint.status.host + ':' +
-  string(resources.Pg.endpoint.status.port) + '/postgres'
+access: !ref Pg.databaseAccess
 ---
 # Its OWN prefix, for the reason the sibling tests state: two journals over one
 # prefix are two applications sharing a store.

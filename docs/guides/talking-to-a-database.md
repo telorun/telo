@@ -300,18 +300,29 @@ resource that only makes sense inside another's body — is not SQL-specific.
 this guide — `Migrate`, `InsertNote`, `ListNotes` — declares that it takes a
 `Sql.Connection`, so it accepts either.
 
-Moving to Postgres is an import and a connection resource. No route, no
-statement, and no handler changes:
+Moving to Postgres is an import, a need for the database, and a connection
+resource opened over it. No route, no statement, and no handler changes:
 
 ```yaml
 imports:
   Postgres: oci://ghcr.io/telorun/postgres@<version>
+needs:
+  databaseAccess:
+    kind: Postgres.DatabaseAccess
+    version: ">=15.0.0"
+    env: { url: DATABASE_URL }
 ---
 kind: Postgres.Connection
 metadata:
   name: Db
-connectionString: !cel "secrets.databaseUrl"
+access: !ref databaseAccess
 ```
+
+`needs:` sits in the application document beside `imports:`. The database's
+address is read from `DATABASE_URL` when the application loads — a URL whose
+password is redacted from every log line — and the connection checks the
+server's version against `>=15.0.0` when it starts, refusing to start against an
+older one. [Declaring a need](/learn/declaring-a-need) covers needs in full.
 
 Keep the resource named `Db` and every `!ref Db` in the manifest still resolves.
 This is the payoff for the two imports in section 1: the vocabulary your
@@ -321,7 +332,7 @@ manifest is written against is not the same thing as the driver behind it.
 
 - **Don't hardcode the file path** — bind it to the environment with
   `variables:` / `secrets:`, as [Configuring an application](/learn/configuration)
-  covers. A database URL belongs in `secrets:`, which is redacted from logs.
+  covers. A database's address belongs in a need, as section 5 shows.
 - **Test it** — [Testing your manifests](/build/testing). A `:memory:` SQLite
   connection gives each test a fresh database with no cleanup.
 - **The full field reference** for every kind here is on the

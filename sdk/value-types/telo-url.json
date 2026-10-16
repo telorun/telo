@@ -1,0 +1,50 @@
+{
+  "$comment": "An instance rather than a string, so the credentials inside a connection address are members a manifest reads and the runtime redacts, never text an author assembles. `members` gives the CEL fields, the object authoring form and per-member sensitivity in one declaration; `acceptsText` admits a CEL string at a slot of the type, read through the encoding when the resource holding it is created; the `scheme` parameter restricts the scheme member with a schema, while the member's CEL type stays `string`.",
+  "name": "Telo.Url",
+  "representation": "instance",
+  "binding": "url",
+  "encoding": "url-text",
+  "members": {
+    "scheme": {
+      "type": "string",
+      "description": "The scheme, in lower case (`postgres`, `https`)."
+    },
+    "host": {
+      "type": "string",
+      "description": "The host: a name, an IPv4 address or an IPv6 address without its brackets. Present exactly when the URL has an authority, possibly empty."
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "description": "The port number, when the URL names one."
+    },
+    "user": {
+      "type": "string",
+      "description": "The user name of the authority's user information."
+    },
+    "password": {
+      "type": "string",
+      "x-telo-sensitive": true,
+      "description": "The password of the authority's user information. Redacted wherever it is logged, as is the URL's whole text."
+    },
+    "path": {
+      "type": "string",
+      "description": "The path, unescaped (`/orders`). Absent when the URL has none."
+    },
+    "query": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "The query as a map of each key to its value, unescaped. A key appears once."
+    }
+  },
+  "acceptsText": { "code": "URL_INVALID" },
+  "parameters": [
+    {
+      "name": "scheme",
+      "member": "scheme",
+      "description": "A schema the scheme must satisfy (`scheme: { enum: [postgres, postgresql] }`). Omitted means any scheme."
+    }
+  ],
+  "description": "A URL that may carry credentials, held as its members — scheme, host, port, user, password, path and query — each read in CEL as a field. Written as its text (`postgres://app:secret@db:5432/orders`) or as an object of members, which are escaped by RFC 3986 component rules, so a password holding `@` or `/` needs no hand escaping. The password and the whole text are redacted in logs; `string(url)` is its text."
+}

@@ -1,0 +1,58 @@
+kind: Telo.Application
+metadata:
+  name: PgVersionTooNew
+  version: 1.0.0
+  description: |
+    A need asking for a server newer than the suite's: the connection opened over
+    it reports the server's version when it starts, and the kernel refuses it with
+    ERR_NEED_UNMET naming the variable the address came from, the range and the
+    version found.
+imports:
+  Postgres: ../../../..
+  Sql: ../../../../../sql
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+needs:
+  databaseAccess:
+    kind: Postgres.DatabaseAccess
+    version: ">=19.0.0"
+    env: { url: DATABASE_URL }
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: refused
+    try:
+      - name: open
+        invoke: !ref open
+      - name: opened
+        throw:
+          code: EXPECTED_REFUSAL
+          message: The connection opened, though the server is older than the need asks.
+    # The scope's start reports every resource that failed, so the need's refusal is
+    # read from the connection's line of that report.
+    catch:
+      - name: refusal
+        invoke: { kind: Assert.Matches }
+        inputs:
+          actual: !cel "error.message"
+          pattern: "Postgres\\.Connection db: RuntimeError: Need 'databaseAccess' \\(type 'Postgres\\.DatabaseAccess'\\) is not met: the fulfilment supplied from the environment \\(DATABASE_URL\\) has version 18\\.\\d+\\.0, outside '>=19\\.0\\.0'\\. \\[ERR_NEED_UNMET\\]"
+---
+# Named rather than inline at the step: a need reached only through the `with:` of
+# a step's inline sequence passes `telo check` but is refused at load as
+# ERR_NEED_CONSTRAINT_UNVERIFIED.
+kind: Run.Sequence
+metadata: { name: open }
+with:
+  - kind: Postgres.Connection
+    metadata: { name: db }
+    access: !ref databaseAccess
+  - kind: Sql.Query
+    metadata: { name: probe }
+    connection: !ref db
+steps:
+  - name: probe
+    invoke: !ref probe
+    inputs: { sql: "SELECT 1 AS one" }

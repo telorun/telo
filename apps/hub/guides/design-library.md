@@ -353,7 +353,10 @@ importer.
 - **`variables` / `secrets`** — JSON Schema entries, no `env:`. A credential
   is a `secret`; a base URL, a limit or a name is a `variable`. Anything an
   importer would want to point elsewhere (a vendor's base URL, a token) is an
-  input from the start — a URL written into a request cannot be tested.
+  input from the start — a URL written into a request cannot be tested. What an
+  importer supplies is checked against the entry at the import, statically and when
+  it initializes, so declare each entry's real type (`type: integer`,
+  `x-telo-type: Telo.Url`); text in a value type's encoding is decoded first.
 - **`resources`** — instances the library **borrows** from its importer,
   constrained by kind only:
 

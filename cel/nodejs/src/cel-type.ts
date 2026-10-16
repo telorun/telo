@@ -73,6 +73,12 @@ export interface NominalType {
   readonly name: string;
   readonly base: CelType;
   readonly args: readonly CelType[];
+  /**
+   * The fields a value of the type carries, where its definition declares any — read by
+   * `.`, `.?` and `has()`. Absent means the type holds no members at all. Carried on the
+   * type rather than looked up by name, so every reader holding the type knows its fields.
+   */
+  readonly fields?: ReadonlyMap<string, CelType>;
 }
 export interface ParameterType {
   readonly kind: "parameter";

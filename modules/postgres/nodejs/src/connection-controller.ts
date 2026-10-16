@@ -1,6 +1,6 @@
-import type { Logger, ResourceContext } from "@telorun/sdk";
+import { toPlainJson, type Logger, type ResourceContext } from "@telorun/sdk";
 import { quoteAnsiIdentifier, SqlConnectionBase, type SqlDialect } from "@telorun/sql";
-import { Kysely, PostgresDialect } from "kysely";
+import { CompiledQuery, Kysely, PostgresDialect } from "kysely";
 import { Pool, type ClientConfig } from "pg";
 import { NotificationListener, type NotificationHandler } from "./notification-listener.js";
 
@@ -15,8 +15,34 @@ interface PoolConfig {
 
 interface PostgresConnectionManifest {
   metadata: { name: string; module: string };
-  connectionString: string;
   pool?: PoolConfig;
+}
+
+/** The slot holding the database-access fulfilment. */
+const ACCESS = "/access";
+
+/** Each feature `DatabaseAccess` lists, by the extension that provides it. */
+const FEATURE_EXTENSIONS: Readonly<Record<string, string>> = {
+  pgvector: "vector",
+  postgis: "postgis",
+};
+
+/**
+ * `server_version_num` as semver: `MMmmmm` from PostgreSQL 10 on, whose version is
+ * major.minor with no third part, and `MMmmpp` before it.
+ */
+function serverVersionText(versionNum: number): string {
+  const major = Math.floor(versionNum / 10_000);
+  if (major >= 10) return `${major}.${versionNum % 10_000}.0`;
+  return `${major}.${Math.floor((versionNum % 10_000) / 100)}.${versionNum % 100}`;
+}
+
+/** The `DatabaseAccess` features the server can provide: an extension that is
+ *  available, installed or not, since an application may create it itself. */
+function featuresOf(availableExtensions: readonly string[]): string[] {
+  return Object.entries(FEATURE_EXTENSIONS)
+    .filter(([, extension]) => availableExtensions.includes(extension))
+    .map(([feature]) => feature);
 }
 
 const DEFAULT_HEALTH_CHECK_MS = 60_000;
@@ -155,16 +181,66 @@ function startHealthCheck(
   return () => clearInterval(timer);
 }
 
+/** What `init()` opens from the need: the pool, and the configuration the
+ *  notification listener opens its own client from. */
+interface OpenedAccess {
+  pool: Pool;
+  listenerConfig: ClientConfig;
+}
+
 class PostgresConnection extends SqlConnectionBase {
   #listener: NotificationListener | undefined;
+  #opened: OpenedAccess | undefined;
 
   constructor(
-    db: Kysely<any>,
-    private readonly beginHealthCheck: () => () => void,
-    private readonly listenerConfig: ClientConfig,
+    private readonly poolConfig: PoolConfig | undefined,
     ctx: ResourceContext,
   ) {
-    super(db, postgresDialect, ctx);
+    // kysely asks for the pool on first use, which is `init()`'s first effect —
+    // after `#open` has built it from the need.
+    super(
+      new Kysely<any>({ dialect: new PostgresDialect({ pool: async () => this.#requireOpened().pool }) }),
+      postgresDialect,
+      ctx,
+    );
+  }
+
+  #requireOpened(): OpenedAccess {
+    if (!this.#opened) {
+      throw new Error("Postgres.Connection: the pool is opened by init(), which has not run");
+    }
+    return this.#opened;
+  }
+
+  /**
+   * The pool, built from the database-access fulfilment — which is opened from
+   * `init()` on, never in `create()`. Building it reaches nothing: `pg` connects
+   * when the base's first effect asks for a connection.
+   */
+  #open(ctx: ResourceContext): OpenedAccess {
+    if (this.#opened) return this.#opened;
+    // The address is a URL value; its text is what `pg` reads, every member escaped
+    // by the value's own encoding.
+    const url = new URL(toPlainJson(ctx.resolveNeed(ACCESS).fields.url) as string);
+    const ssl = sslFromSslmode(url.searchParams.get("sslmode"));
+    url.searchParams.delete("sslmode");
+
+    const maxLifetimeMs = this.poolConfig?.maxLifetimeMs;
+    const pool = new Pool({
+      connectionString: url.toString(),
+      ssl,
+      min: this.poolConfig?.min ?? 1,
+      max: this.poolConfig?.max ?? 10,
+      idleTimeoutMillis: this.poolConfig?.idleTimeoutMs,
+      connectionTimeoutMillis: this.poolConfig?.connectionTimeoutMs,
+      maxLifetimeSeconds: maxLifetimeMs !== undefined ? maxLifetimeMs / 1000 : undefined,
+    });
+    handleDisconnects(pool, ctx.log);
+
+    // The listener opens its own client from the same configuration — one
+    // `access` on the manifest, both halves behind it.
+    this.#opened = { pool, listenerConfig: { connectionString: url.toString(), ssl } };
+    return this.#opened;
   }
 
   /**
@@ -189,7 +265,7 @@ class PostgresConnection extends SqlConnectionBase {
       // pair. Performed rather than returned, because this is reached from
       // ordinary method calls — it lands on the connection's own frame and
       // closes when the connection unwinds.
-      const listener = new NotificationListener(this.listenerConfig, this.ctx.log);
+      const listener = new NotificationListener(this.#requireOpened().listenerConfig, this.ctx.log);
       await this.ctx
         .effect("notification listener", async () => {
           this.#listener = listener;
@@ -208,18 +284,48 @@ class PostgresConnection extends SqlConnectionBase {
   }
 
   /**
-   * The base's pool, then the liveness sweep on top — so unwinding stops the
-   * sweep before destroying the pool it probes, without either half stating that
-   * order. The sweep starts only once the connection has proved itself: a
-   * recurring probe is a side effect, and starting it in `create()` would leave
-   * a timer nobody owns. (The notification listener registers its own effect
+   * The base's pool, then what the server is, then the liveness sweep on top — so
+   * unwinding stops the sweep before destroying the pool it probes, without either
+   * half stating that order. The sweep starts only once the connection has proved
+   * itself: a recurring probe is a side effect, and starting it in `create()` would
+   * leave a timer nobody owns. (The notification listener registers its own effect
    * when `listen()` first builds it.)
+   *
+   * The server's version and available extensions are reported before `init()`
+   * returns, over the pool the base just proved; the kernel compares them with the
+   * need, and a mismatch fails this `init()`, which destroys the pool.
    */
   override init(ctx: ResourceContext) {
-    return super.init(ctx).effect("health check", async () => ({
-      result: undefined,
-      inverse: this.beginHealthCheck(),
-    }));
+    const { pool } = this.#open(ctx);
+    return super
+      .init(ctx)
+      .effect("server observation", async () => {
+        const result = await this.db.executeQuery<{ versionNum: string; extensions: string[] }>(
+          CompiledQuery.raw(
+            "SELECT current_setting('server_version_num') AS \"versionNum\", " +
+              "ARRAY(SELECT name::text FROM pg_available_extensions WHERE name = ANY($1)) AS extensions",
+            [Object.values(FEATURE_EXTENSIONS)],
+          ),
+        );
+        const [row] = result.rows;
+        ctx.verifyNeed(ACCESS, {
+          version: serverVersionText(Number(row!.versionNum)),
+          features: featuresOf(row!.extensions),
+        });
+        return { result: undefined };
+      })
+      .effect("health check", async () => ({
+        result: undefined,
+        inverse: startHealthCheck(
+          pool,
+          // `pool` present but `healthCheckMs` omitted takes the schema default;
+          // `pool` omitted entirely never reaches AJV's property defaults, so the
+          // fallback has to exist here too.
+          this.poolConfig?.healthCheckMs ?? DEFAULT_HEALTH_CHECK_MS,
+          this.poolConfig?.min ?? 1,
+          ctx.log,
+        ),
+      }));
   }
 }
 
@@ -229,46 +335,5 @@ export async function create(
   resource: PostgresConnectionManifest,
   ctx: ResourceContext,
 ): Promise<PostgresConnection> {
-  if (!resource.connectionString) {
-    throw new Error("Postgres.Connection requires a connectionString");
-  }
-  const url = new URL(resource.connectionString);
-  const ssl = sslFromSslmode(url.searchParams.get("sslmode"));
-  url.searchParams.delete("sslmode");
-
-  // The listener opens its own client from the same configuration — one
-  // `connectionString` on the manifest, both halves behind it.
-  const listenerConfig: ClientConfig = { connectionString: url.toString(), ssl };
-
-  const maxLifetimeMs = resource.pool?.maxLifetimeMs;
-  const minConnections = resource.pool?.min ?? 1;
-  const pool = new Pool({
-    connectionString: url.toString(),
-    ssl,
-    min: minConnections,
-    max: resource.pool?.max ?? 10,
-    idleTimeoutMillis: resource.pool?.idleTimeoutMs,
-    connectionTimeoutMillis: resource.pool?.connectionTimeoutMs,
-    maxLifetimeSeconds: maxLifetimeMs !== undefined ? maxLifetimeMs / 1000 : undefined,
-  });
-
-  handleDisconnects(pool, ctx.log);
-
-  const db = new Kysely<any>({ dialect: new PostgresDialect({ pool }) });
-
-  return new PostgresConnection(
-    db,
-    () =>
-      startHealthCheck(
-        pool,
-        // `pool` present but `healthCheckMs` omitted takes the schema default;
-        // `pool` omitted entirely never reaches AJV's property defaults, so the
-        // fallback has to exist here too.
-        resource.pool?.healthCheckMs ?? DEFAULT_HEALTH_CHECK_MS,
-        minConnections,
-        ctx.log,
-      ),
-    listenerConfig,
-    ctx,
-  );
+  return new PostgresConnection(resource.pool, ctx);
 }

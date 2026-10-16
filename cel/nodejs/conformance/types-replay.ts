@@ -18,6 +18,11 @@
  * the two readings that are NOT loosened: the ordinary read of such a member
  * (`types/dyn/ordinary_read`, `types/optional/ordinary_read_over_scalar`) and an unusable
  * key in the presence form (`types/list/presence_unusable_key`).
+ *
+ * **The `types/Url/*` rows are authored too**: a host type that declares fields, read in
+ * every select form, a declared field the value does not hold answering absence to a
+ * presence-shaped read and an error to an ordinary one, a name it does not declare refused
+ * at check, and `string()` reaching the host's own conversion with the value handed over.
  */
 
 import type { DialectCorrectionGroup, DialectExclusionGroup } from "./dialect-replay.js";
@@ -25,7 +30,7 @@ import type { DialectCorrectionGroup, DialectExclusionGroup } from "./dialect-re
 export const TYPES_FILE = "types.json";
 
 /** How many rows the file holds, pinned as `CATALOG_ROWS` is and for the same reason. */
-export const TYPES_ROWS = 64;
+export const TYPES_ROWS = 74;
 
 export const TYPES_CORRECTIONS: readonly DialectCorrectionGroup[] = [
   {

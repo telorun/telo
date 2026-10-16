@@ -1,0 +1,38 @@
+kind: Telo.Application
+metadata:
+  name: PgNeedSatisfied
+  version: 1.0.0
+  description: |
+    A need the suite's server meets: PostgreSQL 15 or newer with pgvector. The
+    extension is available but not installed in the fresh database, which counts,
+    since an application may create it itself — so the connection starts.
+imports:
+  Postgres: ../../../..
+  Sql: ../../../../../sql
+  Run: ../../../../../run
+  Assert: ../../../../../assert
+needs:
+  databaseAccess:
+    kind: Postgres.DatabaseAccess
+    version: ">=15.0.0"
+    features: [pgvector]
+    env: { url: DATABASE_URL }
+targets:
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref databaseAccess
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: installed
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: "SELECT count(*)::int AS installed FROM pg_extension WHERE extname = 'vector'"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.installed.result.rows"
+      expected: [{ installed: 0 }]

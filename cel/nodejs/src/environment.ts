@@ -135,6 +135,8 @@ export interface TypeDefinitionListing {
   readonly name: string;
   readonly base: string;
   readonly parameters: readonly string[];
+  /** Each declared field with its type, as printed; absent when it declares none. */
+  readonly fields?: Readonly<Record<string, string>>;
   readonly description?: string;
 }
 
@@ -621,6 +623,7 @@ export class CelEnvironment {
       registry: this.registry,
       constants: this.constants,
       nominalArity: (name) => this.types.get(name)?.parameters.length,
+      nominalFields: (name) => this.types.get(name)?.fieldNames,
       // The same declarations the checker splits a dotted chain on.
       declares: (name) => this.variables.has(name),
     };
@@ -689,6 +692,13 @@ export class CelEnvironment {
         name: registered.definition.name,
         base: formatType(registered.base),
         parameters: registered.parameters,
+        ...(registered.self.fields === undefined
+          ? {}
+          : {
+              fields: Object.fromEntries(
+                [...registered.self.fields].map(([field, type]) => [field, formatType(type)]),
+              ),
+            }),
         ...(registered.definition.description === undefined
           ? {}
           : { description: registered.definition.description }),

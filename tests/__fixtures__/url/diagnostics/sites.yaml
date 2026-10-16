@@ -1,0 +1,65 @@
+# One literal whose scheme the slot refuses, written at three sites: each reports the
+# type's own code, anchored at its own path. A missing required input beside it keeps
+# the call site's code.
+kind: Telo.Application
+metadata:
+  name: UrlSites
+  version: 1.0.0
+imports:
+  Fx: ../kinds
+  Run: ../../../../modules/run
+variables:
+  fallback:
+    env: TELO_TEST_URL_FALLBACK
+    type: string
+    x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+    default: mysql://db/app
+targets:
+  - !ref caller
+---
+kind: Fx.DatabaseAccess
+metadata: { name: database }
+fields:
+  url: mysql://db/app
+---
+kind: Run.Sequence
+metadata: { name: hostOf }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [url, label]
+    properties:
+      url:
+        x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+      label: { type: string }
+steps:
+  - name: host
+    value: !cel "inputs.url.host + inputs.label + variables.fallback.host"
+---
+kind: Run.Sequence
+metadata: { name: caller }
+steps:
+  - name: call
+    invoke: !ref hostOf
+    inputs:
+      url: mysql://db/app
+      label: primary
+  - name: unlabelled
+    invoke: !ref hostOf
+    inputs:
+      url: postgres://db/app
+---
+# A slot typed by another field (`outputs:` by `outputType`).
+kind: Run.Sequence
+metadata: { name: address }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      url:
+        x-telo-type: { name: Telo.Url, scheme: { enum: [postgres, postgresql] } }
+steps: []
+outputs:
+  url: mysql://db/app

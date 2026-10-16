@@ -7,7 +7,9 @@
  * values never share a frame, and the text is canonical (RFC 8785 plus a pair
  * order for tagged maps), so two runtimes writing one value write the same bytes.
  * A tagged payload is the type's plain encoding ({@link PLAIN_ENCODINGS}), so a
- * type still has exactly one encoding.
+ * type still has exactly one encoding. A value of a value type that declares
+ * `members` (`Telo.Url`) is tagged with its own CEL type name, its payload its
+ * plain encoding's text — so the tag set is closed, and derived from the entries.
  *
  * It refuses rather than approximates, in both directions. A value outside the
  * domain would come back as something else — a class instance relying on
@@ -30,15 +32,17 @@ import { InvokeError } from "./invoke-error.js";
 import {
   MAX_DURATION_SECONDS,
   NANOS_PER_SECOND,
+  PLAIN_ENCODINGS,
   requirePlainEncoding,
   type PlainEncoding,
 } from "./plain-encoding.js";
+import { celTypeOfValueType, membersEntryOfValue, VALUE_TYPES } from "./value-type.js";
 
 /** The key marking a tagged value. A map holding it as a key is itself tagged. */
 export const TYPED_FRAME_TAG = "$telo";
 
-/** The closed tag vocabulary. A frame carrying any other tag is refused. */
-export const TYPED_FRAME_TAGS = [
+/** The tags of the CEL value domain's own types. */
+const DOMAIN_TAGS = [
   "int",
   "uint",
   "double",
@@ -48,7 +52,21 @@ export const TYPED_FRAME_TAGS = [
   "map",
 ] as const;
 
-export type TypedFrameTag = (typeof TYPED_FRAME_TAGS)[number];
+type DomainTag = (typeof DOMAIN_TAGS)[number];
+
+/** Each value type declaring `members`, by the tag its values are written under — its CEL
+ *  type name — with the plain encoding its payload is. */
+const MEMBERS_TAGS: ReadonlyMap<string, PlainEncoding> = new Map(
+  [...VALUE_TYPES.values()]
+    .filter((entry) => entry.members !== undefined)
+    .map((entry) => [celTypeOfValueType(entry), PLAIN_ENCODINGS[entry.encoding!]!] as const),
+);
+
+/** The closed tag vocabulary: the domain's own, then one per value type declaring
+ *  `members`. A frame carrying any other tag is refused. */
+export const TYPED_FRAME_TAGS: readonly string[] = [...DOMAIN_TAGS, ...MEMBERS_TAGS.keys()];
+
+export type TypedFrameTag = string;
 
 const UNENCODABLE = "ERR_TYPED_FRAME_UNENCODABLE";
 const UNDECODABLE = "ERR_TYPED_FRAME_UNDECODABLE";
@@ -245,7 +263,7 @@ function undecodable(path: readonly string[], detail: string): InvokeError {
   });
 }
 
-function tagged(tag: TypedFrameTag, payload: string): string {
+function tagged(tag: string, payload: string): string {
   return `{"${TYPED_FRAME_TAG}":"${tag}","value":${payload}}`;
 }
 
@@ -308,6 +326,11 @@ function writeObject(value: object, path: string[], open: Set<object>): string {
   if (value instanceof Uint8Array) return tagged("bytes", `"${bytesEncoding.encode(value)}"`);
   if (isCelTimestamp(value)) return writeTimestamp(value, path);
   if (isCelDuration(value)) return writeDuration(value, path);
+  const members = membersEntryOfValue(value);
+  if (members) {
+    const tag = celTypeOfValueType(members);
+    return tagged(tag, writeString(MEMBERS_TAGS.get(tag)!.encode(value), path));
+  }
   // A `Date` is a FOREIGN HOST OBJECT, never a Telo value: an instant is seconds plus
   // nanoseconds, which no host date type holds. Named here rather than left to the
   // prototype refusal below, because the author needs the factory, not the diagnosis.
@@ -498,14 +521,17 @@ function readTagged(record: Record<string, unknown>, path: string[], timestamps:
   } else if (typeof payload !== "string") {
     throw undecodable(path, `is not a string, and a '${tag}' payload is text`);
   } else {
-    value = readScalar(tag as Exclude<TypedFrameTag, "map">, payload, path, timestamps);
+    const members = MEMBERS_TAGS.get(tag);
+    value = members
+      ? readCanonical(members, payload, path)
+      : readScalar(tag as Exclude<DomainTag, "map">, payload, path, timestamps);
   }
   path.pop();
   return value;
 }
 
 function readScalar(
-  tag: Exclude<TypedFrameTag, "map">,
+  tag: Exclude<DomainTag, "map">,
   text: string,
   path: readonly string[],
   timestamps: PlainEncoding,

@@ -10,7 +10,6 @@ export {
 // rule conditions and function bodies through the same table, and a second
 // adapter is what let it convert arguments differently from the kernel.
 export { compileExpression, namespaceDispatchOf } from "./cel/compile.js";
-export { registerValueBrands } from "./cel/value-brands.js";
 export {
   interpolationShape,
   literalFragments,

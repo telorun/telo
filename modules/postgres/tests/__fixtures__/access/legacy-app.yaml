@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: LegacyConnectionApp
+  version: 1.0.0
+  description: |
+    Imports the library holding the removed spelling. Its own check is silent,
+    since the defect is the library's, so the refusal comes from the kernel when
+    the connection is created.
+imports:
+  Legacy: ./legacy

@@ -173,7 +173,11 @@ is `sdk/controller-protocol/vectors/carrier-equivalence.json` (§11).
   A runtime MUST NOT invent a second value encoding for this protocol. Every
   schema in `messages/` that describes a value describes the frame's decoded
   value, so a `bytes` field is a value of CEL type `bytes` and not a base64
-  string a reader has to know to decode.
+  string a reader has to know to decode. A value of a value type declaring
+  `members` crosses tagged with its type's name and its plain encoding's text —
+  a `Telo.Url` as `{"$telo":"Telo.Url","value":"<url-text>"}` — so the reader
+  holds a URL whose members it reads, never a string; a reader refuses a tag it
+  does not know by name, and the tag set needs no generation of its own.
 - **Instances** cross by **handle**: a kernel-minted `ResourceInstanceId` and the
   reference identity it was resolved from. Only the id is compared; the reference
   identity is for diagnostics. A handle is valid for the lifetime of the live
@@ -875,7 +879,9 @@ slot of the instance's **own kind** whose target is a need's fulfilment, so a
 controller cannot reach another module's fulfilment; any other pointer is
 `ERR_REF_UNRESOLVED`, naming the pointer. The answer carries the fulfilment's
 resource handle, its fields as a typed frame, the names of the fields that are
-sensitive as delivered, and the constraints (`version`, `features`) and
+sensitive as delivered — a field marked `x-telo-sensitive`, and a field whose
+value type declares a sensitive member (a `Telo.Url`'s `password`) when its value
+holds one — and the constraints (`version`, `features`) and
 `parameters` of the **outermost need** of the whole-forward chain the fulfilment
 came through — the need whose constraints are enforced. A slot referencing a
 fulfilment directly, with no need in the chain, carries none. The answer carries
