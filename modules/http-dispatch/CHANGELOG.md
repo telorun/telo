@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0 - 2026-10-17
+### Added
+* HttpDispatch.Request publishes $defs/Hostname, one entry of a host matcher: a reference to a Telo.PublicUrl or Telo.PublicHostPattern need. The library exports the hostname matching every HTTP transport applies: normalizeRequestHost, isIpLiteral, hostnameMatcher, hostnameMatcherOfOrigin, hostnameClaim (an exact host, then the longest pattern suffix), sameHostnameMatcher and describeHostnameMatcher.
+
 ## 0.15.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

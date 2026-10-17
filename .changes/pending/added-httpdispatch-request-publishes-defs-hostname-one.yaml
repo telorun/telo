@@ -1,7 +1,0 @@
-modules:
-  modules/http-dispatch: Added
-body: "HttpDispatch.Request publishes $defs/Hostname, one entry of a host matcher: a
-  reference to a Telo.PublicUrl or Telo.PublicHostPattern need. The library exports the
-  hostname matching every HTTP transport applies: normalizeRequestHost, isIpLiteral,
-  hostnameMatcher, hostnameMatcherOfOrigin, hostnameClaim (an exact host, then the
-  longest pattern suffix), sameHostnameMatcher and describeHostnameMatcher."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0 - 2026-10-17
+### Added
+* The MCP endpoint serves its three authoring guides as argument-less tools a model calls — guide_build_ui, guide_write_integration_tests, guide_design_library — instead of as prompts, which an MCP client offers only to its user, never to its model. The server instructions name the guide tools first and stay within 4096 characters, past which Claude Code cuts them, and serverInfo reports the hub's own version instead of a fixed 0.6.2.
+
 ## 0.15.0 - 2026-10-14
 ### Added
 * The MCP endpoint serves three authoring guides as prompts — build_ui, write_integration_tests and design_library — each answering one user message with the guide's text (at most 32768 UTF-8 bytes), and the server instructions name them.
