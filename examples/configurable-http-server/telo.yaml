@@ -14,7 +14,7 @@ metadata:
     Run, then:
         curl -X POST http://localhost:4444/v1/charge
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.37.1#sha256-fsMx1S3zwc1NRXcfgq0EREu94R_vXUAWAieD7qB3bio
+  Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
   JavaScript: oci://ghcr.io/telorun/javascript@0.14.0#sha256-Fh_R8G4kVuI1Wsg0hEa0pucfLN0vHBLrAHDMK9PwxR8
 targets:
   - !ref paymentServer
@@ -66,7 +66,8 @@ openapi:
   info:
     title: Configurable HTTP server
     version: 1.0.0
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - path: /v1
     mount: !ref paymentApi

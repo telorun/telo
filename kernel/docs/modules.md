@@ -15,8 +15,9 @@ A Telo Module is a self-contained, encapsulated package of application logic, se
 Every module file begins with exactly one `Telo.Application` or `Telo.Library` document — the manifest and public interface for the package. Applications are runnable entry points; Libraries are units imported by others. Both use JSON Schema validation for their inputs.
 
 - **`metadata.name`**: The module's name — the canonical kind prefix (e.g. `HttpServer.*`) that the registry keys on and diagnostics print. PascalCase; see the [style guide](/learn/style-guide).
-- **`variables`**: Standard configuration properties required by the module. JSON Schema object properties. Per the style guide, use **camelCase** (e.g., `dbConnectionString`).
+- **`variables`**: Standard configuration properties required by the module. JSON Schema object properties. Per the style guide, use **camelCase** (e.g., `pageSize`).
 - **`secrets`**: Sensitive inputs. Also JSON Schema object properties, handled separately to ensure secure injection and prevent accidental exposure in logs.
+- **`needs`**: Typed requests for what the module cannot create itself — access to a database, the address it is reached at — each naming a need type (`databaseAccess: { kind: Postgres.DatabaseAccess }`). An importer supplies one at the import; one nobody supplies is read from the environment when the application loads. See [Declaring a need](/learn/declaring-a-need).
 - **Optionality (No `required` block)**: Requirement validation is handled via defaults. Mandatory inputs are defined without a `default`. Optional inputs must be explicitly defined with `default: null`.
 
 **Application-only:**
@@ -45,17 +46,19 @@ metadata:
 include:
   - ./routes.yaml
   - "handlers/**/*.yaml"
+imports:
+  Postgres: oci://ghcr.io/telorun/postgres@<version>
 
-variables:
-  dbConnectionString:
-    type: string
+needs:
+  databaseAccess:
+    kind: Postgres.DatabaseAccess
 
 exports:
   kinds:
     - UserApi
 ```
 
-All resources defined in included files behave as if they were declared in the same file — they share the same module namespace and have access to the same `variables`, `secrets`, and `resources` context.
+All resources defined in included files behave as if they were declared in the same file — they share the same module namespace and have access to the same `variables`, `secrets`, needs and `resources` context.
 
 **Constraints on included (partial) files:**
 
@@ -90,7 +93,7 @@ Resources interact via the target's `name` and `kind`.
 
 ## 4. Definition Example
 
-This example demonstrates an application module requiring a connection string and an optional payment key. It exposes a health URL and the API instance itself.
+This example demonstrates a library module requiring access to a database and an optional payment key. It exposes a health URL and the API instance itself.
 
 ### Module File (The Contract)
 
@@ -99,10 +102,14 @@ kind: Telo.Library
 metadata:
   name: user-service
   version: 1.0.0
+imports:
+  Postgres: oci://ghcr.io/telorun/postgres@<version>
+
+needs:
+  databaseAccess:
+    kind: Postgres.DatabaseAccess
 
 variables:
-  dbConnectionString:
-    type: string
   enableDebug:
     type: boolean
     default: null
@@ -149,8 +156,8 @@ kind: User.Repository
 metadata:
   name: UserRepository
   module: user-service
+access: !ref databaseAccess
 inputs:
-  connectionString: !cel "variables.dbConnectionString"
   debug: !cel "variables.enableDebug"
 ```
 
@@ -162,7 +169,7 @@ The root of every running instance is a `Telo.Application`. It is the only modul
 
 ### 5.1 Host Environment Access
 
-Host environment variables are reachable **only** by declaring a typed root entry bound to them. Each `variables:` / `secrets:` entry names a host variable via its `env:` key (and `ports:` entries do the same for inbound ports); the resolved value lands in the `variables.X` / `secrets.X` / `ports.X` CEL scope. There is no raw `env` map in CEL — a host variable that is not declared on the root is not reachable. Imported libraries are deliberately isolated from the host environment: they receive only the values explicitly passed through their declared `variables` and `secrets` contract. This is a core security boundary of the module system.
+Host environment variables are reachable **only** by declaring a typed root entry bound to them. Each `variables:` / `secrets:` entry names a host variable via its `env:` key (and `ports:` entries do the same for inbound ports); the resolved value lands in the `variables.X` / `secrets.X` / `ports.X` CEL scope. There is no raw `env` map in CEL — a host variable that is not declared on the root is not reachable. Imported libraries are deliberately isolated from the host environment: they receive only the values explicitly passed through their declared `variables` and `secrets` contract, and the needs their importers supply. A library need nobody supplies is read at load from one environment variable per field, which the kernel names and `telo needs report` lists — the library itself never reads the environment. This is a core security boundary of the module system.
 
 - **Bound by**: an `env:` key on a root `Telo.Application`'s `variables:` / `secrets:` / `ports:` entry, read as `!cel "variables.X"` / `!cel "secrets.X"` / `!cel "ports.X"`.
 - **Unavailable in**: an `imports:` entry's `variables:`/`secrets:` — those are a **config-only contract** whose expressions see only the importing module's `variables`/`secrets` (never `resources` or `ports`) — and any imported `Telo.Library`, regardless of nesting depth.
@@ -174,7 +181,7 @@ The root is always the `Telo.Application` named on the CLI or by the deployment 
 
 ### 5.3 Example
 
-The primary purpose of the root Application is to bridge the host environment to its imported libraries' contracts, keeping secrets out of library files entirely. The root binds host env into its own typed `variables:`/`secrets:`, then forwards those into each import — an import input is a **config-only** expression that may reference only the importing module's `variables`/`secrets`.
+The primary purpose of the root Application is to bridge the host environment to its imported libraries' contracts, keeping secrets out of library files entirely. The root binds host env into its own typed `variables:`/`secrets:`, then forwards those into each import — an import input is a **config-only** expression that may reference only the importing module's `variables`/`secrets`. A need is forwarded whole, by reference to a root need of the same type that names the variable it is read from.
 
 ```yaml
 # main.yaml (The Root Application)
@@ -190,11 +197,12 @@ secrets:
   stripeWebhookSignature:
     env: STRIPE_WEBHOOK_SECRET
     type: string
-variables:
-  databaseUrl:
-    env: DATABASE_URL
-    type: string
+needs:
+  databaseAccess:
+    kind: Postgres.DatabaseAccess
+    env: { url: DATABASE_URL }
 imports:
+  Postgres: oci://ghcr.io/telorun/postgres@<version>
   # ...then forwarded into each child's explicit contract. Import inputs reference
   # only the importing module's variables/secrets. Forwarding is eager and
   # per-hop, so a value flows app -> lib -> lib at any depth and resolves in O(1).
@@ -208,11 +216,11 @@ imports:
       webhookSignature: !cel "secrets.stripeWebhookSignature"
   UserService:
     source: oci://ghcr.io/acme/user-service@1.0.0
-    variables:
-      dbConnectionString: !cel "variables.databaseUrl"
+    needs:
+      databaseAccess: !ref databaseAccess
 ```
 
-The child modules (`acme/payment-gateway`, `acme/user-service`) never touch the host environment. They only declare their inputs as typed `variables` and `secrets`, keeping them fully portable and environment-agnostic.
+The child modules (`acme/payment-gateway`, `acme/user-service`) never touch the host environment. They only declare their inputs as typed `variables`, `secrets` and `needs`, keeping them fully portable and environment-agnostic.
 
 ---
 
@@ -220,7 +228,7 @@ The child modules (`acme/payment-gateway`, `acme/user-service`) never touch the 
 
 To utilize an external package, a module declares a dependency as an entry in its `imports:` map — a name-keyed map placed on the `Telo.Application` / `Telo.Library` document directly after `metadata:`. Each key is the PascalCase alias the dependency is referenced by; each value is either a bare **source string** or an object carrying `source` plus optional `variables` / `secrets` / `runtime`.
 
-- **Instantiation**: The entry provides the required `variables` and `secrets`.
+- **Instantiation**: The entry provides the required `variables` and `secrets`, and may supply the target's `needs`.
 - **Referencing**: Once imported, the module's snapshot is stored under `resources.<Alias>` alongside local resources. Access exported properties directly.
 - **Syntax**: `!cel "resources.<Alias>.<exportProperty>"`.
 
@@ -264,14 +272,16 @@ metadata:
 imports:
   UserService:
     source: oci://ghcr.io/acme/user-service@1.0.0
+    needs:
+      databaseAccess:
+        url: "postgresql://app_user:pass@db.internal:5432/users"
     variables:
-      dbConnectionString: "postgresql://app_user:pass@db.internal:5432/users"
       enableDebug: true
     secrets:
       paymentProviderKey: "sk_live_12345"
 ```
 
-A dependency that needs no `variables` / `secrets` / `runtime` can use the bare source-string shorthand:
+A dependency that needs no `variables` / `secrets` / `needs` / `runtime` can use the bare source-string shorthand:
 
 ```yaml
 imports:

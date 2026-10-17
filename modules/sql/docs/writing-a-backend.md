@@ -13,7 +13,21 @@ TypeScript helper library, see [Node backends](nodejs-backend.md).
 
 ## The manifest side
 
+A backend for a database reached over the network declares two kinds: a **need
+type** for access to that database, and the connection opened over it.
+
 ```yaml
+kind: Telo.NeedType
+metadata:
+  name: DatabaseAccess
+version: semver
+features: [<extension names a need may ask for>]
+fields:
+  url:
+    x-telo-type: { name: Telo.Url, scheme: { enum: [<the database's schemes>] } }
+    x-telo-sensitive: true
+required: [url]
+---
 kind: Telo.Definition
 metadata:
   name: Connection
@@ -24,10 +38,31 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required: [connectionString]
-  properties: { ... }
+  required: [access]
+  properties:
+    access:
+      x-telo-ref:
+        kind: Self.DatabaseAccess
+        use: dependency
+        observes: [version, features]
+    pool: { ... }
 ```
 
+- **Access is a need, never a string field.** An application declares
+  `needs: { databaseAccess: { kind: <Backend>.DatabaseAccess } }` and writes
+  `access: !ref databaseAccess`, so the address and credentials are supplied by
+  whoever runs it (an environment variable, a library importer) and are listed by
+  `telo needs report` before anything boots. A test writes a fulfilment inline
+  instead: `access: { kind: <Backend>.DatabaseAccess, fields: { url: … } }`.
+  Guides: [Writing a need type](https://telo.run/extend/need-types),
+  [Consuming needs](https://telo.run/extend/consuming-needs).
+- **Report what the server is.** `observes: [version, features]` makes the
+  controller report the server's version and the features it found when the
+  connection starts (`ctx.resolveNeed` opens the fulfilment, `ctx.verifyNeed`
+  reports), so a need asking for a newer server or a missing extension refuses to
+  start with `ERR_NEED_UNMET` rather than failing at its first statement. A
+  database with no versions or features to report declares neither on its need
+  type and drops `observes`.
 - **`capability: Telo.Provider`** — a connection is a configured handle, not
   something callers invoke. It is inherited from `Sql.Connection` and cannot be
   changed.
@@ -35,10 +70,13 @@ schema:
   `x-telo-ref: Sql.Connection` slot the operations declare.
 - **Close the schema.** `additionalProperties: false` turns a misspelled option
   into a `telo check` error instead of a setting that silently never applies.
-- **Connection-level transport settings belong in the connection string**, where
+- **Connection-level transport settings belong in the access URL's query**, where
   the database's own ecosystem already spells them once — TLS, keepalives,
   connect timeouts. Pool settings have no such standard and are schema
   properties.
+
+A database that lives in the application's own process or file (SQLite) has no
+access to ask for: its connection takes the file as a `Telo.HostPath` instead.
 
 ## What a connection must do
 

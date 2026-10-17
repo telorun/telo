@@ -6,7 +6,7 @@ metadata:
     An application that uses the library's two kinds exactly like built-ins:
     one `Alerts.Webhook`, one `Alerts.PagerDuty`, each behind a route.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.37.1#sha256-fsMx1S3zwc1NRXcfgq0EREu94R_vXUAWAieD7qB3bio
+  Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
   Alerts:
     source: ../..
     variables:
@@ -37,7 +37,8 @@ routingKey: key-123
 ---
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - path: /
     mount: !ref routes

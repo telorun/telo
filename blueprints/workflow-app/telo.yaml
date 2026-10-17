@@ -23,7 +23,7 @@ requires:
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
-  Http: oci://ghcr.io/telorun/http-server@0.37.1#sha256-fsMx1S3zwc1NRXcfgq0EREu94R_vXUAWAieD7qB3bio
+  Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
 exports:
   kinds: [App]
 ---
@@ -98,7 +98,8 @@ resources:
     routes: !cel "self.workflows"
   - kind: Http.Server
     metadata: { name: server }
-    port: !cel "self.port"
+    listen:
+      port: !cel "self.port"
     openapi:
       info:
         title: !cel "self.title"

@@ -56,7 +56,7 @@ imports:
       maxCheckpointBytes: !cel "variables.maxCheckpointBytes"
       maxCheckpointFiles: !cel "variables.maxCheckpointFiles"
       maxAttachmentBytes: !cel "variables.maxAttachmentBytes"
-  Http: oci://ghcr.io/telorun/http-server@0.37.1#sha256-fsMx1S3zwc1NRXcfgq0EREu94R_vXUAWAieD7qB3bio
+  Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
   # `Mcp` and `Run` are pinned to the chat library's versions, so every module
   # in this graph has one origin.
   Mcp: oci://ghcr.io/telorun/mcp-client@0.17.0#sha256-wMlnrVxgeWHAX6_f1pr7v059KzgjYHuICg5Ui68v2zc
@@ -1505,8 +1505,8 @@ routes:
 ---
 kind: Http.Server
 metadata: { name: server }
-host: 0.0.0.0
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 # Behind the ingress proxy: derive request.ip from the rightmost X-Forwarded-For
 # hop (the proxy's) so the per-IP guard can't be spoofed by a client-set header.
 trustProxy: 1

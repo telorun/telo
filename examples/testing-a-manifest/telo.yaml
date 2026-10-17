@@ -26,7 +26,7 @@ metadata:
         telo ./examples/testing-a-manifest/test-suite.yaml
 imports:
   Api: ./api
-  Http: oci://ghcr.io/telorun/http-server@0.37.1#sha256-fsMx1S3zwc1NRXcfgq0EREu94R_vXUAWAieD7qB3bio
+  Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
 targets:
   - !ref server
 ports:
@@ -37,7 +37,8 @@ ports:
 ---
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 openapi:
   info:
     title: Cart pricing

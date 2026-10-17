@@ -8,7 +8,7 @@ metadata:
 imports:
   # Published, like the library's own: importing the workspace copy beside the
   # library's published one is refused with DUPLICATE_IMPORT_ALIAS.
-  Http: oci://ghcr.io/telorun/http-server@0.37.1#sha256-fsMx1S3zwc1NRXcfgq0EREu94R_vXUAWAieD7qB3bio
+  Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
   English:
     source: ../..
     variables:
@@ -28,7 +28,8 @@ ports:
 ---
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - path: /en
     mount: !ref English.api
