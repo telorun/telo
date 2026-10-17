@@ -28,7 +28,7 @@ export function compileHoles(
   readonly calls: readonly string[];
   readonly volatile: boolean;
 } {
-  const compiled = holes.map((h) => compileExpression(h.expr, env.celEnv, env.moduleNames));
+  const compiled = holes.map((h) => compileExpression(h.expr, env.celEnv, env.moduleNames, env.programSites));
   const refs = new Set<string>();
   const calls = new Set<string>();
   let volatile = false;

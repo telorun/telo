@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import type { CelProgramSite } from "@telorun/templating";
 import type { Document } from "yaml";
 import type { FileMigrations } from "./migrations/driver.js";
 import type { DocumentPosition } from "./position-metadata.js";
@@ -38,6 +39,9 @@ export interface LoadedFile {
    *  / `positions` / `text` are always the author's file untouched, which is
    *  what the recorded `legacyPath` resolves against. */
   migrations: FileMigrations;
+  /** Every CEL expression precompiled in this file, each against the file's one
+   *  site environment. Present only for a load that compiled. */
+  celProgramSites?: readonly CelProgramSite[];
 }
 
 export interface ParseError {

@@ -1,6 +1,6 @@
 import type { CelEnvironment } from "@telorun/cel";
 import { RuntimeError, type ResourceManifest } from "@telorun/sdk";
-import { defaultCustomTags } from "@telorun/templating";
+import { defaultCustomTags, siteEnvironment, type CelProgramSite } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
 import { buildCelEnvironment } from "./cel-environment.js";
 import type { LoadedFile, ParseError } from "./loaded-types.js";
@@ -164,17 +164,21 @@ export function parseLoadedFile(
   }
 
   let env: CelEnvironment | undefined;
+  let celProgramSites: CelProgramSite[] | undefined;
   if (options?.compile) {
     // Resolution needs the declaring module's names, and they are read from the
     // documents as they stand here — after migration and fragment expansion,
     // before desugaring, which is where the author's `imports:` map still is.
     const moduleNames = moduleCallNamesOfFile(manifests, options.moduleNames);
+    celProgramSites = [];
     for (let i = 0; i < manifests.length; i++) {
       const raw = manifests[i];
       if (raw === null) continue;
-      env ??= options.celEnv ?? buildCelEnvironment();
+      // One environment for the whole file, so every expression in it can be
+      // emitted into one module.
+      env ??= siteEnvironment(options.celEnv ?? buildCelEnvironment(), moduleNames);
       try {
-        manifests[i] = precompileDoc(raw, env, moduleNames) as ResourceManifest;
+        manifests[i] = precompileDoc(raw, env, moduleNames, "", celProgramSites) as ResourceManifest;
       } catch (error) {
         const message = `Failed to compile manifest in ${source}: ${error instanceof Error ? error.message : String(error)}`;
         if (error instanceof RuntimeError) throw new RuntimeError(error.code, message);
@@ -187,7 +191,16 @@ export function parseLoadedFile(
     // Read through, so a restored parse stays unparsed unless its documents
     // are asked for.
     return Object.defineProperties(
-      { source, requestedUrl, text, manifests, positions, parseErrors, migrations },
+      {
+        source,
+        requestedUrl,
+        text,
+        manifests,
+        positions,
+        parseErrors,
+        migrations,
+        ...(celProgramSites ? { celProgramSites } : {}),
+      },
       {
         documents: { get: () => parsed.documents, enumerable: true },
         astDocuments: { get: () => parsed.astDocuments, enumerable: true },
@@ -204,5 +217,6 @@ export function parseLoadedFile(
     positions,
     parseErrors,
     migrations,
+    ...(celProgramSites ? { celProgramSites } : {}),
   };
 }

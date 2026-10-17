@@ -887,7 +887,10 @@ verifying costs about a third of what it saves, once per module, and the hit pat
 rather than parse-dominated.
 
 **One store seam, and no loader.** The engine reads and writes module text by key through an interface the
-host supplies (`EmittedModuleStore`) and **touches no filesystem**. It exports no loader, because a loader
+host supplies (`EmittedModuleStore`) and **touches no filesystem**. The same seam may supply `digest`, the host's SHA-256 of a text's UTF-8 bytes,
+used for the module body on both the emit and the verify path in place of this package's pure-JS one, which is
+slow on a large body under some runtimes (about 220 ms for a 760 KB body under Bun). It must answer exactly what
+the built-in digest answers; the key and the environment digest stay on the built-in one. It exports no loader, because a loader
 would have to reach a filesystem (which this package may not), be `eval` (which the closure backend exists
 to avoid), or be a `data:` URL import (fine under Node, refused under a browser's content security
 policy). Nothing under `cel/nodejs` names a path outside it, the cache root included: a host anchors that.

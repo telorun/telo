@@ -151,6 +151,13 @@ export interface EmittedModule {
 export interface EmittedModuleStore {
   read(key: string): string | undefined;
   write(key: string, text: string): void;
+  /**
+   * The SHA-256 of a text's UTF-8 bytes as 64 lowercase hexadecimal characters, for a host
+   * with a faster implementation than this package's own. It digests the module body on both
+   * the emit and the verify path — the one input that grows with the module — so it must
+   * answer exactly what the built-in digest answers. Absent, the built-in one is used.
+   */
+  digest?(text: string): string;
 }
 
 /** A module taken from the store, or emitted because the store had nothing usable. */
@@ -295,6 +302,7 @@ export function emittedModuleRefusal(text: string, expected: EmittedIdentity): s
 function verifyStoredText(
   text: string,
   expected: EmittedIdentity,
+  digest: (text: string) => string = sha256OfText,
 ): { readonly header: EmittedHeader } | { readonly refused: string } {
   const held = headerAndBody(text);
   if (!held) return { refused: "the stored text carries no integrity header" };
@@ -308,7 +316,7 @@ function verifyStoredText(
   if (!header) return { refused: "the stored text's integrity header is not an emitted module's" };
   const mismatch = identityRefusal(header, expected);
   if (mismatch) return { refused: mismatch };
-  const body = sha256OfText(held.body);
+  const body = digest(held.body);
   if (body !== header.body) {
     return {
       refused: `the stored module's body does not match the digest its header declares (${header.body} against ${body})`,
@@ -345,6 +353,7 @@ export function emitModule(
   target: CompileTarget,
   environmentDigest: string,
   expressions: readonly EmittedExpression[],
+  digest: (text: string) => string = sha256OfText,
 ): EmittedModule {
   const emitter = new ModuleEmitter(target);
   const functions = expressions.map((expression) => emitter.emitFunction(expression.root));
@@ -364,7 +373,7 @@ export function emitModule(
     "}",
     "",
   ].join("\n");
-  const header: EmittedHeader = { ...identity, body: sha256OfText(body) };
+  const header: EmittedHeader = { ...identity, body: digest(body) };
   const text = [
     "// @telorun/cel: an emitted module. Generated - edit the expression, not this.",
     "// The runtime is the factory's argument; this module imports nothing.",
@@ -391,14 +400,15 @@ export function storedEmittedModule(
   store: EmittedModuleStore,
 ): StoredEmittedModule {
   const identity = emittedModuleIdentity(environmentDigest, sources);
+  const digest = store.digest ? (text: string) => store.digest!(text) : sha256OfText;
   const held = store.read(identity.key);
-  const verdict = held === undefined ? undefined : verifyStoredText(held, identity);
+  const verdict = held === undefined ? undefined : verifyStoredText(held, identity, digest);
   if (verdict && "header" in verdict) {
     // The stored text proved itself whole, so it is the module — carrying the header read
     // back from the bytes rather than one reconstructed, since those bytes are what loads.
     return { key: identity.key, header: verdict.header, text: held!, sources, emitted: false };
   }
-  const written = emitModule(target, environmentDigest, expressions());
+  const written = emitModule(target, environmentDigest, expressions(), digest);
   store.write(written.key, written.text);
   return { ...written, ...(verdict ? { refused: verdict.refused } : {}), emitted: true };
 }

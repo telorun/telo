@@ -10,7 +10,7 @@ A set of host values serves exactly one root application; a host running several
 |---|---|---|---|
 | `Telo.GeneratedSecret` | `bytes` (default 32) | `value`, sensitive: the bytes as base64url text | `TELO_HOST_SECRET_SEED` (32 bytes, base64url): HKDF-SHA256 over the seed with the need path as `info` |
 | `Telo.DurableDirectory` | `size`, `access: single-writer \| shared` | `path`, a `Telo.HostPath` | `TELO_HOST_STATE_DIR`: the directory `<state dir>/needs/<need path>`, created at load when absent |
-| `Telo.PublicUrl` | `port`, a key of the root's `ports:` | `url`, a `Telo.Url` | `TELO_HOST_PUBLIC_URL_TEMPLATE`: the template with `{port}` replaced by that port's number |
+| `Telo.PublicUrl` | `port`, a key of the root's `ports:`; `primary` and `customDomains`, booleans (default `false`) | `url`, a `Telo.Url` | `TELO_HOST_PUBLIC_URL_TEMPLATE`: the address derived from the template (see Public URLs) |
 
 - **Deterministic.** A value is a pure function of the host value and the need path. The same seed, state directory and template give the same secret, directory and URL on every restart, reload and resume, with no value stored.
 - **Precedence.** A `needs:` supply at an import comes first, then the field's env name, then the host values.
@@ -20,10 +20,14 @@ A set of host values serves exactly one root application; a host running several
   - When the load would create a fresh entry of one type while an orphan of that type exists, it is refused with `ERR_NEED_ORPHANED` before any resource initializes. The refusal names the type and both paths, and notes that the state directory may be shared with another application.
   - The repair for a directory is to move it; for a secret, to rename the need back, or to delete the orphan marker and accept a new value.
   - Otherwise the orphan is a `NEED_ORPHANED` warning. Nothing is moved or deleted automatically.
-- **Bad host values.** A host value that does not decode is `ERR_NEED_HOST_VALUE_INVALID`, naming the variable and never printing its value. A template without `{port}` is invalid.
-- **Public URL ports.** A library declares `Telo.PublicUrl` without `port`, having no `ports:` of its own; the root declares its own `Telo.PublicUrl` naming a port and forwards it at the import. A `Telo.PublicUrl` reaching the root with no port, a key `ports:` does not hold, or a `udp` port is `NEED_PARAMETERS_INVALID`.
+- **Bad host values.** A host value that does not decode is `ERR_NEED_HOST_VALUE_INVALID`, naming the variable and never printing its value. A template that is not an `http` or `https` URL with a host and nothing after it is invalid; `{port}` is optional.
+- **Public URL parameters.** A library declares `Telo.PublicUrl` with none of `port`, `primary` and `customDomains`, having no `ports:` of its own; the root declares its own `Telo.PublicUrl` naming a port and forwards it at the import. The full rules are in Public URLs.
 - **Hidden from the workload.** Each of the three host values reads `undefined` from `process.env` and `ctx.env` inside the workload, as a need's env name does.
 - **Locally.** The CLI sets no host value. Locally these types are supplied by their env names, or by a user who sets the host values themselves.
+
+## Public URLs
+
+`Telo.PublicUrl`, `Telo.PublicHostPattern`, deriving addresses from `TELO_HOST_PUBLIC_URL_TEMPLATE`, `publicUrls` on `Kernel.PortsResolved`, `Http.Server` host routing and the contract every host serving an application's addresses meets are planned in `plans/2026-10-17-public-urls.md`.
 
 ## Started applications
 
@@ -40,13 +44,14 @@ A runner sets host values on every application container of a session, each appl
 - **k8s runner**:
   - does the same over a PersistentVolumeClaim per (session, application);
   - sets `TELO_HOST_PUBLIC_URL_TEMPLATE` when the session is routed (`https://{port}-<session id>.<base domain>`);
+  - routes each host of a port's `publicUrls` that ends in `-<session id>.<base domain>`, beside the port's own host: added to the port's HTTPRoute `hostnames`, or as an Ingress rule per host. A host outside the session's suffix is not routed;
   - delivers the seeds through one Secret per session with one key per application, each referenced from its own container, so no value appears in the pod spec;
   - gains the RBAC verbs on Secrets and PersistentVolumeClaims this needs.
 - **Local-process runner backend** gives `TELO_HOST_STATE_DIR` a directory it owns per (session, application).
 - **Isolation.** No application can see another's state, so each orphan scan covers only its own application's entries.
 - **Retention.** The session seed is retained with the session's launch, as its tokens are, so resume and a changed app set keep every application's values. Renaming an application gives it new ones. The volumes outlive suspension.
 - **Removal.** Deleting the session removes its volumes and its seed; removing an application from the session removes its volume. A runner's boot-time reaping of orphaned workloads removes the volumes of sessions that are gone, as a runner restart already loses those sessions.
-- **The host-value contract.** The runner docs state the one-root-per-host-value-set contract for any other host, Telo Cloud included.
+- **The host-value contract.** The runner docs state the one-root-per-host-value-set contract for any other host, and the address derivation and `publicUrls` routing of Public URLs.
 - **Other need types.** Every other need type in a session comes from the session's `env`. A session missing one starts, and the kernel refuses with `ERR_NEED_UNMET`, naming the env names to set.
 
 ## Other backing services
@@ -66,7 +71,6 @@ Supporting needs is env reads and local derivation, so it needs no network clien
 
 | Code | When |
 |---|---|
-| `NEED_PARAMETERS_INVALID` | (existing) also a `Telo.PublicUrl` at the root naming no port, a key `ports:` does not hold, or a `udp` port |
 | `ERR_NEED_HOST_VALUE_INVALID` | a host value that does not decode |
 | `ERR_NEED_ORPHANED` / `NEED_ORPHANED` | an orphan under the state directory's `needs/` or `secrets/` when a fresh entry of that type would be created; a warning otherwise |
 
@@ -75,8 +79,9 @@ Supporting needs is env reads and local derivation, so it needs no network clien
 Every module adopting new surface declares a `requires: telo:` floor on the same change.
 
 1. **Started applications and kernel-declared types**: `App.Instance` `needs:`, host-value stripping, the three types, markers and the orphan refusal.
-2. **Runners**: per-application seeds, volumes, the public URL template, and removal.
-3. **Docs, for each step**: the guides, the module docs of `app`, the runner docs for the host values and the one-root-per-host-value-set contract, and the authoring-agent primer.
+2. **Public URLs**: as planned in `plans/2026-10-17-public-urls.md`, in the same release as step 1.
+3. **Runners**: per-application seeds, volumes, the public URL template, routing the `publicUrls` hosts, and removal.
+4. **Docs, for each step**: the guides, the module docs of `app`, the runner docs for the host values and the one-root-per-host-value-set contract, and the authoring-agent primer.
 
 ## Verify
 
@@ -125,7 +130,6 @@ cwd: !cel "resources.uploads.path"
 kind: Http.Server
 metadata: { name: server }
 port: !cel "ports.http"
-baseUrl: !cel "string(resources.publicUrl.url)"
 mounts:
   - path: /
     mount: !ref api
@@ -134,7 +138,7 @@ mounts:
 - **On a routed k8s runner session**, all three are answered with no configuration:
   - `sessionKey` from the application's `TELO_HOST_SECRET_SEED` and the path `sessionKey`;
   - `uploads` as `<TELO_HOST_STATE_DIR>/needs/uploads` on the application's volume;
-  - `publicUrl` from `TELO_HOST_PUBLIC_URL_TEMPLATE` with `{port}` replaced by 8080.
+  - `publicUrl`, the only `Telo.PublicUrl` and so the primary, from `TELO_HOST_PUBLIC_URL_TEMPLATE` with `{port}` replaced by 8080.
 
   A suspend and resume, or a restarted pod, returns the same key and the same files.
 - **On a docker runner session**, `sessionKey` and `uploads` are answered the same way. `publicUrl` has no host value there, so the session's env must set `PUBLIC_URL`.

@@ -127,6 +127,7 @@ import {
 import type { LogSinkInstance } from "./logging/log-sink.js";
 import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
+import { CelEmittedModules } from "./cel-emitted-modules.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import { injectAtSite } from "./dependency-injection.js";
@@ -312,6 +313,7 @@ export class Kernel implements IKernel {
   /** The `.telo` cache root for this load, resolved once in `load()` and
    *  threaded to the validator, analysis stamp, and npm install root. */
   private _cacheRoot?: string | null;
+  private celModules?: CelEmittedModules;
   /** Per-module artifact handles, keyed by canonical manifest source. Rebuilt on
    *  every `load()`; empty for a graph of purely local / manifest-only modules. */
   private readonly moduleArtifacts = new Map<string, ModuleArtifact>();
@@ -485,6 +487,7 @@ export class Kernel implements IKernel {
 
   async loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
     const lm = await this.loader.loadModule(url, options);
+    await this.celModules?.adopt(lm);
     return flattenLoadedModule(lm);
   }
 
@@ -685,6 +688,10 @@ export class Kernel implements IKernel {
       options?.cacheDir !== undefined ? options.cacheDir : resolveCacheRoot(sourceUrl);
     if (options?.cacheDir === undefined) this.attachParseCache(cacheRoot, writeCache);
     this._cacheRoot = cacheRoot;
+    this.celModules = new CelEmittedModules(cacheRoot ?? undefined, {
+      write: writeCache,
+      log: this.logging.kernelLogger(),
+    });
     const manifestsDir = cacheRoot ? `${cacheRoot}/manifests` : undefined;
     const analysisDir = cacheRoot ? `${cacheRoot}/analysis` : undefined;
     // Point the shared schema validator at the cache so compiled AJV validators
@@ -1254,6 +1261,7 @@ export class Kernel implements IKernel {
     // Without it (analysis-only desugar) inline imports would pass validation
     // and then never execute.
     const lm = await this.loader.loadModule(sourceUrl, { compile: true, desugarImports: true, migrate: true });
+    await this.celModules?.adopt(lm);
     const allManifests = flattenLoadedModule(lm);
 
     // Phase 2: normalize inline resources — extract inline values from x-telo-ref slots

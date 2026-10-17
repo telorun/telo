@@ -19,6 +19,7 @@ import {
   type CelEnvironment,
   type CelExpression,
   type CelNode,
+  type CelProgram,
   type NamespaceImplementation,
 } from "@telorun/cel";
 import {
@@ -81,6 +82,40 @@ export function repeatableExpression(expr: string, environment: CelEnvironment):
 }
 
 /**
+ * One compiled expression whose program a host may replace with an equivalent one compiled
+ * against the same environment — the kernel swaps in the program from an emitted module.
+ */
+export interface CelProgramSite {
+  readonly source: string;
+  readonly environment: CelEnvironment;
+  use(program: CelProgram): void;
+}
+
+/**
+ * The environment an expression at a site with these module names compiles against: the
+ * environment itself when it already declares all of them, otherwise a clone carrying them. A host compiling many expressions of one site builds it once with this, so
+ * they all share one environment.
+ */
+export function siteEnvironment(
+  environment: CelEnvironment,
+  moduleNames?: ReadonlySet<string>,
+): CelEnvironment {
+  // Only the names CEL can read as a namespace: a set holding `my-module` is refused WHOLE
+  // at registration, and a name that cannot be one resolves no call anyway.
+  const namespaces = moduleNames === undefined ? NO_NAMESPACES : celNamespaceNames(moduleNames);
+  if (namespaces.size === 0) return environment;
+  // An environment already declaring every one of the names resolves the tree as a clone
+  // would, since the clone inherits its declarations.
+  const declared = new Set(environment.namespaces());
+  if ([...namespaces].every((name) => declared.has(name))) return environment;
+  // A clone carrying the site's names: the tree is resolved under them, and the environment
+  // that compiles it must declare the same set or it refuses the tree.
+  const site = environment.clone();
+  for (const name of namespaces) site.registerNamespace(name);
+  return site;
+}
+
+/**
  * Compile one CEL expression into a `CompiledValue`. The `!cel` engine compiles its whole
  * scalar with it, and the tags with holes compile each hole.
  *
@@ -93,18 +128,10 @@ export function compileExpression(
   expr: string,
   environment: CelEnvironment,
   moduleNames?: ReadonlySet<string>,
+  programSites?: CelProgramSite[],
 ): CompiledValue {
-  // Only the names CEL can read as a namespace: a set holding `my-module` is refused WHOLE
-  // at registration, and a name that cannot be one resolves no call anyway.
-  const namespaces = moduleNames === undefined ? NO_NAMESPACES : celNamespaceNames(moduleNames);
-  if (namespaces.size === 0) {
-    return compiledValueOf(expr, environment.parse(expr), environment);
-  }
-  // A clone carrying the site's names: the tree is resolved under them, and the environment
-  // that compiles it must declare the same set or it refuses the tree.
-  const site = environment.clone();
-  for (const name of namespaces) site.registerNamespace(name);
-  return compiledValueOf(expr, site.parse(expr), site);
+  const site = siteEnvironment(environment, moduleNames);
+  return compiledValueOf(expr, site.parse(expr), site, programSites);
 }
 
 /** A `CompiledValue` over an expression already read against its site's names. */
@@ -112,8 +139,20 @@ export function compiledValueOf(
   expr: string,
   parsed: CelExpression,
   environment: CelEnvironment,
+  programSites?: CelProgramSite[],
 ): CompiledValue {
-  const program = environment.compile(parsed);
+  // Where a host may swap in an emitted program, the closure is built only if nothing was
+  // swapped in by the first evaluation. An unreadable expression is still compiled — and so
+  // refused — here, where it is written.
+  let program: CelProgram | undefined =
+    programSites && parsed.diagnostics.length === 0 ? undefined : environment.compile(parsed);
+  programSites?.push({
+    source: expr,
+    environment,
+    use: (replacement) => {
+      program = replacement;
+    },
+  });
   // As written — `CompiledValue.calls` is the qualified spellings, not their shapes.
   const calls = qualifiedCalls(parsed.root).map((call) => call.qualifiedName);
   return {
@@ -127,7 +166,11 @@ export function compiledValueOf(
     // all: the engine would answer its own `unbound_function` for every qualified call,
     // whatever the kernel bound, so the whole dispatch is silently dead.
     call: (ctx: Record<string, unknown>) =>
-      hostValueOf(program.evaluate(ctx as never, { namespaceFunction: dispatchFrom(ctx) })),
+      hostValueOf(
+        (program ??= environment.compile(parsed)).evaluate(ctx as never, {
+          namespaceFunction: dispatchFrom(ctx),
+        }),
+      ),
   };
 }
 
