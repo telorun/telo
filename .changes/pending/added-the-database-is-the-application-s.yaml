@@ -1,0 +1,7 @@
+modules:
+  apps/hub: Added
+body: The database is the application's databaseAccess need (Postgres.DatabaseAccess,
+  asking for pgvector), still read from DB_CONNECTION, so a server without the pgvector
+  extension refuses to start with ERR_NEED_UNMET instead of failing at the first vector
+  query. The server binds its port under listen:, as http-server 0.38.0 requires.
+  Requires telo >=0.117.0.

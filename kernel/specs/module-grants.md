@@ -97,13 +97,17 @@ kind: Telo.Application
 metadata:
   name: backend-root
   version: 1.0.0
+needs:
+  databaseAccess:
+    kind: LegacyPostgresModule.DatabaseAccess
+    env: { url: DATABASE_URL }
 imports:
   LegacyPostgresModule:
     source: oci://ghcr.io/acme/postgres-driver@2.0.0
     variables:
       poolSize: 10
-    secrets:
-      connectionString: !cel "resources.HostEnv.values.DATABASE_URL"
+    needs:
+      databaseAccess: !ref databaseAccess
 
     # Explicit runtime capability authorizations
     grants:

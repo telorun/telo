@@ -12,7 +12,7 @@ metadata:
         curl 'http://localhost:8845/v1/hello?name=World'
         curl 'http://localhost:8845/v2/hello?name=World'
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.37.1#sha256-fsMx1S3zwc1NRXcfgq0EREu94R_vXUAWAieD7qB3bio
+  Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
   Templated: ./library.yaml
 ports:
   http:
@@ -25,7 +25,8 @@ targets:
 kind: Http.Server
 metadata:
   name: templatedApiServer
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 openapi:
   info:
     title: "Templated API Example"

@@ -15,7 +15,7 @@ metadata:
     Files are read per request, so an edited starter shows on the next gallery
     open. The starters' own imports stay the published pins they carry.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.37.1#sha256-fsMx1S3zwc1NRXcfgq0EREu94R_vXUAWAieD7qB3bio
+  Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
 targets:
   - !ref server
 ports:
@@ -41,8 +41,9 @@ variables:
 ---
 kind: Http.Server
 metadata: { name: server }
-host: !cel "variables.host"
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
+  address: !cel "variables.host"
 # Studio's dev page is another origin.
 cors:
   origin: "*"

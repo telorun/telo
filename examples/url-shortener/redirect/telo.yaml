@@ -9,16 +9,21 @@ metadata:
     guard, and the fire-and-forget click recorder (Run.Detach). Exports `Routes`
     for the app to mount.
 requires:
-  # 0.98.0: `dbFile` is a `Telo.HostPath`, which an older analyzer rejects as
-  # X_TELO_TYPE_UNKNOWN.
-  telo: ">=0.98.0"
+  # 0.118.0: `site` is a `Telo.PublicUrl` need, a kind an older analyzer does not
+  # declare.
+  telo: ">=0.118.0"
+needs:
+  # The address the short links are served at, which the importing application
+  # forwards from its own root need.
+  site:
+    kind: Telo.PublicUrl
 variables:
   dbFile:
     type: string
     x-telo-type: Telo.HostPath
     description: Path to the shared SQLite database file.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.37.1#sha256-fsMx1S3zwc1NRXcfgq0EREu94R_vXUAWAieD7qB3bio
+  Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
   SqlRepository: oci://ghcr.io/telorun/sql-repository@0.18.0#sha256-UVkUQB-HmUR6moDy9DgWJzosGexbvxT4noKzrybhQb4
   Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
@@ -102,6 +107,9 @@ outputs:
   allowed: !cel "steps.guard.result.allowed"
   retryAfter: !cel "steps.guard.result.retryAfter"
   code: !cel "inputs.code"
+  shortUrl: !cel >-
+    string(resources.site.url) + (string(resources.site.url).endsWith('/') ? '' : '/') +
+    inputs.code
 ---
 kind: Run.Sequence
 metadata: { name: resolveAndRedirect }
@@ -173,6 +181,7 @@ routes:
             body:
               ok: true
               code: !cel "result.code"
+              shortUrl: !cel "result.shortUrl"
 
   - request:
       path: /{code}

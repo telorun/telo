@@ -6,7 +6,8 @@ metadata:
     Runs `examples/url-shortener` and walks the path a link takes: created through
     one library, resolved by another, and listed by a third, all over one server.
     The redirect is asserted as a 302 with its `Location` — a computed response
-    header, which is the shape that used to be refused at boot.
+    header, which is the shape that used to be refused at boot. The short link is
+    built from the application's `site` need, which `.env` beside this test sets.
 requires:
   # 0.98.0: `dbFile` is a `Telo.HostPath`, which an older analyzer rejects as
   # X_TELO_TYPE_UNKNOWN.
@@ -61,9 +62,11 @@ steps:
       actual:
         status: !cel "steps.create.result.status"
         code: !cel "steps.create.result.body.code"
+        shortUrl: !cel "steps.create.result.body.shortUrl"
       expected:
         status: 201
         code: !cel "steps.link.result.code"
+        shortUrl: !cel "'http://127.0.0.1:8085/' + steps.link.result.code"
 
   # `redirect: manual` — the client must report the 302 rather than follow it,
   # which is the thing under test.
