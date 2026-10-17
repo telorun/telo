@@ -1,5 +1,19 @@
 # @telorun/studio
 
+## 0.29.4
+
+### Patch Changes
+
+- Updated dependencies [8d2a6a7]
+- Updated dependencies [ae999ff]
+- Updated dependencies [ae999ff]
+  - @telorun/templating@0.118.0
+  - @telorun/analyzer@0.118.0
+  - @telorun/sdk@0.118.0
+  - @telorun/debug-wire@0.4.4
+  - @telorun/ide-support@0.118.0
+  - @telorun/debug-ui@0.6.6
+
 ## 0.29.3
 
 ### Patch Changes
