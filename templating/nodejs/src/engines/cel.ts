@@ -270,7 +270,7 @@ export const celEngine: TemplatingEngine = {
   language: "cel",
 
   compile(source, env) {
-    return compileExpression(source, env.celEnv, env.moduleNames);
+    return compileExpression(source, env.celEnv, env.moduleNames, env.programSites);
   },
 
   analyze(source, env) {

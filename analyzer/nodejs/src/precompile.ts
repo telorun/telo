@@ -3,6 +3,7 @@ import { isCelRecord, isCompiledValue, RuntimeError } from "@telorun/sdk";
 import {
   defaultRegistry,
   interpolationShape,
+  type CelProgramSite,
   isRefSentinel,
   isTaggedSentinel,
 } from "@telorun/templating";
@@ -23,6 +24,7 @@ export function precompileDoc(
   env: CelEnvironment,
   moduleNames?: ReadonlySet<string>,
   path = "",
+  programSites?: CelProgramSite[],
 ): unknown {
   // Tagged sentinel: dispatch to the engine. The result is decorated with
   // `__tagged` + `engine` + `source` when it's a CompiledValue so the
@@ -41,7 +43,7 @@ export function precompileDoc(
     if (!engine) {
       throw new Error(`Unknown templating engine: !${doc.engine}`);
     }
-    const compiled = engine.compile(doc.source, { celEnv: env, moduleNames });
+    const compiled = engine.compile(doc.source, { celEnv: env, moduleNames, programSites });
     if (isCompiledValue(compiled)) {
       return {
         __tagged: true,
@@ -73,7 +75,7 @@ export function precompileDoc(
     return doc;
   }
   if (Array.isArray(doc)) {
-    return doc.map((item, i) => precompileDoc(item, env, moduleNames, `${path}[${i}]`));
+    return doc.map((item, i) => precompileDoc(item, env, moduleNames, `${path}[${i}]`, programSites));
   }
   // Only recurse into containers. A class instance (ResourceInstance, ScopeHandle)
   // is returned as-is — its prototype methods must not be lost by object
@@ -83,7 +85,7 @@ export function precompileDoc(
   if (isCelRecord(doc)) {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(doc as Record<string, unknown>)) {
-      result[k] = precompileDoc(v, env, moduleNames, path ? `${path}.${k}` : k);
+      result[k] = precompileDoc(v, env, moduleNames, path ? `${path}.${k}` : k, programSites);
     }
     return result;
   }

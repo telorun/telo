@@ -1,5 +1,6 @@
 import type { CelEnvironment } from "@telorun/cel";
 import type { CompiledValue } from "@telorun/sdk";
+import type { CelProgramSite } from "./cel/compile.js";
 import type { ModuleCallFlags } from "./cel/diagnose.js";
 import type { ModuleCallTypeResolver } from "./cel/module-call.js";
 
@@ -20,6 +21,9 @@ export interface CompileEnv {
    * before module functions existed.
    */
   readonly moduleNames?: ReadonlySet<string>;
+  /** Receives every CEL expression compiled here, so a host can replace each
+   *  program with one from an emitted module. */
+  readonly programSites?: CelProgramSite[];
 }
 
 /** Analyze-time environment passed to `engine.analyze`. The walker resolves

@@ -8,6 +8,7 @@
  * standard function was replaced, or that differs byte for byte between two runs so nothing
  * can ever be cached at all.
  */
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   CelEngineError,
@@ -333,6 +334,32 @@ describe("a stored module", () => {
       code = cause instanceof CelEngineError ? cause.code : (cause as Error).name;
     }
     expect(code).toBe("emitted_module_rejected");
+  });
+
+  it("digests the body with the host's hash where the store supplies one", () => {
+    const environment = base();
+    const digested: string[] = [];
+    const store = {
+      ...memoryStore(),
+      digest: (text: string) => {
+        digested.push(text);
+        return createHash("sha256").update(text, "utf8").digest("hex");
+      },
+    };
+
+    const first = environment.emittedModule(SOURCES, store);
+    expect(first.emitted).toBe(true);
+    // The host's digest answers what the built-in one does, so the text is the same bytes.
+    expect(first.text).toBe(environment.emit(SOURCES).text);
+    const second = environment.emittedModule(SOURCES, store);
+    expect(second.emitted).toBe(false);
+    expect(digested).toHaveLength(2);
+
+    // And it is what the verify path asks: a host digest that disagrees refuses the copy.
+    const disagreeing = { ...store, digest: () => "0".repeat(64) };
+    expect(environment.emittedModule(SOURCES, disagreeing).refused).toContain(
+      "does not match the digest its header declares",
+    );
   });
 
   it("names what differed, so a host can tell a stale cache from two engines", () => {

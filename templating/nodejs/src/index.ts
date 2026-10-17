@@ -9,7 +9,12 @@ export {
 // become the engine's namespace seam — exported because the analyzer evaluates
 // rule conditions and function bodies through the same table, and a second
 // adapter is what let it convert arguments differently from the kernel.
-export { compileExpression, namespaceDispatchOf } from "./cel/compile.js";
+export {
+  compileExpression,
+  namespaceDispatchOf,
+  siteEnvironment,
+  type CelProgramSite,
+} from "./cel/compile.js";
 export {
   interpolationShape,
   literalFragments,
