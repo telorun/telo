@@ -1,8 +1,0 @@
-modules:
-  apps/hub: Added
-body: The MCP endpoint serves its three authoring guides as argument-less tools a model
-  calls — guide_build_ui, guide_write_integration_tests, guide_design_library — instead
-  of as prompts, which an MCP client offers only to its user, never to its model. The
-  server instructions name the guide tools first and stay within 4096 characters, past
-  which Claude Code cuts them, and serverInfo reports the hub's own version instead of a
-  fixed 0.6.2.

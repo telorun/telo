@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.0 - 2026-10-17
+### Added
+* The agent reads the hub's authoring guides through the hub's guide tools (guide_build_ui, guide_write_integration_tests, guide_design_library) instead of turning the hub's MCP prompts into tools.
+
 ## 0.24.0 - 2026-10-14
 ### Added
 * The agent reads the hub's authoring guides: every prompt the hub serves is a guide_<name> tool, and the agent calls the guide covering its work before writing that work's first file. Its system prompt no longer carries the UI, library-design and container-test how-to those guides hold. Until mcp-client and ai-mcp publish prompt support, the application imports Mcp and Run, and the chat library Mcp, AiMcp, Ai, OpenAI, Run, Stream and HttpClient, from the repository, re-pinned together after release; meanwhile its image cannot be built and it must run against a hub that serves prompts.
