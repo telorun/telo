@@ -1,0 +1,11 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "Runnable",
+    "description": "A one-shot task the runtime starts and waits for: a pipeline, a migration, a boot step. Its run() does the work and returns what undoes it; a failure it throws is a structured error the step or target that started it can catch."
+  },
+  "capability": "Telo.Runnable",
+  "extends": "Telo.Executable",
+  "declarable": true,
+  "throwsAllowed": true
+}

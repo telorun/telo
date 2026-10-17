@@ -2,7 +2,9 @@ import {
   AnalysisRegistry,
   Loader,
   StaticAnalyzer,
+  assembleGraphDiagnostics,
   collectModuleDocuments,
+  findPositions,
   flattenForAnalyzer,
   type AstDocument,
   type LoadOptions,
@@ -10,11 +12,7 @@ import {
   type ManifestAnalysis,
 } from "@telorun/analyzer";
 import type { RequirementsParams } from "@telorun/editor-protocol";
-import {
-  assembleGraphDiagnostics,
-  findPositions,
-  normalizeDiagnostic,
-} from "@telorun/ide-support";
+import { normalizeDiagnostic } from "@telorun/ide-support";
 import { DiagnosticSeverity, type Diagnostic } from "vscode-languageserver/browser";
 import { dirnameOf } from "./document-uri.js";
 import { errorText } from "./host-client.js";

@@ -1,0 +1,12 @@
+{
+  "title": "Type",
+  "description": "The value's shape, as JSON Schema. `!ref <Shape>` names a `Telo.JsonSchema`, at the root or nested.",
+  "anyOf": [
+    {
+      "$ref": "telo://manifest#/$defs/JsonSchema7"
+    },
+    {
+      "type": "string"
+    }
+  ]
+}

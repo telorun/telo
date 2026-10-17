@@ -1,0 +1,326 @@
+{
+  "title": "Kind schema",
+  "description": "The configuration a resource of this kind accepts, as JSON Schema plus the `x-telo-*` annotations that say how each field behaves.",
+  "type": [
+    "object",
+    "boolean"
+  ],
+  "properties": {
+    "type": {
+      "title": "Type",
+      "description": "The JSON type this value must have, or a list of accepted types.",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "object",
+            "array",
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "null"
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "object",
+              "array",
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      ]
+    },
+    "properties": {
+      "title": "Properties",
+      "description": "Schema per named property of an object.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "telo://manifest#/$defs/KindSchema"
+      }
+    },
+    "required": {
+      "title": "Required",
+      "description": "Property names that must be present.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": {
+      "title": "Additional properties",
+      "description": "`false` rejects any property not named above — which is what makes a typo an error rather than an ignored field.",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "telo://manifest#/$defs/KindSchema"
+        }
+      ]
+    },
+    "patternProperties": {
+      "title": "Pattern properties",
+      "description": "Schema per regular expression matching a property name.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "telo://manifest#/$defs/KindSchema"
+      }
+    },
+    "propertyNames": {
+      "title": "Property names",
+      "description": "Schema every property NAME must satisfy.",
+      "$ref": "telo://manifest#/$defs/KindSchema"
+    },
+    "items": {
+      "title": "Items",
+      "description": "Schema for each element of an array.",
+      "anyOf": [
+        {
+          "$ref": "telo://manifest#/$defs/KindSchema"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "telo://manifest#/$defs/KindSchema"
+          }
+        }
+      ]
+    },
+    "additionalItems": {
+      "title": "Additional items",
+      "description": "Schema for elements past a positional `items` list.",
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "telo://manifest#/$defs/KindSchema"
+        }
+      ]
+    },
+    "contains": {
+      "title": "Contains",
+      "description": "At least one element must satisfy this schema.",
+      "$ref": "telo://manifest#/$defs/KindSchema"
+    },
+    "allOf": {
+      "title": "All of",
+      "description": "Every branch must match.",
+      "type": "array",
+      "items": {
+        "$ref": "telo://manifest#/$defs/KindSchema"
+      }
+    },
+    "anyOf": {
+      "title": "Any of",
+      "description": "At least one branch must match.",
+      "type": "array",
+      "items": {
+        "$ref": "telo://manifest#/$defs/KindSchema"
+      }
+    },
+    "oneOf": {
+      "title": "One of",
+      "description": "Exactly one branch must match. Prefer `anyOf` when a branch declares a value type — a consumer that does not know the keyword reads the branch as matching everything, and only `anyOf` degrades gracefully.",
+      "type": "array",
+      "items": {
+        "$ref": "telo://manifest#/$defs/KindSchema"
+      }
+    },
+    "not": {
+      "title": "Not",
+      "description": "The value must NOT match this schema.",
+      "$ref": "telo://manifest#/$defs/KindSchema"
+    },
+    "if": {
+      "title": "If",
+      "description": "Condition selecting `then` / `else`.",
+      "$ref": "telo://manifest#/$defs/KindSchema"
+    },
+    "then": {
+      "title": "Then",
+      "description": "Applied when `if` matches.",
+      "$ref": "telo://manifest#/$defs/KindSchema"
+    },
+    "else": {
+      "title": "Else",
+      "description": "Applied when `if` does not match.",
+      "$ref": "telo://manifest#/$defs/KindSchema"
+    },
+    "enum": {
+      "title": "Enum",
+      "description": "The complete set of accepted values.",
+      "type": "array"
+    },
+    "const": {
+      "title": "Const",
+      "description": "The single accepted value."
+    },
+    "default": {
+      "title": "Default",
+      "description": "Filled in when the value is absent. On an invocation contract this is applied at dispatch, so a caller may omit the field."
+    },
+    "examples": {
+      "title": "Examples",
+      "description": "Sample values, for documentation.",
+      "type": "array"
+    },
+    "minimum": {
+      "title": "Minimum",
+      "type": "number"
+    },
+    "maximum": {
+      "title": "Maximum",
+      "type": "number"
+    },
+    "exclusiveMinimum": {
+      "title": "Exclusive minimum",
+      "type": "number"
+    },
+    "exclusiveMaximum": {
+      "title": "Exclusive maximum",
+      "type": "number"
+    },
+    "multipleOf": {
+      "title": "Multiple of",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "minLength": {
+      "title": "Min length",
+      "type": "integer",
+      "minimum": 0
+    },
+    "maxLength": {
+      "title": "Max length",
+      "type": "integer",
+      "minimum": 0
+    },
+    "pattern": {
+      "title": "Pattern",
+      "description": "Regular expression the string must match.",
+      "type": "string"
+    },
+    "format": {
+      "title": "Format",
+      "description": "Named string format (`date-time`, `uri`, `email`, …).",
+      "type": "string"
+    },
+    "contentMediaType": {
+      "title": "Content media type",
+      "description": "Media type of the string's content (`application/javascript`). Drives the editor's code-widget language.",
+      "type": "string"
+    },
+    "contentEncoding": {
+      "title": "Content encoding",
+      "type": "string"
+    },
+    "minItems": {
+      "title": "Min items",
+      "type": "integer",
+      "minimum": 0
+    },
+    "maxItems": {
+      "title": "Max items",
+      "type": "integer",
+      "minimum": 0
+    },
+    "uniqueItems": {
+      "title": "Unique items",
+      "type": "boolean"
+    },
+    "minProperties": {
+      "title": "Min properties",
+      "type": "integer",
+      "minimum": 0
+    },
+    "maxProperties": {
+      "title": "Max properties",
+      "type": "integer",
+      "minimum": 0
+    },
+    "dependencies": {
+      "title": "Dependencies",
+      "description": "Per property, the other properties it requires — or a schema to apply.",
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "telo://manifest#/$defs/KindSchema"
+          }
+        ]
+      }
+    },
+    "title": {
+      "title": "Title",
+      "description": "Human-readable label for this value.",
+      "type": "string"
+    },
+    "description": {
+      "title": "Description",
+      "description": "What this value is, for the author reading the manifest.",
+      "type": "string"
+    },
+    "deprecated": {
+      "title": "Deprecated",
+      "type": "boolean"
+    },
+    "readOnly": {
+      "title": "Read only",
+      "type": "boolean"
+    },
+    "writeOnly": {
+      "title": "Write only",
+      "type": "boolean"
+    },
+    "$ref": {
+      "title": "Reference",
+      "description": "Pointer to another schema: `#/$defs/<Name>` for one declared below, `telo:<module>/<Type>` for a named type a module declared.",
+      "type": "string"
+    },
+    "$defs": {
+      "title": "Definitions",
+      "description": "Named sub-schemas, private to this schema, referenced with `#/$defs/<Name>`.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "telo://manifest#/$defs/KindSchema"
+      }
+    },
+    "definitions": {
+      "title": "Definitions (draft-07)",
+      "description": "Older spelling of `$defs`.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "telo://manifest#/$defs/KindSchema"
+      }
+    },
+    "$comment": {
+      "title": "Comment",
+      "type": "string"
+    },
+    "$id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "$schema": {
+      "title": "Schema dialect",
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

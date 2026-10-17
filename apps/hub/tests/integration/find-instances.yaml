@@ -270,11 +270,15 @@ steps:
         moduleHitCounts: !cel >-
           steps.moduleHit.result.hits.filter(h, h.module.ref == 'oci://example.test/ocr-model')
             .map(h, [h.matchedKinds.map(k, k.instances), h.exportedKinds.map(k, k.instances)])
+        # The seeded modules only: the database may hold other tests' modules.
         packModuleHit: !cel >-
-          steps.packModuleHit.result.hits.map(h,
-            [h.module.ref, h.matchedKinds.map(k, [k.entry, k.name, k.kind, k.kindRef])])
+          steps.packModuleHit.result.hits
+            .filter(h, h.module.ref.startsWith('oci://example.test/ocr-'))
+            .map(h, [h.module.ref, h.matchedKinds.map(k, [k.entry, k.name, k.kind, k.kindRef])])
         byLanguage: !cel >-
-          steps.byLanguage.result.hits.map(h, [h.entry, h.name, h.kind, h.kindRef, h.module.ref])
+          steps.byLanguage.result.hits
+            .filter(h, h.module.ref.startsWith('oci://example.test/ocr-'))
+            .map(h, [h.entry, h.name, h.kind, h.kindRef, h.module.ref])
         foldedModules: !cel >-
           steps.broadModules.result.hits
             .filter(h, h.module.ref.startsWith('oci://example.test/ocr-lang/'))

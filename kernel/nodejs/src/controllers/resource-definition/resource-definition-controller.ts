@@ -23,7 +23,6 @@ import type { ModuleArtifact } from "../../bundle/module-artifact.js";
 import type { NativeFileModule } from "../../module-file-resolution.js";
 import type { SiblingLibraryMap } from "../../controller-loaders/sibling-libraries.js";
 import { ControllerLoader } from "../../controller-loader.js";
-import { formatAjvErrors, validateResourceDefinition } from "../../manifest-schemas.js";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
 import { refuseInvalidObserves } from "./observes-guard.js";
@@ -130,17 +129,23 @@ class ResourceDefinition implements ResourceInstance {
     // that merged view — otherwise the analyzer accepts an inherited field and
     // the kernel rejects it at create(). Shares `effectiveAuthorSchema` with the
     // analyzer so `telo check` and the runtime cannot drift.
+    // Which of the child's fields publish over the parent's reading. Derived here
+    // for the reason `status:` is: an `extends` alias belongs to the file that
+    // declared it, so the set must be derived in the DEFINING scope — a consumer
+    // importing only the backend has no alias for the parent's library. Derived
+    // before the schema stamp only because it reads the same resolver, not
+    // because it reads the pre-stamp value. Stamped only as the kind registers:
+    // the field is no part of the `Telo.Definition` schema, so a manifest
+    // carrying it from a refused attempt would be refused for it when the
+    // instance is created again.
+    const ownFields = this.resource.extends
+      ? publishedOwnFields(this.resource as ResourceDefinitionManifest, resolveDef)
+      : undefined;
+    const register = (): void => {
+      if (ownFields) this.resource.publishedOwnFields = ownFields;
+      ctx.registerDefinition(this.resource);
+    };
     if (this.resource.extends) {
-      // Which of the child's fields publish over the parent's reading. Stamped
-      // here for the reason `status:` is: an `extends` alias belongs to the file
-      // that declared it, so the set must be derived in the DEFINING scope — a
-      // consumer importing only the backend has no alias for the parent's
-      // library. Derived before the schema stamp only because it reads the same
-      // resolver, not because it reads the pre-stamp value.
-      this.resource.publishedOwnFields = publishedOwnFields(
-        this.resource as ResourceDefinitionManifest,
-        resolveDef,
-      );
       this.resource.schema = effectiveAuthorSchema(
         this.resource as ResourceDefinitionManifest,
         resolveDef,
@@ -231,7 +236,7 @@ class ResourceDefinition implements ResourceInstance {
           this.resource as ResourceDefinitionManifest,
           resolveDef,
         );
-        ctx.registerDefinition(this.resource);
+        register();
         await ctx.registerController(
           this.resource.metadata.module,
           this.resource.metadata.name,
@@ -274,7 +279,7 @@ class ResourceDefinition implements ResourceInstance {
         this.resource as any,
         ctx as unknown as RefPositionHost,
       );
-      ctx.registerDefinition(this.resource);
+      register();
       await ctx.registerController(
         this.resource.metadata.module,
         this.resource.metadata.name,
@@ -307,7 +312,7 @@ class ResourceDefinition implements ResourceInstance {
     // Its `sources:` block, so a staged prebuilt candidate is checked against
     // its pin before it loads from a source checkout.
     const sources = host.getDeclaringModule?.(this.resource.metadata.source)?.sources;
-    ctx.registerDefinition(this.resource);
+    register();
 
     const moduleName = this.resource.metadata.module;
     const kindName = this.resource.metadata.name;
@@ -391,25 +396,8 @@ export function register(ctx: ControllerContext): void {
 }
 
 export async function create(resource: any, ctx: ResourceContext): Promise<ResourceDefinition> {
-  // Named preflight for the one capability the schema rejects by omission: the
-  // AJV oneOf failure it produces never says WHY, and this is the mistake an
-  // author migrating a multi-kind slot is most likely to make.
-  if (resource?.capability === "Telo.Executable") {
-    throw new Error(
-      `Invalid ResourceDefinition "${resource.metadata?.name}": capability 'Telo.Executable' ` +
-        `is an x-telo-ref slot constraint (the parent Telo.Invocable and Telo.Runnable ` +
-        `extend), not a declarable lifecycle role. Declare 'Telo.Invocable' (invoke) or ` +
-        `'Telo.Runnable' (run) instead.`,
-    );
-  }
-  // Validate incoming resource definition against schema
-  if (!validateResourceDefinition(resource)) {
-    throw new Error(
-      `Invalid ResourceDefinition "${resource.metadata.name}": ${formatAjvErrors(validateResourceDefinition.errors)}`,
-    );
-  }
-
-  // Return a fully-formed ResourceDefinition instance
+  // Validated against the built-in `Telo.Definition` entry where every resource
+  // is created — the capability roster first, then the schema.
   const definition = resource as unknown as ResourceDefinitionResource;
   return new ResourceDefinition(definition);
 }

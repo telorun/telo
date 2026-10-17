@@ -1,0 +1,4 @@
+{
+  "type": "string",
+  "pattern": "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+}

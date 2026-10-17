@@ -31,7 +31,11 @@ export interface RuntimeSeam {
    * a child is reachable without polling it. A child that fails to load, or one
    * that exits before it finishes starting, is not an exception here — it
    * settles `exitCode` with the failure written to `stderr`, so a caller handles
-   * both failure modes in one place.
+   * both failure modes in one place. That text is the failure's own message,
+   * then one `  [<CODE>] <message>` line per diagnostic it carries (`details`
+   * and further message lines beneath it, a nested context's diagnostics one
+   * level further in, `derived` entries left out, no location) — the form
+   * `kernel/specs/controller-protocol.md` §9.2 fixes for every kernel.
    *
    * **The caller owns the child's lifetime.** Drain both streams, or stop it with
    * {@link RuntimeRun.cancel}; a child nobody reads and nobody stops keeps
@@ -40,8 +44,12 @@ export interface RuntimeSeam {
   run(source: string, options?: RuntimeRunOptions): Promise<RuntimeRun>;
   /**
    * Run the static-analysis pass over `source` and its import graph without
-   * instantiating anything. Never throws for a manifest that fails to load —
-   * that is {@link RuntimeCheckResult.loadError}, which is an answer, not an
+   * instantiating anything, answering with the diagnostics `telo check` reports
+   * — the same codes, messages and locations. A failed import is one of them:
+   * its coded diagnostic (`INVALID_IMPORT_SOURCE`, `IMPORT_UNRESOLVED`,
+   * `INVALID_IMPORT_TARGET`, `KIND_PREFIX_RESERVED`) at `imports.<alias>`. Never
+   * throws for a manifest that fails to load — a graph that could not be loaded
+   * at all is {@link RuntimeCheckResult.loadError}, which is an answer, not an
    * error.
    */
   check(source: string, options?: RuntimeCheckOptions): Promise<RuntimeCheckResult>;
@@ -89,6 +97,8 @@ export interface RuntimeRunInputs {
  */
 export interface RuntimeRun {
   readonly stdout: Stream<string>;
+  /** The child's standard error; for a refused child, the text
+   *  {@link RuntimeSeam.run} describes. */
   readonly stderr: Stream<string>;
   /**
    * The child's input, written to over time.
@@ -187,7 +197,9 @@ export interface CheckDiagnostic {
 
 export interface RuntimeCheckResult {
   diagnostics: CheckDiagnostic[];
-  /** Set when the import graph could not be loaded at all, in which case
-   *  `diagnostics` is empty — there was nothing to analyze. */
+  /** Set when the import graph could not be loaded at all — the entry is
+   *  unreadable, or a partial it includes is refused — in which case
+   *  `diagnostics` is empty: there was nothing to analyze. A failed import is
+   *  not this case; it is a coded entry of `diagnostics`. */
   loadError?: string;
 }

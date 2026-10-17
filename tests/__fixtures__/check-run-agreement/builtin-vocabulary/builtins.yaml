@@ -1,0 +1,22 @@
+# A built-in vocabulary archive in the shape `telo builtins` prints: a root
+# carrying the shared fragments, then one built-in kind per document. It is read,
+# never run or imported.
+kind: Telo.Builtins
+metadata:
+  name: Telo
+  version: 0.119.0
+  license: MIT
+$defs:
+  LogLevel:
+    type: string
+    enum:
+      - debug
+      - info
+---
+kind: Telo.Abstract
+metadata:
+  name: Service
+  description: A long-lived resource.
+capability: Telo.Service
+declarable: true
+throwsAllowed: false

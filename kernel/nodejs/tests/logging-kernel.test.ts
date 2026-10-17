@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { Kernel } from "../src/kernel.js";
 import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
 import { MemorySource } from "../src/manifest-sources/memory-source.js";
+import { createKindDocument } from "./create-kind-document.js";
 
 /**
  * The kernel-integration half of `kernel/specs/logging.md` §16.1 — the vectors
@@ -175,32 +176,34 @@ metadata:
 });
 
 describe("a module-authored sink kind validates", () => {
-  it("accepts a Telo.Definition with capability: Telo.Sink", async () => {
-    // Regression: Telo.Sink was in KNOWN_CAPABILITIES but had no oneOf branch,
-    // so every module-authored sink — the whole third-party ecosystem this
-    // feature exists to enable — failed `validateResourceDefinition` when the
-    // kind was instantiated (the resource-definition-controller's create()).
-    const { validateResourceDefinition } = await import("../src/manifest-schemas.js");
-    const ok = validateResourceDefinition({
-      kind: "Telo.Definition",
-      metadata: { name: "Sink" },
-      capability: "Telo.Sink",
-      extends: "Telo.LogSink",
-      controllers: ["pkg:npm/@acme/sink@1.0.0"],
-      schema: { type: "object" },
-    });
-    expect(ok).toBe(true);
+  it("creates a Telo.Definition with capability: Telo.Sink", async () => {
+    // Regression: a capability the definition schema did not list made every
+    // module-authored sink — the whole third-party ecosystem this feature exists
+    // to enable — fail where the kernel creates the kind.
+    expect(
+      await createKindDocument({
+        kind: "Telo.Definition",
+        metadata: { name: "Sink" },
+        capability: "Telo.Sink",
+        extends: "Telo.LogSink",
+        controllers: ["pkg:npm/@acme/sink@1.0.0"],
+        schema: { type: "object" },
+      }),
+    ).toBeUndefined();
 
     // A sink is written to directly, never dispatched, so `throws:` is a schema
     // error on it, exactly as for Mount/Provider.
     expect(
-      validateResourceDefinition({
+      await createKindDocument({
         kind: "Telo.Definition",
         metadata: { name: "Sink" },
         capability: "Telo.Sink",
         throws: [{ code: "X" }],
       }),
-    ).toBe(false);
+    ).toMatchObject({
+      code: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
+      message: expect.stringMatching(/\/throws/),
+    });
   });
 });
 

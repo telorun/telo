@@ -12,4 +12,7 @@ metadata:
   name: testImportApplicationRejected
 source: ./__fixtures__/imports-an-application.yaml
 expect:
-  loadError: "Telo.Application"
+  errors:
+    - code: INVALID_IMPORT_TARGET
+      message: "Cannot use import 'ForbiddenApp' → './tiny-application.yaml': Telo.Import target './tiny-application.yaml' is a Telo.Application. Only Telo.Library modules may be imported. Applications are run directly, not imported. Point this import at a library, or drop it and run that application on its own."
+  runFails: "[INVALID_IMPORT_TARGET] Cannot use import 'ForbiddenApp' → './tiny-application.yaml': Telo.Import target './tiny-application.yaml' is a Telo.Application. Only Telo.Library modules may be imported. Applications are run directly, not imported. Point this import at a library, or drop it and run that application on its own."

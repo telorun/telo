@@ -1019,12 +1019,19 @@ The tools are the security boundary, and they are declared:
   comes back in the tool result — so the agent validates its own output rather
   than being asked to remember to.
 - **The `telo` tool may only invoke a subcommand in `teloVerbs`**, which defaults
-  to the verbs that merely inspect: `check`, `cel`, `module`, `search`. `run`,
+  to the verbs that merely inspect: `check`, `cel`, `module`, `search`,
+  `builtins` (the built-in vocabulary's exact field shapes, which the system
+  prompt sends the agent to rather than describing them). `run`,
   `publish`, `install` and `upgrade` are absent on purpose — `run` is arbitrary
   code execution on this host driven by an anonymous prompt, and `publish` would
   spend the operator's registry credentials. The check is on `argv[0]`, which
   also closes the CLI's default-command hole: `telo ./x.yaml` means `run`, and a
   bare path matches no verb, so it is rejected rather than silently executed.
+  One argv is answered whatever the list holds: exactly `--version`, the telo
+  the agent checks against (`X`, or `X+unreleased` for a working copy), which it
+  reads before passing a version to the hub's `get_kinds`. `--version` followed
+  by anything is refused like an unlisted verb, so the guard admits it alone
+  rather than relying on every CLI answering it before a command.
 - **Executing a manifest is `run_manifest`, a separate switch**
   (`ALLOW_MANIFEST_RUNS`, off by default) rather than a `run` entry in
   `teloVerbs`. Two different people make those two decisions: the verb list says

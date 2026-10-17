@@ -1,0 +1,69 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "Import",
+    "description": "Brings a library into a module under an alias: where it comes from, its integrity pin, the variables, secrets, resources and needs supplied to it, the runtimes it may run on and a logging override for its subtree."
+  },
+  "capability": "Telo.Template",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "type": "string"
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
+      },
+      "source": {
+        "type": "string"
+      },
+      "integrity": {
+        "type": "string"
+      },
+      "variables": {
+        "type": "object"
+      },
+      "secrets": {
+        "type": "object"
+      },
+      "resources": {
+        "type": "object",
+        "additionalProperties": {}
+      },
+      "needs": {
+        "type": "object",
+        "additionalProperties": {}
+      },
+      "runtime": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "logging": {
+        "$ref": "telo://manifest#/$defs/LoggingScope"
+      }
+    },
+    "required": [
+      "metadata",
+      "source"
+    ],
+    "additionalProperties": false
+  }
+}

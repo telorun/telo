@@ -73,6 +73,7 @@ out, and delete from it silently.
 | `inKind` | yes | document `kind:` values this rule may match in |
 | `under` | yes | top-level document keys; the match must be at or below one of them |
 | `value` / `valueOneOf` | no | the value must equal this / be one of these |
+| `valuePattern` / `valueNotPattern` | no | the value must be a string that fully matches / does not fully match this pattern, written in the RE2 subset (no lookaround, no backreference — refused when the entry is read) |
 | `withSibling` | no | a key that must be present in the same mapping |
 | `notUnder` | no | narrows within `under` — the data-bearing JSON Schema keywords |
 

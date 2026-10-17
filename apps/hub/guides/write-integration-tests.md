@@ -19,7 +19,8 @@ Take the exact schema of every kind named here — `Container.Instance`,
 `imports:` line for each module from `get_kinds` (the `container`, `docker`,
 `test`, `app`, `run` and `assert` modules, plus your database's). Snippets
 below write each import as `<ref>@<version>#<pin>`; write what `get_kinds`
-returns.
+returns. A `Telo.*` kind (`Telo.Application`) is built in: `get_kinds` returns
+it with no import line, and nothing is imported for it.
 
 ## When a mock cannot stand in
 

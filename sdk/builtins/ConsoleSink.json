@@ -1,0 +1,38 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "ConsoleSink",
+    "description": "Writes structured log records to standard error or standard output, as pretty text for a terminal or as JSON lines for a collector, with optional colour. The zero-configuration destination every runtime provides."
+  },
+  "capability": "Telo.Sink",
+  "extends": "Telo.LogSink",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "destination": {
+        "type": "string",
+        "enum": [
+          "stderr",
+          "stdout"
+        ]
+      },
+      "encoding": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "pretty",
+          "json"
+        ]
+      },
+      "color": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "always",
+          "never"
+        ]
+      }
+    },
+    "additionalProperties": false
+  }
+}

@@ -12,6 +12,13 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use serde_json::Value;
+use telo_analyzer::builtin_vocabulary::{
+    builtin_vocabulary_import_message, BUILTIN_VOCABULARY_KIND, BUILTIN_VOCABULARY_NOT_A_MODULE,
+};
+use telo_analyzer::reserved_kind_prefix::{
+    is_reserved_kind_prefix, reserved_import_alias_message, reserved_library_name_message,
+    reserved_module_name_message,
+};
 use telo_analyzer::system_kinds::{
     is_module_document, skips_ref_resolution, APPLICATION, DEFINITION, JSON_SCHEMA, LIBRARY,
 };
@@ -61,6 +68,26 @@ pub fn load_module(
         KernelError::manifest_validation_failed(format!("'{path}' contains no documents"))
     })?;
     let module_kind = kind_of(module_doc).unwrap_or("");
+    // The built-in vocabulary is read, never run or imported; the refusal says
+    // what it is, in the words `telo check` uses, and an import of it is the
+    // runtime twin of that import's `INVALID_IMPORT_TARGET`.
+    if module_kind == BUILTIN_VOCABULARY_KIND {
+        return Err(match role {
+            ModuleRole::Root => {
+                KernelError::manifest_validation_failed(BUILTIN_VOCABULARY_NOT_A_MODULE)
+            }
+            ModuleRole::Import => KernelError::new(
+                "ERR_INVALID_IMPORT_TARGET",
+                builtin_vocabulary_import_message(
+                    path,
+                    module_doc
+                        .get("metadata")
+                        .and_then(|metadata| metadata.get("version"))
+                        .and_then(Value::as_str),
+                ),
+            ),
+        });
+    }
     let expected = match role {
         ModuleRole::Root => APPLICATION,
         ModuleRole::Import => LIBRARY,
@@ -80,6 +107,15 @@ pub fn load_module(
             KernelError::manifest_validation_failed(format!("'{path}' has no metadata.name"))
         })?
         .to_string();
+    if is_reserved_kind_prefix(&module_name) {
+        return Err(KernelError::new(
+            "ERR_KIND_PREFIX_RESERVED",
+            match role {
+                ModuleRole::Root => reserved_module_name_message(&module_name),
+                ModuleRole::Import => reserved_library_name_message(path, &module_name),
+            },
+        ));
+    }
     reject_unsupported_module_fields(module_doc, &loaded.source)?;
 
     if let Some(second) = documents.iter().skip(1).find(|document| {
@@ -301,6 +337,12 @@ fn load_imports(
         return Ok(imports);
     };
     for (alias, entry) in entries {
+        if is_reserved_kind_prefix(alias) {
+            return Err(KernelError::new(
+                "ERR_KIND_PREFIX_RESERVED",
+                reserved_import_alias_message(alias),
+            ));
+        }
         let spec = parse_import(alias, entry, base_source)?;
         let child = env.load_import(&spec.source, spec.policy)?;
         imports.insert(alias.clone(), child);

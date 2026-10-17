@@ -1,0 +1,82 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "NeedType",
+    "description": "Declares a type of dependency a module can ask whoever runs it for — a database, a credential, a public address — as the fields a fulfilment hands over, which are required, the parameters a request may state, and whether fulfilments are versioned, carry features or must come from the root."
+  },
+  "capability": "Telo.Template",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "type": "string"
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
+      },
+      "fields": {
+        "title": "Fields",
+        "description": "What a fulfilment hands over, as a JSON Schema property map. A field may be `x-telo-sensitive: true`, which a string field must be to hold a credential.",
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "telo://manifest#/$defs/JsonSchema7"
+        }
+      },
+      "required": {
+        "title": "Required fields",
+        "description": "The fields every fulfilment must yield.",
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "uniqueItems": true
+      },
+      "parameters": {
+        "title": "Parameters",
+        "description": "JSON Schema of the literal parameters a need of this type may state.",
+        "$ref": "telo://manifest#/$defs/JsonSchema7"
+      },
+      "version": {
+        "title": "Version",
+        "description": "`semver` when fulfilments are versioned: a need may then state a version range, which a consumer observing `version` verifies.",
+        "enum": [
+          "semver"
+        ]
+      },
+      "features": {
+        "title": "Features",
+        "description": "The closed list of feature names a fulfilment may carry; a need may ask for a subset, which a consumer observing `features` verifies.",
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uniqueItems": true
+      },
+      "supply": {
+        "title": "Supply",
+        "description": "`root` when a need of this type is fulfilled only through a root need, forwarded whole: a self-supplied fulfilment, a field-by-field supply at an import and a library need reaching the root unforwarded are refused.",
+        "enum": [
+          "root"
+        ]
+      }
+    },
+    "required": [
+      "metadata",
+      "fields"
+    ],
+    "additionalProperties": false
+  }
+}

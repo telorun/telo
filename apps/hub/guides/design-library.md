@@ -11,9 +11,13 @@ field grammar.
 Take the exact schema of every kind you compose or extend, and the `imports:`
 line for each module (with its version and integrity pin), from `get_kinds`.
 Snippets below write an import as `<ref>@<version>#<pin>`; write what
-`get_kinds` returns. Never write a `JS.Script`: a kind is composed from
-existing kinds, specialized from one, or — for genuinely new runtime
-behaviour — given a controller in a module of its own.
+`get_kinds` returns. A `Telo.*` kind (`Telo.Definition`, `Telo.Abstract`, a
+`Telo.<Kind>` parent such as `Telo.LogSink`) and every schema fragment a kind
+names is built in: `get_kinds` returns it with no import line, at the telo
+version you pass as `telo` — import nothing for it. Never write a
+`JS.Script`: a kind is composed from existing kinds, specialized from one, or —
+for genuinely new runtime behaviour — given a controller in a module of its
+own.
 
 ## Library or application
 

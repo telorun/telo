@@ -1,0 +1,29 @@
+# A library whose exported sequence declares two kind documents in its `with:`
+# scope: one whose `capability:` names no role, one carrying a key the
+# `Telo.Definition` schema does not declare. The kernel refuses both when the
+# scope opens, so `telo check` refuses them here, at the member's own line, and
+# at a consumer's `imports:` entry reaching the library.
+kind: Telo.Library
+metadata:
+  name: ScopedKindDocumentLib
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [probe]
+---
+kind: Run.Sequence
+metadata: { name: probe }
+with:
+  - kind: Telo.Definition
+    metadata: { name: Misspelled }
+    capability: Telo.Invokable
+    schema: { type: object }
+  - kind: Telo.Definition
+    metadata: { name: Misnamed }
+    capability: Telo.Invocable
+    controllrs:
+      - pkg:npm/thing@1.0.0
+    schema: { type: object }
+steps:
+  - name: done
+    value: true

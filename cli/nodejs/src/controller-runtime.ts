@@ -1,4 +1,5 @@
 import type { NativeEntry } from "@telorun/analyzer";
+import { BUILTIN_CONTROLLER_ENTRIES } from "@telorun/kernel";
 import { PackageURL } from "packageurl-js";
 
 /** A kernel that can host a controller candidate.
@@ -30,23 +31,52 @@ const BUNDLE_FORMAT_RUNTIMES: Readonly<Record<string, { runtime: Runtime; langua
   dylib: { runtime: "rust", language: null },
 };
 
+/** The controller entries the Node kernel registers at boot — its own
+ *  registry, not a copy of it. */
+const NODE_KERNEL_ENTRIES: ReadonlySet<string> = new Set(BUILTIN_CONTROLLER_ENTRIES);
+
 /** How one `controllers:` candidate maps onto kernels, or `null` when no kernel
- *  hosts it today (an unparseable PURL, a non-`local` `pkg:telo` namespace, or a
- *  bundle format both kernels report as env-missing).
+ *  hosts it today (an unparseable PURL, a non-`local` `pkg:telo` namespace, a
+ *  bundle format both kernels report as env-missing, or a kernel entry no kernel
+ *  registers).
  *
- *  This mirrors what the loaders actually dispatch on. Sources of truth, both of
- *  which must move together with this function:
- *    - Node: `dispatchResolveOne` in `kernel/nodejs/src/controller-loader.ts`
- *      (PURL type → loader) and `NODE_HOSTED_FORMATS` in
+ *  A candidate is a PURL an author wrote, or the marker
+ *  `{ runtime: kernel, entry }` a definition the runtime implements carries
+ *  (a need type's synthesized definition among them): it is hosted by exactly
+ *  the kernels that register a controller under `entry`.
+ *
+ *  This mirrors what the kernels actually register and dispatch on. Sources of
+ *  truth, which must move together with this function:
+ *    - Node: `BUILTIN_CONTROLLER_ENTRIES` (`@telorun/kernel`, read, not copied),
+ *      `dispatchResolveOne` in `kernel/nodejs/src/controller-loader.ts` (PURL
+ *      type → loader) and `NODE_HOSTED_FORMATS` in
  *      `controller-loaders/bundle-loader.ts` (hostable bundle formats).
  *    - Rust: `dispatch_one` in `kernel/rust/src/controller_loader.rs`
- *      (`pkg:cargo`, and the `dylib` bundle format).
- *  The Rust half cannot be imported from here at all, so at least one constant
- *  is unavoidable; keeping both in one function makes the pair reviewable. */
-function classifyCandidate(purl: string): { runtimes: Runtime[]; language: Language | null } | null {
+ *      (`pkg:cargo`, and the `dylib` bundle format), and the kernel entries it
+ *      registers: none — `resolve_resource_kind` in
+ *      `kernel/rust/src/controllers/module/module_controller.rs` refuses every
+ *      built-in kind as a resource, and `load_module` refuses a need type.
+ *  The Rust half cannot be imported from here at all, so its constants are
+ *  unavoidable; keeping both in one function makes the pair reviewable. */
+function classifyCandidate(
+  candidate: unknown,
+  nodeKernelEntries: ReadonlySet<string>,
+): { runtimes: Runtime[]; language: Language | null } | null {
+  const rustKernelEntries: ReadonlySet<string> = new Set();
+  if (typeof candidate !== "string") {
+    const { runtime, entry } = (candidate ?? {}) as { runtime?: unknown; entry?: unknown };
+    if (runtime !== "kernel" || typeof entry !== "string") return null;
+    const registering: Record<Runtime, ReadonlySet<string>> = {
+      nodejs: nodeKernelEntries,
+      rust: rustKernelEntries,
+    };
+    const runtimes = KNOWN_RUNTIMES.filter((r) => registering[r].has(entry));
+    // The kernel's own controller: no author-chosen language.
+    return runtimes.length > 0 ? { runtimes, language: null } : null;
+  }
   let parsed: PackageURL;
   try {
-    parsed = PackageURL.fromString(purl);
+    parsed = PackageURL.fromString(candidate);
   } catch {
     return null;
   }
@@ -84,14 +114,18 @@ export interface KindRuntimeSupport {
   portable: boolean;
 }
 
-/** Classify one kind from its declared `controllers:` list. */
-export function kindRuntimeSupport(controllers: readonly string[]): KindRuntimeSupport {
+/** Classify one kind from its `controllers:` candidates. `nodeKernelEntries`
+ *  is the Node kernel's registry of built-in controller entries. */
+export function kindRuntimeSupport(
+  controllers: readonly unknown[],
+  nodeKernelEntries: ReadonlySet<string> = NODE_KERNEL_ENTRIES,
+): KindRuntimeSupport {
   if (controllers.length === 0) return { runtimes: [], languages: [], portable: true };
 
   const runtimes = new Set<Runtime>();
   const languages = new Set<Language>();
-  for (const purl of controllers) {
-    const hit = classifyCandidate(purl);
+  for (const candidate of controllers) {
+    const hit = classifyCandidate(candidate, nodeKernelEntries);
     if (!hit) continue;
     for (const r of hit.runtimes) runtimes.add(r);
     if (hit.language) languages.add(hit.language);

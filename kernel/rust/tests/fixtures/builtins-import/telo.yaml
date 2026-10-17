@@ -1,0 +1,6 @@
+# Imports the built-in vocabulary as though it were a library.
+kind: Telo.Application
+metadata:
+  name: BuiltinsImporter
+imports:
+  Builtins: ../builtins-entry

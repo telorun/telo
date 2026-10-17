@@ -4,12 +4,13 @@ import { buildCelEnvironment, celBuiltinFunctions, celFunctionCatalog } from "@t
 type CelFunctionInfo = ReturnType<typeof celFunctionCatalog>[number];
 import {
   AnalysisRegistry,
+  assembleGraphDiagnostics,
   collectModuleDocuments,
   DiagnosticSeverity,
   flattenForAnalyzer,
   StaticAnalyzer,
 } from "@telorun/analyzer";
-import { assembleGraphDiagnostics, functionSignature } from "@telorun/ide-support";
+import { functionSignature } from "@telorun/ide-support";
 import { enableBigIntJson, nodeCelHandlers, nodeHostVersions } from "@telorun/kernel";
 import type { ResourceManifest } from "@telorun/sdk";
 import type { Argv } from "yargs";

@@ -12,4 +12,7 @@ metadata:
   name: testImportNonLibraryRejected
 source: ./__fixtures__/imports-a-non-library.yaml
 expect:
-  loadError: "did not resolve to a Telo.Library"
+  errors:
+    - code: INVALID_IMPORT_TARGET
+      message: "Cannot use import 'NonLibrary' → './non-library-import-target.yaml': Telo.Import target './non-library-import-target.yaml' did not resolve to a Telo.Library."
+  runFails: "[INVALID_IMPORT_TARGET] Cannot use import 'NonLibrary' → './non-library-import-target.yaml': Telo.Import target './non-library-import-target.yaml' did not resolve to a Telo.Library."

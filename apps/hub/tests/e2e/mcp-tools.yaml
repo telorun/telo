@@ -8,7 +8,8 @@ metadata:
     the discovery loop: `search_resources` returns kind hits grouped under the
     module location ref that owns them, for one query or several; `get_kinds`
     returns the definitions of the named kinds with their import line;
-    `list_libraries` lists a publisher's libraries; `get_module_manifest(ref)`
+    `list_libraries` lists a publisher's libraries; `get_kinds` refuses a telo
+    version the hub tracks no built-in vocabulary at; `get_module_manifest(ref)`
     returns the tracker-cached telo.yaml for that ref, and `get_module` / `list_module_versions` /
     `find_implementations` / `find_instances` / `list_categories` / `suggest_module_refs` mirror
     the hub's keyed-read HTTP routes as tools.
@@ -28,6 +29,7 @@ targets:
   - !ref getKinds_ReportsAnUntrackedRef
   - !ref getKinds_ReadsTheParentTheChildPins
   - !ref getKinds_RefusesNoKinds
+  - !ref getKinds_RefusesAnUntrackedTeloVersion
   - !ref searchResources_RefusesLimitOutOfRange
   - !ref listLibraries_ListsAPublishersLibraries
   - !ref searchResources_RefusesRuntimeForApplications
@@ -336,6 +338,37 @@ steps:
         inputs:
           actual: !cel "error.code"
           expected: ERR_MCP_TOOL_ERROR
+        invoke:
+          kind: Assert.Equals
+---
+# A `telo` version the hub tracks no built-in vocabulary at is a bad argument,
+# answered with the versions it does track. 0.0.1 predates the vocabulary.
+kind: Run.Sequence
+metadata: { name: getKinds_RefusesAnUntrackedTeloVersion }
+steps:
+  - name: refused
+    try:
+      - name: call
+        invoke: !ref mcpToolCall
+        inputs:
+          name: get_kinds
+          arguments:
+            kinds:
+              - { ref: "oci://ghcr.io/telorun/timer", kind: Delay }
+            telo: 0.0.1
+      - name: answered
+        throw:
+          code: ERR_TEST_EXPECTED_REFUSAL
+          message: get_kinds answered for a telo version the hub does not track
+    catch:
+      - name: assert
+        inputs:
+          actual:
+            rpcCode: !cel "error.data.code"
+            teloCode: !cel "error.data.data.code"
+          expected:
+            rpcCode: -32602
+            teloCode: ERR_UNKNOWN_TELO_VERSION
         invoke:
           kind: Assert.Equals
 ---

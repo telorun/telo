@@ -47,9 +47,20 @@ modules/*/nodejs/*.mjs
 # bytes; TypeScript can only import a JSON file from inside its own package.
 analyzer/nodejs/src/migrations/entries/
 
-# Telo format entries copied in from analyzer/formats/ by the root `prepare`.
+# Telo format entries copied in from sdk/formats/ by the root `prepare`.
 # Same reason, same mechanism: every runtime accepts the same strings.
 analyzer/nodejs/src/formats/entries/
+
+# The built-in vocabulary derived from sdk/builtins/ by the root and the
+# analyzer's own `prepare`. Same reason: every runtime reads the same entries.
+analyzer/nodejs/src/builtin-entries/
+
+# The built-in vocabulary archive (`builtins.yaml`, its LICENSE, the module
+# exporting its bytes) and the slicing expectation, rendered by the same script.
+# Committing them would be a second copy of the vocabulary, stale after every
+# entry edit and every version bump.
+analyzer/nodejs/src/builtin-vocabulary/
+analyzer/nodejs/builtin-vocabulary-slices.json
 
 # Value-type entries copied in from sdk/value-types/ by the SDK's `prepare`.
 # Same reason, same mechanism: every runtime reads the identical vocabulary.

@@ -12,7 +12,6 @@ import type {
   RuntimeResource,
 } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
-import { formatAjvErrors, validateResourceAbstract } from "../../manifest-schemas.js";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
 import { refuseInvalidObserves } from "./observes-guard.js";
@@ -125,11 +124,8 @@ export function register(_ctx: ControllerContext): void {
 }
 
 export async function create(resource: any, _ctx: ResourceContext): Promise<ResourceAbstract> {
-  if (!validateResourceAbstract(resource)) {
-    throw new Error(
-      `Invalid Telo.Abstract "${resource.metadata?.name}": ${formatAjvErrors(validateResourceAbstract.errors)}`,
-    );
-  }
+  // Validated against the built-in `Telo.Abstract` entry where every resource is
+  // created — the capability roster first, then the schema.
   return new ResourceAbstract(resource as unknown as ResourceAbstractResource);
 }
 

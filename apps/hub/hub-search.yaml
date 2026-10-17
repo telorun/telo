@@ -533,6 +533,7 @@ steps:
              COALESCE(mv.license, '') AS module_license,
              module_publisher(m.ref, m.transport) AS module_publisher,
              COALESCE(mv.deprecated_reason, '') AS module_deprecated_reason,
+             COALESCE(mv.root_kind, '') = 'Builtins' AS module_builtin,
              (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
               FROM unnest(mv.categories, mv.category_labels) AS t(s, l)) AS module_categories,
              CASE WHEN e.entry = 'kind' THEN kind_instance_count(m.ref, e.name) ELSE 0 END AS instances,
@@ -634,6 +635,9 @@ outputs:
   # `metadata.name`, `kind` "Application", no owning kind, no capability, no
   # indexed runtime reach (`runtime: null`), and its declared contract as
   # `application`. It never folds as a sibling.
+  #
+  # `module.builtin` is true for a hit from the built-in vocabulary, whose kinds
+  # are written `Telo.<Kind>` with no import.
   hits: !cel >-
     steps.rows.result.map(r,
       r.entry == 'application'
@@ -646,6 +650,7 @@ outputs:
            'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name,
                       'description': r.module_description, 'repository': r.module_repository,
                       'license': r.module_license, 'publisher': r.module_publisher,
+                      'builtin': r.module_builtin,
                       'deprecated': {'reason': r.module_deprecated_reason},
                       'categories': r.module_categories},
            'application': r.application, 'score': r.score}
@@ -659,6 +664,7 @@ outputs:
            'module': {'ref': r.ref, 'version': r.version, 'name': r.module_name,
                       'description': r.module_description, 'repository': r.module_repository,
                       'license': r.module_license, 'publisher': r.module_publisher,
+                      'builtin': r.module_builtin,
                       'deprecated': {'reason': r.module_deprecated_reason},
                       'categories': r.module_categories},
            'score': r.score})
@@ -667,11 +673,14 @@ outputs:
   # however many of its kinds matched; modules in the order of their best hit,
   # hits in rank order. A member that says nothing is left out rather than sent
   # empty — `entry` is stated only when the hit is not a kind, `kind` only on an
-  # instance, `runtimes` only on a hit a kernel must be able to load.
+  # instance, `runtimes` only on a hit a kernel must be able to load. The built-in
+  # vocabulary's module says `builtin: true` — its kinds are written
+  # `Telo.<Kind>` with no import — and its hits carry no `runtimes`, since the
+  # runtime implements them and no fact about which one is recorded.
   modules: !cel >-
     distinct(steps.rows.result.map(r, r.ref)).map(ref,
       steps.rows.result.filter(r, r.ref == ref)).map(own,
-        {'ref': own[0].ref, 'version': own[0].version, 'name': own[0].module_name,
+        merge({'ref': own[0].ref, 'version': own[0].version, 'name': own[0].module_name,
          'description': own[0].module_description,
          'hits': own.map(r, compact({
            'name': r.name,
@@ -682,7 +691,7 @@ outputs:
            'description': r.entry == 'application' ? '' : r.description,
            'extends': r.extends_kind == '' ? dyn(null)
              : dyn({'kind': r.extends_kind, 'ref': r.extends_ref}),
-           'runtimes': r.entry == 'application' || r.portable ? dyn(null) : dyn(r.runtimes),
+           'runtimes': r.entry == 'application' || r.portable || r.module_builtin ? dyn(null) : dyn(r.runtimes),
            'deprecated': r.deprecated_reason == '' ? dyn(null)
              : dyn(compact({'reason': r.deprecated_reason,
                             'replacedBy': r.replaced_by_kind == '' ? dyn(null)
@@ -690,7 +699,8 @@ outputs:
            'instances': r.instances > 0 ? dyn(r.instances) : dyn(null),
            'siblings': size(r.siblings) == 0 ? dyn(null)
              : dyn(r.siblings.map(s, {'name': s.name, 'ref': s.module.ref})),
-           'application': r.entry == 'application' ? dyn(r.application) : dyn(null)}))})
+           'application': r.entry == 'application' ? dyn(r.application) : dyn(null)}))},
+         own[0].module_builtin ? {'builtin': true} : {}))
 ---
 # Several searches in one call, each answered in the grouped form. A caller
 # composing an application has one need per capability, and a call per need is a
@@ -1105,7 +1115,8 @@ outputs:
   # second lookup — and a filter still reads one array.
   #
   # An application module indexes no runtime reach (`module.runtime: null`) and
-  # carries its declared contract as `application`.
+  # carries its declared contract as `application`. `module.builtin` marks the
+  # built-in vocabulary, whose kinds need no import.
   hits: !cel >-
     steps.answered.result.filter(r, r.ref != null).map(r,
       r.module_root_kind == 'Application'
@@ -1114,6 +1125,7 @@ outputs:
                       'license': r.module_license, 'homepage': r.module_homepage,
                       'publisher': r.module_publisher,
                       'trackedAt': r.module_tracked_at_text,
+                      'builtin': r.module_root_kind == 'Builtins',
                       'deprecated': {'reason': r.module_deprecated_reason,
                                      'replacedBy': r.module_replaced_by},
                       'runtime': null, 'categories': r.module_categories},
@@ -1125,6 +1137,7 @@ outputs:
                       'license': r.module_license, 'homepage': r.module_homepage,
                       'publisher': r.module_publisher,
                       'trackedAt': r.module_tracked_at_text,
+                      'builtin': r.module_root_kind == 'Builtins',
                       'deprecated': {'reason': r.module_deprecated_reason,
                                      'replacedBy': r.module_replaced_by},
                       'runtime': {'runtimes': r.module_runtimes, 'full': r.module_runtimes_full,

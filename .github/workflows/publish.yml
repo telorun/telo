@@ -155,6 +155,57 @@ jobs:
           TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
         run: pnpm run publish-modules
 
+  # The built-in vocabulary of every telo release, `<registry>/telo@<version>`.
+  #
+  # Its source is npm, not this checkout: each `@telorun/analyzer` release ships
+  # its archive at `src/builtin-vocabulary/`, and `scripts/publish-builtins.mjs`
+  # pushes that directory, taken out of the released tarball, for every version
+  # whose tag is missing — so the artifact is the release's own bytes, published
+  # by the checkout's CLI. Not a step of the npm `release` job, where a failure
+  # after `changeset publish` would have nothing to retry: this reconciles on every
+  # push, so a missed version heals on the next one. It runs after `release` (and
+  # whatever it did) so the version that job just published is pushed in the same
+  # run. `vars.TELO_OCI_REGISTRY` unset skips it, as it does module publishing.
+  publish-builtins:
+    name: Publish the built-in vocabulary
+    runs-on: ubuntu-latest
+    needs: release
+    if: ${{ always() && vars.TELO_OCI_REGISTRY != '' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        run: pnpm -r --if-present build
+
+      # The OCI transport reads the ambient Docker credential chain.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the built-in vocabulary of each release
+        env:
+          TELO_OCI_REGISTRY: ${{ vars.TELO_OCI_REGISTRY }}
+        run: node scripts/publish-builtins.mjs
+
   # Modules are versioned by `telo release`, not by changesets, and they get their
   # OWN Version PR — always, independently of whether npm changesets are pending.
   #

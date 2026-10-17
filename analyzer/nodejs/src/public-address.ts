@@ -1,4 +1,4 @@
-import type { ResourceManifest } from "@telorun/sdk";
+import { BUILTIN_DOCUMENT_FILES } from "./builtin-entries/index.js";
 
 /**
  * PUBLIC ADDRESS NEEDS — the two kernel-declared need types an application
@@ -22,95 +22,23 @@ export function isAddressNeedType(type: string | undefined): boolean {
   return type === PUBLIC_URL_TYPE || type === PUBLIC_HOST_PATTERN_TYPE;
 }
 
-const LABEL = "[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?";
-const HOST = `${LABEL}(?:\\.${LABEL})*`;
-
 /** `<scheme>://<hostname pattern>[:<port>]` — the pattern origin a
  *  `Telo.PublicHostPattern` holds. `*` only at the start of the first label:
- *  the whole label (`*.<rest>`) or a prefix of it (`*<text>.<rest>`). */
-export const HOST_PATTERN_ORIGIN = `^https?://\\*[A-Za-z0-9-]*\\.${HOST}(?::[0-9]{1,5})?$`;
-
-const PUBLIC_URL_PARAMETERS = {
-  type: "object",
-  properties: {
-    port: {
-      type: "string",
-      minLength: 1,
-      description: "The key of the root's `ports:` this address is served on, a `tcp` port.",
-    },
-    primary: {
-      type: "boolean",
-      description: "Marks the application's main address. At most one per application.",
-    },
-    customDomains: {
-      type: "boolean",
-      description:
-        "Lets the host route further domains to this need's port, ones the application is never told about. At most one per port.",
-    },
-  },
-  additionalProperties: false,
-};
-
-const PUBLIC_HOST_PATTERN_PARAMETERS = {
-  type: "object",
-  properties: {
-    port: {
-      type: "string",
-      minLength: 1,
-      description: "The key of the root's `ports:` these hosts are served on, a `tcp` port.",
-    },
-  },
-  additionalProperties: false,
-};
-
-/** The two `Telo.NeedType` documents the kernel declares. */
-export const PUBLIC_ADDRESS_NEED_TYPE_DOCS: ResourceManifest[] = [
-  {
-    kind: "Telo.NeedType",
-    metadata: {
-      name: "PublicUrl",
-      module: "Telo",
-      description:
-        "One public address an application is reached at: an http or https origin the host routes to a port, with the request's host and path unchanged.",
-    },
-    fields: {
-      url: {
-        description: "The address: an http or https origin — a host and an optional port, with no path, query or credentials.",
-        "x-telo-type": {
-          name: "Telo.Url",
-          scheme: { enum: ["http", "https"] },
-          path: { enum: ["/"] },
-          query: { not: {} },
-          user: { not: {} },
-          password: { not: {} },
-        },
-      },
-    },
-    required: ["url"],
-    parameters: PUBLIC_URL_PARAMETERS,
-    supply: "root",
-  } as unknown as ResourceManifest,
-  {
-    kind: "Telo.NeedType",
-    metadata: {
-      name: "PublicHostPattern",
-      module: "Telo",
-      description:
-        "A family of public hosts an application is reached at — tenant subdomains — as a pattern origin the host routes every matching host of to a port.",
-    },
-    fields: {
-      pattern: {
-        type: "string",
-        pattern: HOST_PATTERN_ORIGIN,
-        description:
-          "The hosts as a pattern origin: `https://*.tenants.example` (one or more whole labels) or `https://*-tenants.example` (a prefix of the first label).",
-      },
-    },
-    required: ["pattern"],
-    parameters: PUBLIC_HOST_PATTERN_PARAMETERS,
-    supply: "root",
-  } as unknown as ResourceManifest,
-];
+ *  the whole label (`*.<rest>`) or a prefix of it (`*<text>.<rest>`). Read from
+ *  the need type's own entry (`sdk/builtins/PublicHostPattern.json`), which is
+ *  what a fulfilment's `pattern` field is validated against. */
+export const HOST_PATTERN_ORIGIN: string = (() => {
+  const entry = BUILTIN_DOCUMENT_FILES.find(([file]) => file === "PublicHostPattern.json")?.[1] as
+    | { fields?: { pattern?: { pattern?: unknown } } }
+    | undefined;
+  const pattern = entry?.fields?.pattern?.pattern;
+  if (typeof pattern !== "string") {
+    throw new Error(
+      "sdk/builtins/PublicHostPattern.json declares no `fields.pattern.pattern` — the host-pattern grammar is read from it.",
+    );
+  }
+  return pattern;
+})();
 
 /** The keys of `ports:` a module doc's own address needs name — each a use of
  *  that port, as a `ports.<key>` read is. */

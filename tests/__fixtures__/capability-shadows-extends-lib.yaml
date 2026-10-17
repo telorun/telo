@@ -1,0 +1,17 @@
+kind: Telo.Library
+metadata:
+  name: CapabilityShadowsExtendsLib
+  version: 1.0.0
+exports:
+  kinds: [Greeter]
+---
+# A contract whose implementations must each carry a greeting.
+kind: Telo.Abstract
+metadata:
+  name: Greeter
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    greeting: { type: string }
+  required: [greeting]

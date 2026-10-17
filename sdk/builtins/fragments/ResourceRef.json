@@ -1,0 +1,38 @@
+{
+  "title": "Resource reference",
+  "anyOf": [
+    {
+      "type": "object",
+      "required": [
+        "__tagged",
+        "engine",
+        "source"
+      ],
+      "properties": {
+        "__tagged": {
+          "const": true
+        },
+        "engine": {
+          "const": "ref"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

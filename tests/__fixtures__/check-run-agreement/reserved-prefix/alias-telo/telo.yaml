@@ -1,0 +1,6 @@
+# Imports an ordinary library under the alias `Telo`.
+kind: Telo.Application
+metadata:
+  name: TeloAliasImporter
+imports:
+  Telo: ../plain-library

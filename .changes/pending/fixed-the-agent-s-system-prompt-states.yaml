@@ -1,0 +1,6 @@
+modules:
+  apps/authoring-agent: Fixed
+body: The agent's system prompt states the capability roster as the closed set it is —
+  the eight roles, Telo.Sink and Telo.Callable among them — and that a kind a definition
+  specializes, a module's abstract or a built-in kind that is no role, is written in
+  extends:, never in capability:.

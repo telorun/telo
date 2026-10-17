@@ -29,7 +29,8 @@ These apply to every command.
 
 - `-o, --output text|json` — Encoding of the CLI's **own** output. Default `text`. Under `json`, **stdout carries one machine-readable document and nothing else**, while prose, progress and warnings keep going to **stderr** in both formats — so a script parses stdout and a human still sees why something failed. `telo run` is exempt: the application writes to the same two descriptors and neither is the CLI's to claim, so its machine surface is `--debug` instead. Under `json`, stdout is never coloured; stderr keeps its colour. An unrecognised format is an error, not a fallback to text.
 - `--verbose` — Verbose CLI logging on stderr.
-- `--help, -h` / `--version` — The usual.
+- `--help, -h` — The usual.
+- `--version` — The telo this is: `X` for a release, `X+unreleased` for a build made from a working copy while `X` is pending — the version `telo builtins` and a run's `Kernel.Starting` event report too.
 
 **Machine output shapes.** Commands that report a *result* (`check`, `install`, `upgrade`, `migrate`, `publish`, `release`) emit an envelope `{ ok, … }` under `-o json` and nothing on stdout under `text`. Commands that produce a *document* (`cel`, `search`, `module versions|manifest|digest|resources|kinds`) write that document under either format — their older per-command `--json` flags predate `-o` and keep working — and never mix an error envelope into it: a failure there is prose on stderr plus a non-zero exit.
 

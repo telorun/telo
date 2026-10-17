@@ -1,0 +1,10 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "Sink",
+    "description": "A record-stream destination the runtime writes to directly, never through dispatch: write(record) plus flush, synchronous flush and close. Payload-opaque, carrying log records or finished trace spans to wherever they are kept."
+  },
+  "capability": "Telo.Sink",
+  "declarable": true,
+  "throwsAllowed": false
+}

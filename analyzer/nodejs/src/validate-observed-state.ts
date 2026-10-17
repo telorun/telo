@@ -25,27 +25,6 @@ const isSystemDocument = (m: { kind?: unknown }): boolean =>
   isKindDocument(m);
 
 /**
- * The `status:` block's own schema — a plain JSON Schema, structurally. The one
- * normative restriction (`required:` is rejected) is enforced by
- * {@link validateObservedStateDeclarations} rather than here, so the author gets
- * a message naming the rule and the fix instead of AJV's "must NOT be valid".
- *
- * THE KERNEL'S SHAPE CHECK, not the analyzer's. The analyzer's builtins point
- * their `status:` slot at the `JsonSchema7` fragment, which describes the same
- * block far more precisely; the kernel keeps this permissive one, and the two do
- * not drift into disagreement because the fragment only ever NARROWS what this
- * accepts. That split is the same one the `required:` rule above draws: the
- * loader answers "is this the right shape at all", and the check that can name
- * the offending keyword and its line stays with `telo check`. Wiring the fragment
- * into the kernel too would turn a check-time diagnostic into a boot failure for
- * every already-published manifest carrying a sloppy keyword.
- */
-export const OBSERVED_STATE_SCHEMA = {
-  type: "object",
-  additionalProperties: true,
-};
-
-/**
  * `required:` inside a `status:` block. Every declared field is mandatory once
  * the resource has run, so the list would be either redundant or a lie; a
  * genuinely sometimes-absent value is declared with a nullable type, which

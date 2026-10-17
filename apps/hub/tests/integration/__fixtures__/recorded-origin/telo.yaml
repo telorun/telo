@@ -1,7 +1,8 @@
 # A stand-in origin, as the hub's origin reads see it: run as
-# `<teloCommand> module versions <ref> --json` or
+# `<teloCommand> module versions <ref> --json`,
+# `<teloCommand> module digest <ref>@<version> --json` or
 # `<teloCommand> module manifest <ref>@<version> --json`, it answers with what is
-# recorded for that ref — each one a module the hub must refuse:
+# recorded for that ref. Modules the hub must refuse:
 #
 # - `oci://example.test/stale-app@1.0.0`: a Telo.Application as a CLI that
 #   predates the `application` field reports it — everything else
@@ -10,6 +11,23 @@
 #   `oci://example.test/definition-first` (registered, one version, 1.0.0): a file
 #   whose first document is a Telo.Definition, followed by a versioned
 #   Telo.Library.
+# - `oci://example.test/not-telo@0.119.0`: the built-in vocabulary, served at a
+#   ref other than the one the hub tracks it at.
+#
+# And the built-in vocabulary at the ref the hub's tests track it at, with a
+# module written against it:
+#
+# - `oci://example.test/telo` (0.119.0, 0.118.0): `builtins-0.119.0.yaml` is the
+#   archive the renderer writes (`analyzer/nodejs/src/builtin-vocabulary/`), as
+#   `telo publish` publishes it — its `layers:` index appended to the root
+#   document; `builtins-0.118.0.yaml` an older, smaller one with a different
+#   `Step`. 0.119.0 is reported as `telo module manifest --json` reports a
+#   `Telo.Builtins` root (`runtime: null`, `application: null`), 0.118.0 as a
+#   CLI predating the archive would, with a runtime block the hub must not
+#   record.
+# - `oci://example.test/vocab-user@1.0.0`: `vocab-user.yaml`, kinds naming
+#   fragments, a value type, zone attributes, a format and a `Telo.<Kind>`
+#   parent, and a need type.
 kind: Telo.Application
 metadata:
   name: RecordedOrigin
@@ -45,16 +63,27 @@ metadata:
   name: answer
 steps:
   - name: verbGate
-    if: !cel "variables.group != 'module' || !(variables.verb in ['versions', 'manifest']) || !variables.json"
+    if: !cel "variables.group != 'module' || !(variables.verb in ['versions', 'digest', 'manifest']) || !variables.json"
     then:
       - name: refuse
         throw:
           code: ERR_FIXTURE_UNSUPPORTED_READ
-          message: !interpolate "this origin answers only `module versions|manifest <ref> --json`, not `${{ variables.group }} ${{ variables.verb }}`"
+          message: !interpolate "this origin answers only `module versions|digest|manifest <ref> --json`, not `${{ variables.group }} ${{ variables.verb }}`"
   # What `module versions` reports, newest first.
   - name: versions
     value:
       oci://example.test/definition-first: [1.0.0]
+      oci://example.test/telo: [0.119.0, 0.118.0]
+      oci://example.test/not-telo: [0.119.0]
+  # What `module digest` reports.
+  - name: digests
+    value:
+      oci://example.test/telo@0.119.0:
+        ref: oci://example.test/telo@0.119.0
+        digest: sha256:telo-0.119.0
+      oci://example.test/not-telo@0.119.0:
+        ref: oci://example.test/not-telo@0.119.0
+        digest: sha256:not-telo-0.119.0
   # What `module manifest` reports.
   - name: manifests
     value:
@@ -107,8 +136,47 @@ steps:
             version: 1.0.0
         integrity: sha256-QYx3n0Jm0p4Y0z4mJmQy6m7l3oK0kQqg5W5m7q8r9s0
         runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+      oci://example.test/telo@0.119.0:
+        ref: oci://example.test/telo@0.119.0
+        cacheKey: oci/example.test/telo/0.119.0/telo.yaml
+        manifest: !include-text builtins-0.119.0.yaml
+        integrity: sha256-5d2nyy2aZq4WmKk6Rk2kC0Jd1C3rdZQbKkn2tYmD2Yc
+        runtime: null
+        application: null
+      oci://example.test/telo@0.118.0:
+        ref: oci://example.test/telo@0.118.0
+        cacheKey: oci/example.test/telo/0.118.0/telo.yaml
+        manifest: !include-text builtins-0.118.0.yaml
+        integrity: sha256-mXJ0R3o0bXOJjFQd8m1nE3xZ2y6dJp9w8YkUuQ8xX0E
+        # As a CLI that predates the archive reports it: a runtime block, read
+        # off documents that name no controllers.
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+        application: null
+      oci://example.test/not-telo@0.119.0:
+        ref: oci://example.test/not-telo@0.119.0
+        cacheKey: oci/example.test/not-telo/0.119.0/telo.yaml
+        manifest: !include-text builtins-0.119.0.yaml
+        integrity: sha256-5d2nyy2aZq4WmKk6Rk2kC0Jd1C3rdZQbKkn2tYmD2Yc
+        runtime: null
+        application: null
+      oci://example.test/vocab-user@1.0.0:
+        ref: oci://example.test/vocab-user@1.0.0
+        cacheKey: oci/example.test/vocab-user/1.0.0/telo.yaml
+        manifest: !include-text vocab-user.yaml
+        integrity: sha256-Vd6YqJ8n5m2cQf0bQ1oH0j3m2d4oKq5fX9yW8a7cB6E
+        runtime:
+          runtimes: { nodejs: full }
+          languages: [javascript]
+          portable: false
+          kinds:
+            - { name: Steps, runtimes: [nodejs], languages: [javascript], portable: false }
+            - { name: Sink, runtimes: [nodejs], languages: [javascript], portable: false }
+            - { name: Access, runtimes: [nodejs], languages: [], portable: false }
+        application: null
   - name: recorded
-    value: !cel "variables.verb == 'versions' ? steps.versions.result : steps.manifests.result"
+    value: !cel >-
+      variables.verb == 'versions' ? steps.versions.result
+        : (variables.verb == 'digest' ? steps.digests.result : steps.manifests.result)
   - name: refGate
     if: !cel "!(variables.ref in steps.recorded.result)"
     then:

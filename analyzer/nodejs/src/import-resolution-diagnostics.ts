@@ -20,7 +20,10 @@ function isRecognizedSourceShape(source: string): boolean {
 
 /** Which of the three failures this is. Kept as one function so the code and
  *  the sentence can never disagree about which cause was established. */
-function classify(e: GraphLoadError): "INVALID_IMPORT_TARGET" | "INVALID_IMPORT_SOURCE" | "IMPORT_UNRESOLVED" {
+function classify(
+  e: GraphLoadError,
+): "INVALID_IMPORT_TARGET" | "INVALID_IMPORT_SOURCE" | "IMPORT_UNRESOLVED" | "KIND_PREFIX_RESERVED" {
+  if (e.reason === "reserved-prefix") return "KIND_PREFIX_RESERVED";
   if (e.reason === "unusable-target") return "INVALID_IMPORT_TARGET";
   return isRecognizedSourceShape(e.source ?? e.url) ? "IMPORT_UNRESOLVED" : "INVALID_IMPORT_SOURCE";
 }
@@ -56,7 +59,9 @@ function messageFor(e: GraphLoadError, code: ReturnType<typeof classify>): strin
   // The target WAS obtained, so "cannot resolve" would name the wrong problem —
   // and the wrong person to fix it. The loader's message already says what was
   // fetched and why it is not importable.
-  if (code === "INVALID_IMPORT_TARGET") return `Cannot use ${via}: ${e.error.message}`;
+  if (code === "INVALID_IMPORT_TARGET" || code === "KIND_PREFIX_RESERVED") {
+    return `Cannot use ${via}: ${e.error.message}`;
+  }
   return `Cannot resolve ${via}: ${e.error.message}`;
 }
 
@@ -71,12 +76,14 @@ function messageFor(e: GraphLoadError, code: ReturnType<typeof classify>): strin
  * `INVALID_IMPORT_SOURCE` (the ref is not a module reference at all),
  * `IMPORT_UNRESOLVED` (a well-formed ref that could not be obtained), and
  * `INVALID_IMPORT_TARGET` (obtained, but not an importable library — an
- * application, no library document, or one that names no module). Collapsing
- * the last into the second would tell an author to fix a ref that is correct.
+ * application, the built-in vocabulary, no library document, or one that names
+ * no module). Collapsing the last into the second would tell an author to fix a
+ * ref that is correct. A fourth, `KIND_PREFIX_RESERVED`, is the import aliased
+ * `Telo` / `Self` or reaching a library of that name.
  *
- * The analyzer owns only this raw channel conversion; the *presentation* policy
- * — which analysis cascade to hold back for a compromised file — lives in
- * `@telorun/ide-support`'s `assembleGraphDiagnostics`.
+ * This is the raw channel conversion; the *presentation* policy — which
+ * analysis cascade to hold back for a compromised file — is
+ * `assembleGraphDiagnostics` (`graph-diagnostics.ts`).
  *
  * Each diagnostic adopts the same `data` shape as version-reconciliation
  * diagnostics — `{ filePath, path: "imports.<alias>" }` — so the shared
@@ -84,8 +91,21 @@ function messageFor(e: GraphLoadError, code: ReturnType<typeof classify>): strin
  * line with no host-specific code.
  */
 export function importResolutionDiagnostics(graph: LoadedGraph): AnalysisDiagnostic[] {
-  return graph.errors.map((e) => {
-    const filePath = e.fromSource ?? graph.entry.owner.source;
+  return importFailureDiagnostics(graph.errors, graph.entry.owner.source);
+}
+
+/**
+ * The same conversion over import failures no graph recorded — an import the
+ * graph walk never reaches, refused where it is loaded. `entrySource` is the
+ * file a failure with no `fromSource` is reported against. A failure with no
+ * `alias` has no `imports:` entry to anchor on and is located by its file alone.
+ */
+export function importFailureDiagnostics(
+  errors: readonly GraphLoadError[],
+  entrySource: string,
+): AnalysisDiagnostic[] {
+  return errors.map((e) => {
+    const filePath = e.fromSource ?? entrySource;
     const code = classify(e);
     const data: { filePath: string; path?: string; sourceLine?: number } = { filePath };
     if (e.alias) data.path = `imports.${e.alias}`;

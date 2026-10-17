@@ -1,0 +1,134 @@
+kind: Telo.Builtins
+metadata:
+  name: Telo
+  version: "0.118.0"
+  description: "Everything a Telo manifest can use without an import, for one telo release."
+  license: MIT
+$defs:
+  InvokeStep:
+    title: "Invoke step"
+    description: "Transfers control to a resource: what to call, what to pass it, whether to call it, and how to re-attempt it."
+    type: object
+    required:
+      - invoke
+    additionalProperties: false
+    properties:
+      name:
+        title: Name
+        description: "Publishes this dispatch's result as `steps.<name>.result`."
+        type: string
+      invoke:
+        title: Invoke
+        description: "Resource to invoke."
+        x-telo-topology-role: invoke
+        type: object
+        x-telo-ref:
+          kind: Telo.Executable
+          use: call
+          inputs: "/inputs"
+      inputs:
+        title: Inputs
+        description: "Values passed to the invoked resource."
+        x-telo-topology-role: inputs
+        type: object
+        additionalProperties: true
+      when:
+        title: When
+        description: "CEL guard — the dispatch is skipped when it evaluates false."
+        x-telo-topology-role: predicate
+        type: boolean
+      retry:
+        title: Retry
+        $ref: "telo://manifest#/$defs/RetryPolicy"
+        properties:
+          nonRetryable:
+            title: "Non-retryable codes"
+            description: "Error codes that end the loop immediately instead of consuming the budget. The built-in exclusions are the ones decidable without judgement — a cancellation, and the kernel's verdicts on the shape of the call; whether a DOMAIN failure is worth re-attempting only the author knows, and without this every terminal one is retried to exhaustion — for a non-idempotent target, N extra attempts at a side effect."
+            type: array
+            items:
+              type: string
+            default: []
+      timeout:
+        title: Timeout
+        description: "How long ONE attempt may take, in milliseconds; on elapse the dispatch is cancelled and the step fails ERR_STEP_TIMEOUT. Per attempt rather than for the whole retry loop, so what a single call is allowed to take does not depend on how slow the earlier attempts were. It belongs to the step rather than the target because the target does not know who is waiting."
+        type: integer
+        minimum: 1
+  RetryPolicy:
+    title: "Retry policy"
+    description: "Re-attempts a failed dispatch with exponential backoff. A domain failure is retried; a cancellation and a contract violation are not — the latter is a property of the manifest and would fail identically every time."
+    type: object
+    additionalProperties: false
+    properties:
+      attempts:
+        title: Attempts
+        description: "Re-attempts after the first try. 0 disables retrying."
+        type: integer
+        minimum: 0
+        default: 0
+      initialDelay:
+        title: "Initial delay"
+        description: "Milliseconds to wait before the first re-attempt."
+        type: integer
+        minimum: 0
+        default: 250
+      factor:
+        title: Factor
+        description: "Multiplier applied to the delay after each re-attempt."
+        type: number
+        minimum: 1
+        default: 2
+      maxDelay:
+        title: "Max delay"
+        description: "Ceiling on the delay between re-attempts, in milliseconds."
+        type: integer
+        minimum: 0
+        default: 32000
+      jitter:
+        title: Jitter
+        description: "`full` picks each delay uniformly from [0, delay], which is what stops work that failed together from re-attempting together."
+        type: string
+        enum:
+          - none
+          - full
+        default: full
+      delay:
+        title: Delay
+        description: "DEPRECATED duration string (`250ms`, `1s`) — read as `initialDelay` when that is absent. The pattern is what makes a typo a `telo check` failure instead of a silently different backoff."
+        type: string
+        pattern: "^[0-9]+(\\.[0-9]+)?\\s*(ms|s|m|h)$"
+  Step:
+    title: Step
+    description: "Single executable step: an invocation or a conditional branch."
+    type: object
+    properties:
+      name:
+        title: Name
+        description: "Unique step name."
+        type: string
+    oneOf:
+      - title: invoke
+        description: "Invokes an invocable or runnable resource."
+        $ref: "telo://manifest#/$defs/InvokeStep"
+      - title: if/then/else
+        description: "Conditional branch; executes then or else based on a boolean expression."
+        required:
+          - if
+          - then
+        properties:
+          if:
+            title: If
+            type: boolean
+          then:
+            title: Then
+            type: array
+            items:
+              $ref: "telo://manifest#/$defs/Step"
+          else:
+            title: Else
+            type: array
+            items:
+              $ref: "telo://manifest#/$defs/Step"
+layers:
+  - role: "common"
+    blob: "sha256:0e3f4a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7"
+    integrity: "sha256-DjtKGyw9Tl9gcYKTpLXG1-j5ChssPU5fYHGCk6S1xtc"

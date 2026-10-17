@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { afterEach, describe, expect, it } from "vitest";
 import { Kernel } from "../src/kernel.js";
 import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
+import { MemorySource } from "../src/manifest-sources/memory-source.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const LIB_DIR = path.resolve(here, "__fixtures__/teardown-order");
@@ -321,5 +322,49 @@ describe("reconcile — rebuild what moved, leave the rest running", () => {
     // Nothing was unwound.
     expect((await app.since()).slice(2)).toEqual([]);
     await app.kernel.teardown();
+  });
+});
+
+describe("reconcile — a failed reconciliation leaves the kernel as it was", () => {
+  const lib = (description: string): string =>
+    `kind: Telo.Library\nmetadata:\n  name: Lib\n  version: 1.0.0\n  description: ${description}\n`;
+  const app = (extraImport = "", librarySource = "memory://lib"): string =>
+    `kind: Telo.Application\nmetadata:\n  name: App\n  version: 1.0.0\nimports:\n  L: ${librarySource}\n${extraImport}`;
+  const BAD_IMPORT = "  Bad: memory://absent\n";
+
+  async function bootMemoryApp(): Promise<{ kernel: Kernel; memory: MemorySource }> {
+    const memory = new MemorySource();
+    memory.set("lib", lib("one"));
+    memory.set("app", app());
+    const kernel = new Kernel({ sources: [memory], env: {} });
+    await kernel.load("memory://app");
+    await kernel.boot();
+    return { kernel, memory };
+  }
+
+  it("still sees a library edit once a failed import edit is removed", async () => {
+    const { kernel, memory } = await bootMemoryApp();
+    memory.set("lib", lib("two"));
+    memory.set("app", app(BAD_IMPORT));
+    await expect(kernel.reconcile()).rejects.toMatchObject({ code: "ERR_INVALID_IMPORT_SOURCE" });
+
+    memory.set("app", app());
+    const outcome = await kernel.reconcile();
+
+    expect(outcome.restartRequired).toBe("an imported module changed: memory://lib/telo.yaml");
+    await kernel.teardown();
+  });
+
+  it("reports no change when a failed edit is reverted", async () => {
+    const { kernel, memory } = await bootMemoryApp();
+    // The failed graph never reaches the library, so diffing against it would
+    // read the reverted import as a library that moved.
+    memory.set("app", app("", "memory://absent"));
+    await expect(kernel.reconcile()).rejects.toMatchObject({ code: "ERR_INVALID_IMPORT_SOURCE" });
+
+    memory.set("app", app());
+
+    expect(await kernel.reconcile()).toEqual({ reinitialized: [], removed: [] });
+    await kernel.teardown();
   });
 });

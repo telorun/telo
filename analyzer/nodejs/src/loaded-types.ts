@@ -128,7 +128,10 @@ export interface LoadedGraph {
   /** YAML parse failures aggregated from every file's `parseErrors`. A file
    *  that fails to parse yields a mangled `toJSON()` projection, so these are
    *  fatal Error diagnostics — surfaced alongside `analyze()` output by every
-   *  consumer (CLI, editor, VS Code) and treated as fatal by the kernel. */
+   *  consumer (CLI, editor, VS Code) and treated as fatal by the kernel.
+   *  Also the refusal of an entry the loader cannot read as a module at all —
+   *  a `Telo.Builtins` archive (`UNDEFINED_KIND`) — which is fatal for the same
+   *  reason and holds back the same cascade. */
   parseDiagnostics: AnalysisDiagnostic[];
   /** Surface-level errors that did not abort the graph load (e.g. an import
    *  whose target failed to fetch). */
@@ -156,7 +159,10 @@ export interface GraphLoadError {
    *  author fixes in their own file. `"unusable-target"` means it WAS obtained
    *  and is not an importable library, which is a defect in the target module.
    *  Kept apart because the two call for different actions; consumers phrase
-   *  them differently rather than asserting one cause for both. */
-  reason?: "unresolved" | "unusable-target";
+   *  them differently rather than asserting one cause for both.
+   *  `"reserved-prefix"` means the import's alias, or the name of the library it
+   *  reached, is `Telo` or `Self` (`reserved-kind-prefix.ts`): registering it
+   *  would replace the built-in or the module's own kinds. */
+  reason?: "unresolved" | "unusable-target" | "reserved-prefix";
   error: Error;
 }

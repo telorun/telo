@@ -1,0 +1,20 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "LogTraceSink",
+    "description": "Tracing with no collector: writes each finished span as one structured log record through the logging pipeline, carrying its trace and span identifiers, at a configurable level — read wherever the logs already go."
+  },
+  "capability": "Telo.Sink",
+  "extends": "Telo.TraceSink",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "level": {
+        "$ref": "telo://manifest#/$defs/LogLevel",
+        "default": "info",
+        "x-telo-eval": "compile"
+      }
+    },
+    "additionalProperties": false
+  }
+}

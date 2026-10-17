@@ -4,8 +4,10 @@
 // Node's colour libraries before any of them computes a level. See color-bridge.
 import "./color-bridge.js";
 
+import { TELO_RUNTIME_VERSION } from "@telorun/kernel";
 import yargs, { type Argv } from "yargs";
 import { hideBin } from "yargs/helpers";
+import { builtinsCommand } from "./commands/builtins.js";
 import { celCommand } from "./commands/cel.js";
 import { changedCommand } from "./commands/changed.js";
 import { checkCommand } from "./commands/check.js";
@@ -20,7 +22,6 @@ import { RUN_OPTIONAL_VALUE_SHAPES, RUN_OPTIONS, runCommand } from "./commands/r
 import { runnerCommand } from "./commands/runner.js";
 import { searchCommand } from "./commands/search.js";
 import { upgradeCommand } from "./commands/upgrade.js";
-import { cliVersion } from "./distribution-versions.js";
 import { GLOBAL_OPTIONS } from "./global-options.js";
 import { configureOutput, exitOnClosedPipe, parseOutputFormat } from "./output.js";
 import { splitRunInvocation } from "./run-invocation.js";
@@ -28,6 +29,7 @@ import { splitRunInvocation } from "./run-invocation.js";
 /** Every top-level command, by name — which is also how a run is told from
  *  another command: a first positional that names none of them is a manifest. */
 const COMMANDS: Record<string, (yargs: Argv) => Argv> = {
+  builtins: builtinsCommand,
   cel: celCommand,
   changed: changedCommand,
   check: checkCommand,
@@ -72,8 +74,8 @@ cli
   .demandCommand(1, "Please specify a command or path to run")
   .strict()
   .help()
-  // The version is this package's own answer rather than yargs' lookup, which
-  // walks up from the main module to a `package.json` — a file a single-file
-  // executable does not have, where it printed "unknown".
-  .version(cliVersion() ?? "unversioned build")
+  // The telo this is: `X` for a release, `X+unreleased` for a build made while
+  // `X` is pending — the identity `Kernel.Starting` and the built-in vocabulary
+  // carry. A package number would name a release this working copy is not.
+  .version(TELO_RUNTIME_VERSION)
   .parse();

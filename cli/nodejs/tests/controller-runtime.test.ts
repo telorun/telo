@@ -1,3 +1,5 @@
+import { NEED_TYPE_CONTROLLER_ENTRY } from "@telorun/analyzer";
+import { BUILTIN_CONTROLLER_ENTRIES } from "@telorun/kernel";
 import { describe, expect, it } from "vitest";
 import {
   type KindRuntimeEntry,
@@ -69,6 +71,23 @@ describe("kindRuntimeSupport", () => {
     // runs everywhere, the second nowhere. Only the flag tells them apart.
     expect(kindRuntimeSupport([]).portable).toBe(true);
     expect(kindRuntimeSupport(["pkg:telo/local/wasm?path=./x.wasm"]).portable).toBe(false);
+  });
+
+  it("hosts a kernel candidate on exactly the kernels registering its entry", () => {
+    const kernel = { runtime: "kernel", entry: NEED_TYPE_CONTROLLER_ENTRY };
+    expect(kindRuntimeSupport([kernel])).toEqual({
+      runtimes: ["nodejs"],
+      languages: [],
+      portable: false,
+    });
+    // Read from the Node kernel's registry, not a copy: without the entry there,
+    // no kernel hosts it.
+    const withoutIt = new Set(BUILTIN_CONTROLLER_ENTRIES.filter((e) => e !== kernel.entry));
+    expect(kindRuntimeSupport([kernel], withoutIt)).toEqual({
+      runtimes: [],
+      languages: [],
+      portable: false,
+    });
   });
 });
 

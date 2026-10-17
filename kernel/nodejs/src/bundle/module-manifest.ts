@@ -13,7 +13,11 @@ import {
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments, type Document } from "yaml";
 
-const OWNER_KINDS = new Set(["Telo.Application", "Telo.Library"]);
+/** `Telo.Builtins` owns a published built-in vocabulary archive the way a module
+ *  doc owns a module: its root carries the identity a transport tags and
+ *  annotates with, and the `layers:` index publish appends. No loader reads one
+ *  as a module. */
+const OWNER_KINDS = new Set(["Telo.Application", "Telo.Library", "Telo.Builtins"]);
 
 /** Parse a manifest's YAML documents, tolerating its `!cel` / `!ref` tags. */
 export function parseManifestDocs(text: string): Document[] {
@@ -21,8 +25,8 @@ export function parseManifestDocs(text: string): Document[] {
 }
 
 /** The owner document of a manifest — the single `Telo.Application` /
- *  `Telo.Library` doc that carries its identity, `files:` / `assets:`, and the
- *  published `layers:` index. The one place that selects it, shared by every
+ *  `Telo.Library` doc (or a `Telo.Builtins` root) that carries its identity,
+ *  `files:` / `assets:`, and the published `layers:` index. The one place that selects it, shared by every
  *  reader/writer. */
 export function findOwnerDoc(docs: readonly Document[]): Document | undefined {
   return docs.find((d) => {

@@ -1,0 +1,48 @@
+kind: Telo.Library
+metadata:
+  name: VocabUser
+  version: 1.0.0
+  description: Kinds written against the built-in vocabulary.
+---
+kind: Telo.Definition
+metadata:
+  name: Steps
+  description: Runs a body of steps.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/vocab-user.mjs&local_path=./nodejs/src/index.ts#Steps
+schema:
+  type: object
+  properties:
+    steps:
+      type: array
+      items:
+        $ref: "telo://manifest#/$defs/Step"
+      x-telo-provides-zone:
+        atomic: the steps commit together or not at all
+        noSuspend: the body holds a connection
+    selector:
+      type: string
+      format: css-selector
+---
+kind: Telo.Definition
+metadata:
+  name: Sink
+  description: Ships log records to a collector.
+extends: Telo.LogSink
+controllers:
+  - pkg:telo/local/js?path=./nodejs/vocab-user.mjs&local_path=./nodejs/src/index.ts#Sink
+schema:
+  type: object
+  properties:
+    endpoint:
+      x-telo-type: Telo.Url
+---
+kind: Telo.NeedType
+metadata:
+  name: Access
+  description: Where the collector is reached.
+fields:
+  url:
+    type: string
+required: [url]

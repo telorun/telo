@@ -1,0 +1,6 @@
+# Imports a library named `Self`.
+kind: Telo.Application
+metadata:
+  name: SelfLibraryImporter
+imports:
+  Lib: ../self-named-library

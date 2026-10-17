@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "host": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

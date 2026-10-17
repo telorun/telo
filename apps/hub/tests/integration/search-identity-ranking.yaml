@@ -139,9 +139,9 @@ steps:
     inputs:
       sql: >-
         INSERT INTO modules (id, ref, transport, latest_version)
-        VALUES (9401, 'oci://rank.test/http-server', 'oci', '1.0.0'),
-               (9402, 'oci://rank.test/mcp-server', 'oci', '1.0.0'),
-               (9403, 'oci://rank.test/mcp-client', 'oci', '1.0.0')
+        VALUES (9411, 'oci://rank.test/http-server', 'oci', '1.0.0'),
+               (9412, 'oci://rank.test/mcp-server', 'oci', '1.0.0'),
+               (9413, 'oci://rank.test/mcp-client', 'oci', '1.0.0')
         ON CONFLICT DO NOTHING
   - name: seedVersions
     invoke: !ref exec
@@ -149,10 +149,10 @@ steps:
       sql: >-
         INSERT INTO module_versions
           (module_id, version, digest, module_name, description, manifest_key)
-        VALUES (9401, '1.0.0', 'sha256:test', 'HttpServer', 'Serving HTTP.', 'test'),
-               (9402, '1.0.0', 'sha256:test', 'McpServer',
+        VALUES (9411, '1.0.0', 'sha256:test', 'HttpServer', 'Serving HTTP.', 'test'),
+               (9412, '1.0.0', 'sha256:test', 'McpServer',
                 'Exposes an application to rankprobe clients over HTTP, as a server.', 'test'),
-               (9403, '1.0.0', 'sha256:test', 'McpClient',
+               (9413, '1.0.0', 'sha256:test', 'McpClient',
                 'Talks to rankprobe servers over HTTP: a server is reached by its URL.', 'test')
         ON CONFLICT DO NOTHING
   # The other modules' descriptions use the query's words more often than the
@@ -162,11 +162,11 @@ steps:
     inputs:
       sql: >-
         INSERT INTO resource_kinds (module_id, version, name, capability, exported, description, portable)
-        VALUES (9401, '1.0.0', 'Server', 'Telo.Service', TRUE, 'Listens on a port.', FALSE),
-               (9401, '1.0.0', 'Api', 'Telo.Mount', TRUE, 'A router of routes.', FALSE),
-               (9402, '1.0.0', 'HttpEndpoint', 'Telo.Mount', TRUE,
+        VALUES (9411, '1.0.0', 'Server', 'Telo.Service', TRUE, 'Listens on a port.', FALSE),
+               (9411, '1.0.0', 'Api', 'Telo.Mount', TRUE, 'A router of routes.', FALSE),
+               (9412, '1.0.0', 'HttpEndpoint', 'Telo.Mount', TRUE,
                 'Serves tools over HTTP to a rankprobe client; an HTTP server mounts it. HTTP server.', FALSE),
-               (9403, '1.0.0', 'HttpClient', 'Telo.Invocable', TRUE,
+               (9413, '1.0.0', 'HttpClient', 'Telo.Invocable', TRUE,
                 'Connects to an HTTP server over HTTP; the HTTP server issues a session. HTTP server.', FALSE)
         ON CONFLICT DO NOTHING
   - name: named

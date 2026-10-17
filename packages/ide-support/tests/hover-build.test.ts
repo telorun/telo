@@ -1,5 +1,5 @@
 import type { ResourceDefinition } from "@telorun/sdk";
-import { AnalysisRegistry } from "@telorun/analyzer";
+import { AnalysisRegistry, capabilityDescription } from "@telorun/analyzer";
 import { describe, expect, it } from "vitest";
 import { buildHover } from "../src/hover/build-hover.js";
 
@@ -85,11 +85,18 @@ describe("buildHover", () => {
     expect(hover?.contents).toContain("Dependency map");
   });
 
-  it("renders capability docs on a capability value", () => {
+  it("renders a capability value with its roster entry's description", () => {
     const text = ["kind: Telo.Definition", "metadata:", "  name: Thing", "capability: Telo.Service"].join("\n");
     const pos = at(text, "Telo.Service");
     const hover = buildHover(text, pos.line, pos.character, registry);
-    expect(hover?.contents).toContain("Long-lived");
+    expect(hover?.contents).toBe(`**Telo.Service**\n\n${capabilityDescription("Telo.Service")}`);
+  });
+
+  it("does not describe a capability no author may declare as if it were one", () => {
+    const text = ["kind: Telo.Definition", "metadata:", "  name: Thing", "capability: Telo.Template"].join("\n");
+    const pos = at(text, "Telo.Template");
+    const hover = buildHover(text, pos.line, pos.character, registry);
+    expect(hover?.contents ?? "").not.toContain(capabilityDescription("Telo.Template")!);
   });
 
   it("renders the reference line for a structured kind-list slot", () => {

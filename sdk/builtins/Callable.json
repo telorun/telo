@@ -1,0 +1,10 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "Callable",
+    "description": "A function reached from an expression through a module name: synchronous call(args) against a declared parameter list and result. Evaluated inside an expression with no caller frame, so a failure fails the evaluation rather than being declared as a thrown error."
+  },
+  "capability": "Telo.Callable",
+  "declarable": true,
+  "throwsAllowed": false
+}

@@ -1,7 +1,7 @@
 import type { ResourceDefinition } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { refuseThrowsOutsideCeiling } from "../src/controllers/resource-definition/throws-ceiling-guard.js";
-import { validateResourceAbstract, validateResourceDefinition } from "../src/manifest-schemas.js";
+import { createKindDocument } from "./create-kind-document.js";
 
 const codes = (...names: string[]) =>
   Object.fromEntries(names.map((n) => [n, { description: n }]));
@@ -42,24 +42,37 @@ describe("an ancestor's throws: is a ceiling", () => {
   });
 });
 
+/** What the kernel refuses where it creates a `Telo.Definition` /
+ *  `Telo.Abstract`: the document against its built-in entry's schema. */
+const refusedBySchema = (message: RegExp) => ({
+  code: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
+  message: expect.stringMatching(message),
+});
+
 describe("throws: on a Telo.Abstract", () => {
-  it("accepts a literal list on a dispatchable capability", () => {
-    expect(validateResourceAbstract(lookup)).toBe(true);
+  it("accepts a literal list on a dispatchable capability", async () => {
+    expect(await createKindDocument(lookup)).toBeUndefined();
   });
 
-  it("refuses inherit, which has no body to come from", () => {
-    expect(validateResourceAbstract({ ...lookup, throws: { inherit: true } })).toBe(false);
+  it("refuses inherit, which has no body to come from", async () => {
+    expect(await createKindDocument({ ...lookup, throws: { inherit: true } })).toMatchObject(
+      refusedBySchema(/'inherit' is not allowed/),
+    );
   });
 
-  it("refuses a list on a capability with no caller to catch it, a third party's included", () => {
-    for (const capability of ["Telo.Service", "Acme.Custom"]) {
-      expect(validateResourceAbstract({ ...lookup, capability })).toBe(false);
-    }
+  it("refuses a list on a capability with no caller to catch it", async () => {
+    expect(await createKindDocument({ ...lookup, capability: "Telo.Service" })).toMatchObject(
+      refusedBySchema(/\/throws is not allowed here/),
+    );
   });
 
-  it("refuses inherit even set to false, and a malformed code", () => {
-    expect(validateResourceAbstract({ ...lookup, throws: { inherit: false } })).toBe(false);
-    expect(validateResourceAbstract({ ...lookup, throws: { codes: { lowercase_code: {} } } })).toBe(false);
+  it("refuses inherit even set to false, and a malformed code", async () => {
+    expect(await createKindDocument({ ...lookup, throws: { inherit: false } })).toMatchObject(
+      refusedBySchema(/'inherit' is not allowed/),
+    );
+    expect(
+      await createKindDocument({ ...lookup, throws: { codes: { lowercase_code: {} } } }),
+    ).toMatchObject(refusedBySchema(/lowercase_code/));
   });
 });
 
@@ -68,15 +81,25 @@ describe("throws: on a Telo.Definition", () => {
     kind: "Telo.Definition",
     metadata: { name: "Store" },
     controllers: ["pkg:npm/store@1.0.0"],
-    throws: { codes: codes("ERR_DOWN") },
+    throws: { codes: codes("ERR_NOT_FOUND") },
     ...fields,
   });
 
-  it("refuses a list on a third party's capability, as telo check does", () => {
-    expect(validateResourceDefinition(definition({ capability: "Acme.Custom" }))).toBe(false);
+  it("refuses a list on a capability with no caller to catch it, as telo check does", async () => {
+    expect(await createKindDocument(definition({ capability: "Telo.Mount" }))).toMatchObject(
+      refusedBySchema(/\/throws is not allowed here/),
+    );
   });
 
-  it("admits a list where the capability is inherited through extends", () => {
-    expect(validateResourceDefinition(definition({ extends: "Lib.Lookup" }))).toBe(true);
+  it("admits a list where the capability is inherited through extends", async () => {
+    const declared = `kind: Telo.Abstract
+metadata:
+  name: Lookup
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_NOT_FOUND: { description: ERR_NOT_FOUND }
+`;
+    expect(await createKindDocument(definition({ extends: "Lib.Lookup" }), declared)).toBeUndefined();
   });
 });

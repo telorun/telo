@@ -56,7 +56,10 @@ being linearized into a chain.
   kind's identity is `(location ref + suffix)`; the prefix in a manifest's
   `kind:` field is the importer's own alias, so hits carry the bare suffix plus
   the exact module ref. Only **exported** kinds are searchable — a kind a library
-  gates out of `exports.kinds` is not importable, so it is never returned.
+  gates out of `exports.kinds` is not importable, so it is never returned. A
+  `Telo.NeedType` declares a kind too (one a module can ask for), and is indexed
+  as one; so is the built-in vocabulary, tracked at `BUILTINS_REF` (see
+  Registration).
 - **Indexes a library's exported instances too** (`module_resources`). A public
   surface is two lists: `exports.kinds` (kinds you may instantiate) and
   `exports.resources` (ready-made singletons referenced as
@@ -154,13 +157,15 @@ HTTP twin.
   are grouped under the module that owns them, so a module's ref, version, name
   and description are stated once; a member that says nothing is left out
   (`entry` unless the hit is not a kind, `extends`, `deprecated`, `instances`,
-  `siblings`, `runtimes` on a portable hit). The category facet is not
+  `siblings`, `runtimes` on a portable hit or one from the built-in vocabulary,
+  whose module says `builtin: true`). The category facet is not
   repeated on each response: `list_categories` serves it, and a refused
   `category` still names the real slugs. `categoryFilterDropped` appears only
   when it is true. A call with neither `query` nor `queries` is an error result,
   and a `limit` outside 1–50 is refused as `-32602`.
 - `get_kinds` takes `kinds: [{ ref, kind, version? }]` across any number of
-  modules and answers in text: per module, the line to write under `imports:`
+  modules, and an optional `telo` version, and answers in text: per module, the
+  line to write under `imports:`
   (`<Name>: <ref>@<version>#<integrity>` for an OCI ref, the bare ref for any
   other transport), then each asked kind's document cut verbatim out of the
   cached `telo.yaml` — with every named shape and local parent it references,
@@ -172,11 +177,24 @@ HTTP twin.
   latest tracked one when the hub does not hold that version. A
   name the module does not define is reported beside the kinds it exports; a
   call naming only untracked refs is an error result. An alias-qualified name
-  (`Http.Server`) is read by its suffix.
+  (`Http.Server`) is read by its suffix. **Built-ins are read at one telo
+  version** — `telo`, else a version asked for on the built-in vocabulary's own
+  ref, else the latest tracked — because a `Telo.<Kind>` reference means the
+  telo that runs the manifest, not the declaring module's floor: the
+  vocabulary's own kinds (asked for, or reached as a `Telo.<Kind>` parent) are
+  headed by a `# Telo — built in to telo <X>: write no import; …` line in
+  place of an import line, and the answer closes with every schema fragment, value type, zone
+  attribute and format a returned document names, transitively, each printed
+  exactly as `telo builtins <name>` prints it. A `telo` the hub tracks no
+  vocabulary at is refused as `-32602` (`ERR_UNKNOWN_TELO_VERSION`), naming the
+  versions it does track. The argument is a release as `telo --version` prints
+  it (`X`); a working copy prints `X+unreleased`, which no hub ever tracks, so
+  the tool text sends that caller to `telo builtins <names>` instead.
 - `list_libraries` takes an optional `publisher` (`ghcr.io/telorun`) and lists
   every tracked library at its latest version: `ref`, `name`, a `summary` (the
   first sentence of its description, at most 160 characters), `kinds` and
-  `instances`. Applications and deprecated modules are left out.
+  `instances`, and `builtin: true` on the built-in vocabulary. Applications and
+  deprecated modules are left out.
 
 **The endpoint also serves three authoring guides as argument-less tools** —
 `guide_build_ui`, `guide_write_integration_tests` and `guide_design_library`,
@@ -378,9 +396,12 @@ consumer reads its absence as "no pin available", never as an error.
 
 Search hits carry both grouping axes: `categories` on the module and on each
 kind — each entry a `{ slug, label }` pair, so a chip prints the label and a
-click filters by the slug — and `extends: { ref, kind }` on a kind. An empty `extends.ref` with a
-non-empty `extends.kind` means the contract is a `Telo.*` built-in abstract,
-which belongs to no published module. A module that implements another's
+click filters by the slug — and `extends: { ref, kind }` on a kind. The prefix
+of `extends:` resolves through the declaring manifest: an import alias to that
+import's ref, `Self` and the module's own `metadata.name` to the module itself,
+and `Telo` to the built-in vocabulary's ref (`BUILTINS_REF`), so a kind
+extending `Telo.LogSink` names a contract the hub tracks like any other. A
+module that implements another's
 abstract stays a top-level result in its own right — the hub lists it both
 under its categories and under `/implementations` of the contract; nesting one
 inside the other is a client's presentation choice, not the index's.
@@ -402,6 +423,10 @@ carries `runtime.runtimes` (every kernel with at least partial reach) and
 `runtime.full` (the subset covering every kind), so a filter reads one list and
 a UI still renders "Rust (partial)".
 
+A need type is reported as the kernels that host it: its kind is served by the
+kernel's own need-type controller, so `runtimes` names every kernel that
+registers that controller (`nodejs` today) and it is never `portable`.
+
 A kind that declares no controllers is `portable: true` with an empty
 `runtimes` — no kernel constraint applies, so it satisfies every runtime
 filter. That is a flag rather than a list of today's kernels on purpose:
@@ -415,6 +440,13 @@ the mapping from a controller PURL to the kernels that can load it is loader
 knowledge; a second copy in this app would drift silently the day a loader
 lands.
 
+The built-in vocabulary has **no runtime facts**: `telo module manifest --json`
+reports its `runtime` as `null`, since the runtime itself implements those kinds
+and an absent PURL would otherwise read as portable. Its version rows store no
+`runtimes`, its kinds are neither portable nor claimed by a kernel (so a
+`runtime` filter does not select them), and its `search_resources` hits carry no
+`runtimes`.
+
 ### Deprecation and provenance
 
 A module or kind may declare `metadata.deprecated: { reason, replacedBy? }`, and
@@ -422,8 +454,8 @@ hits carry it as `deprecated: { reason, replacedBy }` — `reason: ""` meaning n
 deprecated, since a fixed response shape is what lets typed clients consume this
 without probing for optional keys. A kind's replacement is resolved through the
 declaring manifest's own `imports:` map into `{ ref, kind }`, exactly as
-`extends` is, so it is a target a consumer can follow; an empty `ref` with a
-non-empty `kind` names a kernel built-in. A module's replacement is a plain
+`extends` is, so it is a target a consumer can follow — a `Telo.<Kind>`
+replacement resolving to the built-in vocabulary's ref. A module's replacement is a plain
 module ref, and is optional — a module superseded by a kernel built-in has no
 module to point at, so the reason carries the instruction.
 
@@ -584,8 +616,9 @@ modules than it did.
 | `ALLOW_LOCAL_REFS` | `true` lets `SEED_REFS` name a `./`-relative module directory read from the hub's own disk (default `false`; set by the compose stack) |
 | `TRACK_CRON` | When the reconcile pass runs, as a 5-field cron in UTC (default `*/15 * * * *`) |
 | `TRACK_ENABLED` | `false` disables the periodic reconcile (tests drive `Ingest.scheduleDueVersions` directly) |
-| `INGEST_REV` | Revision of the ingest pipeline (default `6`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
-| `TELO_COMMAND` | The command the origin reads run, as a JSON array: a program and its leading arguments (default `["telo"]`). It must be the same telo generation as the hub, since ingest reads that CLI's `module manifest --json` contract |
+| `BUILTINS_REF` | Where the built-in vocabulary is published, one version per telo release (default `oci://ghcr.io/telorun/telo`). Registered on every boot before `SEED_REFS`, and the only ref a `Telo.Builtins` root is indexed or registered at |
+| `INGEST_REV` | Revision of the ingest pipeline (default `9`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
+| `TELO_COMMAND` | The command the origin reads run, as a JSON array: a program and its leading arguments (default `["telo"]`). It must be the same telo generation as the hub, since ingest reads that CLI's `module manifest --json` contract — including how it reports a `Telo.Builtins` root |
 | `REGISTER_RATE_LIMIT` | Max `POST /register` calls per client IP per window (default `5`) |
 | `REGISTER_RATE_WINDOW` | Sliding window for that limit (default `10m`) |
 | `TELO_EGRESS` | `public-only` refuses origin fetches to private/loopback/link-local hosts (set in the production image) |
@@ -749,6 +782,37 @@ from an OCI ref in ways worth knowing:
 Content changes are still caught: each track re-checks the digest and re-ingests
 when it moves, so the index and cache never drift from what the URL serves.
 
+### The built-in vocabulary
+
+Every telo release publishes its built-in vocabulary — the `Telo.Builtins`
+archive (`kernel/specs/builtin-vocabulary.md`): the kinds that need no import,
+the schema fragments, value types, zone attributes and formats they name — at
+`oci://ghcr.io/telorun/telo@<release>`. The hub tracks it like a module at
+`BUILTINS_REF`, which it registers on every boot, before `SEED_REFS`: a
+deployment that left it out of the seed would otherwise never index it.
+
+- **Only there.** Registration is open, so nobody else may publish "built-in"
+  kinds: ingest records a `Telo.Builtins` root at `BUILTINS_REF` as root kind
+  `Builtins` and refuses it at any other ref (`INGEST_ROOT_KIND_UNSUPPORTED`,
+  naming the ref it is indexed at), and `POST /register` admits one only at
+  `BUILTINS_REF`, where it answers as an already-tracked module.
+- **Indexed as kinds**, so `search_resources` finds `Telo.ConsoleSink` for
+  "write log records somewhere". Its hits and its `list_libraries` entry carry
+  `builtin: true` (`module.builtin` on the HTTP search routes): its kinds are
+  written `Telo.<Kind>`, with no import.
+- **No runtime facts**, see Runtime reach.
+- **Read at a telo version.** `get_kinds` resolves every built-in it returns at
+  one telo version — its `telo` argument, or the latest tracked — because a
+  built-in reference means the telo that runs the manifest. The fragments,
+  value types, zone attributes and formats are cut out of the cached archive by
+  the renderer's fixed layout and printed exactly as `telo builtins <name>`
+  prints them; the closure over what each names is a recursive query.
+- **The origin reads it with the hub's own telo.** `telo module manifest --json`
+  reports a `Telo.Builtins` root with `runtime: null` and `application: null`
+  from the release that ships the archive on; the production image's telo is
+  the CLI of the commit it is built from, and the development image runs the
+  checkout's, so `TELO_COMMAND` meets that floor by construction.
+
 ### `local` transport — development only
 
 A seed entry of the form `./modules/tesseract` names a module directory on the
@@ -806,6 +870,18 @@ UPDATE version_ingest SET claimed_at = NULL WHERE module_id = $1 AND version = $
 Clearing `last_error` alone does **not** make a version due — the digest still
 matches and the revision is still current. Raising `INGEST_REV` re-ingests
 everything, once.
+
+Revision `9` stores a need type's runtime reach as `telo module manifest
+--json` reports it — the kernels that host the need-type controller — where `8`
+stored it as no kernel, so a `runtime` filter hid every need type; deploying it
+re-ingests every tracked version once.
+
+Revision `8` indexes each module's `Telo.NeedType` documents as kinds, resolves
+an `extends:` / `replacedBy` prefix of `Telo` to `BUILTINS_REF` and a module's
+own `metadata.name` to the module itself (where `Telo` used to leave the ref
+empty), records the built-in vocabulary's root kind as `Builtins`, and stores no
+runtime facts for a payload reporting `runtime: null`; deploying it re-ingests
+every tracked version once.
 
 Revision `7` records what each version imports (`module_imports`), so deploying
 it re-ingests every tracked version once.

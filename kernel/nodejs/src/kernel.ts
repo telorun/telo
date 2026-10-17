@@ -40,6 +40,7 @@ import {
   type DefResolver,
   type DiffEntry,
   type LoadedGraph,
+  type LoadedModule,
   type ManifestSource,
   type ModuleSource,
   type SourceEntry,
@@ -58,6 +59,7 @@ import {
 } from "./invocation-contract-binding.js";
 import {
   readProjectionRef,
+  reservedModuleNameMessage,
   scopeSlotProblems,
   type NamedContractShape,
   type ProjectionScope,
@@ -85,6 +87,7 @@ import {
 } from "@telorun/sdk";
 import { TELO_RUNTIME_VERSION } from "./telo-runtime-version.js";
 import { ControllerRegistry } from "./controller-registry.js";
+import { loadBuiltinControllers } from "./builtin-controllers.js";
 import { EventBus } from "./events.js";
 import { enableBigIntJson } from "./bigint-json.js";
 import { createLockedEnv, hostEnv, lockControllerEnv } from "./host-env.js";
@@ -116,6 +119,7 @@ import { ambientInvokeContext, EvaluationContext } from "./evaluation-context.js
 import { ModuleContext } from "./module-context.js";
 import { bindModuleFunctions, type FunctionResolutionHost } from "./module-functions.js";
 import { refuseInvalidCallableInstance } from "./controllers/resource-definition/callable-guard.js";
+import { refuseUndeclarableCapability } from "./controllers/resource-definition/kind-document-guard.js";
 import { decodeResourceLiterals, type LiteralDecodingHost } from "./resource-literal-decoding.js";
 import { bindFunction, functionContextOf } from "./function-binding.js";
 import { ResourceContextImpl } from "./resource-context.js";
@@ -191,6 +195,8 @@ import {
 import { policyFingerprint } from "./runtime-registry.js";
 import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
 import { staticDiagnosticToRuntime } from "./static-analysis-diagnostics.js";
+import { importLoadFailure } from "./import-load-failure.js";
+import { refuseReservedKindPrefix } from "./reserved-kind-prefix.js";
 
 /** Walks up the EvaluationContext parent chain to the nearest enclosing
  *  ModuleContext and returns its controller policy (or undefined). Used to
@@ -499,14 +505,18 @@ export class Kernel implements IKernel {
   }
 
   async loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]> {
+    return flattenLoadedModule(await this.loadAdoptedModule(url, options));
+  }
+
+  private async loadAdoptedModule(url: string, options?: LoadOptions): Promise<LoadedModule> {
     const lm = await this.loader.loadModule(url, options);
     await this.celModules?.adopt(lm);
-    return flattenLoadedModule(lm);
+    return lm;
   }
 
   async loadManifests(url: string): Promise<ResourceManifest[]> {
     const graph = await this.loader.loadGraph(url, { desugarImports: true, migrate: true });
-    if (graph.errors.length > 0) throw graph.errors[0].error;
+    if (graph.errors.length > 0) throw importLoadFailure(graph);
     return flattenForAnalyzer(graph);
   }
 
@@ -532,9 +542,10 @@ export class Kernel implements IKernel {
       registry: this.registry,
       loadTimeManifests: this.loadTimeManifests,
       entryModule: this._appName,
+      loadModule: (url, options) => this.loadAdoptedModule(url, options),
       loadLibrary: async (url) => {
         const graph = await this.loader.loadGraph(url, { desugarImports: true, migrate: true });
-        if (graph.errors.length > 0) throw graph.errors[0].error;
+        if (graph.errors.length > 0) throw importLoadFailure(graph);
         return { manifests: flattenForAnalyzer(graph), moduleDocuments: collectModuleDocuments(graph) };
       },
     };
@@ -600,66 +611,17 @@ export class Kernel implements IKernel {
     // AnalysisRegistry's underlying DefinitionRegistry already seeds KERNEL_BUILTINS on construction.
     for (const def of this.registry.builtinDefinitions()) this.controllers.registerDefinition(def);
 
-    this.controllers.registerController(
-      "Telo.Definition",
-      await import("./controllers/resource-definition/resource-definition-controller.js"),
-    );
-    this.controllers.registerController(
-      "Telo.Abstract",
-      await import("./controllers/resource-definition/abstract-controller.js"),
-    );
-    // A need type registers the kind its fulfilments are, served by the
-    // kernel's need-type controller.
-    this.controllers.registerController(
-      "Telo.NeedType",
-      await import("./controllers/need/need-type-controller.js"),
-    );
+    for (const [entry, controller] of await loadBuiltinControllers()) {
+      this.controllers.registerController(entry, controller);
+    }
     // The need types the kernel declares itself (`Telo.PublicUrl`, …) are served
-    // by the same controller, registered here rather than by a document.
+    // by the need-type controller, registered here rather than by a document.
     for (const def of this.registry.builtinDefinitions()) {
       const shape = needTypeOf(def);
       if (!shape) continue;
       const kind = `${def.metadata.module}.${def.metadata.name}`;
       this.controllers.registerController(kind, needFulfilmentController(kind, shape));
     }
-    const moduleController = await import("./controllers/module/module-controller.js");
-    this.controllers.registerController("Telo.Application", moduleController);
-    this.controllers.registerController("Telo.Library", moduleController);
-    this.controllers.registerController(
-      "Telo.Import",
-      await import("./controllers/module/import-controller.js"),
-    );
-    // The mandatory sinks live in the kernel rather than in a standard-library
-    // module: §16 requires every conforming runtime to implement both, so
-    // shipping them as an installable module would make conformance depend on
-    // whether that module happened to be installed.
-    this.controllers.registerController(
-      "Telo.ConsoleSink",
-      await import("./controllers/logging/console-sink-controller.js"),
-    );
-    this.controllers.registerController(
-      "Telo.FileSink",
-      await import("./controllers/logging/file-sink-controller.js"),
-    );
-    // The trace sink every runtime can offer with no collector: spans as log
-    // records, read wherever the logs already go.
-    this.controllers.registerController(
-      "Telo.LogTraceSink",
-      await import("./controllers/tracing/log-trace-sink-controller.js"),
-    );
-    // Data shapes are a kernel concern for the same reason: every kind with an
-    // invocation contract declares one, so `inputType:` must be writable without
-    // first importing a module.
-    this.controllers.registerController(
-      "Telo.JsonSchema",
-      await import("./controllers/type/json-schema-controller.js"),
-    );
-    // A function written in CEL, built in for the same reason: declaring one must
-    // not require importing a module that provides the kind.
-    this.controllers.registerController(
-      "Telo.Function",
-      await import("./controllers/function/function-controller.js"),
-    );
   }
 
   /**
@@ -846,22 +808,31 @@ export class Kernel implements IKernel {
     // file the previous graph read is dropped before it is asked for again.
     for (const source of graphFileSources(previousGraph)) this.loader.forget(source);
 
-    const produced = await this.produceManifests(entryUrl, produceOptions);
-    if (!produced) throwInvalidState("reconcile", "produced no manifests");
-
     // `produceManifests` writes the kernel's static half as it goes — the graph,
     // the flattened set, the module artifacts, the definition registry. Those
     // writes describe manifests that are only INSTALLED further down, so every
-    // exit before that point puts them back: a caller told to restart would
-    // otherwise hold a kernel whose static half had already moved, and a second
-    // reconcile would diff the new set against itself and report no change
-    // while the live instances are still the originals.
+    // exit before that point puts them back, a failed production included: a
+    // caller told to restart would otherwise hold a kernel whose static half had
+    // already moved, and a second reconcile would diff the new set against itself
+    // and report no change while the live instances are still the originals.
     const restoreProduced = (): void => {
       this._loadedGraph = previousGraph;
       this.staticManifests = previousManifests;
       this.loadTimeManifests = previousLoadTimeManifests;
       this._declarationSignatures = previousSignatures;
     };
+
+    let produced: Awaited<ReturnType<Kernel["produceManifests"]>>;
+    try {
+      produced = await this.produceManifests(entryUrl, produceOptions);
+    } catch (error) {
+      restoreProduced();
+      throw error;
+    }
+    if (!produced) {
+      restoreProduced();
+      throwInvalidState("reconcile", "produced no manifests");
+    }
     const halted = (reason: string): ReconcileOutcome => {
       restoreProduced();
       return { reinitialized: [], removed: [], restartRequired: reason };
@@ -1044,13 +1015,13 @@ export class Kernel implements IKernel {
     // Telo.Import manifests before discovery walks the graph, so inline imports
     // resolve identically to authored Telo.Import docs.
     const analysisGraph = await this.loader.loadGraph(sourceUrl, { desugarImports: true, migrate: true });
-    if (analysisGraph.errors.length > 0) {
-      throw analysisGraph.errors[0].error;
-    }
     // Recorded before the first throw below: the graph is what a renderer
-    // resolves a static failure's `origin` against, and a parse error is
-    // exactly the failure that most needs to name a line.
+    // resolves a static failure's `origin` against, and a parse error or a
+    // failed import is exactly the failure that most needs to name a line.
     this._loadedGraph = analysisGraph;
+    if (analysisGraph.errors.length > 0) {
+      throw importLoadFailure(analysisGraph);
+    }
     // A YAML parse failure yields a mangled manifest tree — fatal before any
     // controller sees it, and more fundamental than a version conflict.
     if (analysisGraph.parseDiagnostics.length > 0) {
@@ -1400,6 +1371,7 @@ export class Kernel implements IKernel {
           // the gap passed `telo check` and failed at boot with "no module
           // imported with alias '<name>'".
           if (appName) {
+            refuseReservedKindPrefix(appName, () => reservedModuleNameMessage(appName));
             this.rootContext.registerUngatedAlias("Self", appName);
             this.rootContext.registerUngatedAlias(appName, appName);
           }
@@ -2345,6 +2317,10 @@ export class Kernel implements IKernel {
     // built-ins (like `Telo`) remain visible from inside imported libraries; sibling
     // modules stay isolated because they're not in the chain.
     const resolvedKind = (findEnclosingModule(evalContext) ?? this.rootContext).resolveKind(kind);
+
+    // A kind document names a lifecycle role the roster holds, or nothing else
+    // about it is worth reading — refused before its schema is.
+    refuseUndeclarableCapability(resource);
 
     // A callable instance answers for the signature and determinism claim it
     // declares — the rules `telo check` reports, read rather than restated.

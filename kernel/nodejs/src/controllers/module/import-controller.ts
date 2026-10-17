@@ -4,6 +4,7 @@ import {
   foldIntegrity,
   isInjectedDeclaration,
   isKindDocument,
+  loadImportTarget,
   needSupplyOf,
   needTypeOf,
   parseExportEntry,
@@ -13,6 +14,7 @@ import {
   readSuppliedNeeds,
   readSuppliedResources,
   membersSlotOf,
+  reservedImportAliasMessage,
 } from "@telorun/analyzer";
 import type { ParsedExportEntry } from "@telorun/analyzer";
 import type { ResourceInstance, ResourceManifest } from "@telorun/sdk";
@@ -22,9 +24,11 @@ import type { BuiltinControllerContext } from "../../internal-context.js";
 import { buildScopeConfig, type LoggingManifestBlock } from "../../logging/kernel-logging.js";
 import { membersRefusal, settleMembersValue, type SchemaAccepts } from "../../members-values.js";
 import { settleImportInputs } from "./import-inputs.js";
+import { importFailure } from "../../import-load-failure.js";
+import { refuseReservedKindPrefix } from "../../reserved-kind-prefix.js";
 import { ModuleContext } from "../../module-context.js";
 import { isDefaultPolicy, normalizeRuntime } from "../../runtime-registry.js";
-import { resolveLibraryScope } from "./library-scope.js";
+import { loadLibraryTarget, resolveLibraryScope } from "./library-scope.js";
 import { isDefinitionRegistered } from "../resource-definition/registered-definitions.js";
 import { isNeedFulfilment, needFulfilment, type NeedFulfilment } from "../../need-fulfilment.js";
 import { environmentNeed } from "./environment-needs.js";
@@ -41,6 +45,7 @@ export async function create(
   ctx: BuiltinControllerContext,
 ): Promise<ResourceInstance> {
   const alias = resource.metadata.name as string;
+  refuseReservedKindPrefix(alias, () => reservedImportAliasMessage(alias));
 
   // Resolve the instances this import hands DOWN to the target library's
   // declared `resources:` inputs BEFORE any loading happens. A borrowed
@@ -56,10 +61,6 @@ export async function create(
   const supplies = resolveNeedSupplies(resource, ctx);
 
   const rawSource: string = resource.module ?? resource.source;
-  // A directly-authored Telo.Import may carry integrity as a sibling field;
-  // fold it into the ref as a `#sha256-...` fragment (the desugared inline
-  // imports already inline it) so the source chain verifies the fetched bytes.
-  const moduleSource: string = foldIntegrity(rawSource, resource.integrity);
 
   // Resolve relative source paths against the manifest's OWN file URL (stamped onto
   // `metadata.source` by the loader), not the parent module context's source. When a
@@ -69,22 +70,31 @@ export async function create(
   // manifests that somehow lack a stamped source keeps the old behaviour for edge cases.
   const base = (resource.metadata?.source as string | undefined) ?? ctx.moduleContext.source;
 
-  // Validate the imported module and all its transitive imports before loading for runtime.
-  // loadManifests() follows Telo.Import chains so definitions from sub-imports are present,
-  // preventing false UNDEFINED_KIND errors for kinds that come from the module's own imports.
+  // The loader's own per-import step, so an import the graph walk never reached
+  // (one declared in a `with:` scope) is resolved, loaded and refused exactly as
+  // one it did reach. No alias is handed over: this one is guarded above, and an
+  // import no `imports:` entry declares has no entry to locate its refusal at.
   //
-  // Route URL resolution through the kernel/loader's own helper rather than
-  // a hand-rolled `new URL(...).toString()`. For LocalFileSource the
-  // outputs match; for any custom `ManifestSource` with a non-trivial
-  // `resolveRelative`, only this path produces the canonical URL the
-  // loader keyed its caches under — without which fast paths like
-  // `isImportValidatedAtLoad` silently miss.
-  const resolvedUrl = ctx.resolveImportUrl(base, moduleSource);
+  // Resolution goes through the kernel's helper — the loader's, plus the version
+  // overrides of the load — so the URL is the canonical one the loader keyed
+  // its caches under, without which `isImportValidatedAtLoad` silently misses.
+  // A directly-authored Telo.Import may carry integrity as a sibling field; it is
+  // folded into the ref as a `#sha256-...` fragment (the desugared inline imports
+  // already inline it) so the source chain verifies the fetched bytes.
+  const loaded = await loadImportTarget(
+    { fromSource: base, source: rawSource },
+    {
+      resolve: (from, source) => ctx.resolveImportUrl(from, foldIntegrity(source, resource.integrity)),
+      load: (url) => loadLibraryTarget(url, ctx),
+    },
+  );
+  if ("failure" in loaded) throw importFailure([loaded.failure], base);
+  const { resolvedUrl, identity } = loaded;
 
   // A `lifecycle: shared` library is instantiated ONCE per application. Only a
   // shared library is ever registered, so the registry HIT is itself the answer
-  // to "is this one shared" — which is what makes a second import of it cost no
-  // fetch, no parse and no analysis pass at all.
+  // to "is this one shared" — and the target is cached per URL, so a second
+  // import of it costs no fetch, no parse and no analysis pass at all.
   const registry = sharedLibraries(ctx.moduleContext);
   const alreadyShared = registry.get(resolvedUrl);
   if (alreadyShared) {
@@ -100,19 +110,8 @@ export async function create(
   // it. Normalization still runs per site: it clones the manifests, and Phase-5
   // injection mutates a registered resource's ref fields in place, so two import
   // sites must never share manifest object identity.
-  const scope = await resolveLibraryScope(resolvedUrl, ctx);
+  const scope = await resolveLibraryScope(resolvedUrl, identity.name, ctx);
   const { analyzer } = ctx.libraryAnalysisHost();
-  // Import targets must be Telo.Library — Applications are run directly, not imported.
-  if (!scope.registry) {
-    const applicationManifest = scope.rawManifests.find((m: any) => m.kind === "Telo.Application");
-    if (applicationManifest) {
-      throw new RuntimeError(
-        "ERR_MANIFEST_VALIDATION_FAILED",
-        `Telo.Import target '${resource.source as string}' is a Telo.Application. Only Telo.Library modules may be imported. Applications are run directly, not imported.`,
-      );
-    }
-    throw new Error(`No Telo.Library manifest found in source "${resource.source as string}"`);
-  }
   const libraryRegistry = scope.registry;
   const manifests = analyzer.normalize(
     scope.rawManifests,

@@ -167,7 +167,7 @@ variables:
     # default-command hole: `telo ./x.yaml` with no verb means `run ./x.yaml`,
     # and a bare path matches no entry here, so it is rejected rather than
     # silently executed.
-    default: [check, cel, module, search]
+    default: [check, cel, module, search, builtins]
   allowManifestRuns:
     type: boolean
     # Whether the agent may EXECUTE a manifest, through the `run_manifest` tool.
@@ -5360,6 +5360,12 @@ outputs:
 # The general `telo` CLI, exposed as one tool. The agent supplies the argv after
 # the program name; `variables.teloVerbs` decides which subcommands it may name.
 #
+# One argv is answered whatever that list holds: exactly `["--version"]`, the
+# identity query (`X`, or `X+unreleased` for a working copy) the agent asks
+# before passing a version to the hub's `get_kinds`. It is admitted only alone,
+# so its safety rests on this guard rather than on every CLI answering
+# `--version` before a command: `--version` followed by anything is refused.
+#
 # The program comes from `variables.teloProgram`, the same one the write/edit
 # check loop uses, so the two can never drive different CLI builds.
 #
@@ -5393,7 +5399,7 @@ outputType:
       messages: { type: string }
 steps:
   - name: guard
-    if: !cel "size(inputs.args) == 0 || !(inputs.args[0] in variables.teloVerbs)"
+    if: !cel "inputs.args != ['--version'] && (size(inputs.args) == 0 || !(inputs.args[0] in variables.teloVerbs))"
     then:
       - name: reject
         throw:
@@ -5402,7 +5408,7 @@ steps:
             'telo ' + (size(inputs.args) == 0 ? '' : inputs.args[0]) +
             ' is not available here. Allowed subcommands: ' +
             join(variables.teloVerbs, ', ') +
-            '. Note a bare path means `run`, which is not allowed.'
+            '; `--version` alone is also available. Note a bare path means `run`, which is not allowed.'
   - name: outside
     value: !cel >-
       inputs.args
@@ -5769,8 +5775,10 @@ tools:
       manifests), `cel` (`cel functions` lists every CEL function with its
       signature and CALL FORM; `cel eval "<expr>"` evaluates one), `module`
       (`versions` / `manifest` / `kinds` / `resources` / `digest` for a module
-      ref — read a kind's exact schema before writing against it), and `search`
-      (find kinds across published modules). Pass `-o json` for a parseable
+      ref — read a kind's exact schema before writing against it), `search`
+      (find kinds across published modules), and `builtins` (the exact fields
+      of a built-in kind, fragment, value type, zone attribute or format — `builtins
+      Application Step`). Pass `-o json` for a parseable
       document. Running a manifest is not available here. The result is the
       command's stdout as printed, an `exit N` line only when it failed, and its
       stderr under `stderr:` only when it wrote any. Every argument is judged as
@@ -6023,7 +6031,8 @@ outputs:
     join(parseJson(steps.list.result.content[0].text).libraries.map(l,
       '- ' + string(l.name) + ' (' + string(l.ref) + '): ' + string(l.summary)
         + ('kinds' in l ? ' Kinds: ' + join(l.kinds.map(k, string(k)), ', ') + '.' : '')
-        + ('instances' in l ? ' Instances: ' + join(l.instances.map(i, string(i)), ', ') + '.' : '')), '\n')
+        + ('instances' in l ? ' Instances: ' + join(l.instances.map(i, string(i)), ', ') + '.' : '')
+        + ('builtin' in l && l.builtin == true ? ' builtin: true — write its kinds as Telo.<Kind> and import nothing.' : '')), '\n')
 ---
 kind: CacheMemory.Store
 metadata: { name: indexStore }

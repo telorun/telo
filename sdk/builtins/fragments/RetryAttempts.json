@@ -1,0 +1,7 @@
+{
+  "title": "Retry attempts",
+  "description": "Re-attempts after the first try. 0 disables retrying.",
+  "type": "integer",
+  "minimum": 0,
+  "default": 0
+}

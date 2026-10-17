@@ -1,6 +1,5 @@
 import type { AnalysisDiagnostic, DiagnosticFix, LoadedGraph } from "@telorun/analyzer";
-import { DiagnosticSeverity, diagnosticFix } from "@telorun/analyzer";
-import { findPositions, resolveRange } from "@telorun/ide-support";
+import { DiagnosticSeverity, diagnosticFix, locateDiagnostic } from "@telorun/analyzer";
 import {
   describeBlockedGroup,
   groupBlockedResources,
@@ -36,13 +35,13 @@ function displaySourcePath(raw: string): string {
 }
 
 /** Resolve a diagnostic's manifest site to `file:line:col`. `d` is an analyzer
- *  diagnostic, or a `RuntimeDiagnostic.origin` rebuilt into one — the position
- *  itself comes from `resolveRange`, the rule the VS Code extension already
- *  uses, so `run`, `check` and the editor agree on where an error is instead of
- *  each carrying their own copy. That rule does more than a direct field-path
- *  lookup: it walks parent paths when the leaf is absent from the index (a
- *  `imports.Foo.source` failure lands on `imports.Foo`) and prefers the entry's
- *  key over its value.
+ *  diagnostic, or a `RuntimeDiagnostic.origin` rebuilt into one — located by
+ *  the analyzer's `locateDiagnostic`, the rule the editor engine and the
+ *  kernel's `check()` seam also use, so `run`, `check`, the editor and a
+ *  module asking the seam agree on where an error is. That rule does more than
+ *  a direct field-path lookup: it walks parent paths when the leaf is absent
+ *  from the index (a `imports.Foo.source` failure lands on `imports.Foo`) and
+ *  prefers the entry's key over its value.
  *
  *  Undefined when nothing located it — a diagnostic whose resource is synthetic
  *  and whose file matches no graph source. A pointer to line 1 would be worse
@@ -52,17 +51,13 @@ function resolveLocationParts(
   d: AnalysisDiagnostic,
   fallbackSource: string,
 ): { file: string; line: number; column: number } | undefined {
-  const located = findPositions(graph, d.data);
-  if (!located && !d.range) return undefined;
-  const range = resolveRange(d, {
-    positionIndex: located?.positionIndex,
-    sourceLine: located?.sourceLine,
-  });
+  const located = locateDiagnostic(graph, d);
+  if (!located) return undefined;
   // 1-based for display; the analyzer's own range is 0-based.
   return {
-    file: displaySourcePath(located?.file ?? fallbackSource),
-    line: range.start.line + 1,
-    column: range.start.character + 1,
+    file: displaySourcePath(located.file ?? fallbackSource),
+    line: located.range.start.line + 1,
+    column: located.range.start.character + 1,
   };
 }
 

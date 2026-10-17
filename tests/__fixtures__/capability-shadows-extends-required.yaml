@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: CapabilityShadowsExtendsRequired
+  version: 1.0.0
+imports:
+  Contracts: ./capability-shadows-extends-lib.yaml
+---
+# The legacy spelling, migrated to `extends: Contracts.Greeter` — so the kind is
+# checked as the abstract's child: the abstract's required field is demanded of
+# every resource of it.
+kind: Telo.Definition
+metadata:
+  name: Legacy
+capability: Contracts.Greeter
+schema:
+  type: object
+  properties:
+    loud: { type: boolean }
+---
+kind: Self.Legacy
+metadata:
+  name: greeter
+loud: true

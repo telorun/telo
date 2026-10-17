@@ -11,6 +11,7 @@ name = "telo"
 path = "src/main.rs"
 
 [dependencies]
+telo-analyzer = { path = "../../analyzer/rust" }
 telo-kernel = { path = "../../kernel/rust" }
 
 # For the loopback registry support the kernel's integration tests share.
@@ -18,5 +19,4 @@ telo-kernel = { path = "../../kernel/rust" }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 serde_json = "1"
 tar = { version = "0.4", default-features = false }
-telo-analyzer = { path = "../../analyzer/rust" }
 tempfile = "3"

@@ -24,3 +24,21 @@ pub fn is_module_document(kind: &str) -> bool {
 pub fn skips_ref_resolution(kind: &str) -> bool {
     kind == DEFINITION
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::builtins::builtin_entries;
+
+    /// The loader grammar names built-in kinds; each must be one the vocabulary
+    /// declares, so a renamed entry cannot leave a name here pointing at nothing.
+    #[test]
+    fn names_only_built_in_kinds() {
+        for kind in [APPLICATION, LIBRARY, DEFINITION, JSON_SCHEMA] {
+            assert!(
+                builtin_entries().iter().any(|entry| entry.name == kind),
+                "'{kind}' names no sdk/builtins entry"
+            );
+        }
+    }
+}

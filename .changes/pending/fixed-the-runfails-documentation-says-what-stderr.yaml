@@ -1,0 +1,6 @@
+modules:
+  modules/assert: Fixed
+body: The runFails documentation says what stderr carries when a run is refused at load
+  — the headline, then one [<CODE>] <message> line per diagnostic — and recommends
+  matching the cause in that form rather than the shared 'Manifest validation failed'
+  headline.

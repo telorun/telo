@@ -8,8 +8,8 @@ exports:
     - Shaped
 ---
 # An abstract carrying a shared `schema` block AND a forward-compatible `inputType`
-# field (placeholder for the typed-abstracts work). Both must pass both the analyzer's
-# Telo.Abstract template schema and the kernel's ResourceAbstractSchema.
+# field (placeholder for the typed-abstracts work). Both must pass the one built-in
+# Telo.Abstract schema that `telo check` and the kernel validate an abstract against.
 kind: Telo.Abstract
 metadata:
   name: Shaped

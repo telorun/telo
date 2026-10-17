@@ -934,6 +934,56 @@ describe("the core entry set", () => {
   });
 });
 
+describe("capability-as-extends", () => {
+  const kindDoc = (lines: string[]) =>
+    ["kind: Telo.Definition", "metadata:", "  name: Legacy", ...lines].join("\n") + "\n";
+
+  it("moves a module's kind out of capability: into extends:", () => {
+    const text = kindDoc(["capability: AbstractLib.Greeter", "schema:", "  type: object"]);
+    const file = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text, { migrate: true });
+    const doc = file.manifests[0] as any;
+    expect(doc.extends).toBe("AbstractLib.Greeter");
+    expect(doc.capability).toBeUndefined();
+    const diagnostic = file.migrations.diagnostics[0]!;
+    expect(diagnostic.code).toBe("CAPABILITY_SHADOWS_EXTENDS");
+    expect(diagnostic.severity).toBe(DiagnosticSeverity.Warning);
+    expect((diagnostic.data as any).path).toBe("capability");
+  });
+
+  it("leaves every Telo-prefixed value — a role, or a typo of one — to the roster", () => {
+    for (const value of ["Telo.Invocable", "Telo.Invokable", "Telo.LogSink", "Invocable"]) {
+      const file = parseLoadedFile(
+        "/ws/telo.yaml",
+        "/ws/telo.yaml",
+        kindDoc([`capability: ${value}`]),
+        { migrate: true },
+      );
+      expect(file.migrations.rewrites).toHaveLength(0);
+      expect((file.manifests[0] as any).capability).toBe(value);
+    }
+  });
+
+  it("refuses to move it onto a declared extends:", () => {
+    const text = kindDoc(["capability: AbstractLib.Greeter", "extends: Self.Base"]);
+    const file = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text, { migrate: true });
+    expect(file.migrations.rewrites).toHaveLength(0);
+    expect((file.manifests[0] as any).capability).toBe("AbstractLib.Greeter");
+  });
+
+  it("rewrites the key in the file", () => {
+    const text = kindDoc(["capability: AbstractLib.Greeter  # legacy", "schema:", "  type: object"]);
+    const migrated = migrateFileText({
+      source: "/ws/telo.yaml",
+      text,
+      documents: parseAllDocuments(text, { customTags: defaultCustomTags() }),
+      manifests: parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text).manifests,
+    });
+    expect(migrated!.text).toBe(
+      kindDoc(["extends: AbstractLib.Greeter  # legacy", "schema:", "  type: object"]),
+    );
+  });
+});
+
 describe("entry files", () => {
   const entry = (rules: unknown[]) => ({
     id: "x",
@@ -1028,6 +1078,44 @@ describe("entry files", () => {
         entry([{ match: { key: "k", ...TEST_SCOPE, value: 1, valueOneOf: [1] }, patch: [{ op: "remove-entry" }] }]),
       ),
     ).toThrow(/at most one of/);
+  });
+
+  it("matches a value pattern against the WHOLE value, and a not-pattern as its exclusion", () => {
+    const patterned = parseMigrationEntry(
+      "ok.json",
+      entry([
+        {
+          match: { key: "legacy", ...TEST_SCOPE, valuePattern: "[a-z]+\\.[a-z]+", valueNotPattern: "keep\\..*" },
+          patch: [{ op: "remove-entry" }],
+        },
+      ]),
+    );
+    const run = (value: string) =>
+      parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", app(`legacy: ${value}`), {
+        migrate: true,
+        migrations: [patterned],
+      }).migrations.rewrites.length;
+    expect(run("old.name")).toBe(1);
+    expect(run("keep.name")).toBe(0);
+    expect(run("x.old.name")).toBe(0);
+    expect(run("12")).toBe(0);
+  });
+
+  it("refuses a pattern outside the RE2 subset", () => {
+    for (const pattern of ["(?!Telo\\.).*", "(?<=a)b", "(a)\\1", "(?<n>a)\\k<n>"]) {
+      expect(() =>
+        parseMigrationEntry(
+          "bad.json",
+          entry([{ match: { key: "k", ...TEST_SCOPE, valuePattern: pattern }, patch: [{ op: "remove-entry" }] }]),
+        ),
+      ).toThrow(/outside the RE2 subset/);
+    }
+    expect(() =>
+      parseMigrationEntry(
+        "ok.json",
+        entry([{ match: { key: "k", ...TEST_SCOPE, valueNotPattern: "[(?=]x" }, patch: [{ op: "remove-entry" }] }]),
+      ),
+    ).not.toThrow();
   });
 
   it("refuses a rule with no match block", () => {

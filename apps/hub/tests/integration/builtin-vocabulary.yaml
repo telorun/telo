@@ -1,0 +1,787 @@
+kind: Telo.Application
+metadata:
+  name: HubBuiltinVocabularyTest
+  version: 1.0.0
+  description: |
+    The hub tracks the built-in vocabulary — a `Telo.Builtins` root — at the
+    one ref it is configured with (`builtinsRef`), and nowhere else:
+
+    - Registration of the vocabulary at another ref is refused with the root-kind
+      refusal, naming the ref it is tracked at, and records nothing; at
+      `builtinsRef` it is accepted as an already-tracked module.
+    - Ingest at `builtinsRef` records the root kind `Builtins` and no runtime
+      facts; at another ref it records `INGEST_ROOT_KIND_UNSUPPORTED`.
+    - Need types are indexed as kinds, with the runtime reach the CLI reports
+      for them (the kernels serving need types, which a `runtime` filter
+      selects by), and a `Telo.` prefix resolves to `builtinsRef` (the
+      vocabulary's own `extends: Telo.LogSink` included).
+    - Search hits and `list_libraries` entries from the vocabulary carry
+      `builtin: true`, and its hits state no runtime facts.
+    - `get_kinds` answers a built-in kind with no import line, closes every
+      answer over the fragments, value types, zone attributes and formats it
+      names and the `Telo.<Kind>` parents it extends, reads them at the `telo`
+      version asked for (the latest by default), states that version, and
+      refuses one the hub does not track, naming those it does.
+
+    The origin reads run the fixture `__fixtures__/recorded-origin` through the
+    workspace CLI. The vocabulary it serves at 0.119.0 is the archive the
+    renderer writes, as published; 0.118.0 is an older, smaller one. The
+    embedder (one vector per passage) and the manifest bucket (serving what the
+    origin serves) are local stand-ins.
+
+    NEEDS A LIVE POSTGRES WITH PGVECTOR — a database `pnpm run test:e2e:hub`
+    supplies from its own stack through DB_HOST, DB_PORT, DB_USER, DB_PASSWORD
+    and DB_NAME, never a developer's database. Run only by the hub's own suite
+    through that command.
+imports:
+  Http: ../../../../modules/http-server
+  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
+  Postgres: oci://ghcr.io/telorun/postgres@0.9.0#sha256-gj_O3B1SW8i5Fgi2I6ZNnS-GjgEByCQULi76KG4REWE
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Shell: oci://ghcr.io/telorun/shell@0.13.0#sha256-h4-z6gdCjduwxgU1n7o5eol8RYgsxBCS2iQcxpCV_u0
+  Embedding: oci://ghcr.io/telorun/embedding@0.12.0#sha256-lQqgopkTtGP1RyYmoryM-mr1fv_Ey_xbMZsj3vlLEeM
+  OpenAI: oci://ghcr.io/telorun/openai@0.13.0#sha256-Tt9DaH254A972an-WTH_mtJOy9HAuUuH_SK1_bfOvHM
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.0#sha256-lmCK8i7SQuTRupTSY-s5l89wUwQuikXpjJOxI5vbNwI
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.17.0#sha256-qeBHzEaj0M6f_qqS6qGCKhRhdzDqZNPmdC5hZwTHMc8
+  Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.0#sha256-wHzRZi3uI7c12dRSULXQBO8GRYqhJj6gos6xv6eZj7g
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.0#sha256-yPwUSVVhRMiqQYQ9cbptorm1cA-HnJW6pLHRZ-8-qPA
+  Assert: ../../../../modules/assert
+  Schema:
+    source: ../../hub-schema.yaml
+    resources:
+      connection: !ref db
+  Ingest:
+    source: ../../hub-ingest.yaml
+    resources:
+      connection: !ref db
+      bucketPut: !ref putManifest
+      embedPassage: !ref embedPassage
+      vectorUpsert: !ref vectorUpsert
+      vectorRemove: !ref vectorRemove
+      shellHost: !ref localShell
+    variables:
+      # Every read runs the recorded origin, which answers the arguments appended.
+      teloCommand: [bun, ../../../../../cli/nodejs/bin/telo.ts, recorded-origin]
+      ingestRev: 8
+      builtinsRef: oci://example.test/telo
+  Registry:
+    source: ../../hub-registry.yaml
+    resources:
+      connection: !ref db
+      rateLimit: !ref registerRateLimit
+      shellHost: !ref localShell
+      scheduleIngest: !ref Ingest.scheduleIngest
+    variables:
+      # The same origin: the origin reader is one shared library, so both
+      # importers must configure it alike.
+      teloCommand: [bun, ../../../../../cli/nodejs/bin/telo.ts, recorded-origin]
+      ingestRev: 8
+      builtinsRef: oci://example.test/telo
+  Search:
+    source: ../../hub-search.yaml
+    resources:
+      connection: !ref db
+      embedQuery: !ref embedQuery
+      vectorMatch: !ref vectorMatch
+  Catalog:
+    source: ../../hub-catalog.yaml
+    resources:
+      connection: !ref db
+      bucketGet: !ref getManifest
+    variables:
+      builtinsRef: oci://example.test/telo
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref Schema.migrations
+  - !ref test
+---
+kind: Postgres.Connection
+metadata:
+  name: db
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: !cel "variables.dbPort"
+      user: !cel "variables.dbUser"
+      password: !cel "variables.dbPassword"
+      path: !cel "'/' + variables.dbName"
+---
+# The origin reads run in the fixtures directory, where the recorded origin is.
+kind: Shell.LocalHost
+metadata:
+  name: localShell
+cwd: !module-path __fixtures__
+---
+kind: S3.Bucket
+metadata:
+  name: standInBucket
+bucketName: fixture-bucket
+endpoint: http://127.0.0.1:8979
+forcePathStyle: true
+accessKeyId: fixture
+secretAccessKey: fixture
+---
+kind: S3.Put
+metadata:
+  name: putManifest
+bucketRef: !ref standInBucket
+---
+kind: S3.Get
+metadata:
+  name: getManifest
+bucketRef: !ref standInBucket
+---
+kind: OpenAI.EmbeddingModel
+metadata:
+  name: standInEmbedder
+model: stand-in
+request:
+  kind: HttpClient.Request
+  client:
+    kind: HttpClient.Client
+    baseUrl: http://127.0.0.1:8979
+---
+kind: Embedding.Passage
+metadata:
+  name: embedPassage
+model: !ref standInEmbedder
+---
+kind: Embedding.Query
+metadata:
+  name: embedQuery
+model: !ref standInEmbedder
+---
+# A table of this test's own: the vocabulary's vectors, all alike, would
+# otherwise fill every other search test's semantic arm.
+kind: VectorStorePgvector.Store
+metadata:
+  name: vectorIndex
+connection: !ref db
+dimensions: 3
+metric: cosine
+table: builtin_vocabulary_vectors
+---
+kind: VectorStore.Record
+metadata:
+  name: vectorUpsert
+store: !ref vectorIndex
+---
+kind: VectorStore.Removal
+metadata:
+  name: vectorRemove
+store: !ref vectorIndex
+---
+kind: VectorStore.Match
+metadata:
+  name: vectorMatch
+store: !ref vectorIndex
+# Every stand-in vector is the same, so the semantic arm ranks arbitrarily; kept
+# small, it cannot crowd the lexical matches this test reads out of the answer.
+topK: 5
+---
+# Named rather than inline: a library's resource input takes only a `!ref`.
+kind: RateLimit.Guard
+metadata:
+  name: registerRateLimit
+store:
+  kind: CacheMemory.Store
+limit: 100
+window: 1m
+---
+# The embedder and the manifest bucket, on one port: one fixed vector per text
+# embedded, a bucket that accepts every put, and the manifests the recorded
+# origin serves, under the keys it reports for them.
+kind: Http.Api
+metadata:
+  name: standInApi
+routes:
+  - request:
+      path: /embeddings
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            input: { type: array, items: { type: string } }
+          required: [input]
+    handler:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            input: { type: array, items: { type: string } }
+          required: [input]
+      value: !cel "{'data': inputs.input.map(t, {'embedding': [1.0, 0.0, 0.0]})}"
+    inputs:
+      input: !cel "request.body.input"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  - request:
+      path: /fixture-bucket/*
+      method: PUT
+      schema:
+        body:
+          x-telo-type: { name: Telo.Stream }
+    handler:
+      kind: Run.Value
+      value: {}
+    returns:
+      - status: 200
+  - request: { path: /fixture-bucket/oci/example.test/telo/0.119.0/telo.yaml, method: GET }
+    handler:
+      kind: Run.Value
+      value: !include-text __fixtures__/recorded-origin/builtins-0.119.0.yaml
+    returns:
+      - status: 200
+        content:
+          text/yaml; charset=utf-8:
+            body: !cel "result"
+  - request: { path: /fixture-bucket/oci/example.test/telo/0.118.0/telo.yaml, method: GET }
+    handler:
+      kind: Run.Value
+      value: !include-text __fixtures__/recorded-origin/builtins-0.118.0.yaml
+    returns:
+      - status: 200
+        content:
+          text/yaml; charset=utf-8:
+            body: !cel "result"
+  - request: { path: /fixture-bucket/oci/example.test/vocab-user/1.0.0/telo.yaml, method: GET }
+    handler:
+      kind: Run.Value
+      value: !include-text __fixtures__/recorded-origin/vocab-user.yaml
+    returns:
+      - status: 200
+        content:
+          text/yaml; charset=utf-8:
+            body: !cel "result"
+---
+kind: Sql.Query
+metadata:
+  name: query
+connection: !ref db
+---
+kind: Sql.Command
+metadata:
+  name: exec
+connection: !ref db
+---
+# One version through the ingest run, to completion: a claim minted from the
+# clock (a durable run id is never reused, so a rerun of the test must not start
+# from an attempt an earlier run burnt), the run, and its recorded outcome.
+kind: Run.Sequence
+metadata:
+  name: ingestOne
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      moduleId: { type: string }
+      ref: { type: string }
+      version: { type: string }
+      latestVersion: { type: string }
+      digest: { type: string }
+    required: [moduleId, ref, version, latestVersion, digest]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      completed: { type: boolean }
+      lastError: { type: string }
+    required: [completed, lastError]
+steps:
+  - name: seedIngest
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO version_ingest (module_id, version, attempt, completed_at)
+        VALUES ($1::bigint, $2, EXTRACT(EPOCH FROM NOW())::int, NOW())
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+  - name: claim
+    invoke: !ref Schema.claimVersion
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      version: !cel "inputs.version"
+      digest: !cel "inputs.digest"
+      rev: 8
+  - name: ingest
+    invoke: !ref Ingest.ingestVersion
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      ref: !cel "inputs.ref"
+      version: !cel "inputs.version"
+      digest: !cel "inputs.digest"
+      latestVersion: !cel "inputs.latestVersion"
+      attempt: !cel "steps.claim.result.attempt"
+  # Bounded; the last reading leaves the loop, so a run that never completes
+  # fails on what it showed.
+  - name: await
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      version: !cel "inputs.version"
+    invoke:
+      kind: Run.Loop
+      maxIterations: 90
+      condition: !cel "iteration == 0 || !previous.state.result.rows[0].completed"
+      steps:
+        - name: wait
+          invoke: { kind: Timer.Delay }
+          inputs:
+            duration: 1s
+        - name: state
+          invoke: !ref query
+          inputs:
+            sql: >-
+              SELECT completed_at IS NOT NULL AS completed, last_error AS "lastError"
+              FROM version_ingest WHERE module_id = $1::bigint AND version = $2
+            bindings:
+              - !cel "inputs.moduleId"
+              - !cel "inputs.version"
+      outputs:
+        completed: !cel "steps.state.result.rows[0].completed"
+        lastError: !cel "steps.state.result.rows[0].lastError"
+outputs:
+  completed: !cel "steps.await.result.completed"
+  lastError: !cel "steps.await.result.lastError"
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: Http.Server
+    metadata: { name: StandIns }
+    listen:
+      address: 127.0.0.1
+      port: 8979
+    contentTypeParsers:
+      - contentType: text/yaml
+        stream: true
+    mounts:
+      - path: /
+        mount: !ref standInApi
+targets:
+  - !ref StandIns
+steps:
+  - name: reset
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        DELETE FROM modules
+        WHERE id IN (9501, 9502, 9503)
+           OR ref IN ('oci://example.test/telo', 'oci://example.test/vocab-user',
+                      'oci://example.test/not-telo')
+  # Registration at another ref: refused, nothing recorded.
+  - name: registerElsewhere
+    invoke: !ref Registry.registerAndValidate
+    inputs:
+      ref: oci://example.test/not-telo
+      clientIp: 127.0.0.1
+  - name: afterRefusal
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT (SELECT COUNT(*)::int FROM modules
+                WHERE ref = 'oci://example.test/not-telo') AS modules
+  - name: assertRegistrationRefused
+    inputs:
+      actual:
+        register: !cel "steps.registerElsewhere.result"
+        state: !cel "steps.afterRefusal.result.rows"
+      expected:
+        register:
+          ref: oci://example.test/not-telo
+          accepted: false
+          rateLimited: false
+          retryAfter: 0
+          error: >-
+            the root document of oci://example.test/not-telo is Telo.Builtins, the
+            built-in vocabulary of a telo release, which is tracked only at
+            oci://example.test/telo
+        state:
+          - modules: 0
+    invoke:
+      kind: Assert.Equals
+  - name: seedModules
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (id, ref, transport) VALUES
+          (9501, 'oci://example.test/telo', 'oci'),
+          (9502, 'oci://example.test/vocab-user', 'oci'),
+          (9503, 'oci://example.test/not-telo', 'oci')
+  - name: older
+    invoke: !ref ingestOne
+    inputs:
+      moduleId: "9501"
+      ref: oci://example.test/telo
+      version: 0.118.0
+      latestVersion: 0.119.0
+      digest: sha256:telo-0.118.0
+  - name: latest
+    invoke: !ref ingestOne
+    inputs:
+      moduleId: "9501"
+      ref: oci://example.test/telo
+      version: 0.119.0
+      latestVersion: 0.119.0
+      digest: sha256:telo-0.119.0
+  - name: user
+    invoke: !ref ingestOne
+    inputs:
+      moduleId: "9502"
+      ref: oci://example.test/vocab-user
+      version: 1.0.0
+      latestVersion: 1.0.0
+      digest: sha256:vocab-user-1.0.0
+  - name: elsewhere
+    invoke: !ref ingestOne
+    inputs:
+      moduleId: "9503"
+      ref: oci://example.test/not-telo
+      version: 0.119.0
+      latestVersion: 0.119.0
+      digest: sha256:not-telo-0.119.0
+  - name: versions
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT mv.module_id::int AS module, mv.version, mv.root_kind AS "rootKind",
+               mv.runtimes, mv.runtimes_asked AS "runtimesAsked"
+        FROM module_versions mv
+        WHERE mv.module_id IN (9501, 9502, 9503)
+        ORDER BY mv.module_id, mv.version
+  - name: kinds
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT rk.name, rk.capability, rk.extends_kind AS "extendsKind",
+               rk.extends_ref AS "extendsRef", rk.runtimes, rk.portable
+        FROM resource_kinds rk
+        WHERE (rk.module_id = 9502 AND rk.version = '1.0.0')
+           OR (rk.module_id = 9501 AND rk.version = '0.119.0'
+               AND rk.name IN ('ConsoleSink', 'PublicUrl'))
+        ORDER BY rk.module_id, rk.name
+  - name: assertIngested
+    inputs:
+      actual:
+        older: !cel "steps.older.result"
+        latest: !cel "steps.latest.result"
+        user: !cel "steps.user.result"
+        elsewhere: !cel "steps.elsewhere.result"
+        versions: !cel "steps.versions.result.rows"
+        kinds: !cel "steps.kinds.result.rows"
+      expected:
+        older: { completed: true, lastError: "" }
+        latest: { completed: true, lastError: "" }
+        user: { completed: true, lastError: "" }
+        elsewhere:
+          completed: true
+          lastError: >-
+            INGEST_ROOT_KIND_UNSUPPORTED: the root document of
+            oci://example.test/not-telo@0.119.0 is Telo.Builtins, the built-in
+            vocabulary of a telo release, which is indexed only at
+            oci://example.test/telo
+        versions:
+          - { module: 9501, version: 0.118.0, rootKind: Builtins, runtimes: null, runtimesAsked: true }
+          - { module: 9501, version: 0.119.0, rootKind: Builtins, runtimes: null, runtimesAsked: true }
+          - { module: 9502, version: 1.0.0, rootKind: Library, runtimes: [nodejs], runtimesAsked: true }
+        kinds:
+          - name: ConsoleSink
+            capability: Telo.Sink
+            extendsKind: LogSink
+            extendsRef: oci://example.test/telo
+            runtimes: []
+            portable: false
+          - name: PublicUrl
+            capability: ""
+            extendsKind: ""
+            extendsRef: ""
+            runtimes: []
+            portable: false
+          - name: Access
+            capability: ""
+            extendsKind: ""
+            extendsRef: ""
+            runtimes: [nodejs]
+            portable: false
+          - name: Sink
+            capability: ""
+            extendsKind: LogSink
+            extendsRef: oci://example.test/telo
+            runtimes: [nodejs]
+            portable: false
+          - name: Steps
+            capability: Telo.Invocable
+            extendsKind: ""
+            extendsRef: ""
+            runtimes: [nodejs]
+            portable: false
+    invoke:
+      kind: Assert.Equals
+  # Registration at the vocabulary's own ref: an already-tracked module.
+  - name: registerBuiltins
+    invoke: !ref Registry.registerAndValidate
+    inputs:
+      ref: oci://example.test/telo
+      clientIp: 127.0.0.1
+  - name: assertRegistrationAccepted
+    inputs:
+      actual: !cel "steps.registerBuiltins.result"
+      expected:
+        ref: oci://example.test/telo
+        accepted: true
+        rateLimited: false
+        retryAfter: 0
+        error: ""
+    invoke:
+      kind: Assert.Equals
+  - name: hits
+    invoke: !ref Search.searchResources
+    inputs:
+      q: write log records somewhere
+      category: ""
+      runtime: ""
+      limit: 50
+  - name: grouped
+    invoke: !ref Search.searchMany
+    inputs:
+      queries: [write log records somewhere]
+      category: ""
+      runtime: ""
+      limit: 50
+  - name: libraries
+    invoke: !ref Catalog.libraryIndex
+    inputs:
+      publisher: ""
+  - name: assertMarkedBuiltin
+    inputs:
+      actual:
+        # Read per name: every stand-in vector is alike, so the hits' order is not
+        # this test's subject.
+        hits: !cel >-
+          ['ConsoleSink', 'FileSink'].map(n, [n, steps.hits.result.hits
+            .filter(h, h.module.ref == 'oci://example.test/telo' && h.name == n)
+            .map(h, h.module.builtin)])
+        grouped: !cel >-
+          steps.grouped.result[0].modules.filter(m, m.ref == 'oci://example.test/telo')
+            .map(m, {'builtin': m.builtin,
+                     'sinks': ['ConsoleSink', 'FileSink'].map(n,
+                       [n, m.hits.filter(h, h.name == n).map(h, 'runtimes' in h)])})
+        libraries: !cel >-
+          steps.libraries.result.libraries
+            .filter(l, l.ref in ['oci://example.test/telo', 'oci://example.test/vocab-user'])
+            .map(l, [l.ref, l.?builtin.orValue(false)])
+      expected:
+        hits:
+          - [ConsoleSink, [true]]
+          - [FileSink, [true]]
+        grouped:
+          - builtin: true
+            sinks:
+              - [ConsoleSink, [false]]
+              - [FileSink, [false]]
+        libraries:
+          - [oci://example.test/telo, true]
+          - [oci://example.test/vocab-user, false]
+    invoke:
+      kind: Assert.Equals
+  # A need type's runtime reach is the kernels serving need types, so a runtime
+  # filter selects it by that, as it would a definition.
+  - name: needOnNode
+    invoke: !ref Search.searchResources
+    inputs:
+      q: access where the collector is reached
+      category: ""
+      runtime: nodejs
+      limit: 50
+  - name: needOnRust
+    invoke: !ref Search.searchResources
+    inputs:
+      q: access where the collector is reached
+      category: ""
+      runtime: rust
+      limit: 50
+  - name: assertNeedTypeReach
+    inputs:
+      actual:
+        nodejs: !cel >-
+          steps.needOnNode.result.hits
+            .filter(h, h.module.ref == 'oci://example.test/vocab-user' && h.name == 'Access')
+            .map(h, h.name)
+        rust: !cel >-
+          steps.needOnRust.result.hits
+            .filter(h, h.module.ref == 'oci://example.test/vocab-user' && h.name == 'Access')
+            .map(h, h.name)
+      expected:
+        nodejs: [Access]
+        rust: []
+    invoke:
+      kind: Assert.Equals
+  # A built-in kind: no import line, the telo it was read at, and the fragments
+  # its schema names.
+  - name: definition
+    invoke: !ref Catalog.kindDefinitions
+    inputs:
+      kinds:
+        - { ref: oci://example.test/telo, kind: Telo.Definition }
+  # A module's kinds: the fragments, zone attributes and format a body of steps
+  # names, the `Telo.<Kind>` parent a sink takes fields from, and a need type.
+  - name: steps
+    invoke: !ref Catalog.kindDefinitions
+    inputs:
+      kinds:
+        - { ref: oci://example.test/vocab-user, kind: Steps }
+  - name: sink
+    invoke: !ref Catalog.kindDefinitions
+    inputs:
+      kinds:
+        - { ref: oci://example.test/vocab-user, kind: Sink }
+        - { ref: oci://example.test/vocab-user, kind: Access }
+  - name: stepsOlder
+    invoke: !ref Catalog.kindDefinitions
+    inputs:
+      kinds:
+        - { ref: oci://example.test/vocab-user, kind: Steps }
+      telo: 0.118.0
+  - name: assertKindDefinitions
+    inputs:
+      actual:
+        definition:
+          isError: !cel "steps.definition.result.isError"
+          telo: !cel "steps.definition.result.telo"
+          head: !cel "split(steps.definition.result.text, '\\n')[0]"
+          importLine: !cel "steps.definition.result.text.contains('# imports:')"
+          document: !cel "steps.definition.result.text.contains('\\n---\\nkind: Telo.Definition\\nmetadata:\\n  name: Definition\\n')"
+          pieces: !cel >-
+            ['KindSchema', 'JsonSchema7', 'KindMetadata'].map(n,
+              steps.definition.result.text.contains('\n---\n$defs:\n  ' + n + ':\n'))
+        steps:
+          telo: !cel "steps.steps.result.telo"
+          importLine: !cel >-
+            steps.steps.result.text.contains(
+              '# imports:\n#   VocabUser: oci://example.test/vocab-user@1.0.0#sha256-Vd6YqJ8n5m2cQf0bQ1oH0j3m2d4oKq5fX9yW8a7cB6E\n')
+          vocabularyHead: !cel >-
+            steps.steps.result.text.contains('\n# Telo — built in to telo 0.119.0: the schema fragments, value types, zone attributes and formats the definitions above name; write no import.\n')
+          pieces: !cel >-
+            steps.steps.result.builtins.map(p, split(p, '\n')[0] + ' ' + trim(split(p, '\n')[1]))
+          step: !cel "steps.steps.result.text.contains('description: \"Single executable step or control-flow block.\"')"
+        stepsOlder:
+          telo: !cel "steps.stepsOlder.result.telo"
+          pieces: !cel >-
+            steps.stepsOlder.result.builtins.map(p, split(p, '\n')[0] + ' ' + trim(split(p, '\n')[1]))
+          step: !cel >-
+            steps.stepsOlder.result.text.contains('description: \"Single executable step: an invocation or a conditional branch.\"')
+          vocabularyHead: !cel "steps.stepsOlder.result.text.contains('# Telo — built in to telo 0.118.0: the schema fragments')"
+        sink:
+          parent: !cel >-
+            steps.sink.result.text.contains('\n# Telo — built in to telo 0.119.0: write no import; name these kinds `Telo.<Kind>` (the prefix is fixed, not an alias).\n# Reached through `extends`: a kind above takes these fields too.\n---\nkind: Telo.Abstract\nmetadata:\n  name: LogSink\n')
+          needType: !cel "steps.sink.result.text.contains('\\n---\\nkind: Telo.NeedType\\nmetadata:\\n  name: Access\\n')"
+          pieces: !cel >-
+            steps.sink.result.builtins.map(p, split(p, '\n')[0] + ' ' + trim(split(p, '\n')[1]))
+          # One piece whole, as `telo builtins LogDuration` prints it.
+          logDuration: !cel "steps.sink.result.builtins.filter(p, p.startsWith('$defs:\\n  LogDuration:\\n'))"
+      expected:
+        definition:
+          isError: false
+          telo: 0.119.0
+          head: >-
+            # Telo — built in to telo 0.119.0: write no import; name these kinds
+            `Telo.<Kind>` (the prefix is fixed, not an alias).
+          importLine: false
+          document: true
+          pieces: [true, true, true]
+        steps:
+          telo: 0.119.0
+          importLine: true
+          vocabularyHead: true
+          pieces:
+            - "$defs: InvokeStep:"
+            - "$defs: RetryPolicy:"
+            - "$defs: Step:"
+            - "zoneAttributes: atomic:"
+            - "zoneAttributes: noSuspend:"
+            - "formats: css-selector:"
+          step: true
+        stepsOlder:
+          telo: 0.118.0
+          pieces:
+            - "$defs: InvokeStep:"
+            - "$defs: RetryPolicy:"
+            - "$defs: Step:"
+          step: true
+          vocabularyHead: true
+        sink:
+          parent: true
+          needType: true
+          pieces:
+            - "$defs: LogDuration:"
+            - "$defs: LogLevel:"
+            - "valueTypes: Telo.Url:"
+          logDuration:
+            - |
+              $defs:
+                LogDuration:
+                  type: string
+                  pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+    invoke:
+      kind: Assert.Equals
+  # A telo version the hub does not track is refused, naming the ones it does.
+  - name: untracked
+    try:
+      - name: read
+        invoke: !ref Catalog.kindDefinitions
+        inputs:
+          kinds:
+            - { ref: oci://example.test/vocab-user, kind: Steps }
+          telo: 0.117.0
+      - name: answered
+        throw:
+          code: ERR_TEST_EXPECTED_REFUSAL
+          message: kindDefinitions answered for a telo version the hub does not track
+    catch:
+      - name: assertRefused
+        inputs:
+          actual:
+            code: !cel "error.code"
+            message: !cel "error.message"
+          expected:
+            code: ERR_UNKNOWN_TELO_VERSION
+            message: >-
+              telo 0.117.0 is not a version of the built-in vocabulary
+              (oci://example.test/telo) this hub tracks; it tracks 0.119.0, 0.118.0
+        invoke:
+          kind: Assert.Equals

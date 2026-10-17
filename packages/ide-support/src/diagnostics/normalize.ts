@@ -1,6 +1,5 @@
-import { diagnosticFix, type AnalysisDiagnostic } from "@telorun/analyzer";
+import { diagnosticFix, resolveRange, type AnalysisDiagnostic } from "@telorun/analyzer";
 import type { DiagnosticContext, NormalizedDiagnostic } from "../types.js";
-import { resolveRange } from "./range-resolver.js";
 import { resolveSeverity } from "./severity.js";
 
 /** Converts a raw analyzer diagnostic into a host-ready shape:

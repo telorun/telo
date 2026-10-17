@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: CapabilityShadowsExtendsOccupied
+  version: 1.0.0
+imports:
+  AbstractLib: ./abstract-lib.yaml
+---
+# The legacy spelling beside a declared `extends:` — a definition has one parent,
+# so the migration cannot move it and the value is no lifecycle role.
+kind: Telo.Definition
+metadata:
+  name: Legacy
+capability: AbstractLib.Greeter
+extends: AbstractLib.Greeter
+schema:
+  type: object
+  properties: {}

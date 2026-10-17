@@ -12,12 +12,18 @@
 
 pub mod artifact_layer_index;
 pub mod artifact_selector;
+pub mod builtin_vocabulary;
+pub mod builtin_vocabulary_slices;
 pub mod builtins;
+pub mod capability_roster;
+pub mod levenshtein;
 pub mod loaded_types;
 pub mod manifest_loader;
 pub mod native_entries;
+pub mod nearest_name;
 pub mod parse_loaded_file;
 pub mod release;
+pub mod reserved_kind_prefix;
 pub mod resolve_ref_sentinels;
 pub mod source_entries;
 pub mod sources;

@@ -1,0 +1,26 @@
+{
+  "type": "array",
+  "items": {
+    "$ref": "telo://manifest#/$defs/PlatformAxes",
+    "type": "object",
+    "required": [
+      "name",
+      "format",
+      "os",
+      "arch",
+      "path"
+    ],
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "format": {
+        "type": "string"
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  }
+}

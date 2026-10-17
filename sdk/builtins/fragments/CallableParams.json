@@ -1,0 +1,30 @@
+{
+  "title": "Parameters",
+  "description": "Ordered parameters this callable accepts. Optional parameters come last.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "name",
+      "schema"
+    ],
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "schema": {
+        "$ref": "telo://manifest#/$defs/CallableType"
+      },
+      "nullable": {
+        "type": "boolean"
+      },
+      "optional": {
+        "type": "boolean"
+      }
+    },
+    "additionalProperties": false
+  }
+}

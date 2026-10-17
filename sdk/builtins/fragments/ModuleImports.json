@@ -1,0 +1,55 @@
+{
+  "type": "object",
+  "additionalProperties": {
+    "oneOf": [
+      {
+        "type": "string"
+      },
+      {
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "integrity": {
+            "type": "string"
+          },
+          "variables": {
+            "type": "object"
+          },
+          "secrets": {
+            "type": "object"
+          },
+          "resources": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "needs": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "runtime": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "logging": {
+            "$ref": "telo://manifest#/$defs/LoggingScope"
+          }
+        },
+        "additionalProperties": false
+      }
+    ]
+  }
+}

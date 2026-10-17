@@ -1,0 +1,8 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "Executable",
+    "description": "Anything control can be transferred to with call arguments — a resource that is invoked or run. A reference slot accepting either says so once with this constraint. It names no lifecycle of its own, so no kind declares it as its role: a kind declares the role it implements."
+  },
+  "declarable": false
+}

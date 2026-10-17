@@ -11,7 +11,8 @@ metadata:
   description: >-
     Keyed reads over the discovery index: one module's metadata, kinds, an
     application's declared inputs and versions, the cached manifest text for a version, the
-    definitions of named kinds with everything they reference, a one-line-per-module
+    definitions of named kinds with everything they reference — the built-in
+    vocabulary included, at a chosen telo version — a one-line-per-module
     index of a publisher's libraries, the kinds implementing a contract, the ready-made instances of a kind, the modules importing a module, ref autocomplete, and how far a
     registration has got.
 requires:
@@ -25,6 +26,7 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
   S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
   PlainText: oci://ghcr.io/telorun/plain-text-codec@0.11.0#sha256-V8zjIxeI89VhzVcKOrOTqLq7AdsNh2n51k2avdcOh-k
+  Yaml: oci://ghcr.io/telorun/yaml@0.11.0#sha256-KSC6vlR1yOvXgCUZzj6g4p0r_T-6SfMqQPLR_HQnktk
 resources:
   connection:
     kind: Sql.Connection
@@ -32,6 +34,12 @@ resources:
   bucketGet:
     kind: S3.Get
     description: Reads a cached `telo.yaml` back out of the manifest bucket.
+variables:
+  # The built-in vocabulary the hub tracks: the module every `Telo.<Kind>` names,
+  # one version per telo release.
+  builtinsRef:
+    type: string
+    default: oci://ghcr.io/telorun/telo
 exports:
   resources:
     - moduleManifestText
@@ -50,6 +58,138 @@ kind: Sql.Query
 metadata:
   name: query
 connection: !ref connection
+---
+kind: Yaml.Parse
+metadata:
+  name: parseYaml
+---
+# The names of the built-in vocabulary each JSON text may reach: every
+# `telo://manifest#/$defs/<Name>` reference, every string that is exactly
+# `Telo.<Name>` (a value type, among others), every `format:` value, and every
+# zone attribute a zone annotation provides, requires or violates. A superset —
+# a name that is no entry of the archive is dropped where the closure is taken.
+# Read off the JSON rather than the YAML so a zone annotation's attributes are
+# found by structure, whatever YAML style declared them.
+kind: Run.Value
+metadata:
+  name: vocabularyNames
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      texts: { type: array, items: { type: string } }
+    required: [texts]
+value: !cel >-
+  inputs.texts.map(j, distinct(
+    regexExtractAll(j, 'telo://manifest#/\\$defs/[A-Za-z0-9_]+').map(x, regexReplace(x, '^.*/', ''))
+    + regexExtractAll(j, '"Telo\\.[A-Za-z0-9_]+"').map(x, replace(x, '"', ''))
+    + regexExtractAll(j, '"format":"[^"\\\\]*"').map(x, regexReplace(x, '^"format":"|"$', ''))
+    + flatten(regexExtractAll(j, '"x-telo-(?:provides|violates)-zone":\\{(?:[^{}"]|"(?:[^"\\\\]|\\\\.)*")*\\}')
+        .map(z, regexExtractAll(z, '[{,]"[^"\\\\]*":')
+          .map(k, regexReplace(k, '^[{,]"|":$', '')).filter(k, k != 'key')))
+    + flatten(regexExtractAll(j, '"x-telo-requires-zone":\\{(?:[^{}"]|"(?:[^"\\\\]|\\\\.)*")*\\}')
+        .map(z, regexExtractAll(regexExtract(z, '"attributes":\\[[^\\]]*\\]'), '"[^"\\\\]*"')
+          .filter(a, a != '"attributes"').map(a, replace(a, '"', ''))))))
+---
+# The built-in vocabulary a set of names reaches, at one telo version: each
+# fragment, value type, zone attribute and format of that version's archive the
+# names select, and — transitively — every one those name in turn (a fragment's
+# `$ref`s, a zone attribute's `requires`). Each piece is cut out of the cached
+# archive exactly as `telo builtins <name>` prints it — the section line, then
+# the entry's block — relying on the renderer's fixed layout
+# (`kernel/specs/builtin-vocabulary.md`): the sections at column 0 of the root
+# document, each entry at column 2 with its body indented further.
+kind: Run.Sequence
+metadata:
+  name: builtinVocabulary
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      # A version of the built-in vocabulary the hub tracks.
+      version: { type: string }
+      names: { type: array, items: { type: string } }
+    required: [version, names]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      pieces: { type: array, items: { type: string } }
+    required: [pieces]
+steps:
+  - name: meta
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT mv.manifest_key FROM module_versions mv
+        JOIN modules m ON m.id = mv.module_id
+        WHERE m.ref = $1 AND mv.version = $2
+      bindings:
+        - !cel "variables.builtinsRef"
+        - !cel "inputs.version"
+  - name: fetch
+    invoke: !ref bucketGet
+    inputs:
+      key: !cel "steps.meta.result.rows.size() > 0 ? steps.meta.result.rows[0].manifest_key : '__not_found__'"
+  - name: decode
+    invoke: { kind: PlainText.Decoder }
+    inputs:
+      input: !cel "steps.fetch.result.output"
+  - name: root
+    value: !cel "split(steps.decode.result.text, '\\n---\\n')[0] + '\\n'"
+  - name: parsedRoot
+    invoke: !ref parseYaml
+    inputs:
+      text: !cel "steps.root.result"
+  - name: pieces
+    value: !cel >-
+      flatten(regexExtractAll(steps.root.result,
+          '^"?(?:\\$defs|valueTypes|zoneAttributes|formats)"?:\\n(?: [^\\n]*\\n)*', 'm')
+        .map(s, cel.bind(header, regexGroups(s, '^([^\\n]*)\\n')[0],
+          regexExtractAll(s, '^  \\S[^\\n]*:\\n(?:   [^\\n]*\\n)*', 'm').map(e,
+            cel.bind(key, regexGroups(e, '^  (\\S[^\\n]*):\\n')[0],
+              {'section': replace(trimSuffix(header, ':'), '"', ''),
+               'name': key.startsWith('"') ? string(parseJson(key)) : key,
+               'text': header + '\n' + e})))))
+  - name: reaches
+    invoke: !ref vocabularyNames
+    inputs:
+      texts: !cel >-
+        steps.pieces.result.map(p, json(steps.parsedRoot.result.docs[0][p.section][p.name]))
+  # The transitive closure of a graph: CEL has no recursion, so the walk is a
+  # recursive query over the graph handed to it as one JSON parameter.
+  - name: closure
+    invoke: !ref query
+    inputs:
+      sql: >-
+        WITH RECURSIVE graph AS (
+          SELECT g->>'name' AS name, g->'reaches' AS reaches
+          FROM jsonb_array_elements($1::jsonb) AS g
+        ), reached(name) AS (
+          SELECT n FROM jsonb_array_elements_text($2::jsonb) AS n
+          UNION
+          SELECT r FROM reached c
+          JOIN graph g ON g.name = c.name
+          CROSS JOIN LATERAL jsonb_array_elements_text(g.reaches) AS r
+        )
+        SELECT name FROM reached
+      bindings:
+        - !cel >-
+          json(enumerate(steps.pieces.result).map(e, {'name': e.value.name,
+            'reaches': steps.reaches.result[e.index]
+              + (e.value.section == 'zoneAttributes'
+                  ? steps.parsedRoot.result.docs[0].zoneAttributes[e.value.name].?requires.orValue([])
+                  : [])}))
+        - !cel "json(inputs.names)"
+outputs:
+  # In archive order.
+  pieces: !cel >-
+    steps.pieces.result
+      .filter(p, steps.closure.result.rows.exists(r, r.name == p.name))
+      .map(p, p.text)
 ---
 # The cached telo.yaml for one version. A missing row falls back to a sentinel
 # key, so the bucket's own 404 is what surfaces — one not-found path rather than
@@ -105,7 +245,13 @@ outputs:
 # `parents` names the kinds in OTHER modules that an included kind extends and
 # takes fields from: a kind with no `base:` is authored against its parent's
 # schema merged with its own, so the parent's definition is part of the answer
-# and the caller of this sequence fetches it next.
+# and the caller of this sequence fetches it next. A `Telo.<Kind>` parent is
+# one of them, owned by the built-in vocabulary.
+#
+# `vocabulary` names what the selected documents may reach of the built-in
+# vocabulary — its fragments, value types, zone attributes and formats — which
+# the caller resolves at the telo version it was asked for, since a built-in
+# reference means the telo that runs the manifest, not this module's floor.
 kind: Run.Sequence
 metadata:
   name: moduleKindDefinitions
@@ -161,11 +307,12 @@ steps:
         invoke: { kind: PlainText.Decoder }
         inputs:
           input: !cel "steps.fetch.result.output"
-      # One entry per type document: a kind, an abstract or a named shape. What
-      # says how a kind is IMPLEMENTED — its controllers, its template body, its
-      # `base:` mapping — is cut from the text: a caller declaring a resource of
-      # the kind writes none of it. A published manifest separates documents
-      # with repeated `---` lines, so a leading run of them is dropped too.
+      # One entry per type document: a kind, an abstract, a need type or a
+      # named shape. What says how a kind is IMPLEMENTED — its controllers, its
+      # template body, its `base:` mapping — is cut from the text: a caller
+      # declaring a resource of the kind writes none of it. A published manifest
+      # separates documents with repeated `---` lines, so a leading run of them
+      # is dropped too.
       - name: docs
         value: !cel >-
           split('\n' + steps.decode.result.text, '\n---\n')
@@ -173,7 +320,7 @@ steps:
                      'kind': regexGroups(c, '^kind:[ \t]*(\\S+)', 'm'),
                      'name': regexGroups(c, '^metadata:[ \t]*(?:\\{[ \t]*|\n[ \t]+)name:[ \t]*([A-Za-z0-9_]+)', 'm')})
             .filter(d, size(d.kind) > 0 && size(d.name) > 0
-                       && d.kind[0] in ['Telo.Definition', 'Telo.Abstract', 'Telo.JsonSchema'])
+                       && d.kind[0] in ['Telo.Definition', 'Telo.Abstract', 'Telo.NeedType', 'Telo.JsonSchema'])
             .map(d, {'text': trim(regexReplace(
                        regexReplace(trim(d.text), '^(?:---[ \t]*\n\\s*)+', '') + '\n',
                        '^(?:controllers|resources|invoke|run|provide|targets|base):.*\n(?:(?:[ \t]+.*|[ \t]*-.*|[ \t]*)\n)*',
@@ -198,6 +345,17 @@ steps:
             + flatten(steps.docs.result.filter(d, d.name in steps.wanted2.result).map(d, d.reaches)))
       - name: selected
         value: !cel "steps.docs.result.filter(d, d.name in steps.wanted3.result)"
+      - name: reaching
+        if: !cel "size(steps.selected.result) > 0"
+        then:
+          - name: parsed
+            invoke: !ref parseYaml
+            inputs:
+              text: !cel "join(steps.selected.result.map(d, d.text), '\\n---\\n')"
+          - name: names
+            invoke: !ref vocabularyNames
+            inputs:
+              texts: !cel "[json(steps.parsed.result.docs)]"
 outputs:
   ref: !cel "inputs.ref"
   found: !cel "'selected' in steps"
@@ -205,6 +363,9 @@ outputs:
   version: !cel "'selected' in steps ? steps.meta.result.rows[0].version : ''"
   name: !cel "'selected' in steps ? steps.meta.result.rows[0].module_name : ''"
   application: !cel "'selected' in steps && steps.meta.result.rows[0].root_kind == 'Application'"
+  # The built-in vocabulary itself: no import names it.
+  builtin: !cel "'selected' in steps && steps.meta.result.rows[0].root_kind == 'Builtins'"
+  vocabulary: !cel "'names' in steps ? steps.names.result[0] : []"
   # What an `imports:` entry holds for exactly this version: an OCI ref pins by
   # version and, when the hub knows it, by integrity; any other transport is one
   # fixed location and takes neither.
@@ -270,6 +431,8 @@ outputs:
   version: !cel "steps.module.result.version"
   name: !cel "steps.module.result.name"
   application: !cel "steps.module.result.application"
+  builtin: !cel "steps.module.result.builtin"
+  vocabulary: !cel "steps.module.result.vocabulary"
   importRef: !cel "steps.module.result.importRef"
   exported: !cel "steps.module.result.exported"
   definitions: !cel "steps.module.result.definitions"
@@ -282,9 +445,22 @@ outputs:
 # of other modules those kinds extend, two levels up. A kind is named by its
 # owning module's ref and its suffix; an alias-qualified name is read by its
 # suffix, since an alias is the caller's own choice.
+#
+# Everything built in is read at ONE telo version — `telo`, else a version asked
+# for on the built-in vocabulary's own ref, else the latest tracked: a built-in
+# reference means the telo that runs the manifest, not the declaring module's
+# floor. That covers the vocabulary's own kinds asked for or reached as a
+# `Telo.<Kind>` parent, and `builtins`, every fragment, value type, zone
+# attribute and format a returned document names, transitively. A version the
+# hub does not track is refused, naming the ones it does.
+#
+# `text` is the whole answer as the `get_kinds` tool prints it.
 kind: Run.Sequence
 metadata:
   name: kindDefinitions
+throws:
+  - code: ERR_UNKNOWN_TELO_VERSION
+    description: The telo version asked for is not a version of the built-in vocabulary the hub tracks.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -299,15 +475,56 @@ inputType:
             kind: { type: string }
             version: { type: string }
           required: [ref, kind]
+      # A telo version, or '' for the latest the hub tracks.
+      telo: { type: string, default: "" }
     required: [kinds]
 steps:
+  - name: teloVersions
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT mv.version, mv.version = m.latest_version AS latest
+        FROM module_versions mv
+        JOIN modules m ON m.id = mv.module_id
+        WHERE m.ref = $1
+        ORDER BY version_sort_key(mv.version) DESC NULLS LAST, mv.version ASC
+      bindings:
+        - !cel "variables.builtinsRef"
+  - name: teloAsked
+    value: !cel >-
+      inputs.telo != '' ? inputs.telo
+        : cel.bind(v, inputs.kinds.exists(k, k.ref == variables.builtinsRef)
+                        ? inputs.kinds.filter(k, k.ref == variables.builtinsRef)[0].?version.orValue('')
+                        : '',
+            v == 'latest' ? '' : v)
+  - name: teloGate
+    if: !cel >-
+      steps.teloAsked.result != ''
+        && !steps.teloVersions.result.rows.exists(r, r.version == steps.teloAsked.result)
+    then:
+      - name: refuseTelo
+        throw:
+          code: ERR_UNKNOWN_TELO_VERSION
+          message: !cel >-
+            'telo ' + steps.teloAsked.result + ' is not a version of the built-in vocabulary ('
+              + variables.builtinsRef + ') this hub tracks; '
+              + (steps.teloVersions.result.rows.size() == 0
+                  ? 'it tracks none yet'
+                  : 'it tracks ' + join(steps.teloVersions.result.rows.map(r, r.version), ', '))
+  - name: telo
+    value: !cel >-
+      steps.teloAsked.result != '' ? steps.teloAsked.result
+        : (steps.teloVersions.result.rows.exists(r, r.latest)
+            ? steps.teloVersions.result.rows.filter(r, r.latest)[0].version : '')
   - name: asked
     invoke: !ref definitionsByModule
     inputs:
       requests: !cel >-
         distinct(inputs.kinds.map(k, k.ref)).map(ref, {
           'ref': ref,
-          'version': inputs.kinds.filter(k, k.ref == ref)[0].?version.orValue('latest'),
+          'version': ref == variables.builtinsRef
+            ? (steps.telo.result != '' ? steps.telo.result : 'latest')
+            : inputs.kinds.filter(k, k.ref == ref)[0].?version.orValue('latest'),
           'names': distinct(inputs.kinds.filter(k, k.ref == ref)
                               .map(k, regexReplace(k.kind, '^.*\\.', '')))})
   - name: parents
@@ -316,7 +533,9 @@ steps:
       requests: !cel >-
         distinct(flatten(steps.asked.result.map(m, m.parents)).map(p, p.ref)).map(ref, {
           'ref': ref, 'orLatest': true,
-          'version': flatten(steps.asked.result.map(m, m.parents)).filter(p, p.ref == ref)[0].version,
+          'version': ref == variables.builtinsRef
+            ? (steps.telo.result != '' ? steps.telo.result : 'latest')
+            : flatten(steps.asked.result.map(m, m.parents)).filter(p, p.ref == ref)[0].version,
           'names': distinct(flatten(steps.asked.result.map(m, m.parents))
                               .filter(p, p.ref == ref).map(p, p.kind))})
   - name: grandparents
@@ -325,19 +544,79 @@ steps:
       requests: !cel >-
         distinct(flatten(steps.parents.result.map(m, m.parents)).map(p, p.ref)).map(ref, {
           'ref': ref, 'orLatest': true,
-          'version': flatten(steps.parents.result.map(m, m.parents)).filter(p, p.ref == ref)[0].version,
+          'version': ref == variables.builtinsRef
+            ? (steps.telo.result != '' ? steps.telo.result : 'latest')
+            : flatten(steps.parents.result.map(m, m.parents)).filter(p, p.ref == ref)[0].version,
           'names': distinct(flatten(steps.parents.result.map(m, m.parents))
                               .filter(p, p.ref == ref).map(p, p.kind))})
+  - name: reached
+    value: !cel >-
+      distinct(flatten((steps.asked.result + steps.parents.result + steps.grandparents.result)
+        .filter(m, m.found).map(m, m.vocabulary)))
+  - name: vocabulary
+    if: !cel "steps.telo.result != '' && size(steps.reached.result) > 0"
+    then:
+      - name: pieces
+        invoke: !ref builtinVocabulary
+        inputs:
+          version: !cel "steps.telo.result"
+          names: !cel "steps.reached.result"
+  - name: builtins
+    value: !cel "'pieces' in steps ? steps.pieces.result.pieces : []"
 outputs:
   modules: !cel "steps.asked.result"
   inherited: !cel "steps.parents.result + steps.grandparents.result"
+  # The telo version every built-in in this answer was read at; '' when the hub
+  # tracks no built-in vocabulary.
+  telo: !cel "steps.telo.result"
+  builtins: !cel "steps.builtins.result"
+  isError: !cel "steps.asked.result.all(m, !m.found)"
+  # Per module, the line its `imports:` entry takes, or — for the built-in
+  # vocabulary, which nothing imports — the telo it was read at; then the
+  # documents. The vocabulary's fragments, value types, zone attributes and
+  # formats close the answer, under the telo version they were read at.
+  text: !cel >-
+    size(steps.asked.result) == 0
+      ? 'pass `kinds`: a list of { ref, kind } naming at least one kind'
+      : join((steps.asked.result.map(m, {'m': m, 'inherited': false})
+            + (steps.parents.result + steps.grandparents.result).map(m, {'m': m, 'inherited': true})).map(e,
+          !e.m.found
+            ? (e.m.ref == variables.builtinsRef
+                ? '# The built-in vocabulary (' + e.m.ref + ') is not tracked by this hub yet (asked for: '
+                    + join(e.m.asked, ', ') + ').\n'
+                : '# ' + e.m.ref + ' is not tracked by the hub (asked for: ' + join(e.m.asked, ', ')
+                    + '). Resolve the ref with suggest_module_refs.\n')
+          : e.m.application
+            ? '# ' + e.m.ref + ' is an application: it is run by pinned ref, never imported.\n'
+          : (e.m.builtin
+              ? '# Telo — built in to telo ' + e.m.version
+                  + ': write no import; name these kinds `Telo.<Kind>` (the prefix is fixed, not an alias).\n'
+                  + (e.inherited ? '# Reached through `extends`: a kind above takes these fields too.\n' : '')
+              : '# ' + e.m.name
+                  + (e.inherited ? ' — reached through `extends`: a kind above takes these fields too\n' : '\n')
+                  + '# imports:\n#   ' + e.m.name + ': ' + e.m.importRef + '\n')
+              + (size(e.m.missing) > 0
+                  ? '# NOT DEFINED by this module: ' + join(e.m.missing, ', ')
+                      + '. It exports: ' + join(e.m.exported, ', ') + '\n'
+                  : '')
+              + join(e.m.definitions.map(d, '---\n' + d + '\n'), ''))
+        + (size(steps.builtins.result) > 0
+            ? ['# Telo — built in to telo ' + steps.telo.result
+                + ': the schema fragments, value types, zone attributes and formats the definitions above name; write no import.\n'
+                + join(steps.builtins.result.map(p, '---\n' + p), '')]
+            : [])
+        + (steps.telo.result == '' && size(steps.reached.result) > 0
+            ? ['# The built-in vocabulary (' + variables.builtinsRef + ') is not tracked by this hub yet, so no '
+                + 'schema fragment, value type, zone attribute or format the definitions above may name is included.\n']
+            : []), '\n')
 ---
 # One line per library a publisher ships, at its latest version: what it is
 # called, what it is for (the first sentence of its description, cut at 160
 # characters), and the kinds and ready-made instances it exports. The
 # whole of a standard library in a few kilobytes — what a caller reads ONCE to
 # know what exists, so that naming a need costs no search. Applications are left
-# out: nothing here is imported from one.
+# out: nothing here is imported from one. The built-in vocabulary is listed with
+# `builtin: true`, since its kinds are written `Telo.<Kind>` with no import.
 kind: Run.Sequence
 metadata:
   name: libraryIndex
@@ -365,7 +644,8 @@ steps:
                (SELECT COALESCE(json_agg(mr.name ORDER BY mr.name), '[]'::json)
                 FROM module_resources mr
                 WHERE mr.module_id = mv.module_id AND mr.version = mv.version)
-                 AS instances
+                 AS instances,
+               mv.root_kind IS NOT DISTINCT FROM 'Builtins' AS builtin
         FROM modules m
         JOIN module_versions mv ON mv.module_id = m.id AND mv.version = m.latest_version
         WHERE mv.root_kind IS DISTINCT FROM 'Application'
@@ -379,6 +659,7 @@ outputs:
     steps.rows.result.rows
       .filter(r, size(r.kinds) > 0 || size(r.instances) > 0)
       .map(r, compact({'ref': r.ref, 'name': r.name, 'summary': r.summary,
+                       'builtin': r.builtin ? dyn(true) : dyn(null),
                        'kinds': size(r.kinds) == 0 ? dyn(null) : dyn(r.kinds),
                        'instances': size(r.instances) == 0 ? dyn(null) : dyn(r.instances)}))
 ---

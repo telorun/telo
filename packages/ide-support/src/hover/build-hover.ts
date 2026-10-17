@@ -1,5 +1,7 @@
 import {
+  capabilityDescription,
   CelParseError,
+  declarableCapabilities,
   parseToAst,
   readRefSlot,
   type AnalysisRegistry,
@@ -19,7 +21,6 @@ import {
   scalarString,
   type ResolvedCursor,
 } from "../completions/resolve-node.js";
-import { CAPABILITY_DOCS } from "../completions/valid-capabilities.js";
 
 type Definition = NonNullable<ReturnType<AnalysisRegistry["resolveDefinition"]>>;
 
@@ -200,7 +201,8 @@ function hoverForValue(
     return { contents: kindHover(value, registry?.resolveDefinition(value)), range };
   }
   if (key === "capability" && resolved.docKind === "Telo.Definition" && value) {
-    const doc = CAPABILITY_DOCS[value];
+    // A declarable role's own description, read from the roster.
+    const doc = declarableCapabilities().includes(value) ? capabilityDescription(value) : undefined;
     return doc ? { contents: `**${value}**\n\n${doc}`, range } : undefined;
   }
 

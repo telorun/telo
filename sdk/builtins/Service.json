@@ -1,0 +1,10 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "Service",
+    "description": "A long-lived resource — a server, a pool, a listener — built by init() and started by run(), each returning what undoes it. Started rather than called, so it declares no thrown errors; inbound work it accepts roots its own trace."
+  },
+  "capability": "Telo.Service",
+  "declarable": true,
+  "throwsAllowed": false
+}

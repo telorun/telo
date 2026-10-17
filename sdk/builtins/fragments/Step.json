@@ -1,0 +1,283 @@
+{
+  "title": "Step",
+  "description": "Single executable step or control-flow block.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "title": "Name",
+      "description": "Unique step name.",
+      "type": "string"
+    }
+  },
+  "oneOf": [
+    {
+      "title": "invoke",
+      "description": "Invokes an invocable or runnable resource.",
+      "$ref": "telo://manifest#/$defs/InvokeStep"
+    },
+    {
+      "title": "if/then/else",
+      "description": "Conditional branch; executes then or else based on a boolean expression.",
+      "properties": {
+        "if": {
+          "title": "If",
+          "description": "CEL boolean expression; true executes then, false executes else.",
+          "x-telo-topology-role": "predicate",
+          "type": "boolean"
+        },
+        "elseif": {
+          "title": "Else If",
+          "description": "Additional condition-branch pairs evaluated when if is false.",
+          "x-telo-topology-role": "branch-list",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "if": {
+                "title": "If",
+                "description": "CEL boolean expression for this else-if branch.",
+                "x-telo-topology-role": "predicate",
+                "type": "boolean"
+              },
+              "then": {
+                "title": "Then",
+                "description": "Steps executed when this else-if condition is true.",
+                "x-telo-topology-role": "branch",
+                "type": "array",
+                "items": {
+                  "$ref": "telo://manifest#/$defs/Step"
+                }
+              }
+            },
+            "required": [
+              "if",
+              "then"
+            ]
+          }
+        },
+        "then": {
+          "title": "Then",
+          "description": "Steps executed when if evaluates true.",
+          "x-telo-topology-role": "branch",
+          "type": "array",
+          "items": {
+            "$ref": "telo://manifest#/$defs/Step"
+          }
+        },
+        "else": {
+          "title": "Else",
+          "description": "Steps executed when if (and all elseif conditions) evaluate false.",
+          "x-telo-topology-role": "branch",
+          "type": "array",
+          "items": {
+            "$ref": "telo://manifest#/$defs/Step"
+          }
+        }
+      },
+      "required": [
+        "if",
+        "then"
+      ]
+    },
+    {
+      "title": "while/do",
+      "description": "Loop; executes do steps repeatedly while condition is true.",
+      "properties": {
+        "while": {
+          "title": "While",
+          "description": "CEL boolean expression; evaluated before each iteration.",
+          "x-telo-topology-role": "predicate",
+          "type": "boolean"
+        },
+        "do": {
+          "title": "Do",
+          "description": "Steps executed on each iteration.",
+          "x-telo-topology-role": "branch",
+          "type": "array",
+          "items": {
+            "$ref": "telo://manifest#/$defs/Step"
+          }
+        }
+      },
+      "required": [
+        "while",
+        "do"
+      ]
+    },
+    {
+      "title": "switch/cases/default",
+      "description": "Multi-branch dispatch; matches a value expression against case keys.",
+      "properties": {
+        "switch": {
+          "title": "Switch",
+          "description": "CEL expression; result matched against case keys.",
+          "x-telo-topology-role": "discriminator",
+          "type": "string"
+        },
+        "cases": {
+          "title": "Cases",
+          "description": "Map of value to step list; executed when switch matches the key.",
+          "x-telo-topology-role": "case-map",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "telo://manifest#/$defs/Step"
+            }
+          }
+        },
+        "default": {
+          "title": "Default",
+          "description": "Steps executed when no case matches.",
+          "x-telo-topology-role": "branch",
+          "type": "array",
+          "items": {
+            "$ref": "telo://manifest#/$defs/Step"
+          }
+        }
+      },
+      "required": [
+        "switch",
+        "cases"
+      ]
+    },
+    {
+      "title": "try/catch/finally",
+      "description": "Error boundary; executes try steps and handles failure via catch and finally.",
+      "properties": {
+        "when": {
+          "title": "When",
+          "description": "CEL boolean guard — the whole try/catch/finally is skipped when it evaluates false.",
+          "x-telo-topology-role": "predicate",
+          "type": "boolean"
+        },
+        "try": {
+          "title": "Try",
+          "description": "Steps executed; halts on first failure and jumps to catch.",
+          "x-telo-topology-role": "branch",
+          "type": "array",
+          "items": {
+            "$ref": "telo://manifest#/$defs/Step"
+          }
+        },
+        "catch": {
+          "title": "Catch",
+          "description": "Steps executed when try fails; receives error context.",
+          "x-telo-topology-role": "branch",
+          "type": "array",
+          "items": {
+            "$ref": "telo://manifest#/$defs/Step"
+          },
+          "x-telo-error-context": {
+            "type": "object",
+            "description": "The caught failure (always present inside catch).",
+            "properties": {
+              "code": {
+                "description": "Structured error code; INTERNAL_ERROR for plain errors.",
+                "type": "string"
+              },
+              "message": {
+                "description": "Human-readable error message.",
+                "type": "string"
+              },
+              "step": {
+                "description": "Name of the step that threw.",
+                "type": "string"
+              },
+              "data": {
+                "description": "Structured payload from an InvokeError, else undefined."
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "finally": {
+          "title": "Finally",
+          "description": "Steps always executed after try/catch regardless of outcome.",
+          "x-telo-topology-role": "branch",
+          "type": "array",
+          "items": {
+            "$ref": "telo://manifest#/$defs/Step"
+          },
+          "x-telo-error-context": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The caught failure, or null when try (and catch) succeeded.",
+            "properties": {
+              "code": {
+                "description": "Structured error code; INTERNAL_ERROR for plain errors.",
+                "type": "string"
+              },
+              "message": {
+                "description": "Human-readable error message.",
+                "type": "string"
+              },
+              "step": {
+                "description": "Name of the step that threw.",
+                "type": "string"
+              },
+              "data": {
+                "description": "Structured payload from an InvokeError, else undefined."
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "try"
+      ]
+    },
+    {
+      "title": "throw",
+      "description": "Throws an InvokeError unconditionally. Works inside catch blocks via CEL (e.g. code set to `!cel \"error.code\"`).",
+      "properties": {
+        "throw": {
+          "title": "Throw",
+          "description": "InvokeError descriptor; code is required, message/data optional.",
+          "type": "object",
+          "properties": {
+            "code": {
+              "title": "Code",
+              "description": "Structured error code; uppercase SNAKE_CASE by convention.",
+              "type": "string"
+            },
+            "message": {
+              "title": "Message",
+              "description": "Human-readable error message. Defaults to `code` when omitted.",
+              "type": "string"
+            },
+            "data": {
+              "title": "Data",
+              "description": "Optional structured payload attached to the error."
+            }
+          },
+          "required": [
+            "code"
+          ]
+        }
+      },
+      "required": [
+        "throw"
+      ]
+    },
+    {
+      "title": "value",
+      "description": "Computes a value and publishes it as `steps.<name>.result`, with no dispatch — no resource, no span, no topology node. For an intermediate derived from an earlier step: reshape a response, total some rows, build the next call's inputs.",
+      "properties": {
+        "value": {
+          "title": "Value",
+          "description": "A CEL expression — or a structure (map / array) with `!cel` leaves — evaluated in the step scope: `inputs`, the results of the steps before it, and whatever the enclosing kind binds (`item` / `index` / `items`, `iteration` / `previous`)."
+        }
+      },
+      "required": [
+        "value"
+      ]
+    }
+  ],
+  "required": [
+    "name"
+  ]
+}

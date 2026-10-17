@@ -1,0 +1,100 @@
+{
+  "rows": [
+    {
+      "id": "unknown/misspelled-role",
+      "capability": "Telo.Invokable",
+      "extends": false,
+      "code": "CAPABILITY_UNKNOWN",
+      "message": "'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+    },
+    {
+      "id": "unknown/no-role-nearby",
+      "capability": "Telo.Lifecycle",
+      "extends": false,
+      "code": "CAPABILITY_UNKNOWN",
+      "message": "'Telo.Lifecycle' is not a capability. A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+    },
+    {
+      "id": "unknown/unqualified-role",
+      "capability": "Invocable",
+      "extends": false,
+      "code": "CAPABILITY_UNKNOWN",
+      "message": "'Invocable' is not a capability: a lifecycle role is written 'Telo.<Role>'. Did you mean 'Telo.Invocable'? One of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+    },
+    {
+      "id": "unknown/unqualified-no-role-nearby",
+      "capability": "Lifecycle",
+      "extends": false,
+      "code": "CAPABILITY_UNKNOWN",
+      "message": "'Lifecycle' is not a capability: a lifecycle role is written 'Telo.<Role>'. One of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+    },
+    {
+      "id": "unknown/built-in-kind",
+      "capability": "Telo.LogSink",
+      "extends": false,
+      "code": "CAPABILITY_UNKNOWN",
+      "message": "'Telo.LogSink' is a built-in kind, not a lifecycle role. To specialize it, write 'extends: Telo.LogSink'; capability names a role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+    },
+    {
+      "id": "unknown/module-kind",
+      "capability": "Lib.Greeter",
+      "extends": false,
+      "code": "CAPABILITY_UNKNOWN",
+      "message": "'Lib.Greeter' names a kind, not a lifecycle role. A kind this one specializes is declared in 'extends: Lib.Greeter'; capability names a role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+    },
+    {
+      "id": "unknown/module-kind-beside-extends",
+      "capability": "Lib.Greeter",
+      "extends": true,
+      "code": "CAPABILITY_UNKNOWN",
+      "message": "'Lib.Greeter' names a kind, not a lifecycle role, and this definition already declares 'extends:' — a definition has one parent, declared in 'extends:'. Remove 'capability: Lib.Greeter', or declare it in 'extends:' in place of the other. A capability names a role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+    },
+    {
+      "id": "unknown/not-a-string",
+      "capability": 42,
+      "extends": false,
+      "code": "CAPABILITY_UNKNOWN",
+      "message": "capability must name a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+    },
+    {
+      "id": "not-declarable/template",
+      "capability": "Telo.Template",
+      "extends": false,
+      "code": "CAPABILITY_NOT_DECLARABLE",
+      "message": "'Telo.Template' cannot be declared as a capability: The lifecycle of a document that declares rather than runs: an application, a library, an import, a kind or a need type. Read by the kernel while it loads a module, never instantiated, and reserved for the built-in vocabulary — a kind declared in a module never takes this role. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+    },
+    {
+      "id": "not-declarable/executable",
+      "capability": "Telo.Executable",
+      "extends": false,
+      "code": "CAPABILITY_NOT_DECLARABLE",
+      "message": "'Telo.Executable' cannot be declared as a capability: Anything control can be transferred to with call arguments — a resource that is invoked or run. A reference slot accepting either says so once with this constraint. It names no lifecycle of its own, so no kind declares it as its role: a kind declares the role it implements. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+    },
+    {
+      "id": "accepted/role",
+      "capability": "Telo.Invocable",
+      "extends": false,
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "accepted/role-beside-extends",
+      "capability": "Telo.Service",
+      "extends": true,
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "accepted/absent",
+      "extends": false,
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "accepted/inherited-through-extends",
+      "extends": true,
+      "code": null,
+      "message": null
+    }
+  ]
+}

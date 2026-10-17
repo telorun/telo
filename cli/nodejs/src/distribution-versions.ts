@@ -7,15 +7,15 @@ import { fileURLToPath } from "url";
  * this package would otherwise read out of a `package.json` at runtime.
  *
  * A standalone binary has no `package.json`: it is one file. Asked there, the
- * question used to produce `unknown`, which `telo --version` printed and the
- * debug UI fetch quietly gave up on. The build bakes both values instead
+ * question used to produce `unknown`, which the debug UI fetch quietly gave up
+ * on. The build bakes both values instead
  * (`__TELO_BAKED_VERSIONS__`), and the disk read stays the path for every other
  * distribution.
  *
  * `undefined` rather than a placeholder when neither answers, so each caller
- * decides what that means — `--version` falls back to what yargs can find, and
- * the debug UI fetch reports that it cannot pick a version instead of fetching
- * one called "unknown".
+ * decides what that means — the debug UI fetch reports that it cannot pick a
+ * version instead of fetching one called "unknown". `telo --version` prints the
+ * telo identity instead (`TELO_RUNTIME_VERSION`), not this package number.
  */
 
 declare const __TELO_BAKED_VERSIONS__: Record<string, string> | undefined;

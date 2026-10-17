@@ -1,5 +1,8 @@
 export { ControllerLoader } from "./controller-loader.js";
 export { ControllerRegistry } from "./controller-registry.js";
+// The controller entries this kernel implements itself — what a
+// `{ runtime: kernel, entry }` candidate is hosted by on Node.
+export { BUILTIN_CONTROLLER_ENTRIES } from "./builtin-controllers.js";
 export { EvaluationContext } from "./evaluation-context.js";
 export { LocalFileSource } from "./manifest-sources/local-file-source.js";
 export {

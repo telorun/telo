@@ -1,0 +1,12 @@
+# A built-in vocabulary archive, which is read and never run.
+kind: Telo.Builtins
+metadata:
+  name: Telo
+  version: 0.119.0
+  license: MIT
+---
+kind: Telo.Abstract
+metadata:
+  name: Service
+capability: Telo.Service
+declarable: true

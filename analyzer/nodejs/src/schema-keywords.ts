@@ -1,16 +1,11 @@
 /**
- * The JSON Schema vocabulary an author writes inside a manifest, as data.
+ * The `x-telo-*` annotation vocabulary an author writes inside a manifest's
+ * schemas, as data — completion and hover only.
  *
- * WHY THIS EXISTS. A schema-valued slot used to be declared `type: object` and
- * nothing more, so every surface that reads a kind schema — completion, hover,
- * the editor's field walk, AJV — knew only "some object". Autocompletion was
- * dead from the first key, and a typo (`requred:`, `type: 5`) was carried all
- * the way to a runtime validation failure that named the wrong thing.
- *
- * ONE SOURCE, TWO SURFACES. The maps below are the whole vocabulary; the
- * fragments in `manifest-schemas.ts` are built FROM them, and completion reads
- * them directly. A second hand-written list is exactly how the IDE's suggestions
- * and the validator's rules would drift apart.
+ * The JSON Schema KEYWORDS themselves are the `JsonSchema7` / `KindSchema`
+ * fragments (`sdk/builtins/fragments/`), which completion reads off the schema
+ * a slot is stamped with, so the validator's rules and the editor's
+ * suggestions come from one vocabulary.
  *
  * WHY THE ANNOTATIONS ARE NOT IN THE VALIDATING FRAGMENT. `x-telo-*` keys are
  * offered by completion but deliberately never appear as literal property names
@@ -19,7 +14,7 @@
  * (`resolveSchemaRefKinds`, `validate-ref-slots`, `validate-zone-slots`), and a
  * `properties` map holding a key spelled `x-telo-ref` reads to them as an
  * annotated node — inventing diagnostics about a slot the author never wrote.
- * So the hoisted body stays open (`additionalProperties: true`, which admits
+ * So the fragment body stays open (`additionalProperties: true`, which admits
  * every annotation) and the annotation vocabulary stays here, on the analyzer
  * side of the boundary, where no manifest walk can reach it.
  *
@@ -32,179 +27,6 @@ import { X_TELO_TYPE } from "@telorun/sdk";
 const X_TELO_SENSITIVE = "x-telo-sensitive" as const;
 const X_TELO_SPAN_ATTRIBUTE = "x-telo-span-attribute" as const;
 import { ANNOTATION_KEYWORDS } from "./value-type-keyword.js";
-
-/** A keyword entry: the JSON Schema its VALUE must satisfy, carrying the title
- *  and description completion and hover show. */
-export type SchemaKeywords = Record<string, Record<string, unknown>>;
-
-/** A JSON type name, as `type:` accepts it — one, or a list (`[string, "null"]`,
- *  the spelling `CEL_NULLABLE_ACCESS` guards). */
-const TYPE_NAME = {
-  type: "string",
-  enum: ["object", "array", "string", "number", "integer", "boolean", "null"],
-};
-
-/**
- * The draft-07 keywords, as a property map for a fragment named `self`.
- *
- * Parameterized by the fragment name because a schema's nested positions hold
- * schemas of the SAME flavour: a property of a kind schema may carry
- * annotations, a property of a data schema may not. Both recurse into
- * themselves, and the document-local pointer is what the hoisting in
- * `expandManifestFragments` makes resolvable.
- */
-export function jsonSchemaKeywords(self: string): SchemaKeywords {
-  const schema = { $ref: `#/$defs/${self}` };
-  const schemaList = { type: "array", items: schema };
-
-  return {
-    // Shape
-    type: {
-      title: "Type",
-      description: "The JSON type this value must have, or a list of accepted types.",
-      anyOf: [TYPE_NAME, { type: "array", items: TYPE_NAME }],
-    },
-    properties: {
-      title: "Properties",
-      description: "Schema per named property of an object.",
-      type: "object",
-      additionalProperties: schema,
-    },
-    required: {
-      title: "Required",
-      description: "Property names that must be present.",
-      type: "array",
-      items: { type: "string" },
-    },
-    additionalProperties: {
-      title: "Additional properties",
-      description:
-        "`false` rejects any property not named above — which is what makes a typo an error rather than an ignored field.",
-      anyOf: [{ type: "boolean" }, schema],
-    },
-    patternProperties: {
-      title: "Pattern properties",
-      description: "Schema per regular expression matching a property name.",
-      type: "object",
-      additionalProperties: schema,
-    },
-    propertyNames: {
-      title: "Property names",
-      description: "Schema every property NAME must satisfy.",
-      ...schema,
-    },
-    items: {
-      title: "Items",
-      description: "Schema for each element of an array.",
-      anyOf: [schema, schemaList],
-    },
-    additionalItems: {
-      title: "Additional items",
-      description: "Schema for elements past a positional `items` list.",
-      anyOf: [{ type: "boolean" }, schema],
-    },
-    contains: {
-      title: "Contains",
-      description: "At least one element must satisfy this schema.",
-      ...schema,
-    },
-
-    // Composition
-    allOf: { title: "All of", description: "Every branch must match.", ...schemaList },
-    anyOf: { title: "Any of", description: "At least one branch must match.", ...schemaList },
-    oneOf: {
-      title: "One of",
-      description:
-        "Exactly one branch must match. Prefer `anyOf` when a branch declares a value type — a consumer that does not know the keyword reads the branch as matching everything, and only `anyOf` degrades gracefully.",
-      ...schemaList,
-    },
-    not: { title: "Not", description: "The value must NOT match this schema.", ...schema },
-    if: { title: "If", description: "Condition selecting `then` / `else`.", ...schema },
-    then: { title: "Then", description: "Applied when `if` matches.", ...schema },
-    else: { title: "Else", description: "Applied when `if` does not match.", ...schema },
-
-    // Values
-    enum: { title: "Enum", description: "The complete set of accepted values.", type: "array" },
-    const: { title: "Const", description: "The single accepted value." },
-    default: {
-      title: "Default",
-      description:
-        "Filled in when the value is absent. On an invocation contract this is applied at dispatch, so a caller may omit the field.",
-    },
-    examples: { title: "Examples", description: "Sample values, for documentation.", type: "array" },
-
-    // Numbers
-    minimum: { title: "Minimum", type: "number" },
-    maximum: { title: "Maximum", type: "number" },
-    exclusiveMinimum: { title: "Exclusive minimum", type: "number" },
-    exclusiveMaximum: { title: "Exclusive maximum", type: "number" },
-    multipleOf: { title: "Multiple of", type: "number", exclusiveMinimum: 0 },
-
-    // Strings
-    minLength: { title: "Min length", type: "integer", minimum: 0 },
-    maxLength: { title: "Max length", type: "integer", minimum: 0 },
-    pattern: { title: "Pattern", description: "Regular expression the string must match.", type: "string" },
-    format: {
-      title: "Format",
-      description: "Named string format (`date-time`, `uri`, `email`, …).",
-      type: "string",
-    },
-    contentMediaType: {
-      title: "Content media type",
-      description:
-        "Media type of the string's content (`application/javascript`). Drives the editor's code-widget language.",
-      type: "string",
-    },
-    contentEncoding: { title: "Content encoding", type: "string" },
-
-    // Arrays
-    minItems: { title: "Min items", type: "integer", minimum: 0 },
-    maxItems: { title: "Max items", type: "integer", minimum: 0 },
-    uniqueItems: { title: "Unique items", type: "boolean" },
-
-    // Objects
-    minProperties: { title: "Min properties", type: "integer", minimum: 0 },
-    maxProperties: { title: "Max properties", type: "integer", minimum: 0 },
-    dependencies: {
-      title: "Dependencies",
-      description: "Per property, the other properties it requires — or a schema to apply.",
-      type: "object",
-      additionalProperties: { anyOf: [{ type: "array", items: { type: "string" } }, schema] },
-    },
-
-    // Documentation and structure
-    title: { title: "Title", description: "Human-readable label for this value.", type: "string" },
-    description: {
-      title: "Description",
-      description: "What this value is, for the author reading the manifest.",
-      type: "string",
-    },
-    deprecated: { title: "Deprecated", type: "boolean" },
-    readOnly: { title: "Read only", type: "boolean" },
-    writeOnly: { title: "Write only", type: "boolean" },
-    $ref: {
-      title: "Reference",
-      description:
-        "Pointer to another schema: `#/$defs/<Name>` for one declared below, `telo:<module>/<Type>` for a named type a module declared.",
-      type: "string",
-    },
-    $defs: {
-      title: "Definitions",
-      description: "Named sub-schemas, private to this schema, referenced with `#/$defs/<Name>`.",
-      type: "object",
-      additionalProperties: schema,
-    },
-    definitions: {
-      title: "Definitions (draft-07)",
-      description: "Older spelling of `$defs`.",
-      type: "object",
-      additionalProperties: schema,
-    },
-    $comment: { title: "Comment", type: "string" },
-    $id: { title: "Id", type: "string" },
-    $schema: { title: "Schema dialect", type: "string" },
-  };
-}
 
 /**
  * The `x-telo-*` annotation vocabulary — completion and hover only.

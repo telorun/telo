@@ -1,0 +1,4 @@
+# An application named after the built-in prefix: its kinds would be `Telo.<Kind>`.
+kind: Telo.Application
+metadata:
+  name: Telo

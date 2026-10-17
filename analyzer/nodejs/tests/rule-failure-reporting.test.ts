@@ -72,6 +72,22 @@ describe("an evaluation-time rule failure", () => {
     ]);
   });
 
+  it("is anchored at the entry's import that first reaches a transitive dependency", () => {
+    const wrapImport = {
+      kind: "Telo.Import",
+      metadata: { name: "Wrap", resolvedModuleName: "wrap", source: "app.yaml" },
+      source: "./wrap",
+    } as unknown as ResourceManifest;
+    const innerImport = {
+      kind: "Telo.Import",
+      metadata: { name: "Dep", resolvedModuleName: "dep", module: "wrap", source: "wrap/telo.yaml" },
+      source: "./dep",
+    } as unknown as ResourceManifest;
+    expect(
+      failures([app, wrapImport, innerImport, definition("dep"), ...resources(2, "dep")]),
+    ).toEqual([{ severity: 2, filePath: "app.yaml", path: "imports.Wrap", rule: "WIDGETS_POSITIVE" }]);
+  });
+
   // An ERROR here, unlike the consumer case above: this workspace declares the
   // rule, so the author reading the diagnostic is the one who can fix it. The
   // warning exists only because a consumer cannot change a dependency's rule.

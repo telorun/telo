@@ -7,7 +7,10 @@ metadata:
     security property of exposing a CLI to an anonymous prompt: argv is execed
     without a shell, so nothing the agent writes is interpreted, but argv alone
     cannot decide WHICH subcommand may run. These assert that an allowed verb
-    reaches the CLI and a denied one never spawns anything.
+    reaches the CLI and a denied one never spawns anything, and that the
+    identity query — exactly `["--version"]` — is answered by the real CLI
+    whatever `teloVerbs` holds, while `--version` with anything after it is
+    refused.
 imports:
   Mcp: oci://ghcr.io/telorun/mcp-client@0.17.0#sha256-wMlnrVxgeWHAX6_f1pr7v059KzgjYHuICg5Ui68v2zc
   Chat:
@@ -23,10 +26,23 @@ imports:
       # `echo`, not a real CLI. What this manifest owns is the VERB GUARD and
       # the argv it composes — whether `telo cel functions` prints the right
       # thing is the CLI's own business, tested in `cli/nodejs`. Echoing the
-      # argv asserts both halves exactly, and drops a dependency on an
-      # interpreter: the suite runs under Bun in one CI job and Node in
-      # another, and hardcoding either breaks the other.
+      # argv asserts both halves exactly; the identity row below needs the real
+      # CLI, run through bun as the other chat tests run it.
       teloProgram: [echo]
+  # The same library over the workspace CLI, with a verb list naming only
+  # `check`: the identity query must not depend on what an operator lists.
+  # Its own scratch, so the two imports never share agent state.
+  Identity:
+    source: ../
+    resources:
+      hub: !ref hub
+    secrets:
+      openaiApiKey: dummy-key-never-used
+    variables:
+      workspaceDir: !cel "variables.scratch.joinPath('identity/workspace')"
+      stateDir: !cel "variables.scratch.joinPath('identity/state')"
+      teloProgram: [bun, ../../../../../../../../cli/nodejs/bin/telo.ts]
+      teloVerbs: [check]
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
   Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
 variables:
@@ -41,7 +57,9 @@ targets:
   # The workspace is gitignored, so a fresh checkout has none — and every
   # command spawns with it as cwd.
   - !ref Chat.ensureWorkspace
+  - !ref Identity.ensureWorkspace
   - !ref testAllowedVerb
+  - !ref testIdentityQuery
   - !ref testDeniedVerbs
 ---
 # The hub the chat library discovers modules through.
@@ -70,6 +88,26 @@ steps:
       expected:
         exitCode: 0
         argv: "cel functions --json"
+---
+# `["--version"]` alone reaches the CLI with no listed verb, and answers the telo
+# it is (`X`, or `X+unreleased` for a working copy) — which identity exactly is
+# the CLI's own test.
+kind: Run.Sequence
+metadata: { name: testIdentityQuery }
+steps:
+  - name: run
+    invoke: !ref Identity.runTelo
+    inputs:
+      args: [--version]
+  - name: assertIdentity
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        exitCode: !cel "steps.run.result.exitCode"
+        identity: !cel "trim(steps.run.result.output).matches('^[0-9]+[.][0-9]+[.][0-9]+([+]unreleased)?$')"
+      expected:
+        exitCode: 0
+        identity: true
 ---
 # Every verb that executes, publishes or writes must be refused BEFORE anything
 # is spawned. `run` is the one that matters most — and the bare-path case with
@@ -109,6 +147,24 @@ steps:
         invoke: !ref Chat.runTelo
         inputs:
           args: [publish, ./telo.yaml]
+    catch:
+      - name: assertCode
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_TELO_VERB_NOT_ALLOWED
+  # `--version` is admitted only alone: followed by anything, its safety would
+  # rest on every CLI answering it before a command.
+  - name: denyVersionWithMore
+    try:
+      - name: attempt
+        invoke: !ref Chat.runTelo
+        inputs:
+          args: [--version, run, ./anything.yaml]
+      - name: answered
+        throw:
+          code: ERR_TEST_EXPECTED_REFUSAL
+          message: the telo tool ran `--version run ./anything.yaml`
     catch:
       - name: assertCode
         invoke: { kind: Assert.Equals }

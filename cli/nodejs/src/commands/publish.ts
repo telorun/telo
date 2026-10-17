@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
-import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, TELO_SURFACE_VERSION, collectModuleDocuments, flattenForAnalyzer, splitIntegrity, type LoadedGraph } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, TELO_SURFACE_VERSION, collectModuleDocuments, flattenForAnalyzer, isBuiltinVocabularyRoot, splitIntegrity, type LoadedGraph } from "@telorun/analyzer";
 import { LocalFileSource, defaultTransportRegistry, resolveCacheRoot } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
@@ -21,9 +21,10 @@ import {
   ownedNpmPackages,
   publishPackage,
 } from "../release/npm-controller-package.js";
-import { pushableLayers } from "../bundle/built-layers.js";
+import { pushableLayers, type BuiltLayer } from "../bundle/built-layers.js";
+import { builtinVocabularyPayload } from "../bundle/builtin-vocabulary-payload.js";
 import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
-import { describePartition } from "../bundle/partition-layers.js";
+import { describePartition, type Partition } from "../bundle/partition-layers.js";
 import { checkPublishedPin, describePinMove, manifestPin } from "../bundle/payload-drift.js";
 import { parseAnnotationFlags } from "../publish-annotations.js";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
@@ -372,6 +373,30 @@ async function publishOne(
     return refused("module_not_found", `Cannot read file: ${filePath}`);
   }
 
+  // The built-in vocabulary of a telo release is published as the release
+  // rendered it: read by its own reader, never analyzed, built or rewritten.
+  if (isBuiltinVocabularyRoot(parseAllDocuments(content, { customTags: defaultCustomTags() })[0]?.toJSON())) {
+    if (bump) {
+      outErrLine(log.err.error("error") + "  --bump does not apply: an archive's version is its release's.");
+      return refused("manifest_invalid", "--bump does not apply: a built-in vocabulary archive's version is its release's");
+    }
+    outLine(`\n  ${log.dim("manifest")}`);
+    let payload;
+    try {
+      payload = await builtinVocabularyPayload(filePath, destination);
+    } catch (err) {
+      outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
+      return { ok: false, error: publishFailureReport(err) };
+    }
+    stepOk(log, "check", `built-in vocabulary of telo ${payload.version}`);
+    return pushManifest(destination, payload.manifest, payload.layers, payload.partition, {
+      dryRun,
+      authoredAnnotations,
+      log,
+      beforePush: async () => undefined,
+    });
+  }
+
   const manifestDir = path.dirname(filePath);
   const controllers = extractControllers(content, manifestDir);
 
@@ -645,7 +670,33 @@ async function publishOne(
     }
   }
 
+  return pushManifest(destination, content, layers, partition, {
+    dryRun,
+    authoredAnnotations,
+    log,
+    beforePush: (version) => publishControllerPackages(controllers, filePath, version, skipControllers, dryRun, log),
+  });
+}
 
+/** What a push needs beyond the manifest and its layers. */
+interface PushOptions {
+  dryRun: boolean;
+  authoredAnnotations: Readonly<Record<string, string>>;
+  log: Logger;
+  /** Runs once the pin gate and the annotations have passed and before anything
+   *  is pushed; a refusal it returns ends the publish. */
+  beforePush: (version: string | undefined) => Promise<PublishOutcome | undefined>;
+}
+
+/** The pin gate, the annotation projection and the push — the tail every
+ *  published manifest shares, a module's and a built-in vocabulary archive's. */
+async function pushManifest(
+  destination: string,
+  content: string,
+  layers: BuiltLayer[],
+  partition: Partition,
+  { dryRun, authoredAnnotations, log, beforePush }: PushOptions,
+): Promise<PublishOutcome> {
   // The pin, not a ledger: a version already published must be republished
   // byte-for-byte or not at all, because every import pinned to it verifies
   // against its telo.yaml. Runs before the push (and on --dry-run) so the
@@ -693,43 +744,8 @@ async function publishOne(
     return { ok: false, error: publishFailureReport(err) };
   }
 
-  // A module whose controller is delivered from npm has to push that tarball
-  // too, and before the manifest that names it — otherwise the artifact points
-  // at a version npm has never seen. Skipped with `--skip-controllers`, which
-  // already names this step.
-  if (!skipControllers) {
-    const owned = ownedNpmPackages(controllers, path.dirname(filePath));
-    for (const pkg of owned) {
-      const skew = describeVersionSkew(pkg, version);
-      if (skew) {
-        outErrLine(log.err.error("error") + `  ${skew}`);
-        return refused("publish_failed", skew);
-      }
-      if (await isPublished(pkg.name, pkg.packageVersion)) {
-        stepOk(log, "npm", `${pkg.name}@${pkg.packageVersion} already published`);
-        continue;
-      }
-      if (dryRun) {
-        stepDry(log, "npm", `publish ${pkg.name}@${pkg.packageVersion}`);
-        continue;
-      }
-      try {
-        await publishPackage(pkg);
-      } catch (err) {
-        outErrLine(
-          log.err.error("error") +
-            `  npm publish ${pkg.name}@${pkg.packageVersion} failed: ` +
-            `${err instanceof Error ? err.message : String(err)}`,
-        );
-        return refused(
-          "publish_failed",
-          `npm publish ${pkg.name}@${pkg.packageVersion} failed: ` +
-            `${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-      stepOk(log, "npm", `${pkg.name}@${pkg.packageVersion} published`);
-    }
-  }
+  const refusal = await beforePush(version);
+  if (refusal) return refusal;
 
   if (dryRun) {
     for (const line of describePartition(partition)) stepDry(log, "layer", line);
@@ -765,6 +781,53 @@ async function publishOne(
 
   stepOk(log, "push", `${result.label} → ${result.url}`);
   return { ok: true, annotations, version, integrity, digest: result.digest, identical };
+}
+
+/** A module whose controller is delivered from npm has to push that tarball
+ *  too, and before the manifest that names it — otherwise the artifact points
+ *  at a version npm has never seen. Skipped with `--skip-controllers`, which
+ *  already names this step. */
+async function publishControllerPackages(
+  controllers: ParsedController[],
+  filePath: string,
+  version: string | undefined,
+  skipControllers: boolean,
+  dryRun: boolean,
+  log: Logger,
+): Promise<PublishOutcome | undefined> {
+  if (skipControllers) return undefined;
+  const owned = ownedNpmPackages(controllers, path.dirname(filePath));
+  for (const pkg of owned) {
+    const skew = describeVersionSkew(pkg, version);
+    if (skew) {
+      outErrLine(log.err.error("error") + `  ${skew}`);
+      return refused("publish_failed", skew);
+    }
+    if (await isPublished(pkg.name, pkg.packageVersion)) {
+      stepOk(log, "npm", `${pkg.name}@${pkg.packageVersion} already published`);
+      continue;
+    }
+    if (dryRun) {
+      stepDry(log, "npm", `publish ${pkg.name}@${pkg.packageVersion}`);
+      continue;
+    }
+    try {
+      await publishPackage(pkg);
+    } catch (err) {
+      outErrLine(
+        log.err.error("error") +
+          `  npm publish ${pkg.name}@${pkg.packageVersion} failed: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+      return refused(
+        "publish_failed",
+        `npm publish ${pkg.name}@${pkg.packageVersion} failed: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    stepOk(log, "npm", `${pkg.name}@${pkg.packageVersion} published`);
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

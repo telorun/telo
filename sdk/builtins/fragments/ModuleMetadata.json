@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "module": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "repository": {
+      "type": "string"
+    },
+    "license": {
+      "type": "string"
+    },
+    "documentation": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,29 @@
+{
+  "$comment": "The legacy spelling is told apart WITHOUT resolving a name: every lifecycle role is written `Telo.<Role>`, so an alias-qualified value whose alias is not `Telo` named a module's kind. The two patterns are the RE2 form of that test. A typo such as `Telo.Invokable` is not matched — it stays for `CAPABILITY_UNKNOWN`, which names the nearest role, rather than being moved into `extends:` and reported as a missing parent. Where `extends:` is already declared the rename refuses the occupied key and the node is left to the validator.",
+  "id": "capability-as-extends",
+  "code": "CAPABILITY_SHADOWS_EXTENDS",
+  "severity": "warning",
+  "reason": "`capability:` names a lifecycle role and nothing else. A kind this one specializes is declared in `extends:`, which also applies the parent's schema, invocation contract and throws ceiling to it.",
+  "rules": [
+    {
+      "match": {
+        "key": "capability",
+        "inKind": [
+          "Telo.Definition",
+          "Telo.Abstract"
+        ],
+        "under": [
+          "capability"
+        ],
+        "valuePattern": "[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*",
+        "valueNotPattern": "Telo\\..*"
+      },
+      "patch": [
+        {
+          "op": "rename-key",
+          "to": "extends"
+        }
+      ]
+    }
+  ]
+}

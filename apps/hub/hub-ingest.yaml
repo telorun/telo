@@ -77,10 +77,19 @@ variables:
   # replaced the per-column backfill probes, each of which had to be added and
   # read one at a time. 6 records each version's root kind and an application's
   # contract, and stops storing an application's own kinds as exported. 7
-  # records what each version imports.
+  # records what each version imports. 8 indexes need types as kinds, resolves
+  # a `Telo.` prefix to `builtinsRef` and a module's own name to the module, and
+  # records the built-in vocabulary's root kind. 9 records a need type's runtime
+  # reach — the kernels serving need types — where 8 stored it as no kernel.
   ingestRev:
     type: integer
-    default: 7
+    default: 9
+  # The one ref whose `Telo.Builtins` root is indexed — the built-in vocabulary
+  # every `Telo.<Kind>` names. Registration is open, so at any other ref such a
+  # root is refused: nobody else may publish "built-in" kinds.
+  builtinsRef:
+    type: string
+    default: oci://ghcr.io/telorun/telo
 exports:
   resources:
     - ingestVersion
@@ -156,9 +165,12 @@ steps:
                 'telo module manifest ' + inputs.ref + '@' + inputs.version + ' failed: '
                   + steps.manifest.result.error
       # The root kind is recorded from the manifest and nothing else, so a root
-      # that is neither module kind is refused rather than recorded as one.
+      # that is neither module kind is refused rather than recorded as one. The
+      # built-in vocabulary is a third root kind, indexed at `builtinsRef` only.
       - name: rootGate
-        if: !cel "!(steps.manifest.result.docs[0].kind in ['Telo.Library', 'Telo.Application'])"
+        if: !cel >-
+          !(steps.manifest.result.docs[0].kind in ['Telo.Library', 'Telo.Application']
+            || (steps.manifest.result.docs[0].kind == 'Telo.Builtins' && inputs.ref == variables.builtinsRef))
         then:
           - name: refuseRoot
             throw:
@@ -166,7 +178,10 @@ steps:
               message: !cel >-
                 'the root document of ' + inputs.ref + '@' + inputs.version + ' is '
                   + steps.manifest.result.docs[0].kind
-                  + '; only a Telo.Library or Telo.Application is indexed'
+                  + (steps.manifest.result.docs[0].kind == 'Telo.Builtins'
+                      ? ', the built-in vocabulary of a telo release, which is indexed only at '
+                          + variables.builtinsRef
+                      : '; only a Telo.Library or Telo.Application is indexed')
       # An application is indexed by its declared contract, which the CLI reports
       # as `application`. A CLI too old to report it would leave the application
       # indexed with an empty contract, which reads as "asks for nothing" — so the
@@ -330,20 +345,35 @@ steps:
   #     it, so it means nothing to anyone else. Resolving the prefix through the
   #     module's own `imports:` map turns each into (owning module ref, kind
   #     suffix): the identity that makes every backend of one contract joinable,
-  #     and a deprecation replacement a consumer can follow. `Self` is the
-  #     declaring module; a `Telo.*` built-in resolves to no import and so leaves
-  #     the ref empty. One expression resolves both — index 0 is the extends
-  #     target, index 1 the replacement — because they share the grammar exactly,
-  #     and a second copy would be a second thing to keep right.
+  #     and a deprecation replacement a consumer can follow. `Self` and the
+  #     module's own `metadata.name` are the declaring module, and `Telo` is the
+  #     built-in vocabulary at `builtinsRef` — a prefix that needs no import. One
+  #     expression resolves both — index 0 is the extends target, index 1 the
+  #     replacement — because they share the grammar exactly, and a second copy
+  #     would be a second thing to keep right.
+  #   need types — a `Telo.NeedType` declares a kind a module can ask for, so it
+  #     is a row like a definition; its capability is the one it declares (none),
+  #     and its runtime reach is what the CLI reports for it: the kernels that
+  #     host the need-type controller, never portable.
   #   runtimes / languages / portable — the matched `runtime.kinds` entry from
   #     `telo module manifest --json`, derived by the CLI because the mapping
   #     from a `controllers:` PURL to the kernels that can load it is loader
   #     knowledge. Empty when an older CLI reported no entry for this kind: the
   #     row records "no kernel claimed" rather than a guess, and the version's
-  #     revision is what schedules the re-ingest that fills it in.
+  #     revision is what schedules the re-ingest that fills it in. Empty for the
+  #     built-in vocabulary too (see `runtimeReport`).
+  # The runtime report the rows are written from: `telo module manifest --json`'s
+  # `runtime`, absent from a CLI too old to report it. Never read for the
+  # built-in vocabulary, whose kinds the runtime itself implements: no fact about
+  # them is recorded, whatever the CLI reports.
+  - name: runtimeReport
+    value: !cel >-
+      inputs.docs[0].kind != 'Telo.Builtins' && inputs.payload.?runtime.orValue(null) != null
+        ? {'reported': true, 'report': inputs.payload.runtime}
+        : {'reported': false, 'report': {}}
   - name: kindRows
     value: !cel >-
-      inputs.docs.filter(d, d.kind == 'Telo.Definition' || d.kind == 'Telo.Abstract').map(d, {
+      inputs.docs.filter(d, d.kind in ['Telo.Definition', 'Telo.Abstract', 'Telo.NeedType']).map(d, {
         'name': d.metadata.name,
         'capability': d.?capability.orValue(''),
         'abstract': d.kind == 'Telo.Abstract',
@@ -360,29 +390,31 @@ steps:
           .map(v, v == '' ? '' : v.split('.')[1])[1],
         'extends_ref': [d.?extends.orValue(''), d.metadata.?deprecated.?replacedBy.orValue('')]
           .map(v, v == '' ? ''
-            : (v.split('.')[0] == 'Self' ? inputs.ref
-              : ('imports' in inputs.docs[0] && v.split('.')[0] in inputs.docs[0].imports
-                ? (type(inputs.docs[0].imports[v.split('.')[0]]) == type('')
-                    ? inputs.docs[0].imports[v.split('.')[0]]
-                    : inputs.docs[0].imports[v.split('.')[0]].source).split('#')[0].split('@')[0]
-                : '')))[0],
+            : (v.split('.')[0] == 'Telo' ? variables.builtinsRef
+              : (v.split('.')[0] in ['Self', inputs.docs[0].metadata.name] ? inputs.ref
+                : ('imports' in inputs.docs[0] && v.split('.')[0] in inputs.docs[0].imports
+                  ? (type(inputs.docs[0].imports[v.split('.')[0]]) == type('')
+                      ? inputs.docs[0].imports[v.split('.')[0]]
+                      : inputs.docs[0].imports[v.split('.')[0]].source).split('#')[0].split('@')[0]
+                  : ''))))[0],
         'replaced_by_ref': [d.?extends.orValue(''), d.metadata.?deprecated.?replacedBy.orValue('')]
           .map(v, v == '' ? ''
-            : (v.split('.')[0] == 'Self' ? inputs.ref
-              : ('imports' in inputs.docs[0] && v.split('.')[0] in inputs.docs[0].imports
-                ? (type(inputs.docs[0].imports[v.split('.')[0]]) == type('')
-                    ? inputs.docs[0].imports[v.split('.')[0]]
-                    : inputs.docs[0].imports[v.split('.')[0]].source).split('#')[0].split('@')[0]
-                : '')))[1],
-        'runtimes': inputs.payload.?runtime.?kinds.orValue([])
+            : (v.split('.')[0] == 'Telo' ? variables.builtinsRef
+              : (v.split('.')[0] in ['Self', inputs.docs[0].metadata.name] ? inputs.ref
+                : ('imports' in inputs.docs[0] && v.split('.')[0] in inputs.docs[0].imports
+                  ? (type(inputs.docs[0].imports[v.split('.')[0]]) == type('')
+                      ? inputs.docs[0].imports[v.split('.')[0]]
+                      : inputs.docs[0].imports[v.split('.')[0]].source).split('#')[0].split('@')[0]
+                  : ''))))[1],
+        'runtimes': steps.runtimeReport.result.report.?kinds.orValue([])
           .filter(r, r.name == d.metadata.name).map(r, r.runtimes).size() > 0
-          ? inputs.payload.runtime.kinds.filter(r, r.name == d.metadata.name)[0].runtimes : [],
-        'languages': inputs.payload.?runtime.?kinds.orValue([])
+          ? steps.runtimeReport.result.report.kinds.filter(r, r.name == d.metadata.name)[0].runtimes : [],
+        'languages': steps.runtimeReport.result.report.?kinds.orValue([])
           .filter(r, r.name == d.metadata.name).size() > 0
-          ? inputs.payload.runtime.kinds.filter(r, r.name == d.metadata.name)[0].languages : [],
-        'portable': inputs.payload.?runtime.?kinds.orValue([])
+          ? steps.runtimeReport.result.report.kinds.filter(r, r.name == d.metadata.name)[0].languages : [],
+        'portable': steps.runtimeReport.result.report.?kinds.orValue([])
           .filter(r, r.name == d.metadata.name).size() > 0
-          && inputs.payload.runtime.kinds.filter(r, r.name == d.metadata.name)[0].portable
+          && steps.runtimeReport.result.report.kinds.filter(r, r.name == d.metadata.name)[0].portable
       })
   # A library's exported singleton INSTANCES (`exports.resources`) — the other
   # half of its public surface. An importer references one as
@@ -506,8 +538,9 @@ steps:
                 ARRAY(SELECT category_slug(l) FROM unnest($9::text[]) AS l), $9::text[],
                 COALESCE($10, ''),
                 $11, $12, $13,
-                -- NULL means "no runtime data" (a CLI too old to report it),
-                -- as distinct from '{}' meaning "asked, no kernel runs this".
+                -- NULL means "no runtime data" (a CLI too old to report it, or
+                -- the built-in vocabulary, which has none), as distinct from
+                -- '{}' meaning "asked, no kernel runs this".
                 -- CEL cannot express a list-or-null ternary, so the nullity is
                 -- decided here from $18.
                 CASE WHEN $18 THEN $14::text[] END,
@@ -551,19 +584,22 @@ steps:
         - !cel "inputs.docs[0].metadata.?homepage.orValue('')"
         - !cel "inputs.docs[0].metadata.?deprecated.?reason.orValue('')"
         - !cel "inputs.docs[0].metadata.?deprecated.?replacedBy.orValue('')"
-        - !cel "keys(inputs.payload.?runtime.?runtimes.orValue({}))"
+        - !cel "keys(steps.runtimeReport.result.report.?runtimes.orValue({}))"
         - !cel >-
-          keys(inputs.payload.?runtime.?runtimes.orValue({}))
-            .filter(k, inputs.payload.runtime.runtimes[k] == 'full')
-        - !cel "inputs.payload.?runtime.?languages.orValue([])"
-        - !cel "inputs.payload.?runtime.?portable.orValue(false)"
-        # Whether the CLI reported a `runtime` block at all — a binary older than
-        # the field reports none. That is a different state from a module no
-        # kernel can run ('{}'), and recording '{}' for an old CLI would store a
-        # false fact that never self-corrects once the binary is upgraded.
-        - !cel "'runtime' in inputs.payload"
-        # The root kind, from the manifest: `Library` or `Application`.
-        - !cel "inputs.docs[0].kind == 'Telo.Application' ? 'Application' : 'Library'"
+          keys(steps.runtimeReport.result.report.?runtimes.orValue({}))
+            .filter(k, steps.runtimeReport.result.report.runtimes[k] == 'full')
+        - !cel "steps.runtimeReport.result.report.?languages.orValue([])"
+        - !cel "steps.runtimeReport.result.report.?portable.orValue(false)"
+        # Whether there is a runtime report at all — a binary older than the field
+        # reports none, and the built-in vocabulary has none. That is a different
+        # state from a module no kernel can run ('{}'), and recording '{}' for
+        # either would store a false fact.
+        - !cel "steps.runtimeReport.result.reported"
+        # The root kind, from the manifest: `Library`, `Application` or
+        # `Builtins` (admitted at `builtinsRef` alone by the root gate).
+        - !cel >-
+          inputs.docs[0].kind == 'Telo.Application' ? 'Application'
+            : (inputs.docs[0].kind == 'Telo.Builtins' ? 'Builtins' : 'Library')
   - name: clearKinds
     invoke: !ref exec
     inputs:

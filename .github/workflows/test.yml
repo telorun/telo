@@ -1223,6 +1223,13 @@ jobs:
           # controller and its dependency tree from cold — minutes on Windows.
           cache-directories: .telo/cargo
 
+      # The Rust CLI embeds the built-in vocabulary archive, which is rendered,
+      # never tracked, and its build refuses to run without it. Both generators are
+      # dependency-free, so the runner's own node renders it with nothing installed.
+      - name: Render the built-in vocabulary
+        if: needs.select.outputs.rust == 'true'
+        run: node scripts/generate-telo-version.mjs && node scripts/render-builtin-vocabulary.mjs
+
       # Both SDK backends are compiled explicitly. `telorun-sdk` declares no
       # default backend, so a bare `cargo test` would exercise neither bridge
       # and let one of them bit-rot unnoticed.
