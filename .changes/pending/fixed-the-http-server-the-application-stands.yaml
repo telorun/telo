@@ -1,7 +1,0 @@
-modules:
-  blueprints/agent-app: Fixed
-  blueprints/approval-app: Fixed
-  blueprints/workflow-app: Fixed
-  apps/authoring-agent: Fixed
-body: "The Http.Server the application stands up binds its port under listen:, as
-  http-server 0.38.0 requires; the top-level port: it wrote is refused there."

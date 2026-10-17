@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.0 - 2026-10-17
+### Added
+* The database is the application's databaseAccess need (Postgres.DatabaseAccess, asking for pgvector), still read from DB_CONNECTION, so a server without the pgvector extension refuses to start with ERR_NEED_UNMET instead of failing at the first vector query. The server binds its port under listen:, as http-server 0.38.0 requires. Requires telo >=0.117.0.
+
 ## 0.16.0 - 2026-10-17
 ### Added
 * The MCP endpoint serves its three authoring guides as argument-less tools a model calls — guide_build_ui, guide_write_integration_tests, guide_design_library — instead of as prompts, which an MCP client offers only to its user, never to its model. The server instructions name the guide tools first and stay within 4096 characters, past which Claude Code cuts them, and serverInfo reports the hub's own version instead of a fixed 0.6.2.

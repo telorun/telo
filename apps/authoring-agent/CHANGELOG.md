@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.1 - 2026-10-17
+### Fixed
+* The Http.Server the application stands up binds its port under listen:, as http-server 0.38.0 requires; the top-level port: it wrote is refused there.
+
 ## 0.25.0 - 2026-10-17
 ### Added
 * The agent reads the hub's authoring guides through the hub's guide tools (guide_build_ui, guide_write_integration_tests, guide_design_library) instead of turning the hub's MCP prompts into tools.
