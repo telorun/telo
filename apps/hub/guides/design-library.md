@@ -392,7 +392,13 @@ importer.
   `ERR_NEED_UNMET`. A need type is a `Telo.NeedType` document (`fields`,
   `required`, `parameters`) exported through `exports.kinds`, named for what
   its fulfilment hands over — `<Thing>Access` for the address and credentials
-  of something outside the application.
+  of something outside the application. A library that serves HTTP and needs
+  to know an address it is reached at (to build absolute links, or to route by
+  host with a mount's `hostnames`) declares `Telo.PublicUrl` /
+  `Telo.PublicHostPattern` with no parameters; the application declares its
+  own, naming a port, and forwards it whole — anything else is
+  `NEED_ROOT_SUPPLY_REQUIRED`. Never name a router like a need: they share one
+  namespace.
 - **`lifecycle`** — `isolated` (the default) gives every import declaration
   its own instantiation: right for a library whose instances are the
   importer's (a client, a formatter, a test fixture). `shared` gives the whole

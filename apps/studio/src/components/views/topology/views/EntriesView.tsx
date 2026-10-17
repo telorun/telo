@@ -22,7 +22,7 @@ import {
   useDiagnosticsState,
 } from "../../../diagnostics/DiagnosticsContext";
 import { Button } from "../../../ui/button";
-import { buildEntryList, entryListOf, type EntryRow } from "../entry-list-model";
+import { buildEntryList, entryListOf, matcherText, type EntryRow } from "../entry-list-model";
 import { summarizeValue } from "../value-summary";
 import type { TopologyViewProps } from "../topology-view";
 
@@ -272,14 +272,14 @@ function EntryRowView({
                 tools only in their name. The target follows on the line below,
                 where it does not have to compete with it. */}
             <span className="truncate text-sm text-zinc-800 dark:text-zinc-100">
-              {row.matcher
-                ? summarizeValue(row.matcher.value)
+              {row.matchers.length > 0
+                ? row.matchers.map((m) => matcherText(m.value)).join("  ·  ")
                 : (row.target ?? row.inlineKind ?? "(nothing attached)")}
             </span>
             {/* An inline declaration has no name, so the KIND is what names it —
                 the same thing the detail panel's chip says, since it is the same
                 question asked in a different place. */}
-            {row.inlineKind && !row.matcher && (
+            {row.inlineKind && row.matchers.length === 0 && (
               <span className="shrink-0 text-[10px] text-zinc-400 dark:text-zinc-500">inline</span>
             )}
             {row.unresolved && (
@@ -292,13 +292,13 @@ function EntryRowView({
               </span>
             )}
           </span>
-          {(row.matcher || row.fields.length > 0) && (
+          {(row.matchers.length > 0 || row.fields.length > 0) && (
             <span className="mt-0.5 block truncate font-mono text-[10px] text-zinc-400">
               {[
                 // Shown once the matcher took the title, so the row never omits
                 // what it dispatches to. An inline declaration is named by its
                 // kind — it has no name of its own.
-                row.matcher
+                row.matchers.length > 0
                   ? `→ ${row.target ?? (row.inlineKind ? `${row.inlineKind} (inline)` : "nothing")}`
                   : null,
                 ...row.fields.map((f) => `${f.name}: ${summarizeValue(f.value)}`),

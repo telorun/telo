@@ -178,7 +178,8 @@ with:
   - kind: Http.Server
     metadata:
       name: stampServer
-    port: 8849
+    listen:
+      port: 8849
     mounts:
       - path: /
         mount: !ref stampApi

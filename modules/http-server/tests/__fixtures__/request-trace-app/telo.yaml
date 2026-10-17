@@ -55,8 +55,9 @@ routes:
 ---
 kind: Http.Server
 metadata: { name: server }
-host: 127.0.0.1
-port: !cel "ports.http"
+listen:
+  address: 127.0.0.1
+  port: !cel "ports.http"
 mounts:
   - path: /api
     mount: !ref api

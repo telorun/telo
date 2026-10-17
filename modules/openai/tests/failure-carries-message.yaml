@@ -76,8 +76,8 @@ with:
                 body: !cel "result"
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 8875
-    baseUrl: http://localhost:8875
+    listen:
+      port: 8875
     openapi:
       info: { title: Fake Chat API, version: 1.0.0 }
     mounts:

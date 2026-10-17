@@ -1,0 +1,4 @@
+kind: Telo.Application
+metadata: { name: ListenMovedConsumer, version: 1.0.0, description: Imports the library beside it, whose server the kernel refuses at creation. }
+imports:
+  Lib: ./listen-moved-lib

@@ -6,7 +6,7 @@ import type { K8sRunnerConfig } from "../../config.js";
 import type { KubeClient } from "../client.js";
 import { is404 } from "../pod-status.js";
 import { createOrReplace } from "./create-or-replace.js";
-import { hostForPort } from "./session-endpoints.js";
+import { hostForPort, hostsForPort } from "./session-endpoints.js";
 import { podOwnerRef, sessionObjectName } from "./session-service.js";
 import type {
   PublishedRoute,
@@ -27,18 +27,20 @@ export function buildSessionIngress(
 ): { ingress: V1Ingress; hosts: string[] } {
   const rules = ports
     .filter((p) => p.protocol === "tcp")
-    .map((p) => ({
-      host: hostForPort(config, sessionId, p.port),
-      http: {
-        paths: [
-          {
-            path: "/",
-            pathType: "Prefix" as const,
-            backend: { service: { name: serviceName, port: { number: p.port } } },
-          },
-        ],
-      },
-    }));
+    .flatMap((p) =>
+      hostsForPort(config, sessionId, p, ports).map((host) => ({
+        host,
+        http: {
+          paths: [
+            {
+              path: "/",
+              pathType: "Prefix" as const,
+              backend: { service: { name: serviceName, port: { number: p.port } } },
+            },
+          ],
+        },
+      })),
+    );
   const ingress: V1Ingress = {
     apiVersion: "networking.k8s.io/v1",
     kind: "Ingress",

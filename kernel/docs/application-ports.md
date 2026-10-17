@@ -21,7 +21,8 @@ targets: [Server]
 ---
 kind: Http.Server
 metadata: { name: Server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 ```
 
 Because the binding resource reads `!cel "ports.http"`, the declaration is the single source of truth — and because the `env:` knob is named directly on the entry, a runner or the editor knows which ports the app exposes (and which env var configures each) **before** starting the process.
@@ -40,10 +41,21 @@ A declared port that no CEL expression references is flagged with an `UNUSED_DEC
 
 The analyzer brands each resolved port value by its `protocol`: `tcp → TcpPort`, `udp → UdpPort`. These are **nominal** types — structurally identical (both integers) but intentionally distinct — that exist only for static analysis; at runtime the value is a plain integer, so there is no runtime cost.
 
-A resource field can declare which brand it accepts with the analyzer-only `x-telo-type` annotation in its `Telo.Definition` schema (e.g. `http-server`'s `port` is branded `TcpPort`). Wiring a `UdpPort` into a `TcpPort`-branded field is then a static error:
+A resource field can declare which brand it accepts with the analyzer-only `x-telo-type` annotation in its `Telo.Definition` schema (e.g. `Http.Server`'s `listen.port` is branded `TcpPort`). Wiring a `UdpPort` into a `TcpPort`-branded field is then a static error:
 
 ```txt
 CEL returns 'UdpPort' but field expects 'TcpPort'
 ```
 
 `x-telo-type` is a general value-brand mechanism, not port-specific — the same annotation can brand other value shapes in future (`Url`, `Duration`, …). Standard JSON Schema keywords (`type`, `minimum`/`maximum`) still perform the actual validation; the brand only carries the nominal identity. A plain integer flows freely into a branded field (gradual typing); only a _conflicting_ brand is rejected.
+
+## Public addresses on a port
+
+A port is where the application listens; the address it is *reached* at is a
+need naming that port — `Telo.PublicUrl` (`parameters: { port: http }`) or
+`Telo.PublicHostPattern` — which an `Http.Server` mount names in `hostnames`. A
+need must name a `tcp` key of `ports:` (`NEED_PARAMETERS_INVALID` otherwise).
+Each port entry of `Kernel.PortsResolved` carries `publicUrls: [{ need, host }]`
+when a `Telo.PublicUrl` names it, so a host deriving addresses from
+`TELO_HOST_PUBLIC_URL_TEMPLATE` routes those hosts to the port. See
+[Providing needs](../../docs/guides/providing-needs.md#public-addresses).

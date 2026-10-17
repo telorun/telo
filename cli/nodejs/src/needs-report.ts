@@ -58,7 +58,9 @@ function reportEntry(graph: LoadedGraph, entry: NeedTableEntry): NeedsReportEntr
     path: entry.path.join("."),
     declaredBy: moduleLocation(graph, entry.declaredBy),
     type: {
-      module: entry.typeModule !== undefined ? moduleLocation(graph, entry.typeModule) : "",
+      // A type no module document declares is the kernel's: its canonical module name.
+      module:
+        entry.typeModule !== undefined ? moduleLocation(graph, entry.typeModule) : type.slice(0, type.indexOf(".")),
       name: type.slice(type.indexOf(".") + 1),
     },
     version: needVersionRange(entry.need)?.raw ?? null,

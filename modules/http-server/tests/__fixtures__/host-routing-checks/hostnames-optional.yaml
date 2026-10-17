@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata: { name: HostnamesOptional, version: 1.0.0, description: A hostnames entry naming an optional need. }
+imports:
+  Http: ../../../
+ports:
+  http: { env: PORT, default: 8942 }
+needs:
+  site:
+    kind: Telo.PublicUrl
+    parameters: { port: http }
+    optional: true
+targets: [ !ref server ]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - hostnames: [ !ref site ]
+    path: /
+    mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }

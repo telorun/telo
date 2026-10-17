@@ -25,7 +25,8 @@ with:
   - kind: Http.Server
     metadata:
       name: ForwardedServer
-    port: 8847
+    listen:
+      port: 8847
     mounts:
       - path: /
         mount:

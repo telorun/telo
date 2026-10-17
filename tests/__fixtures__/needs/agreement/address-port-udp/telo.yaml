@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: AddressPortUdp
+  version: 0.0.0
+  description: An address need naming a udp port.
+ports:
+  dns: { env: DNS_PORT, protocol: udp, default: 5353 }
+needs:
+  site:
+    kind: Telo.PublicUrl
+    parameters: { port: dns }

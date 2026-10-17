@@ -31,7 +31,8 @@ ports:
 kind: Http.Server
 metadata:
   name: Server
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - path: /v1
     mount: !ref Api
@@ -126,7 +127,8 @@ connection: !ref Db
 kind: Http.Server
 metadata:
   name: Server
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - path: /v1
     mount: !ref Notes
@@ -430,9 +432,9 @@ metadata: { name: Test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    host: 127.0.0.1
-    port: 8973
-    logger: false
+    listen:
+      address: 127.0.0.1
+      port: 8973
     mounts:
       - { path: /v1, mount: !ref Api }
 targets:

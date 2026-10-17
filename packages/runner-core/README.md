@@ -125,6 +125,59 @@ answers the Docker Engine API 1.41 requests `Docker.Engine` sends, at
 A backend implements `RunnerBackend.containers` (`SessionContainerEngine`); a
 runner turning the setting on over a backend without one refuses to boot.
 
+## Public addresses — the host contract
+
+An application declares every address it is reached at as a need —
+`Telo.PublicUrl` for one address, `Telo.PublicHostPattern` for a family of
+tenant hosts — each naming a port, and its `Http.Server` mounts route by them.
+Whoever runs it is the **host** of those addresses: a runner, Telo Cloud, any
+other platform. This is what every host does, stated once.
+
+**Report mode** — the host supplies every address need itself:
+
+1. It reads `telo needs report -o json`: each address need's type, its
+   `parameters` (`port`, `primary`, `customDomains`) and the variable its field
+   is read from. Nothing else about the application.
+2. It gives each `Telo.PublicUrl` a URL colliding with no other, routes its host
+   to the port and sets `url`; `primary` marks the need it gives its main
+   address. How it names addresses is its own choice.
+3. It gives each `Telo.PublicHostPattern` a pattern (`https://*.t.example` or
+   `https://*-t.example`) colliding with no other, routes every matching host to
+   the port and sets `pattern`.
+4. It may route further domains, exact or `*.` wildcards, to the port of a
+   `customDomains` need, supplying nothing for them.
+
+**Template mode** — the host states its naming and the kernel derives each
+address:
+
+1. It sets `TELO_HOST_PUBLIC_URL_TEMPLATE`, and
+   `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE` (holding `{label}`) when it can
+   serve several addresses on one port. It reads nothing before boot.
+2. It routes each host a port's `publicUrls` on `Kernel.PortsResolved` names to
+   that port, again on every load. Core carries them on
+   `PortMapping.publicHosts`.
+3. It answers `Telo.PublicUrl` only, so it is a partial host: a pattern or a
+   `customDomains` need comes from the session's env, whose author acts as its
+   host.
+
+**In both modes** the host routes without changing the request — the path
+unchanged, `Host` as the client sent it — and never routes one hostname and port
+to two ports; it supplies origins (a `url` is an origin, a `pattern` a pattern
+origin); it owns TLS, certificates and DNS, so the application holds no
+certificate and learns of a domain only through a fulfilment; it may redirect a
+domain instead of routing it; and it leaves unsupplied any need it cannot serve,
+which the kernel refuses as `ERR_NEED_UNMET`, naming the variable.
+
+**A set of host values serves exactly one root application.** A host running
+several applications gives each its own, and a child an application starts with
+`App.Instance` inherits none of them. The derivation rules are in the guide
+*Providing needs*; the routing an application declares in `http-server`'s
+host-routing doc.
+
+Which mode each runner is: the k8s runner is a template-mode host on a routed
+session; the docker runner and the local-process runner set no template, so
+every address need comes from the session's env.
+
 ## Two nouns, one stream
 
 `status` is the SESSION's state; `run` is one application's outcome. They are

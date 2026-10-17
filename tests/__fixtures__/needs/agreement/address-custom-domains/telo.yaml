@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: AddressCustomDomains
+  version: 0.0.0
+  description: Two address needs on one port both taking custom domains.
+ports:
+  http: { env: PORT, default: 8080 }
+needs:
+  site:
+    kind: Telo.PublicUrl
+    parameters: { port: http, customDomains: true }
+  admin:
+    kind: Telo.PublicUrl
+    parameters: { port: http, customDomains: true }

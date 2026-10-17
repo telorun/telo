@@ -240,8 +240,7 @@ async function startServer() {
     {
       kind: "Http.Server",
       metadata: { name: "web", module: "test" },
-      host: "127.0.0.1",
-      port,
+      listen: { address: "127.0.0.1", port },
       contentTypeParsers: [{ contentType: "application/octet-stream", stream: true }],
       mounts: [{ path: "/", mount: api }],
     } as never,

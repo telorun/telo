@@ -153,8 +153,8 @@ with:
                   data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}
   - kind: Server.Server
     metadata: { name: EchoServer }
-    port: 8876
-    baseUrl: http://localhost:8876
+    listen:
+      port: 8876
     openapi:
       info: { title: Fake OpenAI API, version: 1.0.0 }
     mounts:

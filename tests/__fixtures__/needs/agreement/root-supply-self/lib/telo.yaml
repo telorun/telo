@@ -1,0 +1,10 @@
+kind: Telo.Library
+metadata:
+  name: RootSupplySelf
+  version: 0.0.0
+  description: A fulfilment written of a need type supplied only through a root need.
+---
+kind: Telo.PublicUrl
+metadata: { name: site }
+fields:
+  url: https://shop.example

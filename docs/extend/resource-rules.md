@@ -181,6 +181,13 @@ the rule. A variable used bare (`size(r)`, `r in self.names`) reads the whole
 element, and so does any other use of the collection (`size(self.routes)`). A **`!ref` is not one of them**: it names a declaration, which is a value
 a rule compares perfectly well.
 
+A presence test reads no value. `has(self.port)` reads only which keys `self`
+holds, so `!has(self.port)` runs when `port: !cel "ports.http"` is written, and
+`self.mounts.exists(m, has(m.hostnames))` runs over mounts whose `hostnames`
+hold references. Only the owner of the tested member is read: when `self.listen`
+is itself an expression, `has(self.listen.port)` is skipped. The same holds in a
+[referrer rule](./referrer-rules.md).
+
 ## Guard your optional fields
 
 An unguarded missing key **throws** rather than yielding false, and a throwing

@@ -21,7 +21,8 @@ routes: []
 ---
 kind: Http.Server
 metadata: { name: server }
-port: 18611
+listen:
+  port: 18611
 mounts:
   - path: /
     mount: !ref api

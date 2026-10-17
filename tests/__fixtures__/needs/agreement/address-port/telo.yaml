@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: AddressPort
+  version: 0.0.0
+  description: An address need naming no port.
+needs:
+  site:
+    kind: Telo.PublicUrl

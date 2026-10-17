@@ -1,6 +1,8 @@
 import { PLATFORM_AXES } from "./artifact-axes.js";
 import { manifestFragment, manifestFragmentRef, withSchemaFragments } from "./manifest-schemas.js";
 import { ABSTRACT_THROWS_SCHEMA, THROWS_SCHEMA } from "./throws-declaration.js";
+import { needTypeDefinition } from "./need-type.js";
+import { PUBLIC_ADDRESS_NEED_TYPE_DOCS } from "./public-address.js";
 
 /** A slot holding author-written JSON Schema. Localized and hoisted by
  *  {@link withSchemaFragments} on the enclosing schema, which is what makes the
@@ -618,6 +620,12 @@ const NEED_TYPE_SCHEMA = withSchemaFragments({
       items: { type: "string", minLength: 1 },
       uniqueItems: true,
     },
+    supply: {
+      title: "Supply",
+      description:
+        "`root` when a need of this type is fulfilled only through a root need, forwarded whole: a self-supplied fulfilment, a field-by-field supply at an import and a library need reaching the root unforwarded are refused.",
+      enum: ["root"],
+    },
   },
   required: ["metadata", "fields"],
   additionalProperties: false,
@@ -882,6 +890,8 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
     capability: "Telo.Template",
     schema: NEED_TYPE_SCHEMA,
   },
+  // The kernel-declared address need types: `Telo.PublicUrl`, `Telo.PublicHostPattern`.
+  ...PUBLIC_ADDRESS_NEED_TYPE_DOCS.map(needTypeDefinition),
   {
     kind: "Telo.Definition",
     metadata: { name: "Definition", module: "Telo" },

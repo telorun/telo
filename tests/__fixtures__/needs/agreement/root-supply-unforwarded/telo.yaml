@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: RootSupplyUnforwardedConsumer
+  version: 0.0.0
+  description: Imports a library asking for an address and forwards nothing to it.
+imports:
+  Lib: ./lib

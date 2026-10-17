@@ -56,7 +56,8 @@ with:
                       url: https://echo.example/
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18864
+    listen:
+      port: 18864
     mounts:
       - path: /
         mount: !ref FakeExa

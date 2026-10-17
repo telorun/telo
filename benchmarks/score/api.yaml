@@ -21,8 +21,8 @@ kind: Http.Server
 metadata:
   name: server
   module: ScoreApi
-baseUrl: http://localhost:8845
-port: 8845
+listen:
+  port: 8845
 mounts:
   - path: /v1
     mount: !ref routes

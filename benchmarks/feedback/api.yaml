@@ -47,8 +47,8 @@ kind: Http.Server
 metadata:
   name: server
   module: FeedbackApi
-baseUrl: http://localhost:8844
-port: 8844
+listen:
+  port: 8844
 openapi:
   info:
     title: Feedback API

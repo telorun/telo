@@ -89,11 +89,12 @@ export interface KindResolver {
   moduleForAlias?(alias: string): string | undefined;
 }
 
-/** An empty table, shared: a non-root module with no aliases of its own resolves
- *  nothing rather than resolving through the consumer's. One instance because it
- *  is immutable in use and allocating one per call put a resolver on a per-schema
- *  loop. */
+/** A table with no import, shared: a non-root module with no aliases of its own
+ *  resolves only the built-ins every module names (`Telo`), never through the
+ *  consumer's table. One instance because it is immutable in use and allocating
+ *  one per call put a resolver on a per-schema loop. */
 const NO_ALIASES = new AliasResolver();
+NO_ALIASES.registerUngatedAlias("Telo", "Telo");
 
 /**
  * The scope a DECLARING module's own alias-form names are canonicalized in — the

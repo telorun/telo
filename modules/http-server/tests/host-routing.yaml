@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata:
+  name: HostRoutingTest
+  version: 1.0.0
+  description: |
+    A mount's `hostnames` route by the request's host, read from the address
+    needs each names. Each fixture runs in a kernel of its own, with the
+    addresses below in its environment.
+imports:
+  Test: ../../test
+targets:
+  - !ref servesByHost
+---
+kind: Test.Suite
+metadata: { name: servesByHost }
+include:
+  - "__fixtures__/host-routing/*.yaml"
+# These fixtures ARE the test, so the default fixture exclusion is dropped.
+exclude: []
+env:
+  TELO_NEED_SITE__URL: http://shop.localhost:8941
+  TELO_NEED_ADMIN__URL: http://admin.shop.localhost:8941
+  TELO_NEED_TENANTS__PATTERN: http://*.t.shop.localhost:8941
+  TELO_NEED_REGIONAL__PATTERN: http://*.shop.localhost:8941
+  TELO_NEED_STATUS__URL: http://status.shop.localhost:8944

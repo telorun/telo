@@ -76,7 +76,13 @@ build from there. With no such question, do not hand back — build. A question 
 turns up goes under *Questions* in your final report, never answered by a guess you then build on.
 
 The brief names the checks you run: the quick ones only. The architect runs the whole suite once
-after you, so do not run it yourself. End the report with these sections: *What changed* (by
+after you, so do not run it yourself. Your context is cached for five minutes. Any wait longer than
+that — a command, a poll loop, a background run you sleep on — makes your next turn rewrite all of
+it. A check that takes four minutes or more is not a quick check: skip it, say so under *Checks*,
+and leave it to the gate.
+
+Never read under `.claude/worktrees/`. Those are other branches' trees: what they hold is not this
+tree's code, and reading them only fills your context. End the report with these sections: *What changed* (by
 behaviour), *Checks* (each command and its result), *Choices*, *Questions*, *Not done*,
 *Incidental* (behaviour-free doc or comment errors, with path, lines and exact replacement), and
 *For the next builder*: conventions you learnt, helpers to reuse, traps, and how to run each check

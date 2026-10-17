@@ -31,8 +31,9 @@ metadata: { name: docs }
 ---
 kind: Http.Server
 metadata: { name: server }
-host: 127.0.0.1
-port: 8969
+listen:
+  address: 127.0.0.1
+  port: 8969
 mounts:
   - path: /v1
     mount: !ref api

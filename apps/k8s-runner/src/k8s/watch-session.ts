@@ -30,6 +30,7 @@ import {
   buildSessionService,
   createOrReplace,
   endpointsFor,
+  publicUrlTemplateEnv,
   sessionObjectName,
   watchRouteHealth,
   type PublishedRoute,
@@ -121,7 +122,10 @@ export async function startWatchSession(
       config,
       sessionId: spec.sessionId,
       podName,
-      env: spec.env,
+      // A routed watch session routes every address the kernel announces, so it
+      // answers secondary addresses too. The session's own env wins: whoever
+      // sets a host value there is acting as the host.
+      env: router ? { ...publicUrlTemplateEnv(config, spec.sessionId, true), ...spec.env } : spec.env,
       apps,
       agent: spec.agent,
       limits,
@@ -357,7 +361,24 @@ export async function startWatchSession(
     const after = new Map(declared.map((p) => [portKey(p), p]));
     const added = declared.filter((p) => !before.has(portKey(p)));
     const removed = app.ports.filter((p) => !after.has(portKey(p)));
-    if (added.length === 0 && removed.length === 0) return;
+    // The public addresses on a port this app keeps: a reload adding a
+    // `Telo.PublicUrl` changes its hosts, not its ports.
+    const rehosted = app.ports.filter((p) => {
+      const now = after.get(portKey(p));
+      return now !== undefined && (now.publicHosts ?? []).join(",") !== (p.publicHosts ?? []).join(",");
+    });
+    if (added.length === 0 && removed.length === 0 && rehosted.length === 0) return;
+    if (added.length === 0 && removed.length === 0) {
+      app.ports = app.ports.map((p) => after.get(portKey(p)) ?? p);
+      try {
+        await publishEndpoints(rt, apps);
+      } catch (err) {
+        spec.onEndpoints(appName, {
+          rejected: rehosted.map((p) => ({ port: p.port, reason: apiReason(err) })),
+        });
+      }
+      return;
+    }
 
     // A port another app in this session already owns cannot be routed: session
     // hosts are `<port>-<sessionId>`, a single label carrying no app name. It is
@@ -374,7 +395,10 @@ export async function startWatchSession(
     const rejected = added.filter((p) => taken.has(portKey(p)));
     const accepted = added.filter((p) => !taken.has(portKey(p)));
 
-    app.ports = [...app.ports.filter((p) => after.has(portKey(p))), ...accepted];
+    app.ports = [
+      ...app.ports.filter((p) => after.has(portKey(p))).map((p) => after.get(portKey(p))!),
+      ...accepted,
+    ];
 
     try {
       await publishEndpoints(rt, apps);

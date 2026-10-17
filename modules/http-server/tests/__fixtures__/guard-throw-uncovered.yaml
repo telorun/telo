@@ -29,7 +29,8 @@ routes:
 # The guard's list renders ERR_UNAUTHENTICATED and nothing renders ERR_FORBIDDEN.
 kind: Http.Server
 metadata: { name: server }
-port: 8080
+listen:
+  port: 8080
 mounts:
   - mount: !ref api
     guard:

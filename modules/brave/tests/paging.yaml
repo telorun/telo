@@ -56,7 +56,8 @@ with:
                     : {'query': {'more_results_available': false}}
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18848
+    listen:
+      port: 18848
     mounts:
       - path: /
         mount: !ref FakeBrave

@@ -81,7 +81,8 @@ with:
                 body: { query: other }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18844
+    listen:
+      port: 18844
     mounts:
       - path: /
         mount: !ref FakeSearxng

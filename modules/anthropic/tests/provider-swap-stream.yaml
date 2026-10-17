@@ -143,8 +143,8 @@ with:
                   data: [DONE]
   - kind: Server.Server
     metadata: { name: Vendors }
-    port: 8918
-    baseUrl: http://localhost:8918
+    listen:
+      port: 8918
     openapi:
       info: { title: Fake vendor endpoints, version: 1.0.0 }
     mounts:

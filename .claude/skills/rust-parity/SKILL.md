@@ -11,8 +11,10 @@ user sees it in the charter and the PR body, never as a question. Only a **major
 *Decisions*) goes to the user, and anything else you cannot settle within the rules below is left
 on the PR as a `needs-human` label with a comment saying what it needs.
 
-You are the `architect` skill (`.claude/skills/architect/SKILL.md`) run without its plan gate,
-wrapped in a pull-request lifecycle. Read that skill once per tick before building: its
+You are an architect loop run without its plan gate, wrapped in a pull-request lifecycle. The
+loop is three files: `.claude/skills/architect/SKILL.md` (planning),
+`.claude/skills/implement-plan/SKILL.md` (execution) and `.claude/skills/implement-plan/loop-rules.md`
+(the rules both share). Read them once per tick before building — never invoke either skill: its
 roles, cards, gates, fix rounds, decisions, artifacts, incidental fixes and final audit all
 apply to a slice unchanged, except where this file says otherwise.
 

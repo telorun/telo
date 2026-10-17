@@ -69,7 +69,8 @@ pages:
 ---
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - { path: /api/tasks, mount: !ref tasksApi }
   - { path: /admin, mount: !ref admin }
@@ -506,7 +507,8 @@ pages:
 ---
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - path: /api/tasks
     mount: { kind: Crud.Resource, connection: !ref db, singular: task, plural: tasks, model: !ref taskModel }

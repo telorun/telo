@@ -116,6 +116,21 @@ export type {
   NeedTable,
   NeedTableEntry,
 } from "./need-table.js";
+export {
+  addressLabel,
+  HOST_PATTERN_ORIGIN,
+  invalidLabelReason,
+  isAddressNeedType,
+  normalizeHost,
+  parseHostPattern,
+  parseHostPatternOrigin,
+  PUBLIC_HOST_PATTERN_TYPE,
+  PUBLIC_URL_HOST_VALUES,
+  PUBLIC_URL_SECONDARY_TEMPLATE_ENV,
+  PUBLIC_URL_TEMPLATE_ENV,
+  PUBLIC_URL_TYPE,
+} from "./public-address.js";
+export type { HostPattern } from "./public-address.js";
 export { derivedNeedEnvName, envNameSegment, NEED_ENV_PREFIX } from "./need-env-name.js";
 export {
   BINDINGS_ANNOTATION,

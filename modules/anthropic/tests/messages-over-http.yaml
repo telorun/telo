@@ -204,8 +204,8 @@ with:
                 body: '{"type": "message", "content": [{"ty'
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 8960
-    baseUrl: http://localhost:8960
+    listen:
+      port: 8960
     openapi:
       info: { title: Fake Messages API, version: 1.0.0 }
     mounts:

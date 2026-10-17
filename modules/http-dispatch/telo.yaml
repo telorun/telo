@@ -7,9 +7,9 @@ metadata:
   categories: [Transport]
   description: >-
     The shared value shapes every HTTP transport anchors against: the canonical
-    request matcher — method, path, query, body, headers — and the rules that render a
-    handler's result or error into a status, headers and body. Schema only; nothing
-    here is instantiated.
+    request matcher — method, path, query, body, headers — the hostname an entry is
+    selected by, and the rules that render a handler's result or error into a status,
+    headers and body. Schema only; nothing here is instantiated.
 imports:
   # The response-encoder contract the Outcomes carrier's `content[mime].encoder`
   # slot pins. Naming it by alias is what makes the coupling a declared edge.
@@ -29,7 +29,7 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Request
-  description: Schema-only carrier publishing the canonical HTTP request matcher shape (method, path, query, body, headers).
+  description: Schema-only carrier publishing the canonical HTTP request matcher shapes — method, path, query, body and headers, and the hostname an entry is selected by.
 capability: Telo.Type
 schema:
   type: object
@@ -89,6 +89,16 @@ schema:
             body:    { type: object }
             headers: { type: object }
       required: ["path", "method"]
+    Hostname:
+      title: Hostname
+      description: >-
+        One address a request's host selects an entry by: a `!ref` to a
+        `Telo.PublicUrl` need, matching its URL's host exactly, or to a
+        `Telo.PublicHostPattern` need, matching every host its pattern matches.
+        A domain name is never written here — the need's fulfilment holds it.
+      x-telo-ref:
+        kind: [Telo.PublicUrl, Telo.PublicHostPattern]
+        use: dependency
 ---
 # Pure schema carrier. Never instantiated as a resource. Its only job is to
 # publish $defs/Returns and $defs/Catches as a single source of truth that

@@ -1,6 +1,7 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { sensitiveMembersOf, valueTypeOf } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
+import { memberForbidden, membersSlotOf } from "./members-value-slot.js";
 import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
 import { INJECTED } from "./resource-input.js";
 
@@ -35,6 +36,10 @@ export interface NeedTypeShape {
   version?: "semver";
   /** The closed list of feature names a need may ask for. */
   features?: string[];
+  /** `root` when a need of the type is fulfilled only through a root need,
+   *  forwarded whole — never a self-supplied fulfilment, a field-by-field supply
+   *  at an import, or a library need reaching the root unforwarded. */
+  supply?: "root";
 }
 
 /** The marker the synthesized definition carries — read through
@@ -74,6 +79,7 @@ export function readNeedTypeShape(doc: unknown): NeedTypeShape {
     ...(parameters ? { parameters } : {}),
     ...(record.version === "semver" ? { version: "semver" as const } : {}),
     ...(features ? { features } : {}),
+    ...(record.supply === "root" ? { supply: "root" as const } : {}),
   };
 }
 
@@ -160,10 +166,13 @@ export function sensitiveNeedFields(shape: NeedTypeShape): string[] {
 }
 
 /** True when a field's value type declares a sensitive member (a URL's
- *  `password`), which makes the field sensitive whenever its value holds one. */
+ *  `password`) the field's slot does not forbid, which makes the field sensitive
+ *  whenever its value holds one. */
 export function holdsSensitiveMembers(schema: Record<string, unknown>): boolean {
   const entry = valueTypeOf(schema);
-  return entry !== undefined && sensitiveMembersOf(entry).length > 0;
+  if (entry === undefined) return false;
+  const slot = membersSlotOf(schema);
+  return sensitiveMembersOf(entry).some((member) => !slot || !memberForbidden(slot, member));
 }
 
 /** True when a field schema holds text, which is what substring redaction can

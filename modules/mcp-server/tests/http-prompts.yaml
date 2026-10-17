@@ -115,9 +115,9 @@ metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    host: 127.0.0.1
-    port: 8967
-    baseUrl: http://127.0.0.1:8967
+    listen:
+      address: 127.0.0.1
+      port: 8967
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]

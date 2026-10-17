@@ -24,6 +24,7 @@
 import {
   CEL_ENGINE,
   EACH_SEGMENT,
+  PRESENCE_SEGMENT,
   INDEX_SEGMENT,
   isRefSentinel,
   isTaggedSentinel,
@@ -330,6 +331,12 @@ export function readNodes(
     for (let i = from; i < chain.length; i++) {
       const segment = chain[i]!;
       if (segment === INDEX_SEGMENT) break;
+      // A presence test depends on the keys of what was reached: on its values
+      // only when it is itself not yet known.
+      if (segment === PRESENCE_SEGMENT) {
+        if (dynamicNode(current, path)) nodes.push({ node: current, path });
+        return;
+      }
       if (segment === EACH_SEGMENT) {
         if (dynamicNode(current, path)) break;
         if (i === chain.length - 1) return;

@@ -47,9 +47,9 @@ export interface EntryList {
   itemSchema: Record<string, unknown>;
   /** Item property holding the reference this entry dispatches to. */
   handler: string;
-  /** Item property that selects this entry — a path, a tool name. Absent when
-   *  the kind declares none. */
-  matcher?: string;
+  /** Item properties that select this entry — a path, the hosts it answers, a
+   *  tool name — in declaration order. Empty when the kind declares none. */
+  matchers: string[];
 }
 
 export interface EntryRow {
@@ -71,11 +71,11 @@ export interface EntryRow {
   inlineKind?: string;
   /** The entry names a resource this module does not declare. */
   unresolved: boolean;
-  /** What SELECTS this entry, when the kind declares a matcher and the author
-   *  set it — a mount's path, a tool's name. It leads the row, because it is
-   *  what tells one entry from the next; two mounts of the same API differ only
-   *  here. */
-  matcher?: EntryField;
+  /** What SELECTS this entry, of the matchers the kind declares those the
+   *  author set — a mount's path and hosts, a tool's name. They lead the row,
+   *  because they are what tells one entry from the next; two mounts of the same
+   *  API differ only here. */
+  matchers: EntryField[];
   /** The entry's remaining configuration, in declaration order. */
   fields: EntryField[];
   /** The schema the detail panel edits this entry through — the item schema
@@ -102,8 +102,7 @@ export function entryListOf(kindSchema: Record<string, unknown>): EntryList | nu
     if (!isRecord(itemSchema)) return null;
     const handler = handlerField(itemSchema);
     if (!handler) return null;
-    const matcher = itemRoleField(itemSchema, "matcher");
-    return { name, itemSchema, handler, ...(matcher ? { matcher } : {}) };
+    return { name, itemSchema, handler, matchers: itemRoleFields(itemSchema, "matcher") };
   }
   return null;
 }
@@ -131,12 +130,16 @@ function handlerField(itemSchema: Record<string, unknown>): string | null {
 
 /** The item property carrying `role`, if any. */
 function itemRoleField(itemSchema: Record<string, unknown>, role: string): string | null {
+  return itemRoleFields(itemSchema, role)[0] ?? null;
+}
+
+/** Every item property carrying `role`, in declaration order. */
+function itemRoleFields(itemSchema: Record<string, unknown>, role: string): string[] {
   const properties = itemSchema.properties;
-  if (!isRecord(properties)) return null;
-  for (const [name, prop] of Object.entries(properties)) {
-    if (isRecord(prop) && getTopologyRole(prop) === role) return name;
-  }
-  return null;
+  if (!isRecord(properties)) return [];
+  return Object.entries(properties).flatMap(([name, prop]) =>
+    isRecord(prop) && getTopologyRole(prop) === role ? [name] : [],
+  );
 }
 
 export interface EntryListOptions {
@@ -147,6 +150,16 @@ export interface EntryListOptions {
   pointer: string;
   /** Every resource this module declares, for the unresolved check. */
   declared: ReadonlySet<string>;
+}
+
+/** A matcher's value in one line: a list of references reads as the names it
+ *  references (`site, admin`), anything else as the property rail reads it. */
+export function matcherText(value: unknown): string {
+  if (Array.isArray(value)) {
+    const names = value.map((item) => refTargetName(item));
+    if (names.length > 0 && names.every((name): name is string => !!name)) return names.join(", ");
+  }
+  return summarizeValue(value);
 }
 
 export function buildEntryList({ entries, list, pointer, declared }: EntryListOptions): EntryRow[] {
@@ -166,22 +179,21 @@ export function buildEntryList({ entries, list, pointer, declared }: EntryListOp
     const handler = data[list.handler];
     const target = refTargetName(handler);
     const inlineKind = inlineResourceKind(handler);
-    const matcher =
-      list.matcher && data[list.matcher] !== undefined
-        ? field(list.matcher, data[list.matcher])
-        : undefined;
+    const matchers = list.matchers
+      .filter((name) => data[name] !== undefined)
+      .map((name) => field(name, data[name]));
     return {
       pointer: `${pointer}/${index}`,
       index,
       ...(target ? { target } : {}),
       ...(inlineKind ? { inlineKind } : {}),
       unresolved: !!target && !declared.has(target),
-      ...(matcher ? { matcher } : {}),
+      matchers,
       // Declaration order, and only what the author actually set: an entry
       // listing every optional field as unset would bury the one or two that
       // say what it does.
       fields: Object.entries(properties).flatMap(([name]) =>
-        name === list.handler || name === list.matcher || data[name] === undefined
+        name === list.handler || list.matchers.includes(name) || data[name] === undefined
           ? []
           : [field(name, data[name])],
       ),

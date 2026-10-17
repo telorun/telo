@@ -22,7 +22,8 @@ first document is always `Telo.Application` (a runnable entry point) or
 kind: Http.Server        # what sort of thing this is
 metadata:
   name: Server           # what to call it
-port: 8080               # its configuration, at the top level
+listen:                  # its configuration, at the top level
+  port: 8080
 ```
 
 There is no `spec:` wrapper — a resource's fields sit directly on the document.

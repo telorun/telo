@@ -136,8 +136,9 @@ metadata:
 with:
   - kind: Http.Server
     metadata: { name: Embedder }
-    host: 127.0.0.1
-    port: 8987
+    listen:
+      address: 127.0.0.1
+      port: 8987
     mounts:
       - path: /
         mount: !ref embedderApi

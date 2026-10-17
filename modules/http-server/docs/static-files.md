@@ -10,7 +10,8 @@ and the UI that talks to it.
 ```yaml
 kind: Http.Server
 metadata: { name: Server }
-port: 8080
+listen:
+  port: 8080
 mounts:
   - path: /api
     mount: !ref Api      # Http.Api — the backend

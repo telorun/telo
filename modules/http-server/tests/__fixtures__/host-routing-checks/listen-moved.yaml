@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata: { name: ListenMoved, version: 1.0.0, description: The socket written at the top level. }
+imports:
+  Http: ../../../
+targets: [ !ref server ]
+---
+kind: Http.Server
+metadata: { name: server }
+port: 8080
+mounts:
+  - path: /
+    mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }

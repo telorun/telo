@@ -100,7 +100,7 @@
         "additionalProperties": false
       }
     },
-    "description": "The fulfilment, as a value: its handle, its fields as a typed frame, the names of the fields sensitive as delivered, and the constraints and parameters of the outermost need of the whole-forward chain it came through. It carries no environment name and no source.",
+    "description": "The fulfilment, as a value: its handle, its fields as a typed frame, the names of the fields sensitive as delivered, the constraints and parameters of the outermost need of the whole-forward chain it came through, and for an address need the number of its port. It carries no environment name and no source.",
     "type": "object",
     "properties": {
       "target": {
@@ -121,6 +121,12 @@
       },
       "parameters": {
         "type": "object"
+      },
+      "port": {
+        "description": "For a need of a kernel-declared address type: the number of the port its port parameter names, as the application resolved it.",
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535
       }
     },
     "required": [

@@ -36,8 +36,9 @@ metadata: { name: test }
 with:
   - kind: Server.Server
     metadata: { name: EchoServer }
-    host: 127.0.0.1
-    port: 8984
+    listen:
+      address: 127.0.0.1
+      port: 8984
     mounts:
       - path: /
         mount: !ref echoApi

@@ -150,9 +150,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    host: 127.0.0.1
-    port: 8972
-    baseUrl: http://127.0.0.1:8972
+    listen:
+      address: 127.0.0.1
+      port: 8972
     maxBodyBytes: 64
     contentTypeParsers:
       - contentType: application/octet-stream

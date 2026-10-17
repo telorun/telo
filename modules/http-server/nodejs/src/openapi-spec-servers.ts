@@ -4,8 +4,8 @@ import type { FastifyInstance } from "fastify";
  * The `servers:` array of the OpenAPI document as it is SERVED, which neither
  * half of the docs can decide alone.
  *
- * `Http.Server` owns the policy — it holds `baseUrl` and knows whether forwarded
- * headers are trusted — while `Http.Reference` owns the route the document is
+ * `Http.Server` owns the policy — it knows whether forwarded headers are
+ * trusted — while `Http.Reference` owns the route the document is
  * served from, so the rewrite is installed by the mount and decided by the
  * server. The server publishes its decision as a Fastify decorator rather than
  * passing it down a ref: a mount is reached through `register(app, prefix)` and
@@ -14,7 +14,7 @@ import type { FastifyInstance } from "fastify";
 const SPEC_SERVER_URL_PER_REQUEST = "teloOpenapiSpecServerUrlPerRequest";
 
 /** Declare whether the served document's server URL must be rebuilt per request
- *  (a trusted proxy in front, and no fixed `baseUrl` to state instead). */
+ *  (a trusted proxy in front). */
 export function publishSpecServerUrlPolicy(app: FastifyInstance, perRequest: boolean): void {
   app.decorate(SPEC_SERVER_URL_PER_REQUEST, perRequest);
 }

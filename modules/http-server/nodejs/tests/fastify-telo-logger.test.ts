@@ -94,7 +94,7 @@ describe("Http.Server boots with request logging enabled", () => {
     // needed. A non-zero port only clears the "port is required" guard.
     const infoOn: Logger = { ...NOOP_LOGGER, enabled: (s) => s >= SEVERITY.info };
     await expect(
-      create({ host: "127.0.0.1", port: 8199, mounts: [] }, serverCtx(infoOn)),
+      create({ listen: { address: "127.0.0.1", port: 8199 }, mounts: [] }, serverCtx(infoOn)),
     ).resolves.toBeDefined();
   });
 
@@ -103,7 +103,7 @@ describe("Http.Server boots with request logging enabled", () => {
     // per-request work. Still must construct cleanly.
     const warnOnly: Logger = { ...NOOP_LOGGER, enabled: (s) => s >= SEVERITY.warn };
     await expect(
-      create({ host: "127.0.0.1", port: 8199, mounts: [] }, serverCtx(warnOnly)),
+      create({ listen: { address: "127.0.0.1", port: 8199 }, mounts: [] }, serverCtx(warnOnly)),
     ).resolves.toBeDefined();
   });
 });

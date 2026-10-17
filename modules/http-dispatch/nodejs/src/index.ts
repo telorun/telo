@@ -7,3 +7,13 @@ export {
   validateNoContentTypeHeader,
   validateStreamWhenDoesNotReferenceResult,
 } from "./validate.js";
+export {
+  describeHostnameMatcher,
+  hostnameClaim,
+  hostnameMatcher,
+  hostnameMatcherOfOrigin,
+  isIpLiteral,
+  normalizeRequestHost,
+  sameHostnameMatcher,
+  type HostnameMatcher,
+} from "./hostname.js";

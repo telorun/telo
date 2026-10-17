@@ -108,6 +108,11 @@ interface BaseParsedManifest {
    *  contract importers must satisfy. */
   variables?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
+  /** The module doc's `needs:` block, and a Library's `resources:` inputs — what
+   *  the module declares by name without writing a resource document. Read so a
+   *  reference picker can offer those names; never written back from here. */
+  needs?: Record<string, unknown>;
+  resourceInputs?: Record<string, unknown>;
   /** A Library's public surface: the kinds importers may reference and the
    *  ready-made instances they may `!ref`. Read from the module doc so the
    *  editor can show and edit it — an Application has no `exports` block at

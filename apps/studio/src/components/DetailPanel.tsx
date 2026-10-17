@@ -14,6 +14,7 @@ import { useActiveFilePaths, useDiagnosticsState } from "./diagnostics/Diagnosti
 import { APPLICATION_KIND_ID, isModuleRootKind, moduleRootFormSchema } from "../application-adapter";
 import { ModuleRootTargetsSummary } from "./ModuleRootDetailBody";
 import type { RefResolver } from "./resource-schema-form/ref-candidates";
+import { moduleDeclarationOptions } from "./resource-schema-form/module-declarations";
 import {
   startsWith,
   toSegments,
@@ -158,13 +159,15 @@ export function DetailPanel({
   }, [selectedResource, viewData]);
 
   const resolvedResources: ResolvedResourceOption[] = useMemo(
-    () =>
-      (viewData?.manifest.resources ?? []).map((r) => ({
+    () => [
+      ...(viewData?.manifest.resources ?? []).map((r) => ({
         kind: r.kind,
         name: r.name,
         capability: viewData?.kinds.get(r.kind)?.capability || undefined,
         config: r.fields,
       })),
+      ...(viewData ? moduleDeclarationOptions(viewData.manifest) : []),
+    ],
     [viewData],
   );
 

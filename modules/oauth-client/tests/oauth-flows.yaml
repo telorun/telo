@@ -252,9 +252,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: FakeServer8991 }
-    host: 127.0.0.1
-    port: 8991
-    baseUrl: !cel "variables.issuer"
+    listen:
+      address: 127.0.0.1
+      port: 8991
     contentTypeParsers:
       - contentType: application/x-www-form-urlencoded
     mounts:

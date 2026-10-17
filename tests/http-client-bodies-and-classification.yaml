@@ -128,8 +128,8 @@ with:
                   attempt: !cel "result.attempt"
   - kind: Server.Server
     metadata: { name: TestServer }
-    port: 8871
-    baseUrl: http://localhost:8871
+    listen:
+      port: 8871
     openapi:
       info: { title: Bodies And Classification, version: 1.0.0 }
     mounts:

@@ -47,9 +47,9 @@ metadata: { name: testUpload }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    host: 127.0.0.1
-    port: 8958
-    baseUrl: http://127.0.0.1:8958
+    listen:
+      address: 127.0.0.1
+      port: 8958
     contentTypeParsers:
       - contentType: application/gzip
         stream: true

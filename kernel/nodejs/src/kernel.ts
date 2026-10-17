@@ -27,6 +27,7 @@ import {
   observationDeadline,
   needGraphScopeOf,
   needTypeOf,
+  PUBLIC_URL_HOST_VALUES,
   nodeIdFor,
   Loader,
   resolveNeedTable,
@@ -88,7 +89,17 @@ import { EventBus } from "./events.js";
 import { enableBigIntJson } from "./bigint-json.js";
 import { createLockedEnv, hostEnv, lockControllerEnv } from "./host-env.js";
 import { setEnvironmentNeeds } from "./controllers/module/environment-needs.js";
-import { needFulfilment, type RedactionHost } from "./need-fulfilment.js";
+import { needFulfilment, needFulfilmentController, type RedactionHost } from "./need-fulfilment.js";
+import { publicUrlsByPort, resolveAddresses, type ResolvedAddress } from "./public-urls.js";
+
+/** One resolved inbound port of the root Application, as a runner is told it. */
+export interface ResolvedPort {
+  name: string;
+  port: number;
+  protocol: "tcp" | "udp";
+  /** Each `Telo.PublicUrl` naming the port, with the host its URL resolved to. */
+  publicUrls?: Array<{ need: string; host: string }>;
+}
 import { acceptsBy, buildMembersValues, redactedTextsWithin } from "./members-values.js";
 import { KernelTracer } from "./tracing.js";
 import { KernelLogging, type LoggingManifestBlock } from "./logging/kernel-logging.js";
@@ -300,7 +311,9 @@ export class Kernel implements IKernel {
   /** Root Application `ports:` resolved in `load()` — integer + declared protocol
    *  per name. Surfaced via {@link getResolvedPorts} so a host can advertise where
    *  the running app is reachable. */
-  private _resolvedPorts: Array<{ name: string; port: number; protocol: "tcp" | "udp" }> = [];
+  private _resolvedPorts: ResolvedPort[] = [];
+  /** The root's address needs, resolved at load. */
+  private _addresses: ResolvedAddress[] = [];
   // Host env-var names the root Application binds via `variables`/`secrets`/
   // `ports`; the denied set for the `process.env` guardrail installed at boot.
   private _declaredEnvKeys: string[] = [];
@@ -601,6 +614,14 @@ export class Kernel implements IKernel {
       "Telo.NeedType",
       await import("./controllers/need/need-type-controller.js"),
     );
+    // The need types the kernel declares itself (`Telo.PublicUrl`, …) are served
+    // by the same controller, registered here rather than by a document.
+    for (const def of this.registry.builtinDefinitions()) {
+      const shape = needTypeOf(def);
+      if (!shape) continue;
+      const kind = `${def.metadata.module}.${def.metadata.name}`;
+      this.controllers.registerController(kind, needFulfilmentController(kind, shape));
+    }
     const moduleController = await import("./controllers/module/module-controller.js");
     this.controllers.registerController("Telo.Application", moduleController);
     this.controllers.registerController("Telo.Library", moduleController);
@@ -1392,9 +1413,12 @@ export class Kernel implements IKernel {
 
     if (rootApplicationManifest) {
       const environment = this._needTable?.environment ?? [];
-      this._needEnvKeys = new Set(
-        environment.flatMap((entry) => Object.values(entry.fields ?? {}).map((field) => field.env)),
-      );
+      // The host values that answer the address needs are hidden like a need's
+      // names: they are the kernel's to read, never a controller's.
+      this._needEnvKeys = new Set([
+        ...environment.flatMap((entry) => Object.values(entry.fields ?? {}).map((field) => field.env)),
+        ...PUBLIC_URL_HOST_VALUES,
+      ]);
       this._declaredEnvKeys = [
         ...collectDeclaredEnvKeys(rootApplicationManifest as Record<string, any>),
         ...this._needEnvKeys,
@@ -1474,10 +1498,18 @@ export class Kernel implements IKernel {
       }
       const portDecls = (rootApplicationManifest as { ports?: Record<string, { protocol?: string }> })
         .ports ?? {};
+      // Refused here, before anything initializes: an address with no host, and
+      // two addresses no host could route apart.
+      const addresses = resolveAddresses(environment, (entry) =>
+        fromEnvironment.get(entry.path.join(".")),
+      );
+      this._addresses = addresses;
+      const publicUrls = publicUrlsByPort(addresses);
       this._resolvedPorts = Object.entries(ports).map(([name, port]) => ({
         name,
         port,
         protocol: portDecls[name]?.protocol === "udp" ? "udp" : "tcp",
+        ...(publicUrls.has(name) ? { publicUrls: publicUrls.get(name)! } : {}),
       }));
 
       this.applyLoggingConfig(rootApplicationManifest as Record<string, any>);
@@ -1649,8 +1681,14 @@ export class Kernel implements IKernel {
    * Surfaced so a host (e.g. the CLI inspection endpoint) can tell the debug UI
    * where the running app is reachable.
    */
-  getResolvedPorts(): ReadonlyArray<{ name: string; port: number; protocol: "tcp" | "udp" }> {
+  getResolvedPorts(): ReadonlyArray<ResolvedPort> {
     return this._resolvedPorts;
+  }
+
+  /** The root's address needs (`Telo.PublicUrl`, `Telo.PublicHostPattern`),
+   *  resolved at load: each one's port, host or host pattern. */
+  get addresses(): readonly ResolvedAddress[] {
+    return this._addresses;
   }
 
   /**
@@ -2228,9 +2266,13 @@ export class Kernel implements IKernel {
     this.logging
       .kernelLogger()
       .warn(
-        `controller read ${through}.${key} — ${key} is a need's environment name, hidden from ` +
-          `every controller; the need's fields are read as resources.<need>.<field> in the ` +
-          `module that declares it.`,
+        (PUBLIC_URL_HOST_VALUES as readonly string[]).includes(key)
+          ? `controller read ${through}.${key} — ${key} is a host value the kernel answers the ` +
+            `application's address needs from, hidden from every controller; an address is read ` +
+            `as resources.<need>.url in the module that declares the need.`
+          : `controller read ${through}.${key} — ${key} is a need's environment name, hidden from ` +
+            `every controller; the need's fields are read as resources.<need>.<field> in the ` +
+            `module that declares it.`,
         { "telo.env.key": key },
         { eventName: "telo.env.need_read" },
       );

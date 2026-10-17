@@ -26,7 +26,8 @@ routes:
 # the `throwsThrough` mount edge, so the route is answered for.
 kind: Http.Server
 metadata: { name: server }
-port: 8080
+listen:
+  port: 8080
 catches:
   - status: 500
     content:

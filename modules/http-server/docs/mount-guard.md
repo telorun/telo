@@ -7,7 +7,8 @@ A mount entry on `Http.Server` may carry a `guard:` — an invocable run for eve
 ```yaml
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 cors:
   origin: "*"
   allowedHeaders: [ authorization, content-type ]

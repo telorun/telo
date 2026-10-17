@@ -125,9 +125,9 @@ metadata:
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    host: 127.0.0.1
-    port: 8912
-    baseUrl: http://127.0.0.1:8912
+    listen:
+      address: 127.0.0.1
+      port: 8912
     mounts:
       - path: /health
         mount: !ref healthApi

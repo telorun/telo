@@ -113,7 +113,8 @@ with:
                 body: { query: other }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18862
+    listen:
+      port: 18862
     mounts:
       - path: /
         mount: !ref FakeTavily

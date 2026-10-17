@@ -18,7 +18,8 @@ A route takes a streamed body by declaring its `request.schema.body` as a stream
 ```yaml
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 contentTypeParsers:
   - contentType: application/gzip
     stream: true
@@ -60,7 +61,8 @@ Both are integers of at least 1 and both are resolved at startup, so either may 
 ```yaml
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 maxBodyBytes: 65536             # every route, unless it says otherwise
 mounts:
   - path: /

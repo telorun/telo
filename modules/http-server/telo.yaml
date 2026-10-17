@@ -91,29 +91,61 @@ controllers:
 schema:
   type: "object"
   properties:
-    host:
-      title: Host
+    listen:
+      title: Listen
       description: >-
-        Network interface the server listens on. The default `0.0.0.0` accepts
-        connections from other machines, which a container, a runner session or
-        any proxy in front of the app requires — leave it unset for an
-        application. `127.0.0.1` accepts connections from the same machine only;
-        use it for a mock server inside a test.
-      type: "string"
+        The socket this server binds: the network interface and the TCP port. An
+        address the server is REACHED at is a different thing — a public address
+        need (`Telo.PublicUrl`) a mount names in `hostnames`.
+      type: "object"
+      additionalProperties: false
+      required: [ "port" ]
+      properties:
+        address:
+          title: Address
+          description: >-
+            Network interface the server listens on. The default `0.0.0.0` accepts
+            connections from other machines, which a container, a runner session or
+            any proxy in front of the app requires — leave it unset for an
+            application. `127.0.0.1` accepts connections from the same machine only;
+            use it for a mock server inside a test.
+          type: "string"
+          x-telo-eval: compile
+          default: "0.0.0.0"
+        port:
+          title: Port
+          description: TCP port the server listens on — `!cel "ports.http"` in an application.
+          type: "integer"
+          x-telo-eval: compile
+          x-telo-type: Telo.TcpPort
+          minimum: 1
+          maximum: 65535
+    # Kept only so a manifest still writing the old spelling is told where it
+    # moved (HTTP_SERVER_LISTEN_MOVED) rather than that the key is unknown.
+    host:
+      title: Host (moved)
+      description: Moved to `listen.address`.
+      deprecated: true
       x-telo-eval: compile
-      default: "0.0.0.0"
     port:
-      title: Port
-      description: TCP port used by the HTTP server.
-      type: "integer"
+      title: Port (moved)
+      description: Moved to `listen.port`.
+      deprecated: true
       x-telo-eval: compile
-      x-telo-type: Telo.TcpPort
-      minimum: 1
-      maximum: 65535
-    baseUrl:
-      title: Base URL
-      description: External base URL used in generated links.
+    unknownHosts:
+      title: Unknown Hosts
+      description: >-
+        What the server does with a request whose host no mount's `hostnames`
+        names. `serve` (the default) hands it to the mounts that declare no
+        `hostnames`. `reject` answers it `421 Misdirected Request` with the
+        `{error: {code, message, data}}` envelope, code `ERR_HOST_NOT_SERVED`,
+        before any guard, route or body read — except a host that is an IP
+        literal, which reaches the unrestricted mounts, so a probe sent to the
+        server's address keeps working. A hostname is a routing selector, not an
+        access boundary: protect a sub-tree with its mount's `guard`.
       type: "string"
+      enum: [ "serve", "reject" ]
+      default: "serve"
       x-telo-eval: compile
     trustForwardedHeaders:
       title: Trust Forwarded Headers
@@ -215,6 +247,24 @@ schema:
             type: "string"
             x-telo-eval: compile
             x-telo-topology-role: matcher
+          hostnames:
+            title: Hostnames
+            description: >-
+              The hosts this mount answers: references to the application's
+              public address needs, never domain names, so the same manifest runs
+              wherever the needs are supplied. A `Telo.PublicUrl` matches its
+              URL's host exactly (and, with `customDomains: true`, every host no
+              other entry of the server claims), a `Telo.PublicHostPattern` every
+              host its pattern matches. Each need must name the port this server
+              listens on. A request is answered by a mount whose entry is an
+              exact host first, then the pattern with the longest literal suffix,
+              then the mounts with no `hostnames`. Omitted, the mount answers
+              every host.
+            type: "array"
+            minItems: 1
+            x-telo-topology-role: matcher
+            items:
+              x-telo-schema-from: "HttpDispatch.Request/$defs/Hostname"
           mount:
             title: Mount
             description: >-
@@ -295,6 +345,7 @@ schema:
                         headers: { type: object, additionalProperties: true }
                         query: { type: object, additionalProperties: true }
                         path: { type: string }
+                        host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
                         method: { type: string }
                         ip: { type: string }
               catches:
@@ -318,6 +369,7 @@ schema:
                         headers: { type: object, additionalProperties: true }
                         query: { type: object, additionalProperties: true }
                         path: { type: string }
+                        host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
                         method: { type: string }
                         ip: { type: string }
                     error:
@@ -379,6 +431,7 @@ schema:
             additionalProperties: false
             properties:
               path: { type: string }
+              host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
               method: { type: string }
               ip: { type: string }
           error:
@@ -555,6 +608,7 @@ schema:
                   headers: { type: object, additionalProperties: true }
                   params: { type: object, additionalProperties: true }
                   path: { type: string }
+                  host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
                   method: { type: string }
                   ip: { type: string }
         returns:
@@ -564,10 +618,11 @@ schema:
           x-telo-outcome-list: catches
           x-telo-catches-for: invoke
           x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
-  required: [ "port", "mounts" ]
+  required: [ "listen", "mounts" ]
+  additionalProperties: false
   examples:
-    - host: 0.0.0.0
-      port: !cel "ports.http"
+    - listen:
+        port: !cel "ports.http"
       openapi:
         info:
           title: Users API
@@ -581,6 +636,30 @@ schema:
         - path: /reference
           mount: !ref UsersDocs
           when: !cel "variables.env != 'production'"
+    - listen:
+        port: !cel "ports.http"
+      unknownHosts: reject
+      mounts:
+        - path: /healthz
+          mount: !ref Health
+        - hostnames: [ !ref site ]
+          path: /
+          mount: !ref Site
+        - hostnames: [ !ref admin ]
+          path: /
+          mount: !ref Admin
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.port) && !has(self.host)"
+      code: HTTP_SERVER_LISTEN_MOVED
+      message: >-
+        writes the socket it binds at the top level, which moved under `listen:` — `port` is now
+        `listen.port` and `host` is now `listen.address`: write `listen: { port: … }`.
+    - condition: !cel "!has(self.unknownHosts) || self.unknownHosts != 'reject' || self.mounts.exists(m, has(m.hostnames))"
+      code: HTTP_UNKNOWN_HOSTS_NO_HOSTNAMES
+      message: >-
+        sets `unknownHosts: reject`, and none of its mounts names `hostnames`, so every request whose
+        host is not an IP literal would be refused. Name the address needs each mount answers in its
+        `hostnames`, or drop `unknownHosts: reject`.
 ---
 kind: "Telo.Definition"
 metadata:
@@ -623,6 +702,7 @@ schema:
             additionalProperties: false
             properties:
               path: { type: string }
+              host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
               method: { type: string }
               ip: { type: string }
           error:
@@ -703,6 +783,7 @@ schema:
                     headers: { type: object, additionalProperties: true }
                     params: { type: object, additionalProperties: true }
                     path: { type: string }
+                    host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
                     method: { type: string }
                     ip: { type: string }
           handler:
@@ -743,6 +824,7 @@ schema:
                   type: object
                   properties:
                     path: { type: string }
+                    host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
                     method: { type: string }
                     ip: { type: string }
                 result:
@@ -765,6 +847,7 @@ schema:
                   type: object
                   properties:
                     path: { type: string }
+                    host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
                     method: { type: string }
                     ip: { type: string }
                 error:

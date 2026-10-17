@@ -160,8 +160,7 @@ async function startServer(options: { notFoundHandler: boolean }) {
     {
       kind: "Http.Server",
       metadata: { name: "web", module: "test" },
-      host: "127.0.0.1",
-      port,
+      listen: { address: "127.0.0.1", port },
       cors: { origin: "*" },
       mounts: [
         {

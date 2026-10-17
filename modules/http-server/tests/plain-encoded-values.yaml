@@ -58,8 +58,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    host: 127.0.0.1
-    port: 8983
+    listen:
+      address: 127.0.0.1
+      port: 8983
     mounts:
       - path: /
         mount: !ref api

@@ -83,8 +83,8 @@ with:
                 body: { limit: !cel "error.data.limit" }
   - kind: Server.Server
     metadata: { name: TestServer }
-    port: 8873
-    baseUrl: http://localhost:8873
+    listen:
+      port: 8873
     # No `contentTypeParsers` entry: the server accepts a multipart body out of
     # the box, as raw bytes. Declaring one would still work and would take
     # precedence — this test exercises the default precisely because a 415 here is

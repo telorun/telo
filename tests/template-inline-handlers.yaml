@@ -70,7 +70,8 @@ resources:
                 body: !cel "result"
   - kind: Http.Server
     metadata: { name: server }
-    port: !cel "self.port"
+    listen:
+      port: !cel "self.port"
     mounts:
       - path: /
         mount: !ref api
