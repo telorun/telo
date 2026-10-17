@@ -1,5 +1,12 @@
 # @telorun/docker-runner
 
+## 0.12.1
+
+### Patch Changes
+
+- Updated dependencies [ae999ff]
+  - @telorun/runner-core@0.19.0
+
 ## 0.12.0
 
 ### Minor Changes

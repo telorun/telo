@@ -1,5 +1,20 @@
 # @telorun/kernel
 
+## 0.118.0
+
+### Minor Changes
+
+- 8d2a6a7: Load-time CEL now runs as emitted JavaScript. The kernel emits one module per manifest file and CEL environment, caches it as `<cache-root>/cel/<key>.mjs`, and evaluates every expression compiled at load through it; a later run imports the stored module after verifying its header and body, and re-emits one that does not match. With no cache root, or a read-only cache that does not hold the module, expressions keep running on the closure backend; a cache that cannot be written is reported once and the run continues on closures. The engine's emitted-module store may now supply `digest`, a host SHA-256 used for the module body in place of the built-in pure-JS one.
+- ae999ff: An application declares the addresses it is reached at as needs of two kernel-declared types: `Telo.PublicUrl` (field `url`, an http/https origin; parameters `port`, `primary`, `customDomains`) and `Telo.PublicHostPattern` (field `pattern`, `https://*.tenants.example` or `https://*-tenants.example`; parameter `port`). `Telo.NeedType` gains `supply: root`: a need of such a type is fulfilled only through a root need forwarded whole, and a self-supplied fulfilment, a field-by-field supply or a library need reaching the root unforwarded is `NEED_ROOT_SUPPLY_REQUIRED` / `ERR_NEED_ROOT_SUPPLY_REQUIRED`. A root address need names a `tcp` port, and at most one is `primary` and one per port takes `customDomains` (`NEED_PARAMETERS_INVALID`). The kernel answers an unset `Telo.PublicUrl` from the host values `TELO_HOST_PUBLIC_URL_TEMPLATE` and `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE` (`ERR_NEED_HOST_VALUE_INVALID` for a bad template or derived label), refuses two addresses no host could route apart with `ERR_NEED_PUBLIC_URL_COLLISION`, announces each port's hosts as `publicUrls` on `Kernel.PortsResolved`, hides both host values from controllers and strips them from a started child's environment. `ctx.resolveNeed` answers an address need with the number of its port. `Telo.Url` gains the `user`, `password`, `path` and `query` member parameters. A presence test `has(a.b)` in a resource or referrer rule condition reads only `a`'s keys, so a dynamic value at `a.b` no longer skips the rule. A port an address need names counts as used (no `UNUSED_DECLARATION`). `telo needs report` lists a kernel-declared type under `type.module: Telo`, and a field whose value type's sensitive member the slot forbids (a `Telo.PublicUrl`'s password) is not reported sensitive. A main template holding `{label}` is refused, and the templates are read only when the application declares a `Telo.PublicUrl`. The controller protocol's `Need.Resolve` response gains an optional `port`.
+
+### Patch Changes
+
+- Updated dependencies [8d2a6a7]
+- Updated dependencies [ae999ff]
+  - @telorun/cel@0.118.0
+  - @telorun/templating@0.118.0
+  - @telorun/analyzer@0.118.0
+
 ## 0.117.0
 
 ### Minor Changes
