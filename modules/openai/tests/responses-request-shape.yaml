@@ -94,8 +94,8 @@ with:
                   usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 }
   - kind: Server.Server
     metadata: { name: EchoServer }
-    port: 8877
-    baseUrl: http://localhost:8877
+    listen:
+      port: 8877
     openapi:
       info: { title: Fake Responses API, version: 1.0.0 }
     mounts:

@@ -21,7 +21,7 @@ kind: Telo.Application
 metadata: { name: ndjson-stream, version: 1.0.0 }
 imports:
   Ndjson: oci://ghcr.io/telorun/ndjson-codec@0.6.0
-  Http: oci://ghcr.io/telorun/http-server@0.19.1
+  Http: oci://ghcr.io/telorun/http-server@0.38.0
   Stream: oci://ghcr.io/telorun/stream@0.5.0
 ports:
   http: { env: PORT, default: 3000 }
@@ -48,7 +48,8 @@ routes:
 ---
 kind: Http.Server
 metadata: { name: Server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - path: /
     mount: !ref Api

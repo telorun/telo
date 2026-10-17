@@ -56,7 +56,8 @@ with:
                 body: !cel "result"
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18859
+    listen:
+      port: 18859
     mounts:
       - path: /
         mount: !ref FakeTavily

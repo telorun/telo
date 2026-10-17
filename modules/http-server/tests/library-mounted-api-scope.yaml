@@ -48,9 +48,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    host: 127.0.0.1
-    port: 8952
-    baseUrl: http://127.0.0.1:8952
+    listen:
+      address: 127.0.0.1
+      port: 8952
     mounts:
       - path: /
         mount: !ref Lib.api

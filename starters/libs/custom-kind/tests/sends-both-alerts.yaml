@@ -64,7 +64,8 @@ with:
                 body: { status: invalid event }
   - kind: Http.Server
     metadata: { name: receiverServer }
-    port: 8072
+    listen:
+      port: 8072
     mounts:
       - path: /
         mount: !ref receiver

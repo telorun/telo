@@ -7,6 +7,7 @@ import {
 } from "@telorun/templating";
 import { parseCelSource } from "./cel-environment.js";
 import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
+import { addressNeedPorts } from "./public-address.js";
 import { type AnalysisDiagnostic, DiagnosticSeverity } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -53,6 +54,8 @@ export function validateUnusedDeclarations(manifests: ResourceManifest[]): Analy
   if (declared.size === 0) return [];
 
   const used = new Map<string, Set<string>>(NAMESPACES.map((ns) => [ns, new Set<string>()]));
+  // A port an address need names is used: a host routes that address to it.
+  for (const port of addressNeedPorts(moduleManifest)) used.get("ports")!.add(port);
   const suppressed = new Set<string>();
   const moduleCallNames = moduleCallNamesByModule(manifests);
 

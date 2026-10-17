@@ -39,7 +39,8 @@ targets: [Server]
 ---
 kind: Http.Server
 metadata: { name: Server }
-port: !cel "variables.port"
+listen:
+  port: !cel "variables.port"
 ---
 kind: Sql.Connection
 metadata: { name: Db }
@@ -164,7 +165,8 @@ variables:
     minimum: 1024
 ---
 kind: Http.Server
-port: !cel "resources.AppConfig.port"
+listen:
+  port: !cel "resources.AppConfig.port"
 
 # After
 kind: Telo.Application
@@ -177,5 +179,6 @@ targets: [Server]
 ---
 kind: Http.Server
 metadata: { name: Server }
-port: !cel "variables.port"
+listen:
+  port: !cel "variables.port"
 ```

@@ -83,8 +83,8 @@ with:
                   bytes: !cel "size(result.parts[0].content)"
   - kind: Server.Server
     metadata: { name: UploadServer }
-    port: 8884
-    baseUrl: http://localhost:8884
+    listen:
+      port: 8884
     mounts:
       - path: /api
         mount: !ref UploadApi

@@ -31,6 +31,14 @@ describe("unused declaration warnings", () => {
     expect(diags[0].message).toContain("ports.http");
   });
 
+  it("counts a port an address need names as used", () => {
+    const diags = unusedFor({
+      ports: { http: { env: "PORT", default: 8080 }, admin: { env: "ADMIN_PORT", default: 8081 } },
+      needs: { site: { kind: "Telo.PublicUrl", parameters: { port: "http" } } },
+    });
+    expect(diags.map((d) => (d.data as { path?: string }).path)).toEqual(["ports.admin"]);
+  });
+
   it("warns about an unreferenced variable and secret (same generic path)", () => {
     const diags = unusedFor({
       variables: { v: { env: "V", type: "string" } },

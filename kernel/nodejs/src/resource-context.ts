@@ -46,6 +46,7 @@ import {
   type DeclaredScalarPath,
   type NamedContractShape,
   type ReachPosition,
+  isAddressNeedType,
   needTypeOf,
   outermostNeedEntry,
   type NeedConstraint,
@@ -747,6 +748,17 @@ export class ResourceContextImpl implements ResourceContext {
       mintResourceHandle(fulfilment, fulfilment.type, needPath?.at(-1) ?? pointer);
     const outermost = this.outermostNeed(needPath);
     const parameters = outermost?.need.parameters;
+    const portKey =
+      isAddressNeedType(outermost?.need.type) &&
+      parameters &&
+      typeof parameters === "object" &&
+      typeof (parameters as { port?: unknown }).port === "string"
+        ? (parameters as { port: string }).port
+        : undefined;
+    const port =
+      portKey === undefined
+        ? undefined
+        : this.kernel.getResolvedPorts().find((resolved) => resolved.name === portKey)?.port;
     return {
       target,
       fields: { ...fulfilment.fields },
@@ -755,6 +767,7 @@ export class ResourceContextImpl implements ResourceContext {
       ...(parameters && typeof parameters === "object" && !Array.isArray(parameters)
         ? { parameters: { ...(parameters as Record<string, unknown>) } }
         : {}),
+      ...(port !== undefined ? { port } : {}),
     };
   }
 

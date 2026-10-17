@@ -30,7 +30,8 @@ routes:
 # A guard runs before the body is read, so its context has no `body`.
 kind: Http.Server
 metadata: { name: server }
-port: 8080
+listen:
+  port: 8080
 mounts:
   - mount: !ref api
     guard:

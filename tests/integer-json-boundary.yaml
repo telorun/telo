@@ -68,7 +68,8 @@ with:
   - kind: Http.Server
     metadata:
       name: CountServer
-    port: 8846
+    listen:
+      port: 8846
     mounts:
       - path: /
         mount: !ref CountApi

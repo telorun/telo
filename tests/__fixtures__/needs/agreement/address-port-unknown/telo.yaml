@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: AddressPortUnknown
+  version: 0.0.0
+  description: An address need naming a port the application does not declare.
+ports:
+  http: { env: PORT, default: 8080 }
+needs:
+  site:
+    kind: Telo.PublicUrl
+    parameters: { port: web }

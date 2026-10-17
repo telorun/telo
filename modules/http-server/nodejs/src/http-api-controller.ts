@@ -29,6 +29,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
 import { requestBag } from "./request-binding.js";
 import { requestBodyRefused } from "./request-body-limit.js";
+import { requestHostOf } from "./request-host.js";
 import { requestValidationEnvelope, type RequestLocation } from "./request-validation-envelope.js";
 
 const HttpApiRouteManifest = Type.Object({
@@ -204,6 +205,9 @@ export class HttpServerApi implements ResourceInstance {
           request: {
             method: request.method,
             path: request.url,
+            // The host the server routed the request by — `X-Forwarded-Host`
+            // only behind a proxy the server trusts.
+            host: requestHostOf(app, request),
             // The transport's own bags, as maps in the CEL value domain — see
             // `requestBag`. Fastify builds them with a prototype of its own, which
             // the member-read seam reads as a value holding no members.

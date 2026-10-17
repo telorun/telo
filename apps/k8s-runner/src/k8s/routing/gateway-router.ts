@@ -1,8 +1,10 @@
+import type { PortMapping } from "@telorun/runner-core";
+
 import type { K8sRunnerConfig } from "../../config.js";
 import type { KubeClient } from "../client.js";
 import { is404 } from "../pod-status.js";
 import { createOrReplace } from "./create-or-replace.js";
-import { hostForPort } from "./session-endpoints.js";
+import { hostForPort, hostsForPort } from "./session-endpoints.js";
 import { podOwnerRef, sessionObjectName } from "./session-service.js";
 import type {
   PublishedRoute,
@@ -71,7 +73,8 @@ export function createGatewayRouter(
 
   // Arrow consts, not declarations: a hoisted `function` resets the narrowing of
   // `gateway` above, since TypeScript cannot prove it is not called earlier.
-  const buildRoute = (args: PublishRouteArgs, port: number): Record<string, unknown> => {
+  const buildRoute = (args: PublishRouteArgs, mapping: PortMapping): Record<string, unknown> => {
+    const port = mapping.port;
     return {
       apiVersion: `${GROUP}/${apiVersion}`,
       kind: "HTTPRoute",
@@ -94,7 +97,7 @@ export function createGatewayRouter(
             ...(gateway.sectionName ? { sectionName: gateway.sectionName } : {}),
           },
         ],
-        hostnames: [hostForPort(config, args.sessionId, port)],
+        hostnames: hostsForPort(config, args.sessionId, mapping, args.ports),
         rules: [
           {
             matches: [{ path: { type: "PathPrefix", value: "/" } }],
@@ -121,7 +124,7 @@ export function createGatewayRouter(
       const desired = new Set(tcp.map((p) => routeName(args.sessionId, p.port)));
 
       for (const p of tcp) {
-        const body = buildRoute(args, p.port);
+        const body = buildRoute(args, p);
         const name = routeName(args.sessionId, p.port);
         await createOrReplace(
           () => kube.custom.createNamespacedCustomObject({ ...base, body }),

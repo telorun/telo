@@ -27,6 +27,33 @@ describe("portsResolvedFrom", () => {
     ]);
   });
 
+  it("reads the hosts of each port's announced public addresses", () => {
+    expect(
+      portsResolvedFrom(
+        frame(PORTS_RESOLVED_EVENT, {
+          ports: [
+            {
+              name: "http",
+              port: 3000,
+              protocol: "tcp",
+              publicUrls: [
+                { need: "site", host: "3000-s1.example.dev" },
+                { need: "admin", host: "admin--3000-s1.example.dev" },
+                { need: "broken" },
+              ],
+            },
+          ],
+        }),
+      ),
+    ).toEqual([
+      {
+        port: 3000,
+        protocol: "tcp",
+        publicHosts: ["3000-s1.example.dev", "admin--3000-s1.example.dev"],
+      },
+    ]);
+  });
+
   it("reads an empty set as an empty set, not as 'no information'", () => {
     // An app that dropped its last `ports:` entry has to un-route it, so the
     // difference between [] and undefined is load-bearing.

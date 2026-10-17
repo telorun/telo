@@ -1,0 +1,20 @@
+kind: Telo.Library
+metadata: { name: ListenMovedLib, version: 1.0.0, description: A server writing its socket both ways. }
+imports:
+  Http: ../../../../
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8942 }
+host: 127.0.0.1
+mounts:
+  - path: /
+    mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }

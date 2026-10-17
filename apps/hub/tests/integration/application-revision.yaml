@@ -209,8 +209,9 @@ metadata:
 with:
   - kind: Http.Server
     metadata: { name: StandIns }
-    host: 127.0.0.1
-    port: 8988
+    listen:
+      address: 127.0.0.1
+      port: 8988
     contentTypeParsers:
       - contentType: text/yaml
         stream: true

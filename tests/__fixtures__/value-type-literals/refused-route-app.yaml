@@ -22,7 +22,8 @@ with:
   - kind: Http.Server
     metadata:
       name: stampServer
-    port: 8851
+    listen:
+      port: 8851
     mounts:
       - path: /
         mount: !ref Derived.stampApi

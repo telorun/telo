@@ -67,7 +67,8 @@ with:
                 body: { results: [] }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18840
+    listen:
+      port: 18840
     mounts:
       - path: /
         mount: !ref FakeSearxng

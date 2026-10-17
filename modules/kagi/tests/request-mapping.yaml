@@ -64,7 +64,8 @@ with:
                 body: { data: { search: [] } }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18852
+    listen:
+      port: 18852
     mounts:
       - path: /
         mount: !ref FakeKagi

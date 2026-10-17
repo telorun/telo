@@ -2121,7 +2121,7 @@ normal return lets the request through (the value is discarded); a throw
 refuses it, rendered by `guard.catches` and then the server's `catches:`, and a
 throw nothing claims is a 500 — a failing guard never lets a request in. Its
 `inputs:` see `request.headers` (lowercase keys) / `query` / `path` / `method`
-/ `ip` — no `body`, no `params`. CORS preflight never reaches it, a sibling
+/ `host` / `ip` — no `body`, no `params`. CORS preflight never reaches it, a sibling
 mount without one is untouched (health and readiness probes live on their own
 router), and a request matching no route goes to the not-found handler.
 
@@ -2258,11 +2258,15 @@ to say.
   in a Library (`LIBRARY_ARG_KEY_REJECTED`).
 - `ports:` (Application only) — NAME-KEYED MAP. Each entry binds an `env:` var
   (required), optionally an `arg:` beside it, and optional `default:`; the
-  value is implicitly a port integer. Read as `ports.X`. The server that
-  listens on one sets NO `host:` — the default `0.0.0.0` is what a container,
-  a runner session and the studio reach it through. `host: 127.0.0.1` on an
-  application's server boots clean, reports nothing, and every URL the runner
-  hands out answers 503; loopback is for a mock server inside a test only.
+  value is implicitly a port integer. Read as `ports.X`. An `Http.Server`
+  binds it under `listen:` — `listen: { port: !cel "ports.http" }`; the
+  top-level `port:` / `host:` spelling is refused (`HTTP_SERVER_LISTEN_MOVED`)
+  and `baseUrl:` does not exist (`SCHEMA_VIOLATION`). Set NO `listen.address`
+  on an application's server — the default `0.0.0.0` is what a container, a
+  runner session and the studio reach it through. `address: 127.0.0.1` there
+  boots clean, reports nothing, and every URL the runner hands out answers 503;
+  loopback is for a mock server inside a test only. The address a server is
+  REACHED at is a public address need (below), never a value in the manifest.
 - `targets:` (Application only) — a flat boot list of `!ref`s to the
   Runnables / Services to start after resources init. ORDER MATTERS: a Service
   prepares in `init()` but does not begin accepting events until it is run
@@ -2964,6 +2968,37 @@ to say.
   (`NEED_FORWARD_INCOMPATIBLE`), only keys the library declares
   (`NEED_UNDECLARED`). A `resources:` entry of a need type is
   `RESOURCE_INPUT_NEED_TYPE`.
+
+  PUBLIC ADDRESSES are needs of two kernel-declared types, written with no
+  import: `Telo.PublicUrl` (one address; field `url`, an http/https origin,
+  host read as `resources.site.url.host`) and `Telo.PublicHostPattern` (tenant
+  hosts; field `pattern`, `https://*.tenants.example` or
+  `https://*-tenants.example`). Declare them on the APPLICATION, each naming a
+  `tcp` port: `needs: { site: { kind: Telo.PublicUrl, parameters: { port: http,
+  primary: true } } }` — `primary` marks the main address (at most one),
+  `customDomains: true` lets the host route customers' own domains to that
+  need's port (at most one per port). A library declares one with NO
+  parameters and the application forwards its own whole
+  (`needs: { site: !ref site }`); a fulfilment written in the manifest, a
+  field-by-field supply or a library address need left unforwarded is
+  `NEED_ROOT_SUPPLY_REQUIRED` — a domain name is never written in a manifest.
+  An app declaring one needs `requires: { telo: ">=0.118.0" }`. An
+  `Http.Server` mount answers only the hosts its `hostnames` names — a list of
+  `!ref`s to those needs (`hostnames: [ !ref admin ]`, never a string:
+  `INVALID_REFERENCE_FORM`); each need must name the port the server listens
+  on (`ERR_HOSTNAMES_PORT_MISMATCH`). The host picks the class BEFORE the path
+  is matched: mounts naming it exactly, then each pattern naming it (longest
+  suffix first), then mounts without `hostnames` (keep health probes there) —
+  so a host-restricted `/users/{id}` wins over an unrestricted `/users/me` on
+  that host. Two mounts of one class registering the same method and path are
+  `ERR_HTTP_ROUTE_DUPLICATE`. `request.host` (the trusted host, `X-Forwarded-Host` only under
+  `trustProxy`) is in every request context — read the tenant from it, e.g.
+  `request.host.split('.')[0]`. `unknownHosts: reject` answers any other host
+  421 (`ERR_HOST_NOT_SERVED`). A hostname ROUTES, it does not protect: guard an
+  admin mount with `guard:`. A need shares the module's namespace with
+  resources, so NEVER name a router like a need (`siteApi`, not `site`,
+  beside a `site` need). Build an absolute link from the need
+  (`resources.site.url`, `resources.tenants.pattern.replace('*', id)`).
 - `kind: Telo.NeedType` — declares a need type a library exports through
   `exports.kinds`: `fields` (a JSON Schema property map of what a fulfilment
   hands over; a credential field is `type: string` with
@@ -3730,8 +3765,9 @@ needs:
     with:
       - kind: Http.Server
         metadata: { name: mockServer }
-        host: 127.0.0.1
-        port: 19871
+        listen:
+          address: 127.0.0.1
+          port: 19871
         mounts:
           - path: /
             mount: !ref mockApi
@@ -3755,10 +3791,10 @@ Three things make it work, and each is load-bearing:
     then HANG instead of exiting.
   - `targets:` inside the sequence starts it before the steps run.
   - The canned response is a `Run.Value` as the route's `handler`; the shape it
-    returns is declared in `returns`. Bind `127.0.0.1` and an unusual port, so
+    returns is declared in `returns`. Bind `listen.address: 127.0.0.1` and an unusual port, so
     the mock is unreachable from outside and does not collide with a real
     service. That is a rule for a test's mock ONLY: an application's own
-    server sets no `host:`, or nothing outside its container can reach it.
+    server sets no `listen.address`, or nothing outside its container can reach it.
 
 **This is why a library must take its base URL as a variable.** The test points
 the library at the mock by setting that variable at its import

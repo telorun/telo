@@ -44,6 +44,26 @@
       "name": "scheme",
       "member": "scheme",
       "description": "A schema the scheme must satisfy (`scheme: { enum: [postgres, postgresql] }`). Omitted means any scheme."
+    },
+    {
+      "name": "user",
+      "member": "user",
+      "description": "A schema the user name must satisfy when present; `{ not: {} }` refuses one."
+    },
+    {
+      "name": "password",
+      "member": "password",
+      "description": "A schema the password must satisfy when present; `{ not: {} }` refuses one."
+    },
+    {
+      "name": "path",
+      "member": "path",
+      "description": "A schema the path must satisfy when present (`path: { enum: [\"/\"] }` for an origin)."
+    },
+    {
+      "name": "query",
+      "member": "query",
+      "description": "A schema the query must satisfy when present; `{ not: {} }` refuses one."
     }
   ],
   "description": "A URL that may carry credentials, held as its members — scheme, host, port, user, password, path and query — each read in CEL as a field. Written as its text (`postgres://app:secret@db:5432/orders`) or as an object of members, which are escaped by RFC 3986 component rules, so a password holding `@` or `/` needs no hand escaping. The password and the whole text are redacted in logs; `string(url)` is its text."

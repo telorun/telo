@@ -59,9 +59,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    host: 127.0.0.1
-    port: 8965
-    baseUrl: http://127.0.0.1:8965
+    listen:
+      address: 127.0.0.1
+      port: 8965
     contentTypeParsers:
       - contentType: application/octet-stream
         stream: true

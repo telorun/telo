@@ -18,6 +18,7 @@ targets:
 kind: Http.Server
 metadata:
   name: server
-host: !cel "nowIso()"
-port: !cel "ports.http"
+listen:
+  address: !cel "nowIso()"
+  port: !cel "ports.http"
 mounts: []

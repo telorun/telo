@@ -58,7 +58,8 @@ with:
                       : []}}
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18854
+    listen:
+      port: 18854
     mounts:
       - path: /
         mount: !ref FakeKagi

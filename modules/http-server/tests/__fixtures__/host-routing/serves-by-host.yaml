@@ -1,0 +1,173 @@
+kind: Telo.Application
+metadata:
+  name: ServesByHost
+  version: 1.0.0
+  description: |
+    One server answering two addresses and two families of tenant hosts. A
+    request reaches the mount whose `hostnames` names its host exactly, then the
+    one whose pattern has the longest literal suffix, then the mounts naming no
+    `hostnames`. The server trusts the proxy in front, so the host is read from
+    `X-Forwarded-Host`, which is how the requests below choose one.
+imports:
+  Http: ../../../
+  HttpClient: ../../../../http-client
+  Run: ../../../../run
+  Assert: ../../../../assert
+ports:
+  http: { env: PORT, default: 8941 }
+needs:
+  site:
+    kind: Telo.PublicUrl
+    parameters: { port: http, primary: true }
+  admin:
+    kind: Telo.PublicUrl
+    parameters: { port: http }
+  tenants:
+    kind: Telo.PublicHostPattern
+    parameters: { port: http }
+  regional:
+    kind: Telo.PublicHostPattern
+    parameters: { port: http }
+targets:
+  - !ref test
+---
+kind: Http.Reference
+metadata: { name: docs }
+---
+kind: Http.Api
+metadata: { name: healthApi }
+routes:
+  - request: { path: /, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { who: health } } }
+---
+kind: Http.Api
+metadata: { name: siteApi }
+routes:
+  - request: { path: /who, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { who: site, host: !cel "request.host" } } }
+---
+kind: Http.Api
+metadata: { name: adminApi }
+routes:
+  - request: { path: /who, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { who: admin, host: !cel "request.host" } } }
+  - request: { path: /settings, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { who: admin } } }
+---
+kind: Http.Api
+metadata: { name: tenantApi }
+routes:
+  - request: { path: /who, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { who: tenant, tenant: !cel "request.host.split('.')[0]" }
+---
+kind: Http.Api
+metadata: { name: regionalApi }
+routes:
+  - request: { path: /who, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { who: regional, host: !cel "request.host" } } }
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: !interpolate "http://127.0.0.1:${{ ports.http }}"
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen:
+      address: 127.0.0.1
+      port: !cel "ports.http"
+    trustProxy: true
+    openapi:
+      info: { title: Hosts, version: 1.0.0 }
+    mounts:
+      - path: /healthz
+        mount: !ref healthApi
+      - hostnames: [ !ref site ]
+        path: /
+        mount: !ref siteApi
+      - hostnames: [ !ref admin ]
+        path: /
+        mount: !ref adminApi
+      - hostnames: [ !ref tenants ]
+        path: /
+        mount: !ref tenantApi
+      - hostnames: [ !ref regional ]
+        path: /
+        mount: !ref regionalApi
+      - hostnames: [ !ref site, !ref admin ]
+        path: /docs
+        mount: !ref docs
+targets:
+  - !ref server
+steps:
+  - name: site
+    invoke: !ref call
+    inputs: { url: /who, headers: { x-forwarded-host: shop.localhost } }
+  - name: admin
+    invoke: !ref call
+    inputs: { url: /who, headers: { x-forwarded-host: Admin.Shop.Localhost } }
+  - name: tenant
+    invoke: !ref call
+    inputs: { url: /who, headers: { x-forwarded-host: acme.t.shop.localhost } }
+  - name: regional
+    invoke: !ref call
+    inputs: { url: /who, headers: { x-forwarded-host: eu.shop.localhost } }
+  - name: unclaimed
+    invoke: !ref call
+    inputs: { url: /who, headers: { x-forwarded-host: elsewhere.localhost } }
+  - name: health
+    invoke: !ref call
+    inputs: { url: /healthz, headers: { x-forwarded-host: elsewhere.localhost } }
+  - name: adminOnSite
+    invoke: !ref call
+    inputs: { url: /settings, headers: { x-forwarded-host: shop.localhost } }
+  - name: siteDocs
+    invoke: !ref call
+    inputs: { url: /docs/openapi.json, headers: { x-forwarded-host: shop.localhost } }
+  - name: adminDocs
+    invoke: !ref call
+    inputs: { url: /docs/openapi.json, headers: { x-forwarded-host: admin.shop.localhost } }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        site: !cel "steps.site.result.body"
+        admin: !cel "steps.admin.result.body"
+        tenant: !cel "steps.tenant.result.body"
+        regional: !cel "steps.regional.result.body"
+        unclaimedStatus: !cel "steps.unclaimed.result.status"
+        health: !cel "steps.health.result.body"
+        adminOnSiteStatus: !cel "steps.adminOnSite.result.status"
+        sitePaths: !cel "steps.siteDocs.result.body.paths.map(p, p)"
+        adminPaths: !cel "steps.adminDocs.result.body.paths.map(p, p)"
+      expected:
+        site: { who: site, host: shop.localhost }
+        admin: { who: admin, host: admin.shop.localhost }
+        tenant: { who: tenant, tenant: acme }
+        regional: { who: regional, host: eu.shop.localhost }
+        unclaimedStatus: 404
+        health: { who: health }
+        adminOnSiteStatus: 404
+        sitePaths: [ /healthz, /who ]
+        adminPaths: [ /healthz, /who, /settings ]

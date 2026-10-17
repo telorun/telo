@@ -35,6 +35,7 @@ import { templateBodyEntries } from "./template-body.js";
 import type { ReachSite } from "./reference-reach.js";
 import type { NeedConstraint } from "./ref-slot.js";
 import { isUnsatisfiable, parseVersionRange, rangeWithin, type VersionRange } from "./version-range.js";
+import { isAddressNeedType, PUBLIC_URL_TYPE } from "./public-address.js";
 
 /**
  * THE NEED TABLE — every need of a loaded application, where it sits in the
@@ -255,8 +256,142 @@ export function resolveNeedTable(graph: NeedGraph): NeedTable {
 
   const { entries, environment } = walkTree(graph);
   const root = graph.modules.get(graph.root);
-  if (root?.application) checkEnvNames(root, environment, problem);
+  checkLibraryAddressNeeds(graph, problem);
+  if (root?.application) {
+    checkRootSupplyReached(graph, root, environment, problem);
+    checkAddressNeeds(root, problem);
+    checkEnvNames(root, environment, problem);
+  }
   return { entries, problems, environment };
+}
+
+/** A need of a root-only type is fulfilled through a root need forwarded whole,
+ *  so a library's need of one reaching the root with nothing forwarding it — to
+ *  be read from its derived environment name — is refused at the import that
+ *  reaches it. */
+function checkRootSupplyReached(
+  graph: NeedGraph,
+  root: NeedGraphModule,
+  environment: readonly NeedTableEntry[],
+  report: Report,
+): void {
+  for (const entry of environment) {
+    if (!entry.via) continue;
+    const shape = entry.need.type ? graph.needType(entry.need.type) : undefined;
+    if (shape?.supply !== "root") continue;
+    report(
+      root,
+      "NEED_ROOT_SUPPLY_REQUIRED",
+      `Need '${entry.path.join(".")}' is of type '${entry.need.type}', which is supplied only ` +
+        `through a root need forwarded whole, and nothing forwards it — it would be read from ` +
+        `its derived environment name. Declare a need of type '${entry.need.kind}' in this ` +
+        `application and supply it at the import: 'needs: { ${entry.need.name}: !ref <that need> }'.`,
+      {
+        manifest: entry.via.manifest,
+        resource: { kind: "Telo.Import", name: entry.via.alias },
+        path: "",
+      },
+    );
+  }
+}
+
+/** Only a root need names a port — a library has no `ports:` — so a library's
+ *  address need states no parameters. */
+function checkLibraryAddressNeeds(graph: NeedGraph, report: Report): void {
+  for (const module of graph.modules.values()) {
+    if (!module.checked || module.application) continue;
+    for (const need of module.needs) {
+      if (!isAddressNeedType(need.type) || need.parameters === undefined) continue;
+      report(
+        module,
+        "NEED_PARAMETERS_INVALID",
+        `Need '${need.name}' (type '${need.type}') states parameters, and a library's address ` +
+          `need states none: the port, the primary and custom domains are the application's to ` +
+          `say. Drop 'parameters:'; the application declares its own '${need.kind}' naming a ` +
+          `port and forwards it at the import.`,
+        { path: `needs.${need.name}.parameters` },
+      );
+    }
+  }
+}
+
+/**
+ * The parameters of the application's own address needs: each names a `tcp` key
+ * of `ports:`, at most one `Telo.PublicUrl` is the primary, and at most one per
+ * port takes custom domains.
+ */
+function checkAddressNeeds(root: NeedGraphModule, report: Report): void {
+  const ports = (root.doc as { ports?: unknown } | undefined)?.ports;
+  const declaredPorts =
+    ports && typeof ports === "object" && !Array.isArray(ports)
+      ? (ports as Record<string, { protocol?: unknown } | null>)
+      : {};
+  let primary: string | undefined;
+  const customDomains = new Map<string, string>();
+  for (const need of root.needs) {
+    if (!isAddressNeedType(need.type)) continue;
+    const parameters =
+      need.parameters && typeof need.parameters === "object" && !Array.isArray(need.parameters)
+        ? (need.parameters as Record<string, unknown>)
+        : {};
+    const path = `needs.${need.name}.parameters`;
+    const port = parameters.port;
+    if (typeof port !== "string") {
+      report(
+        root,
+        "NEED_PARAMETERS_INVALID",
+        `Need '${need.name}' (type '${need.type}') names no port. An address is served on a ` +
+          `port of this application: write 'parameters: { port: <key of ports:> }'. Ports: ` +
+          `${list(Object.keys(declaredPorts))}.`,
+        { path },
+      );
+    } else if (!Object.hasOwn(declaredPorts, port)) {
+      report(
+        root,
+        "NEED_PARAMETERS_INVALID",
+        `Need '${need.name}' names port '${port}', which this application's 'ports:' does not ` +
+          `declare. Ports: ${list(Object.keys(declaredPorts))}.`,
+        { path: `${path}.port` },
+      );
+    } else if (declaredPorts[port]?.protocol === "udp") {
+      report(
+        root,
+        "NEED_PARAMETERS_INVALID",
+        `Need '${need.name}' names port '${port}', which is a 'udp' port. An address is served ` +
+          `over HTTP, on a 'tcp' port.`,
+        { path: `${path}.port` },
+      );
+    }
+    if (need.type !== PUBLIC_URL_TYPE) continue;
+    if (parameters.primary === true) {
+      if (primary !== undefined) {
+        report(
+          root,
+          "NEED_PARAMETERS_INVALID",
+          `Need '${need.name}' and need '${primary}' both state 'primary: true'. An application ` +
+            `has at most one primary address.`,
+          { path: `${path}.primary` },
+        );
+      } else {
+        primary = need.name;
+      }
+    }
+    if (parameters.customDomains === true && typeof port === "string") {
+      const other = customDomains.get(port);
+      if (other !== undefined) {
+        report(
+          root,
+          "NEED_PARAMETERS_INVALID",
+          `Need '${need.name}' and need '${other}' both state 'customDomains: true' on port ` +
+            `'${port}'. A domain the host routes to a port must trace to one need, so at most one ` +
+            `per port takes custom domains.`,
+          { path: `${path}.customDomains` },
+        );
+      } else {
+        customDomains.set(port, need.name);
+      }
+    }
+  }
 }
 
 type Report = (
@@ -386,6 +521,18 @@ function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report):
   for (const declaration of module.declarations ?? []) {
     const shape = declaration.type ? graph.needType(declaration.type) : undefined;
     if (!shape) continue;
+    if (shape.supply === "root") {
+      report(
+        module,
+        "NEED_ROOT_SUPPLY_REQUIRED",
+        `${declaration.kind}/${declaration.name}: need type '${declaration.type}' is supplied only ` +
+          `through a root need forwarded whole, so a fulfilment of it cannot be written in a ` +
+          `manifest. Declare a need of the type under the application's 'needs:' and let whoever ` +
+          `runs the application supply it.`,
+        { manifest: declaration.manifest, resource: { kind: declaration.kind, name: declaration.name }, path: "" },
+      );
+      continue;
+    }
     const fields = (declaration.manifest as Record<string, unknown>).fields;
     const written =
       fields && typeof fields === "object" && !Array.isArray(fields)
@@ -685,6 +832,18 @@ function checkSupply(
     }
     if (supply.form === "fields") {
       if (!shape) continue;
+      if (shape.supply === "root") {
+        report(
+          module,
+          "NEED_ROOT_SUPPLY_REQUIRED",
+          `Import '${imp.alias}': need '${key}' is of type '${need.type}', which is supplied only ` +
+            `through a root need forwarded whole, so it cannot be supplied field by field. ` +
+            `Declare a need of the type in this module and supply it whole: ` +
+            `'needs: { ${key}: !ref <that need> }'.`,
+          { ...anchor, path },
+        );
+        continue;
+      }
       checkFields(
         module,
         supply.fields,

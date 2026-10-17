@@ -110,7 +110,13 @@ describe("a value type with members", () => {
     const entry = VALUE_TYPES.get("Telo.Url")!;
     expect(Object.keys(entry.members!)).toEqual(["scheme", "host", "port", "user", "password", "path", "query"]);
     expect(entry.acceptsText).toEqual({ code: "URL_INVALID" });
-    expect(entry.parameters).toMatchObject([{ name: "scheme", member: "scheme" }]);
+    expect(entry.parameters).toMatchObject([
+      { name: "scheme", member: "scheme" },
+      { name: "user", member: "user" },
+      { name: "password", member: "password" },
+      { name: "path", member: "path" },
+      { name: "query", member: "query" },
+    ]);
     expect(sensitiveMembersOf(entry)).toEqual(["password"]);
   });
 

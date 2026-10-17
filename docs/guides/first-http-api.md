@@ -34,7 +34,8 @@ ports:
 kind: Http.Server
 metadata:
   name: Server
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - path: /v1
     mount: !ref Api
@@ -202,7 +203,8 @@ variables:
 kind: Http.Server
 metadata:
   name: Server
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 openapi:
   info:
     title: Greeting API

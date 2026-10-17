@@ -109,7 +109,8 @@ with:
                 body: { requestId: r }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18868
+    listen:
+      port: 18868
     mounts:
       - path: /
         mount: !ref FakeExa

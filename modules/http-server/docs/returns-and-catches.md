@@ -149,7 +149,8 @@ entry claims renders the built-in envelope.**
 ```yaml
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 # Applies to every mount, and to notFoundHandler.
 catches:
   - when: !cel "error.code == 'UNAUTHORIZED'"

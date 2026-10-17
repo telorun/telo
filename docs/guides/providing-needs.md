@@ -77,7 +77,7 @@ version, never changed:
 |---|---|
 | `path` | The need path: its name beneath each importer's alias, `.`-separated. A `lifecycle: shared` library's needs sit beneath its own name, directly under the root. |
 | `declaredBy` | The module declaring the need. |
-| `type.module`, `type.name` | The need type: the module declaring it, and its name there. A type's identity does not depend on the module's version. |
+| `type.module`, `type.name` | The need type: the module declaring it, and its name there — `Telo` for a type the kernel declares (`Telo.PublicUrl`, `Telo.PublicHostPattern`). A type's identity does not depend on the module's version. |
 | `version` | The version range the fulfilment must be within (`>=16.0.0`), or `null` when the need states none. A consumer of the need reports the real version and the kernel refuses one outside it with `ERR_NEED_UNMET`, naming the variable it was read from. |
 | `features` | The features the fulfilment must carry, `[]` when it asks for none. Checked the same way. |
 | `parameters` | What the need asks of its fulfilment, as the need type's `parameters` schema admits — `{}` when it states none. |
@@ -147,6 +147,104 @@ Once read, a need's variables are hidden from the running application, by
 exact name: a controller reading one through `process.env` or `ctx.env` gets
 `undefined` and a warning. A need's values reach only the module that declared
 it, as `resources.<need>.<field>`.
+
+## Public addresses
+
+An application declares every address it is reached at as a need of a
+kernel-declared type naming a port — one address as `Telo.PublicUrl`, a family
+of tenant hosts as `Telo.PublicHostPattern` (see
+[Writing a need type](/extend/need-types#kernel-declared-address-types)). Its
+`Http.Server` mounts name those needs, so the manifest never holds a domain
+name; whoever runs it is the **host** of those addresses.
+
+### What a host does
+
+A host serves an application's addresses in one of two modes.
+
+**Report mode** — the host reads the needs and supplies every one. Every kind
+of address is servable this way.
+
+1. It reads `telo needs report -o json`. Each address need gives its type,
+   `parameters` (`port`, `primary`, `customDomains`) and the variable its field
+   is read from.
+2. It gives each `Telo.PublicUrl` a URL that collides with no other, routes its
+   host to the port and sets `url`. `primary` marks the need it gives its main
+   address.
+3. It gives each `Telo.PublicHostPattern` a pattern in either form that
+   collides with no other, routes every matching host to the port and sets
+   `pattern`.
+4. It may route further domains — exact, or `*.` wildcards — to the port of a
+   `customDomains` need. It supplies nothing for them.
+
+**Template mode** — the host states its naming and the kernel derives each
+address.
+
+1. It sets `TELO_HOST_PUBLIC_URL_TEMPLATE`, and
+   `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE` when it can serve several
+   addresses on one port. It reads nothing about the application before boot.
+2. It routes each host the kernel announces on `Kernel.PortsResolved` — a
+   port entry carries `publicUrls: [{ need, host }]` when a `Telo.PublicUrl`
+   names that port — to its port, again on every load.
+3. It answers `Telo.PublicUrl` only. A pattern or a `customDomains` need comes
+   from the environment, and whoever sets it acts as the host for it.
+
+In both modes the host routes without changing the request (the path
+unchanged, `Host` as the client sent it), never routes one hostname and port
+to two ports, supplies origins, owns TLS, certificates and DNS, may redirect a
+domain instead of routing it, and leaves unsupplied any need it cannot serve —
+the load is then `ERR_NEED_UNMET`, naming the variable.
+
+### Deriving addresses from the templates
+
+A `Telo.PublicUrl` whose variable is not set is answered from the two host
+values. Each is an `http` or `https` origin with nothing after the host or
+port, `{port}` optional in its host; the secondary's host must hold `{label}`,
+and the main template must not. Any other value is `ERR_NEED_HOST_VALUE_INVALID`,
+naming the variable and never its value. The templates are read only when the
+application declares a `Telo.PublicUrl`.
+
+1. **The label** of a need is its name lowercased, `_` written `-`: `admin` is
+   `admin`, `admin_api` is `admin-api`.
+2. **The base** of a need is the main template with `{port}` replaced by its
+   port's number; a main template without `{port}` is one base for every need.
+3. **Among the needs sharing a base,** the primary gets the base; with no
+   primary there, the only need sharing it gets it.
+4. **Every other need** gets the secondary template with `{label}` and
+   `{port}` replaced. With no secondary template it is not answered, and is
+   `ERR_NEED_UNMET` unless its variable is set.
+5. **A derived first label** over 63 octets, or starting or ending with `-`, is
+   `ERR_NEED_HOST_VALUE_INVALID`, naming
+   `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE` and the need.
+
+With `TELO_HOST_PUBLIC_URL_TEMPLATE=https://{port}-s1.example.dev` and
+`TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE=https://{label}--{port}-s1.example.dev`,
+a primary `site` on port 8080 reads `https://8080-s1.example.dev` and an `admin`
+beside it `https://admin--8080-s1.example.dev`. A `Telo.PublicHostPattern` is
+never answered from a template. Both host values are hidden from the running
+application, as a need's variables are, and an application started with
+`App.Instance` does not inherit them.
+
+### Collisions
+
+Before any resource initializes, two address needs no host could route apart
+are refused with `ERR_NEED_PUBLIC_URL_COLLISION`, naming both needs, their
+ports and the host:
+
+- on one port, two URLs with the same host, or two patterns with the same
+  literal suffix in the same form — matching ignores the port;
+- on two ports, the same host or pattern on the same effective port (the
+  explicit one, or 80 for `http` and 443 for `https`).
+
+`http://localhost:8080` and `http://localhost:8081` on two ports do not
+collide. An exact host a pattern on the same port also matches is not a
+collision: the server's precedence decides.
+
+### Locally
+
+Set each address need's variable: `TELO_NEED_SITE__URL=http://localhost:8080`,
+`TELO_NEED_ADMIN__URL=http://admin.localhost:8080`, and for a pattern
+`TELO_NEED_TENANTS__PATTERN=http://*.tenants.localhost:8080` — browsers resolve
+`*.localhost` to loopback.
 
 ## See also
 

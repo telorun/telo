@@ -201,8 +201,8 @@ with:
                   data: {"type":"message_stop"}
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 8921
-    baseUrl: http://localhost:8921
+    listen:
+      port: 8921
     openapi:
       info: { title: Fake Messages API event streams, version: 1.0.0 }
     mounts:

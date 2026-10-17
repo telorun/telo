@@ -105,8 +105,8 @@ with:
                 body: { error: { message: !cel "error.message" } }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 8874
-    baseUrl: http://localhost:8874
+    listen:
+      port: 8874
     openapi:
       info: { title: Fake Images API, version: 1.0.0 }
     mounts:

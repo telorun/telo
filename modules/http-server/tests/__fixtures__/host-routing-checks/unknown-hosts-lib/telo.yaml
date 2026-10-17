@@ -1,0 +1,20 @@
+kind: Telo.Library
+metadata: { name: UnknownHostsLib, version: 1.0.0, description: A server refusing unknown hosts with no mount naming any. }
+imports:
+  Http: ../../../../
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8942 }
+unknownHosts: reject
+mounts:
+  - path: /
+    mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }

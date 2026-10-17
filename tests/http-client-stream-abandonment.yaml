@@ -95,8 +95,8 @@ with:
                   ok: !cel "result.ok"
   - kind: Server.Server
     metadata: { name: testServer }
-    port: 8883
-    baseUrl: http://localhost:8883
+    listen:
+      port: 8883
     openapi:
       info: { title: Stream Abandonment, version: 1.0.0 }
     mounts:

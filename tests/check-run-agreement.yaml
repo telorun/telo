@@ -294,6 +294,18 @@ targets:
   - !ref needTypeUnresolvedAtRuntime
   - !ref needParametersInvalid
   - !ref needParametersInvalidAtRuntime
+  - !ref needRootSupplySelf
+  - !ref needRootSupplySelfAtRuntime
+  - !ref needRootSupplyFields
+  - !ref needRootSupplyFieldsAtRuntime
+  - !ref needRootSupplyUnforwarded
+  - !ref addressNeedLibraryParameters
+  - !ref addressNeedLibraryParametersAtRuntime
+  - !ref addressNeedPort
+  - !ref addressNeedPortUnknown
+  - !ref addressNeedPortUdp
+  - !ref addressNeedPrimaries
+  - !ref addressNeedCustomDomains
   - !ref needFieldUndeclared
   - !ref needFieldUndeclaredAtRuntime
   - !ref needSlotMismatch
@@ -3157,6 +3169,128 @@ expect:
   errors:
     - code: NEED_PARAMETERS_INVALID
       message: "Imported library 'ParametersInvalid', reached through import 'Lib'"
+  runFails: "ERR_NEED_PARAMETERS_INVALID"
+---
+# A need type supplied only through a root need (`supply: root`): a fulfilment
+# of it written in a manifest, a field-by-field supply of it at an import, and a
+# library need of it reaching the root unforwarded are each refused.
+kind: Assert.Manifest
+metadata:
+  name: needRootSupplySelf
+source: ./__fixtures__/needs/agreement/root-supply-self/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_ROOT_SUPPLY_REQUIRED
+      message: "Telo.PublicUrl/site: need type 'Telo.PublicUrl' is supplied only through a root need"
+---
+kind: Assert.Manifest
+metadata:
+  name: needRootSupplySelfAtRuntime
+source: ./__fixtures__/needs/agreement/root-supply-self/telo.yaml
+expect:
+  errors:
+    - code: NEED_ROOT_SUPPLY_REQUIRED
+      message: "Imported library 'RootSupplySelf', reached through import 'Lib'"
+  runFails: "ERR_NEED_ROOT_SUPPLY_REQUIRED"
+---
+kind: Assert.Manifest
+metadata:
+  name: needRootSupplyFields
+source: ./__fixtures__/needs/agreement/root-supply-fields/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_ROOT_SUPPLY_REQUIRED
+      message: "Import 'Inner': need 'site' is of type 'Telo.PublicUrl', which is supplied only through a root need forwarded whole, so it cannot be supplied field by field"
+---
+kind: Assert.Manifest
+metadata:
+  name: needRootSupplyFieldsAtRuntime
+source: ./__fixtures__/needs/agreement/root-supply-fields/telo.yaml
+expect:
+  errors:
+    - code: NEED_ROOT_SUPPLY_REQUIRED
+      message: "Imported library 'RootSupplyFields', reached through import 'Lib'"
+  runFails: "ERR_NEED_ROOT_SUPPLY_REQUIRED"
+---
+kind: Assert.Manifest
+metadata:
+  name: needRootSupplyUnforwarded
+source: ./__fixtures__/needs/agreement/root-supply-unforwarded/telo.yaml
+expect:
+  errors:
+    - code: NEED_ROOT_SUPPLY_REQUIRED
+      message: "Need 'Lib.site' is of type 'Telo.PublicUrl', which is supplied only through a root need forwarded whole, and nothing forwards it"
+  runFails: "ERR_NEED_ROOT_SUPPLY_REQUIRED"
+---
+# An address need's port is the application's to name: a library's address need
+# states no parameters, and the application's names a key of its `ports:`.
+kind: Assert.Manifest
+metadata:
+  name: addressNeedLibraryParameters
+source: ./__fixtures__/needs/agreement/address-parameters/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Need 'site' (type 'Telo.PublicUrl') states parameters, and a library's address need states none"
+---
+kind: Assert.Manifest
+metadata:
+  name: addressNeedLibraryParametersAtRuntime
+source: ./__fixtures__/needs/agreement/address-parameters/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Imported library 'AddressParameters', reached through import 'Lib'"
+  runFails: "ERR_NEED_PARAMETERS_INVALID"
+---
+kind: Assert.Manifest
+metadata:
+  name: addressNeedPort
+source: ./__fixtures__/needs/agreement/address-port/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Need 'site' (type 'Telo.PublicUrl') names no port"
+  runFails: "ERR_NEED_PARAMETERS_INVALID"
+---
+kind: Assert.Manifest
+metadata:
+  name: addressNeedPortUnknown
+source: ./__fixtures__/needs/agreement/address-port-unknown/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Need 'site' names port 'web', which this application's 'ports:' does not declare"
+  runFails: "ERR_NEED_PARAMETERS_INVALID"
+---
+kind: Assert.Manifest
+metadata:
+  name: addressNeedPortUdp
+source: ./__fixtures__/needs/agreement/address-port-udp/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Need 'site' names port 'dns', which is a 'udp' port"
+  runFails: "ERR_NEED_PARAMETERS_INVALID"
+---
+kind: Assert.Manifest
+metadata:
+  name: addressNeedPrimaries
+source: ./__fixtures__/needs/agreement/address-primaries/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Need 'admin' and need 'site' both state 'primary: true'"
+  runFails: "ERR_NEED_PARAMETERS_INVALID"
+---
+kind: Assert.Manifest
+metadata:
+  name: addressNeedCustomDomains
+source: ./__fixtures__/needs/agreement/address-custom-domains/telo.yaml
+expect:
+  errors:
+    - code: NEED_PARAMETERS_INVALID
+      message: "Need 'admin' and need 'site' both state 'customDomains: true' on port 'http'"
   runFails: "ERR_NEED_PARAMETERS_INVALID"
 ---
 kind: Assert.Manifest

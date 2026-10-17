@@ -211,7 +211,8 @@ with:
   - kind: Http.Server
     metadata:
       name: TempServer
-    port: 8099
+    listen:
+      port: 8099
     mounts:
       - path: /
         mount: !ref Api

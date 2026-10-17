@@ -92,6 +92,20 @@ function boundArgument(slot: MembersSlot, member: string): Record<string, any> |
     : undefined;
 }
 
+/** Whether the slot's argument for `member` refuses every value (`{ not: {} }`, `false`), so
+ *  no value at the slot holds that member. */
+export function memberForbidden(slot: MembersSlot, member: string): boolean {
+  const parameter = slot.entry.parameters.find((p) => p.member === member);
+  const argument = parameter ? slot.args[parameter.name] : undefined;
+  if (argument === false) return true;
+  if (!argument || typeof argument !== "object" || Array.isArray(argument)) return false;
+  const not = (argument as Record<string, unknown>).not;
+  return (
+    not === true ||
+    (not !== null && typeof not === "object" && !Array.isArray(not) && Object.keys(not).length === 0)
+  );
+}
+
 /** Whether a value is still an expression — a compiled value or a tag sentinel. */
 function isExpression(value: unknown): boolean {
   return isCompiledValue(value) || isTaggedSentinel(value);
@@ -166,8 +180,21 @@ export function boundArgumentRefusal(slot: MembersSlot, value: unknown): string 
     if ("const" in argument && argument.const !== held) {
       return `its ${parameter.member} must be ${String(argument.const)}`;
     }
+    if (isRefusingEverything(argument)) return `it must have no ${parameter.member}`;
   }
   return undefined;
+}
+
+/** `{ not: {} }` — an argument no present value satisfies. */
+function isRefusingEverything(argument: Record<string, any>): boolean {
+  const not = argument.not;
+  return (
+    Object.keys(argument).length === 1 &&
+    !!not &&
+    typeof not === "object" &&
+    !Array.isArray(not) &&
+    Object.keys(not).length === 0
+  );
 }
 
 function describeKind(value: unknown): string {

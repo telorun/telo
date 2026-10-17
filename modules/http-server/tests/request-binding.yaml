@@ -53,7 +53,8 @@ with:
                   computed: !cel "{'echo': request.query.page}"
   - kind: Server.Server
     metadata: { name: Srv }
-    port: 8993
+    listen:
+      port: 8993
     mounts:
       - path: /
         mount: !ref Api

@@ -14,7 +14,12 @@ export {
   type ClusterRoutingSupport,
   type ResolvedRouting,
 } from "./routing-mode.js";
-export { endpointsFor, hostForPort } from "./session-endpoints.js";
+export {
+  endpointsFor,
+  hostForPort,
+  hostsForPort,
+  publicUrlTemplateEnv,
+} from "./session-endpoints.js";
 export type {
   PublishedRoute,
   PublishRouteArgs,

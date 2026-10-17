@@ -108,6 +108,20 @@ describe("telo needs report", () => {
     });
   });
 
+  it("reports a kernel-declared address need under module Telo, its url not sensitive", () => {
+    // A `Telo.PublicUrl`'s url forbids a password, so it holds no sensitive member.
+    const fixture = path.join(ROOT, "modules/http-server/tests/__fixtures__/host-routing/serves-by-host.yaml");
+    const { stdout, status } = runCli(["needs", "report", "-o", "json", fixture]);
+    expect(status).toBe(0);
+    const site = JSON.parse(stdout).needs[0];
+    expect(site).toMatchObject({
+      path: "site",
+      type: { module: "Telo", name: "PublicUrl" },
+      parameters: { port: "http", primary: true },
+      fields: { url: field("TELO_NEED_SITE__URL", "derived", true, false) },
+    });
+  });
+
   it("gives no report for an application the kernel would refuse, naming the refusal", () => {
     // The collision is two imports deep, where only the whole-graph table sees it.
     const fixture = path.join(ROOT, "tests/__fixtures__/needs/agreement/env-collision/consumer.yaml");

@@ -10,6 +10,7 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 - **Typed returns and catches** — render successful values and structured `InvokeError`s into status + headers + per-MIME bodies via CEL.
 - **OpenAPI operation metadata** — a route may declare `operationId`, `summary`, `description`, and `tags`; they are rendered into the generated OpenAPI document.
 - **Composable mounts** — attach `Telo.Mount` resources (HTTP APIs, MCP endpoints, custom mounts) under any path prefix.
+- **Routing by host** — a mount's `hostnames` names the application's public address needs, so one server answers a site, an admin address, tenant subdomains and customers' own domains, with no domain name written in the manifest; `unknownHosts: reject` refuses every other host.
 - **Inbound guards** — a mount's `guard:` runs one invocable for every request to that mount's routes, before the body is read, so authentication or an origin check is declared once and a refusal renders through `catches:`.
 - **Browsable API docs** — `Http.Reference` renders the generated OpenAPI document as an interactive page under a prefix you choose, and a mount's `when:` leaves it out of a production deployment.
 - **Serve a frontend** — `Http.Static` serves a directory of assets (a built SPA, plain HTML) so one application delivers both its API and its UI.
@@ -20,7 +21,7 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 
 | Kind | Purpose |
 | --- | --- |
-| `Http.Server` | Long-lived HTTP listener that hosts mounts on configured paths and ports. |
+| `Http.Server` | Long-lived HTTP listener bound to the socket its `listen:` names, hosting mounts by path and by the host a request names. |
 | `Http.Api` | Mountable router exposing route definitions with returns/catches rendering. |
 | `Http.Reference` | Mountable API reference: the server's OpenAPI document rendered as a browsable page, plus the document itself as JSON and YAML. |
 | `Http.Static` | Mountable static-file server for a directory of assets (built SPA, plain HTML, images). |
@@ -31,13 +32,14 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 kind: Telo.Application
 metadata: { name: hello-http, version: 1.0.0 }
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.19.1
+  Http: oci://ghcr.io/telorun/http-server@0.38.0
   JS: oci://ghcr.io/telorun/javascript@0.7.0
 targets: [ !ref Server ]
 ---
 kind: Http.Server
 metadata: { name: Server }
-port: 8080
+listen:
+  port: 8080
 mounts:
   - path: /api
     mount: !ref Api
@@ -85,6 +87,7 @@ code: |
 
 - [`Http.Server` / `Http.Api` returns & catches](docs/returns-and-catches.md) — outcome lists, MIME negotiation, stream mode.
 - [Request bodies](docs/request-bodies.md) — buffered, parsed and streamed bodies, `maxBodyBytes` on the server and per route, the 413 a larger body gets and why no `catches:` entry sees it.
+- [Routing by host](docs/host-routing.md) — `listen:`, `mounts[].hostnames` over `Telo.PublicUrl` / `Telo.PublicHostPattern` needs, precedence, `unknownHosts`, `request.host`, and the scenario table: one server with several addresses, several servers, tenant subdomains, customer domains.
 - [Mount guards](docs/mount-guard.md) — `mounts[].guard`: per-mount inbound checks, their CEL context, ordering against CORS and body parsing, and how a refusal renders.
 - [API reference docs](docs/api-reference.md) — `Http.Reference`, choosing its prefix, and leaving the docs out of production with `when:`.
 - [Serving static files & frontends](docs/static-files.md) — `Http.Static`, `!module-path` and host-path roots, SPA fallback, asset caching.
@@ -118,6 +121,7 @@ When an incoming HTTP request is received, the underlying framework must normali
   "request": {
     "method": "POST",
     "path": "/api/v1/users/123",
+    "host": "shop.example",
     "params": { "userId": "123" },
     "query": { "active": "true" },
     "headers": {
@@ -133,6 +137,7 @@ When an incoming HTTP request is received, the underlying framework must normali
 ```
 
 - All `headers` keys MUST be normalized to lowercase.
+- `host` is the host the server routed the request by: `Host` (or `:authority` on HTTP/2), lowercased, without its port or a trailing dot — replaced by `X-Forwarded-Host` only when the server trusts the proxy in front (`trustProxy`, or `trustForwardedHeaders: true`). A handler reads its tenant there, never from the raw header.
 - **Every member of `request` MUST be a value in the CEL value domain**, because `request` is a CEL binding: a map is handed over in the form a host hands a map over — for the Node adapter a plain object — and the member-read seam answers *this value holds no members* for anything else rather than performing a host property read, which is what stops a computed key (`request.query[k]`) from ever reaching a prototype, a method or `constructor`. A framework's own request bags are routinely NOT that: Fastify's query parser builds each one with a prototype of its own, so the adapter copies each bag's own entries over before binding it. An adapter that skips this does not mis-render anything — every expression reading the bag fails, and the route answers 500.
 - If the `content-type` is `application/json`, the `body` MUST be parsed into its native JSON value before evaluation — an object, an array, a string, a number.
 - `request.body` is **untyped** in a route's `inputs:` until the route's `request.schema.body` declares it, and always untyped in `notFoundHandler.inputs`, which has no route to declare one. A body is whatever the client sent, so an undeclared one passes `telo check` into a handler argument of any type (`items: !cel "request.body"` into an array) and its members are read unchecked; what the handler then receives is held to its `inputType` at dispatch. Declaring `request.schema.body` types `request.body` and everything beneath it, so a misspelled field is `CEL_UNKNOWN_FIELD` and a body wired into an argument of another type is `CEL_TYPE_ERROR`. `request.query`, `request.headers` and `request.params` are maps whether or not a schema is declared.
@@ -226,37 +231,46 @@ request:
   required: ["path", "method"]
 ```
 
-### 5. External URL & OpenAPI `servers`
+### 5. The listening socket, the request's host & OpenAPI `servers`
 
-`host` is the network interface the server listens on. Leave it unset for an
-application: the default `0.0.0.0` accepts connections from other machines, which a
-container, a runner session or a proxy in front of the app requires. `127.0.0.1`
-accepts connections from the same machine only — right for a mock server inside a
-test, and an application that is unreachable everywhere it is deployed.
+`listen:` is the socket the server binds — `listen.port`, and `listen.address`, the
+network interface. Leave the address unset for an application: the default
+`0.0.0.0` accepts connections from other machines, which a container, a runner
+session or a proxy in front of the app requires. `127.0.0.1` accepts connections
+from the same machine only — right for a mock server inside a test. The top-level
+`host:` / `port:` spelling is refused (`HTTP_SERVER_LISTEN_MOVED`, `ERR_HTTP_SERVER_LISTEN_MOVED`
+at creation), naming where each moved.
 
-A server is usually reached through a reverse proxy / ingress, so its own bound
-`host:port` is not the URL clients use. The generated OpenAPI `servers` block is a
-**single origin** — each operation is documented at its full `<mountPrefix><path>`,
-so different APIs mounted at different prefixes stay distinct (an `Http.Api` mounted
-at `/admin` is documented at `/admin/...`, never flattened to `/...`). The origin
-resolves identically across runtimes (Node/Rust/Go) — the inputs are standard HTTP,
-never a framework's proxy-config object:
+The address a server is REACHED at is not its socket. It is a public address need
+the application declares, and a mount names in `hostnames` — see
+[Routing by host](docs/host-routing.md). The server derives one host per request,
+used for routing, the OpenAPI origin, the access log and `request.host`: `Host`
+(or `:authority`), lowercased, without its port — `X-Forwarded-Host` only behind a
+trusted proxy.
+
+The generated OpenAPI `servers` block is a **single origin** — each operation is
+documented at its full `<mountPrefix><path>`, so different APIs mounted at different
+prefixes stay distinct (an `Http.Api` mounted at `/admin` is documented at
+`/admin/...`, never flattened to `/...`). The origin resolves identically across
+runtimes (Node/Rust/Go) — the inputs are standard HTTP, never a framework's
+proxy-config object:
 
 | Manifest | `servers[].url` |
 | --- | --- |
-| `baseUrl: <url>` | `<url>` — explicit, fixed; wins over everything |
-| `trustForwardedHeaders: true` | `<X-Forwarded-Proto>://<X-Forwarded-Host>`, derived per request |
+| `trustProxy` set, or `trustForwardedHeaders: true` | `<X-Forwarded-Proto>://<X-Forwarded-Host>`, derived per request |
 | neither (default) | `/` — **relative**; the client resolves it against the origin the document was loaded from |
 
-- The default is **relative** so the document is correct behind any proxy, ingress,
-  or origin with zero configuration.
+- The default is **relative** so the document is correct on every host, behind any
+  proxy, ingress or origin, with zero configuration. There is no fixed origin to
+  configure: a fixed one is wrong on every host of the server but one.
+- The document an `Http.Reference` serves lists exactly the routes the requesting
+  host reaches: those of the mounts naming it, and of the mounts naming no
+  `hostnames`.
 - `trustForwardedHeaders` is a **boolean** on purpose: the only portable cross-runtime
   signal is the standard `X-Forwarded-Proto` / `X-Forwarded-Host` (RFC 7239 `Forwarded`)
   headers. Fine-grained "trusted proxy IP/CIDR/hop" lists are framework-specific and
   MUST NOT leak into the manifest. Default `false`; only enable behind a trusted proxy
   (a client with direct network access could otherwise spoof the headers).
-- When `trustForwardedHeaders` is set, the request protocol/host exposed to handlers
-  MUST also reflect the forwarded headers.
 
 ### 6. Log events
 

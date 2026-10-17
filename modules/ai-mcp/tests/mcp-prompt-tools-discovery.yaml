@@ -49,9 +49,9 @@ with:
                   usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
   - kind: Server.Server
     metadata: { name: ModelServer }
-    host: 127.0.0.1
-    port: 8974
-    baseUrl: http://127.0.0.1:8974
+    listen:
+      address: 127.0.0.1
+      port: 8974
     mounts:
       - path: /v1
         mount: !ref ModelApi

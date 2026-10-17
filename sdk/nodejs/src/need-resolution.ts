@@ -26,6 +26,10 @@ export interface NeedResolution {
   sensitive: string[];
   constraints: NeedConstraints;
   parameters?: Record<string, unknown>;
+  /** For a need of a kernel-declared address type (`Telo.PublicUrl`,
+   *  `Telo.PublicHostPattern`): the number of the port its `port` parameter
+   *  names, as the application resolved it. */
+  port?: number;
 }
 
 /**

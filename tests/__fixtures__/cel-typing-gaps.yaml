@@ -14,7 +14,8 @@ targets:
 ---
 kind: Http.Server
 metadata: { name: server }
-port: 18970
+listen:
+  port: 18970
 mounts:
   - path: /
     mount:

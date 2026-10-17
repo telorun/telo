@@ -171,6 +171,11 @@ function extractChain(node: CelNode, boundVars: ReadonlySet<string>): string[] |
  *  comprehension's iteration variable stands for. */
 export const EACH_SEGMENT = "[]";
 
+/** Chain segment for "whether the member exists": the last segment of a chain a
+ *  presence test (`has(a.b)`) reads, which depends on the KEYS of what the chain
+ *  before it reaches and on none of its values. */
+export const PRESENCE_SEGMENT = "?";
+
 /**
  * What an expression READS of the values its roots name, as member chains —
  * {@link extractAccessChains} with a comprehension's iteration variable followed
@@ -182,6 +187,8 @@ export const EACH_SEGMENT = "[]";
  *   its elements: the chain ends in {@link EACH_SEGMENT}.
  * - A bare use of the variable reads the element whole, so the range is read
  *   whole, as it is by any other use of the collection.
+ * - A presence test reads only whether the member exists: `has(a.b)` reads
+ *   `a.?` ({@link PRESENCE_SEGMENT}), never the value of `a.b`.
  *
  * A variable whose range is not a plain chain (a call's result, another macro's
  * output) names nothing a root holds, and a read through it contributes nothing.
@@ -224,6 +231,15 @@ function visitReads(node: CelNode, chains: string[][], bound: BoundRanges): void
     return;
   }
 
+  const presence = presenceOperand(node);
+  if (presence) {
+    const owner = readChainOf(presence, bound);
+    if (owner !== null) {
+      chains.push([...owner, PRESENCE_SEGMENT]);
+      return;
+    }
+  }
+
   const moduleCall = moduleCallOf(node);
   if (moduleCall) {
     for (const arg of moduleCall.args) visitReads(arg, chains, bound);
@@ -248,6 +264,13 @@ function visitReads(node: CelNode, chains: string[][], bound: BoundRanges): void
   }
 
   for (const child of childNodes(node)) visitReads(child, chains, bound);
+}
+
+/** What a presence test `has(<operand>.<member>)` asks the keys of. */
+function presenceOperand(node: CelNode): CelNode | undefined {
+  if (node.kind !== "call" || node.name !== "has" || node.args.length !== 1) return undefined;
+  const arg = node.args[0]!;
+  return arg.kind === "select" && !arg.optional ? arg.operand : undefined;
 }
 
 /** A member access on a module call's result: the call, and the members read

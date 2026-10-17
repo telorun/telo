@@ -54,8 +54,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    host: 127.0.0.1
-    port: 18720
+    listen:
+      address: 127.0.0.1
+      port: 18720
     mounts:
       - mount: !ref accountsApi
 targets:

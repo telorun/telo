@@ -63,7 +63,8 @@ with:
                         description: echo
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18846
+    listen:
+      port: 18846
     mounts:
       - path: /
         mount: !ref FakeBrave

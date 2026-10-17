@@ -71,7 +71,8 @@ with:
                 body: []
   - kind: Http.Server
     metadata: { name: upstream }
-    port: 8071
+    listen:
+      port: 8071
     mounts:
       - path: /
         mount: !ref fakeUpstream

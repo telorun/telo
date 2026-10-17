@@ -5,7 +5,12 @@ import {
   dispatchCatches,
   dispatchReturns,
   errorEnvelope,
+  hostnameClaim,
+  hostnameMatcher,
+  hostnameMatcherOfOrigin,
+  isIpLiteral,
   ReturnEntry,
+  type HostnameMatcher,
   type RequestScope,
   type RequestTrace,
 } from "@telorun/http-dispatch";
@@ -54,6 +59,9 @@ import {
 } from "./request-body-limit.js";
 import { createFastifyTeloLogger, LISTEN_SUPERSEDED } from "./fastify-telo-logger.js";
 import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
+import { HostRoutes, publishHostRoutes } from "./host-routes.js";
+import { HostClass, hostClasses, NO_CLASS, type MountHostEntry } from "./host-precedence.js";
+import { publishRequestHost, requestHostReader, type RequestHostReader } from "./request-host.js";
 import {
   convertFastifyValidationError,
   requestValidation,
@@ -108,12 +116,17 @@ type HttpMount = {
   /** Expanded at startup (`x-telo-eval: compile`); `false` leaves the mount out. */
   when?: boolean;
   guard?: MountGuard;
+  /** References to address needs; opened with `ctx.resolveNeed`, never injected. */
+  hostnames?: unknown[];
 };
 
+
 type HttpServerResource = RuntimeResource & {
-  host?: string;
-  port?: number;
-  baseUrl?: string;
+  listen?: { address?: string; port?: number };
+  /** The spelling `listen` replaced, refused at creation. */
+  host?: unknown;
+  port?: unknown;
+  unknownHosts?: "serve" | "reject";
   trustForwardedHeaders?: boolean;
   trustProxy?: boolean | number;
   maxBodyBytes?: number;
@@ -158,10 +171,14 @@ class HttpServer implements ResourceInstance {
    *  instance, so two effects name it; running it twice is a no-op. */
   private closed = false;
   private readonly app: FastifyInstance;
-  private readonly host: string;
+  private readonly address: string;
   private readonly port: number;
-  private readonly baseUrl: string;
-  private readonly trustForwardedHeaders: boolean;
+  /** Whether a proxy in front is trusted for the forwarded host and protocol. */
+  private readonly trustsProxy: boolean;
+  private readonly requestHost: RequestHostReader;
+  /** The hosts each active mount answers, read from its `hostnames` needs at init. */
+  private mountHosts = new Map<HttpMount, MountHostEntry>();
+  private readonly hostRoutes: HostRoutes;
   private readonly resource: HttpServerResource;
   private readonly ctx: ResourceContext;
   private readonly resolvedNotFoundHandler: ResolvedHandler | null;
@@ -190,14 +207,13 @@ class HttpServer implements ResourceInstance {
     this.resource = resource;
     this.ctx = ctx;
     this.resolvedGuards = resolvedGuards;
-    this.host = resource.host || "0.0.0.0";
-    this.port = Number(resource.port || 0);
-    this.baseUrl = resource.baseUrl ?? `http://${this.host}:${this.port}`;
-    this.trustForwardedHeaders = resource.trustForwardedHeaders === true;
+    this.address = resource.listen?.address || "0.0.0.0";
+    this.port = Number(resource.listen?.port || 0);
     this.resolvedNotFoundHandler = resolvedNotFoundHandler;
+    this.hostRoutes = new HostRoutes(resource.metadata?.name ?? "");
 
     if (!this.port) {
-      throw new Error("Http.Server port is required");
+      throw new Error("Http.Server listen.port is required");
     }
     // `trustProxy` is the single Fastify knob behind both the forwarded
     // protocol/host (request.protocol/host) and the canonical client address
@@ -210,11 +226,13 @@ class HttpServer implements ResourceInstance {
     // it, which would turn this kind's documented hop-count option into a silent
     // no-op. The spoofing hazard that motivated their change is the one the
     // schema already states: only enable this behind a trusted proxy.
-    const configuredTrust = resource.trustProxy ?? this.trustForwardedHeaders;
+    const configuredTrust = resource.trustProxy ?? resource.trustForwardedHeaders === true;
     const trustProxy: FastifyServerOptions["trustProxy"] =
       typeof configuredTrust === "number"
         ? (address, hop) => hop < configuredTrust
         : configuredTrust;
+    this.trustsProxy = configuredTrust === true || (typeof configuredTrust === "number" && configuredTrust > 0);
+    this.requestHost = requestHostReader(this.trustsProxy);
     // §13.3: replacement, not bridging — Fastify's Pino instance is swapped for
     // a Telo-backed adapter, so its records are Telo records at the source and
     // inherit the root `logging:` block's level, encoding, redaction, and sinks.
@@ -241,6 +259,9 @@ class HttpServer implements ResourceInstance {
       // the log controller carries the same switch.
       logController: new LogController({ disableRequestLogging: true }),
       trustProxy,
+      // A mount's `hostnames` are a route constraint, so precedence between
+      // mounts answering one path is decided where the route is found.
+      routerOptions: { constraints: { teloHost: this.hostConstraint() as never } },
       bodyLimit: Number(resource.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES),
       // `removeAdditional: false` overrides Fastify's default, which STRIPS a
       // property the schema does not declare. A request body declaring
@@ -252,6 +273,137 @@ class HttpServer implements ResourceInstance {
       // that closes the object refuses, an open one accepts as before.
       ...requestValidation,
     });
+  }
+
+  /**
+   * The route constraint every mount route registers under, its value the
+   * mount's id. A request derives the first precedence class of its host that
+   * holds a route for its method and path (`hostClasses`), so a more specific
+   * path in a lower class never wins over a route of a higher one; within the
+   * class, path matching decides. Ids start with `#`, so none is a hostname.
+   */
+  private hostConstraint() {
+    return {
+      name: "teloHost",
+      mustMatchWhenDerived: false,
+      storage() {
+        const masks = new Map<string, number>();
+        return {
+          get(value: unknown) {
+            if (typeof value === "string") return masks.get(value) ?? null;
+            if (!(value instanceof HostClass)) return null;
+            let mask = 0;
+            for (const id of value.ids) mask |= masks.get(id) ?? 0;
+            return mask === 0 ? null : mask;
+          },
+          set(id: string, mask: number) {
+            masks.set(id, mask);
+          },
+        };
+      },
+      deriveConstraint: (req: IncomingMessage) => this.hostClassFor(req),
+    };
+  }
+
+  private hostClassFor(req: IncomingMessage): HostClass {
+    const host = this.requestHost(req);
+    const entries = [...this.mountHosts.values()];
+    for (const candidate of hostClasses(entries, host)) {
+      const found = this.app.findRoute({
+        method: (req.method ?? "GET") as never,
+        url: req.url ?? "/",
+        constraints: { teloHost: candidate } as never,
+      });
+      if (found) return candidate;
+    }
+    return NO_CLASS;
+  }
+
+  /**
+   * `unknownHosts: reject` — a host no mount's `hostnames` names is answered
+   * `421 Misdirected Request` before anything else runs. An IP literal is never
+   * refused: it is what a probe sent to the server's own address carries.
+   */
+  private installUnknownHostRefusal(): void {
+    if (this.resource.unknownHosts !== "reject") return;
+    this.app.addHook("onRequest", async (request, reply) => {
+      const host = this.requestHost(request.raw);
+      if (isIpLiteral(host)) return;
+      for (const entry of this.mountHosts.values()) {
+        if (entry.matchers.some((m) => hostnameClaim(m, host) !== undefined)) return;
+      }
+      const refusal = new InvokeError(
+        "ERR_HOST_NOT_SERVED",
+        `This server serves none of its mounts on host '${host}'.`,
+        { host },
+      );
+      this.reportDecidingError(request, refusal);
+      reply.code(421);
+      reply.header("Content-Type", "application/json; charset=utf-8");
+      return reply.send(errorEnvelope({ code: refusal.code, message: refusal.message, data: refusal.data }));
+    });
+  }
+
+  /**
+   * The hosts each active mount answers, read from the address needs its
+   * `hostnames` reference. Each need must name the port this server listens on.
+   */
+  private resolveMountHosts(): Map<HttpMount, MountHostEntry> {
+    const out = new Map<HttpMount, MountHostEntry>();
+    const name = this.resource.metadata.name;
+    const all = this.resource.mounts ?? [];
+    let customDomains = false;
+    for (let index = 0; index < all.length; index++) {
+      const mount = all[index]!;
+      if (mount.when === false) continue;
+      const matchers: HostnameMatcher[] = [];
+      const entry: MountHostEntry = {
+        id: `#${index}`,
+        label: `mounts[${index}]${mount.path ? ` (${mount.path})` : ""}`,
+        matchers,
+        restricted: mount.hostnames !== undefined,
+        customDomains: false,
+      };
+      (mount.hostnames ?? []).forEach((_entry, position) => {
+        const pointer = `/mounts/${index}/hostnames/${position}`;
+        const need = this.ctx.resolveNeed(pointer);
+        const parameters = need.parameters ?? {};
+        const needName = need.target?.ref?.name ?? pointer;
+        if (need.port !== undefined && need.port !== this.port) {
+          throw new RuntimeError(
+            "ERR_HOSTNAMES_PORT_MISMATCH",
+            `Http.Server[${name}]: '${pointer}' names need '${needName}', served on port ` +
+              `'${String(parameters.port)}' (${need.port}), and this server listens on port ${this.port}. ` +
+              `A host routes an address to the port its need names, so this server never sees it.`,
+          );
+        }
+        const url = need.fields.url as { host?: unknown } | undefined;
+        const matcher =
+          typeof need.fields.pattern === "string"
+            ? hostnameMatcherOfOrigin(need.fields.pattern)
+            : typeof url?.host === "string"
+              ? hostnameMatcher(url.host)
+              : undefined;
+        if (!matcher) {
+          throw new Error(
+            `Http.Server[${name}]: '${pointer}' names need '${needName}', whose fulfilment holds no ` +
+              `host to match — neither a url with a host nor a host pattern.`,
+          );
+        }
+        matchers.push(matcher);
+        if (parameters.customDomains === true) entry.customDomains = true;
+      });
+      customDomains ||= entry.customDomains;
+      out.set(mount, entry);
+    }
+    if (customDomains && this.resource.unknownHosts === "reject") {
+      throw new RuntimeError(
+        "ERR_HTTP_UNKNOWN_HOSTS_CUSTOM_DOMAINS",
+        `Http.Server[${name}] sets \`unknownHosts: reject\`, and a mount names ` +
+          `an address taking custom domains, which may arrive on any host. Drop one of the two.`,
+      );
+    }
+    return out;
   }
 
   /**
@@ -604,7 +756,10 @@ class HttpServer implements ResourceInstance {
     // plain form — RFC 3339 text for a timestamp, `"5400s"` for a duration,
     // base64url for bytes — whether or not the route declares a response schema.
     this.installRequestSpan();
+    this.installUnknownHostRefusal();
     this.installUnreadBodyClose();
+    publishRequestHost(this.app, this.requestHost);
+    publishHostRoutes(this.app, this.hostRoutes);
     this.app.addHook("preSerialization", async (_request, _reply, payload) => toPlainJson(payload));
     this.installRequestLogging();
     this.installDefaultMultipartParser();
@@ -702,6 +857,7 @@ class HttpServer implements ResourceInstance {
         request: {
           method: request.method,
           path: request.url,
+          host: this.requestHost(request.raw),
           ip: request.ip,
           headers: normalizedHeaders,
         },
@@ -728,17 +884,16 @@ class HttpServer implements ResourceInstance {
     if (this.resource.openapi) {
       // Each route is documented at its full `mount-prefix + path` (see
       // http-api-controller), so the server is a single origin, not one entry per
-      // mount. Server URL precedence: an explicit `baseUrl` is an absolute, fixed
-      // override; otherwise the URL is relative (`/`) so the doc is correct behind
-      // any proxy/ingress/origin — the client resolves it against wherever the
-      // reference was loaded.
+      // mount. The URL is relative (`/`), so the doc is correct on every host and
+      // behind any proxy — the client resolves it against wherever the reference
+      // was loaded.
       //
       // This registers the document and nothing that serves it: rendering it is
       // Http.Reference's, mounted where the author wants it. Collection has to
       // stay here because @fastify/swagger reads a route's schema through an
       // `onRoute` hook in its own encapsulation context, so it must be at the
       // root scope before any mount registers its routes.
-      const servers = [{ url: this.resource.baseUrl ?? "/" }];
+      const servers = [{ url: "/" }];
       await this.app.register(swagger, {
         openapi: {
           openapi: "3.0.0",
@@ -746,20 +901,19 @@ class HttpServer implements ResourceInstance {
           servers,
         },
       });
-      // `trustForwardedHeaders` (and no fixed baseUrl) upgrades the relative
-      // default to absolute URLs built per-request from the now-trusted
-      // X-Forwarded-* headers. The rewrite itself belongs to whichever mount
-      // serves the document, which is the only side that knows its path.
-      publishSpecServerUrlPolicy(
-        this.app,
-        this.trustForwardedHeaders && !this.resource.baseUrl,
-      );
+      // A trusted proxy upgrades the relative default to the request's own
+      // origin, built per request from the forwarded headers. The rewrite itself
+      // belongs to whichever mount serves the document, which is the only side
+      // that knows its path.
+      publishSpecServerUrlPolicy(this.app, this.trustsProxy);
     }
   }
 
   private async setupRoutes(): Promise<void> {
-    // const routesByName = new Map<string, HttpRouteResource>();
     const mounts = this.activeMounts();
+    this.mountHosts = this.resolveMountHosts();
+    const restricted = [...this.mountHosts.values()].some((entry) => entry.restricted);
+    this.hostRoutes.setMounts([...this.mountHosts.values()]);
     for (const skipped of (this.resource.mounts ?? []).filter((mount) => mount.when === false)) {
       // Said out loud: a route set that is absent because a condition excluded
       // it is indistinguishable at request time from one that failed to
@@ -785,17 +939,19 @@ class HttpServer implements ResourceInstance {
         );
       }
       const guard = this.resolvedGuards.get(mount);
-      if (!guard) {
-        api.register(this.app, prefix, this.requestScope);
-        continue;
-      }
-      // An encapsulated context confines the guard's hook to this mount's
-      // routes: CORS (and its preflight route) and the not-found handler live
-      // in the root context and never see it, and a sibling mount has its own.
-      // No `prefix` option — the mount carries its prefix on each route, which
-      // keeps the OpenAPI paths whole.
+      const hosts = this.mountHosts.get(mount)!;
+      // An encapsulated context confines what belongs to this mount — its
+      // guard's hook, its host constraint — to its own routes: CORS (and its
+      // preflight route) and the not-found handler live in the root context and
+      // never see either, and a sibling mount has its own. No `prefix` option —
+      // the mount carries its prefix on each route, which keeps the OpenAPI
+      // paths whole.
       await this.app.register(async (scope) => {
-        scope.addHook("onRequest", this.guardHook(guard));
+        scope.addHook("onRoute", (route) => {
+          if (restricted) route.constraints = { ...(route.constraints ?? {}), teloHost: hosts.id };
+          this.hostRoutes.record(route.url, route.method, hosts);
+        });
+        if (guard) scope.addHook("onRequest", this.guardHook(guard));
         await api.register(scope, prefix, this.requestScope);
       });
     }
@@ -811,6 +967,7 @@ class HttpServer implements ResourceInstance {
           request: {
             method: request.method,
             path: request.url,
+            host: this.requestHost(request.raw),
             // The transport's own bags, as maps in the CEL value domain — see `requestBag`.
             params: requestBag(request.params),
             query: requestBag(request.query),
@@ -906,6 +1063,7 @@ class HttpServer implements ResourceInstance {
           headers: normalizeHeaders(request.headers),
           query: requestBag(request.query),
           path: request.url,
+          host: this.requestHost(request.raw),
           method: request.method,
           ip: request.ip,
         },
@@ -954,7 +1112,7 @@ class HttpServer implements ResourceInstance {
       }))
       .effect("listening socket", async () => {
         await this.app.listen({
-        host: this.host,
+        host: this.address,
         port: this.port,
         // Fastify announces "Server listening at http://…" through the injected
         // logger, interpolating the address into prose — unparseable, and exactly
@@ -966,21 +1124,19 @@ class HttpServer implements ResourceInstance {
       this.ctx.log.info(
         "Listening",
         {
-          "server.address": this.host,
+          "server.address": this.address,
           "server.port": this.port,
           // The SOCKET's scheme, which this kind only ever opens as plain HTTP —
-          // there is no TLS field on `Http.Server`. `baseUrl` is the ADVERTISED
-          // url and is routinely `https://` behind a terminator, so deriving from
-          // it would claim TLS for a plaintext socket on the most common
-          // production deployment there is.
+          // there is no TLS field on `Http.Server`. A public address is routinely
+          // `https://` behind a terminator, so deriving from one would claim TLS
+          // for a plaintext socket on the most common production deployment.
           "url.scheme": "http",
         },
         { eventName: "http.server.started" },
       );
       await this.ctx.emitEvent(`${this.resource.metadata.name}.Listening`, {
+        address: this.address,
         port: this.port,
-        host: this.host,
-        baseUrl: this.baseUrl,
         mounts: this.resource.mounts,
         openapi: this.resource.openapi,
       });
@@ -993,7 +1149,7 @@ class HttpServer implements ResourceInstance {
           await this.closeApp();
           this.ctx.log.info(
             "Stopped listening",
-            { "server.address": this.host, "server.port": this.port },
+            { "server.address": this.address, "server.port": this.port },
             { eventName: "http.server.stopped" },
           );
         },
@@ -1006,6 +1162,24 @@ export async function create(
   resource: HttpServerResource,
   ctx: ResourceContext,
 ): Promise<ResourceInstance | null> {
+  const label = `Http.Server[${resource.metadata?.name}]`;
+  if (resource.port !== undefined || resource.host !== undefined) {
+    throw new RuntimeError(
+      "ERR_HTTP_SERVER_LISTEN_MOVED",
+      `${label} writes the socket it binds at the top level, which moved under \`listen:\` — ` +
+        `\`port\` is now \`listen.port\` and \`host\` is now \`listen.address\`.`,
+    );
+  }
+  if (
+    resource.unknownHosts === "reject" &&
+    !(resource.mounts ?? []).some((mount) => mount.hostnames !== undefined)
+  ) {
+    throw new RuntimeError(
+      "ERR_HTTP_UNKNOWN_HOSTS_NO_HOSTNAMES",
+      `${label} sets \`unknownHosts: reject\`, and none of its mounts names \`hostnames\`, so ` +
+        `every request whose host is not an IP literal would be refused.`,
+    );
+  }
   let resolvedNotFoundHandler: ResolvedHandler | null = null;
   if (resource.notFoundHandler) {
     const invoke = resource.notFoundHandler.invoke as unknown;

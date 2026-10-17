@@ -110,7 +110,8 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: provider }
-    port: 8068
+    listen:
+      port: 8068
     mounts:
       - path: /openai/v1
         mount: !ref fakeOpenAi

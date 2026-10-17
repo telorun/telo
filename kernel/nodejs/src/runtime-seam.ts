@@ -26,6 +26,7 @@ import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import type { Kernel } from "./kernel.js";
 import { defaultTransportRegistry } from "./transports/transport-registry.js";
+import { withoutPublicUrlHostValues } from "./public-urls.js";
 
 /**
  * How many unconsumed chunks a channel holds before it stops acknowledging the
@@ -199,7 +200,8 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     const stdin = new InputChannel();
 
     const child = new ChildKernel({
-      env: options?.env ?? this.kernel.env,
+      // The parent's address host values answer the parent's needs, never the child's.
+      env: options?.env ?? withoutPublicUrlHostValues(this.kernel.env),
       stdout: stdout.writable,
       stderr: stderr.writable,
       sources: [...this.kernel.injectedSources],

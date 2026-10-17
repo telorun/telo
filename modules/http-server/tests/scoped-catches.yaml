@@ -152,8 +152,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    host: 127.0.0.1
-    port: 8951
+    listen:
+      address: 127.0.0.1
+      port: 8951
     catches:
       - when: !cel "error.code == 'ERR_OUTPUT_INVALID'"
         status: 502

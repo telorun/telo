@@ -23,6 +23,7 @@ import { create as createJsonSchemaType } from "./controllers/type/json-schema-c
 import { decodeHostValue } from "./host-paths.js";
 import { acceptsBy, membersEntryText, membersRefusalEntry, settleMembersValue } from "./members-values.js";
 import { SchemaValidator } from "./schema-validator.js";
+import { withDerivedPublicUrls } from "./public-urls.js";
 import { resolveTypeFieldSchema } from "./type-field-schema.js";
 
 type EntryType = "string" | "integer" | "number" | "boolean" | "object" | "array";
@@ -155,7 +156,11 @@ export function resolveApplicationEnv(
     inputs?.ports,
     channel("ports"),
   );
-  const needValues = needs ? resolveNeedEnvironment(needs, env, validator, errors) : undefined;
+  // A `Telo.PublicUrl` nothing else supplies is answered from the host's
+  // templates, read as if its env name held the derived address.
+  const needValues = needs
+    ? resolveNeedEnvironment(needs, withDerivedPublicUrls(needs.entries, env, ports), validator, errors)
+    : undefined;
   if (errors.length > 0) {
     throw new RuntimeError(
       "ERR_MANIFEST_VALIDATION_FAILED",

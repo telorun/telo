@@ -63,7 +63,8 @@ horizontal scaling without bespoke load-balancer configuration.
 ```yaml
 kind: Http.Server
 metadata: { name: Web }
-port: 8080
+listen:
+  port: 8080
 mounts:
   - { path: /v1, type: <App>.Rest }     # your existing REST API
   - { path: /mcp, type: <App>.McpHttp } # the MCP endpoint

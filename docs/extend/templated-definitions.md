@@ -166,7 +166,8 @@ resources:
     workflow: !ref process
   - kind: Http.Server
     metadata: { name: server }
-    port: !cel "self.port"
+    listen:
+      port: !cel "self.port"
     mounts: [ … ]
 targets:
   - !ref resumer

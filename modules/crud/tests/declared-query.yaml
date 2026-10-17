@@ -72,8 +72,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    host: 127.0.0.1
-    port: 19321
+    listen:
+      address: 127.0.0.1
+      port: 19321
     mounts:
       - path: /tasks
         mount:

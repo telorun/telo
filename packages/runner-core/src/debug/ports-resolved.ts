@@ -31,9 +31,26 @@ export function portsResolvedFrom(frame: DebugFrame): PortMapping[] | undefined 
     const port = (entry as { port?: unknown })?.port;
     const protocol = (entry as { protocol?: unknown })?.protocol;
     if (typeof port !== "number" || !Number.isInteger(port)) continue;
-    ports.push({ port, protocol: protocol === "udp" ? "udp" : ("tcp" as PortProtocol) });
+    const publicHosts = publicHostsOf((entry as { publicUrls?: unknown })?.publicUrls);
+    ports.push({
+      port,
+      protocol: protocol === "udp" ? "udp" : ("tcp" as PortProtocol),
+      ...(publicHosts.length > 0 ? { publicHosts } : {}),
+    });
   }
   return ports;
+}
+
+/** The hosts of a port's announced public addresses, in announcement order;
+ *  an entry that is not `{ need, host }` is skipped. */
+function publicHostsOf(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const hosts: string[] = [];
+  for (const entry of raw) {
+    const host = (entry as { host?: unknown })?.host;
+    if (typeof host === "string" && host.length > 0 && !hosts.includes(host)) hosts.push(host);
+  }
+  return hosts;
 }
 
 /** Identity of a port within a session: the pair, since tcp/3000 and udp/3000

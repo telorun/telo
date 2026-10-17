@@ -141,9 +141,9 @@ with:
                   data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":11,"output_tokens":5,"total_tokens":16}}}
   - kind: Server.Server
     metadata: { name: FakeServer }
-    host: 127.0.0.1
-    port: 8878
-    baseUrl: http://127.0.0.1:8878
+    listen:
+      address: 127.0.0.1
+      port: 8878
     openapi:
       info: { title: Fake Responses API, version: 1.0.0 }
     mounts:

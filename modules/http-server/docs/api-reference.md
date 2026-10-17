@@ -8,7 +8,8 @@ you give it.
 ```yaml
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 openapi:
   info:
     title: Todo API
@@ -107,8 +108,16 @@ still in the artifact. What changes is that nothing is routed to it.
 
 ## Behind a proxy
 
-The document's `servers[]` entry follows the server's own configuration — an
-explicit `baseUrl`, else per-request forwarded headers when
-`trustForwardedHeaders` is on, else the relative `/`. See §5 of the module README
+The document's `servers[]` entry follows the server's own configuration — the
+per-request forwarded origin behind a trusted proxy (`trustProxy`, or
+`trustForwardedHeaders: true`), else the relative `/`. See §5 of the module README
 for the full table. The per-request rewrite is applied by whichever reference
 mount serves the document, since that is the side that knows its path.
+
+## On a server answering several hosts
+
+The document lists exactly the routes the requesting host reaches: the routes of
+the mounts whose `hostnames` name it, and of the mounts naming no `hostnames`. A
+reference mounted for the site and the admin address hands each the operations
+that host can call, and neither sees the other's. See
+[Routing by host](host-routing.md).

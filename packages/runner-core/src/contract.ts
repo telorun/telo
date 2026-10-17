@@ -147,6 +147,10 @@ export type PortProtocol = "tcp" | "udp";
 export interface PortMapping {
   port: number;
   protocol: PortProtocol;
+  /** The hosts of the application's public addresses on this port, as the
+   *  kernel announced them (`Kernel.PortsResolved` `publicUrls`) — what a
+   *  template-mode host routes beside the port's own host. */
+  publicHosts?: string[];
 }
 
 /**

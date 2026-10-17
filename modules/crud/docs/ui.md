@@ -35,7 +35,8 @@ pages:
 ---
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - { path: /api/tasks, mount: !ref tasks }
   - { path: /admin, mount: !ref admin }

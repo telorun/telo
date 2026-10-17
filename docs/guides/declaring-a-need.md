@@ -189,6 +189,34 @@ of its own with `env:` and forwards it at the import.
 - A library's need cannot bind a name (`LIBRARY_ENV_KEY_REJECTED`): only the
   application being run reads the environment.
 
+## Public addresses
+
+The addresses an application is reached at are needs too, of the
+kernel-declared types `Telo.PublicUrl` (one address) and
+`Telo.PublicHostPattern` (a family of tenant hosts), written with no import:
+
+```yaml
+ports:
+  http: { env: PORT, default: 8080 }
+needs:
+  site:
+    kind: Telo.PublicUrl
+    parameters: { port: http, primary: true }
+  tenants:
+    kind: Telo.PublicHostPattern
+    parameters: { port: http }
+```
+
+They are supplied only through the root: the application declares its own,
+naming a `tcp` port, and forwards it whole to a library, which declares the
+type with no parameters. A fulfilment written in the manifest, a field-by-field
+supply and a library's address need left unforwarded are
+`NEED_ROOT_SUPPLY_REQUIRED` — a domain name never appears in a manifest. An
+`Http.Server` mount names the needs it answers in `hostnames`. The parameters
+are in [Writing a need type](/extend/need-types#kernel-declared-address-types);
+how a host supplies the addresses — or lets the kernel derive them from its
+templates — in [Providing needs](/learn/providing-needs#public-addresses).
+
 ## One fulfilment per module instance
 
 Each import of an `isolated` library (the default) is a module instance of its

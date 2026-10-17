@@ -102,7 +102,8 @@ ports:
 kind: Http.Server
 metadata:
   name: Server
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - path: /
     mount: !ref Health

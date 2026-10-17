@@ -80,8 +80,8 @@ with:
                     type: !cel "result.error.type"
   - kind: Server.Server
     metadata: { name: TestServer }
-    port: 8879
-    baseUrl: http://localhost:8879
+    listen:
+      port: 8879
     openapi:
       info: { title: Failure Detail, version: 1.0.0 }
     mounts:

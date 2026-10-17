@@ -32,9 +32,9 @@ with:
   - kind: Http.Server
     metadata:
       name: TestServer
-    port: !cel "8857"
-    baseUrl: !cel "'http://localhost:8857'"
-    host: !cel "'localhost'"
+    listen:
+      address: !cel "'localhost'"
+      port: !cel "8857"
     mounts:
       - path: /api
         mount: !ref TestApi

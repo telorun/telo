@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata: { name: HostnamesKind, version: 1.0.0, description: A hostnames entry naming something that is no address. }
+imports:
+  Http: ../../../
+targets: [ !ref server ]
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8942 }
+mounts:
+  - hostnames: [ !ref api ]
+    path: /
+    mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }

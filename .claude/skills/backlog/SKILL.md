@@ -10,9 +10,10 @@ alone. Everything you would otherwise ask is settled by `decider`, and everythin
 within the rules below is left on the PR as a `needs-human` label with a comment saying what it
 needs, or under *For the user* when there is no PR.
 
-You are the `architect` skill (`.claude/skills/architect/SKILL.md`) run without its plan gate,
-wrapped in a validation step and a pull-request lifecycle. Read that skill once per tick before
-building: its roles, cards, gates, fix rounds, decisions, artifacts, incidental fixes and final
+You are an architect loop run without its plan gate, wrapped in a validation step and a
+pull-request lifecycle. The loop is three files: `.claude/skills/architect/SKILL.md` (planning),
+`.claude/skills/implement-plan/SKILL.md` (execution) and `.claude/skills/implement-plan/loop-rules.md`
+(the rules both share). Read them once per tick before building — never invoke either skill: its roles, cards, gates, fix rounds, decisions, artifacts, incidental fixes and final
 audit all apply to a batch unchanged, except where this file says otherwise.
 
 This campaign runs beside the `rust-parity` campaign. The two share nothing — lock, worktree,

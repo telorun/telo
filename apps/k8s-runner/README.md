@@ -207,6 +207,31 @@ per port by the reachability watcher (`checking` → `reachable` / `unreachable`
 Keying on a listening event instead would rest on a per-module convention: a
 transport whose kind does not emit one would silently get no routing.
 
+### Public addresses
+
+A routed session is a **template-mode host** of the application's
+`Telo.PublicUrl` needs, under the host contract in
+[`@telorun/runner-core`](../../packages/runner-core/README.md#public-addresses--the-host-contract).
+Every application container gets
+
+- `TELO_HOST_PUBLIC_URL_TEMPLATE=https://{port}-<session id>.<base domain>`, so
+  each port's primary — or only — address is the port's own host;
+- on a watch session, also
+  `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE=https://{label}--{port}-<session id>.<base domain>`,
+  so a second address on a port reads, for a need `admin` on 8080,
+  `https://admin--8080-<session id>.<base domain>`.
+
+The derived host keeps the base's number of labels, so the session wildcard
+certificate covers it. The runner routes every host a port's `publicUrls` on
+`Kernel.PortsResolved` names that ends in `-<session id>.<base domain>`, beside
+the port's own host — added to the port's HTTPRoute `hostnames`, or as one
+Ingress rule per host — and re-routes on every load, so a watch edit adding an
+address needs no pod change. A host outside the session's suffix came from the
+session's env and is not routed. A one-shot run sets only the main template,
+since nothing republishes its routes: any other address comes from the session's
+env. `Telo.PublicHostPattern` and `customDomains` needs are always the session
+env's, and the runner routes nothing for them.
+
 ### Reload and the app set
 
 `reload` exists because `--watch` reloads on change, and pressing Run again after a

@@ -168,6 +168,9 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
   const variables = moduleMeta?.variables as Record<string, unknown> | undefined;
   const secrets = moduleMeta?.secrets as Record<string, unknown> | undefined;
   const exports = moduleMeta?.exports as ParsedManifest["exports"] | undefined;
+  const needs = moduleMeta?.needs as Record<string, unknown> | undefined;
+  const resourceInputs =
+    moduleKind === "Library" ? (moduleMeta?.resources as Record<string, unknown> | undefined) : undefined;
 
   const base = {
     filePath,
@@ -192,6 +195,8 @@ export function buildParsedManifest(filePath: string, docs: ResourceManifest[]):
     ...(variables ? { variables } : {}),
     ...(secrets ? { secrets } : {}),
     ...(exports ? { exports } : {}),
+    ...(needs ? { needs } : {}),
+    ...(resourceInputs ? { resourceInputs } : {}),
   };
 
   if (moduleKind === "Library") {

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import { buildEntryList, entryListOf } from "./entry-list-model";
+import { buildEntryList, entryListOf, matcherText } from "./entry-list-model";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../../..");
 
@@ -36,13 +36,13 @@ describe("entry list model", () => {
   const ref = (name: string) => makeTaggedSentinel("ref", name);
 
   it("reads the whole grammar off the annotations", () => {
-    // `entries` on the array, `matcher` on the field that selects one,
+    // `entries` on the array, `matcher` on each field that selects one,
     // `handler` on the reference it dispatches to — the same three tokens
     // `Http.Api.routes` and `Mcp.Tools.entries` carry.
     expect(entryListOf(schema)).toMatchObject({
       name: "mounts",
       handler: "mount",
-      matcher: "path",
+      matchers: ["path", "hostnames"],
     });
     expect(entryListOf(schema)!.itemSchema.title).toBe("Mount");
   });
@@ -81,6 +81,18 @@ describe("entry list model", () => {
     expect(entryListOf(configOnly)).toBeNull();
   });
 
+  it("reads every matcher an entry sets, a list of references by the names it references", () => {
+    const [row] = buildEntryList({
+      entries: [{ path: "/", hostnames: [ref("site"), ref("admin")], mount: ref("usersApi") }],
+      list: entryListOf(schema)!,
+      pointer: "/mounts",
+      declared: new Set(["usersApi"]),
+    });
+    expect(row!.matchers.map((m) => m.name)).toEqual(["path", "hostnames"]);
+    expect(row!.matchers.map((m) => matcherText(m.value))).toEqual(["/", "site, admin"]);
+    expect(row!.fields).toEqual([]);
+  });
+
   it("reads each entry as a row with the pointer an edit needs", () => {
     const rows = buildEntryList({
       entries: [
@@ -100,8 +112,8 @@ describe("entry list model", () => {
     });
     // The matcher is separated out, because it is what tells one entry from the
     // next — two mounts of the same API differ only here.
-    expect(rows[0]!.matcher).toMatchObject({ name: "path", value: "/v1" });
-    expect(rows[1]!.matcher).toBeUndefined();
+    expect(rows[0]!.matchers).toMatchObject([{ name: "path", value: "/v1" }]);
+    expect(rows[1]!.matchers).toEqual([]);
     // The rest is declaration order, and only what the author set — an entry
     // listing every optional field as unset would bury the one or two that say
     // what it does. Neither handler nor matcher repeats here.

@@ -110,7 +110,8 @@ with:
                   usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
   - kind: Http.Server
     metadata: { name: provider }
-    port: 8069
+    listen:
+      port: 8069
     mounts:
       - path: /v1
         mount: !ref fakeOpenAi

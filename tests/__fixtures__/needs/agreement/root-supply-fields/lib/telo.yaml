@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: RootSupplyFields
+  version: 0.0.0
+  description: Supplies an address need field by field, which its type refuses.
+imports:
+  Inner:
+    source: ./inner
+    needs:
+      site:
+        url: https://shop.example

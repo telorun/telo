@@ -65,7 +65,8 @@ with:
                 body: { type: search, query: { more_results_available: false } }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18847
+    listen:
+      port: 18847
     mounts:
       - path: /
         mount: !ref FakeBrave

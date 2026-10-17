@@ -36,7 +36,8 @@ metadata: { name: verifyIntegerInputs }
 with:
   - kind: Http.Server
     metadata: { name: IntegerServer }
-    port: 8851
+    listen:
+      port: 8851
     mounts:
       - path: /
         mount:

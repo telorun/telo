@@ -89,6 +89,11 @@ const table = definition("Table", {
       message: "sorts by a literal.",
     },
     {
+      condition: cel("!has(self.sort) || !has(self.sort.value) || string(self.sort.value) != 'id'"),
+      code: "SORT_VALUE_IS_ID",
+      message: "sorts by the literal 'id'.",
+    },
+    {
       condition: cel("!has(self.preview) || self.preview.lists[0].rows.root == 'row'"),
       code: "PREVIEW_READS_ROW",
       message: "previews an action whose list is not read from the row.",
@@ -182,10 +187,15 @@ describe("a rule reads an accessor field as its binding", () => {
   });
 
   it("still skips a rule reading an accessor that is not a plain chain", () => {
-    const skipped = { code: "RESOURCE_RULE_SKIPPED", path: undefined, dynamicAt: "self.sort.value" };
+    // A presence test reads no value, so only the rule reading the held expression skips.
     expect(ruleReports(tableOf({ sort: cel("row.a + row.b") }))).toEqual([
-      { ...skipped, rule: "SORT_NAMES_ID" },
-      { ...skipped, rule: "SORT_IS_LITERAL" },
+      { code: "RESOURCE_RULE_VIOLATED", rule: "SORT_IS_LITERAL", path: undefined },
+      {
+        code: "RESOURCE_RULE_SKIPPED",
+        rule: "SORT_VALUE_IS_ID",
+        path: undefined,
+        dynamicAt: "self.sort.value",
+      },
     ]);
   });
 

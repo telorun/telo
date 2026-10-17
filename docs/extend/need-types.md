@@ -40,6 +40,7 @@ parameters:
 | `parameters` | The JSON Schema of the literal `parameters:` a need may state. A need of a type with none states none. |
 | `version` | `semver` when fulfilments are versioned. Only then may a need state a `version:` range. |
 | `features` | The closed list of feature names a fulfilment may carry. A need may ask for a subset. |
+| `supply` | `root` when a need of the type is fulfilled only through a root need, forwarded whole. |
 
 The document registers the kind `<Module>.<Name>` — `Postgres.DatabaseAccess`
 here — exported through `exports.kinds` and gated like any other kind. A
@@ -122,6 +123,51 @@ A fulfilment writes such a field as the URL's text or as an object of its member
 (`scheme`, `host`, `port`, `user`, `password`, `path`, `query`), which the type
 escapes; a value it refuses is `URL_INVALID`, or `ERR_URL_INVALID` once an
 expression produces it.
+
+## Supplied only through the root
+
+`supply: root` says a fulfilment of the type is only ever read from the
+environment of the application being run, through one of its own needs, and
+handed down whole at each import. Anything else is `NEED_ROOT_SUPPLY_REQUIRED`
+at `telo check` and `ERR_NEED_ROOT_SUPPLY_REQUIRED` at load, the message naming
+the case:
+
+- a fulfilment of the type the module writes itself;
+- a field-by-field supply of one at an import;
+- a library's need of the type that reaches the root without being forwarded
+  (it would otherwise be read from a derived `TELO_NEED_<LIBRARY>__…` name).
+
+An application started with `App.Instance` is a root of its own: its address
+needs are read from its own environment, and the parent's host values are not
+passed to it.
+
+## Kernel-declared address types
+
+The kernel declares two need types an application states the addresses it is
+reached at with. Both are `supply: root`, and a library declares them with no
+parameters, having no `ports:` of its own.
+
+| Type | Field | Parameters at the root |
+| --- | --- | --- |
+| `Telo.PublicUrl` | `url`, a `Telo.Url`: an `http` / `https` origin — a host and an optional port, no path, query or credentials | `port` (required), `primary`, `customDomains` |
+| `Telo.PublicHostPattern` | `pattern`: `<scheme>://<hostname pattern>[:<port>]`, such as `https://*.tenants.example` or `https://*-tenants.example` | `port` (required) |
+
+- **`port`** names a `tcp` key of the root's `ports:`.
+- **`primary`** marks the application's main address; at most one per
+  application. When the root declares exactly one `Telo.PublicUrl`, it is the
+  primary without saying so.
+- **`customDomains`** lets the host route further domains to the need's port,
+  ones the application is never told about; at most one per port.
+- **A pattern** has `*` only at the start of the first label: the whole label
+  (`*.tenants.example`, one or more labels) or a prefix of it
+  (`*-tenants.example`, characters inside that label). A tenant's address is
+  `resources.<need>.pattern.replace('*', tenant)`.
+
+A port that is missing, unknown or `udp`, a parameter on a library's address
+need, two primaries and two `customDomains` needs on one port are
+`NEED_PARAMETERS_INVALID`. How an address is supplied — environment, the host's
+templates, collisions — is in [Providing needs](/learn/providing-needs); how a
+server routes by them is `http-server`'s host-routing guide.
 
 ## Naming a need type
 

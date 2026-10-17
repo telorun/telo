@@ -84,8 +84,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: RelativeServer }
-    host: 127.0.0.1
-    port: 8961
+    listen:
+      address: 127.0.0.1
+      port: 8961
     openapi:
       info: { title: RelativeServer, version: 1.0.0 }
     mounts:
@@ -95,8 +96,9 @@ with:
         mount: !ref docs
   - kind: Http.Server
     metadata: { name: ForwardedServer }
-    host: 127.0.0.1
-    port: 8962
+    listen:
+      address: 127.0.0.1
+      port: 8962
     trustForwardedHeaders: true
     openapi:
       info: { title: ForwardedServer, version: 1.0.0 }

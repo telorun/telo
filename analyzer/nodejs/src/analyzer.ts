@@ -349,6 +349,14 @@ function contractOwnerLabel(
 /** The built-in namespace: globally resolvable, crossing no import boundary. */
 const TELO_BUILTIN_MODULE = "Telo";
 
+/** A library's own alias table, which names the built-ins as every module's does. */
+function libraryAliasTable(tables: Map<string, AliasResolver>, module: string): AliasResolver {
+  const table = new AliasResolver();
+  table.registerUngatedAlias(TELO_BUILTIN_MODULE, TELO_BUILTIN_MODULE);
+  tables.set(module, table);
+  return table;
+}
+
 /** One mapping from a ref-slot issue to a diagnostic — the shape is identical
  *  for the schema-level and the manifest-level (dynamic selector) checks. */
 function refSlotIssueDiagnostic(issue: RefSlotIssue): AnalysisDiagnostic {
@@ -1162,8 +1170,7 @@ export class StaticAnalyzer {
           const resolver =
             !ownModule || rootModules.has(ownModule)
               ? aliases
-              : (aliasesByModule.get(ownModule) ??
-                aliasesByModule.set(ownModule, new AliasResolver()).get(ownModule)!);
+              : (aliasesByModule.get(ownModule) ?? libraryAliasTable(aliasesByModule, ownModule));
           resolver.registerImport(alias, targetModule, exportedKinds);
           for (const [suffix, canonical] of Object.entries(reExportedKinds)) {
             resolver.registerKindReExport(alias, suffix, canonical);

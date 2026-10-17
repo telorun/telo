@@ -55,7 +55,8 @@ with:
                     : []}
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18866
+    listen:
+      port: 18866
     mounts:
       - path: /
         mount: !ref FakeExa

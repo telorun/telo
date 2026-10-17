@@ -545,7 +545,8 @@ schema:
     admin: { x-telo-ref: { kind: Telo.Mount, use: dependency } }
 targets:
   - kind: Http.Server
-    port: !cel "self.port"
+    listen:
+      port: !cel "self.port"
     mounts:
       - { path: /, mount: !cel "self.api" }
       - !if
@@ -555,7 +556,8 @@ targets:
     if: !cel "self.adminPort != self.port"
     then:
       kind: Http.Server
-      port: !cel "self.adminPort"
+      listen:
+        port: !cel "self.adminPort"
       mounts:
         - { path: /, mount: !cel "self.admin" }
 ```

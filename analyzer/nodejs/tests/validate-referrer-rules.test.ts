@@ -170,9 +170,20 @@ describe("referrer rules — evaluation", () => {
   });
 
   it("reports the skip when a value the condition reads holds CEL", () => {
+    const schema = {
+      ...REFERENCE_SCHEMA,
+      "x-telo-referrer-rules": [
+        {
+          referrer: "HttpServer.Server",
+          condition: cel("has(referrer.openapi) && size(referrer.openapi) > 0"),
+          code: "REFERENCE_WITH_EMPTY_OPENAPI",
+          message: "declares an empty `openapi:` block",
+        },
+      ],
+    };
     const findings = evaluateReferrerRules(
       reference(),
-      REFERENCE_SCHEMA,
+      schema,
       [referrer(server({ openapi: { __compiled: true, source: "variables.doc" } }))],
       kindMatches,
     );

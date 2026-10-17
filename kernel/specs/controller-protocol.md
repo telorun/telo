@@ -884,8 +884,11 @@ value type declares a sensitive member (a `Telo.Url`'s `password`) when its valu
 holds one — and the constraints (`version`, `features`) and
 `parameters` of the **outermost need** of the whole-forward chain the fulfilment
 came through — the need whose constraints are enforced. A slot referencing a
-fulfilment directly, with no need in the chain, carries none. The answer carries
-no environment name and no source.
+fulfilment directly, with no need in the chain, carries none. For a need of a
+kernel-declared address type (`Telo.PublicUrl`, `Telo.PublicHostPattern`) the
+answer also carries `port`, the number the need's `port` parameter names as the
+application resolved it, which is what lets a server refuse an address on a port
+it does not listen on. The answer carries no environment name and no source.
 
 `Need.Verify` reports what the consumer observed on the real thing behind the
 fulfilment — the actual version as semver text, the features present — one

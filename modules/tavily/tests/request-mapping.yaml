@@ -58,7 +58,8 @@ with:
                       content: echo
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 18858
+    listen:
+      port: 18858
     mounts:
       - path: /
         mount: !ref FakeTavily

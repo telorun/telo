@@ -1,0 +1,9 @@
+kind: Telo.Library
+metadata:
+  name: AddressParameters
+  version: 0.0.0
+  description: A library's address need naming a port, which only the application can.
+needs:
+  site:
+    kind: Telo.PublicUrl
+    parameters: { port: http }

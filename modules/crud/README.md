@@ -111,7 +111,8 @@ pages:
 ---
 kind: Http.Server
 metadata: { name: server }
-port: !cel "ports.http"
+listen:
+  port: !cel "ports.http"
 mounts:
   - { path: /api/todos, mount: !ref todos }
   - { path: /, mount: !ref admin }

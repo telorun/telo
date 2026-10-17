@@ -36,9 +36,9 @@ with:
   - kind: Http.Server
     metadata:
       name: TestServer
-    port: !cel "ports.http"
-    baseUrl: !interpolate "http://localhost:${{ ports.http }}"
-    host: !cel "'localhost'"
+    listen:
+      address: !cel "'localhost'"
+      port: !cel "ports.http"
     mounts:
       - path: /api
         mount: !ref TestApi

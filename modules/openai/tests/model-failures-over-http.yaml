@@ -252,8 +252,8 @@ with:
                   usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    port: 8914
-    baseUrl: http://localhost:8914
+    listen:
+      port: 8914
     openapi:
       info: { title: Fake OpenAI API, version: 1.0.0 }
     mounts:

@@ -120,9 +120,9 @@ metadata:
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    host: 127.0.0.1
-    port: 8913
-    baseUrl: http://127.0.0.1:8913
+    listen:
+      address: 127.0.0.1
+      port: 8913
     mounts:
       - path: /api
         mount: !ref api

@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: AddressPrimaries
+  version: 0.0.0
+  description: Two address needs both stating they are the primary.
+ports:
+  http: { env: PORT, default: 8080 }
+needs:
+  site:
+    kind: Telo.PublicUrl
+    parameters: { port: http, primary: true }
+  admin:
+    kind: Telo.PublicUrl
+    parameters: { port: http, primary: true }

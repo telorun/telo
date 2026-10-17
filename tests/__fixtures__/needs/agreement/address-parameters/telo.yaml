@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata:
+  name: AddressParametersConsumer
+  version: 0.0.0
+  description: Imports the library beside it, forwarding the address it asks for.
+ports:
+  http: { env: PORT, default: 8080 }
+needs:
+  site:
+    kind: Telo.PublicUrl
+    parameters: { port: http }
+imports:
+  Lib:
+    source: ./lib
+    needs:
+      site: !ref site

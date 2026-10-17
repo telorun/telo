@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata:
+  name: RootSupplyFieldsInner
+  version: 0.0.0
+  description: A library asking for an address.
+needs:
+  site:
+    kind: Telo.PublicUrl

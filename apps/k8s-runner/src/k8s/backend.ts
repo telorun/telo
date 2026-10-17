@@ -26,6 +26,7 @@ import {
   buildSessionService,
   endpointsFor,
   hostForPort,
+  publicUrlTemplateEnv,
   watchRouteHealth,
   type PublishedRoute,
   type SessionRouter,
@@ -145,7 +146,9 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         sessionId: spec.sessionId,
         podName,
         entryRelativePath: app.entryRelativePath,
-        env: spec.env,
+        // A one-shot run reads no announcement, so it routes only each port's
+        // own host: it answers a port's primary address and nothing more.
+        env: router ? { ...publicUrlTemplateEnv(config, spec.sessionId, false), ...spec.env } : spec.env,
         ports: app.ports,
         limits,
         image:

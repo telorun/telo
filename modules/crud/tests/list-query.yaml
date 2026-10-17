@@ -111,9 +111,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    host: 127.0.0.1
-    port: 19313
-    baseUrl: http://127.0.0.1:19313
+    listen:
+      address: 127.0.0.1
+      port: 19313
     openapi:
       info: { title: Tasks API, version: 1.0.0 }
     mounts:

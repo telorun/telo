@@ -1,11 +1,13 @@
 import { getHtmlDocument } from "@scalar/core/libs/html-rendering";
 import { normalize, toJson, toYaml } from "@scalar/openapi-parser";
 import { type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, type FastifyRequest } from "fastify";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { normalizeMountPrefix } from "./mount-prefix.js";
 import { installSpecServerUrlRewrite, specServerUrlIsPerRequest } from "./openapi-spec-servers.js";
+import { documentForHost, hostRoutesOf } from "./host-routes.js";
+import { requestHostOf } from "./request-host.js";
 
 type HttpReferenceResource = RuntimeResource & {
   title?: string;
@@ -99,32 +101,39 @@ class HttpReference implements ResourceInstance {
     if (this.theme !== undefined) configuration.theme = this.theme;
 
     const withSwagger = app as unknown as { swagger(): Record<string, unknown> };
-    const document = () => normalize(withSwagger.swagger()) as Record<string, unknown>;
+    const routes = hostRoutesOf(app);
+    // The document lists exactly the routes the requesting host reaches.
+    const document = (request: FastifyRequest) =>
+      documentForHost(
+        normalize(withSwagger.swagger()) as Record<string, unknown>,
+        routes,
+        requestHostOf(app, request),
+      );
 
     app.route({
       method: "GET",
       url: `${base}/openapi.json`,
       schema: HIDDEN_FROM_DOCUMENT,
-      handler(_request, reply) {
+      handler(request, reply) {
         return reply
           .header("Content-Type", "application/json")
           .header("Content-Disposition", `filename=${DOWNLOAD_NAME}.json`)
           .header("Access-Control-Allow-Origin", "*")
           .header("Access-Control-Allow-Methods", "*")
-          .send(JSON.parse(toJson(document())));
+          .send(JSON.parse(toJson(document(request))));
       },
     });
     app.route({
       method: "GET",
       url: `${base}/openapi.yaml`,
       schema: HIDDEN_FROM_DOCUMENT,
-      handler(_request, reply) {
+      handler(request, reply) {
         return reply
           .header("Content-Type", "application/yaml")
           .header("Content-Disposition", `filename=${DOWNLOAD_NAME}.yaml`)
           .header("Access-Control-Allow-Origin", "*")
           .header("Access-Control-Allow-Methods", "*")
-          .send(toYaml(document()));
+          .send(toYaml(document(request)));
       },
     });
     if (base !== "" && !ignoresTrailingSlash(app)) {

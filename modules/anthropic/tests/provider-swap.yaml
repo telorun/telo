@@ -121,8 +121,8 @@ with:
                   usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 }
   - kind: Server.Server
     metadata: { name: Vendors }
-    port: 8915
-    baseUrl: http://localhost:8915
+    listen:
+      port: 8915
     openapi:
       info: { title: Fake vendor endpoints, version: 1.0.0 }
     mounts:
