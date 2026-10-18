@@ -115,6 +115,7 @@ pub(crate) fn check_expression(expression: &CelExpression, context: &CheckerCont
         scopes: HashMap::new(),
         proven: HashMap::new(),
         longest_variable: None,
+        source_units: None,
     }
     .run()
 }
@@ -139,7 +140,9 @@ enum Cont<'a> {
     IndexOperand { node: &'a CelIndexNode },
     IndexIndex { node: &'a CelIndexNode, operand: CelType },
     Operator { operator: &'static str, operands: Vec<&'a CelNode>, args: Vec<CelType>, range: SourceRange },
-    LogicalLeft { node: &'a CelBinaryNode },
+    /// `held`: when the left operand joins with the same operator, the proofs its own
+    /// left made, still in scope — part of what this one proves.
+    LogicalLeft { node: &'a CelBinaryNode, held: Vec<String> },
     LogicalRight { node: &'a CelBinaryNode, left: CelType },
     Condition { node: &'a CelConditionalNode },
     WhenTrue { node: &'a CelConditionalNode },
@@ -165,6 +168,8 @@ struct Checker<'a, 'e> {
     proven: HashMap<String, usize>,
     /// The length of the longest declared name, once a chain asks.
     longest_variable: Option<usize>,
+    /// The source as UTF-16 code units, once a refusal quotes it.
+    source_units: Option<Vec<u16>>,
 }
 
 impl MacroHost for Checker<'_, '_> {
@@ -241,7 +246,7 @@ impl<'a> Checker<'a, '_> {
             CelNode::Unary(unary) => self.start_operator(unary.operator.as_str(), vec![&*unary.operand], unary.range, stack),
             CelNode::Binary(binary) => match binary.operator {
                 CelBinaryOperator::And | CelBinaryOperator::Or => {
-                    stack.push(Cont::LogicalLeft { node: binary });
+                    stack.push(Cont::LogicalLeft { node: binary, held: Vec::new() });
                     Step::Eval(&binary.left, false)
                 }
                 operator => self.start_operator(operator.as_str(), vec![&*binary.left, &*binary.right], binary.range, stack),
@@ -309,14 +314,18 @@ impl<'a> Checker<'a, '_> {
                 }
                 Step::Return(self.finish_operator(operator, &args, range))
             }
-            Cont::LogicalLeft { node } => {
-                let proofs = if node.operator == CelBinaryOperator::And {
-                    proven_where_true(&node.left)
-                } else {
-                    proven_where_false(&node.left)
+            Cont::LogicalLeft { node, held } => {
+                let proven = if node.operator == CelBinaryOperator::And { proven_where_true } else { proven_where_false };
+                // A left operand joining with the same operator proves its two operands'
+                // proofs, and those of its own left are `held`: only its right is new.
+                let unproven = match &*node.left {
+                    CelNode::Binary(left) if left.operator == node.operator => &left.right,
+                    left => left,
                 };
+                let mut proofs = held;
+                proofs.extend(self.add_proofs(proven(unproven)));
                 stack.push(Cont::LogicalRight { node, left: ty });
-                self.prove(proofs, stack);
+                self.hand_on_or_unprove(node, proofs, stack);
                 Step::Eval(&node.right, false)
             }
             Cont::LogicalRight { node, left } => {
@@ -424,13 +433,33 @@ impl<'a> Checker<'a, '_> {
 
     /// The proofs of a guard, in scope until the continuation pushed here runs.
     fn prove(&mut self, proofs: Vec<String>, stack: &mut Vec<Cont<'a>>) {
-        if proofs.is_empty() {
-            return;
+        let proofs = self.add_proofs(proofs);
+        if !proofs.is_empty() {
+            stack.push(Cont::Unprove(proofs));
         }
+    }
+
+    fn add_proofs(&mut self, proofs: Vec<String>) -> Vec<String> {
         for proof in &proofs {
             *self.proven.entry(proof.clone()).or_insert(0) += 1;
         }
-        stack.push(Cont::Unprove(proofs));
+        proofs
+    }
+
+    /// Scopes the proofs of a `&&` / `||` to its right operand. When it is itself the left
+    /// operand of the same operator, they stay in scope and pass to that one, whose
+    /// proofs include them, so a chain proves each of its operands once.
+    fn hand_on_or_unprove(&mut self, node: &'a CelBinaryNode, proofs: Vec<String>, stack: &mut Vec<Cont<'a>>) {
+        if let Some(Cont::LogicalLeft { node: parent, held }) = stack.iter_mut().rev().nth(1) {
+            let joins = matches!(&*parent.left, CelNode::Binary(left) if std::ptr::eq(left, node));
+            if joins && parent.operator == node.operator {
+                *held = proofs;
+                return;
+            }
+        }
+        if !proofs.is_empty() {
+            stack.push(Cont::Unprove(proofs));
+        }
     }
 
     fn macro_step(&mut self, step: MacroStep<'a>, stack: &mut Vec<Cont<'a>>) -> Step<'a> {
@@ -947,7 +976,9 @@ impl<'a> Checker<'a, '_> {
             .collect();
         let Some(refusal) = check(&values) else { return };
         let range = node.range();
-        let source = utf16_slice(&self.expression.source, range.start, range.end);
+        let expression = self.expression;
+        let units = self.source_units.get_or_insert_with(|| expression.source.encode_utf16().collect());
+        let source = utf16_slice(units, range.start, range.end);
         self.report(CelCheckCode::InvalidArgument, format!("{refusal} (in `{source}`)"), range);
     }
 
@@ -1300,8 +1331,7 @@ fn unwrap_optional(ty: CelType) -> CelType {
 }
 
 /// `source.slice(start, end)` over UTF-16 code units, as ECMAScript slices a string.
-fn utf16_slice(source: &str, start: u32, end: u32) -> String {
-    let units: Vec<u16> = source.encode_utf16().collect();
+fn utf16_slice(units: &[u16], start: u32, end: u32) -> String {
     let start = (start as usize).min(units.len());
     let end = (end as usize).min(units.len());
     if end <= start {

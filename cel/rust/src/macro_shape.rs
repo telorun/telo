@@ -9,6 +9,9 @@
 //! The walk is post-order, so the innermost mistake is reported first, and it runs on a
 //! heap list.
 //!
+//! Node items with no twin in this file: `collect`, the recursive collector — the heap
+//! walk of `macro_shape_findings` takes its place.
+//!
 //! Everything here is private to the crate, as on Node's entry.
 
 use crate::check_diagnostic::CelCheckCode;

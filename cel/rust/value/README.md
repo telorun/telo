@@ -2,7 +2,7 @@
 
 The CEL value domain for Rust: every value an expression can hold, the invariants each one keeps, and the text each is written as. It is the Rust half of the value-domain files of `@telorun/cel` (`cel/nodejs`), and it answers as they answer — the same acceptances, refusals, codes, messages and written text.
 
-It holds values and nothing that computes with them. Equality (`==`), ordering, arithmetic, time zones and reading a literal out of a syntax tree belong to the engine crate that stands on this one, `telorun-cel` (`cel/rust`), which today holds the front end — the reader, the namespace pass, the writer and the tree queries — the type system and the checker. Of those four, it holds reading a literal (`literal_value`); equality, ordering, arithmetic and time zones arrive there with evaluation.
+It holds values and nothing that computes with them. Equality (`==`), ordering, arithmetic, time zones and reading a literal out of a syntax tree belong to the engine crate that stands on this one, `telorun-cel` (`cel/rust`), which today holds the front end — the reader, the namespace pass, the writer and the tree queries — the type system and the checker. Of those five, it holds reading a literal (`literal_value`); equality, ordering, arithmetic and time zones arrive there with evaluation.
 
 ## The two rules
 
@@ -87,7 +87,7 @@ Node answers differently for a map with typed keys and for a plain object a host
 
 **`CelRecord`** is a map whose keys are all strings. It ranges in ECMAScript's own-property order, because that is what a comprehension over a host's object answers on Node: keys that are canonical array indices (`0` … `4294967294`, no leading zero) first, ascending, then every other key in insertion order. Setting a key that is already held replaces its value and keeps its position.
 
-**`PropertyMap<V>`** is that order, for anything: a `CelRecord` is a `PropertyMap` of values, and every engine input Node takes as a plain JavaScript object — a JSON object, a named type's declared fields — is a `PropertyMap` of what it holds. `insert`, `get`, `contains_key`, `len`, `is_empty`, `iter`, `keys`, `values`, `values_mut`; built from pairs with `collect`. Two are equal when they hold the same pairs, in any order. The rule has this one home.
+**`PropertyMap<V>`** is that order, for anything: a `CelRecord` is a `PropertyMap` of values, and every engine input Node takes as a plain JavaScript object — a JSON object, a named type's declared fields — is a `PropertyMap` of what it holds. `insert`, `get`, `contains_key`, `len`, `is_empty`, `iter`, `keys`, `values`; built from pairs with `collect`. Two are equal when they hold the same pairs, in any order. The rule has this one home.
 
 ## Durations: two ranges
 

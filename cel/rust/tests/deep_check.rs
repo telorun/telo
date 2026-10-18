@@ -58,7 +58,7 @@ struct Nesting {
     calls: usize,
 }
 
-const LABELS: [&str; 13] = [
+const LABELS: [&str; 16] = [
     "negation",
     "conditional",
     "list",
@@ -72,6 +72,9 @@ const LABELS: [&str; 13] = [
     "renamed",
     "dotted",
     "formed",
+    "and-chain",
+    "or-chain",
+    "chain-scope",
 ];
 
 /// Node's three-deep and four-deep answers, carried to `n`.
@@ -116,6 +119,20 @@ fn nesting(label: &str, n: usize) -> Nesting {
             )],
             calls: 1,
             ..plain(around("[", "startsWith('a', 'b')", "]"), &nested_type("list<", "dyn"))
+        },
+        // A chain is `n` operators long, each operand needing the first one's proof; one
+        // re-proving its whole left at each operator would be quadratic.
+        "and-chain" => plain(format!("request.body != null{}", " && request.body.id == 'x'".repeat(n)), "bool"),
+        "or-chain" => plain(format!("request.body == null{}", " || request.body.id == 'x'".repeat(n)), "bool"),
+        // What a chain proves goes out of scope with it.
+        "chain-scope" => Nesting {
+            diagnostics: vec![found(
+                NullableAccess,
+                "\"request.body\" may be null \u{2014} guard it (e.g. 'request.body != null && \u{2026}' or 'request.body == null ? \u{2026} : request.body.id') before reading .id",
+                at(8 * n + 40),
+                at(8 * n + 42),
+            )],
+            ..plain(format!("(request.body != null{}) == (request.body.id == 'x')", " && true".repeat(n)), "bool")
         },
         _ => unreachable!("{label} is a nesting"),
     }

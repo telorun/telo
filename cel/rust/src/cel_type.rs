@@ -27,6 +27,7 @@
 //!   semantics, which Node gets from its host.
 //! - `PrimitiveName::as_str` — Node holds the name as the string itself.
 
+use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::fmt;
@@ -344,51 +345,65 @@ pub fn without_null(ty: &CelType) -> CelType {
 pub fn types_equal(left: &CelType, right: &CelType) -> bool {
     let mut pending = vec![(left, right)];
     while let Some((left, right)) = pending.pop() {
-        match (left, right) {
-            (CelType::Dyn, CelType::Dyn) => {}
-            (CelType::Primitive(a), CelType::Primitive(b)) => {
-                if a != b {
-                    return false;
-                }
-            }
-            (CelType::List(a), CelType::List(b)) => pending.push((&a.element, &b.element)),
-            (CelType::Map(a), CelType::Map(b)) => {
-                pending.push((&a.value, &b.value));
-                pending.push((&a.key, &b.key));
-            }
-            (CelType::Optional(a), CelType::Optional(b)) => pending.push((&a.value, &b.value)),
-            (CelType::Record(a), CelType::Record(b)) => {
-                if a.name != b.name || a.open != b.open || a.fields.len() != b.fields.len() {
-                    return false;
-                }
-                for (name, ty) in a.fields.iter() {
-                    match b.fields.get(name) {
-                        Some(held) => pending.push((ty, held)),
-                        None => return false,
-                    }
-                }
-            }
-            (CelType::Union(a), CelType::Union(b)) => {
-                if a.members.len() != b.members.len() {
-                    return false;
-                }
-                pending.extend(a.members.iter().zip(b.members.iter()));
-            }
-            (CelType::Nominal(a), CelType::Nominal(b)) => {
-                if a.name != b.name || a.args.len() != b.args.len() {
-                    return false;
-                }
-                pending.extend(a.args.iter().zip(b.args.iter()));
-            }
-            (CelType::Parameter(a), CelType::Parameter(b)) => {
-                if a.name != b.name {
-                    return false;
-                }
-            }
-            _ => return false,
+        if !equal_at_own_level(left, right, |a, b| pending.push((a, b))) {
+            return false;
         }
     }
     true
+}
+
+/// [`types_equal`] at one level: whether the two agree there, each pair of children
+/// left to compare handed to `beneath`, in the order the equality pushes them.
+pub(crate) fn equal_at_own_level<'t>(
+    left: &'t CelType,
+    right: &'t CelType,
+    mut beneath: impl FnMut(&'t CelType, &'t CelType),
+) -> bool {
+    match (left, right) {
+        (CelType::Dyn, CelType::Dyn) => true,
+        (CelType::Primitive(a), CelType::Primitive(b)) => a == b,
+        (CelType::List(a), CelType::List(b)) => {
+            beneath(&a.element, &b.element);
+            true
+        }
+        (CelType::Map(a), CelType::Map(b)) => {
+            beneath(&a.value, &b.value);
+            beneath(&a.key, &b.key);
+            true
+        }
+        (CelType::Optional(a), CelType::Optional(b)) => {
+            beneath(&a.value, &b.value);
+            true
+        }
+        (CelType::Record(a), CelType::Record(b)) => {
+            if a.name != b.name || a.open != b.open || a.fields.len() != b.fields.len() {
+                return false;
+            }
+            for (name, ty) in a.fields.iter() {
+                match b.fields.get(name) {
+                    Some(held) => beneath(ty, held),
+                    None => return false,
+                }
+            }
+            true
+        }
+        (CelType::Union(a), CelType::Union(b)) => {
+            if a.members.len() != b.members.len() {
+                return false;
+            }
+            a.members.iter().zip(b.members.iter()).for_each(|(a, b)| beneath(a, b));
+            true
+        }
+        (CelType::Nominal(a), CelType::Nominal(b)) => {
+            if a.name != b.name || a.args.len() != b.args.len() {
+                return false;
+            }
+            a.args.iter().zip(b.args.iter()).for_each(|(a, b)| beneath(a, b));
+            true
+        }
+        (CelType::Parameter(a), CelType::Parameter(b)) => a.name == b.name,
+        _ => false,
+    }
 }
 
 /// A hash two types equal by [`types_equal`] share, read from the type's own level and
@@ -933,54 +948,160 @@ impl fmt::Debug for CelType {
     }
 }
 
-/// Moves every child a type alone owns onto the list, leaving `dyn` in its place.
-fn unlink_children(ty: &mut CelType, pending: &mut Vec<CelType>) {
-    let take = |child: &mut Arc<CelType>, pending: &mut Vec<CelType>| {
-        if let Some(held) = Arc::get_mut(child) {
-            if !matches!(held, CelType::Dyn | CelType::Primitive(_) | CelType::Parameter(_)) {
-                pending.push(std::mem::replace(held, DYN));
+fn is_leaf(ty: &CelType) -> bool {
+    matches!(ty, CelType::Dyn | CelType::Primitive(_) | CelType::Parameter(_))
+}
+
+/// A child taken out of its slot: moved out of an `Arc` this release alone held, or
+/// the shared `Arc` itself, still holding its count.
+enum Unlinked {
+    Owned(CelType),
+    Type(Arc<CelType>),
+    Types(Arc<[CelType]>),
+    Fields(Arc<FieldEntries>),
+}
+
+/// One release: the children it has taken out, and the placeholders it leaves where it
+/// took a shared `Arc` — each made the first time this release needs it and cloned
+/// after that.
+#[derive(Default)]
+struct Release {
+    pending: Vec<Unlinked>,
+    leaf: Option<Arc<CelType>>,
+    no_types: Option<Arc<[CelType]>>,
+    no_fields: Option<Arc<FieldEntries>>,
+}
+
+impl Release {
+    /// Takes every child out of a type onto the list. A leaf or an empty slot stays
+    /// where it is, so a type already unlinked unlinks nothing.
+    fn unlink(&mut self, ty: &mut CelType) {
+        match ty {
+            CelType::Dyn | CelType::Primitive(_) | CelType::Parameter(_) => {}
+            CelType::List(list) => self.take(&mut list.element),
+            CelType::Map(map) => {
+                self.take(&mut map.key);
+                self.take(&mut map.value);
+            }
+            CelType::Optional(optional) => self.take(&mut optional.value),
+            CelType::Record(record) => self.take_fields(&mut record.fields),
+            CelType::Union(union) => self.take_types(&mut union.members),
+            CelType::Nominal(nominal) => {
+                self.take(&mut nominal.base);
+                self.take_types(&mut nominal.args);
+                if let Some(fields) = &mut nominal.fields {
+                    self.take_fields(fields);
+                }
             }
         }
-    };
-    let take_all = |children: &mut Arc<[CelType]>, pending: &mut Vec<CelType>| {
-        if let Some(held) = Arc::get_mut(children) {
-            pending.extend(held.iter_mut().map(|child| std::mem::replace(child, DYN)));
+    }
+
+    fn take_owned<'t>(&mut self, types: impl Iterator<Item = &'t mut CelType>) {
+        self.pending.extend(types.filter(|ty| !is_leaf(ty)).map(|ty| Unlinked::Owned(std::mem::replace(ty, DYN))));
+    }
+
+    fn take(&mut self, child: &mut Arc<CelType>) {
+        if is_leaf(child) {
+            return;
         }
-    };
-    let take_fields = |fields: &mut TypeFields, pending: &mut Vec<CelType>| {
-        if let Some(held) = Arc::get_mut(&mut fields.entries) {
-            pending.extend(held.order.iter_mut().map(|(_, child)| std::mem::replace(child, DYN)));
+        match Arc::get_mut(child) {
+            Some(held) => self.take_owned(std::iter::once(held)),
+            None => {
+                let leaf = self.leaf.get_or_insert_with(|| Arc::new(DYN));
+                self.pending.push(Unlinked::Type(std::mem::replace(child, Arc::clone(leaf))));
+            }
         }
-    };
-    match ty {
-        CelType::Dyn | CelType::Primitive(_) | CelType::Parameter(_) => {}
-        CelType::List(list) => take(&mut list.element, pending),
-        CelType::Map(map) => {
-            take(&mut map.key, pending);
-            take(&mut map.value, pending);
+    }
+
+    fn take_types(&mut self, children: &mut Arc<[CelType]>) {
+        if children.is_empty() {
+            return;
         }
-        CelType::Optional(optional) => take(&mut optional.value, pending),
-        CelType::Record(record) => take_fields(&mut record.fields, pending),
-        CelType::Union(union) => take_all(&mut union.members, pending),
-        CelType::Nominal(nominal) => {
-            take(&mut nominal.base, pending);
-            take_all(&mut nominal.args, pending);
-            if let Some(fields) = &mut nominal.fields {
-                take_fields(fields, pending);
+        match Arc::get_mut(children) {
+            Some(held) => self.take_owned(held.iter_mut()),
+            None => {
+                let none = self.no_types.get_or_insert_with(|| Arc::from(Vec::new()));
+                self.pending.push(Unlinked::Types(std::mem::replace(children, Arc::clone(none))));
+            }
+        }
+    }
+
+    fn take_fields(&mut self, fields: &mut TypeFields) {
+        if fields.entries.order.is_empty() {
+            return;
+        }
+        match Arc::get_mut(&mut fields.entries) {
+            Some(held) => self.take_owned(held.order.iter_mut().map(|(_, ty)| ty)),
+            None => {
+                let none = self.no_fields.get_or_insert_with(Default::default);
+                self.pending.push(Unlinked::Fields(std::mem::replace(&mut fields.entries, Arc::clone(none))));
+            }
+        }
+    }
+
+    /// Releases what is on the list. A shared `Arc` is let go of through
+    /// `Arc::into_inner`, which hands its value to exactly one of the holders letting go
+    /// at once, so a child shared within a parent or across threads is unlinked here,
+    /// never released inside another's `Drop`. A list of types has no `into_inner`: one
+    /// held elsewhere is let go of with this release active on the thread, so a member
+    /// it releases — the other holder having let go at the same moment — unlinks onto
+    /// this list instead.
+    fn run(mut self) {
+        while let Some(child) = self.pending.pop() {
+            match child {
+                Unlinked::Owned(mut ty) => self.unlink(&mut ty),
+                Unlinked::Type(child) => {
+                    if let Some(mut ty) = Arc::into_inner(child) {
+                        self.unlink(&mut ty);
+                    }
+                }
+                Unlinked::Fields(entries) => {
+                    if let Some(mut entries) = Arc::into_inner(entries) {
+                        for (_, ty) in entries.order.iter_mut() {
+                            self.unlink(ty);
+                        }
+                    }
+                }
+                Unlinked::Types(mut types) => match Arc::get_mut(&mut types) {
+                    Some(held) => held.iter_mut().for_each(|ty| self.unlink(ty)),
+                    None => match ACTIVE_RELEASE.try_with(|active| active.replace(Some(std::mem::take(&mut self)))) {
+                        Ok(_) => {
+                            drop(types);
+                            self = ACTIVE_RELEASE.with(|active| active.take()).expect("the release stays active");
+                        }
+                        Err(_) => drop(types),
+                    },
+                },
             }
         }
     }
 }
 
+thread_local! {
+    /// The release letting go of a shared list of types on this thread, while it does.
+    static ACTIVE_RELEASE: RefCell<Option<Release>> = const { RefCell::new(None) };
+}
+
 impl Drop for CelType {
-    /// Unlinks every descendant this type alone owns onto a list, so releasing a deep
-    /// type costs no stack. A type taken off the list holds only `dyn` where its
-    /// children were by the time it is released itself.
+    /// Unlinks every descendant onto a heap list, so releasing a deep type costs no
+    /// stack. A type taken off the list holds only placeholders where its children
+    /// were by the time it is released itself.
     fn drop(&mut self) {
-        let mut pending = Vec::new();
-        unlink_children(self, &mut pending);
-        while let Some(mut ty) = pending.pop() {
-            unlink_children(&mut ty, &mut pending);
+        if is_leaf(self) {
+            return;
         }
+        let joined = ACTIVE_RELEASE.try_with(|active| match active.borrow_mut().as_mut() {
+            Some(release) => {
+                release.unlink(self);
+                true
+            }
+            None => false,
+        });
+        if joined == Ok(true) {
+            return;
+        }
+        let mut release = Release::default();
+        release.unlink(self);
+        release.run();
     }
 }

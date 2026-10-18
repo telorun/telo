@@ -209,6 +209,33 @@ fn intersects_two_deep_records() {
     });
 }
 
+#[test]
+fn intersects_at_every_level_of_a_nested_all_of() {
+    // Each level meets what the levels below it read with a record of another field, so
+    // a meet that compared the parts all the way down at each level would be quadratic.
+    on_a_small_stack(|| {
+        at_both_depths(
+            |depth| {
+                nested(
+                    r#"{"allOf":[{"properties":{"x":"#,
+                    r#"{"type":"string"}"#,
+                    r#"}},{"properties":{"y":{"type":"string"}}}]}"#,
+                    depth,
+                )
+            },
+            "{x: {x: {x: string, y: string}, y: string}, y: string}",
+            &[],
+            13,
+            |depth, ty, reports, calls| {
+                let (levels, bottom) = record_depth(ty, "x");
+                assert_eq!((levels, format_type(bottom, true)), (depth, "string".to_string()));
+                assert!(reports.is_empty());
+                assert_eq!(calls, 4 * depth + 1);
+            },
+        );
+    });
+}
+
 /// Counts what is written and keeps none of it.
 struct Counted(usize);
 

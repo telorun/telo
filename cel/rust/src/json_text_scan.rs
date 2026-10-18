@@ -5,6 +5,9 @@
 //! only once [`scan_json_prefix`] has accepted it, so acceptance and the refusal's offset
 //! are one computation. Both run on heap state, so nesting is bounded by memory.
 //!
+//! Node items with no twin in this file: `SIMPLE_ESCAPES` — the scan tests the escape
+//! letters where it reads one.
+//!
 //! Declared here and not in the Node file:
 //! - [`read_json_text`] and [`JsonTextError`] — the reader Node gets from its host.
 //!   `JSON.parse` accepts an escape that names an unpaired surrogate; no Rust string

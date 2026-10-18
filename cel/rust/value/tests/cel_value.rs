@@ -198,8 +198,7 @@ fn ranges_a_record_in_ecmascript_own_property_order() {
         let properties: PropertyMap<i64> = inserted.iter().enumerate().map(|(at, key)| (*key, at as i64)).collect();
         assert_eq!(properties.iter().map(|(key, held)| (key, *held)).collect::<Vec<_>>(), *expected, "{inserted:?}");
     }
-    let mut properties: PropertyMap<i64> = [("b", 1), ("0", 2)].into_iter().collect();
-    properties.values_mut().for_each(|held| *held *= 10);
+    let properties: PropertyMap<i64> = [("b", 10), ("0", 20)].into_iter().collect();
     assert_eq!(properties.values().copied().collect::<Vec<_>>(), [20, 10]);
     assert_eq!(properties, [("0", 20), ("b", 10)].into_iter().collect());
     let mut record = CelRecord::new();

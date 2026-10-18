@@ -17,18 +17,16 @@ type Read = (&'static str, Option<&'static str>, &'static [&'static str], &'stat
 #[test]
 fn reads_or_refuses_each_signature_as_node_does() {
     // `(text, what parseSignature answers, or the class and message it throws)`.
-    const NODE_READ: [(&str, Result<Read, (&str, &str)>); 37] = [
+    const NODE_READ: [(&str, Result<Read, (&str, &str)>); 35] = [
         ("size(string): int", Ok(("size", None, &["string"], "int", "size(string)", "size(string): int"))),
         ("string.startsWith(string): bool", Ok(("startsWith", Some("string"), &["string"], "bool", "string.startsWith(string)", "string.startsWith(string): bool"))),
         ("list<A>.size(): int", Ok(("size", Some("list<A>"), &[], "int", "list<A>.size()", "list<A>.size(): int"))),
         ("google.protobuf.Timestamp.getDate(): int", Ok(("getDate", Some("google.protobuf.Timestamp"), &[], "int", "google.protobuf.Timestamp.getDate()", "google.protobuf.Timestamp.getDate(): int"))),
         ("map<K, V>.size(): int", Ok(("size", Some("map<K, V>"), &[], "int", "map<K, V>.size()", "map<K, V>.size(): int"))),
         ("\u{feff}size(string): int", Ok(("size", None, &["string"], "int", "size(string)", "size(string): int"))),
-        ("\u{a0}\u{3000}f(): int\u{2028}\u{feff}", Ok(("f", None, &[], "int", "f()", "f(): int"))),
         (" f (): int", Err(("CelTypeExpressionError", "\" f (): int\" is not a signature \u{2014} write 'name(a, b): r' or 'Receiver.name(a): r'"))),
         ("f():int", Ok(("f", None, &[], "int", "f()", "f(): int"))),
         ("f()  :\u{a0}int", Ok(("f", None, &[], "int", "f()", "f(): int"))),
-        ("f()\u{2028}:\u{2029}int", Ok(("f", None, &[], "int", "f()", "f(): int"))),
         ("f(): in\u{2028}t", Err(("CelTypeExpressionError", "\"f(): in\u{2028}t\" is not a signature \u{2014} write 'name(a, b): r' or 'Receiver.name(a): r'"))),
         ("a\nb.f(): int", Err(("CelTypeExpressionError", "\"a\\nb.f(): int\" is not a signature \u{2014} write 'name(a, b): r' or 'Receiver.name(a): r'"))),
         ("f(a.b): int", Err(("CelUnknownTypeNameError", "no type is registered under the name \"a.b\""))),

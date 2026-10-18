@@ -264,11 +264,6 @@ impl<V> PropertyMap<V> {
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.iter().map(|(_, value)| value)
     }
-
-    /// Every value, mutably, in the same order.
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
-        self.indexed.values_mut().chain(self.named.iter_mut()).map(|(_, value)| value)
-    }
 }
 
 impl<K: Into<String>, V> FromIterator<(K, V)> for PropertyMap<V> {

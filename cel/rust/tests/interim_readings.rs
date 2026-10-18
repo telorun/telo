@@ -20,8 +20,7 @@
 //!   not reported, while `m.k.code` over the same type is.
 //!
 //! No Node test file is the twin of this one. Every row is the Node build's answer,
-//! executed: the carriage return on `@telorun/cel` 0.112.0, this branch's build; the
-//! type, schema and nullable rows on `@telorun/cel 0.118.0 at 63c81d00`.
+//! executed: `@telorun/cel 0.118.0 at 63c81d00`.
 
 mod check_support;
 mod schema_support;

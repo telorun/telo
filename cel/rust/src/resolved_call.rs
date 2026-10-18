@@ -8,6 +8,8 @@
 //! It is the checker's lowering, not the tree: a macro reaches no function and is not
 //! listed, while the calls written inside it are, where they are written. Operators are not
 //! listed either.
+//!
+//! Node items with no twin in this file: none.
 
 use crate::signature::CallForm;
 use crate::syntax_tree::SourceRange;

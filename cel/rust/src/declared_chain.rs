@@ -8,6 +8,8 @@
 //!
 //! The chain is joined once; each prefix is a slice of that text, so asking costs the
 //! chain's length plus what the predicate costs per prefix.
+//!
+//! Node items with no twin in this file: none.
 
 /// Where a chain splits: the declared name, and the members read off its value.
 #[derive(Clone, PartialEq, Eq, Debug)]

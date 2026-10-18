@@ -41,17 +41,15 @@
 //! answers differently from Node — a read keyword holding a JSON type its shape excludes,
 //! a name on JavaScript's object prototype — is stated in the crate's README.
 
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use telorun_cel_value::{es_string_to_number, PropertyMap};
 
 use crate::cel_type::{
-    assignable, is_dyn, list_of, map_of, optional_of, types_equal, union_of, CelType, RecordType, TypeFields, BOOL,
-    DOUBLE, DYN, INT, NULL, STRING,
+    assignable, equal_at_own_level, is_dyn, list_of, map_of, optional_of, union_of, CelType, RecordType, TypeFields,
+    BOOL, DOUBLE, DYN, INT, NULL, STRING,
 };
 use crate::json_value::JsonValue;
 use crate::type_expression::CelTypeTextError;
@@ -781,93 +779,60 @@ enum Step<'t> {
     Optional,
 }
 
-/// Hashes of the types one intersection reaches, each agreeing with [`types_equal`] and
-/// computed once per type it is handed, so asking whether two parts are equal at every
-/// level of a descent costs the depth once rather than at each level.
+/// The pairs of types one intersection has judged equal or not, by address — every type
+/// it reaches is borrowed for the whole intersection. Asking whether two parts are equal
+/// at every level of a descent so judges each pair of types once, and one question stops
+/// at the first pair that differs, as Node's `typesEqual` does.
 #[derive(Default)]
-struct EqualityHashes {
-    held: HashMap<usize, u64>,
+struct JudgedPairs {
+    held: HashMap<(usize, usize), bool>,
 }
 
 fn address(ty: &CelType) -> usize {
     ty as *const CelType as usize
 }
 
-impl EqualityHashes {
-    /// Whether two types are equal, [`types_equal`] asked only where their hashes agree.
+impl JudgedPairs {
+    /// [`types_equal`](crate::types_equal), remembering every pair it judges: a pair
+    /// whose children all agree is equal, and every pair still open when one differs is
+    /// not.
     fn equal(&mut self, left: &CelType, right: &CelType) -> bool {
-        self.of(left) == self.of(right) && types_equal(left, right)
-    }
-
-    fn of(&mut self, ty: &CelType) -> u64 {
-        if let Some(hash) = self.held.get(&address(ty)) {
-            return *hash;
+        enum Visit<'t> {
+            Enter(&'t CelType, &'t CelType),
+            Leave,
         }
-        let mut pending: Vec<(&CelType, bool)> = vec![(ty, false)];
-        while let Some((at, children_held)) = pending.pop() {
-            if self.held.contains_key(&address(at)) {
-                continue;
-            }
-            if !children_held {
-                pending.push((at, true));
-                pending.extend(children(at).filter(|child| !self.held.contains_key(&address(child))).map(|child| (child, false)));
-                continue;
-            }
-            let hash = self.own(at);
-            self.held.insert(address(at), hash);
-        }
-        self.held[&address(ty)]
-    }
-
-    /// A type's hash from its children's: a record's fields in any order, a named type
-    /// by its name and arguments alone, as `types_equal` compares them.
-    fn own(&self, ty: &CelType) -> u64 {
-        let child = |ty: &CelType| self.held[&address(ty)];
-        let mut hasher = DefaultHasher::new();
-        std::mem::discriminant(ty).hash(&mut hasher);
-        match ty {
-            CelType::Dyn => {}
-            CelType::Primitive(name) => name.hash(&mut hasher),
-            CelType::List(list) => child(&list.element).hash(&mut hasher),
-            CelType::Map(map) => {
-                child(&map.key).hash(&mut hasher);
-                child(&map.value).hash(&mut hasher);
-            }
-            CelType::Optional(optional) => child(&optional.value).hash(&mut hasher),
-            CelType::Record(record) => {
-                record.name.hash(&mut hasher);
-                record.open.hash(&mut hasher);
-                record.fields.len().hash(&mut hasher);
-                let mut fields: u64 = 0;
-                for (name, ty) in record.fields.iter() {
-                    let mut field = DefaultHasher::new();
-                    name.hash(&mut field);
-                    child(ty).hash(&mut field);
-                    fields = fields.wrapping_add(field.finish());
+        let mut pending = vec![Visit::Enter(left, right)];
+        let mut open: Vec<(usize, usize)> = Vec::new();
+        while let Some(visit) = pending.pop() {
+            let (left, right) = match visit {
+                Visit::Enter(left, right) => (left, right),
+                Visit::Leave => {
+                    let pair = open.pop().expect("a pair is open");
+                    self.held.insert(pair, true);
+                    continue;
                 }
-                fields.hash(&mut hasher);
+            };
+            let pair = (address(left), address(right));
+            let equal = match self.held.get(&pair) {
+                Some(judged) => *judged,
+                None => {
+                    let mut beneath = Vec::new();
+                    let agrees = equal_at_own_level(left, right, |a, b| beneath.push(Visit::Enter(a, b)));
+                    if agrees {
+                        open.push(pair);
+                        pending.push(Visit::Leave);
+                        pending.extend(beneath);
+                    }
+                    agrees
+                }
+            };
+            if !equal {
+                self.held.insert(pair, false);
+                self.held.extend(open.into_iter().map(|pair| (pair, false)));
+                return false;
             }
-            CelType::Union(union) => union.members().iter().for_each(|member| child(member).hash(&mut hasher)),
-            CelType::Nominal(nominal) => {
-                nominal.name.hash(&mut hasher);
-                nominal.args.iter().for_each(|argument| child(argument).hash(&mut hasher));
-            }
-            CelType::Parameter(parameter) => parameter.name.hash(&mut hasher),
         }
-        hasher.finish()
-    }
-}
-
-/// The types `types_equal` compares beneath a type.
-fn children(ty: &CelType) -> Box<dyn Iterator<Item = &CelType> + '_> {
-    match ty {
-        CelType::List(list) => Box::new(std::iter::once(&*list.element)),
-        CelType::Map(map) => Box::new([&*map.key, &*map.value].into_iter()),
-        CelType::Optional(optional) => Box::new(std::iter::once(&*optional.value)),
-        CelType::Record(record) => Box::new(record.fields.values()),
-        CelType::Union(union) => Box::new(union.members().iter()),
-        CelType::Nominal(nominal) => Box::new(nominal.args.iter()),
-        CelType::Dyn | CelType::Primitive(_) | CelType::Parameter(_) => Box::new(std::iter::empty()),
+        true
     }
 }
 
@@ -875,7 +840,7 @@ fn children(ty: &CelType) -> Box<dyn Iterator<Item = &CelType> + '_> {
 /// field-wise — the left's fields first, closed beating open — a record meets a map's
 /// value type field by field, and otherwise the narrower of the two wins.
 fn intersect_types(left: &CelType, right: &CelType) -> Option<CelType> {
-    let mut hashes = EqualityHashes::default();
+    let mut judged = JudgedPairs::default();
     let mut steps = vec![Step::Meet(left, right)];
     let mut results: Vec<Option<CelType>> = Vec::new();
     let take = |results: &mut Vec<Option<CelType>>, count: usize| results.split_off(results.len() - count);
@@ -886,7 +851,7 @@ fn intersect_types(left: &CelType, right: &CelType) -> Option<CelType> {
                     results.push(Some(right.clone()));
                     continue;
                 }
-                if is_dyn(right) || hashes.equal(left, right) {
+                if is_dyn(right) || judged.equal(left, right) {
                     results.push(Some(left.clone()));
                     continue;
                 }

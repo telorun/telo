@@ -16,7 +16,7 @@ use std::sync::Arc;
 use telorun_cel::{
     assignable, format_signature, parameter_of, format_type, parse_signature, parse_type_expression, read_json_text,
     register_standard_library, scan_json_prefix, types_equal, unify, union_of, without_parameters, CallForm,
-    CelEnvironment, CelType, FunctionRegistry, JsonRefusal, JsonValue, NominalType, NominalTypeDefinition,
+    CelEnvironment, CelType, FunctionRegistry, JsonRefusal, JsonValue, ListType, MapType, NominalType, NominalTypeDefinition,
     RecordType, StandardLibraryOptions, INT, NULL,
 };
 
@@ -100,6 +100,30 @@ fn compares_and_releases_deep_records_named_types_and_unions() {
             write!(counted, "{ty:?}").expect("writes");
             assert!(counted.0 > depth);
         }
+    });
+}
+
+#[test]
+fn releases_a_deep_type_whose_children_share_one_arc_at_every_level() {
+    on_a_small_stack(|| {
+        let mut ty = INT;
+        for at in 0..DEPTH {
+            let shared = Arc::new(ty);
+            let list = || CelType::List(ListType { element: Arc::clone(&shared) });
+            ty = match at % 3 {
+                0 => CelType::Map(MapType { key: Arc::clone(&shared), value: Arc::clone(&shared) }),
+                1 => CelType::Nominal(NominalType {
+                    name: "N".into(),
+                    base: Arc::clone(&shared),
+                    args: Arc::new([list(), list()]),
+                    fields: None,
+                }),
+                _ => CelType::Record(RecordType { name: None, fields: [("x", list()), ("y", list())].into_iter().collect(), open: false }),
+            };
+        }
+        let again = ty.clone();
+        drop(ty);
+        drop(again);
     });
 }
 
