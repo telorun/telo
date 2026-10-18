@@ -2,7 +2,7 @@
 
 The CEL value domain for Rust: every value an expression can hold, the invariants each one keeps, and the text each is written as. It is the Rust half of the value-domain files of `@telorun/cel` (`cel/nodejs`), and it answers as they answer — the same acceptances, refusals, codes, messages and written text.
 
-It holds values and nothing that computes with them. Equality (`==`), ordering, arithmetic, time zones and reading a literal out of a syntax tree belong to the engine crate that stands on this one, `telorun-cel` (`cel/rust`), which today holds the front end — the reader, the namespace pass, the writer and the tree queries — and the type system, and none of those yet.
+It holds values and nothing that computes with them. Equality (`==`), ordering, arithmetic, time zones and reading a literal out of a syntax tree belong to the engine crate that stands on this one, `telorun-cel` (`cel/rust`), which today holds the front end — the reader, the namespace pass, the writer and the tree queries — the type system and the checker. Of those four, it holds reading a literal (`literal_value`); equality, ordering, arithmetic and time zones arrive there with evaluation.
 
 ## The two rules
 
@@ -13,11 +13,11 @@ The crate is `publish = false`, licensed MIT, and carries `@telorun/cel`'s versi
 
 ## Files
 
-Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the syntax tree or the zone database belongs to the engine crate's file of the same name, which does not exist yet; one that describes a JavaScript representation has no twin.
+Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the syntax tree or the zone database belongs to the engine crate's file of the same name — `cel_value.rs` there exists, `timestamp_value.rs` does not yet; one that describes a JavaScript representation has no twin.
 
 | File | Twins | Public items | Node exports elsewhere |
 |---|---|---|---|
-| `cel_value.rs` | `cel-value.ts` | `CelValue`, `CelTimestamp`, `CelDuration`, `CelMap`, `CelMapKey`, `CelRecord`, `PropertyMap`, `CelTypeValue`, `CelOptional`, `CelError`, `CelEvaluationCode`, `CelHostValue`, `ReservedTypeName`, `SourceRange`, `CEL_VALUE_KEYS`, `CEL_EVALUATION_CODES`, `cel_type_value`, `cel_none`, `cel_some`, `cel_error`, `cel_type_name_of` | Engine half, not yet written: `literalValue`. No twin: the brand symbol and the `isCel*` predicates (the variant is the identity), `celUint` (it is `CelValue::Uint`), `isThenable` / `asyncValueRefused` (no Rust value can be awaited) |
+| `cel_value.rs` | `cel-value.ts` | `CelValue`, `CelTimestamp`, `CelDuration`, `CelMap`, `CelMapKey`, `CelRecord`, `PropertyMap`, `CelTypeValue`, `CelOptional`, `CelError`, `CelEvaluationCode`, `CelHostValue`, `ReservedTypeName`, `SourceRange`, `CEL_VALUE_KEYS`, `CEL_EVALUATION_CODES`, `cel_type_value`, `cel_none`, `cel_some`, `cel_error`, `cel_type_name_of` | Engine half: `literalValue`, as `literal_value` in the engine's `cel_value.rs`, which also re-exports every item of this file. No twin: the brand symbol and the `isCel*` predicates (the variant is the identity), `celUint` (it is `CelValue::Uint`), `isThenable` / `asyncValueRefused` (no Rust value can be awaited) |
 | `cel_map_value.rs` | `cel-map-value.ts` | `cel_map_from_entries`, `cel_map_keys`, `map_key_identity` | No twin: `celMapOf` (the empty map is `CelMap::default()`) |
 | `duration_value.rs` | `duration-value.ts` | `cel_duration_from_nanos`, `duration_out_of_range`, `duration_nanos`, `parse_duration`, `duration_nanos_from_text`, `format_duration`, `DurationField`, `duration_field`, `MAX_DURATION_NANOS`, `MIN_DURATION_NANOS`, and `CelDuration`'s carrier constructors | — |
 | `timestamp_value.rs` | `timestamp-value.ts` | `cel_timestamp`, `cel_timestamp_from_millis`, `timestamp_nanos`, `parse_timestamp`, `format_timestamp`, `MIN_TIMESTAMP_SECONDS`, `MAX_TIMESTAMP_SECONDS`, `CelTimestamp`'s carrier constructors, and the civil calendar: `CivilFields`, `utc_fields`, `seconds_from_fields`, `days_from_civil`, `civil_from_days`, `days_in_month`, `is_leap_year` | Engine half, not yet written: `zonedFields`, `timestampField`, `TimestampField` — a getter reads a field in a zone, and the zone database is a dependency |

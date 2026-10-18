@@ -2,20 +2,20 @@
 //!
 //! The crate holds the engine's front end — reading an expression into the ranged
 //! syntax tree, with the input limits and error recovery; resolving namespace-qualified
-//! calls; writing a tree back as source; and the two tree queries — and its type
-//! system: the static types, type text and signatures, the function registry with the
-//! standard library read from Node's own signature data, typing from JSON Schema with
-//! its reports, and the environment's registrations, declarations and listing. It answers
-//! as the Node engine answers.
+//! calls; writing a tree back as source; and the two tree queries — its type system —
+//! the static types, type text and signatures, the function registry with the standard
+//! library read from Node's own signature data, typing from JSON Schema with its reports,
+//! and the environment's registrations, declarations and listing — and the checker: every
+//! verdict with its code, message, range and fix, and the call each name resolved to. It
+//! answers as the Node engine answers.
 //!
 //! Three rules hold for every file here: one dependency, the value crate, by path; no
 //! host vocabulary; and nothing recurses with the depth of its input.
 //!
 //! Each file twins the `cel/nodejs/src` file of its name, and each header lists the
 //! Node items with no twin; `json_value.rs` alone has no Node twin. The exports below
-//! are the front-end block of Node's entry, its comprehension-binding table, and the
-//! type system's items twinned so far; `declared-chain.ts`, which Node lists in the
-//! front-end block, arrives with the checker that supplies its predicate.
+//! are the front-end block of Node's entry, its comprehension-binding table, the type
+//! system's and the checker's items, and the value domain's `cel-value.ts` items.
 //!
 //! - `reserved_words.rs`         — `reserved-words.ts`
 //! - `syntax_diagnostic.rs`      — `syntax-diagnostic.ts`
@@ -30,37 +30,49 @@
 //! - `comprehension_bindings.rs` — `comprehension-bindings.ts`
 //! - `qualified_calls.rs`        — `qualified-calls.ts`
 //! - `root_references.rs`        — `root-references.ts`
+//! - `declared_chain.rs`         — `declared-chain.ts`
 //! - `cel_type.rs`               — `cel-type.ts`
 //! - `type_expression.rs`        — `type-expression.ts`
 //! - `signature.rs`              — `signature.ts`
 //! - `nominal_type.rs`           — `nominal-type.ts`
-//! - `check_diagnostic.rs`       — `check-diagnostic.ts` (the engine error)
+//! - `check_diagnostic.rs`       — `check-diagnostic.ts`
 //! - `runtime_library.rs`        — `runtime-library.ts` (`CALL_SITE_DIRECT_ARITY`)
 //! - `function_registry.rs`      — `function-registry.ts`
 //! - `standard_library.rs`       — `standard-library.ts`
 //! - `json_value.rs`             — no twin: the JSON value a JavaScript host holds
 //! - `json_text_scan.rs`         — `json-text-scan.ts`
 //! - `json_schema_type.rs`       — `json-schema-type.ts`
-//! - `checker.rs`                — `checker.ts` (`NamespaceFunction`)
-//! - `environment.rs`            — `environment.ts` (registration, listing and schema declarations)
+//! - `cel_value.rs`              — `cel-value.ts` (the engine half, and the domain re-exported)
+//! - `resolved_call.rs`          — `resolved-call.ts`
+//! - `nullable_access.rs`        — `nullable-access.ts`
+//! - `macro_shape.rs`            — `macro-shape.ts`
+//! - `macro_check.rs`            — `macro-check.ts`
+//! - `checker.rs`                — `checker.ts`
+//! - `environment.rs`            — `environment.ts` (registration, listing, declarations and checking)
 
 mod cel_expression;
 mod cel_type;
+mod cel_value;
 mod check_diagnostic;
 mod checker;
 mod comprehension_bindings;
+mod declared_chain;
 mod environment;
 mod function_registry;
 mod json_schema_type;
 mod json_text_scan;
 mod json_value;
 mod lexer;
+mod macro_check;
+mod macro_shape;
 mod namespace_resolution;
+mod nullable_access;
 mod nominal_type;
 mod parse_limits;
 mod parser;
 mod qualified_calls;
 mod reserved_words;
+mod resolved_call;
 mod root_references;
 mod runtime_library;
 mod serializer;
@@ -78,11 +90,19 @@ pub use cel_type::{
     OptionalType, ParameterType, PrimitiveName, RecordType, TypeFields, UnionType, BOOL, BYTES, DOUBLE, DURATION,
     DYN, INT, NULL, STRING, TIMESTAMP, TYPE, UINT, WELL_KNOWN_TYPE_NAMES,
 };
-pub use check_diagnostic::{CelEngineError, CelEngineErrorCode};
-pub use checker::NamespaceFunction;
+pub use cel_value::{
+    cel_error, cel_none, cel_some, cel_type_name_of, cel_type_value, literal_value, CelDuration, CelError,
+    CelEvaluationCode, CelHostValue, CelMap, CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue, CelValue,
+    PropertyMap, ReservedTypeName, CEL_EVALUATION_CODES, CEL_VALUE_KEYS,
+};
+pub use check_diagnostic::{
+    CelCheckCode, CelCheckDiagnostic, CelDiagnosticFix, CelEngineError, CelEngineErrorCode, CEL_CHECK_CODES,
+};
+pub use checker::{CheckResult, NamespaceFunction};
 pub use comprehension_bindings::{
     namespace_macro_binding, receiver_macro_binding, ComprehensionBinding, BINDING_FORMS,
 };
+pub use declared_chain::{split_declared_chain, DeclaredChain};
 pub use environment::{
     CelEnvironment, CelEnvironmentOptions, CelRegistrationError, Definitions, FunctionDefinition,
     NamespaceFunctionDeclaration, NamespaceFunctionForm, NamespaceListing, NamespaceOptions, SchemaRegistrationReport,
@@ -107,6 +127,7 @@ pub use parse_limits::{CelParseLimits, DEFAULT_PARSE_LIMITS};
 pub use parser::{parse_syntax, ParseOptions, ParseResult};
 pub use qualified_calls::{qualified_calls, QualifiedCall};
 pub use reserved_words::{is_identifier_spelling, is_reserved_word, LITERAL_WORDS, OPERATOR_WORDS, RESERVED_WORDS};
+pub use resolved_call::ResolvedCall;
 pub use root_references::root_references;
 pub use runtime_library::CALL_SITE_DIRECT_ARITY;
 pub use serializer::{serialize_tree, CelSerializeError};

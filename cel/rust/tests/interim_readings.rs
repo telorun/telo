@@ -15,11 +15,15 @@
 //! - An array segment of a JSON Pointer is read by ECMAScript's `Number()`: whitespace
 //!   around it, a radix prefix, an exponent, a point and `-0` all name an element, and
 //!   the empty segment names the first.
+//! - A dereference of something that may be null is judged only where its subject is a
+//!   plain chain of named members over a name: `rows[0].code` over a nullable element is
+//!   not reported, while `m.k.code` over the same type is.
 //!
 //! No Node test file is the twin of this one. Every row is the Node build's answer,
 //! executed: the carriage return on `@telorun/cel` 0.112.0, this branch's build; the
-//! type and schema rows on `@telorun/cel 0.118.0 at 63c81d00`.
+//! type, schema and nullable rows on `@telorun/cel 0.118.0 at 63c81d00`.
 
+mod check_support;
 mod schema_support;
 mod support;
 
@@ -192,4 +196,34 @@ fn interim_a_pointer_reads_an_array_segment_as_ecmascript_reads_a_number() {
         row("segment \"\u{feff}1\"", "{\"$ref\":\"#/$defs/list/\u{feff}1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
     ];
     assert_rows(NODE_ROWS);
+}
+
+#[test]
+fn interim_a_nullable_subject_that_is_not_a_plain_chain_is_not_judged() {
+    // The same nullable object, reached through an index and through a member: only the
+    // member chain is a subject of the verdict.
+    const NODE: &str = r#"{"type":["object","null"],"properties":{"code":{"type":"string"}}}"#;
+    let mut environment = CelEnvironment::default();
+    environment.register_variable("rows", check_support::schema(&format!(r#"{{"type":"array","items":{NODE}}}"#)), None).unwrap();
+    environment
+        .register_variable("m", check_support::schema(&format!(r#"{{"type":"object","additionalProperties":{NODE}}}"#)), None)
+        .unwrap();
+    check_support::assert_rows(
+        &environment,
+        vec![
+            ("rows[0].code", "string", vec![]),
+            ("m['k'].code", "string", vec![]),
+            ("rows[0]['code']", "string", vec![]),
+            (
+                "m.k.code",
+                "string",
+                vec![check_support::found(
+                    telorun_cel::CelCheckCode::NullableAccess,
+                    "\"m.k\" may be null \u{2014} guard it (e.g. 'm.k != null && \u{2026}' or 'm.k == null ? \u{2026} : m.k.code') before reading .code",
+                    4,
+                    8,
+                )],
+            ),
+        ],
+    );
 }

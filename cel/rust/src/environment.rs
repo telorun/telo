@@ -1,14 +1,14 @@
 //! An environment: what names, functions, types and namespaces an expression is read
-//! against — `environment.ts`, its registration, declaration and listing half.
+//! and checked against — `environment.ts`, its registration, declaration, listing and
+//! checking half.
 //!
 //! Everything is registered the same way, the standard library included, so a host can
 //! replace or remove a standard signature. `Clone` inherits everything and then
 //! diverges: a registration on the clone leaves the original as it was.
 //!
-//! Node items with no twin in this file yet:
-//! - Arriving with the checker: `check`.
-//! - Arriving with evaluation: `compile`, `evaluate`, the `compiledCacheCapacity`
-//!   option, `DEFAULT_COMPILED_CACHE_CAPACITY` and the standard constants' values.
+//! Node items with no twin in this file yet, arriving with evaluation: `compile`,
+//! `evaluate`, the `compiledCacheCapacity` option, `DEFAULT_COMPILED_CACHE_CAPACITY` and
+//! the standard constants' values.
 //!
 //! Node items with no twin: `emit`, `emittedModule`, `emitterRuntime`, `digest` — there
 //! is no emitter here; the refusal "a declaration is a type expression, a field map or a
@@ -20,6 +20,8 @@
 //! - [`SignatureDeclaration`], [`NamespaceFunctionForm`], [`WithheldReturns`] — the
 //!   shapes Node writes as a union of a string and an object.
 //! - [`CelEnvironment::clone_with_options`] — Node's `clone(options)`.
+//! - [`CelEnvironment::check_parsed`] — Node's `check` handed a tree; [`CelEnvironment::check`]
+//!   is the same handed text, which is never refused.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -27,10 +29,10 @@ use std::sync::Arc;
 
 use telorun_cel_value::{compare_code_units, json_quote, PropertyMap, CEL_VALUE_KEYS};
 
-use crate::cel_expression::{parse_expression, CelExpression, ParseExpressionOptions};
+use crate::cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
 use crate::cel_type::{format_type, is_dyn, CelType, DYN};
-use crate::check_diagnostic::CelEngineError;
-use crate::checker::NamespaceFunction;
+use crate::check_diagnostic::{CelEngineError, CelEngineErrorCode};
+use crate::checker::{check_expression, CheckResult, CheckerContext, CheckerOptions, NamespaceFunction};
 use crate::function_registry::FunctionRegistry;
 use crate::json_schema_type::{
     field_map_type, schema_type, FieldDeclaration, JsonSchemaDocument, RecursiveSchemaReference, SchemaConversion,
@@ -791,6 +793,48 @@ impl CelEnvironment {
             namespaces: self.namespaces(),
         };
         parse_expression(source, &options).expect("every registered namespace was validated when it was registered")
+    }
+
+    /// Checks an expression read against this environment.
+    pub fn check(&self, source: &str) -> CheckResult {
+        check_expression(&self.parse(source), &self.checker_context())
+    }
+
+    /// Checks a tree. A tree resolved under a different namespace set is refused rather
+    /// than checked: its qualified calls are not the ones this environment would have
+    /// found, so every answer about it would be about a different expression.
+    pub fn check_parsed(&self, expression: &CelExpression) -> Result<CheckResult, CelEngineError> {
+        let namespaces = self.namespaces();
+        let same = resolved_under(expression, &namespaces).expect("every registered namespace was validated when it was registered");
+        if !same {
+            return Err(CelEngineError {
+                code: CelEngineErrorCode::NamespacesMismatch,
+                message: format!(
+                    "the expression was resolved under [{}] and this environment has [{}]",
+                    expression.namespaces.join(", "),
+                    namespaces.join(", ")
+                ),
+            });
+        }
+        Ok(check_expression(expression, &self.checker_context()))
+    }
+
+    fn checker_context(&self) -> CheckerContext<'_> {
+        let variables = &self.variables;
+        let namespace_functions = &self.namespace_functions;
+        let open_namespaces = &self.open_namespaces;
+        CheckerContext {
+            registry: &self.registry,
+            variable: Box::new(move |name| variables.get(name).map(|record| &record.ty)),
+            declared_variable_names: Box::new(move || variables.keys().map(String::as_str).collect()),
+            namespace_function: Box::new(move |namespace, name| namespace_functions.get(namespace)?.get(name)),
+            namespace_is_open: Box::new(move |namespace| open_namespaces.contains(namespace)),
+            options: CheckerOptions {
+                unlisted_variables_are_dyn: self.options.unlisted_variables_are_dyn,
+                homogeneous_aggregate_literals: self.options.homogeneous_aggregate_literals,
+                enable_optional_types: self.options.enable_optional_types,
+            },
+        }
     }
 
     /// Whether a value of this type converts to text by the environment's own
