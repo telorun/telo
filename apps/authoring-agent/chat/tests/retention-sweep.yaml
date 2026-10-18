@@ -28,13 +28,13 @@ imports:
       stateDir: !cel "variables.scratch.joinPath('state')"
       modelEndpoint: http://127.0.0.1:18485/v1
   App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
-  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
-  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.1#sha256-1WEaTSJ_-AD9dVAa9JTdqtD94jzkkBvoGLdm2jrlroM
   Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
   RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.0#sha256-hUM8JPvjMJkMUEmXOXNkhvC5QxFe9VIQw_7rAXCuv9Y
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.1#sha256-s499a6neOc42YDcB9x5YZeTjcEvjwXwKw5y27mcUiG0
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
-  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
+  Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
 variables:
   # The agent's state is a file that outlives the run; each run starts its two
   # conversations empty.
