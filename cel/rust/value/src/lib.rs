@@ -8,7 +8,7 @@
 //!
 //! Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the
 //! syntax tree or the zone database belongs to the engine crate's file of the same
-//! name, which does not exist yet, and each header here lists those.
+//! name — its `cel_value.rs` exists, its `timestamp_value.rs` not yet — and each header here lists those.
 //!
 //! - `cel_value.rs`       — `cel-value.ts`
 //! - `cel_map_value.rs`   — `cel-map-value.ts`
