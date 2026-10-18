@@ -46,10 +46,10 @@ imports:
   Fs: oci://ghcr.io/telorun/fs@0.14.0#sha256-N5xTrQgDJ91sb_XrS6mPLsH_g0_70yj1S3xBB_hLDdA
   TextDiff: oci://ghcr.io/telorun/text-diff@0.3.0#sha256-FaVk4PVZVI1-ryRkgdTmN1MNtEP1E8bjAXXl365nSW4
   Shell: oci://ghcr.io/telorun/shell@0.13.0#sha256-h4-z6gdCjduwxgU1n7o5eol8RYgsxBCS2iQcxpCV_u0
-  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
-  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.1#sha256-1WEaTSJ_-AD9dVAa9JTdqtD94jzkkBvoGLdm2jrlroM
   RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.0#sha256-hUM8JPvjMJkMUEmXOXNkhvC5QxFe9VIQw_7rAXCuv9Y
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.1#sha256-s499a6neOc42YDcB9x5YZeTjcEvjwXwKw5y27mcUiG0
   Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
   Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
@@ -58,7 +58,7 @@ imports:
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.0#sha256-yPwUSVVhRMiqQYQ9cbptorm1cA-HnJW6pLHRZ-8-qPA
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.0#sha256-wHzRZi3uI7c12dRSULXQBO8GRYqhJj6gos6xv6eZj7g
   Idempotency: oci://ghcr.io/telorun/idempotency@0.11.0#sha256-hd4NvqYA6OioV89wn7SNk7BXrHIFYzv0cNL68Cscgd4
-  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.14.0#sha256-DY-CKnlGAPmco-fkHRfo6NkxEVwJkwf6YPlo7qbrMG4
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.14.1#sha256-HUh0QikIQZylfIkGGYxG8ucEK9-XhSFbOPw9N9THWzI
   SecretScan: oci://ghcr.io/telorun/secret-scan@0.3.0#sha256-j5LTmj50zPdy65badRWFTPmICPURIf1n4Q-Iaq6dFSo
   Log: oci://ghcr.io/telorun/log@0.3.0#sha256-zHq0Vq_G85EDj7Wfbcla8_6hvE4imxgVQoMZsxZwIwE
   Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg

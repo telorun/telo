@@ -25,13 +25,13 @@ metadata:
           -d '{"message":"Where is my order A-1001?"}'
         curl -s localhost:8103/conversations/c1/messages
 imports:
-  AgentApp: oci://ghcr.io/telorun/blueprints/agent-app@0.3.3#sha256-U74IUPxV8xBsfwn55mW1JTyRKzdALNl5xrx4LV_QL1k
+  AgentApp: oci://ghcr.io/telorun/blueprints/agent-app@0.3.4#sha256-uGcDpwSm0osPnidgDHWWv95SYyg6zsks0Twug5G4xhA
   # The same versions the blueprint itself imports.
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
   OpenAI: oci://ghcr.io/telorun/openai@0.13.0#sha256-Tt9DaH254A972an-WTH_mtJOy9HAuUuH_SK1_bfOvHM
   Http: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
-  Sql: oci://ghcr.io/telorun/sql@0.28.0#sha256-JC2SN6Ha8hlq9gnRGahvVNVwe-cUXHXtS8rdeo1BC24
-  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.1#sha256-1WEaTSJ_-AD9dVAa9JTdqtD94jzkkBvoGLdm2jrlroM
 targets:
   - !ref migrate
   - !ref assistant
