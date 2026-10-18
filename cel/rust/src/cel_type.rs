@@ -952,24 +952,30 @@ fn is_leaf(ty: &CelType) -> bool {
     matches!(ty, CelType::Dyn | CelType::Primitive(_) | CelType::Parameter(_))
 }
 
-/// A child taken out of its slot: moved out of an `Arc` this release alone held, or
-/// the shared `Arc` itself, still holding its count.
+/// A child taken out of its slot: moved out of an `Arc` this release alone held, or a
+/// shared list of types still holding its count.
 enum Unlinked {
     Owned(CelType),
-    Type(Arc<CelType>),
     Types(Arc<[CelType]>),
-    Fields(Arc<FieldEntries>),
 }
 
-/// One release: the children it has taken out, and the placeholders it leaves where it
-/// took a shared `Arc` — each made the first time this release needs it and cloned
-/// after that.
+/// One release: the children it has taken out, and whether it is the thread's active
+/// release, which a shared list of types waits on the list for.
 #[derive(Default)]
 struct Release {
     pending: Vec<Unlinked>,
-    leaf: Option<Arc<CelType>>,
-    no_types: Option<Arc<[CelType]>>,
-    no_fields: Option<Arc<FieldEntries>>,
+    active: bool,
+}
+
+/// What a release leaves where it takes out a shared `Arc`, made once per thread.
+struct Placeholders {
+    leaf: Arc<CelType>,
+    no_types: Arc<[CelType]>,
+    no_fields: Arc<FieldEntries>,
+}
+
+fn placeholder<T: ?Sized>(pick: fn(&Placeholders) -> &Arc<T>, make: fn() -> Arc<T>) -> Arc<T> {
+    PLACEHOLDERS.try_with(|made| Arc::clone(pick(made))).unwrap_or_else(|_| make())
 }
 
 impl Release {
@@ -1000,6 +1006,8 @@ impl Release {
         self.pending.extend(types.filter(|ty| !is_leaf(ty)).map(|ty| Unlinked::Owned(std::mem::replace(ty, DYN))));
     }
 
+    /// A shared child is let go of at once through `Arc::into_inner`, which hands its
+    /// value to exactly one of the holders letting go at the same moment.
     fn take(&mut self, child: &mut Arc<CelType>) {
         if is_leaf(child) {
             return;
@@ -1007,8 +1015,8 @@ impl Release {
         match Arc::get_mut(child) {
             Some(held) => self.take_owned(std::iter::once(held)),
             None => {
-                let leaf = self.leaf.get_or_insert_with(|| Arc::new(DYN));
-                self.pending.push(Unlinked::Type(std::mem::replace(child, Arc::clone(leaf))));
+                let shared = std::mem::replace(child, placeholder(|made| &made.leaf, || Arc::new(DYN)));
+                self.pending.extend(Arc::into_inner(shared).map(Unlinked::Owned));
             }
         }
     }
@@ -1017,12 +1025,15 @@ impl Release {
         if children.is_empty() {
             return;
         }
-        match Arc::get_mut(children) {
-            Some(held) => self.take_owned(held.iter_mut()),
-            None => {
-                let none = self.no_types.get_or_insert_with(|| Arc::from(Vec::new()));
-                self.pending.push(Unlinked::Types(std::mem::replace(children, Arc::clone(none))));
-            }
+        if let Some(held) = Arc::get_mut(children) {
+            self.take_owned(held.iter_mut());
+            return;
+        }
+        let shared = std::mem::replace(children, placeholder(|made| &made.no_types, || Arc::from(Vec::new())));
+        if self.active {
+            self.pending.push(Unlinked::Types(shared));
+        } else {
+            self.release_types(shared);
         }
     }
 
@@ -1033,45 +1044,39 @@ impl Release {
         match Arc::get_mut(&mut fields.entries) {
             Some(held) => self.take_owned(held.order.iter_mut().map(|(_, ty)| ty)),
             None => {
-                let none = self.no_fields.get_or_insert_with(Default::default);
-                self.pending.push(Unlinked::Fields(std::mem::replace(&mut fields.entries, Arc::clone(none))));
+                let shared = std::mem::replace(&mut fields.entries, placeholder(|made| &made.no_fields, Default::default));
+                if let Some(mut entries) = Arc::into_inner(shared) {
+                    self.take_owned(entries.order.iter_mut().map(|(_, ty)| ty));
+                }
             }
         }
     }
 
-    /// Releases what is on the list. A shared `Arc` is let go of through
-    /// `Arc::into_inner`, which hands its value to exactly one of the holders letting go
-    /// at once, so a child shared within a parent or across threads is unlinked here,
-    /// never released inside another's `Drop`. A list of types has no `into_inner`: one
-    /// held elsewhere is let go of with this release active on the thread, so a member
-    /// it releases — the other holder having let go at the same moment — unlinks onto
-    /// this list instead.
+    /// A list of types has no `into_inner`: one held elsewhere is let go of with this
+    /// release active on the thread, so a member it releases — the other holder having
+    /// let go at the same moment — unlinks onto this list instead of nesting.
+    fn release_types(&mut self, mut types: Arc<[CelType]>) {
+        if let Some(held) = Arc::get_mut(&mut types) {
+            self.take_owned(held.iter_mut());
+            return;
+        }
+        let entered = ACTIVE_RELEASE.try_with(|active| {
+            let mut release = std::mem::take(self);
+            release.active = true;
+            active.replace(Some(release));
+        });
+        drop(types);
+        if entered.is_ok() {
+            *self = ACTIVE_RELEASE.with(|active| active.take()).expect("the release stays active");
+            self.active = false;
+        }
+    }
+
     fn run(mut self) {
         while let Some(child) = self.pending.pop() {
             match child {
                 Unlinked::Owned(mut ty) => self.unlink(&mut ty),
-                Unlinked::Type(child) => {
-                    if let Some(mut ty) = Arc::into_inner(child) {
-                        self.unlink(&mut ty);
-                    }
-                }
-                Unlinked::Fields(entries) => {
-                    if let Some(mut entries) = Arc::into_inner(entries) {
-                        for (_, ty) in entries.order.iter_mut() {
-                            self.unlink(ty);
-                        }
-                    }
-                }
-                Unlinked::Types(mut types) => match Arc::get_mut(&mut types) {
-                    Some(held) => held.iter_mut().for_each(|ty| self.unlink(ty)),
-                    None => match ACTIVE_RELEASE.try_with(|active| active.replace(Some(std::mem::take(&mut self)))) {
-                        Ok(_) => {
-                            drop(types);
-                            self = ACTIVE_RELEASE.with(|active| active.take()).expect("the release stays active");
-                        }
-                        Err(_) => drop(types),
-                    },
-                },
+                Unlinked::Types(types) => self.release_types(types),
             }
         }
     }
@@ -1080,6 +1085,11 @@ impl Release {
 thread_local! {
     /// The release letting go of a shared list of types on this thread, while it does.
     static ACTIVE_RELEASE: RefCell<Option<Release>> = const { RefCell::new(None) };
+    static PLACEHOLDERS: Placeholders = Placeholders {
+        leaf: Arc::new(DYN),
+        no_types: Arc::from(Vec::new()),
+        no_fields: Default::default(),
+    };
 }
 
 impl Drop for CelType {

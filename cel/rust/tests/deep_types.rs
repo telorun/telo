@@ -16,7 +16,7 @@ use std::sync::Arc;
 use telorun_cel::{
     assignable, format_signature, parameter_of, format_type, parse_signature, parse_type_expression, read_json_text,
     register_standard_library, scan_json_prefix, types_equal, unify, union_of, without_parameters, CallForm,
-    CelEnvironment, CelType, FunctionRegistry, JsonRefusal, JsonValue, ListType, MapType, NominalType, NominalTypeDefinition,
+    CelEnvironment, CelType, FunctionRegistry, JsonRefusal, JsonValue, ListType, MapType, NominalType, NominalTypeDefinition, OptionalType,
     RecordType, StandardLibraryOptions, INT, NULL,
 };
 
@@ -124,6 +124,36 @@ fn releases_a_deep_type_whose_children_share_one_arc_at_every_level() {
         let again = ty.clone();
         drop(ty);
         drop(again);
+    });
+}
+
+/// A `Weak` at every level makes each list and child count as held elsewhere, so the
+/// release lets go of a shared one whose count still reaches zero in its hands.
+#[test]
+fn releases_a_deep_type_watched_by_a_weak_handle_at_every_level() {
+    on_a_small_stack(|| {
+        let bottom = Arc::new(CelType::List(ListType { element: Arc::new(INT) }));
+        let mut args_watched = Vec::with_capacity(DEPTH);
+        let mut ty = CelType::Optional(OptionalType { value: Arc::clone(&bottom) });
+        for _ in 0..DEPTH {
+            let args: Arc<[CelType]> = Arc::new([ty, INT]);
+            args_watched.push(Arc::downgrade(&args));
+            ty = CelType::Nominal(NominalType { name: "N".into(), base: Arc::new(INT), args, fields: None });
+        }
+        drop(ty);
+        assert_eq!(Arc::strong_count(&bottom), 1);
+        assert!(args_watched.iter().all(|watched| watched.upgrade().is_none()));
+
+        let mut children_watched = Vec::with_capacity(DEPTH);
+        let mut ty = CelType::Optional(OptionalType { value: Arc::clone(&bottom) });
+        for _ in 0..DEPTH {
+            let child = Arc::new(ty);
+            children_watched.push(Arc::downgrade(&child));
+            ty = CelType::List(ListType { element: child });
+        }
+        drop(ty);
+        assert_eq!(Arc::strong_count(&bottom), 1);
+        assert!(children_watched.iter().all(|watched| watched.upgrade().is_none()));
     });
 }
 
