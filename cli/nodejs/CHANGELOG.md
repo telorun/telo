@@ -1,5 +1,37 @@
 # @telorun/cli
 
+## 0.119.0
+
+### Minor Changes
+
+- 63c81d0: The built-in vocabulary of a release is a document you can read. Every telo release renders it as a `Telo.Builtins` YAML stream (`kernel/specs/builtin-vocabulary.md`): a root carrying every shared schema fragment, value type, zone attribute and string format, then one document per built-in kind in its authored form. `@telorun/analyzer` ships it as `src/builtin-vocabulary/builtins.yaml`, with its MIT `LICENSE` beside it, exports the same bytes as `BUILTIN_VOCABULARY_ARCHIVE`, and refuses to pack unless the archive carries exactly the package's version. `telo builtins` prints it, and `telo builtins Application Step Telo.Url` prints only those entries; an unknown name exits 1 listing every name there is. `@telorun/analyzer` also exports the archive's reader (`readBuiltinVocabulary`) and the selection both CLIs print with (`selectBuiltins`, `builtinVocabularyEntries`).
+
+  The archive is read, never run, declared or imported: as the entry of `telo check` / `telo run` it is one `UNDEFINED_KIND` saying what it is, and an import of it is `INVALID_IMPORT_TARGET` telling you its kinds need no import. `telo publish` accepts a `Telo.Builtins` root as a manifest-only artifact — no module analysis runs, the archive's own reader refuses a malformed one, and the published `telo.yaml` is the archive's bytes with only the `layers:` index appended — and `telo module manifest --json` reports one with `runtime: null` and `application: null`. Every release is published as `oci://ghcr.io/telorun/telo@<version>`.
+
+  `Telo` and `Self` are reserved: a module named either, an import aliased either, and an import reaching a library named either are refused as `KIND_PREFIX_RESERVED` by `telo check` and `ERR_KIND_PREFIX_RESERVED` by both kernels. This is a breaking change: a library named `Telo` used to be accepted and silently replaced the built-in definitions.
+
+- 63c81d0: A failed import is reported the same way by `telo check`, by `ctx.runtime.check` and by a run.
+
+  - **Breaking for a caller of `ctx.runtime.check` that read `loadError` on an import failure.** The seam now answers with exactly the diagnostics `telo check` reports — built by the same assembler, with the same codes, messages and locations (`line` / `column` set wherever `telo check` locates one) — so a failed import is its coded diagnostic at `imports.<alias>` (`INVALID_IMPORT_SOURCE`, `IMPORT_UNRESOLVED`, `INVALID_IMPORT_TARGET`, `KIND_PREFIX_RESERVED`), and `loadError` is set only when the graph could not be loaded at all (an unreadable entry, a refused partial). It used to stop at the first failed import and return its loader message as `loadError`, and to stop at a parse failure before analysing the rest.
+  - **A run refused for a failed import carries every import's static diagnostic** under `ERR_INVALID_IMPORT_SOURCE`, `ERR_IMPORT_UNRESOLVED`, `ERR_INVALID_IMPORT_TARGET` or `ERR_KIND_PREFIX_RESERVED` (a loader error carrying a code of its own keeps it), so `telo run` prints the `imports:` line `telo check` prints and a refused child writes `[<CODE>] <message>` for it. The Node kernel used to raise the loader's bare error for every import failure but a reserved prefix. An import of the built-in vocabulary archive is `ERR_INVALID_IMPORT_TARGET` in both kernels (it was `ERR_MANIFEST_VALIDATION_FAILED`). A `Telo.Import` declared in a `with:` scope is loaded, when its scope opens, by the same per-import step the graph walk runs and refused the same way: an unresolvable source is `ERR_IMPORT_UNRESOLVED` and a malformed one `ERR_INVALID_IMPORT_SOURCE` (both were the bare loader error), an application target is `ERR_INVALID_IMPORT_TARGET` in the loader's words (it was `ERR_MANIFEST_VALIDATION_FAILED`), and so is a target with no `Telo.Library` (it was an uncoded error). `@telorun/analyzer` exports that step, `loadImportTarget`, and `importFailureDiagnostics` for it.
+  - **A failed `Kernel.reconcile()` leaves the kernel as it was.** A reconcile refused while loading (a failed import, a parse failure) used to keep the refused graph, so the next reconcile diffed against it — missing a library edit, or reporting a spurious `restartRequired` after the edit was reverted.
+  - **Breaking for a consumer of `@telorun/ide-support`'s diagnostic assembly**: `assembleGraphDiagnostics`, `compromisedFiles`, `findPositions` and `resolveRange` moved to `@telorun/analyzer`, which also exports `locateDiagnostic` (a diagnostic's file and range, as every host reports it). `@telorun/ide-support` no longer exports them.
+
+### Patch Changes
+
+- 63c81d0: `telo module manifest --json` reports a need type's runtime reach. A `Telo.NeedType` declares a kind the kernel serves with its own need-type controller, and `runtime.kinds` now lists it as the kernels that register that controller — `{ runtimes: [nodejs], languages: [], portable: false }` today — where it used to be missing, so the hub stored every need type as runnable by no kernel and a `runtime` filter hid it. Which documents declare a kind is read through the analyzer's `kindDeclarationOf`, and a kernel candidate `{ runtime: kernel, entry }` is hosted by exactly the kernels registering `entry`: `@telorun/kernel` exports the entries it registers at boot as `BUILTIN_CONTROLLER_ENTRIES`, the keys of the one table it registers its built-in controllers from. A `Telo.Builtins` root still reports `runtime: null`.
+- 63c81d0: `telo --version` prints the telo identity: `X` for a release, and `X+unreleased` for a build made from a working copy while `X` is pending — the string a run's `Kernel.Starting` event and `telo builtins`' root `metadata.version` carry. It used to print the CLI package's number, which on a working copy named a release the build is not (`0.118.0` where the archive said `0.119.0+unreleased`). A release prints the same `X` as before. The Rust `telo` gains `--version` too, printing the same string, read from the built-in vocabulary it embeds.
+- Updated dependencies [63c81d0]
+- Updated dependencies [63c81d0]
+- Updated dependencies [63c81d0]
+- Updated dependencies [63c81d0]
+- Updated dependencies [63c81d0]
+  - @telorun/analyzer@0.119.0
+  - @telorun/kernel@0.119.0
+  - @telorun/ide-support@0.119.0
+  - @telorun/sdk@0.119.0
+  - @telorun/templating@0.119.0
+
 ## 0.118.0
 
 ### Minor Changes
