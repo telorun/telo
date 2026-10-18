@@ -1,4 +1,0 @@
-modules:
-  modules/sql: Fixed
-body: The backend-authoring guide shows a connection opened over a need-typed access
-  slot that observes the server's version and features, instead of a connection string.

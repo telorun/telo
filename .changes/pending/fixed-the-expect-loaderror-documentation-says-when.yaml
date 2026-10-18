@@ -1,6 +1,0 @@
-modules:
-  modules/assert: Fixed
-body: "The expect.loadError documentation says when it fires — only when a manifest
-  cannot be loaded at all, an unreadable entry or a refused partial — and that a failed
-  import is the coded diagnostic telo check reports at the imports: entry, matched with
-  expect.errors."
