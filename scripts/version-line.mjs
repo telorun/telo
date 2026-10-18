@@ -97,6 +97,71 @@ export function workspacePackages() {
   return byName;
 }
 
+const VERSION = /^(\d+)\.(\d+)\.(\d+)(-.+)?$/;
+
+function compareVersions(a, b) {
+  const [, am, an, ap] = VERSION.exec(a).map(Number);
+  const [, bm, bn, bp] = VERSION.exec(b).map(Number);
+  return am - bm || an - bn || ap - bp;
+}
+
+/** The strongest bump any pending changeset declares for a member of the line.
+ *  The front matter is a YAML mapping of `"name": bump`, one per line — the same
+ *  shape `check-changeset-status.mjs` reads. */
+function pendingBump(members) {
+  const dir = join(ROOT, ".changeset");
+  const rank = { patch: 1, minor: 2, major: 3 };
+  let strongest;
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith(".md") || file === "README.md") continue;
+    const frontMatter = readFileSync(join(dir, file), "utf8").split(/^---$/m)[1];
+    if (!frontMatter) continue;
+    for (const line of frontMatter.split("\n")) {
+      const match = /^\s*["']?(@?[^"':]+)["']?\s*:\s*(major|minor|patch)\s*$/.exec(line);
+      if (!match || !members.has(match[1].trim())) continue;
+      const bump = match[2];
+      if (strongest === undefined || rank[bump] > rank[strongest]) strongest = bump;
+    }
+  }
+  return strongest;
+}
+
+/** `version` with `bump` applied, by plain semver — pre-1.0 is NOT special-cased,
+ *  because changesets does not special-case it either: a minor on 0.78.0 is
+ *  0.79.0, which is precisely how this repo ships a breaking change. */
+function applyBump(base, bump) {
+  const [, major, minor, patch] = VERSION.exec(base).map(Number);
+  if (bump === "major") return `${major + 1}.0.0`;
+  if (bump === "minor") return `${major}.${minor + 1}.0`;
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+/**
+ * The telo generation this tree builds: `surface`, the line's highest member
+ * version with the strongest pending changeset bump applied — the number
+ * `changeset version` will write — and `identity`, that number as a build of
+ * this tree reports itself: `surface` for the release, `surface+unreleased`
+ * while a line changeset is pending. `generate-telo-version.mjs` writes both;
+ * `render-builtin-vocabulary.mjs` stamps `identity` on the archive. One
+ * computation, so the two can never name different versions. Throws when the
+ * line cannot be read.
+ */
+export function teloGeneration(packages = workspacePackages()) {
+  const members = new Set(versionLineMembers());
+  let highest;
+  for (const name of members) {
+    const pkg = packages.get(name);
+    if (!pkg) throw new Error(`the version line names ${name}, which is not a workspace package.`);
+    if (typeof pkg.version !== "string" || !VERSION.test(pkg.version)) {
+      throw new Error(`${name}'s version '${pkg.version}' is not a three-part semantic version.`);
+    }
+    if (highest === undefined || compareVersions(pkg.version, highest) > 0) highest = pkg.version;
+  }
+  const bump = pendingBump(members);
+  const surface = bump ? applyBump(highest, bump) : highest;
+  return { surface, identity: bump ? `${surface}+unreleased` : surface, highest, bump };
+}
+
 /** `[package]`'s body in a `Cargo.toml`: its span and text. */
 function packageTable(text) {
   const table = /^[ \t]*\[package\][ \t]*$/m.exec(text);

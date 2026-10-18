@@ -1,0 +1,153 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "Library",
+    "description": "An importable module: a unit of kinds, need types and ready-made instances other modules import under an alias. Declares the variables, secrets, resources and needs it requires from its importer, whether it is instantiated once or per import, and what it exports."
+  },
+  "capability": "Telo.Template",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "type": "string"
+      },
+      "metadata": {
+        "$ref": "telo://manifest#/$defs/ModuleMetadata"
+      },
+      "variables": {
+        "type": "object"
+      },
+      "secrets": {
+        "type": "object"
+      },
+      "lifecycle": {
+        "type": "string",
+        "enum": [
+          "shared",
+          "isolated"
+        ],
+        "default": "isolated"
+      },
+      "resources": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "needs": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "telo://manifest#/$defs/NeedRequest",
+          "properties": {
+            "env": {}
+          }
+        }
+      },
+      "include": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "files": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "assets": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "native": {
+        "$ref": "telo://manifest#/$defs/NativeEntries"
+      },
+      "sources": {
+        "$ref": "telo://manifest#/$defs/ModuleSources"
+      },
+      "layers": {
+        "$ref": "telo://manifest#/$defs/LayerIndex"
+      },
+      "filesIntegrity": {
+        "type": "string"
+      },
+      "imports": {
+        "$ref": "telo://manifest#/$defs/ModuleImports"
+      },
+      "exports": {
+        "type": "object",
+        "properties": {
+          "kinds": {
+            "type": "array",
+            "title": "Exported kinds",
+            "items": {
+              "type": "string"
+            }
+          },
+          "resources": {
+            "type": "array",
+            "title": "Exported resources",
+            "items": {
+              "type": "string",
+              "not": {
+                "enum": [
+                  "variables",
+                  "secrets"
+                ]
+              }
+            }
+          },
+          "code": {
+            "type": "array",
+            "items": {
+              "$ref": "telo://manifest#/$defs/PlatformAxes",
+              "type": "object",
+              "required": [
+                "specifier",
+                "format",
+                "path"
+              ],
+              "properties": {
+                "specifier": {
+                  "type": "string"
+                },
+                "format": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "requires": {
+        "$ref": "telo://manifest#/$defs/Requires"
+      }
+    },
+    "required": [
+      "metadata"
+    ],
+    "additionalProperties": false
+  }
+}

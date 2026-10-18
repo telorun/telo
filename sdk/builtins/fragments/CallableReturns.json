@@ -1,0 +1,20 @@
+{
+  "title": "Result",
+  "description": "What a call to this callable evaluates to.",
+  "type": "object",
+  "required": [
+    "schema"
+  ],
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "schema": {
+      "$ref": "telo://manifest#/$defs/CallableType"
+    },
+    "nullable": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

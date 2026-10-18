@@ -1,0 +1,204 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "Definition",
+    "description": "Declares a resource kind: the lifecycle role it implements, its configuration schema, observed state, input and output contracts, the errors it throws, and how it runs — a controller, a body of resources it dispatches to, or a parent kind it specializes."
+  },
+  "capability": "Telo.Template",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "const": "Telo.Definition"
+      },
+      "metadata": {
+        "$ref": "telo://manifest#/$defs/KindMetadata"
+      },
+      "capability": {
+        "title": "Capability",
+        "description": "The lifecycle role this kind implements.",
+        "enum": {
+          "$roster": "declarable"
+        }
+      },
+      "extends": {
+        "title": "Extends",
+        "description": "The kind this one specializes, as `<Alias>.<Kind>` — an abstract it implements or a concrete kind whose controller it inherits.",
+        "type": "string",
+        "pattern": "^[A-Z][A-Za-z0-9_]*\\.[A-Z][A-Za-z0-9_]*$"
+      },
+      "controllers": {
+        "title": "Controllers",
+        "description": "Package URLs of the controller implementations, in preference order.",
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "schema": {
+        "title": "Schema",
+        "description": "Configuration this kind accepts, as JSON Schema plus `x-telo-*` annotations.",
+        "$ref": "telo://manifest#/$defs/KindSchema"
+      },
+      "status": {
+        "title": "Observed state",
+        "description": "What a resource of this kind reports while running, published at `resources.<name>.status.<field>`.",
+        "$ref": "telo://manifest#/$defs/JsonSchema7"
+      },
+      "inputType": {
+        "title": "Input type",
+        "description": "The schema of the inputs a call passes — a `!ref` to a named shape, or inline JSON Schema."
+      },
+      "outputType": {
+        "title": "Output type",
+        "description": "The schema of what a call returns — a `!ref` to a named shape, or inline JSON Schema."
+      },
+      "params": {
+        "$ref": "telo://manifest#/$defs/CallableParams"
+      },
+      "returns": {
+        "$ref": "telo://manifest#/$defs/CallableReturns"
+      },
+      "deterministic": {
+        "title": "Deterministic",
+        "description": "`true` when the result depends only on the arguments and this instance's configuration. Legal on a callable kind that declares its own `controllers:` (a claim) or on a callable abstract (a requirement every implementation must meet)."
+      },
+      "throws": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "codes": {
+            "$ref": "telo://manifest#/$defs/ThrowCodes"
+          },
+          "inherit": {
+            "type": "boolean"
+          },
+          "passthrough": {
+            "type": "boolean"
+          }
+        }
+      },
+      "topology": {
+        "title": "Topology",
+        "description": "How a visual editor draws resources of this kind.",
+        "type": "string"
+      },
+      "resources": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true,
+          "x-telo-context": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "self": {
+                "x-telo-context-from-root": "schema"
+              }
+            }
+          }
+        }
+      },
+      "invoke": {
+        "title": "Invoke target",
+        "description": "The `resources:` entry whose `invoke()` this kind dispatches to, as `!ref <entry>`.",
+        "$ref": "telo://manifest#/$defs/DispatchTarget"
+      },
+      "provide": {
+        "title": "Provide target",
+        "description": "The `resources:` entry whose `invoke()` produces this provider's value, as `!ref <entry>`.",
+        "$ref": "telo://manifest#/$defs/DispatchTarget"
+      },
+      "run": {
+        "title": "Run target",
+        "description": "The `resources:` entry whose `run()` this kind dispatches to, as `!ref <entry>`.",
+        "$ref": "telo://manifest#/$defs/DispatchTarget"
+      },
+      "targets": {
+        "title": "Targets",
+        "description": "The `resources:` entries this kind starts, in order, when an instance runs — each as `!ref <entry>`, each a Telo.Service or Telo.Runnable. Replaces `run:` when the kind has more than one thing to start, such as a server and the poller beside it."
+      },
+      "mount": {
+        "title": "Mount target",
+        "description": "The `resources:` entry (a Telo.Mount, e.g. an Http.Api) whose `register()` this kind delegates to, as `!ref <entry>`.",
+        "$ref": "telo://manifest#/$defs/DispatchTarget"
+      },
+      "inputs": {
+        "type": "object",
+        "additionalProperties": true,
+        "x-telo-context": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "self": {
+              "x-telo-context-from-root": "schema"
+            },
+            "inputs": {
+              "x-telo-context-from-root": "inputType"
+            }
+          }
+        }
+      },
+      "result": {
+        "type": "object",
+        "additionalProperties": true,
+        "x-telo-context": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "self": {
+              "x-telo-context-from-root": "schema"
+            },
+            "result": {
+              "x-telo-context-from-ref-kind": [
+                "provide#outputType",
+                "invoke#outputType"
+              ]
+            }
+          }
+        }
+      },
+      "base": {
+        "type": "object",
+        "additionalProperties": true,
+        "x-telo-context": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "self": {
+              "x-telo-context-from-root": "schema"
+            }
+          }
+        }
+      }
+    },
+    "patternProperties": {
+      "^x-telo-schema-projection(-from)?$": {}
+    },
+    "required": [
+      "kind",
+      "metadata"
+    ],
+    "if": {
+      "required": [
+        "throws",
+        "capability"
+      ],
+      "properties": {
+        "capability": {
+          "not": {
+            "enum": {
+              "$roster": "throwsAllowed"
+            }
+          }
+        }
+      }
+    },
+    "then": {
+      "properties": {
+        "throws": false
+      }
+    },
+    "additionalProperties": false
+  }
+}

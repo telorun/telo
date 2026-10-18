@@ -26,6 +26,7 @@ import {
   scopeResolverForModule,
 } from "./alias-resolver.js";
 import { AnalysisRegistry } from "./analysis-registry.js";
+import { BUILTIN_VOCABULARY_KIND, BUILTIN_VOCABULARY_NOT_A_MODULE } from "./builtin-vocabulary.js";
 import {
   buildCelEnvironment,
   buildImportInputCelEnvironment,
@@ -95,6 +96,7 @@ import { ManifestRootSchema } from "./manifest-schemas.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { buildStepContextSchema, CelScopeResolver, manifestRootForResolver } from "./cel-scope.js";
 import { capabilityExtendsExecutable } from "./executable-capability.js";
+import { capabilityProblem, type CapabilityProblem } from "./capability-roster.js";
 
 // The structural walks and the CEL scope rule moved out of this file — the
 // first so both halves can reach them, the second so the IDE can ask what a
@@ -267,6 +269,8 @@ import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
 import { validateModuleCallNames } from "./validate-module-call-names.js";
 import { validateCallableDeclarations } from "./validate-callable-kinds.js";
 import { validateScopedNameReach } from "./validate-scope-reach.js";
+import { validateScopedKindDocuments } from "./validate-scoped-kind-documents.js";
+import { importAnchoredDiagnostic, importReach } from "./reaching-import.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 import { readStepSlot } from "./step-slot.js";
@@ -371,6 +375,19 @@ function refSlotIssueDiagnostic(issue: RefSlotIssue): AnalysisDiagnostic {
       path: issue.path,
     },
   };
+}
+
+/**
+ * A schema finding on a `Telo.Definition` / `Telo.Abstract` document that a
+ * dedicated check reports instead, so each mistake is one diagnostic: the
+ * `capability:` enum (the roster's `CAPABILITY_UNKNOWN` /
+ * `CAPABILITY_NOT_DECLARABLE`), the `extends:` pattern (`EXTENDS_MALFORMED`) and
+ * rule 8's `throws:` refusal (`THROWS_ON_NON_DISPATCH_CAPABILITY`).
+ */
+function kindDocumentFindingReportedElsewhere(issue: SchemaIssue): boolean {
+  if (issue.path === "capability" || issue.path === "extends") return true;
+  if (issue.path === "throws" && issue.keyword === "false schema") return true;
+  return issue.path === "" && issue.keyword === "if";
 }
 
 /** One mapping from a rule declaration issue to a diagnostic — shared by the
@@ -1273,30 +1290,9 @@ export class StaticAnalyzer {
     // per resource the rule met, every one pointing at a line the reader does
     // not own and cannot fix.
     const ruleFailureLedger = new RuleFailureLedger();
-    /** The `imports:` entry that brought a module in, as a diagnostic anchor.
-     *  Built once over the `Telo.Import` docs the loader produced; an import
-     *  declared by the entry's OWN module wins, since that is the line the
-     *  reader can change. */
-    const importAnchors = new Map<string, { filePath?: string; path: string }>();
-    for (const m of manifests) {
-      if (m.kind !== "Telo.Import") continue;
-      const alias = m.metadata?.name as string | undefined;
-      const target = (m.metadata as { resolvedModuleName?: string } | undefined)
-        ?.resolvedModuleName;
-      if (!alias || !target) continue;
-      const owner = (m.metadata as { module?: string } | undefined)?.module;
-      const ours = !owner || rootModules.has(owner);
-      // ONLY an entry-owned import anchors. A dependency's `imports:` entry is a
-      // line the reader neither owns nor can change, and it is not where the
-      // defect is either — so with no entry-owned import naming the module the
-      // diagnostic stays on the rule's own declaration, which at least names the
-      // kind at fault.
-      if (!ours) continue;
-      importAnchors.set(target, {
-        filePath: (m.metadata as { source?: string } | undefined)?.source,
-        path: `imports.${alias}`,
-      });
-    }
+    /** Each dependency's first-reaching entry import: the `imports:` line the
+     *  reader can act on, for a refusal or a rule failure inside a dependency. */
+    const reach = importReach(manifests as ResourceManifest[], rootModules);
     /**
      * One evaluation-time rule failure, re-anchored at the `imports:` entry that
      * brought the declaring kind in. For a kind of the entry's own modules — or
@@ -1308,10 +1304,7 @@ export class StaticAnalyzer {
       declaringModule: string | undefined,
       fallback: AnalysisDiagnostic,
     ): AnalysisDiagnostic => {
-      const anchor =
-        declaringModule && !rootModules.has(declaringModule)
-          ? importAnchors.get(declaringModule)
-          : undefined;
+      const anchor = declaringModule ? reach.of(declaringModule) : undefined;
       if (!anchor) return fallback;
       return {
         severity: SEVERITY[report.severity],
@@ -1319,6 +1312,30 @@ export class StaticAnalyzer {
         source: SOURCE,
         message: report.message,
         data: { filePath: anchor.filePath, path: anchor.path, rule: report.rule },
+      };
+    };
+    /** A `capability:` the roster refuses, at the declaration for the entry's
+     *  own modules and at the entry's `imports:` entry reaching a dependency's. */
+    const capabilityDiagnostic = (
+      m: ResourceManifest,
+      declaringModule: string | undefined,
+      issue: CapabilityProblem,
+    ): AnalysisDiagnostic => {
+      const label = `${m.kind} '${m.metadata?.name as string}'`;
+      const via = declaringModule ? reach.of(declaringModule) : undefined;
+      if (declaringModule && via) {
+        return importAnchoredDiagnostic(issue.code, declaringModule, via, `${label}: ${issue.message}`);
+      }
+      return {
+        severity: DiagnosticSeverity.Error,
+        code: issue.code,
+        source: SOURCE,
+        message: `${label}: ${issue.message}`,
+        data: {
+          resource: { kind: m.kind, name: m.metadata?.name as string },
+          filePath: (m.metadata as { source?: string } | undefined)?.source,
+          path: "capability",
+        },
       };
     };
     const projectionIssues: SchemaProjectionIssue[] = [];
@@ -1447,41 +1464,18 @@ export class StaticAnalyzer {
           });
         }
       }
-      const resolvedCapability = def.capability
-        ? (scopeResolver.resolveKind(def.capability) ?? def.capability)
-        : def.capability;
-      // `Telo.Executable` is a slot constraint — the x-telo-ref parent of
-      // Invocable and Runnable — and names no lifecycle role. The kernel
-      // rejects it at load; without this the analyzer would report "no issues"
-      // on a manifest that cannot boot.
-      if (
-        resolvedCapability === "Telo.Executable" &&
-        (!ownModule || rootModules.has(ownModule))
-      ) {
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: "CAPABILITY_NOT_DECLARABLE",
-          source: SOURCE,
-          message:
-            `'${def.metadata?.name}' declares capability: Telo.Executable, which is an ` +
-            `x-telo-ref slot constraint (the parent Telo.Invocable and Telo.Runnable extend), ` +
-            `not a declarable lifecycle role. Declare 'Telo.Invocable' (invoke) or ` +
-            `'Telo.Runnable' (run) instead.`,
-          data: {
-            resource: { kind: m.kind, name: m.metadata?.name as string },
-            filePath: (m.metadata as { source?: string } | undefined)?.source,
-            path: "capability",
-          },
-        });
-      }
+      // The closed roster: a `capability:` names a lifecycle role a kernel
+      // implements, or the kernel refuses the definition at registration. So a
+      // DEPENDENCY's definition is reported too — anchored at the `imports:`
+      // entry reaching it, the line the consumer can act on — since the manifest
+      // importing it cannot start.
+      const capabilityIssue = capabilityProblem(def.capability, def.extends !== undefined);
+      if (capabilityIssue) diagnostics.push(capabilityDiagnostic(m, ownModule, capabilityIssue));
       const resolvedExtends = def.extends
         ? (scopeResolver.resolveKind(def.extends) ?? def.extends)
         : def.extends;
-      const needsPatch =
-        resolvedCapability !== def.capability || resolvedExtends !== def.extends;
-      const normalized = needsPatch
-        ? { ...def, capability: resolvedCapability, extends: resolvedExtends }
-        : def;
+      const normalized =
+        resolvedExtends !== def.extends ? { ...def, extends: resolvedExtends } : def;
       defs.register(normalized);
     }
 
@@ -2491,11 +2485,33 @@ export class StaticAnalyzer {
         });
         continue;
       }
-      // Abstracts carry only inputType / outputType schema fields and no template
-      // body — nothing for the per-resource walk to validate. Definitions are now
-      // walked: their template bodies (`resources` / `invoke` / `run` / `provide`)
-      // contain CEL that must be checked against `self` / `inputs` / `result`.
+      // An abstract carries no template body, so the per-resource walk has nothing
+      // to check in it beyond its shape: it is held to the built-in `Telo.Abstract`
+      // schema, which the kernel validates it against when it registers. Definitions
+      // are walked whole: their template bodies (`resources` / `invoke` / `run` /
+      // `provide`) contain CEL that must be checked against `self` / `inputs` /
+      // `result`.
       if (m.kind === "Telo.Abstract") {
+        const abstractDefinition = defs.resolve("Telo.Abstract");
+        if (abstractDefinition) {
+          for (const issue of defs.validateResourceConfig(m, validationSchemaFor(abstractDefinition))) {
+            // `throws:` is the rule-8 pass's, which names the rule.
+            if (kindDocumentFindingReportedElsewhere(issue) || /^throws(\.|$)/.test(issue.path)) {
+              continue;
+            }
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "SCHEMA_VIOLATION",
+              source: SOURCE,
+              message: `${m.kind}/${m.metadata?.name as string}: ${issue.message}`,
+              data: {
+                resource: { kind: m.kind, name: m.metadata?.name as string },
+                filePath,
+                path: issue.path,
+              },
+            });
+          }
+        }
         continue;
       }
 
@@ -2561,6 +2577,18 @@ export class StaticAnalyzer {
       const resolvedKind = kindResult.status === "ok" ? kindResult.kind : undefined;
       const definition =
         defs.resolve(m.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
+      if (!definition && m.kind === BUILTIN_VOCABULARY_KIND) {
+        // Registered nowhere on purpose; say what the document is rather than
+        // suggesting a kind of a similar spelling.
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "UNDEFINED_KIND",
+          source: SOURCE,
+          message: BUILTIN_VOCABULARY_NOT_A_MODULE,
+          data: { resource, filePath, path: "kind" },
+        });
+        continue;
+      }
       if (!definition) {
         const suggestedKind = computeSuggestKind(m.kind, aliases, defs);
         const hint = suggestedKind ? ` Did you mean '${suggestedKind}'?` : "";
@@ -2774,10 +2802,12 @@ export class StaticAnalyzer {
         );
         const parentKind = (definition as { extends?: string } | undefined)?.extends;
         const fulfilment = needTypeOf(definition) !== undefined;
+        const kindDocument = m.kind === "Telo.Definition";
         for (const issue of issues) {
           // An undeclared or missing field of a fulfilment is the need table's
           // one report (`NEED_FIELD_UNDECLARED` / `NEED_SLOT_MISMATCH`).
           if (fulfilment && needTableReportsFinding(issue)) continue;
+          if (kindDocument && kindDocumentFindingReportedElsewhere(issue)) continue;
           // Keyed on the STRUCTURED failure, never on the sentence: the field
           // names are derived from the parent, and matching them against the
           // validator's prose would break when the prose changes and mis-fire on
@@ -4250,6 +4280,35 @@ export class StaticAnalyzer {
         rootModules,
         (expr, declaringManifest) =>
           celAccessChains(expr, moduleCallNamesOf(moduleCallNames, declaringManifest)),
+      ),
+    );
+
+    // A kind document declared as a scope member, which no per-resource pass
+    // reaches: its capability and its document, as the kernel judges them when
+    // the scope creates it.
+    diagnostics.push(
+      ...validateScopedKindDocuments(
+        allManifests,
+        options?.moduleDocuments ?? [],
+        defs,
+        aliases,
+        aliasesByModule,
+        rootModules,
+        reach,
+        (member, kind) => {
+          const definition = defs.resolve(kind);
+          if (!definition) throw new Error(`the built-in kind '${kind}' is not registered`);
+          const schema = validationSchemaFor(definition);
+          const standIns: StandIns = new Map();
+          return defs.validateResourceConfig(
+            substituteDecodedCelFields(member, schema, undefined, {
+              standIns,
+              external: (ref) => defs.schemaForId(ref),
+            }),
+            schema,
+            standIns,
+          );
+        },
       ),
     );
 

@@ -83,11 +83,14 @@ async function readPublishedManifest(ref: string): Promise<string | null> {
   }
 }
 
-/** The `layers:` index a manifest's module doc declares; `[]` when none. */
+/** The `layers:` index a manifest's owner doc declares — its module doc, or a
+ *  built-in vocabulary archive's root; `[]` when none. */
 function layerIndexOf(text: string, ref: string): ArtifactLayer[] {
   for (const doc of parseAllDocuments(text)) {
     const json = doc.toJSON() as { kind?: string; layers?: unknown } | null;
-    if (json?.kind !== "Telo.Application" && json?.kind !== "Telo.Library") continue;
+    if (json?.kind !== "Telo.Application" && json?.kind !== "Telo.Library" && json?.kind !== "Telo.Builtins") {
+      continue;
+    }
     if (json.layers === undefined) return [];
     return parseLayerIndex(json.layers, `${ref} layers`);
   }

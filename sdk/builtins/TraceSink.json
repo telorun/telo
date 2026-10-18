@@ -1,0 +1,12 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "TraceSink",
+    "description": "Where finished trace spans go: a destination for distributed tracing that receives each span once it ends — identity, timing, outcome and attributes. Attaching one turns tracing on; every trace exporter specializes it."
+  },
+  "capability": "Telo.Sink",
+  "schema": {
+    "type": "object",
+    "additionalProperties": true
+  }
+}

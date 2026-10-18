@@ -130,7 +130,8 @@ steps:
         indexLeads: !cel >-
           steps.requests.result.filter(r, r.who == 'agent').all(r,
             json(parseJson(r.text)[0]).contains('LIBRARY INDEX:')
-              && json(parseJson(r.text)[0]).contains('- Greeter (oci://example.test/greeter): Greets people for example.test. Kinds: Hello.'))
+              && json(parseJson(r.text)[0]).contains('- Greeter (oci://example.test/greeter): Greets people for example.test. Kinds: Hello.')
+              && json(parseJson(r.text)[0]).contains('- Telo (oci://ghcr.io/telorun/telo): The built-in vocabulary. Kinds: Application. builtin: true — write its kinds as Telo.<Kind> and import nothing.'))
         totalTokens: !cel "steps.after.result.conversation.totalTokens"
       expected:
         callers: [agent, search, search, agent]

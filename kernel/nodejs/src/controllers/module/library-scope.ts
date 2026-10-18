@@ -1,6 +1,11 @@
-import { AnalysisRegistry, DiagnosticSeverity } from "@telorun/analyzer";
+import {
+  AnalysisRegistry,
+  DiagnosticSeverity,
+  flattenLoadedModule,
+  type LoadedModule,
+} from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
-import { RuntimeError, type EvaluationContext as IEvaluationContext } from "@telorun/sdk";
+import { RuntimeError } from "@telorun/sdk";
 import type { BuiltinControllerContext } from "../../internal-context.js";
 import { rootContextOf } from "./shared-libraries.js";
 
@@ -21,9 +26,9 @@ import { rootContextOf } from "./shared-libraries.js";
  * graph, which also serves as its cross-module targets.
  *
  * Nothing here reads the importer's alias, `variables`, `secrets`, `runtime` or
- * `logging`, so it is cached per URL. `normalize()` still runs once per import
- * site: Phase-5 injection mutates the manifests it registers, so two import
- * sites must never share manifest objects.
+ * `logging`, so the target and its scope are cached per URL. `normalize()`
+ * still runs once per import site: Phase-5 injection mutates the manifests it
+ * registers, so two import sites must never share manifest objects.
  *
  * Scoped like `sharedLibraries`: a `WeakMap` keyed on the kernel's root context,
  * so two in-process kernels never share an entry and the cache dies with its
@@ -32,59 +37,84 @@ import { rootContextOf } from "./shared-libraries.js";
 export interface LibraryScope {
   /** The library's own manifests, compiled — normalized per import site. */
   readonly rawManifests: ResourceManifest[];
-  /** The `Telo.Library` doc's name, undefined when the target declares none. */
-  readonly module: string | undefined;
   /** The kernel registry as seen from inside the library. */
-  readonly registry: AnalysisRegistry | undefined;
+  readonly registry: AnalysisRegistry;
   /** Other modules' exported instances, for the library's `!ref Alias.name`. */
   readonly crossModuleTargets: ResourceManifest[];
 }
 
-const caches = new WeakMap<object, Map<string, Promise<LibraryScope>>>();
-
-function libraryScopeCache(ctx: IEvaluationContext): Map<string, Promise<LibraryScope>> {
-  const root = rootContextOf(ctx) as unknown as object;
-  let cache = caches.get(root);
-  if (!cache) caches.set(root, (cache = new Map()));
-  return cache;
+interface LibraryEntry {
+  target?: Promise<LoadedModule>;
+  scope?: Promise<LibraryScope>;
 }
 
-export function resolveLibraryScope(
+const caches = new WeakMap<object, Map<string, LibraryEntry>>();
+
+function libraryEntry(resolvedUrl: string, ctx: BuiltinControllerContext): LibraryEntry {
+  const root = rootContextOf(ctx.moduleContext) as unknown as object;
+  let cache = caches.get(root);
+  if (!cache) caches.set(root, (cache = new Map()));
+  let entry = cache.get(resolvedUrl);
+  if (!entry) cache.set(resolvedUrl, (entry = {}));
+  return entry;
+}
+
+/** The import target as the loader reads it, loaded once per URL. A failure is
+ *  not cached, so a later import of the URL tries again. */
+export function loadLibraryTarget(
   resolvedUrl: string,
   ctx: BuiltinControllerContext,
+): Promise<LoadedModule> {
+  const entry = libraryEntry(resolvedUrl, ctx);
+  if (!entry.target) {
+    const pending = ctx.libraryAnalysisHost().loadModule(resolvedUrl, {
+      compile: true,
+      desugarImports: true,
+      migrate: true,
+    });
+    entry.target = pending;
+    pending.catch(() => {
+      if (entry.target === pending) entry.target = undefined;
+    });
+  }
+  return entry.target;
+}
+
+/** The scope of the library at `resolvedUrl`, an import target already
+ *  identified as the library named `module`. */
+export function resolveLibraryScope(
+  resolvedUrl: string,
+  module: string,
+  ctx: BuiltinControllerContext,
 ): Promise<LibraryScope> {
-  const cache = libraryScopeCache(ctx.moduleContext);
-  let pending = cache.get(resolvedUrl);
-  if (!pending) {
-    pending = computeLibraryScope(resolvedUrl, ctx);
-    cache.set(resolvedUrl, pending);
+  const entry = libraryEntry(resolvedUrl, ctx);
+  if (!entry.scope) {
+    const pending = computeLibraryScope(resolvedUrl, module, ctx);
+    entry.scope = pending;
     // A validation failure is a hard boot error, not a deferral — but don't
     // let a rejected promise permanently poison the entry for this URL.
-    pending.catch(() => cache.delete(resolvedUrl));
+    pending.catch(() => {
+      if (entry.scope === pending) entry.scope = undefined;
+    });
   }
-  return pending;
+  return entry.scope;
 }
 
 async function computeLibraryScope(
   resolvedUrl: string,
+  module: string,
   ctx: BuiltinControllerContext,
 ): Promise<LibraryScope> {
-  const rawManifests = await ctx.loadModule(resolvedUrl, {
-    compile: true,
-    desugarImports: true,
-    migrate: true,
-  });
-  const libraryDoc = rawManifests.find((m) => m.kind === "Telo.Library");
-  const module = libraryDoc?.metadata?.name as string | undefined;
-  if (!module) return { rawManifests, module, registry: undefined, crossModuleTargets: [] };
-
   const host = ctx.libraryAnalysisHost();
-  if (module === host.entryModule) return ownRegistryScope(resolvedUrl, ctx, rawManifests, module);
+  const rawManifests = flattenLoadedModule(await loadLibraryTarget(resolvedUrl, ctx));
+
+  if (module === host.entryModule) {
+    return ownRegistryScope(resolvedUrl, ctx, rawManifests);
+  }
   const registry = host.registry.forModule(module);
   if (ctx.isImportValidatedAtLoad(resolvedUrl)) {
     return {
       rawManifests,
-      module,
       registry,
       // The library's own exports are forwarded into the load-time set too; as
       // targets they would turn `!ref <module>.x` into a cross-module reference
@@ -103,7 +133,7 @@ async function computeLibraryScope(
   if (errors.length > 0) {
     throw new RuntimeError("ERR_MANIFEST_VALIDATION_FAILED", errors.join("\n"));
   }
-  return { rawManifests, module, registry, crossModuleTargets: graphManifests };
+  return { rawManifests, registry, crossModuleTargets: graphManifests };
 }
 
 /**
@@ -117,7 +147,6 @@ async function ownRegistryScope(
   resolvedUrl: string,
   ctx: BuiltinControllerContext,
   rawManifests: ResourceManifest[],
-  module: string,
 ): Promise<LibraryScope> {
   const host = ctx.libraryAnalysisHost();
   const { manifests: graphManifests, moduleDocuments } = await host.loadLibrary(resolvedUrl);
@@ -133,5 +162,5 @@ async function ownRegistryScope(
   if (errors.length > 0) {
     throw new RuntimeError("ERR_MANIFEST_VALIDATION_FAILED", errors.join("\n"));
   }
-  return { rawManifests, module, registry, crossModuleTargets: graphManifests };
+  return { rawManifests, registry, crossModuleTargets: graphManifests };
 }

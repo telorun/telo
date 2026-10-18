@@ -1,0 +1,8 @@
+# Declares the built-in vocabulary's root kind as though it were a resource.
+kind: Telo.Application
+metadata:
+  name: BuiltinVocabularyDeclared
+---
+kind: Telo.Builtins
+metadata:
+  name: vocabulary

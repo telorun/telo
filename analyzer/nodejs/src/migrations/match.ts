@@ -110,6 +110,13 @@ export interface MigrationMatch {
    *  rather than any value is what leaves an unrecognized one alone for the
    *  ordinary validator to report, instead of silently rewriting it. */
   readonly valueOneOf?: readonly unknown[];
+  /** The value must be a string that FULLY matches this pattern — for a legacy
+   *  spelling told apart by its shape rather than by a known list. Written in the
+   *  RE2 subset every runtime's reader accepts: no lookaround, no backreference. */
+  readonly valuePattern?: string;
+  /** The value must be a string that does NOT fully match this pattern — the
+   *  exclusion a pattern without lookaround cannot express on its own. */
+  readonly valueNotPattern?: string;
   /** A key that must be present in the same mapping. The matched key is often
    *  stale only *because* of what sits beside it. */
   readonly withSibling?: string;
@@ -133,6 +140,8 @@ export const MATCH_KEYS = [
   "under",
   "value",
   "valueOneOf",
+  "valuePattern",
+  "valueNotPattern",
   "withSibling",
   "notUnder",
   "inSchema",
@@ -201,7 +210,7 @@ export function readMigrationMatch(
     }
     // A scalar rule selects by the value's own text; a key, a value test or a
     // sibling would be a second selector with nothing to anchor it to.
-    for (const key of ["value", "valueOneOf", "withSibling"] as const) {
+    for (const key of ["value", "valueOneOf", "valuePattern", "valueNotPattern", "withSibling"] as const) {
       if (Object.hasOwn(raw, key)) {
         throw new Error(`${describe}: 'match.${key}' does not apply to a 'scalar' rule`);
       }
@@ -212,6 +221,14 @@ export function readMigrationMatch(
   }
   if (Object.hasOwn(raw, "valueOneOf") && !Array.isArray(raw.valueOneOf)) {
     throw new Error(`${describe}: 'match.valueOneOf' must be a sequence`);
+  }
+  for (const key of ["valuePattern", "valueNotPattern"] as const) {
+    if (!Object.hasOwn(raw, key)) continue;
+    // A pattern narrows a value test that a literal already states exactly.
+    if (Object.hasOwn(raw, "value") || Object.hasOwn(raw, "valueOneOf")) {
+      throw new Error(`${describe}: 'match.${key}' does not combine with 'value' / 'valueOneOf'`);
+    }
+    readValuePattern(`${describe}: 'match.${key}'`, raw[key]);
   }
   if (Object.hasOwn(raw, "withSibling") && typeof raw.withSibling !== "string") {
     throw new Error(`${describe}: 'match.withSibling' must be a string`);
@@ -267,6 +284,8 @@ export function readMigrationMatch(
     under: readonly string[];
     value?: unknown;
     valueOneOf?: readonly unknown[];
+    valuePattern?: string;
+    valueNotPattern?: string;
     withSibling?: string;
     notUnder?: readonly string[];
     inSchema?: boolean;
@@ -277,6 +296,8 @@ export function readMigrationMatch(
   };
   if (Object.hasOwn(raw, "value")) match.value = raw.value;
   if (Object.hasOwn(raw, "valueOneOf")) match.valueOneOf = raw.valueOneOf as unknown[];
+  if (Object.hasOwn(raw, "valuePattern")) match.valuePattern = raw.valuePattern as string;
+  if (Object.hasOwn(raw, "valueNotPattern")) match.valueNotPattern = raw.valueNotPattern as string;
   if (Object.hasOwn(raw, "withSibling")) match.withSibling = raw.withSibling as string;
   if (Object.hasOwn(raw, "notUnder")) match.notUnder = raw.notUnder as string[];
   if (raw.inSchema === true) match.inSchema = true;
@@ -412,7 +433,84 @@ export function applicableRules<T extends { readonly match: MigrationMatch }>(
 function valueMatches(match: MigrationMatch, value: unknown): boolean {
   if (Object.hasOwn(match, "value")) return deepEquals(match.value, value);
   if (match.valueOneOf) return match.valueOneOf.some((candidate) => deepEquals(candidate, value));
+  if (match.valuePattern !== undefined || match.valueNotPattern !== undefined) {
+    if (typeof value !== "string") return false;
+    if (match.valuePattern !== undefined && !fullMatch(match.valuePattern, value)) return false;
+    if (match.valueNotPattern !== undefined && fullMatch(match.valueNotPattern, value)) return false;
+  }
   return true;
+}
+
+/** Each pattern compiled once, anchored at both ends — a pattern matches the
+ *  WHOLE value, so an entry never depends on whether its author remembered to
+ *  anchor it. */
+const COMPILED_PATTERNS = new Map<string, RegExp>();
+
+function fullMatch(pattern: string, value: string): boolean {
+  let compiled = COMPILED_PATTERNS.get(pattern);
+  if (!compiled) {
+    compiled = new RegExp(`^(?:${pattern})$`, "u");
+    COMPILED_PATTERNS.set(pattern, compiled);
+  }
+  return compiled.test(value);
+}
+
+/**
+ * Read a `valuePattern` / `valueNotPattern`, refusing anything outside the RE2
+ * subset. An entry travels to every runtime, and a construct one regex engine
+ * accepts and another refuses — or reads differently — would make one manifest
+ * migrate on one kernel and not on another, silently. Lookaround and
+ * backreferences are the constructs RE2 refuses; the rest of the syntax an entry
+ * needs reads alike everywhere.
+ */
+function readValuePattern(describe: string, raw: unknown): void {
+  if (typeof raw !== "string" || raw.length === 0) {
+    throw new Error(`${describe} must be a non-empty string`);
+  }
+  const refusal = outsideRe2Subset(raw);
+  if (refusal) {
+    throw new Error(
+      `${describe} uses ${refusal}, which is outside the RE2 subset every runtime's migration ` +
+        `reader accepts — no lookaround, no backreferences`,
+    );
+  }
+  try {
+    new RegExp(`^(?:${raw})$`, "u");
+  } catch (err) {
+    throw new Error(`${describe} is not a valid pattern: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
+/** The first construct in `pattern` RE2 does not support, or undefined. */
+function outsideRe2Subset(pattern: string): string | undefined {
+  let inClass = false;
+  for (let i = 0; i < pattern.length; i++) {
+    const char = pattern[i];
+    if (char === "\\") {
+      const next = pattern[i + 1] ?? "";
+      if (/[1-9]/.test(next)) return `a backreference ('\\${next}')`;
+      if (next === "k" && pattern[i + 2] === "<") return "a named backreference ('\\k<…>')";
+      i++;
+      continue;
+    }
+    if (inClass) {
+      if (char === "]") inClass = false;
+      continue;
+    }
+    if (char === "[") {
+      inClass = true;
+      // A `]` right after the opener (or after `^`) is a literal member.
+      if (pattern[i + 1] === "^") i++;
+      if (pattern[i + 1] === "]") i++;
+      continue;
+    }
+    if (char === "(" && pattern[i + 1] === "?") {
+      const rest = pattern.slice(i + 2, i + 4);
+      if (rest.startsWith("=") || rest.startsWith("!")) return `a lookahead ('(?${rest[0]}')`;
+      if (rest === "<=" || rest === "<!") return `a lookbehind ('(?${rest}')`;
+    }
+  }
+  return undefined;
 }
 
 /** The sites in `index` this match selects, in document order. */

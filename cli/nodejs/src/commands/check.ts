@@ -1,5 +1,9 @@
-import { StaticAnalyzer, collectModuleDocuments, flattenForAnalyzer } from "@telorun/analyzer";
-import { assembleGraphDiagnostics } from "@telorun/ide-support";
+import {
+  StaticAnalyzer,
+  assembleGraphDiagnostics,
+  collectModuleDocuments,
+  flattenForAnalyzer,
+} from "@telorun/analyzer";
 import { nodeHostVersions, writeManifestCache } from "@telorun/kernel";
 import * as path from "path";
 import type { Argv } from "yargs";

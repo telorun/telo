@@ -6,14 +6,43 @@ imports:
   Assert: ../modules/assert
 targets:
   - !ref testCapabilityShadowsExtends
+  - !ref testCapabilityShadowsExtendsRequired
+  - !ref testCapabilityShadowsExtendsOccupied
 ---
-# Asserts that `capability: <UserAbstract>` emits CAPABILITY_SHADOWS_EXTENDS (warning).
-# Builtin lifecycle capabilities (Telo.Invocable, etc.) must NOT trigger this — verified
-# implicitly since most fixtures declare `capability: Telo.Invocable` without complaint.
+# `capability: <Alias>.<Kind>` is the legacy spelling of `extends:` — the
+# `capability-as-extends` migration rewrites it at load, warns
+# CAPABILITY_SHADOWS_EXTENDS, and the manifest loads and runs as written.
 kind: Assert.Manifest
 metadata:
   name: testCapabilityShadowsExtends
 source: ./__fixtures__/capability-shadows-extends.yaml
 expect:
+  errors: []
   warnings:
     - code: CAPABILITY_SHADOWS_EXTENDS
+      message: "`capability: AbstractLib.Greeter` is now written `extends: AbstractLib.Greeter`"
+  runs: true
+---
+# Migrated, the kind is the abstract's child: what the abstract requires is
+# required of each resource of it.
+kind: Assert.Manifest
+metadata:
+  name: testCapabilityShadowsExtendsRequired
+source: ./__fixtures__/capability-shadows-extends-required.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "is missing required property 'greeting'"
+  warnings:
+    - code: CAPABILITY_SHADOWS_EXTENDS
+---
+# Beside a declared `extends:` the rename has nowhere to go: the value is refused
+# as no lifecycle role, once.
+kind: Assert.Manifest
+metadata:
+  name: testCapabilityShadowsExtendsOccupied
+source: ./__fixtures__/capability-shadows-extends-occupied.yaml
+expect:
+  errors:
+    - code: CAPABILITY_UNKNOWN
+      message: "a definition has one parent, declared in 'extends:'"

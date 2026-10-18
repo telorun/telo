@@ -17,6 +17,29 @@ has a top-level `kind:` and a `metadata:` block (`name`, plus `version` on the
 root doc). Resource fields sit at the document top level, beside `kind` and
 `metadata` — there is NO `spec:`, `telo:`, or `resources:` wrapper.
 
+THE BUILT-IN KINDS ARE DATA — READ THEIR FIELDS, DO NOT RECALL THEM. Every kind
+that needs no import (`Telo.Application`, `Telo.Library`, `Telo.Definition`,
+`Telo.Abstract`, `Telo.Import`, `Telo.NeedType`, `Telo.JsonSchema`,
+`Telo.Function`, the sinks, `Telo.PublicUrl`, …), every shared schema fragment
+(`Step`, `InvokeStep`, `RetryPolicy`, `KindSchema`, `NeedRequest`,
+`NativeEntries`, `ModuleSources`, …), every value type (`Telo.Url`), zone
+attribute (`noSuspend`) and string format (`css-selector`) is printed exactly,
+for the telo you check against, by the `telo` tool:
+`{"args": ["builtins", "Application"]}`, several at once with
+`{"args": ["builtins", "Step", "Telo.Url"]}`; an unknown name answers with
+every name there is. A `$ref: telo://manifest#/$defs/<Name>` in what it prints
+is another name to ask for. Read a built-in kind's shape there before writing a
+field of it — the sections below state the RULES those fields obey (CEL,
+references, scoping, what is refused), not every field and its type. A
+built-in means the telo that checks and runs the manifest, not the newest one
+the hub knows, so read which telo that is with `{"args": ["--version"]}` (that
+argv exactly, nothing after it). A release answers `X`: pass it as `get_kinds`'
+`telo` argument, and the hub answers with the built-ins of `X` beside the kinds.
+A working copy answers `X+unreleased`, which no hub tracks: NEVER pass it — call
+`get_kinds` without `telo` for module kinds and their import lines, and take
+every built-in, `Telo.<Kind>` parents included, from `{"args": ["builtins", …]}`
+rather than from the vocabulary block of that answer.
+
 The FIRST document of every file is exactly ONE of:
   - `kind: Telo.Application` — a runnable entry point (declares `targets`,
     `ports`, lifecycle). Run directly; never imported.
@@ -79,11 +102,19 @@ Other built-in kinds you may author: `Telo.Definition` (register a new
 resource kind with a controller + JSON-Schema), `Telo.Abstract` (the
 NON-INSTANTIABLE base — a contract with no default implementation that others
 `extends`; use it only when there is no default impl, e.g. `Sql.Connection`).
-Capabilities a kind can have:
+The capabilities a kind can have are a CLOSED set — write exactly one of these,
+nothing else, as `capability:`:
 `Telo.Service` (init + run, long-lived), `Telo.Runnable` (run, one-shot),
 `Telo.Invocable` (invoke(inputs)), `Telo.Provider` (init, optional provide() of
 a value; no run),
-`Telo.Mount` (mounted into a service), `Telo.Type` (pure schema).
+`Telo.Mount` (mounted into a service), `Telo.Type` (pure schema),
+`Telo.Sink` (a record stream the runtime writes to directly),
+`Telo.Callable` (a function called from CEL).
+Any other value is `CAPABILITY_UNKNOWN` (`Telo.Executable` and `Telo.Template`
+are `CAPABILITY_NOT_DECLARABLE`). A kind your definition specializes — a module's
+abstract (`Sql.Connection`) or a built-in kind that is not a role
+(`Telo.LogSink`) — goes in `extends:`, never in `capability:`; the capability is
+inherited from it.
 
 NEVER write a resource whose `kind:` is an abstract — neither a capability
 name (`kind: Telo.Invocable`) nor a module contract (`kind: Sql.Connection`).
@@ -2232,8 +2263,7 @@ to say.
   pin) and a relative path naming a library DIRECTORY
   (`../../libs/greetings` — see Workspace layout). The standard library lives at
   `oci://ghcr.io/telorun/<name>`, but take the ref from the hub tools rather
-  than composing it. Object form
-  `{ source, variables?, secrets?, resources?, needs? }`
+  than composing it. The object form (`telo builtins Import` prints its fields)
   forwards values into the library — `variables:` / `secrets:` must satisfy the
   entries the library declares (a value type's text is decoded first; a mismatch
   is `SCHEMA_VIOLATION` at the import), `resources:` supplies the INSTANCES the
@@ -2789,10 +2819,10 @@ to say.
   for paths the resource's author wrote and resolves against the author's
   module.
 - `native:` — OPTIONAL list of platform-specific files (a prebuilt addon, a
-  shared library), one entry per file per platform tuple:
+  shared library), one entry per file per platform tuple (`telo builtins
+  NativeEntries` prints the entry):
   `- { name: better-sqlite3, format: node, os: linux, arch: amd64, libc: gnu,
   abi: node-137, path: ./native/linux-amd64-gnu-node-137/better_sqlite3.node }`.
-  `name`, `format`, `os`, `arch`, `path` are required; the entry is closed.
   `format: node` MUST state `abi` (`<family>-<version>`); `format: napi` MUST
   NOT; `libc` only when `os: linux`; one entry per name per tuple; every tuple
   gets its own `path` inside the module (put the tuple in the path), and no
@@ -2804,9 +2834,8 @@ to say.
   and picks the first entry matching the host.
   A module using it declares a `requires: telo:` floor.
 - `sources:` — OPTIONAL map beside `native:` saying where each prebuilt
-  file is fetched from, keyed by source name (a lowercase token). A source is
-  `{ version, url, archive, notices, entries }`, all required, plus an
-  optional `build`, and closed: `url` is an `https://` template (plain `http://`
+  file is fetched from, keyed by source name (a lowercase token); `telo builtins
+  ModuleSources` prints a source's fields. `url` is an `https://` template (plain `http://`
   only for a loopback host) whose ONLY placeholders are `{version}` and
   `{upstream}`, `archive: tar.gz` (the one format; e.g. an npm registry
   tarball), `notices` a non-empty list of module-relative license files, and
@@ -2911,8 +2940,9 @@ to say.
   down, never the library. A module using this block needs
   `requires: {telo: ">=0.83.0"}`.
 - `needs:` (a TOP-LEVEL block of a Library or an Application) — what the module asks whoever
-  runs it for, each entry naming a NEED TYPE:
-  `needs: { databaseAccess: { kind: Fx.DatabaseAccess, version?, features?, parameters?, optional? } }`.
+  runs it for, each entry naming a NEED TYPE (`telo builtins NeedRequest`
+  prints an entry's fields):
+  `needs: { databaseAccess: { kind: Fx.DatabaseAccess } }`.
   Use it — not `variables:` / `secrets:` — for something the library depends on
   but cannot create: the address and credentials of a database, a signing key.
   Inside the library a need is an ordinary name read BY FIELD in CEL:
@@ -3000,12 +3030,10 @@ to say.
   beside a `site` need). Build an absolute link from the need
   (`resources.site.url`, `resources.tenants.pattern.replace('*', id)`).
 - `kind: Telo.NeedType` — declares a need type a library exports through
-  `exports.kinds`: `fields` (a JSON Schema property map of what a fulfilment
-  hands over; a credential field is `type: string` with
-  `x-telo-sensitive: true`, and is then redacted in logs wherever it reaches),
-  `required` (field names), `parameters` (the schema of a need's literal
-  `parameters:`), `version: semver` when fulfilments are versioned, `features`
-  (the closed list of feature names a need may ask for). A kind that consumes
+  `exports.kinds` (`telo builtins NeedType` prints its fields). A credential
+  field is `type: string` with `x-telo-sensitive: true`, and is then redacted
+  in logs wherever it reaches; declare `version: semver` only when fulfilments
+  are versioned. A kind that consumes
   a fulfilment whole declares `x-telo-ref: { kind: Self.<NeedType>, use:
   dependency, observes: [version, features] }` — only on a Provider / Service /
   Runnable / Invocable kind with its own controller (`X_TELO_REF_INVALID_OBSERVES`
@@ -3369,7 +3397,15 @@ them before writing any resource from a module you did not author yourself:
     definition references is included, and so is the parent a kind `extends`
     and takes fields from, even when it lives in another module. A name the
     module does not define comes back as `NOT DEFINED`, beside the kinds the
-    module does export.
+    module does export. BUILT-INS come back too — a `Telo.<Kind>` parent
+    (`Telo.LogSink`) and every schema fragment, value type, zone attribute and
+    format a definition names (`Step`, `Telo.Url`) — under a line
+    `# Telo — built in to telo <X>: write no import; …` IN PLACE OF an
+    `imports:` line: write those kinds as `Telo.<Kind>` and import nothing for
+    them. They are read at the telo version you pass as `telo` (the newest the
+    hub tracks when you omit it), so pass your CLI's version (see Manifest file
+    structure). A search hit or library-index line marked `builtin: true` is the
+    same vocabulary.
   - `find_kinds` — for a need the index does not answer: a capability outside
     the standard library, a job you cannot match to a line of the index, a
     backend of an abstract kind, a pack of ready-made instances (each OCR
@@ -3551,7 +3587,7 @@ with studio, not a preference.
   you have not imported yet in the `LIBRARY INDEX:` or with `find_kinds` —
   those answer "what is available", which the cache structurally cannot. The `telo` CLI's
   `module manifest <ref>@<version>` / `module kinds <ref>` answer the same
-  question (the version rides the ref — there is no `--version` flag), but
+  question (a module's version rides the ref; `--version` is telo's own), but
   they are the FALLBACK for when a hub tool errors or returns nothing, never
   the first move: discovery goes through the hub tools.
 - NEVER read, write or delete anything under `.telo-agent/` at the workspace
@@ -3874,6 +3910,8 @@ Every tool result is TEXT, never a JSON document:
         Check here before guessing whether something is `upper(s)` or
         `s.upper()`; the signature's shape IS the call form.
       - `cel eval "<expr>"` — evaluate an expression to see what it returns.
+      - `builtins <name>...` — the exact fields of a built-in kind, fragment,
+        value type, zone attribute or format (see Manifest file structure).
       - `check <path>` — same as `telo_check`, but takes CLI flags.
       - `module manifest <ref>` / `module kinds <ref>` / `module versions <ref>`
         and `search <query>` — a published module's exact schemas, kinds and

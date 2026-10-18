@@ -12,6 +12,10 @@
 # first assertion; one that gains a static half and no kernel half fails the
 # second.
 #
+# A run the load's analysis refuses names its cause as `[<CODE>] <message>` — the
+# analyzer's unprefixed code and the exact `telo check` message, which a refused
+# child writes to stderr — never the `Manifest validation failed` headline.
+#
 # Only kernel/analyzer-owned refusals belong here; a module's own rule pairs live in its `tests/`.
 kind: Telo.Application
 metadata:
@@ -174,8 +178,21 @@ targets:
   - !ref templateForwardInvalidAtRuntime
   - !ref throwsCeiling
   - !ref throwsCeilingAtRuntime
+  - !ref capabilityRoster
+  - !ref capabilityUnknownAtRuntime
+  - !ref capabilityNotDeclarableAtRuntime
+  - !ref scopedKindDocumentCapability
+  - !ref scopedKindDocumentSchema
+  - !ref scopedKindDocumentLibrary
+  - !ref scopedKindDocumentLibraryCapability
+  - !ref scopedKindDocumentLibrarySchema
+  - !ref capabilityThroughWrap
+  - !ref definitionUnknownField
+  - !ref definitionUnknownFieldAtRuntime
   - !ref throwsShape
   - !ref throwsShapeAtRuntime
+  - !ref abstractStatusShape
+  - !ref abstractStatusShapeAtRuntime
   - !ref cssSelectorLiteral
   - !ref cssSelectorLiteralAtRuntime
   - !ref cssSelectorComputedAtRuntime
@@ -353,6 +370,13 @@ targets:
   - !ref importVariableUrlAtRuntime
   - !ref importVariableType
   - !ref importVariableTypeAtRuntime
+  - !ref builtinVocabularyEntry
+  - !ref builtinVocabularyDeclared
+  - !ref builtinVocabularyImport
+  - !ref reservedApplicationName
+  - !ref reservedLibraryName
+  - !ref reservedLibraryNameAtImport
+  - !ref reservedImportAlias
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -1033,7 +1057,7 @@ expect:
   errors:
     - code: FUNCTION_CALL_UNBOUND
       message: "calls 'Self.level', but the Application's logging: block is resolved when the application is loaded"
-  runFails: "Manifest validation failed"
+  runFails: "[FUNCTION_CALL_UNBOUND] Telo.Application/UnboundLoggingApp: CEL at 'logging.level' calls 'Self.level', but the Application's logging: block is resolved when the application is loaded, before any resource — any function among them — has been created, so no module function can be called here. Write the logic into the expression itself."
 ---
 # Function RESOURCES declaring what an instance cannot: a signature no call can
 # be bound against, and a determinism claim. Reported where they are written…
@@ -1488,7 +1512,7 @@ expect:
   errors:
     - code: HOST_PATH_RELATIVE
       message: "builds a path starting with 'data/'"
-  runFails: "Manifest validation failed"
+  runFails: "[HOST_PATH_RELATIVE] Http.Static/site: 'root' is a Telo.HostPath, but this expression builds a path starting with 'data/', which is relative. A host path comes from a variable declared x-telo-type: Telo.HostPath (which resolves a relative value against the working directory), from !module-path, or from .joinPath('sub/dir') on either."
 ---
 # …while one read from a source declaring no type is known only once it is
 # evaluated, so the kernel refuses the result after compile-eval expansion.
@@ -1605,7 +1629,157 @@ expect:
   errors:
     - code: THROWS_NOT_SUBSTITUTABLE
       message: "throws 'ERR_BACKEND_DOWN', which 'ThrowsCeilingLib.Lookup' does not declare"
-  runFails: "Manifest validation failed"
+  runFails: "[THROWS_NOT_SUBSTITUTABLE] Telo.Abstract 'WideLookup': throws 'ERR_BACKEND_DOWN', which 'ThrowsCeilingLib.Lookup' does not declare. An ancestor's throws: is a ceiling — a caller holding this through 'ThrowsCeilingLib.Lookup' is told it can catch ERR_NOT_FOUND, and nothing re-checks a replacing list against it at dispatch. Report the failure under one of those codes, or add the code to 'ThrowsCeilingLib.Lookup'."
+---
+# A `capability:` outside the closed roster: three values that name no role and
+# two roster entries no author may declare, one on an abstract, each refused at
+# the declaring library. The kernel refuses each at registration
+# (ERR_CAPABILITY_UNKNOWN / ERR_CAPABILITY_NOT_DECLARABLE), so a consumer's check
+# reports a dependency's at the `imports:` entry reaching it, and its run fails
+# naming that cause. The kernel guard's own text is pinned by the vectors in
+# analyzer/capability-conformance/.
+kind: Assert.Manifest
+metadata:
+  name: capabilityRoster
+source: ./__fixtures__/check-run-agreement/capability-roster/lib/telo.yaml
+expect:
+  errors:
+    - code: CAPABILITY_UNKNOWN
+      message: "'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'?"
+    - code: CAPABILITY_UNKNOWN
+      message: "'Invocable' is not a capability: a lifecycle role is written 'Telo.<Role>'. Did you mean 'Telo.Invocable'?"
+    - code: CAPABILITY_UNKNOWN
+      message: "'Telo.LogSink' is a built-in kind, not a lifecycle role. To specialize it, write 'extends: Telo.LogSink'"
+    - code: CAPABILITY_NOT_DECLARABLE
+      message: "Telo.Definition 'Templated': 'Telo.Template' cannot be declared as a capability"
+    - code: CAPABILITY_NOT_DECLARABLE
+      message: "Telo.Definition 'Executable': 'Telo.Executable' cannot be declared as a capability"
+    - code: CAPABILITY_NOT_DECLARABLE
+      message: "Telo.Abstract 'ExecutableContract': 'Telo.Executable' cannot be declared as a capability"
+---
+kind: Assert.Manifest
+metadata:
+  name: capabilityUnknownAtRuntime
+source: ./__fixtures__/check-run-agreement/capability-roster/telo.yaml
+expect:
+  errors:
+    - code: CAPABILITY_UNKNOWN
+      message: "reached through import 'Lib': Telo.Definition 'Misspelled': 'Telo.Invokable' is not a capability"
+    - code: CAPABILITY_UNKNOWN
+      message: "reached through import 'Lib': Telo.Definition 'Unqualified': 'Invocable' is not a capability"
+    - code: CAPABILITY_UNKNOWN
+      message: "reached through import 'Lib': Telo.Definition 'KindNamed': 'Telo.LogSink' is a built-in kind"
+  runFails: "[CAPABILITY_UNKNOWN] Imported library 'CapabilityRosterLib', reached through import 'Lib': Telo.Definition 'Misspelled': 'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+---
+kind: Assert.Manifest
+metadata:
+  name: capabilityNotDeclarableAtRuntime
+source: ./__fixtures__/check-run-agreement/capability-roster/telo.yaml
+expect:
+  errors:
+    - code: CAPABILITY_NOT_DECLARABLE
+      message: "reached through import 'Lib': Telo.Definition 'Templated': 'Telo.Template' cannot be declared"
+    - code: CAPABILITY_NOT_DECLARABLE
+      message: "reached through import 'Lib': Telo.Definition 'Executable': 'Telo.Executable' cannot be declared"
+    - code: CAPABILITY_NOT_DECLARABLE
+      message: "reached through import 'Lib': Telo.Abstract 'ExecutableContract': 'Telo.Executable' cannot be declared"
+  runFails: "[CAPABILITY_NOT_DECLARABLE] Imported library 'CapabilityRosterLib', reached through import 'Lib': Telo.Abstract 'ExecutableContract': 'Telo.Executable' cannot be declared as a capability: Anything control can be transferred to with call arguments — a resource that is invoked or run. A reference slot accepting either says so once with this constraint. It names no lifecycle of its own, so no kind declares it as its role: a kind declares the role it implements. Declare one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+---
+# A kind document declared as a `with:` scope member gets no per-resource pass,
+# yet the kernel judges it when the scope opens and creates it. `telo check`
+# runs the roster and the entry schema on it, at the member's own line, and the
+# load's analysis refuses the run before anything starts.
+kind: Assert.Manifest
+metadata:
+  name: scopedKindDocumentCapability
+source: ./__fixtures__/check-run-agreement/scoped-kind-document/telo.yaml
+expect:
+  errors:
+    - code: CAPABILITY_UNKNOWN
+      message: "Telo.Definition 'Misspelled': 'Telo.Invokable' is not a capability"
+  runFails: "[CAPABILITY_UNKNOWN] Telo.Definition 'Misspelled': 'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+---
+kind: Assert.Manifest
+metadata:
+  name: scopedKindDocumentSchema
+source: ./__fixtures__/check-run-agreement/scoped-kind-document/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Definition/Misnamed: / must NOT have additional properties ('controllrs' is not allowed)"
+  runFails: "[SCHEMA_VIOLATION] Telo.Definition/Misnamed: / must NOT have additional properties ('controllrs' is not allowed)"
+---
+# The same two kind documents, declared in a scope of a LIBRARY's sequence. The
+# library's own check refuses them at the member; a consumer's check reports
+# them at its `imports:` entry reaching the library, and its run fails naming
+# each cause.
+kind: Assert.Manifest
+metadata:
+  name: scopedKindDocumentLibrary
+source: ./__fixtures__/check-run-agreement/scoped-kind-document-library/lib/telo.yaml
+expect:
+  errors:
+    - code: CAPABILITY_UNKNOWN
+      message: "Telo.Definition 'Misspelled': 'Telo.Invokable' is not a capability"
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Definition/Misnamed: / must NOT have additional properties ('controllrs' is not allowed)"
+---
+kind: Assert.Manifest
+metadata:
+  name: scopedKindDocumentLibraryCapability
+source: ./__fixtures__/check-run-agreement/scoped-kind-document-library/telo.yaml
+expect:
+  errors:
+    - code: CAPABILITY_UNKNOWN
+      message: "reached through import 'Lib': Telo.Definition 'Misspelled': 'Telo.Invokable' is not a capability"
+  runFails: "[CAPABILITY_UNKNOWN] Imported library 'ScopedKindDocumentLib', reached through import 'Lib': Telo.Definition 'Misspelled': 'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+---
+kind: Assert.Manifest
+metadata:
+  name: scopedKindDocumentLibrarySchema
+source: ./__fixtures__/check-run-agreement/scoped-kind-document-library/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "reached through import 'Lib': Telo.Definition/Misnamed: / must NOT have additional properties ('controllrs' is not allowed)"
+  runFails: "[SCHEMA_VIOLATION] Imported library 'ScopedKindDocumentLib', reached through import 'Lib': Telo.Definition/Misnamed: / must NOT have additional properties ('controllrs' is not allowed)"
+---
+# A dependency's refusal is reported at the consumer's own `imports:` entry
+# through which the declaring library is first reached, however deep: here the
+# capability-roster library sits one import beneath the consumer's `Wrap`.
+kind: Assert.Manifest
+metadata:
+  name: capabilityThroughWrap
+source: ./__fixtures__/check-run-agreement/capability-roster/through-wrap/telo.yaml
+expect:
+  errors:
+    - code: CAPABILITY_UNKNOWN
+      message: "reached through import 'Wrap': Telo.Definition 'Misspelled': 'Telo.Invokable' is not a capability"
+    - code: CAPABILITY_NOT_DECLARABLE
+      message: "reached through import 'Wrap': Telo.Abstract 'ExecutableContract': 'Telo.Executable' cannot be declared"
+  runFails: "[CAPABILITY_UNKNOWN] Imported library 'CapabilityRosterLib', reached through import 'Wrap': Telo.Definition 'Misspelled': 'Telo.Invokable' is not a capability. Did you mean 'Telo.Invocable'? A capability names a lifecycle role — one of: Telo.Callable, Telo.Invocable, Telo.Mount, Telo.Provider, Telo.Runnable, Telo.Service, Telo.Sink, Telo.Type."
+---
+# A key the `Telo.Definition` schema does not declare. `telo check` and the kernel
+# validate a definition against the one built-in schema, so a misspelled
+# `controllers:` is refused by both rather than read as nothing.
+kind: Assert.Manifest
+metadata:
+  name: definitionUnknownField
+source: ./__fixtures__/check-run-agreement/definition-unknown-field/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Definition/Thing: / must NOT have additional properties ('controllrs' is not allowed)"
+---
+kind: Assert.Manifest
+metadata:
+  name: definitionUnknownFieldAtRuntime
+source: ./__fixtures__/check-run-agreement/definition-unknown-field/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Definition/Thing: / must NOT have additional properties ('controllrs' is not allowed)"
+  runFails: "[SCHEMA_VIOLATION] Telo.Definition/Thing: / must NOT have additional properties ('controllrs' is not allowed)"
 ---
 # A malformed `throws:` on an abstract: a key an abstract cannot carry (even set
 # to false), and a code that is not an upper-case identifier and has no
@@ -1629,7 +1803,30 @@ expect:
   errors:
     - code: SCHEMA_VIOLATION
       message: "Telo.Abstract/NotLiteral: /throws must NOT have additional properties ('inherit' is not allowed)"
-  runFails: "Manifest validation failed"
+  runFails: "[SCHEMA_VIOLATION] Telo.Abstract/NotLiteral: /throws must NOT have additional properties ('inherit' is not allowed)"
+---
+# An abstract's `status:` is held to JSON Schema by the one built-in
+# `Telo.Abstract` schema both halves validate it against: a keyword JSON Schema
+# refuses is refused at the declaring library, and a consumer's run fails naming
+# it.
+kind: Assert.Manifest
+metadata:
+  name: abstractStatusShape
+source: ./__fixtures__/check-run-agreement/abstract-status-shape/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Abstract/Listener: /status/properties/port/minimum must be number"
+---
+kind: Assert.Manifest
+metadata:
+  name: abstractStatusShapeAtRuntime
+source: ./__fixtures__/check-run-agreement/abstract-status-shape/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Abstract/Listener: /status/properties/port/minimum must be number"
+  runFails: "[SCHEMA_VIOLATION] Telo.Abstract/Listener: /status/properties/port/minimum must be number"
 ---
 # A command-line binding the kernel cannot parse argv against is refused by
 # `telo check`, and by the kernel before any resource starts.
@@ -1641,7 +1838,7 @@ expect:
   errors:
     - code: ARG_BINDING_INVALID
       message: "flag '--name' is already bound by variables.first"
-  runFails: "Manifest validation failed"
+  runFails: "[ARG_BINDING_INVALID] Telo.Application variables.second: flag '--name' is already bound by variables.first."
 ---
 kind: Assert.Manifest
 metadata:
@@ -1651,7 +1848,7 @@ expect:
   errors:
     - code: ARG_BINDING_ON_SECRET
       message: "a secret cannot be bound to the command line"
-  runFails: "Manifest validation failed"
+  runFails: "[ARG_BINDING_ON_SECRET] Telo.Application secrets.token: a secret cannot be bound to the command line — a command line is readable in the process table and in shell history. Bind it with 'env:'."
 ---
 # A plain string holding `${{` that no hole can be read out of: the untagged-
 # interpolation migration leaves it, and neither half reads it as text.
@@ -1673,7 +1870,7 @@ expect:
   errors:
     - code: UNTAGGED_INTERPOLATION
       message: "the imported library 'UntaggedUnreadableLib'"
-  runFails: "Manifest validation failed"
+  runFails: !literal "[UNTAGGED_INTERPOLATION] Telo.Import/Lib: the imported library 'UntaggedUnreadableLib' holds a plain string with '${{' that no hole can be read out of (Run.Value/say 'value'), so it fails to load with ERR_UNTAGGED_INTERPOLATION. It is the library's to fix; import a version that writes it as !interpolate or !literal."
 ---
 # An `!interpolate` hole CEL's `string()` cannot convert.
 kind: Assert.Manifest
@@ -2367,7 +2564,7 @@ expect:
   errors:
     - code: SCHEMA_PROJECTION_FROM_UNRESOLVED
       message: "'/node' leads to '/shape' inside 'shapeless', which does not hold a reference"
-  runFails: "Manifest validation failed"
+  runFails: "[SCHEMA_PROJECTION_FROM_UNRESOLVED] Lib.Write: '/node' leads to '/shape' inside 'shapeless', which does not hold a reference, so there is no declaration to project."
 ---
 # A malformed derivation is reported wherever a schema is written — a
 # resource's own contract, and a named shape used as one — not only in a
@@ -3827,3 +4024,83 @@ source: ./__fixtures__/check-run-agreement/import-inputs/integer-app.yaml
 expect:
   errors: []
   runFails: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED"
+---
+# The built-in vocabulary archive is read, never run, declared or imported: as
+# an entry the loader refuses the whole file with one diagnostic, and a document
+# of its kind inside a module file is a kind registered nowhere. An import of it
+# is refused by the loader both halves share — `telo check` reports it at the
+# `imports:` entry, and the run's refusal (ERR_INVALID_IMPORT_TARGET) carries it.
+kind: Assert.Manifest
+metadata:
+  name: builtinVocabularyEntry
+source: ./__fixtures__/check-run-agreement/builtin-vocabulary/builtins.yaml
+expect:
+  errors:
+    - code: UNDEFINED_KIND
+      message: "Telo.Builtins is the published built-in vocabulary of a telo release; it is read, never declared, run or imported."
+  runFails: "[UNDEFINED_KIND] Telo.Builtins is the published built-in vocabulary of a telo release; it is read, never declared, run or imported."
+---
+kind: Assert.Manifest
+metadata:
+  name: builtinVocabularyDeclared
+source: ./__fixtures__/check-run-agreement/builtin-vocabulary/declared.yaml
+expect:
+  errors:
+    - code: UNDEFINED_KIND
+      message: "Telo.Builtins is the published built-in vocabulary of a telo release; it is read, never declared, run or imported."
+  runFails: "[UNDEFINED_KIND] Telo.Builtins is the published built-in vocabulary of a telo release; it is read, never declared, run or imported."
+---
+kind: Assert.Manifest
+metadata:
+  name: builtinVocabularyImport
+source: ./__fixtures__/check-run-agreement/builtin-vocabulary/telo.yaml
+expect:
+  errors:
+    - code: INVALID_IMPORT_TARGET
+      message: "Cannot use import 'Builtins' → './builtins.yaml': './builtins.yaml' is the built-in vocabulary of telo 0.119.0; its kinds need no import — remove this `imports:` entry and write them as `Telo.<Kind>`."
+  runFails: "[INVALID_IMPORT_TARGET] Cannot use import 'Builtins' → './builtins.yaml': './builtins.yaml' is the built-in vocabulary of telo 0.119.0; its kinds need no import — remove this `imports:` entry and write them as `Telo.<Kind>`."
+---
+# `Telo` and `Self` are the runtime's kind prefixes, so no module may be named
+# after one and no import aliased one: a library named `Telo` used to replace the
+# built-in definitions silently. A module's own name is refused by analysis; an
+# import's alias, and the name of the library an import reaches, by the loader
+# both halves share — reported at the `imports:` entry by `telo check`, and
+# carried by the run's refusal.
+kind: Assert.Manifest
+metadata:
+  name: reservedApplicationName
+source: ./__fixtures__/check-run-agreement/reserved-prefix/application/telo.yaml
+expect:
+  errors:
+    - code: KIND_PREFIX_RESERVED
+      message: "A module may not be named 'Telo'"
+  runFails: "[KIND_PREFIX_RESERVED] Telo.Application/Telo: A module may not be named 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. Rename the module."
+---
+kind: Assert.Manifest
+metadata:
+  name: reservedLibraryName
+source: ./__fixtures__/check-run-agreement/reserved-prefix/self-library/telo.yaml
+expect:
+  errors:
+    - code: KIND_PREFIX_RESERVED
+      message: "Telo.Library/Self: A module may not be named 'Self'"
+---
+kind: Assert.Manifest
+metadata:
+  name: reservedLibraryNameAtImport
+source: ./__fixtures__/check-run-agreement/reserved-prefix/telo.yaml
+expect:
+  errors:
+    - code: KIND_PREFIX_RESERVED
+      message: "Cannot use import 'Lib' → './self-library': './self-library' is a Telo.Library named 'Self': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. It cannot be imported until it is renamed."
+  runFails: "[KIND_PREFIX_RESERVED] Cannot use import 'Lib' → './self-library': './self-library' is a Telo.Library named 'Self': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so its kinds would replace them. It cannot be imported until it is renamed."
+---
+kind: Assert.Manifest
+metadata:
+  name: reservedImportAlias
+source: ./__fixtures__/check-run-agreement/reserved-prefix/alias-telo/telo.yaml
+expect:
+  errors:
+    - code: KIND_PREFIX_RESERVED
+      message: "Cannot use import 'Telo' → '../plain-library': An import may not be aliased 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so this import would replace them. Choose another alias."
+  runFails: "[KIND_PREFIX_RESERVED] Cannot use import 'Telo' → '../plain-library': An import may not be aliased 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so this import would replace them. Choose another alias."

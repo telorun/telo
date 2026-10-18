@@ -188,12 +188,15 @@ steps:
       q: instant in the past
       category: ""
       runtime: ""
+  # Of one publisher: the shared database holds other tests' entries, and a
+  # browse of all of them would cut this module's off at the limit.
   - name: browse
     invoke: !ref Search.searchResources
     inputs:
       q: ""
       category: ""
       runtime: ""
+      publisher: example.test/crypto
   # An instance of an imported kind is filed under its own module's categories,
   # never under those of a local kind that shares the suffix.
   - name: importedKindCategory
@@ -209,14 +212,12 @@ steps:
           steps.byDescription.result.hits.filter(h, h.entry == 'instance').map(i,
             [i.name, i.kind, i.description, i.module.ref, i.module.version, i.module.name])
         unexportedKindIsNoHit: !cel >-
-          steps.byDescription.result.hits.filter(h, h.entry == 'kind').size()
+          steps.byDescription.result.hits
+            .filter(h, h.entry == 'kind' && h.module.ref == 'oci://example.test/crypto').size()
         builtInKind: !cel >-
           steps.builtInKind.result.hits.filter(h, h.entry == 'instance').map(i, [i.name, i.kind])
         browseInstances: !cel >-
-          steps.browse.result.hits
-            .filter(h, h.entry == 'instance' && h.module.ref.startsWith('oci://example.test/'))
-            .filter(h, !h.module.ref.startsWith('oci://example.test/ocr-'))
-            .map(i, i.name)
+          steps.browse.result.hits.filter(h, h.entry == 'instance').map(i, i.name)
         importedKindCategory:
           kindHits: !cel >-
             steps.importedKindCategory.result.hits.filter(h, h.entry == 'kind').map(h, h.kind)

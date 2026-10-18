@@ -125,6 +125,10 @@ Package-specific architecture and rationale live in nested `CLAUDE.md` files, lo
 
 Every module file must start with exactly one `Telo.Application` OR `Telo.Library` doc. Applications are runnable entry points, Libraries are importable units of kinds/definitions. Full semantics, with the rationale behind each rule: `analyzer/nodejs/CLAUDE.md`.
 
+`Telo` and `Self` are reserved kind prefixes: no module may be named either and no import aliased either, and a library named either cannot be imported (`KIND_PREFIX_RESERVED` / `ERR_KIND_PREFIX_RESERVED`).
+
+**The built-in vocabulary of a release is the `Telo.Builtins` archive** (normative: `kernel/specs/builtin-vocabulary.md`): a YAML stream rendered at build from `sdk/builtins/` (plus `sdk/value-types/`, `sdk/zone-attributes/`, `sdk/formats/`), shipped in `@telorun/analyzer` as `src/builtin-vocabulary/builtins.yaml` and exported as `BUILTIN_VOCABULARY_ARCHIVE`, embedded by `cli/rust`, printed by `telo builtins [<name>...]` in both CLIs and published per release as `oci://ghcr.io/telorun/telo@<version>`. It is read, never declared, run or imported: as an entry it is one `UNDEFINED_KIND`, as an import target `INVALID_IMPORT_TARGET`, each saying what it is.
+
 ### `kind: Telo.Application`
 
 A runnable entry point, loaded via `Kernel.loadFromConfig`. **Never** imported.
@@ -174,7 +178,8 @@ Registers a kind `<module-name>.<Name>` a module can ask for: `fields` (a JSON S
 
 Registers a new resource kind (`<module-name>.<Name>`).
 
-- `capability` — one of the capabilities below; inherited and immutable under `extends` (`EXTENDS_CAPABILITY_MISMATCH`).
+- `capability` — one of the capabilities below, and nothing else; inherited and immutable under `extends` (`EXTENDS_CAPABILITY_MISMATCH`). A kind a definition specializes goes in `extends:` — the legacy `capability: <Alias>.<Kind>` is rewritten to it by the `capability-as-extends` migration (`CAPABILITY_SHADOWS_EXTENDS`).
+- The `Telo.Definition` / `Telo.Abstract` documents are validated against ONE built-in schema by `telo check` and the kernel alike, so an undeclared key (`controllrs:`) is refused by both.
 - `extends` — alias-qualified kind this definition specializes: an abstract (implements its contract) or a concrete kind (single inheritance, Liskov-substitutable). `Self.<Kind>` names the declaring library's own kind (ungated); the module's own name works too. Guide: `docs/extend/kind-inheritance.md`.
 - `base` — "super(...)": CEL over `self` mapping the child's schema onto the inherited controller's config. With `base:` the author schema is the child's own; without it, `merge(parent, own)`, and the parent's `required` still applies. `base:` beside a template body is refused (`BASE_WITH_TEMPLATE_BODY`).
 - `controllers` — PURL candidates (see Controller delivery); omit on a concrete-`extends` child to inherit.
@@ -189,6 +194,8 @@ Registers a new resource kind (`<module-name>.<Name>`).
 
 ## Capabilities
 
+**The roster is closed**: a capability names a lifecycle a kernel implements, so no module adds one. It is the built-in `Telo.Abstract` entries carrying `declarable` in `sdk/builtins/` (the built-in vocabulary as data — every `Telo.*` kind and the `telo://manifest#/$defs` fragments, one JSON file each, read by both analyzers, both kernels and the editor support). A value outside it is `CAPABILITY_UNKNOWN`, a roster entry no author may declare (`Telo.Executable`, `Telo.Template`) `CAPABILITY_NOT_DECLARABLE` — `ERR_`-prefixed from both kernels, before schema validation, and reported for a dependency's definition at the import reaching it.
+
 - `Telo.Service` — `init()` + `run()`; long-lived servers, pools
 - `Telo.Runnable` — `run()`; one-shot tasks, pipelines
 - `Telo.Invocable` — `invoke(inputs)`; request handlers
@@ -198,7 +205,7 @@ Registers a new resource kind (`<module-name>.<Name>`).
 - `Telo.Type` — pure schema definition, no runtime instance
 - `Telo.Callable` — synchronous `call(args)`; a function reached from CEL through a module name (`Self.fn(x)`, `<Alias>.fn(x)` for an exported one), declaring `params` / `returns`; outside `Telo.Executable`. `Telo.Function` is the built-in CEL-bodied callable, whose determinism is derived and never declared. Guide: `docs/extend/cel-functions.md`.
 
-`Telo.Executable` is a slot constraint — the parent of `Telo.Invocable` and `Telo.Runnable` — not a capability; `capability: Telo.Executable` is rejected, and `Telo.Service` is deliberately outside it. A `Telo.Abstract` is a non-instantiable base kind: a contract with no default implementation. To reuse an existing controller under a friendlier schema, `extends` the concrete kind with `base:` instead.
+`Telo.Executable` is a slot constraint — the parent of `Telo.Invocable` and `Telo.Runnable` — not a capability; `capability: Telo.Executable` is rejected, and `Telo.Service` is deliberately outside it. `Telo.Template` is the role of the built-in document kinds, read and never authored. A `Telo.Abstract` is a non-instantiable base kind: a contract with no default implementation. To reuse an existing controller under a friendlier schema, `extends` the concrete kind with `base:` instead.
 
 ## Lifecycle & value flow
 
@@ -296,7 +303,7 @@ Bare filenames are in `analyzer/nodejs/src/`. Each package guide carries its own
 - Module/import scoping → `evaluation-context.ts`, `module-context-registry.ts`, `import-controller.ts` (kernel)
 - New resource kind → add `Telo.Definition` to the module's `telo.yaml`, controller in `nodejs/src/`
 - Schema validation errors → `manifest-schemas.ts`, `analyzer/nodejs/`; how a failure is phrased → `schema-error-report.ts`
-- `telo check` vs kernel agreement → `tests/check-run-agreement.yaml`. **A guard enforced in a controller with no analyzer twin is a manifest that passes `telo check` and fails at boot** — a new refusal belongs in both halves, and in both halves of this suite. **The suite is for refusals the kernel and analyzer own** (built-in docs, annotations, formats, the manifest grammar). A module's own controller guard twinned by its `x-telo-resource-rules` / `x-telo-referrer-rules` is one module agreeing with itself: pin it the same two ways (refused at the declaring library, `runFails:` from a silent consumer) in that module's `tests/`, never here — otherwise the root suite grows with the stdlib and a module's own suite misses its own divergence.
+- `telo check` vs kernel agreement → `tests/check-run-agreement.yaml`. **A guard enforced in a controller with no analyzer twin is a manifest that passes `telo check` and fails at boot** — a new refusal belongs in both halves, and in both halves of this suite. Its consumer row is silent for an entry-scoped refusal, and import-anchored (`telo check` reports at the `imports:` entry, the run fails naming the cause) for one reported for dependencies; `runFails:` is written `"[<CODE>] <message>"`. **The suite is for refusals the kernel and analyzer own** (built-in docs, annotations, formats, the manifest grammar). A module's own controller guard twinned by its `x-telo-resource-rules` / `x-telo-referrer-rules` is one module agreeing with itself: pin it the same two ways (refused at the declaring library, `runFails:` from a silent consumer) in that module's `tests/`, never here — otherwise the root suite grows with the stdlib and a module's own suite misses its own divergence.
 - References, scope, topology → `ref-slot.ts`, `call-graph.ts`, `reference-field-map.ts`, `dependency-graph.ts`, `validate-references.ts`; what a `!ref` names → `ref-sentinel-target.ts`
 - Library resource inputs, shared libraries → `resource-input.ts`, `validate-resource-inputs.ts`, `flatten-for-analyzer.ts`, `kernel/nodejs/src/controllers/module/shared-libraries.ts`
 - Need types and needs → `need-type.ts` (the reader of the doc and the blocks), `need-table.ts` (paths, supply, environment names, the constraint walk, every refusal), `observing-slot.ts` (`observes` and the observation deadlines), `need-env-name.ts` (the derived-name rule), `validate-needs.ts`, `kernel/nodejs/src/need-resolution.ts` + `need-observation.ts` (`ctx.resolveNeed` / `ctx.verifyNeed` and the deadline), `kernel/nodejs/src/application-env.ts` (the environment read), `cli/nodejs/src/commands/needs.ts` (`telo needs report`), `kernel/nodejs/src/need-fulfilment.ts`, `kernel/nodejs/src/controllers/need/need-type-controller.ts`, `kernel/nodejs/src/controllers/module/import-controller.ts`
@@ -307,6 +314,8 @@ Bare filenames are in `analyzer/nodejs/src/`. Each package guide carries its own
 - Execution zones → `zone-slot.ts`, `resolve-zone-requirements.ts`, `resolve-zone-containment.ts`, `kernel/nodejs/src/resource-handle.ts`, `sdk/zone-attributes/*.json`
 - Resource / referrer rules → `resource-rule.ts`, `validate-resource-rules.ts`, `referrer-rule.ts`, `validate-referrer-rules.ts`
 - Value types → `sdk/value-types/*.json`, `sdk/nodejs/src/value-type.ts`, `value-type-keyword.ts`, `validate-value-type-slots.ts`
+- The built-in vocabulary and the capability roster → `sdk/builtins/` (the entries; its README is the format), `scripts/render-builtin-vocabulary.mjs` (the derivation), `builtins.ts` (registration), `capability-roster.ts` (the roster and its refusals), `analyzer/rust/src/builtins.rs` + `capability_roster.rs`; Telo formats → `sdk/formats/*.json`, `telo-format.ts`
+- The `Telo.Builtins` archive → `kernel/specs/builtin-vocabulary.md` (normative), `scripts/render-builtin-vocabulary.mjs` (rendering, the expected slices), `builtin-vocabulary.ts` (the reader and the refusal sentences), `builtin-vocabulary-slices.ts` + `analyzer/rust/src/builtin_vocabulary_slices.rs` (what `telo builtins <name>` prints), `cli/nodejs/src/commands/builtins.ts`, `cli/rust/src/commands/builtins.rs` + `cli/rust/build.rs`, `cli/nodejs/src/bundle/builtin-vocabulary-payload.ts` (publishing one), `analyzer/nodejs/scripts/check-builtin-vocabulary.mjs` (the analyzer's `prepack` guard), `scripts/publish-builtins.mjs` (the workflow's reconciliation); reserved prefixes → `reserved-kind-prefix.ts`, `kernel/nodejs/src/reserved-kind-prefix.ts`
 - What crosses between a kernel and a CONTROLLER → `kernel/specs/controller-protocol.md` (normative: the closed message set, the framed carrier pinned byte-exactly, the `telo-6` generation), `sdk/controller-protocol/` (one JSON file per message plus `generation.json`; the set is closed and no message exists on one carrier only), `scripts/check-controller-protocol.mjs` (`pnpm run check:controller-protocol` — the bidirectional spec/data check, and the only reader of that spec's markdown), guide `docs/extend/controller-protocol.md`. The spec binds the controller BOUNDARY, never a kernel's internals.
 - Naming → `identifier-name.ts`, `validate-identifier-names.ts`, `docs/guides/style-guide.md`
 - CEL conformance vectors (what every CEL engine must answer) → `templating/cel-conformance/` (the rows; its README is the format), `templating/nodejs/tests/cel-conformance.test.ts` (the Node runner)

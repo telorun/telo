@@ -81,7 +81,10 @@ entries:
           text: !cel >-
             json({'libraries': [{'ref': 'oci://example.test/greeter', 'name': 'Greeter',
                                  'summary': 'Greets people for ' + request.arguments.publisher + '.',
-                                 'kinds': ['Hello']}]})
+                                 'kinds': ['Hello']},
+                                {'ref': 'oci://ghcr.io/telorun/telo', 'name': 'Telo',
+                                 'summary': 'The built-in vocabulary.',
+                                 'kinds': ['Application'], 'builtin': true}]})
   - name: guide_build_ui
     description: HUB_GUIDE_DESCRIPTION How to write a stub. Read before writing one.
     argumentsSchema: { type: object, properties: {}, additionalProperties: false }

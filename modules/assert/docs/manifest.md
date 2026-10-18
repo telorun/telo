@@ -47,7 +47,7 @@ expect:
 | `expect.errors[].message` | string | no | Substring to match in the diagnostic message. |
 | `expect.errors[].fix` | string | no | Substring to match in the diagnostic's suggested replacement. Matching it also asserts that a repair was offered at all — a diagnostic with no fix never matches. |
 | `expect.warnings` | array | no | Expected analysis warnings, matched the same way. Checked only when declared; extra warnings are not failures. |
-| `expect.loadError` | string | no | Substring to match in a manifest load error. Asserts that loading fails. |
+| `expect.loadError` | string | no | Substring to match in a manifest load error. Asserts that loading fails. Fires only when the manifest cannot be loaded at all — an unreadable entry, a refused partial. A failed import is not a load error: it is the coded diagnostic `telo check` reports at the `imports:` entry (`INVALID_IMPORT_SOURCE`, `IMPORT_UNRESOLVED`, `INVALID_IMPORT_TARGET`, `KIND_PREFIX_RESERVED`), matched with `expect.errors`. |
 | `expect.runFails` | string | no | Runs the manifest as well, and asserts it exits non-zero with this substring on stderr. |
 | `expect.runs` | boolean | no | Runs the manifest as well, and asserts it exits 0. |
 | `expect.stdout` | string | no | Runs the manifest, asserts it exits 0 and that everything it wrote to stdout equals this string exactly. Implies `runs: true`. |
@@ -78,6 +78,25 @@ Assert the repair rather than only the message when the repair is the point: a m
 `runFails:` runs the manifest and asserts it exits non-zero with the given
 substring on stderr. It exists to pin a **static verdict to the runtime one** in
 one test: a manifest `telo check` refuses is a manifest the kernel refuses.
+
+A refused run writes its failure's headline to stderr, then one
+`  [<CODE>] <message>` line per diagnostic the failure carries (nested causes
+from an import indented further). For a load the analysis refuses the headline
+is only `Manifest validation failed` and the lines carry the analyzer's own
+unprefixed code with the exact message `telo check` reports — so match the
+cause, written `[<CODE>] <message>`, never the headline, which every analysis
+refusal shares:
+
+```yaml
+expect:
+  errors:
+    - code: ARG_BINDING_INVALID
+      message: "flag '--name' is already bound by variables.first"
+  runFails: "[ARG_BINDING_INVALID] Telo.Application variables.second: flag '--name' is already bound by variables.first."
+```
+
+The unprefixed code also tells a refusal by the load's analysis apart from the
+same mistake refused by a kernel guard, which raises the `ERR_`-prefixed twin.
 
 That agreement is not automatic. A rule enforced only in a controller passes
 `telo check` and fails at boot — which is how a template dispatching to a

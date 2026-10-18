@@ -17,8 +17,7 @@ export interface DefinitionScopeHost {
  *
  * Both meta-controllers refuse here — a `Telo.Definition` and a `Telo.Abstract`
  * may each carry a signature and each be callable — so the refusal lives beside
- * them rather than in either, for the reason the two already share
- * `manifest-schemas.ts`.
+ * them rather than in either.
  *
  * **The rules are read, never restated.** `callableKindIssues` is the analyzer's,
  * browser-safe and re-imported here exactly as `effectiveAuthorSchema` and

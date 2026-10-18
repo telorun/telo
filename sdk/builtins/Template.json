@@ -1,0 +1,10 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "Template",
+    "description": "The lifecycle of a document that declares rather than runs: an application, a library, an import, a kind or a need type. Read by the kernel while it loads a module, never instantiated, and reserved for the built-in vocabulary — a kind declared in a module never takes this role."
+  },
+  "capability": "Telo.Template",
+  "declarable": false,
+  "throwsAllowed": false
+}

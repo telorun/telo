@@ -1,6 +1,7 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import { isCapabilityRole } from "./capability-roster.js";
 import type { BuildModuleGraphOptions, ModuleGraphDeps } from "./module-graph.js";
 import { ManifestAnalysis } from "./manifest-analysis.js";
 import { DefinitionRegistry } from "./definition-registry.js";
@@ -376,9 +377,9 @@ export class AnalysisRegistry {
     return out;
   }
 
-  /** Like {@link capabilityForRef}, but a capability GROUP — an abstract with no
-   *  `capability` of its own that other capability abstracts extend, i.e.
-   *  `Telo.Executable` over Invocable and Runnable — expands to its leaves.
+  /** Like {@link capabilityForRef}, but a capability GROUP — a roster entry that is
+   *  no role, which role abstracts extend, i.e. `Telo.Executable` over Invocable
+   *  and Runnable — expands to the roles beneath it.
    *  Classification consumers (the editor's port flavor) match against leaf
    *  capabilities, so without expansion every `Telo.Executable` slot would fall
    *  out of both classification sets and silently stop rendering — and so would
@@ -388,8 +389,9 @@ export class AnalysisRegistry {
     if (!cap) return [];
     const leaves = this.defs
       .getByExtends(cap)
-      .filter((d) => d.kind === "Telo.Abstract" && !d.capability)
-      .map((d) => `${(d.metadata as { module?: string }).module}.${d.metadata.name}`);
+      .filter((d) => d.kind === "Telo.Abstract")
+      .map((d) => `${(d.metadata as { module?: string }).module}.${d.metadata.name}`)
+      .filter((kind) => isCapabilityRole(kind));
     return leaves.length > 0 ? leaves : [cap];
   }
 

@@ -1,0 +1,13 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "Provider",
+    "description": "A source of configuration, secrets or values, resolved when it is created: init() acquires what it needs and an optional provide() hands over the value. Every field is evaluated once at load, and it reports observed state as soon as it is built."
+  },
+  "capability": "Telo.Provider",
+  "declarable": true,
+  "throwsAllowed": false,
+  "schema": {
+    "x-telo-eval": "compile"
+  }
+}

@@ -1,0 +1,43 @@
+# A `capability:` names a lifecycle role from the closed roster. Three values
+# that name no role, and two roster entries no author may declare — one of them
+# on an abstract — each refused by `telo check` and by the kernel alike.
+kind: Telo.Library
+metadata:
+  name: CapabilityRosterLib
+exports:
+  kinds: [Misspelled, Unqualified, KindNamed, Templated, Executable, ExecutableContract]
+---
+kind: Telo.Definition
+metadata:
+  name: Misspelled
+capability: Telo.Invokable
+schema: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: Unqualified
+capability: Invocable
+schema: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: KindNamed
+capability: Telo.LogSink
+schema: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: Templated
+capability: Telo.Template
+schema: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: Executable
+capability: Telo.Executable
+schema: { type: object }
+---
+kind: Telo.Abstract
+metadata:
+  name: ExecutableContract
+capability: Telo.Executable

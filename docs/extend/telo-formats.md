@@ -61,7 +61,7 @@ the kernel also refuses a result that is not a string at all
 | --- | --- |
 | `css-selector` | A [Selectors Level 4](https://www.w3.org/TR/selectors-4/#typedef-complex-selector-list) `<complex-selector-list>` in the snapshot profile: no pseudo-elements (`p::before`), no namespace prefixes (`svg\|a`), no leading combinator (`> a`). `:scope` names the element the selector is matched from, so a selector relative to it is written `:scope > a`. A relative selector (`+ p`) is valid only inside `:has()`, which does not nest; `:nth-child(An+B of S)` takes a selector list. State and user-action pseudo-classes (`:hover`) are valid syntax. |
 
-The vocabulary is closed and declared as data in `analyzer/formats/`, one JSON
+The vocabulary is closed and declared as data in `sdk/formats/`, one JSON
 file per format, so every runtime accepts exactly the same strings. A `format:`
 value that is neither a Telo format nor one JSON Schema defines is ignored by
 the validators, as JSON Schema specifies.

@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "required": [
+    "kind"
+  ],
+  "properties": {
+    "kind": {
+      "type": "string"
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "version": {
+      "type": "string",
+      "description": "The version range the fulfilment must be within, as explicit comparators (`>=15.0.0`). Legal only when the need type is versioned."
+    },
+    "features": {
+      "type": "array",
+      "description": "The features the fulfilment must carry — names the need type lists.",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "optional": {
+      "type": "boolean"
+    },
+    "description": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,367 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "Application",
+    "description": "A runnable entry point: the module a runtime starts. Declares its imports, the variables, secrets, ports and needs it reads from its host and command line, its boot sequence, logging and tracing destinations, and the runtime range it is verified against."
+  },
+  "capability": "Telo.Template",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "type": "string"
+      },
+      "metadata": {
+        "$ref": "telo://manifest#/$defs/ModuleMetadata"
+      },
+      "lifecycle": {
+        "type": "string",
+        "enum": [
+          "shared",
+          "isolated"
+        ],
+        "default": "shared"
+      },
+      "targets": {
+        "x-telo-step-context": {
+          "invoke": "invoke",
+          "outputType": "outputType"
+        },
+        "type": "array",
+        "items": {
+          "x-telo-ref": {
+            "kind": [
+              "Telo.Runnable",
+              "Telo.Service"
+            ],
+            "use": "call"
+          },
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "name"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "required": [
+                "ref"
+              ],
+              "properties": {
+                "ref": {
+                  "x-telo-ref": {
+                    "kind": [
+                      "Telo.Runnable",
+                      "Telo.Service"
+                    ],
+                    "use": "call"
+                  },
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "name"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  ]
+                },
+                "when": {
+                  "title": "When",
+                  "description": "CEL guard — the target runs only when it evaluates true.",
+                  "x-telo-topology-role": "predicate",
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "$ref": "telo://manifest#/$defs/InvokeStep"
+            }
+          ]
+        }
+      },
+      "include": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "files": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "assets": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "native": {
+        "$ref": "telo://manifest#/$defs/NativeEntries"
+      },
+      "sources": {
+        "$ref": "telo://manifest#/$defs/ModuleSources"
+      },
+      "layers": {
+        "$ref": "telo://manifest#/$defs/LayerIndex"
+      },
+      "filesIntegrity": {
+        "type": "string"
+      },
+      "imports": {
+        "$ref": "telo://manifest#/$defs/ModuleImports"
+      },
+      "variables": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "env"
+              ]
+            },
+            {
+              "required": [
+                "arg"
+              ]
+            }
+          ],
+          "properties": {
+            "env": {
+              "type": "string",
+              "minLength": 1
+            },
+            "arg": {
+              "$ref": "telo://manifest#/$defs/ArgBinding"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "string",
+                "integer",
+                "number",
+                "boolean",
+                "object",
+                "array"
+              ]
+            },
+            "default": {}
+          }
+        }
+      },
+      "secrets": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "required": [
+            "env",
+            "type"
+          ],
+          "properties": {
+            "env": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "string",
+                "integer",
+                "number",
+                "boolean",
+                "object",
+                "array"
+              ]
+            },
+            "default": {}
+          }
+        }
+      },
+      "needs": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "telo://manifest#/$defs/NeedRequest",
+          "properties": {
+            "env": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      },
+      "ports": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "required": [
+            "env"
+          ],
+          "properties": {
+            "env": {
+              "type": "string",
+              "minLength": 1
+            },
+            "arg": {
+              "$ref": "telo://manifest#/$defs/ArgBinding"
+            },
+            "protocol": {
+              "type": "string",
+              "enum": [
+                "tcp",
+                "udp"
+              ],
+              "default": "tcp"
+            },
+            "default": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "logging": {
+        "$ref": "telo://manifest#/$defs/LoggingScope",
+        "x-telo-unbound-calls": "the Application's logging: block is resolved when the application is loaded, before any resource — any function among them — has been created",
+        "properties": {
+          "sinks": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "kind"
+                  ],
+                  "x-telo-ref": {
+                    "kind": "Telo.LogSink",
+                    "use": "dependency"
+                  },
+                  "x-telo-inline": true
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "sink"
+                  ],
+                  "properties": {
+                    "sink": {
+                      "type": "object",
+                      "required": [
+                        "kind"
+                      ],
+                      "x-telo-ref": {
+                        "kind": "Telo.LogSink",
+                        "use": "dependency"
+                      },
+                      "x-telo-inline": true
+                    },
+                    "when": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        }
+      },
+      "tracing": {
+        "type": "object",
+        "x-telo-eval": "compile",
+        "x-telo-unbound-calls": "the Application's tracing: block is resolved when the application is loaded, before any resource — any function among them — has been created",
+        "properties": {
+          "sinks": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "kind"
+                  ],
+                  "x-telo-ref": {
+                    "kind": "Telo.TraceSink",
+                    "use": "dependency"
+                  },
+                  "x-telo-inline": true
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "sink"
+                  ],
+                  "properties": {
+                    "sink": {
+                      "type": "object",
+                      "required": [
+                        "kind"
+                      ],
+                      "x-telo-ref": {
+                        "kind": "Telo.TraceSink",
+                        "use": "dependency"
+                      },
+                      "x-telo-inline": true
+                    },
+                    "when": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "requires": {
+        "$ref": "telo://manifest#/$defs/Requires"
+      }
+    },
+    "required": [
+      "metadata"
+    ],
+    "additionalProperties": false
+  }
+}

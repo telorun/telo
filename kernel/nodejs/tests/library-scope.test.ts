@@ -10,8 +10,6 @@ import { MemorySource } from "../src/manifest-sources/memory-source.js";
 function outOfGraphContext(kernel: Kernel): BuiltinControllerContext {
   return {
     moduleContext: {},
-    loadModule: (url: string, options: object) => kernel.loadModule(url, options),
-    loadManifests: (url: string) => kernel.loadManifests(url),
     isImportValidatedAtLoad: () => false,
     libraryAnalysisHost: () => kernel.libraryAnalysisHost(),
   } as unknown as BuiltinControllerContext;
@@ -33,7 +31,7 @@ metadata:
     );
     const kernel = new Kernel({ sources: [memory], env: {} });
 
-    const failure = await resolveLibraryScope("memory://broken", outOfGraphContext(kernel)).then(
+    const failure = await resolveLibraryScope("memory://broken", "Broken", outOfGraphContext(kernel)).then(
       () => undefined,
       (error: unknown) => error,
     );
@@ -68,10 +66,9 @@ imports:
     );
     const kernel = new Kernel({ sources: [memory], env: {} });
 
-    const scope = await resolveLibraryScope("memory://detached", outOfGraphContext(kernel));
+    const scope = await resolveLibraryScope("memory://detached", "Detached", outOfGraphContext(kernel));
 
-    expect(scope.module).toBe("Detached");
-    expect(scope.registry?.resolveKind("Dep.Thing")).toBe("DepModule.Thing");
+    expect(scope.registry.resolveKind("Dep.Thing")).toBe("DepModule.Thing");
     expect(kernel.getAnalysisRegistry().resolveKind("Dep.Thing")).toBeUndefined();
   });
 });

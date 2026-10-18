@@ -1,0 +1,10 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "Mount",
+    "description": "A part a long-lived resource mounts into itself: an HTTP API, a middleware, a route table. The holder registers it while it starts; a mount is never called directly, so it declares no thrown errors."
+  },
+  "capability": "Telo.Mount",
+  "declarable": true,
+  "throwsAllowed": false
+}

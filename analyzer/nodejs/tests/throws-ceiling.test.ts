@@ -70,11 +70,18 @@ describe("throws: on a Telo.Abstract", () => {
   });
 
   it("refuses a list on a capability with no caller to catch it", () => {
-    for (const capability of ["Telo.Service", "Acme.Custom"]) {
-      const found = diagnosticsOf([{ ...lookup(), capability }], "THROWS_ON_NON_DISPATCH_CAPABILITY");
-      expect(found).toHaveLength(1);
-      expect(found[0]!.message).toContain("Telo.Abstract 'Lookup'");
-    }
+    const found = diagnosticsOf(
+      [{ ...lookup(), capability: "Telo.Service" }],
+      "THROWS_ON_NON_DISPATCH_CAPABILITY",
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]!.message).toContain("Telo.Abstract 'Lookup'");
+  });
+
+  it("leaves a capability outside the roster to the roster's one diagnostic", () => {
+    const docs = [{ ...lookup(), capability: "Acme.Custom" }];
+    expect(diagnosticsOf(docs, "THROWS_ON_NON_DISPATCH_CAPABILITY")).toEqual([]);
+    expect(diagnosticsOf(docs, "CAPABILITY_UNKNOWN")).toHaveLength(1);
   });
 });
 

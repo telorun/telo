@@ -1,7 +1,13 @@
 export { AnalysisRegistry } from "./analysis-registry.js";
 export type { RefFieldInfo } from "./analysis-registry.js";
 export { StaticAnalyzer } from "./analyzer.js";
-export { importResolutionDiagnostics } from "./import-resolution-diagnostics.js";
+export {
+    importFailureDiagnostics,
+    importResolutionDiagnostics,
+} from "./import-resolution-diagnostics.js";
+export { assembleGraphDiagnostics, compromisedFiles } from "./graph-diagnostics.js";
+export { findPositions, locateDiagnostic, resolveRange } from "./diagnostic-location.js";
+export type { DiagnosticPositions } from "./diagnostic-location.js";
 export type {
     GraphLoadError,
     ImportEdge,
@@ -156,7 +162,6 @@ export {
   reportsFromInit,
   startupObservedStateReads,
   validateObservedStateDeclarations,
-  OBSERVED_STATE_SCHEMA,
 } from "./validate-observed-state.js";
 export type { AnalyzedResource, ObservedStateRead } from "./validate-observed-state.js";
 export { moduleScopedDefResolver, scopeResolverForModule } from "./alias-resolver.js";
@@ -191,12 +196,53 @@ export {
 export { nearestName } from "./nearest-name.js";
 // An ancestor's `throws:` as a ceiling, read once for `telo check` and the kernel.
 export { codesOutsideCeiling, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
+export { builtinDocumentSchema } from "./builtins.js";
+// The closed capability roster, read from the built-in entries for `telo check`,
+// the kernel and the editor support alike.
 export {
-  ABSTRACT_THROWS_SCHEMA,
-  THROWS_CAPABLE_CAPABILITIES,
-  THROWS_SCHEMA,
-} from "./throws-declaration.js";
+  builtinKindNames,
+  capabilityDescription,
+  capabilityProblem,
+  capabilityRoster,
+  declarableCapabilities,
+  isCapabilityRole,
+  throwsAllowedCapabilities,
+} from "./capability-roster.js";
+export type {
+  CapabilityProblem,
+  CapabilityProblemCode,
+  CapabilityRosterEntry,
+} from "./capability-roster.js";
 export type { TemplateTarget, TemplateTargetProblem } from "./template-targets.js";
+// The built-in vocabulary as the `Telo.Builtins` archive: the bytes this build
+// renders, its one reader, and the slicing `telo builtins` prints with.
+export { BUILTIN_VOCABULARY_ARCHIVE } from "./builtin-vocabulary/index.js";
+export {
+  BUILTIN_VOCABULARY_KIND,
+  BUILTIN_VOCABULARY_NOT_A_MODULE,
+  builtinVocabularyImportMessage,
+  isBuiltinVocabularyRoot,
+  readBuiltinVocabulary,
+} from "./builtin-vocabulary.js";
+export type { BuiltinVocabulary, BuiltinVocabularyReading } from "./builtin-vocabulary.js";
+// `Telo` and `Self` as kind prefixes no module or import may take.
+export {
+  RESERVED_KIND_PREFIXES,
+  isReservedKindPrefix,
+  reservedImportAliasMessage,
+  reservedLibraryNameMessage,
+  reservedModuleNameMessage,
+} from "./reserved-kind-prefix.js";
+export {
+  builtinVocabularyEntries,
+  describeBuiltinNames,
+  selectBuiltins,
+} from "./builtin-vocabulary-slices.js";
+export type {
+  BuiltinEntryClass,
+  BuiltinSelection,
+  BuiltinVocabularyEntry,
+} from "./builtin-vocabulary-slices.js";
 // The callable signature, and the rules a callable kind is subject to. Shared
 // with the kernel so its definition-registration refusal and `telo check` cannot
 // drift — the `buildEvalPaths` / `evalPathCovers` precedent.
@@ -592,7 +638,8 @@ export type {
     SchemaFromSiteEvent,
     VisitOptions,
 } from "./manifest-visitor.js";
-export { Loader } from "./manifest-loader.js";
+export { loadImportTarget, Loader } from "./manifest-loader.js";
+export type { ImportRequest, ImportTargetLoad, ImportTargetPort } from "./manifest-loader.js";
 export { isModuleKind, MODULE_KINDS } from "./module-kinds.js";
 export type { ModuleKind } from "./module-kinds.js";
 export { parseLoadedFile } from "./parse-loaded-file.js";

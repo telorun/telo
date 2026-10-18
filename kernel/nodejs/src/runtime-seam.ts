@@ -1,20 +1,21 @@
 import {
   Loader,
   StaticAnalyzer,
+  assembleGraphDiagnostics,
   collectModuleDocuments,
   diagnosticFix,
   flattenForAnalyzer,
-  remapMigratedPaths,
+  locateDiagnostic,
   type AnalysisDiagnostic,
   type DiagnosticData,
   type LoadedGraph,
   type ManifestSource,
-  type ModuleDocuments,
 } from "@telorun/analyzer";
 import {
   Stream,
   type RuntimeCheckOptions,
   type RuntimeCheckResult,
+  type RuntimeDiagnostic,
   type CheckDiagnostic,
   type CheckDiagnosticSeverity,
   type RuntimeRun,
@@ -154,26 +155,52 @@ const SEVERITY_NAMES: Record<number, CheckDiagnosticSeverity> = {
  *  a name because the integer is an LSP protocol detail, and this contract is
  *  read by kernels that speak no LSP. An unlabelled severity is an error: the
  *  analyzer's own default, and the safe reading for a caller gating on it. */
-function toCheckDiagnostic(diagnostic: AnalysisDiagnostic): CheckDiagnostic {
+function toCheckDiagnostic(diagnostic: AnalysisDiagnostic, graph: LoadedGraph): CheckDiagnostic {
   // The repair is read through the analyzer's accessor rather than by casting
   // `data`, so the stamp's shape stays owned by one module. `resource` / `path`
   // ride along because a repair replaces the value AT `path`; forwarding the
   // fix without its anchor gives a consumer something it cannot apply.
   const fix = diagnosticFix(diagnostic);
   const stamp = diagnostic.data as DiagnosticData | undefined;
+  const range = locateDiagnostic(graph, diagnostic)?.range;
   return {
     code: String(diagnostic.code ?? ""),
     message: diagnostic.message,
     severity: SEVERITY_NAMES[diagnostic.severity ?? 1] ?? "error",
     source: diagnostic.source,
-    line: diagnostic.range?.start?.line,
-    column: diagnostic.range?.start?.character,
+    ...(range ? { line: range.start.line, column: range.start.character } : {}),
     ...(stamp?.resource ? { resource: `${stamp.resource.kind}/${stamp.resource.name}` } : {}),
     ...(stamp?.path ? { path: stamp.path } : {}),
     ...(fix
       ? { fix: { replacement: fix.replacement, ...(fix.tag ? { tag: fix.tag } : {}) } }
       : {}),
   };
+}
+
+/**
+ * What a refused child writes to its stderr (the `RuntimeSeam.run` contract):
+ * the failure's own message, then one `  [<CODE>] <message>` line per
+ * diagnostic it carries — `details` and further message lines beneath it, a
+ * nested context's `children` one level further in, `derived` entries left out
+ * as `telo run` leaves them out. No location: the located form is `check()`'s.
+ */
+export function refusedRunText(err: unknown): string {
+  const lines = [err instanceof Error ? err.message : String(err)];
+  const write = (diagnostics: RuntimeDiagnostic[], indent: string): void => {
+    for (const d of diagnostics) {
+      if (!d.derived) {
+        const [first, ...rest] = d.message.split("\n");
+        lines.push(`${indent}${d.code ? `[${d.code}] ` : ""}${first}`);
+        const beneath = [...rest, ...(d.details ? d.details.split("\n") : [])];
+        lines.push(...beneath.map((line) => `${indent}  ${line}`));
+      }
+      // A nested context's root causes are not shadows of a derived wrapper.
+      if (d.children?.length) write(d.children, `${indent}  `);
+    }
+  };
+  const carried = (err as { diagnostics?: RuntimeDiagnostic[] } | null)?.diagnostics;
+  if (Array.isArray(carried)) write(carried, "  ");
+  return `${lines.join("\n")}\n`;
 }
 
 /**
@@ -236,7 +263,7 @@ export class KernelRuntimeSeam implements RuntimeSeam {
         await child.start();
         return child.exitCode;
       } catch (err) {
-        stderr.writable.write(`${err instanceof Error ? err.message : String(err)}\n`);
+        stderr.writable.write(refusedRunText(err));
         return child.exitCode === 0 ? 1 : child.exitCode;
       } finally {
         stdout.end();
@@ -296,82 +323,40 @@ export class KernelRuntimeSeam implements RuntimeSeam {
       loader.register(injected as ManifestSource);
     }
 
-    let manifests;
-    // Parse failures and version reconciliation are the loader's findings, not
-    // `analyze()`'s — carried out of the try so the checks below can see them.
-    let parseDiagnostics: AnalysisDiagnostic[] = [];
-    let versionDiagnostics: AnalysisDiagnostic[] = [];
-    let migrationDiagnostics: AnalysisDiagnostic[] = [];
-    let moduleFileDiagnostics: AnalysisDiagnostic[] = [];
-    let moduleDocuments: ModuleDocuments[] = [];
-    // Carried out of the try for the same reason the diagnostics are: analysis
-    // runs over the MIGRATED tree while every path a caller resolves points at
-    // the raw file, so the driver's provenance record has to be in hand below.
-    let loadedGraph: LoadedGraph | undefined;
+    let graph: LoadedGraph;
     try {
       // `migrate` unconditionally: this seam answers "does this manifest load
       // and check", and the runtime it stands in for reads a legacy spelling
       // through the same rewrite. A raw view is a round-trip editor's need, not
       // a supervisor's.
-      const graph = await loader.loadGraph(source, {
+      graph = await loader.loadGraph(source, {
         desugarImports: options?.desugarImports ?? true,
         migrate: true,
       });
-      if (graph.errors.length > 0) throw graph.errors[0].error;
-      loadedGraph = graph;
-      parseDiagnostics = graph.parseDiagnostics;
-      versionDiagnostics = graph.versionDiagnostics;
-      migrationDiagnostics = graph.migrationDiagnostics;
-      moduleFileDiagnostics = graph.moduleFileDiagnostics;
-      manifests = flattenForAnalyzer(graph);
-      // The zone stage derives each imported library's export contracts from
-      // its own full documents, which the flattened list drops.
-      moduleDocuments = collectModuleDocuments(graph);
     } catch (err) {
-      // A graph that would not load is an answer, not a failure of the call —
-      // "this manifest does not load, and here is the reason" is precisely what
-      // a caller asked for. Throwing would force every caller to re-express the
-      // distinction in a catch.
+      // A graph that would not load at all is an answer, not a failure of the
+      // call. A failed IMPORT is not this case: the loader records it and loads
+      // the rest, and it is reported below as the coded diagnostic `telo check`
+      // reports.
       return {
         diagnostics: [],
         loadError: err instanceof Error ? err.message : String(err),
       };
     }
 
-    // A file that fails to parse is not dropped — it reaches the flattened list
-    // as a mangled `toJSON()` tree, and analyzing that buries the real error
-    // under a cascade of secondaries which exist only because the parse failed.
-    // Report the parse findings and stop, the policy `load()` already applies by
-    // treating a parse failure as fatal before analysis.
-    if (parseDiagnostics.length > 0) {
-      return {
-        diagnostics: [...parseDiagnostics, ...migrationDiagnostics, ...versionDiagnostics].map(
-          toCheckDiagnostic,
-        ),
-      };
-    }
-
-    // `analyze()` never sees version skew, so without merging these a major
-    // mismatch — which `load()` refuses to boot on — would check clean.
-    //
-    // The remap is the same call `assembleGraphDiagnostics` makes for the CLI
-    // and VS Code, and it is not optional here: a caller acts on `path` (a
-    // module's `Assert.Manifest` matches on it), so this seam reporting the
-    // MIGRATED spelling while every other surface reports the author's would
-    // make one manifest mean two things depending on who asked. A no-op when
-    // nothing was migrated.
-    const analysis = new StaticAnalyzer({ celHandlers: nodeCelHandlers }).analyze(manifests, {
-      moduleDocuments,
-      hostVersions: nodeHostVersions(),
-    });
-    const diagnostics = remapMigratedPaths(loadedGraph, analysis);
-    return {
-      diagnostics: [
-        ...migrationDiagnostics,
-        ...versionDiagnostics,
-        ...moduleFileDiagnostics,
-        ...diagnostics,
-      ].map(toCheckDiagnostic),
-    };
+    // The analysis and the assembly `telo check` performs, so a caller reads
+    // the same codes, messages and locations: the compromised-file cascade held
+    // back, migrated paths remapped, every diagnostic located by the shared rule.
+    const analysis = new StaticAnalyzer({ celHandlers: nodeCelHandlers }).analyze(
+      flattenForAnalyzer(graph),
+      {
+        // The zone stage derives each imported library's export contracts from
+        // its own full documents, which the flattened list drops.
+        moduleDocuments: collectModuleDocuments(graph),
+        hostVersions: nodeHostVersions(),
+      },
+    );
+    const { diagnostics } = assembleGraphDiagnostics(graph, analysis);
+    return { diagnostics: diagnostics.map((d) => toCheckDiagnostic(d, graph)) };
   }
 }

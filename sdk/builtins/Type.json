@@ -1,0 +1,10 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "Type",
+    "description": "A pure data shape with no runtime instance: a named JSON Schema other declarations reference to type their inputs, outputs and fields."
+  },
+  "capability": "Telo.Type",
+  "declarable": true,
+  "throwsAllowed": false
+}

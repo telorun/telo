@@ -1,0 +1,28 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "FileSink",
+    "description": "Appends structured log records to a file on the host, as JSON lines or pretty text. The destination path is required; level filtering, buffering and flushing follow the log destination settings."
+  },
+  "capability": "Telo.Sink",
+  "extends": "Telo.LogSink",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "destination": {
+        "type": "string"
+      },
+      "encoding": {
+        "type": "string",
+        "enum": [
+          "json",
+          "pretty"
+        ]
+      }
+    },
+    "required": [
+      "destination"
+    ],
+    "additionalProperties": false
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "propertyNames": {
+    "pattern": "^[A-Z][A-Z0-9_]*$"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "required": [
+      "description"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "description": {
+        "type": "string"
+      },
+      "data": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    }
+  }
+}

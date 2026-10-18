@@ -1,0 +1,52 @@
+{
+  "title": "Retry policy",
+  "description": "Re-attempts a failed dispatch with exponential backoff. A domain failure is retried; a cancellation and a contract violation are not — the latter is a property of the manifest and would fail identically every time.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "attempts": {
+      "title": "Attempts",
+      "description": "Re-attempts after the first try. 0 disables retrying.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "initialDelay": {
+      "title": "Initial delay",
+      "description": "Milliseconds to wait before the first re-attempt.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 250
+    },
+    "factor": {
+      "title": "Factor",
+      "description": "Multiplier applied to the delay after each re-attempt.",
+      "type": "number",
+      "minimum": 1,
+      "default": 2
+    },
+    "maxDelay": {
+      "title": "Max delay",
+      "description": "Ceiling on the delay between re-attempts, in milliseconds.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 32000
+    },
+    "jitter": {
+      "title": "Jitter",
+      "description": "`full` picks each delay uniformly from [0, delay], which is what stops work that failed together from re-attempting together.",
+      "type": "string",
+      "enum": [
+        "none",
+        "full"
+      ],
+      "default": "full"
+    },
+    "delay": {
+      "title": "Delay",
+      "description": "DEPRECATED duration string (`250ms`, `1s`) — read as `initialDelay` when that is absent. The pattern is what makes a typo a `telo check` failure instead of a silently different backoff.",
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?\\s*(ms|s|m|h)$"
+    }
+  }
+}

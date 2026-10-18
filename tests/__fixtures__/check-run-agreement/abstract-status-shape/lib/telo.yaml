@@ -1,0 +1,18 @@
+# An abstract's `status:` holding a keyword JSON Schema refuses: a property's
+# `minimum` that is not a number. `telo check` and the kernel validate an
+# abstract against the one built-in `Telo.Abstract` schema, which holds
+# `status:` to JSON Schema.
+kind: Telo.Library
+metadata:
+  name: AbstractStatusShapeLib
+exports:
+  kinds: [Listener]
+---
+kind: Telo.Abstract
+metadata:
+  name: Listener
+capability: Telo.Service
+status:
+  type: object
+  properties:
+    port: { type: integer, minimum: low }

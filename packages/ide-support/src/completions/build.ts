@@ -1,4 +1,6 @@
 import {
+  capabilityDescription,
+  declarableCapabilities,
   parseToAst,
   type AnalysisRegistry,
   type AstDocument,
@@ -16,7 +18,6 @@ import { importSourceCompletions } from "./import-source.js";
 import { moduleFileCompletions } from "./module-file-completions.js";
 import { valueTagCompletions } from "./value-tag-completions.js";
 import { propKeyCompletions } from "./prop-keys.js";
-import { CAPABILITY_VALUES } from "./valid-capabilities.js";
 
 interface ResourceRecord {
   kind: string;
@@ -188,11 +189,14 @@ function valueSuggestions(
     }));
 }
 
+/** The declarable roles of the analyzer's capability roster — exactly what the
+ *  `capability:` enum accepts — each with its entry's description. */
 function capabilityCompletions(): CompletionResult[] {
-  return CAPABILITY_VALUES.map((cap) => ({
+  return declarableCapabilities().map((cap) => ({
     label: cap,
     kind: "enumMember",
     detail: "Telo capability",
+    documentation: capabilityDescription(cap),
   }));
 }
 

@@ -1,5 +1,6 @@
 import {
   buildLineOffsets,
+  declarableCapabilities,
   offsetToPosition,
   parseToAst,
   type AnalysisRegistry,
@@ -13,9 +14,8 @@ import type { SemanticToken } from "../types.js";
 import { celSegmentTokens } from "../cel/tokens.js";
 import { docIdentity } from "../doc-identity.js";
 import { scalarString } from "../completions/resolve-node.js";
-import { CAPABILITY_VALUES } from "../completions/valid-capabilities.js";
 
-const CAPABILITIES = new Set<string>(CAPABILITY_VALUES);
+const CAPABILITIES = new Set<string>(declarableCapabilities());
 
 /** Append one key segment to a concrete path (`routes[0]` + `handler`). */
 function joinKey(concrete: string, key: string): string {

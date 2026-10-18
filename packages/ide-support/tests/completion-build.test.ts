@@ -1,5 +1,5 @@
 import type { ResourceDefinition } from "@telorun/sdk";
-import { AnalysisRegistry } from "@telorun/analyzer";
+import { AnalysisRegistry, capabilityDescription, declarableCapabilities } from "@telorun/analyzer";
 import { describe, expect, it } from "vitest";
 import { buildCompletions } from "../src/completions/build.js";
 import type { IdeEnvironmentAdapter } from "../src/types.js";
@@ -68,6 +68,15 @@ function buildRegistry(): AnalysisRegistry {
   registry.registerDefinition(sequenceDef);
   return registry;
 }
+
+describe("buildCompletions — a capability value", () => {
+  it("offers exactly the declarable roles, each with its roster description", async () => {
+    const text = ["kind: Telo.Definition", "metadata:", "  name: Thing", "capability: "].join("\n");
+    const items = await buildCompletions(text, 3, "capability: ".length, buildRegistry());
+    expect(items.map((item) => item.label)).toEqual([...declarableCapabilities()]);
+    for (const item of items) expect(item.documentation).toBe(capabilityDescription(item.label));
+  });
+});
 
 describe("buildCompletions — ref slot prop keys", () => {
   it("offers kind/name/inputs on a blank line under an x-telo-ref slot", async () => {

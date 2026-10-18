@@ -29,7 +29,8 @@ import {
 import type { ValidateFunction } from "ajv";
 import { schemaIssues } from "./schema-error-report.js";
 import { createAjv } from "./schema-compat.js";
-import { ABSTRACT_THROWS_SCHEMA, THROWS_CAPABLE_CAPABILITIES } from "./throws-declaration.js";
+import { builtinDocumentSchema } from "./builtins.js";
+import { declarableCapabilities, throwsAllowedCapabilities } from "./capability-roster.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
 
@@ -502,7 +503,7 @@ function checkCelChainAgainstDataSchema(
  *  is STARTED rather than called (what a router renders is not what a router
  *  throws).
  *
- *  The strict half of the kernel's `ResourceDefinitionSchema` rule 8, and it has
+ *  The strict half of rule 8 in the built-in `Telo.Definition` / `Telo.Abstract` schemas, and it has
  *  to exist here for the reason every `x-telo-*` accessor has a strict half: the
  *  kernel refuses at `create()`, which is a boot failure on a manifest that
  *  passed `telo check` — the static/runtime disagreement this repository treats
@@ -517,19 +518,29 @@ function checkCelChainAgainstDataSchema(
  *  an identical boot failure and no earlier warning. The action is a consumer's
  *  to take (pin another version, report upstream) even though the edit is not.
  *  Matches the neighbouring `INHERIT_WITHOUT_STEP_CONTEXT`, which is fatal the
- *  same way. The capability list is shared with the kernel's schemas
- *  (`throws-declaration.ts`), as is the block's shape, which the built-in
- *  definition schemas check. */
-const THROWS_CAPABLE = new Set(THROWS_CAPABLE_CAPABILITIES);
+ *  same way. The allowlist is the capability roster's `throwsAllowed` roles
+ *  (`capability-roster.ts`), which the built-in `Telo.Definition` /
+ *  `Telo.Abstract` schemas derive too, and the block's shape is theirs. */
+const THROWS_CAPABLE = new Set(throwsAllowedCapabilities());
+const DECLARABLE = new Set(declarableCapabilities());
 
-// An abstract is not walked per resource, so its block's shape is checked here,
-// against the schema the kernel's `Telo.Abstract` schema uses.
+/** The `throws:` property of the built-in `Telo.Abstract` schema — the one
+ *  definition of an abstract's block, which the kernel validates it against. */
+function abstractThrowsSchema(): Record<string, unknown> {
+  const throws = (builtinDocumentSchema("Abstract") as { properties?: Record<string, unknown> })
+    .properties?.throws;
+  if (!throws || typeof throws !== "object") {
+    throw new Error("The built-in Telo.Abstract schema declares no `throws` property.");
+  }
+  return throws as Record<string, unknown>;
+}
+
 let abstractThrowsValidator: ValidateFunction | undefined;
 /** The renderer anchors at the validated value; re-anchor its path at `/throws`. */
 const atThrows = (message: string): string =>
   message.startsWith("/ ") ? `/throws ${message.slice(2)}` : message.startsWith("/") ? `/throws${message}` : `/throws ${message}`;
 const validateAbstractThrows = (value: unknown) => {
-  const validate = (abstractThrowsValidator ??= createAjv().compile(ABSTRACT_THROWS_SCHEMA));
+  const validate = (abstractThrowsValidator ??= createAjv().compile(abstractThrowsSchema()));
   return validate(value) ? [] : schemaIssues(validate.errors, value);
 };
 
@@ -557,10 +568,15 @@ function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiag
     }
 
     // Only a DECLARED capability is judged; one inherited through `extends` is
-    // resolved elsewhere. An unknown capability is refused like any other that is
-    // not on the list, by both halves.
+    // resolved elsewhere. A value no author may declare is the roster's to report
+    // (`CAPABILITY_UNKNOWN` / `CAPABILITY_NOT_DECLARABLE`) — the kernel refuses it
+    // before it reads `throws:` at all.
     const capability = (m as Record<string, any>).capability as string | undefined;
-    if (typeof capability === "string" && !THROWS_CAPABLE.has(capability)) {
+    if (
+      typeof capability === "string" &&
+      DECLARABLE.has(capability) &&
+      !THROWS_CAPABLE.has(capability)
+    ) {
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
         code: "THROWS_ON_NON_DISPATCH_CAPABILITY",
@@ -568,7 +584,7 @@ function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiag
         message:
           `${m.kind} '${name}' declares throws: but its capability is '${capability}'. ` +
           `A throw union describes what a CALLER can catch, so it is only meaningful on ` +
-          `${THROWS_CAPABLE_CAPABILITIES.join(" or ")}; on '${capability}' a thrown error is a ` +
+          `${throwsAllowedCapabilities().join(" or ")}; on '${capability}' a thrown error is a ` +
           `boot-time failure with no caller to render it. The kernel refuses this definition at ` +
           `create(), so a manifest carrying it cannot start.`,
         data: { resource: { kind: m.kind, name }, filePath, path: "throws" },

@@ -123,20 +123,26 @@ function dbAddress() {
  * `last_tracked_at` (stamped when a ref's pass ends, success or failure, by a
  * different step than the one writing kinds), both passed over a partial index.
  * Plus at least one embedding, for the semantic assertion. A recorded
- * `last_error` is a hard failure, not a ref that finished. The expected count
- * comes from the hub's own environment, so editing SEED_REFS never leaves this
- * gate behind.
+ * `last_error` on a seeded ref is a hard failure, not a ref that finished. The
+ * seeded refs come from the hub's own environment, so editing SEED_REFS never
+ * leaves this gate behind. A ref the hub tracks without seeding it — the
+ * built-in vocabulary's, unpublished until the first release carrying it — is
+ * not this gate's.
  */
 async function waitForSeedPass() {
-  const expected = JSON.parse(read("docker", compose("exec", "-T", "hub", "printenv", "SEED_REFS"))).length;
+  const seeded = JSON.parse(read("docker", compose("exec", "-T", "hub", "printenv", "SEED_REFS")));
+  const expected = seeded.length;
   if (!(expected > 0)) throw new E2EFailure("SEED_REFS in the hub container lists no refs");
   console.log(`seeded refs: ${expected}`);
+  const seededFailures = `FROM modules WHERE last_error IS NOT NULL AND ref = ANY(ARRAY[${seeded
+    .map((ref) => `'${ref.replaceAll("'", "''")}'`)
+    .join(",")}])`;
 
   for (let attempt = 0; attempt < 60; attempt++) {
     if (interrupted) throw new E2EFailure("interrupted");
-    const failed = Number(psql("SELECT count(*) FROM modules WHERE last_error IS NOT NULL"));
+    const failed = Number(psql(`SELECT count(*) ${seededFailures}`));
     if (failed > 0) {
-      console.error(psqlTable("SELECT ref, last_error FROM modules WHERE last_error IS NOT NULL ORDER BY ref"));
+      console.error(psqlTable(`SELECT ref, last_error ${seededFailures} ORDER BY ref`));
       throw new E2EFailure(`${failed} seeded ref(s) failed to ingest`);
     }
     const total = Number(psql("SELECT count(*) FROM modules"));

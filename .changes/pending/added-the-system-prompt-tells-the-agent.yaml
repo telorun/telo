@@ -1,0 +1,9 @@
+modules:
+  apps/authoring-agent: Added
+body: "The system prompt tells the agent that get_kinds returns built-in kinds, parents
+  and schema fragments under a no-import line, read at the telo version it passes as
+  telo, and how to find that version: the telo tool answers exactly --version, whatever
+  teloVerbs lists, with the telo the agent checks against. A release (X) is passed as
+  telo; a working copy (X+unreleased), which no hub tracks, never is — the agent then
+  calls get_kinds without telo and reads every built-in through telo builtins. --version
+  followed by anything else is refused with ERR_TELO_VERB_NOT_ALLOWED."

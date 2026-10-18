@@ -11,7 +11,7 @@
 use std::rc::Rc;
 
 use serde_json::Value;
-use telo_analyzer::builtins::is_capability;
+use telo_analyzer::capability_roster::capability_problem;
 
 use crate::controller_registry::Definition;
 use crate::error::KernelError;
@@ -39,14 +39,18 @@ pub fn register_definition(
         )));
     }
 
-    let capability = document.get("capability").and_then(Value::as_str);
-    if let Some(capability) = capability {
-        if !is_capability(capability) {
-            return Err(KernelError::manifest_validation_failed(format!(
-                "Telo.Definition '{name}': '{capability}' is not a kernel capability"
-            )));
-        }
+    // The closed roster, worded as the Node kernel and `telo check` word it. This
+    // kernel reads no migration, so the legacy `capability: <Alias>.<Kind>`
+    // reaches here unrewritten and is refused as what it is.
+    if let Some(problem) =
+        capability_problem(document.get("capability"), document.get("extends").is_some())
+    {
+        return Err(KernelError::new(
+            format!("ERR_{}", problem.code),
+            format!("Telo.Definition '{name}': {}", problem.message),
+        ));
     }
+    let capability = document.get("capability").and_then(Value::as_str);
 
     if document.get("extends").is_some() {
         return Err(KernelError::new(
@@ -109,5 +113,50 @@ mod tests {
         )
         .expect("a callable kind registers");
         assert_eq!(definition.capability.as_deref(), Some("Telo.Callable"));
+    }
+
+    /// The vectors every runtime judging a `capability:` answers identically —
+    /// `analyzer/capability-conformance/README.md`.
+    const VECTORS: &str =
+        include_str!("../../../../../analyzer/capability-conformance/vectors.json");
+
+    /// The closed roster, refused at registration with the codes `telo check`
+    /// reports as `CAPABILITY_UNKNOWN` / `CAPABILITY_NOT_DECLARABLE`. This kernel
+    /// refuses every `extends:` after the roster, so an accepted row declaring
+    /// one is held only to raising no roster refusal.
+    #[test]
+    fn answers_every_capability_conformance_vector() {
+        let vectors: Value = serde_json::from_str(VECTORS).expect("vectors parse");
+        for row in vectors["rows"].as_array().expect("rows") {
+            let id = row["id"].as_str().expect("id");
+            let mut document = serde_json::json!({
+                "kind": "Telo.Definition",
+                "metadata": { "name": "Thing" },
+            });
+            if let Some(capability) = row.get("capability") {
+                document["capability"] = capability.clone();
+            }
+            if row["extends"].as_bool().expect("extends") {
+                document["extends"] = Value::from("Lib.Base");
+            }
+            let answer =
+                register_definition("Lib", "telo.yaml", &ControllerPolicy::default(), &document);
+            match row["code"].as_str() {
+                None => {
+                    if let Err(error) = answer {
+                        assert!(!error.code.starts_with("ERR_CAPABILITY_"), "{id}: {}", error.code);
+                    }
+                }
+                Some(code) => {
+                    let Err(error) = answer else { panic!("{id}: registered") };
+                    assert_eq!(error.code, format!("ERR_{code}"), "{id}");
+                    assert_eq!(
+                        error.message,
+                        format!("Telo.Definition 'Thing': {}", row["message"].as_str().expect("message")),
+                        "{id}"
+                    );
+                }
+            }
+        }
     }
 }

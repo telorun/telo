@@ -1,0 +1,2325 @@
+kind: Telo.Builtins
+metadata:
+  name: Telo
+  version: "0.119.0"
+  description: "Everything a Telo manifest can use without an import, for one telo release: the documents that declare applications, libraries, kinds, imports and needs; the lifecycle roles a kind may take; log and trace destinations; named schema shapes and CEL functions; public address needs; and the schema fragments, value types, zone attributes and string formats they reference."
+  license: MIT
+$defs:
+  ArgBinding:
+    anyOf:
+      - type: string
+        pattern: "^[A-Za-z0-9][A-Za-z0-9-]*$"
+      - type: object
+        required:
+          - flag
+        properties:
+          flag:
+            type: string
+            pattern: "^[A-Za-z0-9][A-Za-z0-9-]*$"
+          short:
+            type: string
+            pattern: "^[A-Za-z]$"
+        additionalProperties: false
+      - type: object
+        required:
+          - position
+        properties:
+          position:
+            type: integer
+            minimum: 0
+        additionalProperties: false
+  CallableParams:
+    title: Parameters
+    description: "Ordered parameters this callable accepts. Optional parameters come last."
+    type: array
+    items:
+      type: object
+      required:
+        - name
+        - schema
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        schema:
+          $ref: "telo://manifest#/$defs/CallableType"
+        nullable:
+          type: boolean
+        optional:
+          type: boolean
+      additionalProperties: false
+  CallableReturns:
+    title: Result
+    description: "What a call to this callable evaluates to."
+    type: object
+    required:
+      - schema
+    properties:
+      description:
+        type: string
+      schema:
+        $ref: "telo://manifest#/$defs/CallableType"
+      nullable:
+        type: boolean
+    additionalProperties: false
+  CallableType:
+    title: Type
+    description: "The value's shape, as JSON Schema. `!ref <Shape>` names a `Telo.JsonSchema`, at the root or nested."
+    anyOf:
+      - $ref: "telo://manifest#/$defs/JsonSchema7"
+      - type: string
+  DispatchTarget:
+    anyOf:
+      - type: object
+        required:
+          - __tagged
+          - engine
+          - source
+        properties:
+          __tagged:
+            const: true
+          engine:
+            const: ref
+          source:
+            type: string
+            minLength: 1
+        additionalProperties: false
+      - type: string
+        x-telo-context:
+          type: object
+          additionalProperties: false
+          properties:
+            self:
+              x-telo-context-from-root: schema
+      - type: object
+        required:
+          - name
+        properties:
+          kind:
+            type: string
+          name:
+            type: string
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              properties:
+                self:
+                  x-telo-context-from-root: schema
+        additionalProperties: true
+  InvokeStep:
+    title: "Invoke step"
+    description: "Transfers control to a resource: what to call, what to pass it, whether to call it, and how to re-attempt it."
+    type: object
+    required:
+      - invoke
+    additionalProperties: false
+    properties:
+      name:
+        title: Name
+        description: "Publishes this dispatch's result as `steps.<name>.result`."
+        type: string
+      invoke:
+        title: Invoke
+        description: "Resource to invoke."
+        x-telo-topology-role: invoke
+        type: object
+        x-telo-ref:
+          kind: Telo.Executable
+          use: call
+          inputs: "/inputs"
+      inputs:
+        title: Inputs
+        description: "Values passed to the invoked resource."
+        x-telo-topology-role: inputs
+        type: object
+        additionalProperties: true
+      when:
+        title: When
+        description: "CEL guard — the dispatch is skipped when it evaluates false."
+        x-telo-topology-role: predicate
+        type: boolean
+      retry:
+        title: Retry
+        $ref: "telo://manifest#/$defs/RetryPolicy"
+        properties:
+          nonRetryable:
+            title: "Non-retryable codes"
+            description: "Error codes that end the loop immediately instead of consuming the budget. The built-in exclusions are the ones decidable without judgement — a cancellation, and the kernel's verdicts on the shape of the call; whether a DOMAIN failure is worth re-attempting only the author knows, and without this every terminal one is retried to exhaustion — for a non-idempotent target, N extra attempts at a side effect."
+            type: array
+            items:
+              type: string
+            default: []
+      timeout:
+        title: Timeout
+        description: "How long ONE attempt may take, in milliseconds; on elapse the dispatch is cancelled and the step fails ERR_STEP_TIMEOUT. Per attempt rather than for the whole retry loop, so what a single call is allowed to take does not depend on how slow the earlier attempts were. It belongs to the step rather than the target because the target does not know who is waiting."
+        type: integer
+        minimum: 1
+  JsonSchema7:
+    title: "JSON Schema"
+    description: "The shape of a value, as JSON Schema (draft-07)."
+    type:
+      - object
+      - boolean
+    properties:
+      type:
+        title: Type
+        description: "The JSON type this value must have, or a list of accepted types."
+        anyOf:
+          - type: string
+            enum:
+              - object
+              - array
+              - string
+              - number
+              - integer
+              - boolean
+              - "null"
+          - type: array
+            items:
+              type: string
+              enum:
+                - object
+                - array
+                - string
+                - number
+                - integer
+                - boolean
+                - "null"
+      properties:
+        title: Properties
+        description: "Schema per named property of an object."
+        type: object
+        additionalProperties:
+          $ref: "telo://manifest#/$defs/JsonSchema7"
+      required:
+        title: Required
+        description: "Property names that must be present."
+        type: array
+        items:
+          type: string
+      additionalProperties:
+        title: "Additional properties"
+        description: "`false` rejects any property not named above — which is what makes a typo an error rather than an ignored field."
+        anyOf:
+          - type: boolean
+          - $ref: "telo://manifest#/$defs/JsonSchema7"
+      patternProperties:
+        title: "Pattern properties"
+        description: "Schema per regular expression matching a property name."
+        type: object
+        additionalProperties:
+          $ref: "telo://manifest#/$defs/JsonSchema7"
+      propertyNames:
+        title: "Property names"
+        description: "Schema every property NAME must satisfy."
+        $ref: "telo://manifest#/$defs/JsonSchema7"
+      items:
+        title: Items
+        description: "Schema for each element of an array."
+        anyOf:
+          - $ref: "telo://manifest#/$defs/JsonSchema7"
+          - type: array
+            items:
+              $ref: "telo://manifest#/$defs/JsonSchema7"
+      additionalItems:
+        title: "Additional items"
+        description: "Schema for elements past a positional `items` list."
+        anyOf:
+          - type: boolean
+          - $ref: "telo://manifest#/$defs/JsonSchema7"
+      contains:
+        title: Contains
+        description: "At least one element must satisfy this schema."
+        $ref: "telo://manifest#/$defs/JsonSchema7"
+      allOf:
+        title: "All of"
+        description: "Every branch must match."
+        type: array
+        items:
+          $ref: "telo://manifest#/$defs/JsonSchema7"
+      anyOf:
+        title: "Any of"
+        description: "At least one branch must match."
+        type: array
+        items:
+          $ref: "telo://manifest#/$defs/JsonSchema7"
+      oneOf:
+        title: "One of"
+        description: "Exactly one branch must match. Prefer `anyOf` when a branch declares a value type — a consumer that does not know the keyword reads the branch as matching everything, and only `anyOf` degrades gracefully."
+        type: array
+        items:
+          $ref: "telo://manifest#/$defs/JsonSchema7"
+      not:
+        title: Not
+        description: "The value must NOT match this schema."
+        $ref: "telo://manifest#/$defs/JsonSchema7"
+      if:
+        title: If
+        description: "Condition selecting `then` / `else`."
+        $ref: "telo://manifest#/$defs/JsonSchema7"
+      then:
+        title: Then
+        description: "Applied when `if` matches."
+        $ref: "telo://manifest#/$defs/JsonSchema7"
+      else:
+        title: Else
+        description: "Applied when `if` does not match."
+        $ref: "telo://manifest#/$defs/JsonSchema7"
+      enum:
+        title: Enum
+        description: "The complete set of accepted values."
+        type: array
+      const:
+        title: Const
+        description: "The single accepted value."
+      default:
+        title: Default
+        description: "Filled in when the value is absent. On an invocation contract this is applied at dispatch, so a caller may omit the field."
+      examples:
+        title: Examples
+        description: "Sample values, for documentation."
+        type: array
+      minimum:
+        title: Minimum
+        type: number
+      maximum:
+        title: Maximum
+        type: number
+      exclusiveMinimum:
+        title: "Exclusive minimum"
+        type: number
+      exclusiveMaximum:
+        title: "Exclusive maximum"
+        type: number
+      multipleOf:
+        title: "Multiple of"
+        type: number
+        exclusiveMinimum: 0
+      minLength:
+        title: "Min length"
+        type: integer
+        minimum: 0
+      maxLength:
+        title: "Max length"
+        type: integer
+        minimum: 0
+      pattern:
+        title: Pattern
+        description: "Regular expression the string must match."
+        type: string
+      format:
+        title: Format
+        description: "Named string format (`date-time`, `uri`, `email`, …)."
+        type: string
+      contentMediaType:
+        title: "Content media type"
+        description: "Media type of the string's content (`application/javascript`). Drives the editor's code-widget language."
+        type: string
+      contentEncoding:
+        title: "Content encoding"
+        type: string
+      minItems:
+        title: "Min items"
+        type: integer
+        minimum: 0
+      maxItems:
+        title: "Max items"
+        type: integer
+        minimum: 0
+      uniqueItems:
+        title: "Unique items"
+        type: boolean
+      minProperties:
+        title: "Min properties"
+        type: integer
+        minimum: 0
+      maxProperties:
+        title: "Max properties"
+        type: integer
+        minimum: 0
+      dependencies:
+        title: Dependencies
+        description: "Per property, the other properties it requires — or a schema to apply."
+        type: object
+        additionalProperties:
+          anyOf:
+            - type: array
+              items:
+                type: string
+            - $ref: "telo://manifest#/$defs/JsonSchema7"
+      title:
+        title: Title
+        description: "Human-readable label for this value."
+        type: string
+      description:
+        title: Description
+        description: "What this value is, for the author reading the manifest."
+        type: string
+      deprecated:
+        title: Deprecated
+        type: boolean
+      readOnly:
+        title: "Read only"
+        type: boolean
+      writeOnly:
+        title: "Write only"
+        type: boolean
+      $ref:
+        title: Reference
+        description: "Pointer to another schema: `#/$defs/<Name>` for one declared below, `telo:<module>/<Type>` for a named type a module declared."
+        type: string
+      $defs:
+        title: Definitions
+        description: "Named sub-schemas, private to this schema, referenced with `#/$defs/<Name>`."
+        type: object
+        additionalProperties:
+          $ref: "telo://manifest#/$defs/JsonSchema7"
+      definitions:
+        title: "Definitions (draft-07)"
+        description: "Older spelling of `$defs`."
+        type: object
+        additionalProperties:
+          $ref: "telo://manifest#/$defs/JsonSchema7"
+      $comment:
+        title: Comment
+        type: string
+      $id:
+        title: Id
+        type: string
+      $schema:
+        title: "Schema dialect"
+        type: string
+    additionalProperties: true
+  KindMetadata:
+    type: object
+    required:
+      - name
+    properties:
+      name:
+        type: string
+      module:
+        type: string
+      categories:
+        type: array
+        items:
+          type: string
+    additionalProperties: true
+  KindSchema:
+    title: "Kind schema"
+    description: "The configuration a resource of this kind accepts, as JSON Schema plus the `x-telo-*` annotations that say how each field behaves."
+    type:
+      - object
+      - boolean
+    properties:
+      type:
+        title: Type
+        description: "The JSON type this value must have, or a list of accepted types."
+        anyOf:
+          - type: string
+            enum:
+              - object
+              - array
+              - string
+              - number
+              - integer
+              - boolean
+              - "null"
+          - type: array
+            items:
+              type: string
+              enum:
+                - object
+                - array
+                - string
+                - number
+                - integer
+                - boolean
+                - "null"
+      properties:
+        title: Properties
+        description: "Schema per named property of an object."
+        type: object
+        additionalProperties:
+          $ref: "telo://manifest#/$defs/KindSchema"
+      required:
+        title: Required
+        description: "Property names that must be present."
+        type: array
+        items:
+          type: string
+      additionalProperties:
+        title: "Additional properties"
+        description: "`false` rejects any property not named above — which is what makes a typo an error rather than an ignored field."
+        anyOf:
+          - type: boolean
+          - $ref: "telo://manifest#/$defs/KindSchema"
+      patternProperties:
+        title: "Pattern properties"
+        description: "Schema per regular expression matching a property name."
+        type: object
+        additionalProperties:
+          $ref: "telo://manifest#/$defs/KindSchema"
+      propertyNames:
+        title: "Property names"
+        description: "Schema every property NAME must satisfy."
+        $ref: "telo://manifest#/$defs/KindSchema"
+      items:
+        title: Items
+        description: "Schema for each element of an array."
+        anyOf:
+          - $ref: "telo://manifest#/$defs/KindSchema"
+          - type: array
+            items:
+              $ref: "telo://manifest#/$defs/KindSchema"
+      additionalItems:
+        title: "Additional items"
+        description: "Schema for elements past a positional `items` list."
+        anyOf:
+          - type: boolean
+          - $ref: "telo://manifest#/$defs/KindSchema"
+      contains:
+        title: Contains
+        description: "At least one element must satisfy this schema."
+        $ref: "telo://manifest#/$defs/KindSchema"
+      allOf:
+        title: "All of"
+        description: "Every branch must match."
+        type: array
+        items:
+          $ref: "telo://manifest#/$defs/KindSchema"
+      anyOf:
+        title: "Any of"
+        description: "At least one branch must match."
+        type: array
+        items:
+          $ref: "telo://manifest#/$defs/KindSchema"
+      oneOf:
+        title: "One of"
+        description: "Exactly one branch must match. Prefer `anyOf` when a branch declares a value type — a consumer that does not know the keyword reads the branch as matching everything, and only `anyOf` degrades gracefully."
+        type: array
+        items:
+          $ref: "telo://manifest#/$defs/KindSchema"
+      not:
+        title: Not
+        description: "The value must NOT match this schema."
+        $ref: "telo://manifest#/$defs/KindSchema"
+      if:
+        title: If
+        description: "Condition selecting `then` / `else`."
+        $ref: "telo://manifest#/$defs/KindSchema"
+      then:
+        title: Then
+        description: "Applied when `if` matches."
+        $ref: "telo://manifest#/$defs/KindSchema"
+      else:
+        title: Else
+        description: "Applied when `if` does not match."
+        $ref: "telo://manifest#/$defs/KindSchema"
+      enum:
+        title: Enum
+        description: "The complete set of accepted values."
+        type: array
+      const:
+        title: Const
+        description: "The single accepted value."
+      default:
+        title: Default
+        description: "Filled in when the value is absent. On an invocation contract this is applied at dispatch, so a caller may omit the field."
+      examples:
+        title: Examples
+        description: "Sample values, for documentation."
+        type: array
+      minimum:
+        title: Minimum
+        type: number
+      maximum:
+        title: Maximum
+        type: number
+      exclusiveMinimum:
+        title: "Exclusive minimum"
+        type: number
+      exclusiveMaximum:
+        title: "Exclusive maximum"
+        type: number
+      multipleOf:
+        title: "Multiple of"
+        type: number
+        exclusiveMinimum: 0
+      minLength:
+        title: "Min length"
+        type: integer
+        minimum: 0
+      maxLength:
+        title: "Max length"
+        type: integer
+        minimum: 0
+      pattern:
+        title: Pattern
+        description: "Regular expression the string must match."
+        type: string
+      format:
+        title: Format
+        description: "Named string format (`date-time`, `uri`, `email`, …)."
+        type: string
+      contentMediaType:
+        title: "Content media type"
+        description: "Media type of the string's content (`application/javascript`). Drives the editor's code-widget language."
+        type: string
+      contentEncoding:
+        title: "Content encoding"
+        type: string
+      minItems:
+        title: "Min items"
+        type: integer
+        minimum: 0
+      maxItems:
+        title: "Max items"
+        type: integer
+        minimum: 0
+      uniqueItems:
+        title: "Unique items"
+        type: boolean
+      minProperties:
+        title: "Min properties"
+        type: integer
+        minimum: 0
+      maxProperties:
+        title: "Max properties"
+        type: integer
+        minimum: 0
+      dependencies:
+        title: Dependencies
+        description: "Per property, the other properties it requires — or a schema to apply."
+        type: object
+        additionalProperties:
+          anyOf:
+            - type: array
+              items:
+                type: string
+            - $ref: "telo://manifest#/$defs/KindSchema"
+      title:
+        title: Title
+        description: "Human-readable label for this value."
+        type: string
+      description:
+        title: Description
+        description: "What this value is, for the author reading the manifest."
+        type: string
+      deprecated:
+        title: Deprecated
+        type: boolean
+      readOnly:
+        title: "Read only"
+        type: boolean
+      writeOnly:
+        title: "Write only"
+        type: boolean
+      $ref:
+        title: Reference
+        description: "Pointer to another schema: `#/$defs/<Name>` for one declared below, `telo:<module>/<Type>` for a named type a module declared."
+        type: string
+      $defs:
+        title: Definitions
+        description: "Named sub-schemas, private to this schema, referenced with `#/$defs/<Name>`."
+        type: object
+        additionalProperties:
+          $ref: "telo://manifest#/$defs/KindSchema"
+      definitions:
+        title: "Definitions (draft-07)"
+        description: "Older spelling of `$defs`."
+        type: object
+        additionalProperties:
+          $ref: "telo://manifest#/$defs/KindSchema"
+      $comment:
+        title: Comment
+        type: string
+      $id:
+        title: Id
+        type: string
+      $schema:
+        title: "Schema dialect"
+        type: string
+    additionalProperties: true
+  LayerIndex:
+    type: array
+    items:
+      type: object
+      required:
+        - role
+        - blob
+        - integrity
+      properties:
+        role:
+          type: string
+          minLength: 1
+        selector: {}
+        blob:
+          type: string
+          pattern: "^sha256:[0-9a-f]{64}$"
+        integrity:
+          type: string
+          pattern: "^sha256-[A-Za-z0-9_-]{43}$"
+      additionalProperties: false
+  LogDuration:
+    type: string
+    pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+  LogLevel:
+    type: string
+    enum:
+      - trace
+      - debug
+      - info
+      - warn
+      - error
+      - fatal
+  LoggingScope:
+    type: object
+    x-telo-eval: compile
+    properties:
+      level:
+        $ref: "telo://manifest#/$defs/LogLevel"
+      attributes:
+        type: object
+      redact:
+        type: object
+        properties:
+          paths:
+            type: array
+            items:
+              type: string
+          censor:
+            type: string
+          remove:
+            type: boolean
+        additionalProperties: false
+      sampling:
+        type: object
+        properties:
+          first:
+            type: integer
+            minimum: 0
+          thereafter:
+            type: integer
+            minimum: 0
+          tick:
+            $ref: "telo://manifest#/$defs/LogDuration"
+          sampleErrors:
+            type: boolean
+        additionalProperties: false
+    additionalProperties: false
+  ModuleImports:
+    type: object
+    additionalProperties:
+      oneOf:
+        - type: string
+        - type: object
+          required:
+            - source
+          properties:
+            source:
+              type: string
+            integrity:
+              type: string
+            variables:
+              type: object
+            secrets:
+              type: object
+            resources:
+              type: object
+              additionalProperties: {}
+            needs:
+              type: object
+              additionalProperties: {}
+            runtime:
+              oneOf:
+                - type: string
+                - type: array
+                  items:
+                    type: string
+            logging:
+              $ref: "telo://manifest#/$defs/LoggingScope"
+          additionalProperties: false
+  ModuleMetadata:
+    type: object
+    properties:
+      name:
+        type: string
+      version:
+        type: string
+      source:
+        type: string
+      module:
+        type: string
+      description:
+        type: string
+      repository:
+        type: string
+      license:
+        type: string
+      documentation:
+        type: string
+    required:
+      - name
+    additionalProperties: true
+  ModuleSources:
+    type: object
+    additionalProperties:
+      type: object
+      required:
+        - version
+        - url
+        - archive
+        - notices
+        - entries
+      properties:
+        version:
+          type: string
+        url:
+          type: string
+        archive:
+          enum:
+            - tar.gz
+        notices:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        build:
+          type: object
+          required:
+            - cargo
+          properties:
+            cargo:
+              type: string
+            inputs:
+              type: string
+          additionalProperties: false
+        entries:
+          type: object
+          additionalProperties:
+            type: object
+            anyOf:
+              - required:
+                  - upstream
+                  - member
+              - required:
+                  - target
+            properties:
+              upstream:
+                type: string
+              member:
+                type: string
+              sha256:
+                type: string
+              executable:
+                type: boolean
+              target:
+                type: string
+            additionalProperties: false
+      additionalProperties: false
+  NativeEntries:
+    type: array
+    items:
+      $ref: "telo://manifest#/$defs/PlatformAxes"
+      type: object
+      required:
+        - name
+        - format
+        - os
+        - arch
+        - path
+      properties:
+        name:
+          type: string
+        format:
+          type: string
+        path:
+          type: string
+      additionalProperties: false
+  NeedRequest:
+    type: object
+    required:
+      - kind
+    properties:
+      kind:
+        type: string
+      parameters:
+        type: object
+      version:
+        type: string
+        description: "The version range the fulfilment must be within, as explicit comparators (`>=15.0.0`). Legal only when the need type is versioned."
+      features:
+        type: array
+        description: "The features the fulfilment must carry — names the need type lists."
+        items:
+          type: string
+        uniqueItems: true
+      optional:
+        type: boolean
+      description:
+        type: string
+    additionalProperties: false
+  PlatformAxes:
+    type: object
+    properties:
+      os:
+        type: string
+      arch:
+        type: string
+      libc:
+        type: string
+      abi:
+        type: string
+  Requires:
+    type: object
+    properties:
+      host:
+        type: object
+    additionalProperties: true
+  ResourceRef:
+    title: "Resource reference"
+    anyOf:
+      - type: object
+        required:
+          - __tagged
+          - engine
+          - source
+        properties:
+          __tagged:
+            const: true
+          engine:
+            const: ref
+          source:
+            type: string
+            minLength: 1
+        additionalProperties: false
+      - type: object
+        required:
+          - kind
+        properties:
+          kind:
+            type: string
+        additionalProperties: true
+  RetryAttempts:
+    title: "Retry attempts"
+    description: "Re-attempts after the first try. 0 disables retrying."
+    type: integer
+    minimum: 0
+    default: 0
+  RetryPolicy:
+    title: "Retry policy"
+    description: "Re-attempts a failed dispatch with exponential backoff. A domain failure is retried; a cancellation and a contract violation are not — the latter is a property of the manifest and would fail identically every time."
+    type: object
+    additionalProperties: false
+    properties:
+      attempts:
+        title: Attempts
+        description: "Re-attempts after the first try. 0 disables retrying."
+        type: integer
+        minimum: 0
+        default: 0
+      initialDelay:
+        title: "Initial delay"
+        description: "Milliseconds to wait before the first re-attempt."
+        type: integer
+        minimum: 0
+        default: 250
+      factor:
+        title: Factor
+        description: "Multiplier applied to the delay after each re-attempt."
+        type: number
+        minimum: 1
+        default: 2
+      maxDelay:
+        title: "Max delay"
+        description: "Ceiling on the delay between re-attempts, in milliseconds."
+        type: integer
+        minimum: 0
+        default: 32000
+      jitter:
+        title: Jitter
+        description: "`full` picks each delay uniformly from [0, delay], which is what stops work that failed together from re-attempting together."
+        type: string
+        enum:
+          - none
+          - full
+        default: full
+      delay:
+        title: Delay
+        description: "DEPRECATED duration string (`250ms`, `1s`) — read as `initialDelay` when that is absent. The pattern is what makes a typo a `telo check` failure instead of a silently different backoff."
+        type: string
+        pattern: "^[0-9]+(\\.[0-9]+)?\\s*(ms|s|m|h)$"
+  Step:
+    title: Step
+    description: "Single executable step or control-flow block."
+    type: object
+    properties:
+      name:
+        title: Name
+        description: "Unique step name."
+        type: string
+    oneOf:
+      - title: invoke
+        description: "Invokes an invocable or runnable resource."
+        $ref: "telo://manifest#/$defs/InvokeStep"
+      - title: if/then/else
+        description: "Conditional branch; executes then or else based on a boolean expression."
+        properties:
+          if:
+            title: If
+            description: "CEL boolean expression; true executes then, false executes else."
+            x-telo-topology-role: predicate
+            type: boolean
+          elseif:
+            title: "Else If"
+            description: "Additional condition-branch pairs evaluated when if is false."
+            x-telo-topology-role: branch-list
+            type: array
+            items:
+              type: object
+              properties:
+                if:
+                  title: If
+                  description: "CEL boolean expression for this else-if branch."
+                  x-telo-topology-role: predicate
+                  type: boolean
+                then:
+                  title: Then
+                  description: "Steps executed when this else-if condition is true."
+                  x-telo-topology-role: branch
+                  type: array
+                  items:
+                    $ref: "telo://manifest#/$defs/Step"
+              required:
+                - if
+                - then
+          then:
+            title: Then
+            description: "Steps executed when if evaluates true."
+            x-telo-topology-role: branch
+            type: array
+            items:
+              $ref: "telo://manifest#/$defs/Step"
+          else:
+            title: Else
+            description: "Steps executed when if (and all elseif conditions) evaluate false."
+            x-telo-topology-role: branch
+            type: array
+            items:
+              $ref: "telo://manifest#/$defs/Step"
+        required:
+          - if
+          - then
+      - title: while/do
+        description: "Loop; executes do steps repeatedly while condition is true."
+        properties:
+          while:
+            title: While
+            description: "CEL boolean expression; evaluated before each iteration."
+            x-telo-topology-role: predicate
+            type: boolean
+          do:
+            title: Do
+            description: "Steps executed on each iteration."
+            x-telo-topology-role: branch
+            type: array
+            items:
+              $ref: "telo://manifest#/$defs/Step"
+        required:
+          - while
+          - do
+      - title: switch/cases/default
+        description: "Multi-branch dispatch; matches a value expression against case keys."
+        properties:
+          switch:
+            title: Switch
+            description: "CEL expression; result matched against case keys."
+            x-telo-topology-role: discriminator
+            type: string
+          cases:
+            title: Cases
+            description: "Map of value to step list; executed when switch matches the key."
+            x-telo-topology-role: case-map
+            type: object
+            additionalProperties:
+              type: array
+              items:
+                $ref: "telo://manifest#/$defs/Step"
+          default:
+            title: Default
+            description: "Steps executed when no case matches."
+            x-telo-topology-role: branch
+            type: array
+            items:
+              $ref: "telo://manifest#/$defs/Step"
+        required:
+          - switch
+          - cases
+      - title: try/catch/finally
+        description: "Error boundary; executes try steps and handles failure via catch and finally."
+        properties:
+          when:
+            title: When
+            description: "CEL boolean guard — the whole try/catch/finally is skipped when it evaluates false."
+            x-telo-topology-role: predicate
+            type: boolean
+          try:
+            title: Try
+            description: "Steps executed; halts on first failure and jumps to catch."
+            x-telo-topology-role: branch
+            type: array
+            items:
+              $ref: "telo://manifest#/$defs/Step"
+          catch:
+            title: Catch
+            description: "Steps executed when try fails; receives error context."
+            x-telo-topology-role: branch
+            type: array
+            items:
+              $ref: "telo://manifest#/$defs/Step"
+            x-telo-error-context:
+              type: object
+              description: "The caught failure (always present inside catch)."
+              properties:
+                code:
+                  description: "Structured error code; INTERNAL_ERROR for plain errors."
+                  type: string
+                message:
+                  description: "Human-readable error message."
+                  type: string
+                step:
+                  description: "Name of the step that threw."
+                  type: string
+                data:
+                  description: "Structured payload from an InvokeError, else undefined."
+              additionalProperties: false
+          finally:
+            title: Finally
+            description: "Steps always executed after try/catch regardless of outcome."
+            x-telo-topology-role: branch
+            type: array
+            items:
+              $ref: "telo://manifest#/$defs/Step"
+            x-telo-error-context:
+              type:
+                - object
+                - "null"
+              description: "The caught failure, or null when try (and catch) succeeded."
+              properties:
+                code:
+                  description: "Structured error code; INTERNAL_ERROR for plain errors."
+                  type: string
+                message:
+                  description: "Human-readable error message."
+                  type: string
+                step:
+                  description: "Name of the step that threw."
+                  type: string
+                data:
+                  description: "Structured payload from an InvokeError, else undefined."
+              additionalProperties: false
+        required:
+          - try
+      - title: throw
+        description: "Throws an InvokeError unconditionally. Works inside catch blocks via CEL (e.g. code set to `!cel \"error.code\"`)."
+        properties:
+          throw:
+            title: Throw
+            description: "InvokeError descriptor; code is required, message/data optional."
+            type: object
+            properties:
+              code:
+                title: Code
+                description: "Structured error code; uppercase SNAKE_CASE by convention."
+                type: string
+              message:
+                title: Message
+                description: "Human-readable error message. Defaults to `code` when omitted."
+                type: string
+              data:
+                title: Data
+                description: "Optional structured payload attached to the error."
+            required:
+              - code
+        required:
+          - throw
+      - title: value
+        description: "Computes a value and publishes it as `steps.<name>.result`, with no dispatch — no resource, no span, no topology node. For an intermediate derived from an earlier step: reshape a response, total some rows, build the next call's inputs."
+        properties:
+          value:
+            title: Value
+            description: "A CEL expression — or a structure (map / array) with `!cel` leaves — evaluated in the step scope: `inputs`, the results of the steps before it, and whatever the enclosing kind binds (`item` / `index` / `items`, `iteration` / `previous`)."
+        required:
+          - value
+    required:
+      - name
+  ThrowCodes:
+    type: object
+    propertyNames:
+      pattern: "^[A-Z][A-Z0-9_]*$"
+    additionalProperties:
+      type: object
+      required:
+        - description
+      additionalProperties: false
+      properties:
+        description:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+valueTypes:
+  Telo.Bytes:
+    $comment: "Bytes are not expressible in JSON Schema's type vocabulary. `type: object` is satisfied by every object, so a mistyped literal reached the controller instead of failing check; `type: binary` is not an option, since a validator refuses to COMPILE an unknown type and a published telo.yaml would stop being JSON Schema for the hub, the editor and every third-party reader. Declaring the representation instead is what makes the check fall out: a literal is read only through the plain encoding, so anything else written at a byte slot is rejected statically and a value arriving by reference passes."
+    name: Telo.Bytes
+    representation: instance
+    binding: bytes
+    encoding: base64url
+    description: "Raw bytes. Filled by reference (an `!include-bytes` embed, a resource output, a CEL expression) or written inline as base64url text without padding, and the runtime asserts the value really is a byte buffer."
+  Telo.Duration:
+    name: Telo.Duration
+    representation: instance
+    binding: duration
+    encoding: cel-duration
+    description: "A span of time, held as a native duration so it adds to and subtracts from timestamps exactly. Written inline as any CEL duration string (`1h30m`, `250ms`); it is written as seconds (`5400s`)."
+  Telo.HostPath:
+    $comment: "A nominal brand over `string`: CEL types a host path as `Telo.HostPath`, so `+` does not quietly turn one into a plain string and a plain string is not accepted where one is required. It is extended with `.joinPath(relative)` and read as text with `string(path)`. `fromHost` names the anchor a host-supplied value (an env var, or the `default:` standing in for one) is resolved against; every other value of this type must already be absolute."
+    name: Telo.HostPath
+    representation: json
+    base: string
+    fromHost: working-directory
+    description: "An absolute path on the machine running the application — a data directory, a database file, an output location. A variable of this type set from the environment may be relative and is resolved against the working directory; anywhere else a relative path is refused. Extend one with `.joinPath('sub/dir')`, which uses the host's separator. A file that ships with the module is written with `!module-path` instead."
+  Telo.Stream:
+    $comment: "`live` is what separates a stream from bytes: consuming it has effects, so it is EXEMPT from validation rather than asserted — iterating a stream to check its elements is precisely what the exemption forbids. The exemption is from VALIDATION, never from TYPING: `of` still travels through every schema-typing walk, because that is where the argument check reads it."
+    name: Telo.Stream
+    representation: instance
+    binding: stream
+    live: true
+    parameters:
+      - name: of
+        element: true
+        description: "The element the stream yields. Any schema node — an inline shape, a value type, a `!ref` to a named shape, or another parameterized type. Omitted means any element."
+    description: "A live handle over a sequence of values, consumed by reading. Its elements are never buffered or validated, and member access past it is rejected — a consumer iterates it instead."
+  Telo.TcpPort:
+    $comment: "A `json` representation adds nominal identity to a value the declared schema already validates. A TcpPort and a UdpPort are both integers, so nothing structural tells them apart — the name is the whole difference, and it is what makes wiring one into the other's slot a static error."
+    name: Telo.TcpPort
+    representation: json
+    base: integer
+    description: "A TCP port number. Distinct from a UDP port even though both are integers, so wiring one into the other's slot is a static error."
+  Telo.Timestamp:
+    $comment: "JSON Schema has no time type, so an instant inside a record used to be a string: comparing two compares text, which is wrong once offsets differ, and every controller parsed it itself. Declared as an instance, the value in memory is CEL's native timestamp in every runtime, and the text form exists only where a value enters or leaves as JSON."
+    name: Telo.Timestamp
+    representation: instance
+    binding: timestamp
+    encoding: rfc3339
+    description: "An instant in time, held as a native timestamp so comparison and duration arithmetic are exact. Written inline as RFC 3339 text; any offset is read, and it is written in UTC with a trailing Z."
+  Telo.UdpPort:
+    name: Telo.UdpPort
+    representation: json
+    base: integer
+    description: "A UDP port number. Distinct from a TCP port even though both are integers, so wiring one into the other's slot is a static error."
+  Telo.Uint64:
+    $comment: "`uint` is the one CEL type JSON Schema cannot state: its JSON form is an ordinary integer, so `base` is `integer`, and `celType` carries what the brand mechanism cannot — a value of this type IS a CEL uint, not a nominal integer. A declared output normalizes to one exactly as an `integer` slot normalizes to int64."
+    name: Telo.Uint64
+    representation: json
+    base: integer
+    celType: uint
+    description: "An unsigned 64-bit integer. Its JSON form is an ordinary integer, and a CEL expression reads it as `uint`, so it composes with `1u` literals and unsigned arithmetic. A plain number is exact only up to 9007199254740991; write a wider value as a CEL uint (`!cel \"18446744073709551615u\"`)."
+  Telo.Url:
+    $comment: "An instance rather than a string, so the credentials inside a connection address are members a manifest reads and the runtime redacts, never text an author assembles. `members` gives the CEL fields, the object authoring form and per-member sensitivity in one declaration; `acceptsText` admits a CEL string at a slot of the type, read through the encoding when the resource holding it is created; the `scheme` parameter restricts the scheme member with a schema, while the member's CEL type stays `string`."
+    name: Telo.Url
+    representation: instance
+    binding: url
+    encoding: url-text
+    members:
+      scheme:
+        type: string
+        description: "The scheme, in lower case (`postgres`, `https`)."
+      host:
+        type: string
+        description: "The host: a name, an IPv4 address or an IPv6 address without its brackets. Present exactly when the URL has an authority, possibly empty."
+      port:
+        type: integer
+        minimum: 1
+        maximum: 65535
+        description: "The port number, when the URL names one."
+      user:
+        type: string
+        description: "The user name of the authority's user information."
+      password:
+        type: string
+        x-telo-sensitive: true
+        description: "The password of the authority's user information. Redacted wherever it is logged, as is the URL's whole text."
+      path:
+        type: string
+        description: "The path, unescaped (`/orders`). Absent when the URL has none."
+      query:
+        type: object
+        additionalProperties:
+          type: string
+        description: "The query as a map of each key to its value, unescaped. A key appears once."
+    acceptsText:
+      code: URL_INVALID
+    parameters:
+      - name: scheme
+        member: scheme
+        description: "A schema the scheme must satisfy (`scheme: { enum: [postgres, postgresql] }`). Omitted means any scheme."
+      - name: user
+        member: user
+        description: "A schema the user name must satisfy when present; `{ not: {} }` refuses one."
+      - name: password
+        member: password
+        description: "A schema the password must satisfy when present; `{ not: {} }` refuses one."
+      - name: path
+        member: path
+        description: "A schema the path must satisfy when present (`path: { enum: [\"/\"] }` for an origin)."
+      - name: query
+        member: query
+        description: "A schema the query must satisfy when present; `{ not: {} }` refuses one."
+    description: "A URL that may carry credentials, held as its members — scheme, host, port, user, password, path and query — each read in CEL as a field. Written as its text (`postgres://app:secret@db:5432/orders`) or as an object of members, which are escaped by RFC 3986 component rules, so a password holding `@` or `/` needs no hand escaping. The password and the whole text are redacted in logs; `string(url)` is its text."
+zoneAttributes:
+  atomic:
+    $comment: "Distinct from `idempotent`, and the exactly-once machinery reads the difference literally: per-step journaling is safe inside a transaction PRECISELY because a rollback erases the journal's own entries too. A region that rolls nothing back has no such property, so it declares `idempotent` instead — borrowing this name there would let a journal's attestation relax collapse and record entries for effects that will re-run."
+    name: atomic
+    requires:
+      - noSuspend
+    value:
+      type: string
+      minLength: 1
+    description: "Effects inside are discarded together on failure, so a consumer recording them individually would record work a rollback erases."
+  idempotent:
+    $comment: "Worn by a provider that ENFORCES the property (Idempotency.Once, whose claim makes it true) and by one that merely ASSERTS it on the author's word (Durable.Idempotent). Which one an author reaches for is a cost decision, visible in the manifest as a different kind rather than as a flag on one."
+    name: idempotent
+    value:
+      type: string
+      minLength: 1
+    description: "Re-executing the zone is observably a no-op — the same writes land, or land once. Nothing is discarded, so unlike an atomic region there is no rollback for a consumer's own records to participate in."
+  noSuspend:
+    $comment: "The clearest case for the reason-as-value design: one name is worn by a transaction holding a connection, a lease that lapses unrenewed, an idempotency claim, and later a deadline scope whose bound would elapse while parked. Four providers, four different reasons, one attribute — without the prose the pressure would be to invent `connectionHeld`, `leaseHeld` and `deadlineBound` as separate entries."
+    name: noSuspend
+    value:
+      type: string
+      minLength: 1
+    description: "The zone holds something bounded that cannot outlive the current process — a connection, a lease, a claim — so execution inside it must not park and resume elsewhere."
+  replayed:
+    $comment: "This attribute, and nothing else, is what makes a zone durable to the static checks. Keying them on the bare `x-telo-provides-zone` annotation would apply DURABLE_NONDETERMINISM and its siblings inside every Sql.Transaction in the ecosystem, since transactions, leases and idempotency claims all provide zones. Keying them on a `Durable.Run` kind would instead put a module's kind into analyzer code."
+    name: replayed
+    value:
+      type: string
+      minLength: 1
+    description: "Execution inside may be re-run from a record of a previous execution, so it must reach the same decisions on every pass and the values it produces must be serializable."
+formats:
+  css-selector:
+    name: css-selector
+    grammar: "https://www.w3.org/TR/selectors-4/#typedef-complex-selector-list"
+    standIn: "*"
+    description: "A CSS selector list — Selectors Level 4 <complex-selector-list> in the snapshot profile: no pseudo-elements, no namespace prefixes, no leading combinator, with :scope naming the element the selector is matched from. A relative selector (one starting with a combinator) is valid only inside :has(), and :has() does not nest."
+    conformance:
+      valid:
+        - ":scope > a"
+        - "a:hover"
+        - "div.card > h2"
+        - "a[href^=\"http\"]"
+        - "ul li:nth-child(2n+1)"
+        - ":is(h1, h2)"
+        - ":not(.x)"
+        - ":has(> img)"
+        - "*"
+        - "#main, article p ~ span + em"
+        - ":nth-child(2n+1 of .x)"
+        - "col || td"
+        - ":is(div p)"
+        - ":has(+ p)"
+        - ":nth-child(odd of .a, .b)"
+      invalid:
+        - "div["
+        - "> a"
+        - "p::before"
+        - "svg|a"
+        - ""
+        - "a,"
+        - ":nosuchclass"
+        - ":not(> a)"
+        - ":is(+ p)"
+        - ":has(:has(a))"
+layers:
+  - role: "common"
+    blob: "sha256:5c0d6ce2bb8e1e7a1c5b1b8d0bd6a0f4c1b2d3e4f5a6b7c8d9e0f1a2b3c4d5e6"
+    integrity: "sha256-XA1s4ruOHnocWxuNC9agz8GyPT5aa3yNnh8aKzxNXmY"
+---
+kind: Telo.Definition
+metadata:
+  name: Abstract
+  description: "Declares a contract with no implementation: a kind that cannot be instantiated and that other kinds specialize. It may state a role, a configuration schema, observed state, a call signature, input and output contracts and a ceiling on the error codes its implementations may throw."
+capability: Telo.Template
+schema:
+  type: object
+  properties:
+    kind:
+      const: Telo.Abstract
+    metadata:
+      $ref: "telo://manifest#/$defs/KindMetadata"
+    capability:
+      title: Capability
+      description: "The lifecycle role this kind implements."
+      enum:
+        - Telo.Callable
+        - Telo.Invocable
+        - Telo.Mount
+        - Telo.Provider
+        - Telo.Runnable
+        - Telo.Service
+        - Telo.Sink
+        - Telo.Type
+    schema:
+      title: Schema
+      description: "Configuration this kind accepts, as JSON Schema plus `x-telo-*` annotations."
+      $ref: "telo://manifest#/$defs/KindSchema"
+    status:
+      title: "Observed state"
+      description: "What a resource of this kind reports while running, published at `resources.<name>.status.<field>`."
+      $ref: "telo://manifest#/$defs/JsonSchema7"
+    params:
+      $ref: "telo://manifest#/$defs/CallableParams"
+    returns:
+      $ref: "telo://manifest#/$defs/CallableReturns"
+    deterministic:
+      title: Deterministic
+      description: "`true` when the result depends only on the arguments and this instance's configuration. Legal on a callable kind that declares its own `controllers:` (a claim) or on a callable abstract (a requirement every implementation must meet)."
+    throws:
+      type: object
+      additionalProperties: false
+      properties:
+        codes:
+          $ref: "telo://manifest#/$defs/ThrowCodes"
+    controllers: false
+  required:
+    - kind
+    - metadata
+  if:
+    required:
+      - throws
+      - capability
+    properties:
+      capability:
+        not:
+          enum:
+            - Telo.Invocable
+            - Telo.Runnable
+  then:
+    properties:
+      throws: false
+  additionalProperties: true
+---
+kind: Telo.Definition
+metadata:
+  name: Application
+  description: "A runnable entry point: the module a runtime starts. Declares its imports, the variables, secrets, ports and needs it reads from its host and command line, its boot sequence, logging and tracing destinations, and the runtime range it is verified against."
+capability: Telo.Template
+schema:
+  type: object
+  properties:
+    kind:
+      type: string
+    metadata:
+      $ref: "telo://manifest#/$defs/ModuleMetadata"
+    lifecycle:
+      type: string
+      enum:
+        - shared
+        - isolated
+      default: shared
+    targets:
+      x-telo-step-context:
+        invoke: invoke
+        outputType: outputType
+      type: array
+      items:
+        x-telo-ref:
+          kind:
+            - Telo.Runnable
+            - Telo.Service
+          use: call
+        anyOf:
+          - type: string
+          - type: object
+            required:
+              - kind
+              - name
+            properties:
+              kind:
+                type: string
+              name:
+                type: string
+            additionalProperties: true
+          - type: object
+            required:
+              - ref
+            properties:
+              ref:
+                x-telo-ref:
+                  kind:
+                    - Telo.Runnable
+                    - Telo.Service
+                  use: call
+                anyOf:
+                  - type: string
+                  - type: object
+                    required:
+                      - kind
+                      - name
+                    properties:
+                      kind:
+                        type: string
+                      name:
+                        type: string
+                    additionalProperties: true
+              when:
+                title: When
+                description: "CEL guard — the target runs only when it evaluates true."
+                x-telo-topology-role: predicate
+                type: boolean
+            additionalProperties: false
+          - $ref: "telo://manifest#/$defs/InvokeStep"
+    include:
+      type: array
+      items:
+        type: string
+    files:
+      type: array
+      items:
+        type: string
+    assets:
+      type: array
+      items:
+        type: string
+    native:
+      $ref: "telo://manifest#/$defs/NativeEntries"
+    sources:
+      $ref: "telo://manifest#/$defs/ModuleSources"
+    layers:
+      $ref: "telo://manifest#/$defs/LayerIndex"
+    filesIntegrity:
+      type: string
+    imports:
+      $ref: "telo://manifest#/$defs/ModuleImports"
+    variables:
+      type: object
+      additionalProperties:
+        type: object
+        required:
+          - type
+        anyOf:
+          - required:
+              - env
+          - required:
+              - arg
+        properties:
+          env:
+            type: string
+            minLength: 1
+          arg:
+            $ref: "telo://manifest#/$defs/ArgBinding"
+          type:
+            type: string
+            enum:
+              - string
+              - integer
+              - number
+              - boolean
+              - object
+              - array
+          default: {}
+    secrets:
+      type: object
+      additionalProperties:
+        type: object
+        required:
+          - env
+          - type
+        properties:
+          env:
+            type: string
+            minLength: 1
+          type:
+            type: string
+            enum:
+              - string
+              - integer
+              - number
+              - boolean
+              - object
+              - array
+          default: {}
+    needs:
+      type: object
+      additionalProperties:
+        $ref: "telo://manifest#/$defs/NeedRequest"
+        properties:
+          env:
+            type: object
+            additionalProperties:
+              type: string
+              minLength: 1
+    ports:
+      type: object
+      additionalProperties:
+        type: object
+        required:
+          - env
+        properties:
+          env:
+            type: string
+            minLength: 1
+          arg:
+            $ref: "telo://manifest#/$defs/ArgBinding"
+          protocol:
+            type: string
+            enum:
+              - tcp
+              - udp
+            default: tcp
+          default:
+            type: integer
+            minimum: 1
+            maximum: 65535
+        additionalProperties: false
+    logging:
+      $ref: "telo://manifest#/$defs/LoggingScope"
+      x-telo-unbound-calls: "the Application's logging: block is resolved when the application is loaded, before any resource — any function among them — has been created"
+      properties:
+        sinks:
+          type: array
+          items:
+            anyOf:
+              - type: object
+                required:
+                  - kind
+                x-telo-ref:
+                  kind: Telo.LogSink
+                  use: dependency
+                x-telo-inline: true
+              - type: object
+                required:
+                  - sink
+                properties:
+                  sink:
+                    type: object
+                    required:
+                      - kind
+                    x-telo-ref:
+                      kind: Telo.LogSink
+                      use: dependency
+                    x-telo-inline: true
+                  when:
+                    type: boolean
+                    default: true
+                additionalProperties: false
+    tracing:
+      type: object
+      x-telo-eval: compile
+      x-telo-unbound-calls: "the Application's tracing: block is resolved when the application is loaded, before any resource — any function among them — has been created"
+      properties:
+        sinks:
+          type: array
+          items:
+            anyOf:
+              - type: object
+                required:
+                  - kind
+                x-telo-ref:
+                  kind: Telo.TraceSink
+                  use: dependency
+                x-telo-inline: true
+              - type: object
+                required:
+                  - sink
+                properties:
+                  sink:
+                    type: object
+                    required:
+                      - kind
+                    x-telo-ref:
+                      kind: Telo.TraceSink
+                      use: dependency
+                    x-telo-inline: true
+                  when:
+                    type: boolean
+                    default: true
+                additionalProperties: false
+      additionalProperties: false
+    requires:
+      $ref: "telo://manifest#/$defs/Requires"
+  required:
+    - metadata
+  additionalProperties: false
+---
+kind: Telo.Abstract
+metadata:
+  name: Callable
+  description: "A function reached from an expression through a module name: synchronous call(args) against a declared parameter list and result. Evaluated inside an expression with no caller frame, so a failure fails the evaluation rather than being declared as a thrown error."
+capability: Telo.Callable
+declarable: true
+throwsAllowed: false
+---
+kind: Telo.Definition
+metadata:
+  name: ConsoleSink
+  description: "Writes structured log records to standard error or standard output, as pretty text for a terminal or as JSON lines for a collector, with optional colour. The zero-configuration destination every runtime provides."
+capability: Telo.Sink
+extends: Telo.LogSink
+schema:
+  type: object
+  properties:
+    destination:
+      type: string
+      enum:
+        - stderr
+        - stdout
+    encoding:
+      type: string
+      enum:
+        - auto
+        - pretty
+        - json
+    color:
+      type: string
+      enum:
+        - auto
+        - always
+        - never
+  additionalProperties: false
+---
+kind: Telo.Definition
+metadata:
+  name: Definition
+  description: "Declares a resource kind: the lifecycle role it implements, its configuration schema, observed state, input and output contracts, the errors it throws, and how it runs — a controller, a body of resources it dispatches to, or a parent kind it specializes."
+capability: Telo.Template
+schema:
+  type: object
+  properties:
+    kind:
+      const: Telo.Definition
+    metadata:
+      $ref: "telo://manifest#/$defs/KindMetadata"
+    capability:
+      title: Capability
+      description: "The lifecycle role this kind implements."
+      enum:
+        - Telo.Callable
+        - Telo.Invocable
+        - Telo.Mount
+        - Telo.Provider
+        - Telo.Runnable
+        - Telo.Service
+        - Telo.Sink
+        - Telo.Type
+    extends:
+      title: Extends
+      description: "The kind this one specializes, as `<Alias>.<Kind>` — an abstract it implements or a concrete kind whose controller it inherits."
+      type: string
+      pattern: "^[A-Z][A-Za-z0-9_]*\\.[A-Z][A-Za-z0-9_]*$"
+    controllers:
+      title: Controllers
+      description: "Package URLs of the controller implementations, in preference order."
+      type: array
+      items:
+        type: string
+    schema:
+      title: Schema
+      description: "Configuration this kind accepts, as JSON Schema plus `x-telo-*` annotations."
+      $ref: "telo://manifest#/$defs/KindSchema"
+    status:
+      title: "Observed state"
+      description: "What a resource of this kind reports while running, published at `resources.<name>.status.<field>`."
+      $ref: "telo://manifest#/$defs/JsonSchema7"
+    inputType:
+      title: "Input type"
+      description: "The schema of the inputs a call passes — a `!ref` to a named shape, or inline JSON Schema."
+    outputType:
+      title: "Output type"
+      description: "The schema of what a call returns — a `!ref` to a named shape, or inline JSON Schema."
+    params:
+      $ref: "telo://manifest#/$defs/CallableParams"
+    returns:
+      $ref: "telo://manifest#/$defs/CallableReturns"
+    deterministic:
+      title: Deterministic
+      description: "`true` when the result depends only on the arguments and this instance's configuration. Legal on a callable kind that declares its own `controllers:` (a claim) or on a callable abstract (a requirement every implementation must meet)."
+    throws:
+      type: object
+      additionalProperties: false
+      properties:
+        codes:
+          $ref: "telo://manifest#/$defs/ThrowCodes"
+        inherit:
+          type: boolean
+        passthrough:
+          type: boolean
+    topology:
+      title: Topology
+      description: "How a visual editor draws resources of this kind."
+      type: string
+    resources:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+        x-telo-context:
+          type: object
+          additionalProperties: false
+          properties:
+            self:
+              x-telo-context-from-root: schema
+    invoke:
+      title: "Invoke target"
+      description: "The `resources:` entry whose `invoke()` this kind dispatches to, as `!ref <entry>`."
+      $ref: "telo://manifest#/$defs/DispatchTarget"
+    provide:
+      title: "Provide target"
+      description: "The `resources:` entry whose `invoke()` produces this provider's value, as `!ref <entry>`."
+      $ref: "telo://manifest#/$defs/DispatchTarget"
+    run:
+      title: "Run target"
+      description: "The `resources:` entry whose `run()` this kind dispatches to, as `!ref <entry>`."
+      $ref: "telo://manifest#/$defs/DispatchTarget"
+    targets:
+      title: Targets
+      description: "The `resources:` entries this kind starts, in order, when an instance runs — each as `!ref <entry>`, each a Telo.Service or Telo.Runnable. Replaces `run:` when the kind has more than one thing to start, such as a server and the poller beside it."
+    mount:
+      title: "Mount target"
+      description: "The `resources:` entry (a Telo.Mount, e.g. an Http.Api) whose `register()` this kind delegates to, as `!ref <entry>`."
+      $ref: "telo://manifest#/$defs/DispatchTarget"
+    inputs:
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        properties:
+          self:
+            x-telo-context-from-root: schema
+          inputs:
+            x-telo-context-from-root: inputType
+    result:
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        properties:
+          self:
+            x-telo-context-from-root: schema
+          result:
+            x-telo-context-from-ref-kind:
+              - "provide#outputType"
+              - "invoke#outputType"
+    base:
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        properties:
+          self:
+            x-telo-context-from-root: schema
+  patternProperties:
+    "^x-telo-schema-projection(-from)?$": {}
+  required:
+    - kind
+    - metadata
+  if:
+    required:
+      - throws
+      - capability
+    properties:
+      capability:
+        not:
+          enum:
+            - Telo.Invocable
+            - Telo.Runnable
+  then:
+    properties:
+      throws: false
+  additionalProperties: false
+---
+kind: Telo.Abstract
+metadata:
+  name: Executable
+  description: "Anything control can be transferred to with call arguments — a resource that is invoked or run. A reference slot accepting either says so once with this constraint. It names no lifecycle of its own, so no kind declares it as its role: a kind declares the role it implements."
+declarable: false
+---
+kind: Telo.Definition
+metadata:
+  name: FileSink
+  description: "Appends structured log records to a file on the host, as JSON lines or pretty text. The destination path is required; level filtering, buffering and flushing follow the log destination settings."
+capability: Telo.Sink
+extends: Telo.LogSink
+schema:
+  type: object
+  properties:
+    destination:
+      type: string
+    encoding:
+      type: string
+      enum:
+        - json
+        - pretty
+  required:
+    - destination
+  additionalProperties: false
+---
+kind: Telo.Definition
+metadata:
+  name: Function
+  description: "A function written as one expression over its parameters, called from other expressions through the declaring module's name. Declares an ordered parameter list and a result type the body must produce; whether it is deterministic is derived from what the body calls."
+capability: Telo.Callable
+schema:
+  type: object
+  properties:
+    params:
+      $ref: "telo://manifest#/$defs/CallableParams"
+    returns:
+      $ref: "telo://manifest#/$defs/CallableReturns"
+    body:
+      title: Body
+      description: "The expression this function evaluates, over its parameters."
+      x-telo-returns-from: returns
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        x-telo-context-parameters-from: params
+  required:
+    - body
+  additionalProperties: false
+---
+kind: Telo.Definition
+metadata:
+  name: Import
+  description: "Brings a library into a module under an alias: where it comes from, its integrity pin, the variables, secrets, resources and needs supplied to it, the runtimes it may run on and a logging override for its subtree."
+capability: Telo.Template
+schema:
+  type: object
+  properties:
+    kind:
+      type: string
+    metadata:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+      additionalProperties: true
+    source:
+      type: string
+    integrity:
+      type: string
+    variables:
+      type: object
+    secrets:
+      type: object
+    resources:
+      type: object
+      additionalProperties: {}
+    needs:
+      type: object
+      additionalProperties: {}
+    runtime:
+      oneOf:
+        - type: string
+        - type: array
+          items:
+            type: string
+    logging:
+      $ref: "telo://manifest#/$defs/LoggingScope"
+  required:
+    - metadata
+    - source
+  additionalProperties: false
+---
+kind: Telo.Abstract
+metadata:
+  name: Invocable
+  description: "A request handler called with inputs and answering with outputs: an endpoint, a query, a computation. Its invoke() is dispatched through the runtime, which checks the declared input and output contracts and lets a caller catch the errors it declares."
+capability: Telo.Invocable
+extends: Telo.Executable
+declarable: true
+throwsAllowed: true
+---
+kind: Telo.Definition
+metadata:
+  name: JsonSchema
+  description: "A named data shape written as JSON Schema, usable as an input, output or field type anywhere without an import. It may extend other shapes and carry business rules — expressions over the value that must hold, each failing validation with its own code."
+capability: Telo.Type
+schema:
+  type: object
+  properties:
+    schema:
+      title: Schema
+      description: "JSON Schema definition for the declared data type."
+      $ref: "telo://manifest#/$defs/JsonSchema7"
+    extends:
+      title: Extends
+      description: "Parent type name or list of parent type names to inherit from."
+      oneOf:
+        - type: string
+        - type: array
+          items:
+            type: string
+    rules:
+      title: Rules
+      description: "CEL-based business invariant rules. Each rule's condition must return true for valid data."
+      type: array
+      items:
+        type: object
+        properties:
+          condition:
+            type: string
+            description: "CEL expression evaluated with 'this' bound to the data. Must return true for valid data."
+            x-telo-unbound-calls: "a type rule's condition is evaluated against the value alone, wherever the shape is checked, where no module's functions are bound"
+          code:
+            type: string
+            description: "Machine-readable error code surfaced on validation failure."
+          message:
+            type: string
+            description: "Optional human-readable hint for the validation failure."
+        required:
+          - condition
+          - code
+  required:
+    - schema
+  additionalProperties: false
+---
+kind: Telo.Definition
+metadata:
+  name: Library
+  description: "An importable module: a unit of kinds, need types and ready-made instances other modules import under an alias. Declares the variables, secrets, resources and needs it requires from its importer, whether it is instantiated once or per import, and what it exports."
+capability: Telo.Template
+schema:
+  type: object
+  properties:
+    kind:
+      type: string
+    metadata:
+      $ref: "telo://manifest#/$defs/ModuleMetadata"
+    variables:
+      type: object
+    secrets:
+      type: object
+    lifecycle:
+      type: string
+      enum:
+        - shared
+        - isolated
+      default: isolated
+    resources:
+      type: object
+      additionalProperties:
+        type: object
+        required:
+          - kind
+        properties:
+          kind:
+            type: string
+          description:
+            type: string
+        additionalProperties: false
+    needs:
+      type: object
+      additionalProperties:
+        $ref: "telo://manifest#/$defs/NeedRequest"
+        properties:
+          env: {}
+    include:
+      type: array
+      items:
+        type: string
+    files:
+      type: array
+      items:
+        type: string
+    assets:
+      type: array
+      items:
+        type: string
+    native:
+      $ref: "telo://manifest#/$defs/NativeEntries"
+    sources:
+      $ref: "telo://manifest#/$defs/ModuleSources"
+    layers:
+      $ref: "telo://manifest#/$defs/LayerIndex"
+    filesIntegrity:
+      type: string
+    imports:
+      $ref: "telo://manifest#/$defs/ModuleImports"
+    exports:
+      type: object
+      properties:
+        kinds:
+          type: array
+          title: "Exported kinds"
+          items:
+            type: string
+        resources:
+          type: array
+          title: "Exported resources"
+          items:
+            type: string
+            not:
+              enum:
+                - variables
+                - secrets
+        code:
+          type: array
+          items:
+            $ref: "telo://manifest#/$defs/PlatformAxes"
+            type: object
+            required:
+              - specifier
+              - format
+              - path
+            properties:
+              specifier:
+                type: string
+              format:
+                type: string
+              path:
+                type: string
+              source:
+                type: string
+            additionalProperties: false
+      additionalProperties: true
+    requires:
+      $ref: "telo://manifest#/$defs/Requires"
+  required:
+    - metadata
+  additionalProperties: false
+---
+kind: Telo.Abstract
+metadata:
+  name: LogSink
+  description: "Where structured log records go: a destination that filters by level and buffers records, configured with a minimum level, a buffer size, what to do when the buffer is full and how often to flush. Every log destination specializes it."
+capability: Telo.Sink
+schema:
+  type: object
+  properties:
+    level:
+      $ref: "telo://manifest#/$defs/LogLevel"
+    buffer:
+      type: integer
+      minimum: 1
+    on_full:
+      type: string
+      enum:
+        - block
+        - drop_new
+        - drop_old
+    flush_interval:
+      $ref: "telo://manifest#/$defs/LogDuration"
+  additionalProperties: true
+---
+kind: Telo.Definition
+metadata:
+  name: LogTraceSink
+  description: "Tracing with no collector: writes each finished span as one structured log record through the logging pipeline, carrying its trace and span identifiers, at a configurable level — read wherever the logs already go."
+capability: Telo.Sink
+extends: Telo.TraceSink
+schema:
+  type: object
+  properties:
+    level:
+      $ref: "telo://manifest#/$defs/LogLevel"
+      default: info
+      x-telo-eval: compile
+  additionalProperties: false
+---
+kind: Telo.Abstract
+metadata:
+  name: Mount
+  description: "A part a long-lived resource mounts into itself: an HTTP API, a middleware, a route table. The holder registers it while it starts; a mount is never called directly, so it declares no thrown errors."
+capability: Telo.Mount
+declarable: true
+throwsAllowed: false
+---
+kind: Telo.Definition
+metadata:
+  name: NeedType
+  description: "Declares a type of dependency a module can ask whoever runs it for — a database, a credential, a public address — as the fields a fulfilment hands over, which are required, the parameters a request may state, and whether fulfilments are versioned, carry features or must come from the root."
+capability: Telo.Template
+schema:
+  type: object
+  properties:
+    kind:
+      type: string
+    metadata:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+      required:
+        - name
+      additionalProperties: true
+    fields:
+      title: Fields
+      description: "What a fulfilment hands over, as a JSON Schema property map. A field may be `x-telo-sensitive: true`, which a string field must be to hold a credential."
+      type: object
+      additionalProperties:
+        $ref: "telo://manifest#/$defs/JsonSchema7"
+    required:
+      title: "Required fields"
+      description: "The fields every fulfilment must yield."
+      type: array
+      items:
+        type: string
+      uniqueItems: true
+    parameters:
+      title: Parameters
+      description: "JSON Schema of the literal parameters a need of this type may state."
+      $ref: "telo://manifest#/$defs/JsonSchema7"
+    version:
+      title: Version
+      description: "`semver` when fulfilments are versioned: a need may then state a version range, which a consumer observing `version` verifies."
+      enum:
+        - semver
+    features:
+      title: Features
+      description: "The closed list of feature names a fulfilment may carry; a need may ask for a subset, which a consumer observing `features` verifies."
+      type: array
+      items:
+        type: string
+        minLength: 1
+      uniqueItems: true
+    supply:
+      title: Supply
+      description: "`root` when a need of this type is fulfilled only through a root need, forwarded whole: a self-supplied fulfilment, a field-by-field supply at an import and a library need reaching the root unforwarded are refused."
+      enum:
+        - root
+  required:
+    - metadata
+    - fields
+  additionalProperties: false
+---
+kind: Telo.Abstract
+metadata:
+  name: Provider
+  description: "A source of configuration, secrets or values, resolved when it is created: init() acquires what it needs and an optional provide() hands over the value. Every field is evaluated once at load, and it reports observed state as soon as it is built."
+capability: Telo.Provider
+declarable: true
+throwsAllowed: false
+schema:
+  x-telo-eval: compile
+---
+kind: Telo.NeedType
+metadata:
+  name: PublicHostPattern
+  description: "A family of public hosts an application is reached at — tenant subdomains — as a pattern origin the host routes every matching host of to a port."
+fields:
+  pattern:
+    type: string
+    pattern: "^https?://\\*[A-Za-z0-9-]*\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*(?::[0-9]{1,5})?$"
+    description: "The hosts as a pattern origin: `https://*.tenants.example` (one or more whole labels) or `https://*-tenants.example` (a prefix of the first label)."
+required:
+  - pattern
+parameters:
+  type: object
+  properties:
+    port:
+      type: string
+      minLength: 1
+      description: "The key of the root's `ports:` these hosts are served on, a `tcp` port."
+  additionalProperties: false
+supply: root
+---
+kind: Telo.NeedType
+metadata:
+  name: PublicUrl
+  description: "One public address an application is reached at: an http or https origin the host routes to a port, with the request's host and path unchanged."
+fields:
+  url:
+    description: "The address: an http or https origin — a host and an optional port, with no path, query or credentials."
+    x-telo-type:
+      name: Telo.Url
+      scheme:
+        enum:
+          - http
+          - https
+      path:
+        enum:
+          - "/"
+      query:
+        not: {}
+      user:
+        not: {}
+      password:
+        not: {}
+required:
+  - url
+parameters:
+  type: object
+  properties:
+    port:
+      type: string
+      minLength: 1
+      description: "The key of the root's `ports:` this address is served on, a `tcp` port."
+    primary:
+      type: boolean
+      description: "Marks the application's main address. At most one per application."
+    customDomains:
+      type: boolean
+      description: "Lets the host route further domains to this need's port, ones the application is never told about. At most one per port."
+  additionalProperties: false
+supply: root
+---
+kind: Telo.Abstract
+metadata:
+  name: Runnable
+  description: "A one-shot task the runtime starts and waits for: a pipeline, a migration, a boot step. Its run() does the work and returns what undoes it; a failure it throws is a structured error the step or target that started it can catch."
+capability: Telo.Runnable
+extends: Telo.Executable
+declarable: true
+throwsAllowed: true
+---
+kind: Telo.Abstract
+metadata:
+  name: Service
+  description: "A long-lived resource — a server, a pool, a listener — built by init() and started by run(), each returning what undoes it. Started rather than called, so it declares no thrown errors; inbound work it accepts roots its own trace."
+capability: Telo.Service
+declarable: true
+throwsAllowed: false
+---
+kind: Telo.Abstract
+metadata:
+  name: Sink
+  description: "A record-stream destination the runtime writes to directly, never through dispatch: write(record) plus flush, synchronous flush and close. Payload-opaque, carrying log records or finished trace spans to wherever they are kept."
+capability: Telo.Sink
+declarable: true
+throwsAllowed: false
+---
+kind: Telo.Abstract
+metadata:
+  name: Template
+  description: "The lifecycle of a document that declares rather than runs: an application, a library, an import, a kind or a need type. Read by the kernel while it loads a module, never instantiated, and reserved for the built-in vocabulary — a kind declared in a module never takes this role."
+capability: Telo.Template
+declarable: false
+throwsAllowed: false
+---
+kind: Telo.Abstract
+metadata:
+  name: TraceSink
+  description: "Where finished trace spans go: a destination for distributed tracing that receives each span once it ends — identity, timing, outcome and attributes. Attaching one turns tracing on; every trace exporter specializes it."
+capability: Telo.Sink
+schema:
+  type: object
+  additionalProperties: true
+---
+kind: Telo.Abstract
+metadata:
+  name: Type
+  description: "A pure data shape with no runtime instance: a named JSON Schema other declarations reference to type their inputs, outputs and fields."
+capability: Telo.Type
+declarable: true
+throwsAllowed: false

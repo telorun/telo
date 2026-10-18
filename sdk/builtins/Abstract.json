@@ -1,0 +1,81 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "Abstract",
+    "description": "Declares a contract with no implementation: a kind that cannot be instantiated and that other kinds specialize. It may state a role, a configuration schema, observed state, a call signature, input and output contracts and a ceiling on the error codes its implementations may throw."
+  },
+  "capability": "Telo.Template",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "const": "Telo.Abstract"
+      },
+      "metadata": {
+        "$ref": "telo://manifest#/$defs/KindMetadata"
+      },
+      "capability": {
+        "title": "Capability",
+        "description": "The lifecycle role this kind implements.",
+        "enum": {
+          "$roster": "declarable"
+        }
+      },
+      "schema": {
+        "title": "Schema",
+        "description": "Configuration this kind accepts, as JSON Schema plus `x-telo-*` annotations.",
+        "$ref": "telo://manifest#/$defs/KindSchema"
+      },
+      "status": {
+        "title": "Observed state",
+        "description": "What a resource of this kind reports while running, published at `resources.<name>.status.<field>`.",
+        "$ref": "telo://manifest#/$defs/JsonSchema7"
+      },
+      "params": {
+        "$ref": "telo://manifest#/$defs/CallableParams"
+      },
+      "returns": {
+        "$ref": "telo://manifest#/$defs/CallableReturns"
+      },
+      "deterministic": {
+        "title": "Deterministic",
+        "description": "`true` when the result depends only on the arguments and this instance's configuration. Legal on a callable kind that declares its own `controllers:` (a claim) or on a callable abstract (a requirement every implementation must meet)."
+      },
+      "throws": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "codes": {
+            "$ref": "telo://manifest#/$defs/ThrowCodes"
+          }
+        }
+      },
+      "controllers": false
+    },
+    "required": [
+      "kind",
+      "metadata"
+    ],
+    "if": {
+      "required": [
+        "throws",
+        "capability"
+      ],
+      "properties": {
+        "capability": {
+          "not": {
+            "enum": {
+              "$roster": "throwsAllowed"
+            }
+          }
+        }
+      }
+    },
+    "then": {
+      "properties": {
+        "throws": false
+      }
+    },
+    "additionalProperties": true
+  }
+}

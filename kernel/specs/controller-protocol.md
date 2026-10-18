@@ -1003,11 +1003,29 @@ that exited first. `Runtime.Exited` is sent when it has finished, including afte
 a cancel, by which time both output channels have closed. `Runtime.Cancel` stops
 it and tears it down; it is idempotent and safe after the child has finished.
 
+**A child that is refused — its load fails, or it fails before it finishes
+starting — writes the refusal to its stderr channel and exits non-zero.** The
+text is the refusal's own message, then one line per diagnostic the refusal
+carries: two spaces, then `[<CODE>] <message>` (`<message>` alone for a
+diagnostic with no code). A diagnostic's further message lines and its `details`
+lines follow it, two spaces further in; a nested context's diagnostics (an
+import's own failed resources) follow their entry, two spaces further in; an
+entry that failed only because another did (`derived`) writes no line of its
+own, while its nested diagnostics still do. No source location is written — the
+located, structured form is `Runtime.Check`'s answer. A code is written as the
+refusal carries it: a diagnostic of the load's static analysis keeps the
+analyzer's unprefixed code, so a caller matching `[<CODE>] <message>` can tell a
+refusal by analysis from the same mistake refused by a guard (`ERR_<CODE>`).
+
 `Runtime.Check` runs the static-analysis pass over a manifest and its import
 graph. **It is answered by the analyzer of the kernel's own telo generation**, and
 a runtime MAY run that analyzer inside the controller host — an analyzer is not a
-kernel, and **no kernel ever runs inside a host**. A manifest that fails to load
-is an answer (`loadError`), not an error.
+kernel, and **no kernel ever runs inside a host**. Its diagnostics are the ones
+`telo check` reports for the same manifest, with the same codes, messages and
+locations. A failed import is one of them — its coded diagnostic at the
+`imports:` entry (`path` `imports.<alias>`) — and never `loadError`, which is set
+only when the graph could not be loaded at all (an unreadable entry, a refused
+partial). Either is an answer, not an error.
 
 Both are reentrant: a child's output is flowing on its channels while the request
 that started it is still settling, and `Runtime.Check` may reach back for module

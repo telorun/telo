@@ -1,0 +1,7 @@
+modules:
+  apps/authoring-agent: Added
+body: The agent's `telo` tool may run `telo builtins`, and the system prompt sends the
+  agent there for the exact fields of every built-in kind, shared schema fragment, value
+  type, zone attribute and format instead of describing those shapes in prose — so it
+  reads the vocabulary of the telo it checks against rather than a copy that goes stale.
+  `teloVerbs` defaults to check, cel, module, search and builtins.

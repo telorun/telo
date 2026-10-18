@@ -1,0 +1,61 @@
+{
+  "anyOf": [
+    {
+      "type": "object",
+      "required": [
+        "__tagged",
+        "engine",
+        "source"
+      ],
+      "properties": {
+        "__tagged": {
+          "const": true
+        },
+        "engine": {
+          "const": "ref"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "string",
+      "x-telo-context": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "self": {
+            "x-telo-context-from-root": "schema"
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "x-telo-context": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "self": {
+                "x-telo-context-from-root": "schema"
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

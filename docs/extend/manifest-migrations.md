@@ -105,9 +105,17 @@ The vocabulary is closed on purpose. Every operation has a known YAML edit form,
 | `inKind` | yes | document `kind:` values this rule may match in |
 | `under` | yes | top-level document keys; the match must be at or below one of them |
 | `value` / `valueOneOf` | no | the value must equal this / be one of these |
+| `valuePattern` | no | the value must be a string that **fully** matches this pattern |
+| `valueNotPattern` | no | the value must be a string that does **not** fully match this pattern |
 | `withSibling` | no | a key that must be present in the same mapping |
 | `notUnder` | no | narrows within `under` — e.g. the data-bearing JSON Schema keywords |
 | `inSchema` | no | narrows to a JSON **schema region** — see below |
+
+### Telling a spelling apart by its shape
+
+`valuePattern` and `valueNotPattern` select a legacy value by its shape, where no list of known values could: the core entry `capability-as-extends` moves a module's kind written in `capability:` into `extends:`, and a module's kind is any `<Alias>.<Kind>` whose alias is not `Telo` — every lifecycle role is written `Telo.<Role>`. The two patterns are that test (`valuePattern: "[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*"`, `valueNotPattern: "Telo\\..*"`), with no name resolved. A pattern matches the whole value, so an entry never depends on whether its author anchored it, and a value that is not a string matches neither. They do not combine with `value` / `valueOneOf`, or with a `scalar` rule.
+
+A pattern is written in the **RE2 subset** — no lookahead, no lookbehind, no backreference — and the entry reader refuses anything outside it. An entry travels to every runtime, and a construct one regex engine accepts and another refuses would make a manifest migrate on one kernel and not on another, silently. The subset is also why there are two tokens: "an alias other than `Telo`" is a lookahead in one pattern, and a positive pattern beside a negative one says it without one. Listing the excluded values instead would have rewritten a typo such as `Telo.Invokable` into an `extends:` and reported it as a missing parent; left alone, it reaches the roster's own refusal, which names the role meant.
 
 ### The one region a kind list cannot name
 

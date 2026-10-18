@@ -1,5 +1,6 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
+import { isCapabilityRole } from "./capability-roster.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
   controllerBearingAncestor,
@@ -17,8 +18,9 @@ const SOURCE = "telo-analyzer";
 const EXTENDS_ALIAS_RE = /^[A-Z][A-Za-z0-9_]*\.[A-Z][A-Za-z0-9_]*$/;
 
 /**
- * Phase 3b — Validate `extends` fields on Telo.Definition docs, and flag the legacy
- * `capability: <UserAbstract>` overload with CAPABILITY_SHADOWS_EXTENDS so users migrate.
+ * Phase 3b — Validate `extends` fields on Telo.Definition docs. The legacy
+ * `capability: <UserAbstract>` spelling never reaches here: the
+ * `capability-as-extends` migration rewrites it to `extends:` at load.
  *
  * A Telo.Abstract's `extends` is checked for resolution only (EXTENDS_MALFORMED /
  * EXTENDS_UNKNOWN_TARGET): the kernel defers an abstract until its ancestor is
@@ -40,9 +42,6 @@ const EXTENDS_ALIAS_RE = /^[A-Z][A-Za-z0-9_]*\.[A-Z][A-Za-z0-9_]*$/;
  *  - EXTENDS_CLOSED_PARENT_ADDS_FIELD: a child with no `base:` declares a property its
  *    controller-bearing ancestor's closed schema rejects — the runtime counterpart is a
  *    create-time failure phrased against the ancestor kind.
- *  - CAPABILITY_SHADOWS_EXTENDS (warning): `capability` names a user-declared abstract
- *    (metadata.module !== "Telo"). Builtin lifecycle capabilities (Telo.Invocable, etc.)
- *    never trigger this — they're lifecycle roles by design.
  */
 /** The built-in namespace, resolvable without a `Telo.Import`. */
 const TELO_BUILTIN_ALIAS = "Telo";
@@ -188,11 +187,13 @@ export function validateExtends(
               // ancestor is a hard error (no silent capability change).
               const resolveDef: DefResolver = (k) =>
                 registry.resolve(aliases.resolveKind(k) ?? k) ?? registry.resolve(k);
+              // Only a roster role is compared: any other value is the roster's
+              // one diagnostic (`CAPABILITY_UNKNOWN`), not a second one here.
               const ownCap = (m as { capability?: unknown }).capability;
-              const ownCapResolved =
-                typeof ownCap === "string" ? aliases.resolveKind(ownCap) ?? ownCap : undefined;
+              const ownCapRole =
+                typeof ownCap === "string" && isCapabilityRole(ownCap) ? ownCap : undefined;
               const ancestorCap = inheritedCapability(targetDef, resolveDef);
-              if (ownCapResolved && ancestorCap && ownCapResolved !== ancestorCap) {
+              if (ownCapRole && ancestorCap && ownCapRole !== ancestorCap) {
                 diagnostics.push({
                   severity: DiagnosticSeverity.Error,
                   code: "EXTENDS_CAPABILITY_MISMATCH",
@@ -247,41 +248,6 @@ export function validateExtends(
             }
           }
         }
-      }
-    }
-
-    // --- legacy capability-as-abstract warning ---
-    // `capability` is expected to name either a builtin lifecycle (module "Telo") or a
-    // user-declared abstract. The latter is the pre-`extends` overload — emit a warning
-    // suggesting the canonical form. Resolve through aliases first because the manifest
-    // retains the alias-prefixed form (e.g. "AbstractLib.Greeter"); the registered key
-    // is the canonical form after alias resolution (e.g. "abstract-lib.Greeter").
-    const capability = (m as { capability?: unknown }).capability;
-    if (isDefinition && typeof capability === "string") {
-      const resolvedCap = aliases.resolveKind(capability) ?? capability;
-      const capDef = registry.resolve(resolvedCap);
-      if (
-        capDef &&
-        capDef.kind === "Telo.Abstract" &&
-        capDef.metadata.module !== "Telo"
-      ) {
-        // Build suggestion using the original alias form if aliases can produce it.
-        const aliasesForModule = aliases.aliasesFor(capDef.metadata.module);
-        const suggestion =
-          aliasesForModule.length > 0
-            ? `${aliasesForModule[0]}.${capDef.metadata.name}`
-            : `${capDef.metadata.module}.${capDef.metadata.name}`;
-        diagnostics.push({
-          severity: DiagnosticSeverity.Warning,
-          code: "CAPABILITY_SHADOWS_EXTENDS",
-          source: SOURCE,
-          message:
-            `${label}: 'capability: ${capability}' names a user-declared abstract. ` +
-            `Prefer 'extends' for implements-this-abstract declarations; 'capability' should ` +
-            `name a lifecycle role. Use \`extends: "${suggestion}"\` with a lifecycle ` +
-            `\`capability\` (e.g. Telo.Invocable, Telo.Provider, Telo.Service).`,
-          data: { resource, filePath, path: "capability" },
-        });
       }
     }
   }

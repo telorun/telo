@@ -5,9 +5,9 @@ metadata:
 imports:
   AbstractLib: ./abstract-lib.yaml
 ---
-# Legacy pattern: `capability` overloaded to name a user abstract (via alias).
-# The analyzer still wires this into extendedBy for backward-compat, but emits
-# CAPABILITY_SHADOWS_EXTENDS as a warning.
+# Legacy spelling: `capability` naming a module's abstract. The
+# `capability-as-extends` migration rewrites it to `extends:` at load and reports
+# CAPABILITY_SHADOWS_EXTENDS; `telo migrate` writes the rewrite to the file.
 kind: Telo.Definition
 metadata:
   name: Legacy

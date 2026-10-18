@@ -1,7 +1,21 @@
+import {
+  Loader,
+  StaticAnalyzer,
+  assembleGraphDiagnostics,
+  collectModuleDocuments,
+  flattenForAnalyzer,
+  locateDiagnostic,
+} from "@telorun/analyzer";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
+import { nodeCelHandlers } from "../src/cel-handlers.js";
+import { nodeHostVersions } from "../src/host-versions.js";
 import { Kernel } from "../src/kernel.js";
+import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
 import { MemorySource } from "../src/manifest-sources/memory-source.js";
 import { KernelRuntimeSeam } from "../src/runtime-seam.js";
+import { defaultTransportRegistry } from "../src/transports/transport-registry.js";
 
 function seamOver(memory: MemorySource): KernelRuntimeSeam {
   return new KernelRuntimeSeam(new Kernel({ sources: [memory], env: {} }));
@@ -112,10 +126,79 @@ targets:
     expect(codes.some((c) => c !== "MODULE_VERSION_CONFLICT")).toBe(true);
   });
 
-  it("returns a graph that cannot be loaded as loadError, not a throw", async () => {
+  it("returns an unreadable entry as loadError, not a throw", async () => {
     const result = await seamOver(new MemorySource()).check("memory://missing");
 
     expect(result.loadError).toBeTruthy();
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("returns a failed import as its coded diagnostic at the import's line, with no loadError", async () => {
+    const memory = new MemorySource();
+    memory.set(
+      "app",
+      `kind: Telo.Application
+metadata:
+  name: App
+imports:
+  Lib: memory://absent
+`,
+    );
+
+    const result = await seamOver(memory).check("memory://app");
+
+    expect(result.loadError).toBeUndefined();
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: "INVALID_IMPORT_SOURCE",
+        severity: "error",
+        path: "imports.Lib",
+        line: 4,
+        message: expect.stringContaining("Cannot resolve import 'Lib' → 'memory://absent'"),
+      }),
+    ]);
+  });
+});
+
+const FIXTURES = fileURLToPath(new URL("../../../tests/__fixtures__/", import.meta.url));
+
+/** What `telo check` reports for a manifest: the shared assembler over the same
+ *  load and analysis, each diagnostic located by the shared rule. */
+async function assembled(source: string) {
+  const graph = await new Loader(defaultTransportRegistry().sources(), {
+    celHandlers: nodeCelHandlers,
+  })
+    .register(new LocalFileSource())
+    .loadGraph(source, { desugarImports: true, migrate: true });
+  const analysis = new StaticAnalyzer({ celHandlers: nodeCelHandlers }).analyze(
+    flattenForAnalyzer(graph),
+    { moduleDocuments: collectModuleDocuments(graph), hostVersions: nodeHostVersions() },
+  );
+  return assembleGraphDiagnostics(graph, analysis).diagnostics.map((d) => ({
+    code: String(d.code),
+    message: d.message,
+    path: (d.data as { path?: string } | undefined)?.path,
+    line: locateDiagnostic(graph, d)?.range.start.line,
+  }));
+}
+
+describe("RuntimeSeam.check over the import refusals", () => {
+  it.each([
+    ["check-run-agreement/builtin-vocabulary/telo.yaml", "INVALID_IMPORT_TARGET", "imports.Builtins"],
+    ["check-run-agreement/reserved-prefix/telo.yaml", "KIND_PREFIX_RESERVED", "imports.Lib"],
+    ["check-run-agreement/reserved-prefix/alias-telo/telo.yaml", "KIND_PREFIX_RESERVED", "imports.Telo"],
+    ["imports-an-application.yaml", "INVALID_IMPORT_TARGET", "imports.ForbiddenApp"],
+    ["imports-a-non-library.yaml", "INVALID_IMPORT_TARGET", "imports.NonLibrary"],
+  ])("answers %s exactly as the shared assembler does", async (fixture, code, path) => {
+    const source = pathToFileURL(join(FIXTURES, fixture)).href;
+
+    const result = await new KernelRuntimeSeam(new Kernel({ sources: [new LocalFileSource()], env: {} })).check(source);
+    const expected = await assembled(source);
+
+    expect(result.loadError).toBeUndefined();
+    expect(expected).toEqual([expect.objectContaining({ code, path, line: 5 })]);
+    expect(
+      result.diagnostics.map(({ code, message, path, line }) => ({ code, message, path, line })),
+    ).toEqual(expected);
   });
 });

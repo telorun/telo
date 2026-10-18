@@ -210,6 +210,7 @@ const sidebars: SidebarsConfig = {
                 { type: "doc", id: "kernel/specs/tracing", label: "Tracing" },
                 { type: "doc", id: "kernel/specs/module-artifact", label: "Module Artifact" },
                 { type: "doc", id: "kernel/specs/application-arguments", label: "Application Arguments" },
+                { type: "doc", id: "kernel/specs/builtin-vocabulary", label: "Built-in Vocabulary" },
               ],
             },
           ],

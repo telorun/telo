@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "os": {
+      "type": "string"
+    },
+    "arch": {
+      "type": "string"
+    },
+    "libc": {
+      "type": "string"
+    },
+    "abi": {
+      "type": "string"
+    }
+  }
+}

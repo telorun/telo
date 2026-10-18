@@ -1,5 +1,10 @@
-import type { AnalysisRegistry, ModuleDocuments, StaticAnalyzer } from "@telorun/analyzer";
-import type { ResourceContext, ResourceManifest } from "@telorun/sdk";
+import type {
+  AnalysisRegistry,
+  LoadedModule,
+  ModuleDocuments,
+  StaticAnalyzer,
+} from "@telorun/analyzer";
+import type { LoadOptions, ResourceContext, ResourceManifest } from "@telorun/sdk";
 import type { ScopeConfig } from "./logging/scope-config.js";
 
 /** The kernel's analysis state an import reads its library's scope from. */
@@ -13,6 +18,9 @@ export interface LibraryAnalysisHost {
   loadTimeManifests: ResourceManifest[];
   /** The root Application's `metadata.name`. */
   entryModule: string | undefined;
+  /** An import target as the loader read it — what the import's identity is
+   *  judged on — with its expressions adopted like any loaded module's. */
+  loadModule(url: string, options?: LoadOptions): Promise<LoadedModule>;
   /** A library's flattened analysis set and the full documents of every
    *  library it imports — what its analysis resolves a projection hop into
    *  another library's internals against. */

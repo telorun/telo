@@ -90,6 +90,29 @@ describe("buildManifestJsonPayload", () => {
     stderr.mockRestore();
   });
 
+  it("reports no runtime reach and no application for the built-in vocabulary", async () => {
+    // Every kind there is implemented by the runtime itself, so no PURL names a
+    // host — read as kinds, each would report as portable.
+    const archive = `kind: Telo.Builtins
+metadata:
+  name: Telo
+  version: 0.119.0
+  license: MIT
+---
+kind: Telo.Definition
+metadata:
+  name: JsonSchema
+capability: Telo.Type
+`;
+    stubFetch(() => ({ ok: true, body: archive }));
+
+    const payload = await buildManifestJsonPayload("https://reg.example.test/telo/telo.yaml", archive, log);
+
+    expect(payload.manifest).toBe(archive);
+    expect(payload.runtime).toBeNull();
+    expect(payload.application).toBeNull();
+  });
+
   it("carries the runtime classification the tracker stores without parsing a PURL", async () => {
     stubFetch(() => ({ ok: true, body: KIND_MANIFEST }));
 
@@ -99,10 +122,40 @@ describe("buildManifestJsonPayload", () => {
       log,
     );
 
-    expect(payload.runtime.runtimes).toEqual({ nodejs: "full", rust: "partial" });
-    expect(payload.runtime.kinds).toEqual([
+    expect(payload.runtime!.runtimes).toEqual({ nodejs: "full", rust: "partial" });
+    expect(payload.runtime!.kinds).toEqual([
       { name: "WriteLine", runtimes: ["nodejs", "rust"], languages: ["javascript", "rust"], portable: false },
       { name: "WriteStream", runtimes: ["nodejs"], languages: ["javascript"], portable: false },
+    ]);
+  });
+
+  it("reports a need type as hosted by the kernels serving need types", async () => {
+    const manifest = `${MANIFEST}---
+kind: Telo.Definition
+metadata:
+  name: Open
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/telorun-console?local_path=./rust#open
+---
+kind: Telo.NeedType
+metadata:
+  name: Access
+fields:
+  url: { type: string }
+`;
+    stubFetch(() => ({ ok: true, body: manifest }));
+
+    const payload = await buildManifestJsonPayload(
+      "https://reg.example.test/console/telo.yaml",
+      manifest,
+      log,
+    );
+
+    expect(payload.runtime!.runtimes).toEqual({ nodejs: "full", rust: "partial" });
+    expect(payload.runtime!.kinds).toEqual([
+      { name: "Open", runtimes: ["nodejs", "rust"], languages: ["rust"], portable: false },
+      { name: "Access", runtimes: ["nodejs"], languages: [], portable: false },
     ]);
   });
 
@@ -122,7 +175,7 @@ describe("buildManifestJsonPayload", () => {
 
     const payload = await buildManifestJsonPayload("./sqlite", manifest, log);
 
-    expect(payload.runtime.native).toEqual({
+    expect(payload.runtime!.native).toEqual({
       platforms: [
         { os: "darwin", arch: "arm64" },
         { os: "linux", arch: "amd64", libc: "gnu" },

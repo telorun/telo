@@ -3,12 +3,15 @@
 !kernel/nodejs
 !analyzer/nodejs
 !analyzer/migrations
-!analyzer/formats
 !analyzer/artifact-axes
 !templating/nodejs
 !sdk/nodejs
 !sdk/value-types
 !sdk/zone-attributes
+!sdk/formats
+!sdk/builtins
+# The built-in vocabulary archive carries this MIT text beside it.
+!sdk/LICENSE
 !sdk/controller-protocol
 !scripts
 !packages/ide-support

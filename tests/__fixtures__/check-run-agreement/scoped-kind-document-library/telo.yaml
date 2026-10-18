@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: ScopedKindDocumentConsumer
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.probe

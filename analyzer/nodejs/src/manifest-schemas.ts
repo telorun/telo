@@ -2,14 +2,19 @@
  * Shared JSON-Schema fragments every module's `telo.yaml` may point at with
  * `$ref: "telo://manifest#/$defs/<Name>"`.
  *
- * WHY THE ANALYZER OWNS THEM. These describe manifest structure, which is what
- * this package exists to read — and the layering forces the choice anyway: the
- * editor validates in a browser through `@telorun/analyzer`, and the analyzer
- * must not depend on the kernel. A fragment in the kernel would exist only at
- * runtime, so `telo check` and the editor could not see a step's shape at all.
- * The kernel re-exports these from its own `manifest-schemas` surface, and both
- * halves register the same root document with AJV, so a `$ref` resolves
- * identically in the editor, in `telo check` and at dispatch.
+ * THE BODIES ARE DATA: one JSON file per fragment under `sdk/builtins/fragments/`,
+ * derived into `builtin-entries/` by `scripts/render-builtin-vocabulary.mjs`.
+ * Every runtime reads the same files, and a fragment refers to another as
+ * `telo://manifest#/$defs/<Name>` — the spelling an author writes. Expansion,
+ * below, is the analyzer's reading of those references.
+ *
+ * WHY THE ANALYZER OWNS THE READING. These describe manifest structure, which is
+ * what this package exists to read — and the layering forces the choice anyway:
+ * the editor validates in a browser through `@telorun/analyzer`, and the analyzer
+ * must not depend on the kernel. The kernel re-exports these from its own
+ * `manifest-schemas` surface, and both halves register the same root document
+ * with AJV, so a `$ref` resolves identically in the editor, in `telo check` and
+ * at dispatch.
  *
  * A fragment here is STRUCTURE, not a named user type. The two are different
  * mechanisms and both exist:
@@ -17,18 +22,17 @@
  *   - `#/$defs/<Name>` is private to the declaring kind's own schema — Run's
  *     `WhileStep` is Run's business and nothing outside it can name one.
  *   - `telo://manifest#/$defs/<Name>` is this set: shapes the kernel defines, so
- *     several unrelated documents can agree on one. `builtins.ts` is not a module
- *     document and has no `$defs` any module could reach, which is why a shared
- *     shape cannot live in one of the modules that use it.
+ *     several unrelated documents can agree on one.
  *   - `telo:<module>/<Type>` names a `Telo.JsonSchema` resource a MODULE
  *     declared, resolved through the type registry and carrying its owner so two
  *     libraries may both declare a `Filter`.
  *
- * Adding a fragment means putting it under `$defs` in {@link ManifestRootSchema}
- * and `$ref`-ing it from module schemas. Browser-safe: no Node built-ins.
+ * Adding a fragment means adding its file under `sdk/builtins/fragments/` and
+ * `$ref`-ing it. Browser-safe: no Node built-ins.
  */
 
-import { jsonSchemaKeywords } from "./schema-keywords.js";
+import { BUILTIN_FRAGMENT_FILES } from "./builtin-entries/index.js";
+import { refuseRosterMarkers } from "./builtin-entry-markers.js";
 import { SCHEMA_REGION_KEYS } from "./schema-region.js";
 
 export const MANIFEST_SCHEMA_URI = "telo://manifest";
@@ -38,553 +42,12 @@ export function manifestFragmentRef(name: string): string {
   return `${MANIFEST_SCHEMA_URI}#/$defs/${name}`;
 }
 
-/** Schema fragment for a resource-reference slot. The only form a manifest
- *  author writes is the `!ref <name>` (or `!ref <Alias>.<name>`) YAML tag,
- *  which parses to a `TaggedSentinel` (engine "ref") whose `source` is the
- *  bare resource name. In practice module schemas mark a ref slot with a bare
- *  `x-telo-ref` annotation (plus, where the slot only ever holds a reference,
- *  `type: object` to reject a stray scalar); the analyzer's reference walker
- *  reads `x-telo-ref` to look the name up against that constraint, independent
- *  of this fragment. A slot opts into this fragment only when it wants this
- *  exact two-branch shape enforced at the AJV layer too — it is not required,
- *  and slots that also accept an inline value (e.g. `inputType` / `outputType`)
- *  deliberately do not use it (an inline JSON Schema has no `kind`).
- *
- *  Two `anyOf` branches because the value's shape depends on the phase at
- *  which it is validated:
- *
- *   1. The raw `!ref` sentinel — what survives to AJV when a cross-module
- *      reference can't be resolved in standalone single-file analysis (the
- *      imported module isn't loaded). `substituteCelFields` deliberately
- *      keeps the sentinel so this branch matches.
- *   2. A resolved reference object — `{kind, name, alias?}` substituted in
- *      place of a sentinel (or an inline definition `{kind, ...config}`
- *      reached through a local `$ref` that escapes extraction). Both the
- *      kernel and the analyzer validate ref slots *after* sentinel
- *      resolution, so this is the shape AJV usually sees.
- *
- *  The object-form `{kind, name}` reference a user could once type directly
- *  is gone: a plain object at a ref slot is only ever an inline definition
- *  or the resolver's own substitution, never an author-written reference.
- *  That removal is enforced by the analyzer (it rejects an author-written
- *  `{kind, name}` before normalization), not by this schema — branch 2
- *  cannot distinguish an author's `{kind, name}` from the resolver's. */
-export const ResourceRefSchema = {
-  title: "Resource reference",
-  anyOf: [
-    {
-      type: "object",
-      required: ["__tagged", "engine", "source"],
-      properties: {
-        __tagged: { const: true },
-        engine: { const: "ref" },
-        source: { type: "string", minLength: 1 },
-      },
-      additionalProperties: false,
-    },
-    {
-      type: "object",
-      required: ["kind"],
-      properties: { kind: { type: "string" } },
-      additionalProperties: true,
-    },
-  ],
-};
-
-/**
- * How a dispatch is re-attempted.
- *
- * ONE shape, because a retry policy is a cross-cutting primitive rather than
- * each composer's own idea: it was written out six times across `run` and
- * `http-client` and had already drifted — one copy declared no defaults, another
- * carried a field the others lacked. Defaults live here, so the Node step leaf
- * and a second-language one read the same numbers instead of each re-deriving
- * them from the other's source.
- *
- * `delay` survives as the older duration-string spelling because published
- * manifests carry it, and it cannot be migrated away: a migration entry writes a
- * SCALAR, and `"250ms"` → `250` is a computation the vocabulary deliberately
- * cannot express.
- */
-export const RetryPolicySchema = {
-  title: "Retry policy",
-  description:
-    "Re-attempts a failed dispatch with exponential backoff. A domain failure is " +
-    "retried; a cancellation and a contract violation are not — the latter is a " +
-    "property of the manifest and would fail identically every time.",
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    attempts: {
-      title: "Attempts",
-      description: "Re-attempts after the first try. 0 disables retrying.",
-      type: "integer",
-      minimum: 0,
-      default: 0,
-    },
-    initialDelay: {
-      title: "Initial delay",
-      description: "Milliseconds to wait before the first re-attempt.",
-      type: "integer",
-      minimum: 0,
-      default: 250,
-    },
-    factor: {
-      title: "Factor",
-      description: "Multiplier applied to the delay after each re-attempt.",
-      type: "number",
-      minimum: 1,
-      default: 2,
-    },
-    maxDelay: {
-      title: "Max delay",
-      description: "Ceiling on the delay between re-attempts, in milliseconds.",
-      type: "integer",
-      minimum: 0,
-      default: 32000,
-    },
-    jitter: {
-      title: "Jitter",
-      description:
-        "`full` picks each delay uniformly from [0, delay], which is what stops " +
-        "work that failed together from re-attempting together.",
-      type: "string",
-      enum: ["none", "full"],
-      default: "full",
-    },
-    delay: {
-      title: "Delay",
-      description:
-        "DEPRECATED duration string (`250ms`, `1s`) — read as `initialDelay` when " +
-        "that is absent. The pattern is what makes a typo a `telo check` failure " +
-        "instead of a silently different backoff.",
-      type: "string",
-      pattern: "^[0-9]+(\\.[0-9]+)?\\s*(ms|s|m|h)$",
-    },
-  },
-};
-
-/**
- * The bare-count spelling of a re-attempt — `Http.Request.retries`, deprecated
- * but carried by every manifest published before `retry:` existed.
- *
- * Its own fragment rather than a special case in the reader: what a consumer
- * needs to know is WHERE the budget is, and pointing at this shape says "the
- * value itself" as precisely as pointing at a policy says "its `attempts`". It
- * cannot be migrated to the policy form — a migration entry writes a scalar, and
- * wrapping one in an object is not something the vocabulary can express.
- */
-export const RetryAttemptsSchema = {
-  title: "Retry attempts",
-  description: "Re-attempts after the first try. 0 disables retrying.",
-  type: "integer",
-  minimum: 0,
-  default: 0,
-};
-
-/**
- * A DISPATCH SITE: name a target, pass it arguments, optionally guard it,
- * optionally re-attempt it.
- *
- * The runtime has always had exactly one of these — `InvokeStep` in the SDK, run
- * by `executeInvokeStep`, which every dispatch passes through. What did not exist
- * was the schema half: the shape was hand-restated by each composer (four times
- * in `run`, once in `builtins.ts`) and they drifted, which is why `retry:` worked
- * in a sequence step and was a schema error one line away in `targets:` — not a
- * decision anyone made about boot, just a copy that never grew the field.
- *
- * Owning it here is also what retired `x-telo-retry` for a step: the analyzer
- * reads `step.retry.attempts` because that is what a step IS, rather than
- * discovering a retry-bearing field through a marker the kind had to remember to
- * write.
- *
- * `name` is optional: a boot target only needs one to publish
- * `steps.<name>.result`, and a composer that requires one says so in its own
- * schema. Closed, so a misspelled key is rejected wherever a dispatch is written.
- */
-export const InvokeStepSchema = {
-  title: "Invoke step",
-  description:
-    "Transfers control to a resource: what to call, what to pass it, whether to " +
-    "call it, and how to re-attempt it.",
-  type: "object",
-  required: ["invoke"],
-  additionalProperties: false,
-  properties: {
-    name: {
-      title: "Name",
-      description: "Publishes this dispatch's result as `steps.<name>.result`.",
-      type: "string",
-    },
-    invoke: {
-      title: "Invoke",
-      description: "Resource to invoke.",
-      "x-telo-topology-role": "invoke",
-      // A reference is always an object (a `!ref` sentinel or its resolved
-      // `{kind, name}`); requiring an object rejects a bare-string ref — which
-      // `validateReferenceForms` cannot catch at this nested slot — at
-      // `telo check` instead of as an obscure runtime failure.
-      type: "object",
-      "x-telo-ref": {
-        kind: "Telo.Executable",
-        use: "call",
-        inputs: "/inputs",
-      },
-    },
-    inputs: {
-      title: "Inputs",
-      description: "Values passed to the invoked resource.",
-      "x-telo-topology-role": "inputs",
-      type: "object",
-      additionalProperties: true,
-    },
-    when: {
-      title: "When",
-      description: "CEL guard — the dispatch is skipped when it evaluates false.",
-      // The same role `if:` and `while:` carry: it is the expression that
-      // decides whether the statement runs, and a surface showing what a step
-      // is conditional on should not have to know which keyword spelled it.
-      "x-telo-topology-role": "predicate",
-      type: "boolean",
-    },
-    retry: {
-      title: "Retry",
-      $ref: `${MANIFEST_SCHEMA_URI}#/$defs/RetryPolicy`,
-      // A sibling of the shared policy rather than a member of it, the way
-      // `Http.Request.retry` adds `honorRetryAfter` — fragment expansion merges
-      // siblings, so the policy stays closed and each consumer's surface stays
-      // honest. `nonRetryable` matches an ERROR CODE, which is what a step's
-      // failures carry; an HTTP retry classifies on a response STATUS and has
-      // `retryOn` for it, so putting this on the shared shape would advertise a
-      // field there that nothing could read.
-      properties: {
-        nonRetryable: {
-          title: "Non-retryable codes",
-          description:
-            "Error codes that end the loop immediately instead of consuming the budget. " +
-            "The built-in exclusions are the ones decidable without judgement — a " +
-            "cancellation, and the kernel's verdicts on the shape of the call; whether a " +
-            "DOMAIN failure is worth re-attempting only the author knows, and without " +
-            "this every terminal one is retried to exhaustion — for a non-idempotent " +
-            "target, N extra attempts at a side effect.",
-          type: "array",
-          items: { type: "string" },
-          default: [],
-        },
-      },
-    },
-    timeout: {
-      title: "Timeout",
-      description:
-        "How long ONE attempt may take, in milliseconds; on elapse the dispatch is " +
-        "cancelled and the step fails ERR_STEP_TIMEOUT. Per attempt rather than for " +
-        "the whole retry loop, so what a single call is allowed to take does not " +
-        "depend on how slow the earlier attempts were. It belongs to the step rather " +
-        "than the target because the target does not know who is waiting.",
-      type: "integer",
-      minimum: 1,
-    },
-  },
-};
-
-/**
- * A JSON Schema an author writes as a manifest VALUE — an `inputType:`, an
- * `outputType:`, a `status:` block, an API route's `request.schema`.
- *
- * Declared so the surfaces that read a slot's schema learn what lives there. A
- * slot spelled `type: object` told them "some object": completion offered
- * nothing from the first key down, hover had nothing to show, and a misspelled
- * keyword travelled to a runtime failure that named the wrong field.
- *
- * OPEN, deliberately (`additionalProperties: true`, `type` admitting the
- * boolean form a nested `additionalProperties: false` takes). The keyword set
- * below is draft-07's — the dialect AJV actually runs — and everything outside
- * it, every `x-telo-*` annotation included, passes through untouched. Closing
- * this would reject the next annotation the moment a module invented one, for a
- * check nobody asked for; what it buys as it stands is the value of a keyword
- * an author DID write (`required: "name"`, `type: 5`) being wrong at
- * `telo check` rather than at dispatch.
- *
- * RECURSIVE, which is why it is not expanded in place like the fragments above
- * it: a schema's properties hold schemas. `expandManifestFragments` rewrites a
- * reference to this to the document-local `#/$defs/JsonSchema7` and hoists one
- * copy to the enclosing schema's root, so the pointer resolves inside whatever
- * AJV compiles, and the editor's local-only `$ref` resolver keeps working.
- */
-export const JsonSchema7Schema = {
-  title: "JSON Schema",
-  description: "The shape of a value, as JSON Schema (draft-07).",
-  type: ["object", "boolean"],
-  properties: jsonSchemaKeywords(hoistedDefKey("JsonSchema7")),
-  additionalProperties: true,
-};
-
-/**
- * The schema a KIND declares for its own configuration — a `Telo.Definition`'s
- * `schema:` block.
- *
- * The same body as {@link JsonSchema7Schema}, under its own name because the
- * name is the discriminator: a kind's schema is where the `x-telo-*` vocabulary
- * belongs (`x-telo-eval`, `x-telo-ref`, `x-telo-scope`, …) and a plain data
- * schema is where it does not. Completion reads the `x-telo-fragment` stamp to
- * decide which vocabulary to offer, exactly as a retry-budget consumer reads
- * which of `RetryPolicy` / `RetryAttempts` a slot pointed at.
- *
- * The annotations are NOT properties here — see `schema-keywords.ts` for why a
- * literal `x-telo-*` key inside a hoisted `properties` map would read to the
- * annotation walkers as a slot the author never wrote.
- */
-export const KindSchemaSchema = {
-  title: "Kind schema",
-  description:
-    "The configuration a resource of this kind accepts, as JSON Schema plus the `x-telo-*` annotations that say how each field behaves.",
-  type: ["object", "boolean"],
-  properties: jsonSchemaKeywords(hoistedDefKey("KindSchema")),
-  additionalProperties: true,
-};
-
-
-/** The `error` variable a `catch:` / `finally:` branch binds. One object, used
- *  twice with different nullability — `finally` runs on the success path too. */
-const stepErrorProperties = {
-  code: {
-    description: "Structured error code; INTERNAL_ERROR for plain errors.",
-    type: "string",
-  },
-  message: { description: "Human-readable error message.", type: "string" },
-  step: { description: "Name of the step that threw.", type: "string" },
-  data: { description: "Structured payload from an InvokeError, else undefined." },
-};
-
-/** A step list's own items, written as the self-reference the localizer leaves
- *  behind. A recursive fragment states its self-references ALREADY localized:
- *  `hoistFragmentDef` copies the body verbatim into the consuming schema's
- *  `$defs`, so a foreign `telo://manifest#/…` written here would survive into a
- *  document the editor's local-only resolver throws on. */
-const stepList = (title: string, description: string) => ({
-  title,
-  description,
-  "x-telo-topology-role": "branch",
-  type: "array",
-  items: { $ref: `#/$defs/${hoistedDefKey("Step")}` },
-});
-
-/**
- * One step of a step body: a dispatch, a computed value, or a control-flow block.
- *
- * THE GRAMMAR, owned here rather than by `modules/run`. It was declared four
- * times in one file — `$defs` are local to the schema that declares them, so
- * four kinds in one module could not share one, let alone four kinds in four
- * modules — and that is why a kind wanting a body had to take a `!ref` to an
- * executable instead. A fragment is what makes `Sql.Transaction` or a durable
- * `Workflow` able to carry one directly.
- *
- * RECURSIVE (a branch holds steps), so a reference to it is localized and
- * hoisted rather than expanded in place — see {@link localizeRecursiveFragment}.
- *
- * `while/do` is admitted in EVERY body. Three of the four copies dropped it
- * ("the kind is itself the loop"), which is an editorial nudge rather than a
- * soundness rule — a nested `while` inside a for-each body is ordinary control
- * flow the same engine already runs — and a fragment cannot be narrowed by its
- * consumer anyway: draft-07 makes `$ref` exclusive, so a sibling restating a
- * subset would be silently ignored by AJV while still reaching completion. One
- * grammar, or two fragments and the duplication back where it started.
- */
-export const StepSchema = {
-  title: "Step",
-  description: "Single executable step or control-flow block.",
-  type: "object",
-  properties: {
-    name: { title: "Name", description: "Unique step name.", type: "string" },
-  },
-  oneOf: [
-    // THE dispatch site, shared with an Application's `targets:` rather than
-    // restated. `name` is hoisted to the enclosing step object above, which is
-    // why this branch carries only what a dispatch itself needs.
-    {
-      title: "invoke",
-      description: "Invokes an invocable or runnable resource.",
-      $ref: `${MANIFEST_SCHEMA_URI}#/$defs/InvokeStep`,
-    },
-    {
-      title: "if/then/else",
-      description: "Conditional branch; executes then or else based on a boolean expression.",
-      properties: {
-        if: {
-          title: "If",
-          description: "CEL boolean expression; true executes then, false executes else.",
-          "x-telo-topology-role": "predicate",
-          type: "boolean",
-        },
-        elseif: {
-          title: "Else If",
-          description: "Additional condition-branch pairs evaluated when if is false.",
-          "x-telo-topology-role": "branch-list",
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              if: {
-                title: "If",
-                description: "CEL boolean expression for this else-if branch.",
-                "x-telo-topology-role": "predicate",
-                type: "boolean",
-              },
-              then: stepList("Then", "Steps executed when this else-if condition is true."),
-            },
-            required: ["if", "then"],
-          },
-        },
-        then: stepList("Then", "Steps executed when if evaluates true."),
-        else: stepList(
-          "Else",
-          "Steps executed when if (and all elseif conditions) evaluate false.",
-        ),
-      },
-      required: ["if", "then"],
-    },
-    {
-      title: "while/do",
-      description: "Loop; executes do steps repeatedly while condition is true.",
-      properties: {
-        while: {
-          title: "While",
-          description: "CEL boolean expression; evaluated before each iteration.",
-          "x-telo-topology-role": "predicate",
-          type: "boolean",
-        },
-        do: stepList("Do", "Steps executed on each iteration."),
-      },
-      required: ["while", "do"],
-    },
-    {
-      title: "switch/cases/default",
-      description: "Multi-branch dispatch; matches a value expression against case keys.",
-      properties: {
-        switch: {
-          title: "Switch",
-          description: "CEL expression; result matched against case keys.",
-          "x-telo-topology-role": "discriminator",
-          type: "string",
-        },
-        cases: {
-          title: "Cases",
-          description: "Map of value to step list; executed when switch matches the key.",
-          "x-telo-topology-role": "case-map",
-          type: "object",
-          additionalProperties: {
-            type: "array",
-            items: { $ref: `#/$defs/${hoistedDefKey("Step")}` },
-          },
-        },
-        default: stepList("Default", "Steps executed when no case matches."),
-      },
-      required: ["switch", "cases"],
-    },
-    {
-      title: "try/catch/finally",
-      description:
-        "Error boundary; executes try steps and handles failure via catch and finally.",
-      properties: {
-        when: {
-          title: "When",
-          description:
-            "CEL boolean guard — the whole try/catch/finally is skipped when it evaluates false.",
-          "x-telo-topology-role": "predicate",
-          type: "boolean",
-        },
-        try: stepList("Try", "Steps executed; halts on first failure and jumps to catch."),
-        catch: {
-          ...stepList("Catch", "Steps executed when try fails; receives error context."),
-          "x-telo-error-context": {
-            type: "object",
-            description: "The caught failure (always present inside catch).",
-            properties: stepErrorProperties,
-            additionalProperties: false,
-          },
-        },
-        finally: {
-          ...stepList(
-            "Finally",
-            "Steps always executed after try/catch regardless of outcome.",
-          ),
-          // error is null on the success path and the caught failure when a
-          // try/catch failure propagates. Typed nullable so the analyzer flags
-          // unguarded field access (CEL_NULLABLE_ACCESS).
-          "x-telo-error-context": {
-            type: ["object", "null"],
-            description: "The caught failure, or null when try (and catch) succeeded.",
-            properties: stepErrorProperties,
-            additionalProperties: false,
-          },
-        },
-      },
-      required: ["try"],
-    },
-    {
-      title: "throw",
-      description:
-        "Throws an InvokeError unconditionally. Works inside catch blocks via CEL " +
-        '(e.g. code set to `!cel "error.code"`).',
-      properties: {
-        throw: {
-          title: "Throw",
-          description: "InvokeError descriptor; code is required, message/data optional.",
-          type: "object",
-          properties: {
-            code: {
-              title: "Code",
-              description: "Structured error code; uppercase SNAKE_CASE by convention.",
-              type: "string",
-            },
-            message: {
-              title: "Message",
-              description: "Human-readable error message. Defaults to `code` when omitted.",
-              type: "string",
-            },
-            data: {
-              title: "Data",
-              description: "Optional structured payload attached to the error.",
-            },
-          },
-          required: ["code"],
-        },
-      },
-      required: ["throw"],
-    },
-    {
-      title: "value",
-      description:
-        "Computes a value and publishes it as `steps.<name>.result`, with no dispatch — " +
-        "no resource, no span, no topology node. For an intermediate derived from an " +
-        "earlier step: reshape a response, total some rows, build the next call's inputs.",
-      properties: {
-        value: {
-          title: "Value",
-          description:
-            "A CEL expression — or a structure (map / array) with `!cel` leaves — " +
-            "evaluated in the step scope: `inputs`, the results of the steps before it, " +
-            "and whatever the enclosing kind binds (`item` / `index` / `items`, " +
-            "`iteration` / `previous`).",
-        },
-      },
-      required: ["value"],
-    },
-  ],
-  required: ["name"],
-};
-
-/** The fragments that CONTAIN THEMSELVES — a schema's properties hold schemas, a
- *  step's branches hold steps. A reference to one is localized and hoisted
- *  rather than expanded in place ({@link localizeRecursiveFragment}), because
- *  inlining cannot terminate. */
-const RECURSIVE_FRAGMENTS = new Set(["JsonSchema7", "KindSchema", "Step"]);
+const FRAGMENT_PREFIX = `${MANIFEST_SCHEMA_URI}#/$defs/`;
 
 /** The fragments that describe author-written JSON Schema, whichever vocabulary
- *  they admit. Split from {@link RECURSIVE_FRAGMENTS} when `Step` landed: being
- *  recursive is a fact about how a reference is RESOLVED, being a schema is a
- *  fact about which vocabulary a slot admits, and `Step` is the first fragment
- *  that is one without the other. */
+ *  they admit. Distinct from being recursive: being recursive is a fact about how
+ *  a reference is RESOLVED, being a schema is a fact about which vocabulary a
+ *  slot admits, and `Step` is recursive without being a schema. */
 const SCHEMA_FRAGMENTS = new Set(["JsonSchema7", "KindSchema"]);
 
 /** True when a slot's `x-telo-fragment` stamp says it holds author-written JSON
@@ -597,7 +60,7 @@ export function isSchemaFragment(name: string | undefined): boolean {
 
 /**
  * The `$defs` key a hoisted fragment is written under, and the one its own
- * self-reference points at.
+ * self-reference points at once localized.
  *
  * NAMESPACED so a collision is unrepresentable rather than diagnosable: `$defs`
  * is the author's namespace, and a kind declaring its own `$defs: { KindSchema:
@@ -613,8 +76,7 @@ function hoistedDefKey(name: string): string {
 
 /** True for a `$defs` key {@link hoistedDefKey} reserved — the analyzer's own
  *  copy of a fragment, which a walk over what a kind DECLARED must not read as
- *  the kind's own schema. A function rather than a shared constant because the
- *  fragment set is expanded at module initialization, above any `const` here. */
+ *  the kind's own schema. */
 export function isHoistedFragmentDefKey(key: string): boolean {
   return key.startsWith(hoistedDefKey(""));
 }
@@ -634,22 +96,105 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
+function readFragments(): Record<string, Record<string, unknown>> {
+  const defs: Record<string, Record<string, unknown>> = {};
+  for (const [name, data] of BUILTIN_FRAGMENT_FILES) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error(`sdk/builtins/fragments/${name}.json: a fragment is a JSON Schema object.`);
+    }
+    refuseRosterMarkers(data, `sdk/builtins/fragments/${name}.json`);
+    defs[name] = structuredClone(data) as Record<string, unknown>;
+  }
+  return defs;
+}
+
 /** Root schema registered with AJV under {@link MANIFEST_SCHEMA_URI}. Carries
- *  `$defs` only — it isn't validated against directly. */
+ *  `$defs` only — it isn't validated against directly. Each body is the entry as
+ *  written, its references to the others in the authored spelling. */
 export const ManifestRootSchema = {
   $id: MANIFEST_SCHEMA_URI,
-  $defs: {
-    ResourceRef: ResourceRefSchema,
-    RetryPolicy: RetryPolicySchema,
-    RetryAttempts: RetryAttemptsSchema,
-    InvokeStep: InvokeStepSchema,
-    Step: StepSchema,
-    JsonSchema7: JsonSchema7Schema,
-    KindSchema: KindSchemaSchema,
-  },
+  $defs: readFragments(),
 };
 
 deepFreeze(ManifestRootSchema);
+
+function fragmentBody(name: string): Record<string, unknown> | undefined {
+  const body = (ManifestRootSchema.$defs as Record<string, unknown>)[name];
+  return body && typeof body === "object" ? (body as Record<string, unknown>) : undefined;
+}
+
+/** A fragment body by name, for the consumers that re-export the well-known
+ *  shapes. Throws on a name the vocabulary does not hold. */
+function requireFragment(name: string): Record<string, unknown> {
+  const body = fragmentBody(name);
+  if (!body) throw new Error(`Unknown manifest fragment '${name}'`);
+  return body;
+}
+
+export const ResourceRefSchema = requireFragment("ResourceRef");
+export const RetryPolicySchema = requireFragment("RetryPolicy");
+export const RetryAttemptsSchema = requireFragment("RetryAttempts");
+export const InvokeStepSchema = requireFragment("InvokeStep");
+export const StepSchema = requireFragment("Step");
+export const JsonSchema7Schema = requireFragment("JsonSchema7");
+export const KindSchemaSchema = requireFragment("KindSchema");
+
+/** The fragments a body names directly, by `telo://manifest#/$defs/<Name>`. */
+function referencedFragments(node: unknown, out = new Set<string>()): Set<string> {
+  if (!node || typeof node !== "object") return out;
+  if (Array.isArray(node)) {
+    for (const item of node) referencedFragments(item, out);
+    return out;
+  }
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (key === "$ref" && typeof value === "string" && value.startsWith(FRAGMENT_PREFIX)) {
+      out.add(value.slice(FRAGMENT_PREFIX.length));
+    } else {
+      referencedFragments(value, out);
+    }
+  }
+  return out;
+}
+
+/**
+ * The fragments that CONTAIN THEMSELVES — a schema's properties hold schemas, a
+ * step's branches hold steps. A reference to one is localized and hoisted rather
+ * than expanded in place ({@link localizeRecursiveFragment}), because inlining
+ * cannot terminate.
+ *
+ * DERIVED from the bodies — a fragment that reaches itself through the
+ * references they hold — so which fragments recurse is a property of the data,
+ * never a list kept beside it.
+ */
+const RECURSIVE_FRAGMENTS: ReadonlySet<string> = (() => {
+  const edges = new Map<string, Set<string>>();
+  for (const name of Object.keys(ManifestRootSchema.$defs)) {
+    edges.set(name, referencedFragments(fragmentBody(name)));
+  }
+  const recursive = new Set<string>();
+  for (const start of edges.keys()) {
+    const seen = new Set<string>();
+    const queue = [...(edges.get(start) ?? [])];
+    while (queue.length > 0) {
+      const next = queue.shift()!;
+      if (next === start) {
+        recursive.add(start);
+        break;
+      }
+      if (seen.has(next)) continue;
+      seen.add(next);
+      queue.push(...(edges.get(next) ?? []));
+    }
+  }
+  return recursive;
+})();
+
+/** An expanded fragment body, and the recursive fragments its expansion
+ *  localized — which belong in the `$defs` of whatever schema embeds it. */
+interface ExpandedTemplate {
+  readonly body: Record<string, unknown>;
+  readonly hoists: readonly string[];
+}
 
 /**
  * One expanded template per fragment, cloned per consumer.
@@ -660,68 +205,51 @@ deepFreeze(ManifestRootSchema);
  * downstream passes (`resolveSchemaRefKinds`, migrations) rewrite schemas in
  * place.
  */
-const expandedFragments = new Map<string, Record<string, unknown>>();
+const expandedFragments = new Map<string, ExpandedTemplate>();
 
 /**
- * A fresh, fully expanded copy of a fragment body.
+ * A fully expanded fragment body, and the recursive fragments it references.
  *
- * TARGET-INDEPENDENT, which is what makes caching it correct: the walk is given
- * a scratch hoist target and REFUSED if anything lands in it. A localized copy
+ * TARGET-INDEPENDENT, which is what makes caching it correct: a localized copy
  * belongs in the schema a validator compiles, never inside another `$defs`
- * entry, so a body that needed one could not have a single cached form — the
- * first consumer would receive the entry and every later one would silently get
- * a pointer to nothing. Nothing exercises that today: a recursive fragment
- * writes its own self-references already localized, and a cross-reference
- * between two recursive fragments is hoisted at the top level by
- * {@link hoistFragmentDef}'s `pending` loop. If one ever does, this throws at
- * the write instead of resolving by accident.
+ * entry, so the walk RECORDS which recursive fragments the body localized
+ * instead of placing them. Each consumer hoists those into its own target — a
+ * non-recursive fragment that references a recursive one (`CallableType` holds a
+ * `JsonSchema7`) carries the reference with it wherever it is expanded.
  */
-function expandedFragment(name: string): Record<string, unknown> {
+function expandedFragment(name: string): ExpandedTemplate {
   let template = expandedFragments.get(name);
   if (!template) {
-    const fragment = (ManifestRootSchema.$defs as Record<string, unknown>)[name];
-    template = structuredClone(fragment) as Record<string, unknown>;
-    const scratch: Record<string, unknown> = {};
-    walkFragments(template, new Set(), { hoistTarget: scratch, depth: 1 });
-    if (scratch.$defs !== undefined) {
-      throw new Error(
-        `Manifest fragment '${name}' references a recursive fragment from inside its body. ` +
-          `Its expanded form is no longer independent of where it is hoisted — localize the ` +
-          `reference in the fragment source (write '#/$defs/telo:<Name>' directly) or teach ` +
-          `expandedFragment to take the hoist target.`,
-      );
-    }
+    const body = structuredClone(requireFragment(name)) as Record<string, unknown>;
+    const hoists = new Set<string>();
+    walkFragments(body, new Set(), { hoist: (fragment) => hoists.add(fragment), depth: 1 });
+    template = { body, hoists: [...hoists] };
     expandedFragments.set(name, template);
   }
-  return structuredClone(template);
+  return { body: structuredClone(template.body), hoists: template.hoists };
 }
 
 /** A private, expanded copy of a fragment, for a consumer that must EMBED one
- *  rather than `$ref` it — `builtins.ts` is not a manifest and never passes
- *  through the loader, so its dispatch site has to arrive already resolved and
- *  already stamped. Cloned for the reason {@link deepFreeze} explains. */
-
+ *  rather than `$ref` it. Refused for a fragment whose expansion localizes a
+ *  recursive one, since an embedded copy has no `$defs` to resolve it against.
+ *  Cloned for the reason {@link deepFreeze} explains. */
 export function manifestFragment(name: string): Record<string, unknown> {
-  const fragment = (ManifestRootSchema.$defs as Record<string, unknown>)[name];
-  if (!fragment || typeof fragment !== "object") {
-    throw new Error(`Unknown manifest fragment '${name}'`);
-  }
-  if (RECURSIVE_FRAGMENTS.has(name)) {
+  requireFragment(name);
+  const embeddable = !RECURSIVE_FRAGMENTS.has(name) && expandedFragment(name).hoists.length === 0;
+  if (!embeddable) {
     // A recursive fragment has no expanded form — that is the whole reason it is
     // localized instead. Embedding one would hand the consumer a body whose
     // `#/$defs` pointers resolve against nothing.
     throw new Error(
-      `Manifest fragment '${name}' is recursive and cannot be embedded — ` +
+      `Manifest fragment '${name}' is recursive, or references one, and cannot be embedded — ` +
         `point a slot at it with $ref: "${manifestFragmentRef(name)}" and pass the ` +
         `enclosing schema through withSchemaFragments().`,
     );
   }
-  const copy = expandedFragment(name);
+  const copy = expandedFragment(name).body;
   copy[X_TELO_FRAGMENT] = name;
   return copy;
 }
-
-const FRAGMENT_PREFIX = `${MANIFEST_SCHEMA_URI}#/$defs/`;
 
 /**
  * Replace every `telo://manifest#/$defs/<Name>` reference with the fragment
@@ -730,29 +258,33 @@ const FRAGMENT_PREFIX = `${MANIFEST_SCHEMA_URI}#/$defs/`;
  * EXPANDED rather than left as a reference, which is the opposite of what
  * `resolveSchemaTypeRefs` does for a named user type — and for the opposite
  * reasons. A user type must stay a reference because it can recurse and because
- * the compiled-validator cache is keyed on schema identity. These fragments are a
- * closed, non-recursive set the analyzer itself owns, and expanding them is what
- * keeps a composer that points at a shared shape legible to walks that never
- * resolved anything: the CEL-placeholder substitution, the eval-path collector,
- * the editor's field walk. Teaching each of those to follow a reference is the
- * same fix applied N times, and the failure mode when one is missed is silent —
- * a role-driven lookup finds nothing and the check it feeds simply stops
- * reporting.
+ * the compiled-validator cache is keyed on schema identity. The non-recursive
+ * fragments are a closed set the analyzer itself owns, and expanding them is
+ * what keeps a composer that points at a shared shape legible to walks that
+ * never resolved anything: the CEL-placeholder substitution, the eval-path
+ * collector, the editor's field walk. Teaching each of those to follow a
+ * reference is the same fix applied N times, and the failure mode when one is
+ * missed is silent — a role-driven lookup finds nothing and the check it feeds
+ * simply stops reporting.
  *
  * Runs in the shared loader, so both kernels' Node halves and every consumer of a
- * loaded manifest see the same expanded shape.
+ * loaded manifest see the same expanded shape. The built-ins never meet the
+ * loader and are expanded the same way when they are registered.
  */
 export function expandManifestFragments(node: unknown, seen = new Set<object>()): void {
   if (!node || typeof node !== "object") return;
-  walkFragments(node, seen, { hoistTarget: node as Record<string, unknown>, depth: 0 });
+  const target = node as Record<string, unknown>;
+  walkFragments(node, seen, { hoist: (name) => hoistFragmentDef(target, name), depth: 0 });
 }
 
-/** Where a hoisted recursive fragment's `$defs` entry goes, and how deep the
+/** Where a recursive fragment the walk localizes is hoisted, and how deep the
  *  walk is — the two facts {@link walkFragments} carries down. */
 interface ExpandContext {
-  /** The nearest enclosing node AJV will compile as a schema: a document's
-   *  top-level schema-valued key, else the node expansion started from. */
-  readonly hoistTarget: Record<string, unknown>;
+  /** Hoist a localized fragment into the nearest enclosing node AJV will
+   *  compile as a schema: a document's top-level schema-valued key, else the
+   *  node expansion started from — or, while a template is expanded, record it
+   *  for whoever embeds the template. */
+  readonly hoist: (name: string) => void;
   readonly depth: number;
 }
 
@@ -767,9 +299,9 @@ interface ExpandContext {
  */
 function childContext(ctx: ExpandContext, key: string, value: unknown): ExpandContext {
   if (ctx.depth === 0 && SCHEMA_REGION_KEYS.includes(key) && isPlainObject(value)) {
-    return { hoistTarget: value, depth: 1 };
+    return { hoist: (name) => hoistFragmentDef(value, name), depth: 1 };
   }
-  return { hoistTarget: ctx.hoistTarget, depth: ctx.depth + 1 };
+  return { hoist: ctx.hoist, depth: ctx.depth + 1 };
 }
 
 function walkFragments(node: unknown, seen: Set<object>, ctx: ExpandContext): void {
@@ -782,9 +314,9 @@ function walkFragments(node: unknown, seen: Set<object>, ctx: ExpandContext): vo
       const localized = localizeRecursiveFragment(node[i], ctx);
       if (localized) node[i] = localized;
       else {
-        const fragment = fragmentFor(node[i]);
+        const fragment = fragmentFor(node[i], ctx);
         if (fragment) node[i] = fragment;
-        else walkFragments(node[i], seen, { ...ctx, depth: ctx.depth + 1 });
+        else walkFragments(node[i], seen, { hoist: ctx.hoist, depth: ctx.depth + 1 });
       }
     }
     return;
@@ -797,7 +329,7 @@ function walkFragments(node: unknown, seen: Set<object>, ctx: ExpandContext): vo
       obj[key] = localized;
       continue;
     }
-    const fragment = fragmentFor(value);
+    const fragment = fragmentFor(value, ctx);
     if (fragment) obj[key] = fragment;
     else walkFragments(value, seen, childContext(ctx, key, value));
   }
@@ -808,11 +340,10 @@ function walkFragments(node: unknown, seen: Set<object>, ctx: ExpandContext): vo
  * hoisting one copy of the fragment into the enclosing schema's `$defs`.
  *
  * Localized rather than inlined because the shape contains itself: inlining
- * cannot terminate, which is what the "closed, non-recursive set" caveat above
- * says. Localized rather than left pointing at `telo://manifest` because two
- * consumers cannot follow a foreign URI — the editor's resolver throws on any
- * `$ref` that does not start with `#/`, and that throw takes the whole canvas
- * down, exactly as gating fragment expansion once did.
+ * cannot terminate. Localized rather than left pointing at `telo://manifest`
+ * because two consumers cannot follow a foreign URI — the editor's resolver
+ * throws on any `$ref` that does not start with `#/`, and that throw takes the
+ * whole canvas down, exactly as gating fragment expansion once did.
  *
  * Siblings written beside the `$ref` are kept, but draft-07 makes `$ref`
  * exclusive, so they reach the human surfaces (completion, hover, the editor)
@@ -829,12 +360,13 @@ function localizeRecursiveFragment(
   const name = ref.slice(FRAGMENT_PREFIX.length);
   if (!RECURSIVE_FRAGMENTS.has(name)) return undefined;
 
-  hoistFragmentDef(ctx.hoistTarget, name);
+  ctx.hoist(name);
   return { ...value, $ref: `#/$defs/${hoistedDefKey(name)}`, [X_TELO_FRAGMENT]: name };
 }
 
-/** Add `name` (and anything it references in turn) to `target.$defs`, cloned —
- *  the fragment set is frozen, and later passes rewrite schemas in place. */
+/** Add `name` (and every recursive fragment its body localizes) to
+ *  `target.$defs`, cloned — the fragment set is frozen, and later passes rewrite
+ *  schemas in place. */
 function hoistFragmentDef(target: Record<string, unknown>, name: string): void {
   const defs = (target.$defs ??= {}) as Record<string, unknown>;
   const pending = [name];
@@ -842,42 +374,21 @@ function hoistFragmentDef(target: Record<string, unknown>, name: string): void {
     const next = pending.pop() as string;
     const key = hoistedDefKey(next);
     if (defs[key]) continue;
-    const fragment = (ManifestRootSchema.$defs as Record<string, unknown>)[next];
-    if (!fragment || typeof fragment !== "object") continue;
     // Stamped on the hoisted body, not only on the slot that pointed at it: a
     // schema nests, so the node a consumer resolves two levels down is the
     // fragment reached through its own self-reference, with no slot in sight.
     // That node is exactly where an annotation like `x-telo-eval` is written,
     // so it is where the stamp has to be readable.
-    // A hoisted body may point at a NON-recursive fragment (`Step`'s dispatch
-    // branch is `InvokeStep`), and a copy left unexpanded carries a foreign
-    // `telo://manifest#/…` reference into a document the editor's resolver
-    // throws on — the same failure gating fragment expansion once caused. Where
-    // a nested LOCALIZED copy would belong is not this body; see
-    // {@link expandedFragment}, which refuses that case rather than guessing.
-    const body = expandedFragment(next);
+    const { body, hoists } = expandedFragment(next);
     defs[key] = { ...body, [X_TELO_FRAGMENT]: next };
-    for (const nested of RECURSIVE_FRAGMENTS) {
-      if (nested !== next && referencesLocalDef(defs[key], nested)) pending.push(nested);
-    }
+    pending.push(...hoists);
   }
 }
 
-/** Does a hoisted fragment point at another one? Cheap and structural: the set
- *  is small and a missed edge would leave an unresolvable pointer, which AJV
- *  reports loudly rather than silently skipping. */
-function referencesLocalDef(node: unknown, name: string): boolean {
-  if (!node || typeof node !== "object") return false;
-  if (Array.isArray(node)) return node.some((item) => referencesLocalDef(item, name));
-  const obj = node as Record<string, unknown>;
-  if (obj.$ref === `#/$defs/${hoistedDefKey(name)}`) return true;
-  return Object.values(obj).some((value) => referencesLocalDef(value, name));
-}
-
 /**
- * Expand fragments in a schema that never passes through the loader —
- * `builtins.ts` is not a manifest, so its slots have to arrive already
- * localized, with the hoisted `$defs` at the root of the schema AJV compiles.
+ * Expand fragments in a schema that never passes through the loader, so its
+ * slots arrive already localized, with the hoisted `$defs` at the root of the
+ * schema AJV compiles.
  *
  * Returns the same object, expanded in place, for use as a declaration
  * initializer.
@@ -914,18 +425,19 @@ export function withSchemaFragments<T extends Record<string, unknown>>(schema: T
  * rewrite schemas in place, and a shared object would let one manifest's rewrite
  * reach every other manifest that pointed at the same shape.
  */
-function fragmentFor(value: unknown): Record<string, unknown> | undefined {
+function fragmentFor(value: unknown, ctx: ExpandContext): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const node = value as Record<string, unknown>;
   const ref = node.$ref;
   if (typeof ref !== "string" || !ref.startsWith(FRAGMENT_PREFIX)) return undefined;
   const name = ref.slice(FRAGMENT_PREFIX.length);
-  const fragment = (ManifestRootSchema.$defs as Record<string, unknown>)[name];
-  if (!fragment || typeof fragment !== "object") return undefined;
+  if (!fragmentBody(name)) return undefined;
 
   // A fragment may reference another (InvokeStep holds a RetryPolicy); the copy
-  // arrives expanded, so one pass leaves no reference behind.
-  const expanded = expandedFragment(name);
+  // arrives expanded, so one pass leaves no reference behind. What it localized
+  // is hoisted where this node's own schema keeps its `$defs`.
+  const { body: expanded, hoists } = expandedFragment(name);
+  for (const hoisted of hoists) ctx.hoist(hoisted);
 
   for (const [key, own] of Object.entries(node)) {
     if (key === "$ref") continue;

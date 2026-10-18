@@ -1,0 +1,15 @@
+# A key the `Telo.Definition` schema does not declare — the kernel and
+# `telo check` validate a definition against the one built-in schema.
+kind: Telo.Library
+metadata:
+  name: DefinitionUnknownFieldLib
+exports:
+  kinds: [Thing]
+---
+kind: Telo.Definition
+metadata:
+  name: Thing
+capability: Telo.Invocable
+controllrs:
+  - pkg:npm/thing@1.0.0
+schema: { type: object }

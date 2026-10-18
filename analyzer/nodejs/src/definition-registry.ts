@@ -3,6 +3,7 @@ import { schemaWithTagsAsText } from "./schema-tag-text.js";
 import { canonicalTypeSchemaId, parseCanonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import { isCapabilityRole } from "./capability-roster.js";
 import { moduleAliasScope, type KindResolver } from "./module-alias-scope.js";
 import {
   declaredReach,
@@ -124,11 +125,15 @@ export class DefinitionRegistry {
     // now-larger def set.
     this.effectiveSchemas.clear();
     this.kindReaches.clear();
-    // `capability` populates extendedBy for backward-compat with the legacy pattern where
-    // a concrete definition overloaded `capability: <AbstractKind>` to mean "implements
-    // this abstract." The canonical pattern is `extends` (below). Both populate the index,
-    // unioned — so in-flight modules pre-migration keep working.
-    if (definition.capability) {
+    // ROLE MEMBERSHIP, not inheritance: a kind playing `Telo.Invocable` is accepted
+    // wherever the role's abstract is, and transitively wherever its parent is
+    // (`Telo.Executable`). Only a roster role is indexed — `capability:` names
+    // nothing else, and a role abstract naming itself adds no edge.
+    if (
+      typeof definition.capability === "string" &&
+      definition.capability !== key &&
+      isCapabilityRole(definition.capability)
+    ) {
       this.addExtendedBy(definition.capability, key);
     }
     // `extends` — first-class "implements-this-abstract" edge. Alias-form resolution
@@ -652,18 +657,19 @@ export class DefinitionRegistry {
     return { node: subSchema as Record<string, any>, document, definition: targetDef };
   }
 
-  /** The kinds a definition descends from DIRECTLY — the same two edges
-   *  `register` feeds into `extendedBy`, read the other way.
-   *
-   *  Both spellings, because either can carry the edge that satisfies a slot:
-   *  `capability:` is the legacy implements-this form, `extends:` the canonical
-   *  one. A consumer walking these by hand would be a second reading of what an
-   *  inheritance edge IS, and the downward index and the upward walk have to
-   *  agree about that forever. */
+  /** The kinds a definition is accepted as DIRECTLY — the same two edges
+   *  `register` feeds into `extendedBy`, read the other way: the role its
+   *  `capability:` names and the kind its `extends:` names. A consumer walking
+   *  these by hand would be a second reading of what an edge IS, and the
+   *  downward index and the upward walk have to agree about that forever. */
   parentsOf(kind: string): string[] {
     const def = this.defs.get(kind);
     if (!def) return [];
-    return [def.capability, def.extends].filter(
+    const role =
+      typeof def.capability === "string" && def.capability !== kind && isCapabilityRole(def.capability)
+        ? def.capability
+        : undefined;
+    return [role, def.extends].filter(
       (parent): parent is string => typeof parent === "string" && parent.length > 0,
     );
   }
@@ -688,8 +694,8 @@ export class DefinitionRegistry {
     return true;
   }
 
-  /** Returns all definitions that transitively extend the given abstract kind.
-   *  Follows the capability chain to any depth (equivalent to instanceof in OOP).
+  /** Returns all definitions that transitively extend the given abstract kind,
+   *  or play the role it names, to any depth (equivalent to instanceof in OOP).
    *  Definitions are included regardless of registration order. */
   getByExtends(abstractKind: string): ResourceDefinition[] {
     const result: ResourceDefinition[] = [];

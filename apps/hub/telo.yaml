@@ -90,6 +90,8 @@ imports:
     resources:
       connection: !ref db
       bucketGet: !ref getManifest
+    variables:
+      builtinsRef: !cel "variables.builtinsRef"
   Ingest:
     source: ./hub-ingest.yaml
     resources:
@@ -102,6 +104,7 @@ imports:
     variables:
       teloCommand: !cel "variables.teloCommand"
       ingestRev: !cel "variables.ingestRev"
+      builtinsRef: !cel "variables.builtinsRef"
   Registry:
     source: ./hub-registry.yaml
     resources:
@@ -113,6 +116,7 @@ imports:
       teloCommand: !cel "variables.teloCommand"
       ingestRev: !cel "variables.ingestRev"
       allowLocalRefs: !cel "variables.allowLocalRefs"
+      builtinsRef: !cel "variables.builtinsRef"
 ports:
   http:
     env: PORT
@@ -166,7 +170,16 @@ variables:
   ingestRev:
     env: INGEST_REV
     type: integer
-    default: 7
+    default: 9
+  # Where the built-in vocabulary is published — one version per telo release,
+  # the module every `Telo.<Kind>` names. Registered on every boot, so a
+  # deployment tracks it whatever SEED_REFS says, and the one ref a
+  # `Telo.Builtins` root is indexed at: registration is open, so nobody else may
+  # publish "built-in" kinds.
+  builtinsRef:
+    env: BUILTINS_REF
+    type: string
+    default: oci://ghcr.io/telorun/telo
   # The command the origin reads run, as a JSON array: a program and its leading
   # arguments (e.g. '["telo"]'). It must be the telo that runs this hub, so the
   # `telo module manifest --json` contract ingest reads is this hub's own
@@ -247,6 +260,13 @@ targets:
   # Migrations first: every read below and the ingest claim itself are written
   # against tables this creates.
   - !ref Schema.migrations
+  # The built-in vocabulary, before the seed: tracked unconditionally, since a
+  # deployment that left it out of SEED_REFS would admit it at this ref and
+  # never index it. Idempotent, like the seed.
+  - name: registerBuiltins
+    invoke: !ref Registry.registerModule
+    inputs:
+      ref: !cel "variables.builtinsRef"
   - !ref seedModules
   - !ref hubServer
   # Continues ingest runs whose process died, and starts the ones the reconcile
@@ -1229,7 +1249,9 @@ entries:
       `imports:`, run by pinned ref or stood up with `App.Instance`, with the
       inputs it asks for under `application`. A member a hit does not carry is
       empty: no `extends` means it extends nothing, no `instances` that no
-      ready-made instance exists, no `runtimes` that any kernel loads it.
+      ready-made instance exists, no `runtimes` that any kernel loads it. A
+      module with `builtin: true` is the built-in vocabulary: write its kinds
+      as `Telo.<name>` with no import (its hits state no `runtimes`).
       Follow up with `get_kinds` for the exact schemas of the kinds you chose.
     argumentsSchema:
       type: object
@@ -1339,7 +1361,8 @@ entries:
   # get_kinds — what a caller reads to WRITE a resource: the definitions of the
   # kinds it names and nothing else of their modules. Text, not JSON: the
   # documents are the manifest's own YAML, and quoting them into a JSON string
-  # would cost an escape per line.
+  # would cost an escape per line. The text is the catalog's, so the answer is
+  # tested where it is built.
   - name: get_kinds
     description: |
       Fetch the definitions of the kinds you name — the EXACT field shapes to
@@ -1352,6 +1375,10 @@ entries:
       a kind takes. A name the module does not define is reported with the
       kinds it does export. Prefer this to `get_module_manifest`, which
       returns a whole module.
+      Built-ins (`Telo.<Kind>` parents, and the schema fragments, value types,
+      zone attributes and formats a definition names) come back from the
+      built-in vocabulary of one telo version, stated in the answer, with no
+      import line: write them as `Telo.<Kind>`, never imported.
     argumentsSchema:
       type: object
       properties:
@@ -1366,34 +1393,36 @@ entries:
               version: { type: string, description: "Exact version, or omit for the latest tracked one. One version is read per module." }
             required: [ref, kind]
             additionalProperties: false
+        telo:
+          type: string
+          default: ""
+          description: >-
+            The telo release the manifest will run on, as `telo --version`
+            prints it (`X`): every built-in is read at that version. Never pass
+            an `X+unreleased` version — a working copy no hub tracks: omit
+            `telo` and read the built-ins from that CLI with `telo builtins
+            <names>`. Omitted, built-ins are read at the latest version the hub
+            tracks; a version it does not track is refused, naming the ones it
+            does.
       required: [kinds]
       additionalProperties: false
     handler: !ref Catalog.kindDefinitions
     inputs:
       kinds: !cel "request.arguments.?kinds.orValue([])"
+      telo: !cel "request.arguments.?telo.orValue('')"
     result:
       content:
         - type: text
-          text: !cel >-
-            size(result.modules) == 0
-              ? 'pass `kinds`: a list of { ref, kind } naming at least one kind'
-            : join((result.modules.map(m, {'m': m, 'inherited': false})
-                  + result.inherited.map(m, {'m': m, 'inherited': true})).map(e,
-              !e.m.found
-                ? '# ' + e.m.ref + ' is not tracked by the hub (asked for: ' + join(e.m.asked, ', ')
-                    + '). Resolve the ref with suggest_module_refs.\n'
-              : e.m.application
-                ? '# ' + e.m.ref + ' is an application: it is run by pinned ref, never imported.\n'
-              : '# ' + e.m.name
-                  + (e.inherited ? ' — reached through `extends`: a kind above takes these fields too\n' : '\n')
-                  + '# imports:\n#   ' + e.m.name + ': ' + e.m.importRef + '\n'
-                  + (size(e.m.missing) > 0
-                      ? '# NOT DEFINED by this module: ' + join(e.m.missing, ', ')
-                          + '. It exports: ' + join(e.m.exported, ', ') + '\n'
-                      : '')
-                  + join(e.m.definitions.map(d, '---\n' + d + '\n'), '')), '\n')
-      isError: !cel "result.modules.all(m, !m.found)"
+          text: !cel "result.text"
+      isError: !cel "result.isError"
     catches:
+      # -32602 (invalid params): the message names the versions the hub tracks.
+      - when: !cel "error.code == 'ERR_UNKNOWN_TELO_VERSION'"
+        error:
+          code: -32602
+          message: !cel "error.message"
+          data:
+            code: !cel "error.code"
       - error:
           code: -32603
           message: !cel "'reading kinds failed: ' + error.code"
@@ -1406,8 +1435,10 @@ entries:
       its ref, name, a one-sentence summary and the names of the kinds and
       ready-made instances it exports. Pass `publisher` (a host and
       organisation, e.g. `ghcr.io/telorun` for the standard library) to list
-      one publisher's libraries. Read it once to learn what exists, then
-      `get_kinds` for the schemas of what you will use.
+      one publisher's libraries. The entry marked `builtin: true` is the
+      built-in vocabulary, whose kinds are written `Telo.<name>` with no
+      import. Read it once to learn what exists, then `get_kinds` for the
+      schemas of what you will use.
     argumentsSchema:
       type: object
       properties:
@@ -1534,12 +1565,13 @@ entries:
       List every exported kind that extends a given contract (e.g. every
       backend of an abstract like `Sql.Connection`), across module boundaries.
       `ref` + `kind` name the contract exactly as a hit's `extends` field does
-      (an empty `ref` means a `Telo.*` built-in abstract). Use this after
-      finding an abstract kind, to discover which concrete module implements it.
+      (a `Telo.*` built-in is owned by the built-in vocabulary's ref). Use this
+      after finding an abstract kind, to discover which concrete module
+      implements it.
     argumentsSchema:
       type: object
       properties:
-        ref: { type: string, description: "Location ref of the module owning the extended kind (empty for a Telo.* built-in)." }
+        ref: { type: string, description: "Location ref of the module owning the extended kind (the built-in vocabulary's ref for a Telo.* built-in)." }
         kind: { type: string, description: "Extended kind's suffix, e.g. Store." }
       required: [ref, kind]
       additionalProperties: false
@@ -1740,7 +1772,9 @@ instructions: !literal |
      the runnables/services to start.
 
   An application hit (`entry: application`) is run by pinned ref or with
-  `App.Instance`, never imported. The other tools — `list_libraries`,
+  `App.Instance`, never imported. A module marked `builtin: true` is the
+  built-in vocabulary: its kinds are `Telo.<name>` and need no import, and
+  `get_kinds` reads them at the telo version you pass as `telo`. The other tools — `list_libraries`,
   `get_module`, `get_module_manifest`, `list_module_versions`,
   `find_dependents`, `list_categories`, `suggest_module_refs` — each say when
   to use them.

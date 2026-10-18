@@ -12,7 +12,8 @@ metadata:
   description: >-
     Validates a submitted module ref, records it, and schedules its first ingest:
     the anti-abuse gate, the shape gate that keeps a local path off the CLI, and
-    the confirmation that the ref really serves a Telo library or application.
+    the confirmation that the ref really serves a Telo library or application,
+    or the built-in vocabulary at the one ref it is tracked at.
 requires:
   # `resources:` inputs on a library.
   telo: ">=0.83.0"
@@ -60,7 +61,13 @@ variables:
     default: [telo]
   ingestRev:
     type: integer
-    default: 6
+    default: 9
+  # The one ref a `Telo.Builtins` root may be registered at — the built-in
+  # vocabulary the hub tracks. Registration is open, so anywhere else such a
+  # root is refused.
+  builtinsRef:
+    type: string
+    default: oci://ghcr.io/telorun/telo
   # Whether a `./`-relative local path may be registered through `registerModule`
   # (the seed list). A development setting: a local module is read off the hub's
   # own disk. `registerAndValidate` refuses one whatever this says.
@@ -225,12 +232,17 @@ steps:
               ref: !cel "inputs.ref"
               version: !cel "steps.versions.result.latest"
       # A module root is a Telo.Library (indexed by its exports) or a
-      # Telo.Application (indexed by its declared contract). Anything else is
-      # refused with a reason rather than stored as a record indexing nothing.
+      # Telo.Application (indexed by its declared contract). The built-in
+      # vocabulary (Telo.Builtins) is admitted at `builtinsRef` alone, which the
+      # hub registers itself at boot, so it answers as a tracked module.
+      # Anything else is refused with a reason rather than stored as a record
+      # indexing nothing.
       - name: register
         if: !cel >-
           'manifest' in steps && steps.manifest.result.ok
-            && steps.manifest.result.docs[0].kind in ['Telo.Library', 'Telo.Application']
+            && (steps.manifest.result.docs[0].kind in ['Telo.Library', 'Telo.Application']
+                || (steps.manifest.result.docs[0].kind == 'Telo.Builtins'
+                    && inputs.ref == variables.builtinsRef))
         then:
           - name: insert
             invoke: !ref registerModule
@@ -311,8 +323,11 @@ outputs:
                   ? 'no published versions for ' + inputs.ref
                   : (!steps.manifest.result.ok
                       ? 'not a readable Telo module: ' + steps.manifest.result.error
-                      : (!(steps.manifest.result.docs[0].kind in ['Telo.Library', 'Telo.Application'])
+                      : (!('insert' in steps)
                           ? 'the root document of ' + inputs.ref + ' is '
                               + steps.manifest.result.docs[0].kind
-                              + '; only a Telo.Library or Telo.Application can be registered'
+                              + (steps.manifest.result.docs[0].kind == 'Telo.Builtins'
+                                  ? ', the built-in vocabulary of a telo release, which is tracked only at '
+                                      + variables.builtinsRef
+                                  : '; only a Telo.Library or Telo.Application can be registered')
                           : '')))))

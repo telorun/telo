@@ -8,6 +8,11 @@ import type {
   LoadedGraph,
   LoadedModule,
 } from "./loaded-types.js";
+import {
+  BUILTIN_VOCABULARY_NOT_A_MODULE,
+  builtinVocabularyImportMessage,
+  isBuiltinVocabularyRoot,
+} from "./builtin-vocabulary.js";
 import { desugarLoadedFile } from "./inline-imports.js";
 import type { MigrationEntry } from "./migrations/types.js";
 import { moduleCallNamesOfFile } from "./module-call-names.js";
@@ -21,6 +26,11 @@ import {
 } from "./parse-loaded-file.js";
 import type { YamlParseCache } from "./yaml-parse-cache.js";
 import { reconcileModuleVersions } from "./reconcile-module-versions.js";
+import {
+  isReservedKindPrefix,
+  reservedImportAliasMessage,
+  reservedLibraryNameMessage,
+} from "./reserved-kind-prefix.js";
 import {
   type AnalysisDiagnostic,
   DEFAULT_MANIFEST_FILENAME,
@@ -74,12 +84,42 @@ function collectMigrationDiagnostics(entry: LoadedModule): AnalysisDiagnostic[] 
  *  it is the kind prefix every `Alias.Kind` in the importer resolves through —
  *  so a target that has none is as unusable as one that was never fetched, and
  *  is reported the same way rather than left to surface later as an invented
- *  module nobody declared. */
+ *  module nobody declared. Judged inside `loadImportTarget`, the per-import
+ *  load step. */
 type ImportTargetIdentity =
   | { name: string; namespace: string | null }
   | { unusable: string };
 
-function importTargetIdentity(target: LoadedModule, importSource: string): ImportTargetIdentity {
+export type ImportTargetRefusal = {
+  unusable: string;
+  reason: "unusable-target" | "reserved-prefix";
+};
+
+export function importTargetIdentity(
+  target: LoadedModule,
+  importSource: string,
+): { name: string; namespace: string | null } | ImportTargetRefusal {
+  const identity = libraryIdentity(target, importSource);
+  if ("unusable" in identity) return { ...identity, reason: "unusable-target" };
+  if (isReservedKindPrefix(identity.name)) {
+    return { unusable: reservedLibraryNameMessage(importSource, identity.name), reason: "reserved-prefix" };
+  }
+  return identity;
+}
+
+function libraryIdentity(target: LoadedModule, importSource: string): ImportTargetIdentity {
+  // The built-in vocabulary is a document every released runtime refuses to
+  // import; this one says what it is and what to write instead.
+  const first = target.owner.manifests[0];
+  if (isBuiltinVocabularyRoot(first)) {
+    return {
+      unusable: builtinVocabularyImportMessage(
+        importSource,
+        (first?.metadata as { version?: unknown } | undefined)?.version,
+      ),
+    };
+  }
+
   const library = target.owner.manifests.find((m) => m?.kind === "Telo.Library");
   const application = target.owner.manifests.find((m) => m?.kind === "Telo.Application");
 
@@ -119,6 +159,114 @@ function importTargetIdentity(target: LoadedModule, importSource: string): Impor
 
   const namespace = (library.metadata as { namespace?: string | null } | undefined)?.namespace;
   return { name, namespace: typeof namespace === "string" ? namespace : null };
+}
+
+/** One import declaration, as the per-import load step reads it. */
+export interface ImportRequest {
+  /** The file declaring the import. */
+  fromSource: string;
+  /** The source exactly as authored. */
+  source: string;
+  /** Its `imports:` key; absent for an import no `imports:` entry declares (one
+   *  in a `with:` scope), whose alias is guarded where it is registered. */
+  alias?: string;
+  /** Line of the declaring `Telo.Import` document. */
+  sourceLine?: number;
+}
+
+/** How a host resolves and reads an import target. */
+export interface ImportTargetPort {
+  resolve(fromSource: string, source: string): string;
+  load(resolvedUrl: string): Promise<LoadedModule>;
+}
+
+export type ImportTargetLoad =
+  | {
+      resolvedUrl: string;
+      module: LoadedModule;
+      identity: { name: string; namespace: string | null };
+    }
+  | { failure: GraphLoadError };
+
+/**
+ * The per-import load step: the reserved-alias check, resolution, the load and
+ * the target's identity, each failure returned as the graph load error it is.
+ * The graph walk runs it for every import it reaches, and the kernel for an
+ * import the walk never reaches, so one source is read, and refused, one way.
+ */
+export async function loadImportTarget(
+  request: ImportRequest,
+  port: ImportTargetPort,
+): Promise<ImportTargetLoad> {
+  const { fromSource, source, alias, sourceLine } = request;
+  const failure = (
+    url: string,
+    error: Error,
+    reason?: GraphLoadError["reason"],
+    stampLine = true,
+  ): { failure: GraphLoadError } => {
+    if (stampLine && sourceLine !== undefined) {
+      (error as { sourceLine?: number }).sourceLine = sourceLine;
+    }
+    return {
+      failure: {
+        url,
+        source,
+        fromSource,
+        ...(alias !== undefined ? { alias } : {}),
+        ...(sourceLine !== undefined ? { sourceLine } : {}),
+        ...(reason ? { reason } : {}),
+        error,
+      },
+    };
+  };
+
+  // Refused before the target is fetched: the alias alone decides it, and an
+  // edge registered under it would replace `Telo.` or `Self.`.
+  if (alias !== undefined && isReservedKindPrefix(alias)) {
+    return failure(source, new Error(reservedImportAliasMessage(alias)), "reserved-prefix");
+  }
+
+  let resolvedUrl: string;
+  try {
+    resolvedUrl = port.resolve(fromSource, source);
+  } catch (err) {
+    return failure(source, err instanceof Error ? err : new Error(String(err)), undefined, false);
+  }
+
+  let module: LoadedModule;
+  try {
+    module = await port.load(resolvedUrl);
+  } catch (err) {
+    return failure(resolvedUrl, err instanceof Error ? err : new Error(String(err)));
+  }
+
+  // Judged per IMPORT rather than per distinct target: an import pointing at a
+  // module something else already reached (the entry application above all)
+  // would otherwise skip the check and register a nameless edge. An unusable
+  // target is recorded exactly like an unfetchable one, so no consumer has to
+  // know the difference between the two ways an import can fail.
+  const identity = importTargetIdentity(module, source);
+  if ("unusable" in identity) {
+    return failure(module.owner.source, new Error(identity.unusable), identity.reason);
+  }
+  return { resolvedUrl, module, identity };
+}
+
+/** The refusal of an entry file whose first document is the built-in vocabulary
+ *  archive: one `UNDEFINED_KIND` at its `kind:` line, since `Telo.Builtins` is
+ *  registered nowhere. */
+function builtinVocabularyEntryRefusal(file: LoadedFile): AnalysisDiagnostic | undefined {
+  if (!isBuiltinVocabularyRoot(file.manifests[0])) return undefined;
+  const range = file.positions[0]?.positionIndex.get("kind");
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "UNDEFINED_KIND",
+    source: "telo-analyzer",
+    message: BUILTIN_VOCABULARY_NOT_A_MODULE,
+    ...(range ? { range } : {}),
+    data: { filePath: file.source },
+  };
 }
 
 const SYSTEM_KINDS = new Set([
@@ -412,6 +560,24 @@ export class Loader {
 
     const modules = new Map<string, LoadedModule>();
     modules.set(rootSource, entry);
+
+    // The built-in vocabulary is read, never run or checked as a module: the
+    // whole file is refused with one diagnostic, and nothing it holds is walked.
+    const refusal = builtinVocabularyEntryRefusal(entry.owner);
+    if (refusal) {
+      return {
+        rootSource,
+        entry,
+        modules,
+        importEdges: new Map(),
+        overrides: new Map(),
+        migrationDiagnostics: [],
+        versionDiagnostics: [],
+        moduleFileDiagnostics: [],
+        parseDiagnostics: [...collectParseDiagnostics(modules), refusal],
+        errors: [],
+      };
+    }
     const importEdges = new Map<string, Map<string, ImportEdge>>();
     const errors: GraphLoadError[] = [];
 
@@ -437,80 +603,33 @@ export class Loader {
           // to the line where the import was declared.
           const sourceLine = file.positions[i]?.sourceLine ?? 0;
 
-          let resolvedTarget: string;
-          try {
-            resolvedTarget = this.resolveImportUrl(file.source, importSource);
-          } catch (err) {
-            errors.push({
-              url: importSource,
-              source: importSource,
-              fromSource: file.source,
-              alias,
-              sourceLine,
-              error: err instanceof Error ? err : new Error(String(err)),
-            });
+          // The target is keyed by its canonical `source` — the modules-map key
+          // — so a module several imports reach is loaded once. A failure is
+          // recorded against this import, with no edge, and the rest of the
+          // graph still loads.
+          const loaded = await loadImportTarget(
+            { fromSource: file.source, source: importSource, alias, sourceLine },
+            {
+              resolve: (from, source) => this.resolveImportUrl(from, source),
+              load: async (url) => {
+                const known = modules.get(url);
+                if (known) return known;
+                const target = await this.loadModule(url, options);
+                const canonical = target.owner.source;
+                if (!modules.has(canonical)) modules.set(canonical, target);
+                return modules.get(canonical)!;
+              },
+            },
+          );
+          if ("failure" in loaded) {
+            errors.push(loaded.failure);
             continue;
           }
+          const { module: targetModule, identity } = loaded;
+          const targetCanonical = targetModule.owner.source;
 
-          // Resolve the file we'll fetch through the source chain to get the
-          // canonical `source` URL — same identity used as the modules-map key.
-          let targetCanonical: string;
-          let targetModule: LoadedModule;
-          if (modules.has(resolvedTarget)) {
-            targetCanonical = resolvedTarget;
-            targetModule = modules.get(resolvedTarget)!;
-          } else {
-            try {
-              const loaded = await this.loadModule(resolvedTarget, options);
-              targetCanonical = loaded.owner.source;
-              if (!modules.has(targetCanonical)) {
-                modules.set(targetCanonical, loaded);
-                targetModule = loaded;
-              } else {
-                targetModule = modules.get(targetCanonical)!;
-              }
-            } catch (err) {
-              const e = err instanceof Error ? err : new Error(String(err));
-              (e as { sourceLine?: number }).sourceLine = sourceLine;
-              errors.push({
-                url: resolvedTarget,
-                source: importSource,
-                fromSource: file.source,
-                alias,
-                sourceLine,
-                error: e,
-              });
-              continue;
-            }
-          }
-
-          // Resolve target identity from its Telo.Library doc and stamp it on
-          // the edge — flattenForAnalyzer reads from the edge directly, never
-          // re-deriving from manifest.metadata.
-          //
-          // Checked per IMPORT rather than per distinct target: an import
-          // pointing at a module something else already reached (the entry
-          // application above all) would otherwise skip the check entirely and
-          // register a nameless edge. An unusable target is recorded exactly
-          // like an unfetchable one — an error against this import, no edge,
-          // and the rest of the graph still loads — so no consumer has to know
-          // the difference between the two ways an import can fail.
-          const identity = importTargetIdentity(targetModule, importSource);
-          if ("unusable" in identity) {
-            const e = new Error(identity.unusable);
-            (e as { sourceLine?: number }).sourceLine = sourceLine;
-            errors.push({
-              url: targetCanonical,
-              source: importSource,
-              fromSource: file.source,
-              alias,
-              sourceLine,
-              reason: "unusable-target",
-              error: e,
-            });
-            continue;
-          }
-
+          // The identity is stamped on the edge — flattenForAnalyzer reads it
+          // from there, never re-deriving it from manifest.metadata.
           aliases.set(alias, {
             targetSource: targetCanonical,
             targetRef: importSource,

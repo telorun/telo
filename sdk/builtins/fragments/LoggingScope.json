@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "x-telo-eval": "compile",
+  "properties": {
+    "level": {
+      "$ref": "telo://manifest#/$defs/LogLevel"
+    },
+    "attributes": {
+      "type": "object"
+    },
+    "redact": {
+      "type": "object",
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "censor": {
+          "type": "string"
+        },
+        "remove": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sampling": {
+      "type": "object",
+      "properties": {
+        "first": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "thereafter": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tick": {
+          "$ref": "telo://manifest#/$defs/LogDuration"
+        },
+        "sampleErrors": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

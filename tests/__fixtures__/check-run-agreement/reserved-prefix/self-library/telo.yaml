@@ -1,0 +1,12 @@
+# A library named `Self`: every `Self.<Kind>` of an importer would resolve here.
+kind: Telo.Library
+metadata:
+  name: Self
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata:
+  name: Greeting
+capability: Telo.Type
+schema:
+  type: object

@@ -16,7 +16,9 @@ Rules that hold throughout:
   the exact schema of each kind, and the `imports:` line to write for each
   module (with its version and integrity pin), come from `get_kinds` on the
   `ui`, `ui-react`, `http-server` and — for the generated admin screen —
-  `crud` modules. Write each import line exactly as `get_kinds` returns it.
+  `crud` modules. Write each import line exactly as `get_kinds` returns it. A
+  `Telo.*` kind is built in: `get_kinds` returns it with no import line, read at
+  the telo version you pass as `telo`, and you import nothing for it.
 - **The API comes first.** A screen calls routes; it never reaches a database
   or an invocable directly. Declare the routes, then the screen over them.
 

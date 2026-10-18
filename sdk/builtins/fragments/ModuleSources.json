@@ -1,0 +1,86 @@
+{
+  "type": "object",
+  "additionalProperties": {
+    "type": "object",
+    "required": [
+      "version",
+      "url",
+      "archive",
+      "notices",
+      "entries"
+    ],
+    "properties": {
+      "version": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "archive": {
+        "enum": [
+          "tar.gz"
+        ]
+      },
+      "notices": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "string"
+        }
+      },
+      "build": {
+        "type": "object",
+        "required": [
+          "cargo"
+        ],
+        "properties": {
+          "cargo": {
+            "type": "string"
+          },
+          "inputs": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "entries": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "anyOf": [
+            {
+              "required": [
+                "upstream",
+                "member"
+              ]
+            },
+            {
+              "required": [
+                "target"
+              ]
+            }
+          ],
+          "properties": {
+            "upstream": {
+              "type": "string"
+            },
+            "member": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "executable": {
+              "type": "boolean"
+            },
+            "target": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "additionalProperties": false
+  }
+}

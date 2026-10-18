@@ -1,0 +1,4 @@
+kind: Telo.Library
+metadata:
+  name: PlainLibrary
+  version: 1.0.0

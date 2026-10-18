@@ -22,7 +22,7 @@ capability: Telo.Provider
 extends: Sql.Connection
 ```
 
-`extends` is distinct from `capability`. `capability` assigns a **lifecycle role** (`Telo.Invocable`, `Telo.Provider`, `Telo.Service`, `Telo.Runnable`, `Telo.Mount`, `Telo.Type`). `extends` declares **which abstract interface** this definition implements. The two are orthogonal and usually combined.
+`extends` is distinct from `capability`. `capability` assigns a **lifecycle role** from a closed roster (`Telo.Callable`, `Telo.Invocable`, `Telo.Mount`, `Telo.Provider`, `Telo.Runnable`, `Telo.Service`, `Telo.Sink`, `Telo.Type`). `extends` declares **which abstract interface** this definition implements. The two are orthogonal and usually combined.
 
 `extends` takes an **alias-form** string `"<Alias>.<AbstractName>"` — the same shape as kind prefixes (`kind: Http.Api`, `kind: Sql.Query`). The alias is resolved against the declaring file's own `imports:` map, so the target's module version is pinned through the import source. Identity-form strings (`"std/sql#Connection"`) are intentionally rejected: they don't carry version information and they duplicate resolution paths. `x-telo-ref` takes the same alias form, for the same reasons.
 
@@ -70,24 +70,25 @@ controllers:
   - pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#ConnectionController
 ```
 
-**Analyzer behavior:** For every reference typed `x-telo-ref: Sql.Connection`, the analyzer accepts any resource whose kind's definition has an `extends` edge leading to `SQL.Connection` (the canonical form after alias resolution). Acceptance is transitive, so a kind extending a kind that extends the abstract is accepted too. `extendedBy` is populated from both `extends` and `capability` so both the canonical and legacy patterns coexist.
+**Analyzer behavior:** For every reference typed `x-telo-ref: Sql.Connection`, the analyzer accepts any resource whose kind's definition has an `extends` edge leading to `SQL.Connection` (the canonical form after alias resolution). Acceptance is transitive, so a kind extending a kind that extends the abstract is accepted too. A `capability:` adds one more edge, to the role it names: a kind declaring `capability: Telo.Invocable` is accepted where `Telo.Invocable` (and its parent `Telo.Executable`) is — role membership, never inheritance of a schema or contract.
 
 ---
 
 ## Legacy: `capability: <UserAbstract>`
 
-Before `extends` was first-class, implementations declared themselves by overloading `capability` to name the abstract directly: `capability: Sql.Connection` instead of `capability: Telo.Provider, extends: Sql.Connection`. The analyzer still honours this form — the `extendedBy` index is populated from both `capability` and `extends`, unioned — so existing third-party modules continue to work.
+Before `extends` was first-class, implementations declared themselves by overloading `capability` to name the abstract directly: `capability: Sql.Connection` instead of `capability: Telo.Provider, extends: Sql.Connection`. `capability:` now has one meaning — a lifecycle role from the closed roster — and the legacy spelling is carried by a migration rather than by a second meaning in code.
 
-The analyzer emits a `CAPABILITY_SHADOWS_EXTENDS` warning whenever `capability` names a user-declared abstract (i.e. `metadata.module !== "Telo"`). Builtin lifecycle capabilities never trigger it. Migrate by splitting the axes:
+The `capability-as-extends` migration rewrites `capability: <Alias>.<Kind>` (any alias but `Telo`) to `extends: <Alias>.<Kind>` at load and reports `CAPABILITY_SHADOWS_EXTENDS`, a deprecation warning, for the entry module's own files; `telo migrate` writes the rewrite to the file. A migrated kind is checked as the child it always claimed to be: the abstract's schema merges into its author surface, and the abstract's invocation contract, `throws` ceiling and capability apply — so a published dependency that violated its abstract's contract now fails, where it was skipped before.
 
 ```yaml
-# Before (legacy, warned)
+# Before (legacy, migrated and warned)
 capability: Sql.Connection
 
 # After (canonical)
-capability: Telo.Provider
 extends: Sql.Connection
 ```
+
+The capability is inherited from the abstract when it declares one; restate it identically only if you want it written down. Where `extends:` is already declared the rename has nowhere to go — a definition has one parent — and the value is refused as `CAPABILITY_UNKNOWN`. The Rust kernel applies no migration and refuses the legacy spelling as `ERR_CAPABILITY_UNKNOWN`; it supports no `extends:` either, so such a kind never ran there.
 
 ---
 

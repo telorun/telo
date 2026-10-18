@@ -21,8 +21,9 @@ import {
   type NameViolation,
 } from "./identifier-name.js";
 import { isKindDocument } from "./kind-declaration.js";
+import { isReservedKindPrefix, reservedModuleNameMessage } from "./reserved-kind-prefix.js";
 import { isInjectedDeclaration } from "./resource-input.js";
-import { type AnalysisDiagnostic } from "./types.js";
+import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -86,6 +87,26 @@ export function validateIdentifierNames(
       filePath: metadata?.source as string | undefined,
       path: "metadata.name",
     });
+
+    // A module's name is a kind prefix, and two prefixes are the runtime's. An
+    // import's alias and an imported library's name are refused by the loader,
+    // which is what keeps a dependency named `Telo` out of the registry.
+    if (
+      (manifest.kind === "Telo.Application" || manifest.kind === "Telo.Library") &&
+      isReservedKindPrefix(name)
+    ) {
+      out.push({
+        severity: DiagnosticSeverity.Error,
+        code: "KIND_PREFIX_RESERVED",
+        source: SOURCE,
+        message: `${manifest.kind}/${name}: ${reservedModuleNameMessage(name)}`,
+        data: {
+          resource: { kind: manifest.kind, name },
+          filePath: metadata?.source as string | undefined,
+          path: "metadata.name",
+        },
+      });
+    }
 
     // The module doc's config contract. Each key becomes `variables.<key>` /
     // `secrets.<key>` / `ports.<key>` in CEL, so it lives in the same

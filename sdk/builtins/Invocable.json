@@ -1,0 +1,11 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "Invocable",
+    "description": "A request handler called with inputs and answering with outputs: an endpoint, a query, a computation. Its invoke() is dispatched through the runtime, which checks the declared input and output contracts and lets a caller catch the errors it declares."
+  },
+  "capability": "Telo.Invocable",
+  "extends": "Telo.Executable",
+  "declarable": true,
+  "throwsAllowed": true
+}

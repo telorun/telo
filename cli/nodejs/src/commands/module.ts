@@ -1,6 +1,8 @@
 import {
+  isBuiltinVocabularyRoot,
   isHttpsModuleRef,
   isOciRef,
+  kindDeclarationOf,
   manifestCacheKey,
   ociManifestCacheCoords,
   readApplicationContract,
@@ -241,8 +243,10 @@ export interface ManifestJsonPayload {
   manifest: string;
   /** `sha256-<base64url>`, or `null` when nothing could hash the ref. */
   integrity: string | null;
-  /** Which kernels can host each kind, and the module-level roll-up. */
-  runtime: ModuleRuntimeReport;
+  /** Which kernels can host each kind, and the module-level roll-up. `null`
+   *  for the built-in vocabulary (`Telo.Builtins`), whose kinds the runtime
+   *  itself implements — an absent PURL would otherwise read as portable. */
+  runtime: ModuleRuntimeReport | null;
   /** The declared `variables` / `secrets` / `ports` of a `Telo.Application`;
    *  `null` for a library. No secret's value is ever carried. */
   application: ApplicationContract | null;
@@ -264,13 +268,14 @@ export async function buildManifestJsonPayload(
   // verification a pin would be checked against.
   const local = localManifestPath(ref) !== null;
   const docs = parseDocs(text);
+  const builtins = isBuiltinVocabularyRoot(docs[0]?.toJSON());
   return {
     ref,
     cacheKey: local ? null : cacheKeyForRef(ref, text),
     manifest: text,
     integrity: local ? null : await integrityForRef(ref, log),
-    runtime: extractKindRuntimes(docs, log),
-    application: readApplicationContract(findModuleDoc(docs)?.toJSON()),
+    runtime: builtins ? null : extractKindRuntimes(docs, log),
+    application: builtins ? null : readApplicationContract(findModuleDoc(docs)?.toJSON()),
   };
 }
 
@@ -390,20 +395,26 @@ function toStringArray(raw: unknown): string[] {
   return list.filter((v): v is string => typeof v === "string");
 }
 
-/** Classify every kind in the manifest by the kernels that can host it, derived
- *  from its `controllers:` PURL candidates.
+/** Classify every kind the manifest declares by the kernels that can host it,
+ *  derived from its controller candidates. Which documents declare a kind, and
+ *  the declaration each yields, is the analyzer's one reader — a kind the
+ *  runtime synthesizes from its document carries the candidate naming the
+ *  kernel controller that serves it.
  *
- *  Lives with the verb rather than in the hub: the PURL-to-kernel mapping is
+ *  Lives with the verb rather than in the hub: the candidate-to-kernel mapping is
  *  loader knowledge, and a consumer re-deriving it would hold a second copy that
  *  drifts silently the day a loader lands. */
 function extractKindRuntimes(docs: Document[], log: Logger): ModuleRuntimeReport {
   const entries: KindRuntimeEntry[] = [];
   for (const doc of docs) {
-    const kind = doc.get("kind");
-    if (kind !== "Telo.Definition" && kind !== "Telo.Abstract") continue;
-    const name = doc.getIn(["metadata", "name"]);
+    const declaration = kindDeclarationOf(doc.toJSON() ?? undefined);
+    const name = declaration?.metadata?.name;
     if (typeof name !== "string") continue;
-    entries.push({ name, ...kindRuntimeSupport(toStringArray(doc.get("controllers"))) });
+    const controllers: unknown = declaration?.controllers;
+    entries.push({
+      name,
+      ...kindRuntimeSupport(Array.isArray(controllers) ? controllers : []),
+    });
   }
   // An entry that cannot be read covers no platform; saying so keeps the
   // reported reach from quietly narrowing.

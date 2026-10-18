@@ -1,0 +1,32 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "LogSink",
+    "description": "Where structured log records go: a destination that filters by level and buffers records, configured with a minimum level, a buffer size, what to do when the buffer is full and how often to flush. Every log destination specializes it."
+  },
+  "capability": "Telo.Sink",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "level": {
+        "$ref": "telo://manifest#/$defs/LogLevel"
+      },
+      "buffer": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "on_full": {
+        "type": "string",
+        "enum": [
+          "block",
+          "drop_new",
+          "drop_old"
+        ]
+      },
+      "flush_interval": {
+        "$ref": "telo://manifest#/$defs/LogDuration"
+      }
+    },
+    "additionalProperties": true
+  }
+}

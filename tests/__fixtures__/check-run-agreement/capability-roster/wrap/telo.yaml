@@ -1,0 +1,7 @@
+# A library that only imports the capability-roster library, so a consumer
+# reaches that library's definitions one import further down.
+kind: Telo.Library
+metadata:
+  name: CapabilityRosterWrap
+imports:
+  Inner: ../lib

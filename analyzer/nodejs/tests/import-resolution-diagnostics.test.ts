@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { importResolutionDiagnostics } from "../src/import-resolution-diagnostics.js";
-import { Loader } from "../src/manifest-loader.js";
+import {
+  importFailureDiagnostics,
+  importResolutionDiagnostics,
+} from "../src/import-resolution-diagnostics.js";
+import { importTargetIdentity, Loader } from "../src/manifest-loader.js";
 import { DiagnosticSeverity, type ManifestSource } from "../src/types.js";
 
 /** In-memory ManifestSource — supports everything, reads from a path→text map,
@@ -137,6 +140,59 @@ describe("importResolutionDiagnostics", () => {
     expect(diags[0].data).toMatchObject({ filePath: "/ws/telo.yaml", path: "imports.Other" });
   });
 
+  it("codes an import of the built-in vocabulary as INVALID_IMPORT_TARGET, saying what to write instead", async () => {
+    const loader = new Loader([
+      inMemorySource({
+        "/ws/telo.yaml": appWithImport("Builtins", "./builtins.yaml"),
+        "/ws/builtins.yaml": [
+          "kind: Telo.Builtins",
+          "metadata:",
+          "  name: Telo",
+          "  version: 0.119.0",
+          "",
+        ].join("\n"),
+      }),
+    ]);
+    const [d] = importResolutionDiagnostics(await loader.loadGraph("/ws/telo.yaml"));
+
+    expect(d!.code).toBe("INVALID_IMPORT_TARGET");
+    expect(d!.message).toBe(
+      "Cannot use import 'Builtins' → './builtins.yaml': './builtins.yaml' is the built-in vocabulary " +
+        "of telo 0.119.0; its kinds need no import — remove this `imports:` entry and write them as `Telo.<Kind>`.",
+    );
+  });
+
+  it("codes an import aliased with a reserved kind prefix as KIND_PREFIX_RESERVED and registers no edge", async () => {
+    const loader = new Loader([
+      inMemorySource({
+        "/ws/telo.yaml": appWithImport("Self", "./lib"),
+        "/ws/lib/telo.yaml": ["kind: Telo.Library", "metadata:", "  name: Lib", "  version: 1.0.0", ""].join("\n"),
+      }),
+    ]);
+    const graph = await loader.loadGraph("/ws/telo.yaml");
+
+    const [d] = importResolutionDiagnostics(graph);
+    expect(d!.code).toBe("KIND_PREFIX_RESERVED");
+    expect(d!.message).toContain("An import may not be aliased 'Self'");
+    expect(d!.data).toMatchObject({ filePath: "/ws/telo.yaml", path: "imports.Self" });
+    expect(graph.importEdges.size).toBe(0);
+  });
+
+  it("codes an import reaching a library named with a reserved kind prefix as KIND_PREFIX_RESERVED", async () => {
+    const loader = new Loader([
+      inMemorySource({
+        "/ws/telo.yaml": appWithImport("Lib", "./lib"),
+        "/ws/lib/telo.yaml": ["kind: Telo.Library", "metadata:", "  name: Telo", "  version: 1.0.0", ""].join("\n"),
+      }),
+    ]);
+    const graph = await loader.loadGraph("/ws/telo.yaml");
+
+    const [d] = importResolutionDiagnostics(graph);
+    expect(d!.code).toBe("KIND_PREFIX_RESERVED");
+    expect(d!.message).toContain("'./lib' is a Telo.Library named 'Telo'");
+    expect(graph.importEdges.size).toBe(0);
+  });
+
   it("reports a library that names no module, rather than letting the alias resolve to nothing", async () => {
     const loader = new Loader([
       inMemorySource({
@@ -152,5 +208,40 @@ describe("importResolutionDiagnostics", () => {
     expect(diags[0].message).toContain("declares no 'metadata.name'");
     // No edge, so nothing downstream can resolve `Lib.*` to an invented module.
     expect(graph.importEdges.get("/ws/telo.yaml")?.get("Lib")).toBeUndefined();
+  });
+});
+
+describe("importFailureDiagnostics", () => {
+  it("codes a target judged outside a graph walk, located by its declaring file alone", async () => {
+    const loader = new Loader([
+      inMemorySource({
+        "/ws/other/telo.yaml": "kind: Telo.Application\nmetadata:\n  name: Other\n",
+      }),
+    ]);
+    const target = await loader.loadModule("/ws/other/telo.yaml");
+    const identity = importTargetIdentity(target, "./other");
+    if (!("unusable" in identity)) throw new Error("an application target was identified");
+
+    const [d, ...rest] = importFailureDiagnostics(
+      [
+        {
+          url: target.owner.source,
+          source: "./other",
+          fromSource: "/ws/telo.yaml",
+          reason: identity.reason,
+          error: new Error(identity.unusable),
+        },
+      ],
+      "/ws/telo.yaml",
+    );
+
+    expect(rest).toEqual([]);
+    expect(d).toMatchObject({
+      code: "INVALID_IMPORT_TARGET",
+      message: `Cannot use './other': ${identity.unusable}`,
+      data: { filePath: "/ws/telo.yaml" },
+    });
+    // No `imports:` entry declared it, so no path names one.
+    expect(d!.data).not.toHaveProperty("path");
   });
 });

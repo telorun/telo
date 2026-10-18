@@ -1,0 +1,33 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "Function",
+    "description": "A function written as one expression over its parameters, called from other expressions through the declaring module's name. Declares an ordered parameter list and a result type the body must produce; whether it is deterministic is derived from what the body calls."
+  },
+  "capability": "Telo.Callable",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "params": {
+        "$ref": "telo://manifest#/$defs/CallableParams"
+      },
+      "returns": {
+        "$ref": "telo://manifest#/$defs/CallableReturns"
+      },
+      "body": {
+        "title": "Body",
+        "description": "The expression this function evaluates, over its parameters.",
+        "x-telo-returns-from": "returns",
+        "x-telo-context": {
+          "type": "object",
+          "additionalProperties": false,
+          "x-telo-context-parameters-from": "params"
+        }
+      }
+    },
+    "required": [
+      "body"
+    ],
+    "additionalProperties": false
+  }
+}
