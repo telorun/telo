@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.1 - 2026-10-18
+### Fixed
+* The expect.loadError documentation says when it fires — only when a manifest cannot be loaded at all, an unreadable entry or a refused partial — and that a failed import is the coded diagnostic telo check reports at the imports: entry, matched with expect.errors.
+* The runFails documentation says what stderr carries when a run is refused at load — the headline, then one [<CODE>] <message> line per diagnostic — and recommends matching the cause in that form rather than the shared 'Manifest validation failed' headline.
+
 ## 0.21.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

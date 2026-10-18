@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.26.0 - 2026-10-18
+### Added
+* The agent's `telo` tool may run `telo builtins`, and the system prompt sends the agent there for the exact fields of every built-in kind, shared schema fragment, value type, zone attribute and format instead of describing those shapes in prose — so it reads the vocabulary of the telo it checks against rather than a copy that goes stale. `teloVerbs` defaults to check, cel, module, search and builtins.
+* The system prompt tells the agent that get_kinds returns built-in kinds, parents and schema fragments under a no-import line, read at the telo version it passes as telo, and how to find that version: the telo tool answers exactly --version, whatever teloVerbs lists, with the telo the agent checks against. A release (X) is passed as telo; a working copy (X+unreleased), which no hub tracks, never is — the agent then calls get_kinds without telo and reads every built-in through telo builtins. --version followed by anything else is refused with ERR_TELO_VERB_NOT_ALLOWED.
+### Fixed
+* The agent's system prompt states the capability roster as the closed set it is — the eight roles, Telo.Sink and Telo.Callable among them — and that a kind a definition specializes, a module's abstract or a built-in kind that is no role, is written in extends:, never in capability:.
+* The Http.Server the application stands up binds its port under listen:, as http-server 0.38.0 requires; the top-level port: it wrote is refused there.
+
 ## 0.25.0 - 2026-10-17
 ### Added
 * The agent reads the hub's authoring guides through the hub's guide tools (guide_build_ui, guide_write_integration_tests, guide_design_library) instead of turning the hub's MCP prompts into tools.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.17.0 - 2026-10-18
+### Added
+* The database is the application's databaseAccess need (Postgres.DatabaseAccess, asking for pgvector), still read from DB_CONNECTION, so a server without the pgvector extension refuses to start with ERR_NEED_UNMET instead of failing at the first vector query. The server binds its port under listen:, as http-server 0.38.0 requires. Requires telo >=0.117.0.
+* The hub tracks the built-in vocabulary every telo release publishes, at BUILTINS_REF (default oci://ghcr.io/telorun/telo), registered on every boot before SEED_REFS: a Telo.Builtins root is indexed (root kind Builtins, no runtime facts) and registrable there and refused with INGEST_ROOT_KIND_UNSUPPORTED anywhere else. Search hits and list_libraries entries from it carry builtin: true. get_kinds takes a telo version and reads every built-in at it (the latest tracked by default), heads the vocabulary's own kinds with a no-import line, closes every answer over the schema fragments, value types, zone attributes and formats it names, and refuses an untracked version (ERR_UNKNOWN_TELO_VERSION); its telo argument is a release as telo --version prints it, never an X+unreleased build, whose built-ins come from that CLI's telo builtins. Need types are indexed as kinds, with the runtime reach the CLI reports for them (the kernels serving need types, nodejs today), so a runtime filter selects them; an extends or replacedBy prefix of Telo resolves to BUILTINS_REF and a module's own name to the module, where Telo used to leave the ref empty. Ingest revision 9 re-ingests every tracked version once.
+
 ## 0.16.0 - 2026-10-17
 ### Added
 * The MCP endpoint serves its three authoring guides as argument-less tools a model calls — guide_build_ui, guide_write_integration_tests, guide_design_library — instead of as prompts, which an MCP client offers only to its user, never to its model. The server instructions name the guide tools first and stay within 4096 characters, past which Claude Code cuts them, and serverInfo reports the hub's own version instead of a fixed 0.6.2.
