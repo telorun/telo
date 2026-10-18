@@ -15,7 +15,7 @@ use std::sync::Arc;
 use telorun_cel_value::{
     cel_duration_from_nanos, cel_error, cel_map_from_entries, cel_none, cel_some, cel_timestamp,
     cel_type_name_of, cel_type_value, CelDuration, CelError, CelEvaluationCode, CelHostValue,
-    CelMap, CelRecord, CelTimestamp, CelValue, ReservedTypeName, SourceRange, CEL_EVALUATION_CODES,
+    CelMap, CelRecord, CelTimestamp, CelValue, PropertyMap, ReservedTypeName, SourceRange, CEL_EVALUATION_CODES,
     CEL_VALUE_KEYS,
 };
 
@@ -194,7 +194,14 @@ fn ranges_a_record_in_ecmascript_own_property_order() {
         for (key, held) in *expected {
             assert_eq!(record.get(key), Some(&CelValue::Int(*held)), "{inserted:?} {key}");
         }
+        // The order is the property map's, whatever it holds.
+        let properties: PropertyMap<i64> = inserted.iter().enumerate().map(|(at, key)| (*key, at as i64)).collect();
+        assert_eq!(properties.iter().map(|(key, held)| (key, *held)).collect::<Vec<_>>(), *expected, "{inserted:?}");
     }
+    let mut properties: PropertyMap<i64> = [("b", 1), ("0", 2)].into_iter().collect();
+    properties.values_mut().for_each(|held| *held *= 10);
+    assert_eq!(properties.values().copied().collect::<Vec<_>>(), [20, 10]);
+    assert_eq!(properties, [("0", 20), ("b", 10)].into_iter().collect());
     let mut record = CelRecord::new();
     assert_eq!(record.insert("7", CelValue::Null), None);
     assert_eq!(record.insert("7", CelValue::Int(1)), Some(CelValue::Null));

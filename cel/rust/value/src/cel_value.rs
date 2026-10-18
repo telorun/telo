@@ -18,6 +18,9 @@
 //!   beneath; the engine's tree re-exports this one.
 //! - `CelRecord` and `CelHostValue` as types — Node holds a record as a plain object
 //!   and a host value as any object carrying the host's own key.
+//! - `PropertyMap` — the order of a JavaScript object's own keys, which Node gets from
+//!   its host; a record is built on it, and so is every engine input Node takes as a
+//!   plain object.
 //! - `ReservedTypeName` — on Node the refusal of a reserved type name is raised by
 //!   the engine's type registration; here the host value's constructor makes it.
 
@@ -182,14 +185,22 @@ impl PartialEq for CelMap {
     }
 }
 
-/// A map whose keys are all strings, as a host hands one over. It ranges in
-/// ECMAScript's own-property order: keys that are array indices (`0` … `4294967294`,
-/// written canonically) ascending, then every other key in insertion order.
-#[derive(Clone, Default)]
-pub struct CelRecord {
-    indexed: BTreeMap<u32, (String, CelValue)>,
-    named: Vec<(String, CelValue)>,
+/// A string-keyed map in ECMAScript's own-property order: keys that are array indices
+/// (`0` … `4294967294`, written canonically) ascending, then every other key in
+/// insertion order. Setting a key that is already held replaces its value and keeps its
+/// position. It is the one home of that order: a record, a JSON object and every input
+/// a JavaScript host would hand over as a plain object range in it.
+#[derive(Clone)]
+pub struct PropertyMap<V> {
+    indexed: BTreeMap<u32, (String, V)>,
+    named: Vec<(String, V)>,
     positions: HashMap<String, usize>,
+}
+
+impl<V> Default for PropertyMap<V> {
+    fn default() -> Self {
+        Self { indexed: BTreeMap::new(), named: Vec::new(), positions: HashMap::new() }
+    }
 }
 
 fn array_index(key: &str) -> Option<u32> {
@@ -200,13 +211,13 @@ fn array_index(key: &str) -> Option<u32> {
     key.parse::<u32>().ok().filter(|index| *index != u32::MAX)
 }
 
-impl CelRecord {
+impl<V> PropertyMap<V> {
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Sets a key, answering the value it held. A key already held keeps its position.
-    pub fn insert(&mut self, key: impl Into<String>, value: CelValue) -> Option<CelValue> {
+    pub fn insert(&mut self, key: impl Into<String>, value: V) -> Option<V> {
         let key = key.into();
         if let Some(index) = array_index(&key) {
             return self.indexed.insert(index, (key, value)).map(|(_, held)| held);
@@ -219,7 +230,7 @@ impl CelRecord {
         None
     }
 
-    pub fn get(&self, key: &str) -> Option<&CelValue> {
+    pub fn get(&self, key: &str) -> Option<&V> {
         match array_index(key) {
             Some(index) => self.indexed.get(&index).map(|(_, value)| value),
             None => self.positions.get(key).map(|at| &self.named[*at].1),
@@ -238,8 +249,8 @@ impl CelRecord {
         self.len() == 0
     }
 
-    /// Every entry, in the order a comprehension ranges over them.
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &CelValue)> {
+    /// Every entry, in ECMAScript's own-property order.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &V)> {
         self.indexed
             .values()
             .chain(self.named.iter())
@@ -249,15 +260,95 @@ impl CelRecord {
     pub fn keys(&self) -> impl Iterator<Item = &str> {
         self.iter().map(|(key, _)| key)
     }
+
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.iter().map(|(_, value)| value)
+    }
+
+    /// Every value, mutably, in the same order.
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.indexed.values_mut().chain(self.named.iter_mut()).map(|(_, value)| value)
+    }
+}
+
+impl<K: Into<String>, V> FromIterator<(K, V)> for PropertyMap<V> {
+    fn from_iter<I: IntoIterator<Item = (K, V)>>(entries: I) -> Self {
+        let mut map = Self::new();
+        for (key, value) in entries {
+            map.insert(key, value);
+        }
+        map
+    }
+}
+
+impl<V> IntoIterator for PropertyMap<V> {
+    type Item = (String, V);
+    type IntoIter = std::vec::IntoIter<(String, V)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.indexed.into_values().chain(self.named).collect::<Vec<_>>().into_iter()
+    }
+}
+
+impl<V: fmt::Debug> fmt::Debug for PropertyMap<V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
+    }
+}
+
+impl<V: PartialEq> PartialEq for PropertyMap<V> {
+    /// The same key/value pairs, in any order.
+    fn eq(&self, other: &Self) -> bool {
+        self.len() == other.len() && self.iter().all(|(key, value)| other.get(key) == Some(value))
+    }
+}
+
+/// A map whose keys are all strings, as a host hands one over. It ranges in
+/// ECMAScript's own-property order — it is a [`PropertyMap`] of values.
+#[derive(Clone, Default, PartialEq)]
+pub struct CelRecord {
+    entries: PropertyMap<CelValue>,
+}
+
+impl CelRecord {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets a key, answering the value it held. A key already held keeps its position.
+    pub fn insert(&mut self, key: impl Into<String>, value: CelValue) -> Option<CelValue> {
+        self.entries.insert(key, value)
+    }
+
+    pub fn get(&self, key: &str) -> Option<&CelValue> {
+        self.entries.get(key)
+    }
+
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.entries.contains_key(key)
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Every entry, in the order a comprehension ranges over them.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &CelValue)> {
+        self.entries.iter()
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &str> {
+        self.entries.keys()
+    }
 }
 
 impl<K: Into<String>> FromIterator<(K, CelValue)> for CelRecord {
     fn from_iter<I: IntoIterator<Item = (K, CelValue)>>(entries: I) -> Self {
-        let mut record = Self::new();
-        for (key, value) in entries {
-            record.insert(key, value);
-        }
-        record
+        Self { entries: entries.into_iter().collect() }
     }
 }
 
@@ -266,20 +357,13 @@ impl IntoIterator for CelRecord {
     type IntoIter = std::vec::IntoIter<(String, CelValue)>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.indexed.into_values().chain(self.named).collect::<Vec<_>>().into_iter()
+        self.entries.into_iter()
     }
 }
 
 impl fmt::Debug for CelRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_map().entries(self.iter()).finish()
-    }
-}
-
-impl PartialEq for CelRecord {
-    /// The same key/value pairs, in any order.
-    fn eq(&self, other: &Self) -> bool {
-        self.len() == other.len() && self.iter().all(|(key, value)| other.get(key) == Some(value))
+        self.entries.fmt(f)
     }
 }
 

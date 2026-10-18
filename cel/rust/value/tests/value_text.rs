@@ -2,9 +2,14 @@
 //!
 //! No Node test twins this file: `value-text.ts` is three calls into the host
 //! (`String`, `TextEncoder`, a fatal `TextDecoder`), and `JSON.stringify` is the
-//! host's too. Each row is what the Node build answers for that input, executed.
+//! host's too. Each row is what the Node build answers for that input, executed; the
+//! whitespace set and the code-unit order on `@telorun/cel 0.118.0 at 63c81d00`'s host.
 
-use telorun_cel_value::{bytes_to_text, double_text, es_number, json_quote, text_to_bytes};
+use std::cmp::Ordering;
+
+use telorun_cel_value::{
+    bytes_to_text, compare_code_units, double_text, es_number, es_trim, is_es_whitespace, json_quote, text_to_bytes,
+};
 
 #[test]
 fn writes_a_double_as_the_shortest_digits_that_read_back() {
@@ -137,4 +142,35 @@ fn writes_text_as_its_utf_8_bytes() {
     for (text, bytes) in NODE_BYTES {
         assert_eq!(text_to_bytes(text), *bytes, "{text:?}");
     }
+}
+
+#[test]
+fn reads_whitespace_as_ecmascript_does() {
+    // Every code unit below U+10000 that `/\s/` matches — and `trim` removes the same set.
+    const NODE_WHITESPACE: [u32; 25] = [
+        0x9, 0xa, 0xb, 0xc, 0xd, 0x20, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007,
+        0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff,
+    ];
+    let held: Vec<u32> =
+        (0..0x10000u32).filter_map(char::from_u32).filter(|c| is_es_whitespace(*c)).map(|c| c as u32).collect();
+    assert_eq!(held, NODE_WHITESPACE);
+    assert!(!(0x10000..=0x10ffffu32).filter_map(char::from_u32).any(is_es_whitespace));
+    // `(text, text.trim())`.
+    const NODE_TRIMMED: [(&str, &str); 3] =
+        [("\u{feff}\u{a0} a b\u{2028}\u{3000}", "a b"), ("\u{85}x\u{85}", "\u{85}x\u{85}"), ("\u{180e}x", "\u{180e}x")];
+    for (text, trimmed) in NODE_TRIMMED {
+        assert_eq!(es_trim(text), trimmed, "{text:?}");
+    }
+}
+
+#[test]
+fn orders_strings_by_their_utf_16_code_units() {
+    // What `[...names].sort()` answers.
+    const NODE_SORTED: [&str; 9] = ["", "B", "a", "aa", "b", "\u{e9}", "\u{1f600}", "\u{e000}", "\u{ffff}"];
+    let mut names = ["b", "a", "\u{ffff}", "\u{1f600}", "\u{e000}", "B", "aa", "", "\u{e9}"];
+    names.sort_by(|left, right| compare_code_units(left, right));
+    assert_eq!(names, NODE_SORTED);
+    // Where the bytes order the two the other way.
+    assert_eq!(compare_code_units("\u{1f600}", "\u{e000}"), Ordering::Less);
+    assert_eq!("\u{1f600}".cmp("\u{e000}"), Ordering::Greater);
 }

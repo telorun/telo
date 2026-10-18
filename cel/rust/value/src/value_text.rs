@@ -5,6 +5,11 @@
 //! - `es_number` — ECMAScript's `Number::toString`, the digits `double_text` writes.
 //! - `json_quote` — a string as `JSON.stringify` quotes one, which every refusal that
 //!   names text quotes it with.
+//! - `is_es_whitespace` and `es_trim` — the characters ECMAScript's `\s` and
+//!   `String.prototype.trim` take as whitespace, one set for both.
+//! - `compare_code_units` — the order ECMAScript sorts and compares strings in.
+
+use std::cmp::Ordering;
 
 use crate::cel_value::{cel_error, CelError, CelEvaluationCode};
 
@@ -142,4 +147,39 @@ pub fn json_quote(text: &str) -> String {
     }
     out.push('"');
     out
+}
+
+/// Whether ECMAScript reads a character as whitespace — its `WhiteSpace` and
+/// `LineTerminator` sets together, which is what `\s` matches and what `trim` removes.
+/// Unlike `char::is_whitespace` it holds U+FEFF and not U+0085.
+pub fn is_es_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n'
+            | '\u{0b}'
+            | '\u{0c}'
+            | '\r'
+            | ' '
+            | '\u{a0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+            | '\u{feff}'
+    )
+}
+
+/// Text with ECMAScript's whitespace removed from both ends, as `trim` removes it.
+pub fn es_trim(text: &str) -> &str {
+    text.trim_matches(is_es_whitespace)
+}
+
+/// The order of two strings by their UTF-16 code units — what ECMAScript's `<` and its
+/// default `sort` answer. It differs from the order of their bytes where a character
+/// outside the basic plane meets one from U+E000 to U+FFFF.
+pub fn compare_code_units(left: &str, right: &str) -> Ordering {
+    left.encode_utf16().cmp(right.encode_utf16())
 }
