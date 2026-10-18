@@ -39,5 +39,6 @@ pub use timestamp_value::{
     utc_fields, CivilFields, MAX_TIMESTAMP_SECONDS, MIN_TIMESTAMP_SECONDS,
 };
 pub use value_text::{
-    bytes_to_text, compare_code_units, double_text, es_number, es_trim, is_es_whitespace, json_quote, text_to_bytes,
+    bytes_to_text, compare_code_units, double_text, es_number, es_string_to_number, es_trim, is_es_whitespace, json_quote,
+    text_to_bytes,
 };

@@ -8,6 +8,7 @@
 //! - `is_es_whitespace` and `es_trim` — the characters ECMAScript's `\s` and
 //!   `String.prototype.trim` take as whitespace, one set for both.
 //! - `compare_code_units` — the order ECMAScript sorts and compares strings in.
+//! - `es_string_to_number` — ECMAScript's `StringToNumber`, what `Number(text)` answers.
 
 use std::cmp::Ordering;
 
@@ -182,4 +183,104 @@ pub fn es_trim(text: &str) -> &str {
 /// outside the basic plane meets one from U+E000 to U+FFFF.
 pub fn compare_code_units(left: &str, right: &str) -> Ordering {
     left.encode_utf16().cmp(right.encode_utf16())
+}
+
+/// Text read as ECMAScript's `Number(text)` reads it: surrounding whitespace ignored, an
+/// empty text `0`; a decimal with an optional sign, point and exponent, or `Infinity`;
+/// an unsigned `0b`, `0o` or `0x` integer, rounded to the nearest double; anything else
+/// NaN. No numeric separator is read.
+pub fn es_string_to_number(text: &str) -> f64 {
+    let text = es_trim(text);
+    if text.is_empty() {
+        return 0.0;
+    }
+    let bytes = text.as_bytes();
+    if bytes.len() > 2 && bytes[0] == b'0' {
+        let radix_bits = match bytes[1] {
+            b'b' | b'B' => Some(1),
+            b'o' | b'O' => Some(3),
+            b'x' | b'X' => Some(4),
+            _ => None,
+        };
+        if let Some(bits) = radix_bits {
+            return radix_integer(&bytes[2..], bits);
+        }
+    }
+    let (negative, unsigned) = match bytes[0] {
+        b'+' => (false, &text[1..]),
+        b'-' => (true, &text[1..]),
+        _ => (false, text),
+    };
+    if unsigned == "Infinity" {
+        return if negative { f64::NEG_INFINITY } else { f64::INFINITY };
+    }
+    if !is_unsigned_decimal(unsigned.as_bytes()) {
+        return f64::NAN;
+    }
+    let magnitude: f64 = unsigned.parse().expect("a decimal literal the grammar accepts reads as a double");
+    if negative {
+        -magnitude
+    } else {
+        magnitude
+    }
+}
+
+/// `DecimalDigits . DecimalDigits? ExponentPart?`, `. DecimalDigits ExponentPart?` or
+/// `DecimalDigits ExponentPart?`.
+fn is_unsigned_decimal(bytes: &[u8]) -> bool {
+    let digits = |from: usize| bytes[from..].iter().take_while(|b| b.is_ascii_digit()).count();
+    let whole = digits(0);
+    let mut at = whole;
+    let mut fraction = 0;
+    if bytes.get(at) == Some(&b'.') {
+        fraction = digits(at + 1);
+        at += 1 + fraction;
+    }
+    if whole == 0 && fraction == 0 {
+        return false;
+    }
+    if matches!(bytes.get(at), Some(b'e' | b'E')) {
+        at += 1;
+        if matches!(bytes.get(at), Some(b'+' | b'-')) {
+            at += 1;
+        }
+        let exponent = digits(at);
+        if exponent == 0 {
+            return false;
+        }
+        at += exponent;
+    }
+    at == bytes.len()
+}
+
+/// An unsigned integer of `bits` bits per digit, rounded to the nearest double, a tie
+/// to the even one; NaN where a character is not a digit of the radix or there is none.
+fn radix_integer(digits: &[u8], bits: u32) -> f64 {
+    let mut value_bits: Vec<bool> = Vec::with_capacity(digits.len() * bits as usize);
+    for byte in digits {
+        let digit = match (*byte as char).to_digit(1 << bits) {
+            Some(digit) => digit,
+            None => return f64::NAN,
+        };
+        for shift in (0..bits).rev() {
+            value_bits.push(digit >> shift & 1 == 1);
+        }
+    }
+    let Some(leading) = value_bits.iter().position(|bit| *bit) else { return 0.0 };
+    let significant = &value_bits[leading..];
+    let width = significant.len();
+    if width <= 53 {
+        return significant.iter().fold(0u64, |held, bit| held << 1 | *bit as u64) as f64;
+    }
+    let mut mantissa = significant[..53].iter().fold(0u64, |held, bit| held << 1 | *bit as u64);
+    let half = significant[53];
+    let beyond = significant[54..].iter().any(|bit| *bit);
+    if half && (beyond || mantissa & 1 == 1) {
+        mantissa += 1;
+    }
+    let exponent = (width - 53) as i32;
+    if exponent > 1023 {
+        return f64::INFINITY;
+    }
+    mantissa as f64 * 2f64.powi(exponent)
 }

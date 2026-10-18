@@ -10,13 +10,20 @@
 //!   byte order mark and U+00A0 included — while type text skips only the space.
 //! - A named type registered again keeps every signature its earlier registration made,
 //!   and one refused part way keeps the type and the signatures before the refusal.
+//! - A schema's empty `enum`, `anyOf`, `oneOf`, `allOf` or `type` list says nothing, and
+//!   a union one of whose branches says nothing is `dyn` — silently, both.
+//! - An array segment of a JSON Pointer is read by ECMAScript's `Number()`: whitespace
+//!   around it, a radix prefix, an exponent, a point and `-0` all name an element, and
+//!   the empty segment names the first.
 //!
 //! No Node test file is the twin of this one. Every row is the Node build's answer,
 //! executed: the carriage return on `@telorun/cel` 0.112.0, this branch's build; the
-//! type rows on `@telorun/cel 0.118.0 at 63c81d00`.
+//! type and schema rows on `@telorun/cel 0.118.0 at 63c81d00`.
 
+mod schema_support;
 mod support;
 
+use schema_support::{assert_rows, row, Row};
 use support::*;
 use telorun_cel::{
     format_type, parse_signature, parse_type_expression, serialize_tree, signature_key, trees_equal, CelEnvironment,
@@ -136,4 +143,53 @@ fn interim_a_named_type_registered_again_keeps_its_earlier_signatures() {
         .map(|entry| entry.signature.as_str())
         .collect();
     assert_eq!(signatures, ["string(Bad): string"]);
+}
+
+#[test]
+fn interim_a_schema_list_that_is_empty_or_a_union_with_an_open_branch_says_nothing() {
+    const NODE_ROWS: &[Row] = &[
+        row("an empty enum", "{\"enum\":[]}", &[], &[], "dyn", "dyn", &[], 1),
+        row("an empty anyOf", "{\"anyOf\":[]}", &[], &[], "dyn", "dyn", &[], 1),
+        row("an empty oneOf", "{\"oneOf\":[]}", &[], &[], "dyn", "dyn", &[], 1),
+        row("an empty allOf", "{\"allOf\":[]}", &[], &[], "dyn", "dyn", &[], 1),
+        row("an empty type list", "{\"type\":[]}", &[], &[], "dyn", "dyn", &[], 1),
+        row("a union holding an unconstrained branch", "{\"anyOf\":[{\"type\":\"string\"},{}]}", &[], &[], "dyn", "dyn", &[], 3),
+    ];
+    assert_rows(NODE_ROWS);
+}
+
+#[test]
+fn interim_a_pointer_reads_an_array_segment_as_ecmascript_reads_a_number() {
+    // `#/$defs/list/<segment>` over a list of a string schema and an integer schema.
+    const NODE_ROWS: &[Row] = &[
+        row("segment \"0\"", "{\"$ref\":\"#/$defs/list/0\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "string", "string", &[], 2),
+        row("segment \"1\"", "{\"$ref\":\"#/$defs/list/1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"01\"", "{\"$ref\":\"#/$defs/list/01\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \" 1\"", "{\"$ref\":\"#/$defs/list/ 1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"1 \"", "{\"$ref\":\"#/$defs/list/1 \",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"\\t1\\n\"", "{\"$ref\":\"#/$defs/list/\\t1\\n\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"0x1\"", "{\"$ref\":\"#/$defs/list/0x1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"0X1\"", "{\"$ref\":\"#/$defs/list/0X1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"0b1\"", "{\"$ref\":\"#/$defs/list/0b1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"0o1\"", "{\"$ref\":\"#/$defs/list/0o1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"1e0\"", "{\"$ref\":\"#/$defs/list/1e0\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"1.0\"", "{\"$ref\":\"#/$defs/list/1.0\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \".1e1\"", "{\"$ref\":\"#/$defs/list/.1e1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"+1\"", "{\"$ref\":\"#/$defs/list/+1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"-0\"", "{\"$ref\":\"#/$defs/list/-0\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "string", "string", &[], 2),
+        row("segment \"\"", "{\"$ref\":\"#/$defs/list/\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "string", "string", &[], 2),
+        row("segment \" \"", "{\"$ref\":\"#/$defs/list/ \",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "string", "string", &[], 2),
+        row("segment \"2\"", "{\"$ref\":\"#/$defs/list/2\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "dyn", "dyn", &["reference-unresolved pointer= keywords=$ref"], 1),
+        row("segment \"-1\"", "{\"$ref\":\"#/$defs/list/-1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "dyn", "dyn", &["reference-unresolved pointer= keywords=$ref"], 1),
+        row("segment \"1.5\"", "{\"$ref\":\"#/$defs/list/1.5\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "dyn", "dyn", &["reference-unresolved pointer= keywords=$ref"], 1),
+        row("segment \"length\"", "{\"$ref\":\"#/$defs/list/length\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "dyn", "dyn", &["reference-unresolved pointer= keywords=$ref"], 1),
+        row("segment \"Infinity\"", "{\"$ref\":\"#/$defs/list/Infinity\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "dyn", "dyn", &["reference-unresolved pointer= keywords=$ref"], 1),
+        row("segment \"1_0\"", "{\"$ref\":\"#/$defs/list/1_0\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "dyn", "dyn", &["reference-unresolved pointer= keywords=$ref"], 1),
+        row("segment \"0x\"", "{\"$ref\":\"#/$defs/list/0x\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "dyn", "dyn", &["reference-unresolved pointer= keywords=$ref"], 1),
+        row("segment \"1e\"", "{\"$ref\":\"#/$defs/list/1e\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "dyn", "dyn", &["reference-unresolved pointer= keywords=$ref"], 1),
+        row("segment \"NaN\"", "{\"$ref\":\"#/$defs/list/NaN\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "dyn", "dyn", &["reference-unresolved pointer= keywords=$ref"], 1),
+        row("segment \"\u{a0}1\"", "{\"$ref\":\"#/$defs/list/\u{a0}1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+        row("segment \"\u{feff}1\"", "{\"$ref\":\"#/$defs/list/\u{feff}1\",\"$defs\":{\"list\":[{\"type\":\"string\"},{\"type\":\"integer\"}]}}", &[], &[], "int", "int", &[], 2),
+    ];
+    assert_rows(NODE_ROWS);
 }

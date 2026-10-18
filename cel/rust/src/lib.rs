@@ -4,8 +4,9 @@
 //! syntax tree, with the input limits and error recovery; resolving namespace-qualified
 //! calls; writing a tree back as source; and the two tree queries — and its type
 //! system: the static types, type text and signatures, the function registry with the
-//! standard library read from Node's own signature data, and the environment's
-//! registrations and listing. It answers as the Node engine answers.
+//! standard library read from Node's own signature data, typing from JSON Schema with
+//! its reports, and the environment's registrations, declarations and listing. It answers
+//! as the Node engine answers.
 //!
 //! Three rules hold for every file here: one dependency, the value crate, by path; no
 //! host vocabulary; and nothing recurses with the depth of its input.
@@ -39,8 +40,9 @@
 //! - `standard_library.rs`       — `standard-library.ts`
 //! - `json_value.rs`             — no twin: the JSON value a JavaScript host holds
 //! - `json_text_scan.rs`         — `json-text-scan.ts`
+//! - `json_schema_type.rs`       — `json-schema-type.ts`
 //! - `checker.rs`                — `checker.ts` (`NamespaceFunction`)
-//! - `environment.rs`            — `environment.ts` (registration and listing)
+//! - `environment.rs`            — `environment.ts` (registration, listing and schema declarations)
 
 mod cel_expression;
 mod cel_type;
@@ -49,6 +51,7 @@ mod checker;
 mod comprehension_bindings;
 mod environment;
 mod function_registry;
+mod json_schema_type;
 mod json_text_scan;
 mod json_value;
 mod lexer;
@@ -82,12 +85,17 @@ pub use comprehension_bindings::{
 };
 pub use environment::{
     CelEnvironment, CelEnvironmentOptions, CelRegistrationError, Definitions, FunctionDefinition,
-    NamespaceFunctionDeclaration, NamespaceFunctionForm, NamespaceListing, NamespaceOptions, SignatureDeclaration,
-    TypeDeclaration, TypeDefinitionListing, VariableDefinition, WithheldReturns,
+    NamespaceFunctionDeclaration, NamespaceFunctionForm, NamespaceListing, NamespaceOptions, SchemaRegistrationReport,
+    SignatureDeclaration, TypeDeclaration, TypeDefinitionListing, VariableDefinition, WithheldReturns,
 };
 pub use function_registry::{
     describe_arguments, describe_candidates, substitute, FunctionRegistry, RegisteredFunction, Resolution,
     ResolutionFailure, ResolutionFailureReason, UNKNOWN_FUNCTION_CANDIDATES,
+};
+pub use json_schema_type::{
+    field_map_type, schema_type, FieldDeclaration, JsonSchemaDocument, NamedTypeLookup, RecursiveSchemaReference,
+    SchemaConversion, SchemaTypeAnswer, SchemaTypeResolver, SchemaTypeResult, UnjudgedReason, UnjudgedSchemaNode,
+    TYPE_CONSTRAINING_KEYWORDS, TYPE_KEYWORDS_READ, UNJUDGED_REASONS,
 };
 pub use json_text_scan::{read_json_text, scan_json_prefix, JsonRefusal, JsonTextError};
 pub use json_value::JsonValue;

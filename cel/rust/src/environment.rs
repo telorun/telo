@@ -1,13 +1,11 @@
 //! An environment: what names, functions, types and namespaces an expression is read
-//! against — `environment.ts`, its registration and listing half.
+//! against — `environment.ts`, its registration, declaration and listing half.
 //!
 //! Everything is registered the same way, the standard library included, so a host can
 //! replace or remove a standard signature. `Clone` inherits everything and then
 //! diverges: a registration on the clone leaves the original as it was.
 //!
 //! Node items with no twin in this file yet:
-//! - Arriving with JSON Schema typing: `TypeDeclaration`'s field-map and schema forms,
-//!   the `resolveSchemaType` option, `schemaReports` and `SchemaRegistrationReport`.
 //! - Arriving with the checker: `check`.
 //! - Arriving with evaluation: `compile`, `evaluate`, the `compiledCacheCapacity`
 //!   option, `DEFAULT_COMPILED_CACHE_CAPACITY` and the standard constants' values.
@@ -25,6 +23,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::sync::Arc;
 
 use telorun_cel_value::{compare_code_units, json_quote, PropertyMap, CEL_VALUE_KEYS};
 
@@ -33,6 +32,10 @@ use crate::cel_type::{format_type, is_dyn, CelType, DYN};
 use crate::check_diagnostic::CelEngineError;
 use crate::checker::NamespaceFunction;
 use crate::function_registry::FunctionRegistry;
+use crate::json_schema_type::{
+    field_map_type, schema_type, FieldDeclaration, JsonSchemaDocument, RecursiveSchemaReference, SchemaConversion,
+    SchemaTypeResolver, UnjudgedSchemaNode,
+};
 use crate::namespace_resolution::{normalize_namespaces, CelNamespaceError};
 use crate::nominal_type::{
     build_registered_type, nominal_operators, nominal_signatures, registration_error, with_arguments,
@@ -46,7 +49,9 @@ use crate::type_expression::{
     parse_type_expression, CelTypeExpressionError, CelTypeTextError, CelUnknownTypeNameError, NominalResolver,
 };
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+/// The options an environment is built under. Two options are equal when their schema
+/// resolvers are the same function.
+#[derive(Clone)]
 pub struct CelEnvironmentOptions {
     /// Whether a name nothing declares reads as `dyn` instead of being reported.
     pub unlisted_variables_are_dyn: bool,
@@ -54,9 +59,42 @@ pub struct CelEnvironmentOptions {
     pub homogeneous_aggregate_literals: bool,
     /// Whether `.?`, `[?]` and the `optional` members exist.
     pub enable_optional_types: bool,
+    /// Asked at every schema node, with the document it belongs to, before its structure
+    /// is read: a registered type name, or the document to read in place of the node.
+    pub resolve_schema_type: Option<SchemaTypeResolver>,
     pub limits: CelParseLimits,
     /// Whether the standard library is registered. On by default.
     pub standard_library: bool,
+}
+
+impl PartialEq for CelEnvironmentOptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.unlisted_variables_are_dyn == other.unlisted_variables_are_dyn
+            && self.homogeneous_aggregate_literals == other.homogeneous_aggregate_literals
+            && self.enable_optional_types == other.enable_optional_types
+            && match (&self.resolve_schema_type, &other.resolve_schema_type) {
+                (None, None) => true,
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                _ => false,
+            }
+            && self.limits == other.limits
+            && self.standard_library == other.standard_library
+    }
+}
+
+impl Eq for CelEnvironmentOptions {}
+
+impl fmt::Debug for CelEnvironmentOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CelEnvironmentOptions")
+            .field("unlisted_variables_are_dyn", &self.unlisted_variables_are_dyn)
+            .field("homogeneous_aggregate_literals", &self.homogeneous_aggregate_literals)
+            .field("enable_optional_types", &self.enable_optional_types)
+            .field("resolve_schema_type", &self.resolve_schema_type.as_ref().map(|_| "<resolver>"))
+            .field("limits", &self.limits)
+            .field("standard_library", &self.standard_library)
+            .finish()
+    }
 }
 
 impl Default for CelEnvironmentOptions {
@@ -65,6 +103,7 @@ impl Default for CelEnvironmentOptions {
             unlisted_variables_are_dyn: false,
             homogeneous_aggregate_literals: false,
             enable_optional_types: false,
+            resolve_schema_type: None,
             limits: CelParseLimits::default(),
             standard_library: true,
         }
@@ -72,11 +111,15 @@ impl Default for CelEnvironmentOptions {
 }
 
 /// The type a variable or a constant is declared with.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum TypeDeclaration {
     /// A type expression.
     Text(String),
     Type(CelType),
+    /// A closed record, each field a type expression or a nested field map.
+    Fields(PropertyMap<FieldDeclaration>),
+    /// A schema with the document it belongs to, read to full depth.
+    Schema(JsonSchemaDocument),
 }
 
 impl From<&str> for TypeDeclaration {
@@ -94,6 +137,18 @@ impl From<String> for TypeDeclaration {
 impl From<CelType> for TypeDeclaration {
     fn from(ty: CelType) -> Self {
         TypeDeclaration::Type(ty)
+    }
+}
+
+impl From<PropertyMap<FieldDeclaration>> for TypeDeclaration {
+    fn from(fields: PropertyMap<FieldDeclaration>) -> Self {
+        TypeDeclaration::Fields(fields)
+    }
+}
+
+impl From<JsonSchemaDocument> for TypeDeclaration {
+    fn from(document: JsonSchemaDocument) -> Self {
+        TypeDeclaration::Schema(document)
     }
 }
 
@@ -244,6 +299,16 @@ pub struct Definitions {
     pub namespaces: Vec<NamespaceListing>,
 }
 
+/// What converting one registration's schema could not judge.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SchemaRegistrationReport {
+    /// The name registered under.
+    pub name: String,
+    pub unjudged: Vec<UnjudgedSchemaNode>,
+    /// Every reference re-entered on the descent: a recursive schema, deliberately `dyn`.
+    pub recursive: Vec<RecursiveSchemaReference>,
+}
+
 /// Why a registration was refused.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum CelRegistrationError {
@@ -318,6 +383,22 @@ struct VariableRecord {
     ty: CelType,
     description: Option<String>,
     constant: bool,
+    /// What the schema it was typed from could not judge.
+    unjudged: Vec<UnjudgedSchemaNode>,
+    recursive: Vec<RecursiveSchemaReference>,
+}
+
+/// A type a declaration named, beside what converting it could not judge.
+struct DeclaredType {
+    ty: CelType,
+    unjudged: Vec<UnjudgedSchemaNode>,
+    recursive: Vec<RecursiveSchemaReference>,
+}
+
+impl From<CelType> for DeclaredType {
+    fn from(ty: CelType) -> Self {
+        Self { ty, unjudged: Vec::new(), recursive: Vec::new() }
+    }
 }
 
 /// Values by name with JavaScript `Map` semantics: a name set again keeps its place.
@@ -409,7 +490,13 @@ impl CelEnvironment {
             for constant in standard_constants(optional_types) {
                 environment.variables.insert(
                     constant.name,
-                    VariableRecord { ty: constant.ty, description: constant.description, constant: true },
+                    VariableRecord {
+                        ty: constant.ty,
+                        description: constant.description,
+                        constant: true,
+                        unjudged: Vec::new(),
+                        recursive: Vec::new(),
+                    },
                 );
             }
         }
@@ -481,11 +568,32 @@ impl CelEnvironment {
         Ok(self.registry.register(signature, metadata)?)
     }
 
-    fn declared_type(&self, declaration: TypeDeclaration) -> Result<CelType, CelTypeTextError> {
+    /// The type a declaration names: a type expression, a type, a field map, or a schema.
+    fn declared_type(&self, declaration: TypeDeclaration) -> Result<DeclaredType, CelTypeTextError> {
         match declaration {
-            TypeDeclaration::Text(text) => self.read_type(&text),
-            TypeDeclaration::Type(ty) => Ok(ty),
+            TypeDeclaration::Text(text) => Ok(self.read_type(&text)?.into()),
+            TypeDeclaration::Type(ty) => Ok(ty.into()),
+            TypeDeclaration::Fields(fields) => Ok(field_map_type(&fields, &|text| self.read_type(text))?.into()),
+            TypeDeclaration::Schema(document) => {
+                let lookup = |name: &str, args: &[String]| -> Result<Option<CelType>, CelTypeTextError> {
+                    let args = args.iter().map(|text| self.read_type(text)).collect::<Result<Vec<_>, _>>()?;
+                    Ok(resolve_nominal(&self.types, name, &args)?)
+                };
+                let converted = schema_type(
+                    &document,
+                    &SchemaConversion {
+                        resolve_schema_type: self.options.resolve_schema_type.clone(),
+                        lookup_named_type: Some(&lookup),
+                    },
+                )?;
+                Ok(DeclaredType { ty: converted.ty, unjudged: converted.unjudged, recursive: converted.recursive })
+            }
         }
+    }
+
+    fn declare(&mut self, name: &str, declared: DeclaredType, description: Option<String>, constant: bool) {
+        let DeclaredType { ty, unjudged, recursive } = declared;
+        self.variables.insert(name.into(), VariableRecord { ty, description, constant, unjudged, recursive });
     }
 
     pub fn register_variable(
@@ -494,8 +602,8 @@ impl CelEnvironment {
         declaration: impl Into<TypeDeclaration>,
         description: Option<String>,
     ) -> Result<(), CelRegistrationError> {
-        let ty = self.declared_type(declaration.into())?;
-        self.variables.insert(name.into(), VariableRecord { ty, description, constant: false });
+        let declared = self.declared_type(declaration.into())?;
+        self.declare(name, declared, description, false);
         Ok(())
     }
 
@@ -506,13 +614,31 @@ impl CelEnvironment {
         declaration: impl Into<TypeDeclaration>,
         description: Option<String>,
     ) -> Result<(), CelRegistrationError> {
-        let ty = self.declared_type(declaration.into())?;
-        self.variables.insert(name.into(), VariableRecord { ty, description, constant: true });
+        let declared = self.declared_type(declaration.into())?;
+        self.declare(name, declared, description, true);
         Ok(())
     }
 
     pub fn has_variable(&self, name: &str) -> bool {
         self.variables.contains_key(name)
+    }
+
+    /// Every schema-typed registration whose schema could not be judged whole, by name in
+    /// UTF-16 code-unit order. Empty is every node judged.
+    pub fn schema_reports(&self) -> Vec<SchemaRegistrationReport> {
+        let mut held: Vec<(&String, &VariableRecord)> = self
+            .variables
+            .iter()
+            .filter(|(_, record)| !record.unjudged.is_empty() || !record.recursive.is_empty())
+            .collect();
+        held.sort_by(|left, right| compare_code_units(left.0, right.0));
+        held.into_iter()
+            .map(|(name, record)| SchemaRegistrationReport {
+                name: name.clone(),
+                unjudged: record.unjudged.clone(),
+                recursive: record.recursive.clone(),
+            })
+            .collect()
     }
 
     /// Registers a named type, with every operator, conversion and member it declares.

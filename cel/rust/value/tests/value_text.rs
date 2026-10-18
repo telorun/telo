@@ -3,12 +3,14 @@
 //! No Node test twins this file: `value-text.ts` is three calls into the host
 //! (`String`, `TextEncoder`, a fatal `TextDecoder`), and `JSON.stringify` is the
 //! host's too. Each row is what the Node build answers for that input, executed; the
-//! whitespace set and the code-unit order on `@telorun/cel 0.118.0 at 63c81d00`'s host.
+//! whitespace set, the code-unit order and `Number(text)` on `@telorun/cel 0.118.0 at
+//! 63c81d00`'s host.
 
 use std::cmp::Ordering;
 
 use telorun_cel_value::{
-    bytes_to_text, compare_code_units, double_text, es_number, es_trim, is_es_whitespace, json_quote, text_to_bytes,
+    bytes_to_text, compare_code_units, double_text, es_number, es_string_to_number, es_trim, is_es_whitespace, json_quote,
+    text_to_bytes,
 };
 
 #[test]
@@ -173,4 +175,98 @@ fn orders_strings_by_their_utf_16_code_units() {
     // Where the bytes order the two the other way.
     assert_eq!(compare_code_units("\u{1f600}", "\u{e000}"), Ordering::Less);
     assert_eq!("\u{1f600}".cmp("\u{e000}"), Ordering::Greater);
+}
+
+#[test]
+fn reads_text_as_a_number_as_ecmascript_does() {
+    // `(text, the bits of Number(text))`.
+    let node_numbers: Vec<(String, u64)> = [
+        ("", 0x0000000000000000),
+        (" ", 0x0000000000000000),
+        ("\t\n\u{b}\u{c}\r", 0x0000000000000000),
+        ("0", 0x0000000000000000),
+        ("-0", 0x8000000000000000),
+        ("+0", 0x0000000000000000),
+        ("1", 0x3ff0000000000000),
+        (" 12 ", 0x4028000000000000),
+        ("1.", 0x3ff0000000000000),
+        (".5", 0x3fe0000000000000),
+        ("1.5e3", 0x4097700000000000),
+        ("1E-2", 0x3f847ae147ae147b),
+        ("1e+2", 0x4059000000000000),
+        ("1.e2", 0x4059000000000000),
+        ("1e", 0x7ff8000000000000),
+        ("1e+", 0x7ff8000000000000),
+        ("e1", 0x7ff8000000000000),
+        (".", 0x7ff8000000000000),
+        ("+.5", 0x3fe0000000000000),
+        ("-.5e1", 0xc014000000000000),
+        ("-", 0x7ff8000000000000),
+        ("+", 0x7ff8000000000000),
+        ("Infinity", 0x7ff0000000000000),
+        ("-Infinity", 0xfff0000000000000),
+        ("+Infinity", 0x7ff0000000000000),
+        ("infinity", 0x7ff8000000000000),
+        ("inf", 0x7ff8000000000000),
+        ("NaN", 0x7ff8000000000000),
+        ("0x1F", 0x403f000000000000),
+        ("0XfF", 0x406fe00000000000),
+        ("-0x1", 0x7ff8000000000000),
+        ("+0x1", 0x7ff8000000000000),
+        ("0x", 0x7ff8000000000000),
+        ("0x0", 0x0000000000000000),
+        ("0b101", 0x4014000000000000),
+        ("0B11", 0x4008000000000000),
+        ("0b0", 0x0000000000000000),
+        ("0o17", 0x402e000000000000),
+        ("0O7", 0x401c000000000000),
+        ("0o8", 0x7ff8000000000000),
+        ("0b2", 0x7ff8000000000000),
+        ("0xg", 0x7ff8000000000000),
+        ("1_000", 0x7ff8000000000000),
+        ("1,000", 0x7ff8000000000000),
+        ("0x1_0", 0x7ff8000000000000),
+        ("00012", 0x4028000000000000),
+        ("0012.5", 0x4029000000000000),
+        ("1e400", 0x7ff0000000000000),
+        ("-1e400", 0xfff0000000000000),
+        ("1e-400", 0x0000000000000000),
+        ("\u{a0}1\u{3000}", 0x3ff0000000000000),
+        ("\u{feff}7", 0x401c000000000000),
+        ("\u{85}1", 0x7ff8000000000000),
+        ("\u{180e}1", 0x7ff8000000000000),
+        ("123456789012345678901234567890", 0x45f8ee90ff6c373e),
+        ("0.1", 0x3fb999999999999a),
+        ("9007199254740993", 0x4340000000000000),
+        ("1e21", 0x444b1ae4d6e2ef50),
+        ("0x20000000000001", 0x4340000000000000),
+        ("0x20000000000003", 0x4340000000000002),
+        ("0o777777777777777777777777777777", 0x4590000000000000),
+        ("0x1111111111111111111111111111111111111111", 0x49b1111111111111),
+        ("1e99999999999999999999", 0x7ff0000000000000),
+        ("0e99999999999999999999", 0x0000000000000000),
+        ("\u{663}", 0x7ff8000000000000),
+    ]
+    .into_iter()
+    .map(|(text, bits)| (text.to_string(), bits))
+    .chain([
+        (format!("0x{}", "f".repeat(256)), 0x7ff0000000000000),
+        (format!("0x{}", "f".repeat(255)), 0x7fb0000000000000),
+        (format!("0x1{}", "0".repeat(256)), 0x7ff0000000000000),
+        (format!("0x{}1", "0".repeat(300)), 0x3ff0000000000000),
+        // Past the 53 bits a double holds: above the half, rounded up; a tie beside an odd last
+        // bit, rounded up; a tie beside an even one, rounded down.
+        (format!("0b1{}1{}1", "0".repeat(52), "0".repeat(10)), 0x43f0000000000001),
+        (format!("0b1{}11", "0".repeat(51)), 0x4340000000000002),
+        (format!("0b1{}1", "0".repeat(52)), 0x4340000000000000),
+    ])
+    .collect();
+    for (text, bits) in node_numbers {
+        let read = es_string_to_number(&text);
+        if f64::from_bits(bits).is_nan() {
+            assert!(read.is_nan(), "{text:?}");
+        } else {
+            assert_eq!(read.to_bits(), bits, "{text:?}");
+        }
+    }
 }
