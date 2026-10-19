@@ -143,11 +143,19 @@ export interface UnavailableRun {
 }
 
 /** One required variable/secret an Application declares with no default and no
- *  value in the active environment — a run cannot start until it is filled. */
+ *  value in the workspace's env files — a run cannot start until it is filled. */
 export interface MissingConfigEntry {
   name: string;
   envVar: string;
   secret: boolean;
+}
+
+/** An env file — or the workspace marker bounding them — that keeps the
+ *  workspace's env files from being the run's environment. */
+export interface EnvFileProblem {
+  /** Relative to the workspace root. */
+  file: string;
+  reason: string;
 }
 
 /** Why a run never started. Held per Application and rendered in that app's run
@@ -155,7 +163,8 @@ export interface MissingConfigEntry {
  *  happened when I pressed Run" always has one place. */
 export type RunBlocker =
   | ({ kind: "unavailable" } & UnavailableRun)
-  | { kind: "missing-config"; entries: MissingConfigEntry[] };
+  | { kind: "missing-config"; entries: MissingConfigEntry[] }
+  | { kind: "env-files"; problems: EnvFileProblem[] };
 
 /** Per-Application dock geometry. Held in memory (not persisted): it records
  *  where you were, which is worth a module switch and not worth restoring

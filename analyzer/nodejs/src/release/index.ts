@@ -80,6 +80,7 @@ export {
   settingsForModule,
 } from "./workspace-config.js";
 export type {
+  EnvFileEntry,
   EnvSettings,
   ModuleEntry,
   ModuleSettings,
@@ -92,8 +93,13 @@ export type {
 } from "./workspace-config.js";
 
 export {
+  ENV_FILE_ENTRY_KEYS,
   MODULE_ENTRY_KEYS,
   WORKSPACE_BLOCKS,
   WORKSPACE_SCHEMA,
 } from "./workspace-schema.js";
-export type { WorkspaceBlockSchema, WorkspaceKeySchema } from "./workspace-schema.js";
+export type {
+  WorkspaceBlockSchema,
+  WorkspaceEntrySchema,
+  WorkspaceKeySchema,
+} from "./workspace-schema.js";

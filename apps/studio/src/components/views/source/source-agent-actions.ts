@@ -1,12 +1,12 @@
 import type * as MonacoApi from "monaco-editor";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { fixDiagnosticPrompt, selectionPrompt, useAgentCompose, type AgentCompose } from "../../../agent";
+import { useCallback, useEffect, useRef } from "react";
+import { fixDiagnosticPrompt, useAgentCompose, type AgentCompose } from "../../../agent";
 import { fileUriToPath } from "../../../language/file-uri";
+import { useAgentSelectionSource } from "../../agent-selection-source";
 
 type MonacoEditor = MonacoApi.editor.IStandaloneCodeEditor;
 type Monaco = typeof MonacoApi;
 
-const AVAILABLE_CONTEXT_KEY = "teloAgentAvailable";
 const FIX_COMMAND = "telo.agent.fixDiagnostic";
 
 interface MarkerSubject {
@@ -17,23 +17,19 @@ interface MarkerSubject {
 }
 
 /**
- * The source view's two ways into the agent's composer: "Send selection to
- * chat" in each editor's context menu, and "Fix with AI" among the quick fixes
- * of a marker. Both are withdrawn where no agent panel is offered.
+ * The source view's ways into the agent's composer: each editor's selection is
+ * carried with the next message, and "Fix with AI" is among the quick fixes of
+ * a marker. Both are withdrawn where no agent panel is offered.
  */
 export function useSourceAgentActions() {
   const agent = useAgentCompose();
   const agentRef = useRef<AgentCompose | null>(agent);
-  const editors = useRef(new Map<string, MonacoEditor>());
-  const availability = useRef(new Map<string, { set(value: boolean): void }>());
+  const trackSelection = useAgentSelectionSource();
   const disposables = useRef<MonacoApi.IDisposable[]>([]);
   const fixRegistered = useRef(false);
-  /** The files whose editor holds a non-empty selection. */
-  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
     agentRef.current = agent;
-    for (const key of availability.current.values()) key.set(agent !== null);
   }, [agent]);
 
   useEffect(
@@ -44,53 +40,12 @@ export function useSourceAgentActions() {
     [],
   );
 
-  const sendSelection = useCallback((filePath: string) => {
-    const editor = editors.current.get(filePath);
-    const selection = editor?.getSelection();
-    const model = editor?.getModel();
-    const compose = agentRef.current;
-    if (!selection || !model || !compose || selection.isEmpty()) return;
-    // A selection ending at a line's first column does not include that line.
-    const endLine =
-      selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber
-        ? selection.endLineNumber - 1
-        : selection.endLineNumber;
-    compose.compose(
-      selectionPrompt({
-        file: compose.workspaceFile(filePath),
-        startLine: selection.startLineNumber,
-        endLine,
-        text: model.getValueInRange(selection),
-      }),
-    );
-  }, []);
-
   const attach = useCallback(
     (filePath: string, editor: MonacoEditor, monaco: Monaco) => {
-      editors.current.set(filePath, editor);
-      availability.current.set(filePath, editor.createContextKey(AVAILABLE_CONTEXT_KEY, agentRef.current !== null));
       disposables.current.push(
-        editor.addAction({
-          id: "telo.agent.sendSelection",
-          label: "Send selection to chat",
-          precondition: `editorHasSelection && ${AVAILABLE_CONTEXT_KEY}`,
-          contextMenuGroupId: "navigation",
-          contextMenuOrder: 9,
-          run: () => sendSelection(filePath),
-        }),
-        editor.onDidChangeCursorSelection((event) => {
-          const has = !event.selection.isEmpty();
-          setSelected((current) => {
-            if (current.has(filePath) === has) return current;
-            const next = new Set(current);
-            if (has) next.add(filePath);
-            else next.delete(filePath);
-            return next;
-          });
-        }),
-        editor.onDidDispose(() => {
-          editors.current.delete(filePath);
-          availability.current.delete(filePath);
+        trackSelection(`source:${filePath}`, editor, (selection) => {
+          const model = editor.getModel();
+          return model ? { filePath, model, range: selection } : null;
         }),
       );
       if (fixRegistered.current) return;
@@ -128,14 +83,8 @@ export function useSourceAgentActions() {
         }),
       );
     },
-    [sendSelection],
+    [trackSelection],
   );
 
-  return {
-    attach,
-    /** Whether `filePath`'s selection can be sent: an agent panel is offered
-     *  and something is selected. */
-    canSend: (filePath: string) => agent !== null && selected.has(filePath),
-    sendSelection,
-  };
+  return { attach };
 }

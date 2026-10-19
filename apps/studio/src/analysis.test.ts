@@ -25,6 +25,9 @@ function inMemoryAdapter(files: Record<string, string>) {
       if (text === undefined) throw new Error(`File not found: ${path}`);
       return text;
     },
+    async readBytes(path: string) {
+      return new TextEncoder().encode(await this.readFile(path));
+    },
     async writeFile(path: string, text: string) {
       map.set(path, text);
     },

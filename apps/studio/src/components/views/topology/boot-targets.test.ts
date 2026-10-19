@@ -263,6 +263,7 @@ describe("editing the boot sequence in the manifest", () => {
     expect(unchanged).toBe(workspace);
     const adapter = {
       readFile: vi.fn(async () => ""),
+      readBytes: vi.fn(async () => new Uint8Array()),
       writeFile: vi.fn(async () => {}),
       listDir: vi.fn(async () => []),
       createDir: vi.fn(async () => {}),

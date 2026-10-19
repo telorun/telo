@@ -32,8 +32,8 @@ export interface HistoryStore {
 const KEY_PREFIX = LOCAL_PREFIXES.history;
 
 /** localStorage-backed store, one entry per workspace root. Kept separate from
- *  the UI-focus persisted state and the deployments store so each can evolve
- *  independently without forcing migrations on unrelated data. */
+ *  the UI-focus persisted state so each can evolve independently without
+ *  forcing migrations on unrelated data. */
 export class LocalStorageHistoryStore implements HistoryStore {
   constructor(public readonly rootDir: string) {}
 

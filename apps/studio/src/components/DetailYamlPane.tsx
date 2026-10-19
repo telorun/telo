@@ -1,5 +1,8 @@
+import type { OnMount } from "@monaco-editor/react";
+import type * as MonacoApi from "monaco-editor";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { pathToFileUri } from "../language/file-uri";
+import { useAgentSelectionSource, type LocatedSelection } from "./agent-selection-source";
 import { useLanguageModels } from "../language/language-models-context";
 import type { ModuleDocument, ModuleSourceFile } from "../model";
 import { CodeEditor } from "./code-editor";
@@ -75,6 +78,22 @@ export function DetailYamlPane({ sourceFiles, resource, pointer, readOnly, onSou
   readOnlyRef.current = readOnly;
   onSourceEditRef.current = onSourceEdit;
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // The pane's selection is carried with the agent's next message, at the lines
+  // it covers in the document.
+  const trackSelection = useAgentSelectionSource();
+  const documentRef = useRef(document);
+  documentRef.current = document;
+  const filePathRef = useRef(filePath);
+  filePathRef.current = filePath;
+  const selectionTracking = useRef<MonacoApi.IDisposable | null>(null);
+  useEffect(() => () => selectionTracking.current?.dispose(), []);
+  const onEditorReady: OnMount = (editor) => {
+    selectionTracking.current?.dispose();
+    selectionTracking.current = trackSelection("detail-yaml", editor, (selection) =>
+      selectionInDocument(selection, editor.getModel(), projectionRef.current, documentRef.current, filePathRef.current),
+    );
+  };
 
   useEffect(() => {
     if (!languageModels || !document || !filePath) return;
@@ -153,8 +172,37 @@ export function DetailYamlPane({ sourceFiles, resource, pointer, readOnly, onSou
           height="100%"
           readOnly={readOnly}
           className="h-full"
+          onReady={onEditorReady}
         />
       </div>
     </div>
   );
+}
+
+/** A selection in the pane, placed at the document lines it covers. */
+function selectionInDocument(
+  selection: MonacoApi.Selection,
+  pane: MonacoApi.editor.ITextModel | null,
+  projection: YamlSliceProjection | null,
+  document: MonacoApi.editor.ITextModel | null,
+  filePath: string | undefined,
+): LocatedSelection | null {
+  if (!pane || !projection || !document || !filePath || !("text" in projection.current())) return null;
+  // The pane is dedented, so a selection ending at its line's first column
+  // ends at the previous line rather than inside the next line's indentation.
+  const endsAtLineStart = selection.endColumn === 1 && selection.endLineNumber > selection.startLineNumber;
+  const endLine = endsAtLineStart ? selection.endLineNumber - 1 : selection.endLineNumber;
+  const endColumn = endsAtLineStart ? pane.getLineMaxColumn(endLine) : selection.endColumn;
+  const start = projection.toSource({ line: selection.startLineNumber - 1, character: selection.startColumn - 1 });
+  const end = projection.toSource({ line: endLine - 1, character: endColumn - 1 });
+  return {
+    filePath,
+    model: document,
+    range: {
+      startLineNumber: start.line + 1,
+      startColumn: start.character + 1,
+      endLineNumber: end.line + 1,
+      endColumn: end.character + 1,
+    },
+  };
 }

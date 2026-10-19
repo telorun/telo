@@ -110,6 +110,7 @@ const startBodySchema = {
             properties: {
               relativePath: { type: "string", minLength: 1 },
               contents: { type: "string" },
+              encoding: { type: "string", enum: ["utf8", "base64"] },
             },
           },
         },

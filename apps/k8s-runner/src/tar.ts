@@ -22,7 +22,7 @@ export async function makeBundleTarGz(bundle: RunBundle): Promise<Buffer> {
     if (Buffer.byteLength(name, "utf8") > 100) {
       throw new Error(`bundle path too long for tar (max 100 bytes): '${name}'`);
     }
-    const content = Buffer.from(file.contents, "utf8");
+    const content = Buffer.from(file.contents, file.encoding ?? "utf8");
     blocks.push(makeHeader(name, content.byteLength));
     blocks.push(padToBlock(content));
   }

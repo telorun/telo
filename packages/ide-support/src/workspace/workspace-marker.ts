@@ -19,13 +19,13 @@
 import {
   DiagnosticSeverity,
   WORKSPACE_SCHEMA,
-  MODULE_ENTRY_KEYS,
   readWorkspaceConfig,
   settingsForModule,
   type PatternMatch,
   type Position,
   type Range,
   type WorkspaceDiagnostic,
+  type WorkspaceKeySchema,
 } from "@telorun/analyzer";
 import { isMap, isSeq, parseDocument, type Document, type Node } from "yaml";
 import type { CompletionResult, NormalizedDiagnostic } from "../types.js";
@@ -293,9 +293,10 @@ export function workspaceCompletions(
       case "env.roots":
         return (env?.directories?.() ?? []).map((dir) => ({ label: dir, kind: "folder" as const }));
       case "env.files":
+      case "env.files.name":
         return valuesFrom(WORKSPACE_SCHEMA.env.properties.files.examples);
       default:
-        return [];
+        return keySchemaAt(at.path)?.type === "boolean" ? valuesFrom(["true", "false"]) : [];
     }
   }
 
@@ -306,18 +307,22 @@ export function workspaceCompletions(
     );
   }
   const [block, ...rest] = at.path;
-  if (block === "release") {
-    // Inside one `modules:` entry the keys are the entry's, not the block's.
-    const properties =
-      rest[0] === "modules" && rest.length > 1 ? MODULE_ENTRY_KEYS : WORKSPACE_SCHEMA.release.properties;
-    return Object.entries(properties).map(([name, schema]) => keyItem(name, schema.description));
-  }
-  if (block === "env") {
-    return Object.entries(WORKSPACE_SCHEMA.env.properties).map(([name, schema]) =>
-      keyItem(name, schema.description),
-    );
-  }
-  return [];
+  const blockSchema = WORKSPACE_SCHEMA[block!];
+  if (!blockSchema) return [];
+  // Inside one entry of an entry list (`release.modules`, `env.files`) the keys
+  // are the entry's, not the block's.
+  const entry = rest.length > 1 ? blockSchema.properties[rest[0]!]?.entry : undefined;
+  return Object.entries(entry?.properties ?? blockSchema.properties).map(([name, schema]) =>
+    keyItem(name, schema.description),
+  );
+}
+
+/** The declared schema of the key a value path names — a block's key, or a key
+ *  of one entry of an entry list (`env.files[].sensitive` is `env.files.sensitive`). */
+function keySchemaAt(path: readonly string[]): WorkspaceKeySchema | undefined {
+  const [block, key, entryKey] = path;
+  const keySchema = block === undefined || key === undefined ? undefined : WORKSPACE_SCHEMA[block]?.properties[key];
+  return entryKey === undefined ? keySchema : keySchema?.entry?.properties[entryKey];
 }
 
 function valuesFrom(examples: readonly string[] | undefined): CompletionResult[] {

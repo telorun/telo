@@ -1,6 +1,6 @@
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, lists what an application reads from the environment with `telo needs report`, ships an application as a single executable with `telo package`, and publishes module artifacts to an OCI registry with `telo publish`.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, lists what an application reads from the environment with `telo needs report`, writes its `.env` / `.env.local` with `telo env template`, ships an application as a single executable with `telo package`, and publishes module artifacts to an OCI registry with `telo publish`.
 
 ## Installation
 
@@ -429,6 +429,33 @@ telo needs report -o json ./shop
 ```
 
 Under `-o json` it writes a versioned document (`reportVersion: 1`, a `needs` list of `path`, `declaredBy`, `type: { module, name }`, `version` (the range the need states, or `null`), `features` (the features it asks for, `[]` when none), `parameters`, `optional` and `fields`, each field `{ env, envSource, required, sensitive }`). An application the kernel would refuse has no report: the refusals are printed on stderr, nothing on stdout, and the command exits 1. See [Providing needs](/learn/providing-needs).
+
+---
+
+### `telo env template <manifest>`
+
+Writes every environment variable the application reads as env-file lines, with nothing booted: its `variables:`, `secrets:` and `ports:` entries bound by `env:`, and every need field `telo needs report` lists. Secrets and need fields marked sensitive go to the last entry the workspace's `env.files` marks sensitive (`.env.local` by default), everything else to the last entry that is not (`.env` by default); when the workspace declares no entry of the kind a value needs, the command refuses and names what to add to `env.files`.
+
+```bash
+telo env template ./shop             # print both files
+telo env template ./shop --write     # add what is missing beside the manifest
+```
+
+Each variable is one **commented-out** line, grouped under `# variables`, `# ports`, `# secrets` and `# needs`, with a trailing comment only for what the line does not show — `required`, the entry's `description`, and a need field's path:
+
+```
+# variables
+# BUCKET=                    # required
+# TRACK_CRON='*/15 * * * *'
+```
+
+Nothing is uncommented: an empty `NAME=` would set the variable to the empty string, and a written default would override a later change to the manifest's `default:`. A value shown is the default the application uses while the variable is unset; a secret's default is never written. A value is quoted so telo's `.env` reader gives it back unchanged, and the trailing comment is dropped by that reader once a line is uncommented.
+
+**Options:**
+
+- `--write` — Add to those files beside the manifest the variables they do not already mention (set or commented out), as one block at the end, creating a file that is missing; a line already there is never changed. Warns when a sensitive file it wrote is not ignored by git.
+
+Under `-o json` without `--write` it writes `{ files: [{ name, text }] }`; with `--write`, the envelope `{ ok, files: [{ path, created, added }] }`. An application the kernel would refuse gets no template, as for `telo needs report`.
 
 ---
 

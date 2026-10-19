@@ -37,6 +37,7 @@ function setApplicationTargets(
 function stubAdapter(): WorkspaceAdapter & { writeFile: ReturnType<typeof vi.fn> } {
   return {
     readFile: vi.fn(async () => ""),
+    readBytes: vi.fn(async () => new Uint8Array()),
     writeFile: vi.fn(async () => {}),
     listDir: vi.fn(async () => []),
     createDir: vi.fn(async () => {}),

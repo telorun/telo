@@ -1,3 +1,4 @@
+import { classifySensitiveEnvFiles, WORKSPACE_FILENAME } from "@telorun/analyzer";
 import type { AgentWorkspace, TreeFile, WorkspaceBridge } from "./types";
 
 /** Directory names excluded from two-way sync in BOTH directions: the editor's
@@ -19,13 +20,43 @@ export const SYNC_EXCLUDED_DIRS: ReadonlySet<string> = new Set([
   ".telo-agent",
 ]);
 
-function included(workspace: Pick<AgentWorkspace, "excludedPaths">, path: string): boolean {
-  if (workspace.excludedPaths.has(path)) return false;
-  return !path.split("/").some((segment) => SYNC_EXCLUDED_DIRS.has(segment));
+function inExcludedDir(path: string): boolean {
+  return path.split("/").some((segment) => SYNC_EXCLUDED_DIRS.has(segment));
 }
 
-function includedTree(workspace: AgentWorkspace, tree: TreeFile[]): TreeFile[] {
-  return tree.filter((f) => included(workspace, f.path));
+/** The one inclusion rule, in both directions: a path is shared unless the
+ *  workspace owns it, it lies in an excluded directory, or it is a sensitive
+ *  env file — values that must not leave the editor's machine. */
+function included(
+  workspace: Pick<AgentWorkspace, "excludedPaths">,
+  sensitive: ReadonlySet<string>,
+  path: string,
+): boolean {
+  return !workspace.excludedPaths.has(path) && !sensitive.has(path) && !inExcludedDir(path);
+}
+
+/**
+ * The sensitive env files among `paths`, each governed by the nearest
+ * `telo-workspace.yaml` the EDITOR holds at or above it — a file the agent's
+ * side holds is classified by the editor's markers too, so one rule decides
+ * both directions. Computed on every pass, since a marker or a file may have
+ * changed since the last. A marker that cannot be read, or whose `env:` is
+ * refused, refuses the pass with its message: syncing without it could copy a
+ * secret into the session.
+ */
+async function sensitiveFiles(bridge: WorkspaceBridge, paths: Iterable<string>): Promise<ReadonlySet<string>> {
+  const candidates = [...new Set(paths)].filter((path) => !inExcludedDir(path));
+  const answer = await classifySensitiveEnvFiles(candidates, (path) => bridge.probeFile(path));
+  if ("failed" in answer) throw new Error(answer.failed);
+  return answer.sensitive;
+}
+
+function includedTree(
+  workspace: AgentWorkspace,
+  sensitive: ReadonlySet<string>,
+  tree: TreeFile[],
+): TreeFile[] {
+  return tree.filter((f) => included(workspace, sensitive, f.path));
 }
 
 /** The editor's snapshot, minus what this workspace does not own. Filtering the
@@ -39,13 +70,29 @@ function includedTree(workspace: AgentWorkspace, tree: TreeFile[]): TreeFile[] {
  *  implementation silently breaks. */
 function includedSnapshot(
   workspace: AgentWorkspace,
+  sensitive: ReadonlySet<string>,
   snapshot: Map<string, string>,
 ): Map<string, string> {
   const out = new Map<string, string>();
   for (const [path, hash] of snapshot) {
-    if (included(workspace, path)) out.set(path, hash);
+    if (included(workspace, sensitive, path)) out.set(path, hash);
   }
   return out;
+}
+
+/** What one pass shares of the two sides, and the sensitive files it left out. */
+async function sharedSides(
+  workspace: AgentWorkspace,
+  bridge: WorkspaceBridge,
+  rawEditor: Map<string, string>,
+  rawTree: TreeFile[],
+): Promise<{ editor: Map<string, string>; tree: TreeFile[]; sensitive: ReadonlySet<string> }> {
+  const sensitive = await sensitiveFiles(bridge, [...rawEditor.keys(), ...rawTree.map((f) => f.path)]);
+  return {
+    editor: includedSnapshot(workspace, sensitive, rawEditor),
+    tree: includedTree(workspace, sensitive, rawTree),
+    sensitive,
+  };
 }
 
 /**
@@ -55,14 +102,15 @@ function includedSnapshot(
  * files go in `write`, files present there but gone from the editor go in
  * `delete`. Idempotent — untouched files are never disturbed, which for a
  * co-resident agent also means a turn that changes nothing causes no reload.
+ * Resolves with the sensitive env files the pass left out.
  */
 export async function seedDelta(
   workspace: AgentWorkspace,
   bridge: WorkspaceBridge,
-): Promise<void> {
+): Promise<ReadonlySet<string>> {
   const [rawEditor, rawTree] = await Promise.all([bridge.snapshot(), workspace.tree()]);
-  const editor = includedSnapshot(workspace, rawEditor);
-  const remote = new Map(includedTree(workspace, rawTree).map((f) => [f.path, f.hash]));
+  const { editor, tree, sensitive } = await sharedSides(workspace, bridge, rawEditor, rawTree);
+  const remote = new Map(tree.map((f) => [f.path, f.hash]));
 
   const write: Array<{ path: string; content: string }> = [];
   for (const [path, hash] of editor) {
@@ -73,6 +121,7 @@ export async function seedDelta(
     if (!editor.has(path)) remove.push(path);
   }
   if (write.length || remove.length) await workspace.apply(write, remove);
+  return sensitive;
 }
 
 /**
@@ -80,15 +129,14 @@ export async function seedDelta(
  * differs (or is new) and delete files absent from its tree, all through the
  * editor's WorkspaceAdapter. Content-hash-keyed, so a replay or reconnect never
  * double-applies. This is the authoritative convergence pass run at
- * end-of-turn.
+ * end-of-turn. Resolves with the sensitive env files the pass left out.
  */
 export async function reconcile(
   workspace: AgentWorkspace,
   bridge: WorkspaceBridge,
-): Promise<void> {
+): Promise<ReadonlySet<string>> {
   const [rawTree, rawEditor] = await Promise.all([workspace.tree(), bridge.snapshot()]);
-  const tree = includedTree(workspace, rawTree);
-  const editor = includedSnapshot(workspace, rawEditor);
+  const { editor, tree, sensitive } = await sharedSides(workspace, bridge, rawEditor, rawTree);
 
   const writes: Array<{ path: string; content: string }> = [];
   for (const { path, hash } of tree) {
@@ -100,27 +148,38 @@ export async function reconcile(
     if (!remotePaths.has(path)) deletes.push(path);
   }
   if (writes.length || deletes.length) await bridge.applyChanges(writes, deletes);
+  return sensitive;
 }
 
-/** Pull one file the agent just wrote (eager, mid-turn reflection). */
+/** Pull one file the agent just wrote (eager, mid-turn reflection) — unless
+ *  the inclusion rule leaves it out. Only the markers above the path are read,
+ *  since only they can govern it. */
 export async function pullFile(
   workspace: AgentWorkspace,
   bridge: WorkspaceBridge,
   path: string,
 ): Promise<void> {
+  const segments = path.split("/");
+  const markers = segments.map((_, depth) =>
+    [...segments.slice(0, depth), WORKSPACE_FILENAME].join("/"),
+  );
+  const sensitive = await sensitiveFiles(bridge, [path, ...markers]);
+  if (!included(workspace, sensitive, path)) return;
   const content = await workspace.readFile(path);
   await bridge.applyChanges([{ path, content }], []);
 }
 
 /** The editor's file for a path the agent named, or null when the path names
  *  none: one the two sides do not share is refused here, before the bridge is
- *  asked — the exclusions are this module's rule, never the bridge's. */
+ *  asked — the exclusions are this module's rule, never the bridge's.
+ *  `sensitive` is what the last pass left out. */
 export function sharedEditorFile(
   workspace: Pick<AgentWorkspace, "excludedPaths">,
   bridge: WorkspaceBridge,
   path: string,
+  sensitive: ReadonlySet<string>,
 ): string | null {
-  return included(workspace, path) ? bridge.editorFile(path) : null;
+  return included(workspace, sensitive, path) ? bridge.editorFile(path) : null;
 }
 
 /** A reverted turn: each path its recorded revert marks restored, with the
@@ -157,14 +216,15 @@ export async function applyReverted(
 ): Promise<Map<string, string[]>> {
   const kept = new Map<string, string[]>(turns.map((turn) => [turn.turnId, []]));
   const [rawTree, rawEditor] = await Promise.all([workspace.tree(), bridge.snapshot()]);
-  const tree = new Map(includedTree(workspace, rawTree).map((f) => [f.path, f.hash]));
-  const editor = includedSnapshot(workspace, rawEditor);
+  const shared = await sharedSides(workspace, bridge, rawEditor, rawTree);
+  const tree = new Map(shared.tree.map((f) => [f.path, f.hash]));
+  const { editor, sensitive } = shared;
 
   const writes = new Map<string, string>();
   const deletes = new Set<string>();
   for (const turn of turns) {
     for (const { path, before, after } of turn.files) {
-      if (!included(workspace, path) || (tree.get(path) ?? null) !== before) continue;
+      if (!included(workspace, sensitive, path) || (tree.get(path) ?? null) !== before) continue;
       const local = editor.get(path) ?? null;
       if (local === before) continue;
       if (local !== after) {

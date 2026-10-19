@@ -9,7 +9,7 @@ interface Props {
 }
 
 /** Pre-flight refusal: the Application declares required variables/secrets with
- *  no default and no value in the active environment, so the kernel would reject
+ *  no default and no value in the workspace's env files, so the kernel would reject
  *  the manifest at boot. Rendered in the dock — the same place the run's output
  *  would have gone — with the fix one click away in the neighbouring tab. */
 export function MissingConfigNotice({ entries, onOpenConfig, onDismiss }: Props) {

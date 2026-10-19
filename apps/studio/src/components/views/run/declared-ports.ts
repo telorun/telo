@@ -42,9 +42,9 @@ export function extractDeclaredPorts(
   return out;
 }
 
-/** Resolve declared ports against the active env into the PortMapping list sent
- *  to the runner. A port's number is the env value, falling back to the declared
- *  default; entries resolving outside 1–65535 are dropped. */
+/** Resolve declared ports against the env files' values into the PortMapping
+ *  list sent to the runner. A port's number is the env value, falling back to
+ *  the declared default; entries resolving outside 1–65535 are dropped. */
 export function resolveDeclaredPorts(
   manifest: ManifestLike | null | undefined,
   env: Record<string, string>,

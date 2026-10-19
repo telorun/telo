@@ -117,6 +117,12 @@ telo run ./telo.yaml --port 9000 --include a.yaml --include b.yaml staging
 telo run ./telo.yaml --help        # the usage these bindings describe
 ```
 
+`--help` also lists, under `Environment:`, every input read from an
+environment variable alone — its type, its default or `required`, and the
+input it fills — so an application with no arguments still answers how it is
+configured. A secret shows only its type and whether it is required. Needs are
+named on a last line; `telo needs report` lists the variables they read.
+
 - **The first source with a value wins**: the command line, then the
   environment variable, then `default:`.
 - **Tokens are read by the entry's type** — a repeated flag fills an array, each
@@ -216,8 +222,35 @@ and a variable already exported in your shell overrides every file. Run with
 `--debug` to see which files were loaded; a file that exists but cannot be read
 is always reported, whatever the flags.
 
-Keep these files out of version control; they are a developer convenience, not a
-configuration mechanism.
+`.env` may be committed when it holds only non-secret development values — a
+shared default for the whole team. `.env.local` never is: it holds secrets and
+personal overrides, so keep it in `.gitignore`. Neither is a configuration
+mechanism for production; `telo package` never carries either.
+
+`telo env template` writes both files from the manifest, so nobody transcribes
+variable names by hand:
+
+```bash
+telo env template ./telo.yaml          # print both files
+telo env template ./telo.yaml --write  # add what is missing beside the manifest
+```
+
+Every variable the application reads is one commented-out line — `variables:`,
+`ports:` and non-sensitive need fields in `.env`, `secrets:` and need fields
+marked sensitive (a database URL holding a password) in `.env.local`:
+
+```bash
+# variables
+# BUCKET=                    # required
+# TRACK_CRON='*/15 * * * *'
+```
+
+Nothing is uncommented: an empty `NAME=` would set the variable to the empty
+string, and a written default would override a later change to the manifest's
+`default:`. A value shown is the default the application uses while the
+variable is unset; a secret's default is never written. `--write` adds only the
+variables a file does not already mention, so it is safe to re-run after adding
+an input, and warns when `.env.local` is not ignored by git.
 
 ## See also
 

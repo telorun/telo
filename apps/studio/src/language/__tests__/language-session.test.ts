@@ -18,6 +18,9 @@ const emptyWorkspace: WorkspaceAdapter = {
   readFile: async (path) => {
     throw new Error(`no file ${path}`);
   },
+  readBytes: async (path) => {
+    throw new Error(`no file ${path}`);
+  },
   writeFile: async () => undefined,
   listDir: async () => [],
   createDir: async () => undefined,

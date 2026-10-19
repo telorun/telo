@@ -1,8 +1,10 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveEnvFiles } from "../src/env-files.js";
+import { nativePath, resolveEnvFiles } from "../src/env-files.js";
 
 let root: string;
 
@@ -35,58 +37,58 @@ function markWorkspace(body = "release:\n  modules:\n    - modules/*\n"): void {
 }
 
 describe("resolveEnvFiles", () => {
-  it("reads only the manifest's own directory when no workspace marker is above it", () => {
+  it("reads only the manifest's own directory when no workspace marker is above it", async () => {
     const manifest = manifestAt("apps/one");
     write(".", ".env.local", "ENV_A=root\n");
     write("apps/one", ".env.local", "ENV_B=own\n");
 
-    const { values } = resolveEnvFiles(manifest);
+    const { values } = await resolveEnvFiles(manifest);
 
     expect(values).toEqual({ ENV_B: "own" });
   });
 
-  it("walks up to the workspace root once the marker is present", () => {
+  it("walks up to the workspace root once the marker is present", async () => {
     markWorkspace();
     const manifest = manifestAt("apps/one");
     write(".", ".env.local", "ENV_A=root\n");
     write("apps", ".env", "ENV_B=mid\n");
 
-    const { values, loaded } = resolveEnvFiles(manifest);
+    const { values, files } = await resolveEnvFiles(manifest);
 
     expect(values).toEqual({ ENV_A: "root", ENV_B: "mid" });
-    expect(loaded).toEqual([
+    expect(files.map((file) => nativePath(file.path))).toEqual([
       path.join(root, ".env.local"),
       path.join(root, "apps", ".env"),
     ]);
   });
 
-  it("reaches a manifest outside every release subtree", () => {
+  it("reaches a manifest outside every release subtree", async () => {
     markWorkspace();
     const manifest = manifestAt("examples/demo");
     write(".", ".env.local", "ENV_A=root\n");
 
-    expect(resolveEnvFiles(manifest).values).toEqual({ ENV_A: "root" });
+    expect((await resolveEnvFiles(manifest)).values).toEqual({ ENV_A: "root" });
   });
 
-  it("lets the nearest declaration win over an ancestor's", () => {
+  it("lets the nearest declaration win over an ancestor's", async () => {
     markWorkspace();
     const manifest = manifestAt("apps/one");
     write(".", ".env.local", "ENV_A=root\n");
     write("apps/one", ".env.local", "ENV_A=near\n");
 
-    expect(resolveEnvFiles(manifest).values.ENV_A).toBe("near");
+    expect((await resolveEnvFiles(manifest)).values.ENV_A).toBe("near");
   });
 
-  it("prefers .env.local over .env within one directory", () => {
+  it("prefers .env.local over .env within one directory", async () => {
     markWorkspace();
     const manifest = manifestAt("apps/one");
     write("apps/one", ".env", "ENV_A=base\n");
     write("apps/one", ".env.local", "ENV_A=local\n");
 
-    expect(resolveEnvFiles(manifest).values.ENV_A).toBe("local");
+    expect((await resolveEnvFiles(manifest)).values.ENV_A).toBe("local");
   });
 
-  it("stops at the workspace root and never reads its parent", () => {
+  it("stops at the workspace root and never reads its parent", async () => {
     const outer = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "telo-env-outer-")));
     try {
       fs.writeFileSync(path.join(outer, ".env.local"), "ENV_C=outer\n");
@@ -99,44 +101,46 @@ describe("resolveEnvFiles", () => {
       const manifest = path.join(inner, "apps", "app.yaml");
       fs.writeFileSync(manifest, "kind: Telo.Application\n");
 
-      expect(resolveEnvFiles(manifest).values).toEqual({});
+      expect((await resolveEnvFiles(manifest)).values).toEqual({});
     } finally {
       fs.rmSync(outer, { recursive: true, force: true });
     }
   });
 
-  it("finds the marker through a symlinked manifest path", () => {
+  it("finds the marker through a symlinked manifest path", async () => {
     markWorkspace();
     const manifest = manifestAt("apps/one");
     write(".", ".env.local", "ENV_A=root\n");
     const link = path.join(fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "telo-env-link-"))), "app");
     fs.symlinkSync(path.join(root, "apps", "one"), link, "dir");
     try {
-      expect(resolveEnvFiles(path.join(link, "app.yaml")).values).toEqual({ ENV_A: "root" });
-      expect(resolveEnvFiles(manifest).values).toEqual({ ENV_A: "root" });
+      expect((await resolveEnvFiles(path.join(link, "app.yaml"))).values).toEqual({ ENV_A: "root" });
+      expect((await resolveEnvFiles(manifest)).values).toEqual({ ENV_A: "root" });
     } finally {
       fs.rmSync(path.dirname(link), { recursive: true, force: true });
     }
   });
 
-  it("reports a file it cannot read instead of treating it as absent", () => {
+  it("reports a file it cannot read instead of treating it as absent", async () => {
     markWorkspace();
     const manifest = manifestAt("apps/one");
-    // A directory where a file is expected: EISDIR on read, and unlike a mode
-    // change it behaves the same when the tests run as root.
+    // A directory where a file is expected: unlike a mode change it behaves the
+    // same when the tests run as root.
     fs.mkdirSync(path.join(root, ".env.local"));
     write("apps/one", ".env", "ENV_A=own\n");
 
-    const { values, loaded, unreadable } = resolveEnvFiles(manifest);
+    const { values, files, unreadable } = await resolveEnvFiles(manifest);
 
     expect(values).toEqual({ ENV_A: "own" });
-    expect(loaded).toEqual([path.join(root, "apps", "one", ".env")]);
-    expect(unreadable).toEqual([{ path: path.join(root, ".env.local"), reason: "EISDIR" }]);
+    expect(files.map((file) => nativePath(file.path))).toEqual([path.join(root, "apps", "one", ".env")]);
+    expect(unreadable.map((entry) => ({ ...entry, path: nativePath(entry.path) }))).toEqual([
+      { path: path.join(root, ".env.local"), reason: "not a file" },
+    ]);
   });
 });
 
 describe("the env: block", () => {
-  it("stops the walk at the nearest env.roots match", () => {
+  it("stops the walk at the nearest env.roots match", async () => {
     // The case the block exists for: collapsing per-vendor workspaces into one
     // anchor would otherwise widen every vendor app's walk to the repo root.
     markWorkspace("release:\n  modules:\n    - vendor/*/*\nenv:\n  roots:\n    - vendor/*\n");
@@ -144,20 +148,20 @@ describe("the env: block", () => {
     write(".", ".env", "SHARED=repo\n");
     write("vendor/aws", ".env", "VENDOR=aws\n");
 
-    const { values } = resolveEnvFiles(manifest);
+    const { values } = await resolveEnvFiles(manifest);
 
     expect(values).toEqual({ VENDOR: "aws" });
   });
 
-  it("leaves a directory no pattern matches walking to the marker", () => {
+  it("leaves a directory no pattern matches walking to the marker", async () => {
     markWorkspace("release:\n  modules:\n    - modules/*\nenv:\n  roots:\n    - vendor/*\n");
     const manifest = manifestAt("modules/sql");
     write(".", ".env", "SHARED=repo\n");
 
-    expect(resolveEnvFiles(manifest).values).toEqual({ SHARED: "repo" });
+    expect((await resolveEnvFiles(manifest)).values).toEqual({ SHARED: "repo" });
   });
 
-  it("collects the files env.files names, later winning within one directory", () => {
+  it("collects the files env.files names, later winning within one directory", async () => {
     markWorkspace(
       "release:\n  modules:\n    - apps/*\nenv:\n  files:\n    - .env\n    - .env.production\n",
     );
@@ -166,22 +170,22 @@ describe("the env: block", () => {
     write("apps/one", ".env.production", "MODE=prod\n");
     write("apps/one", ".env.local", "MODE=local\n");
 
-    const { values } = resolveEnvFiles(manifest);
+    const { values } = await resolveEnvFiles(manifest);
 
     // `.env.local` is not in the declared list, so it is not read at all — the
     // list replaces the default rather than extending it.
     expect(values).toEqual({ MODE: "prod" });
   });
 
-  it("collects nothing for an empty env.files", () => {
+  it("collects nothing for an empty env.files", async () => {
     markWorkspace("release:\n  modules:\n    - apps/*\nenv:\n  files: []\n");
     const manifest = manifestAt("apps/one");
     write("apps/one", ".env", "MODE=base\n");
 
-    expect(resolveEnvFiles(manifest).values).toEqual({});
+    expect((await resolveEnvFiles(manifest)).values).toEqual({});
   });
 
-  it("fails rather than widening when env: itself cannot be read", () => {
+  it("fails rather than widening when env: itself cannot be read", async () => {
     // Degrading to the marker-wide bound would read files the block was written
     // to keep out, so a block that opted into a boundary and got nothing is a
     // defect rather than a default.
@@ -189,23 +193,57 @@ describe("the env: block", () => {
     const manifest = manifestAt("apps/one");
     write(".", ".env", "SHARED=repo\n");
 
-    const { failed, values } = resolveEnvFiles(manifest);
+    const { failed, values } = await resolveEnvFiles(manifest);
 
     expect(failed).toMatch(/env\.files/);
     expect(values).toEqual({});
   });
 
-  it("reports a problem outside env: and still resolves", () => {
+  it("reports a problem outside env: and still resolves", async () => {
     // A run has no interest in a release typo, and aborting every app in a
     // workspace over one is not a trade to make silently.
     markWorkspace("release:\n  modules:\n    - apps/*\n  nope: 1\n");
     const manifest = manifestAt("apps/one");
     write(".", ".env", "SHARED=repo\n");
 
-    const { failed, values, diagnostics } = resolveEnvFiles(manifest);
+    const { failed, values, diagnostics } = await resolveEnvFiles(manifest);
 
     expect(failed).toBeUndefined();
     expect(values).toEqual({ SHARED: "repo" });
     expect(diagnostics.map((d) => d.code)).toEqual(["WORKSPACE_UNKNOWN_KEY"]);
+  });
+});
+
+describe("telo run", () => {
+  const CLI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../bin/telo.ts");
+  // `bun` is a `.cmd` shim on Windows, which only a shell can start.
+  const VIA_CMD = process.platform === "win32";
+  const quote = (arg: string) => (VIA_CMD ? `"${arg}"` : arg);
+
+  /** The run's stderr, once it exited 0. */
+  function runStderr(manifest: string): string {
+    const result = spawnSync("bun", [CLI, "run", manifest].map(quote), {
+      cwd: root,
+      encoding: "utf8",
+      shell: VIA_CMD,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    return result.stderr;
+  }
+
+  it("warns when a secret comes from a file env.files does not mark sensitive, and still starts", () => {
+    // One directory below the working directory: bun reads the env files of
+    // the directory it starts in itself, which would leave the run none to apply.
+    write("app", "telo.yaml", "kind: Telo.Application\nmetadata:\n  name: Warns\nsecrets:\n  password:\n    type: string\n    env: TELO_TEST_ENV_WARN_SECRET\n");
+    const manifest = path.join(root, "app", "telo.yaml");
+    write("app", ".env", "TELO_TEST_ENV_WARN_SECRET=hunter2\n");
+    expect(runStderr(manifest)).toContain(
+      `[env] secret TELO_TEST_ENV_WARN_SECRET is set in .${path.sep}${path.join("app", ".env")}, which ` +
+        `env.files does not mark sensitive — move it to a sensitive file`,
+    );
+
+    fs.rmSync(path.join(root, "app", ".env"));
+    write("app", ".env.local", "TELO_TEST_ENV_WARN_SECRET=hunter2\n");
+    expect(runStderr(manifest)).not.toContain("[env] secret");
   });
 });

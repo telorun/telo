@@ -15,6 +15,7 @@ function memAdapter(existing: Record<string, DirEntry[]> = {}) {
   const deleted: string[] = [];
   const adapter: WorkspaceAdapter = {
     readFile: vi.fn(async () => ""),
+    readBytes: vi.fn(async () => new Uint8Array()),
     writeFile: vi.fn(async (p: string, t: string) => {
       writes[p] = t;
     }),

@@ -11,6 +11,7 @@ import { builtinsCommand } from "./commands/builtins.js";
 import { celCommand } from "./commands/cel.js";
 import { changedCommand } from "./commands/changed.js";
 import { checkCommand } from "./commands/check.js";
+import { envCommand } from "./commands/env.js";
 import { installCommand } from "./commands/install.js";
 import { migrateCommand } from "./commands/migrate.js";
 import { moduleCommand } from "./commands/module.js";
@@ -33,6 +34,7 @@ const COMMANDS: Record<string, (yargs: Argv) => Argv> = {
   cel: celCommand,
   changed: changedCommand,
   check: checkCommand,
+  env: envCommand,
   install: installCommand,
   migrate: migrateCommand,
   module: moduleCommand,

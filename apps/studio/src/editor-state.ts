@@ -15,7 +15,6 @@ export const INITIAL_STATE: EditorState = {
   diagnostics: emptyDiagnostics(),
   analysis: emptyAnalysis(),
   sourceRevealRequest: null,
-  deploymentsByApp: {},
   viewportByModule: {},
   topologyByModule: {},
 };

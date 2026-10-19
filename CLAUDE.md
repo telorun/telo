@@ -364,6 +364,22 @@ Module docs live **with the module** and are surfaced through the Telo **hub** (
 
 `metadata.categories` is an unordered list of domain **display labels** (`[AI, Storage]`) on a `Telo.Library`, or on a kind doc where it replaces the module's. A grouping facet, never search text — keep it out of `description`. The vocabulary is open and nothing validates it; reuse an existing label when one fits: `AI`, `Compute`, `Configuration`, `Coordination`, `Data`, `Observability`, `Performance`, `Reliability`, `Scheduling`, `Storage`, `Streaming`, `Testing`, `Transport`, `Visualization`. How the hub groups them: `apps/hub/CLAUDE.md`.
 
+## Benefits ledger — MANDATORY
+
+`docs/guides/what-you-get.md` lists what a Telo author gets without writing it: each guarantee, check or default that a **typed framework** — TypeScript, Go or Java with its usual libraries, not bare Node — makes them hand-write, configure or remember. The list grows with the code. **A change that gives authors something new for free adds its entry in the same change**, never as a follow-up. That covers a new static refusal, something derived instead of declared, an automatic redaction, rollback or retry, or a value read from the environment.
+
+- **A row qualifies only if its chore exists in that stack.** A check that fixes a problem only YAML or CEL creates (a name CEL would misparse, an expression in a field nothing evaluates, editor support inside `!cel`), or that a type checker already gives (typed reads, null checks, rename), is not a benefit and gets no row. Neither does manifest-surface churn (`telo migrate`, `MODULE_REQUIRES_NEWER_RUNTIME` for an app author).
+- "Without it" names the chore, never one language's API (`parseInt`, nodemon, `__dirname`): a Go or Java reader must recognise it too.
+- No absolute claim ("never", "every", "cannot") beyond what a test pins; scope it to what is checked ("refuses the unsafe changes it detects").
+- What matters only to someone publishing modules (release tooling, controller builds, kind-authoring checks) goes in the page's "For module authors" section.
+
+- One row per benefit, in the table under the page's heading for its concern (the cross-cutting concerns in Architecture, plus authoring, testing, delivery and module authors). "With Telo" says what the author gets, naming the observable artifact; "Without it" is a short noun phrase for what they would write by hand — *Startup order derived from `!ref`s* | *A hand-ordered boot or DI container*. Keep both cells short.
+- Write it for the author, not a maintainer: name observable things (diagnostic codes, manifest keys, env vars), never source paths or function names.
+- One row per chore the author no longer does, not per mechanism. If an existing row's "Without it" names the same chore, add your mechanism to its "With Telo" cell instead of adding a row.
+- The page states once that every code without `ERR_` is reported by `telo check` and the editor; a row states the bug it catches, with its code in parentheses — never a code alone — and does not repeat `telo check`.
+- Place a new row by weight within its section — rows replacing a whole subsystem first, a saved line of code last — never simply at the end. No scores, no bold. The page's Highlights list changes only when the user asks.
+- Internal refactors, bug fixes and stdlib additions that bring no new guarantee add nothing.
+
 ## Module metadata
 
 The `metadata:` block on a module doc carries `name` (the only field anything resolves against) plus descriptive `version`, `description`, `repository`, `homepage`, `documentation`, `license`, `categories`, `deprecated`; a near-miss of a known key is reported (`licence:` → `license`). There is deliberately no `authors` / `maintainers` field. **`metadata.deprecated: { reason, replacedBy? }`** is legal on a module doc and on any kind doc: on a kind, `replacedBy` is an alias-qualified kind resolved through the file's own `imports:`; on a module, a module ref. Declaring a resource of a deprecated kind is a `DEPRECATED_KIND` warning at the use site. Which kernels can host a kind is derived from its `controllers:` PURLs, never declared.

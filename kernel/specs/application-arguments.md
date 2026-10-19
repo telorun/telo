@@ -115,3 +115,15 @@ An entry with a `default:` or an `env:` may be left out, so its item is brackete
 `...` (`[--tag <string>]...`). The lines after it list each positional, then each flag with
 its short, value type, `default:`, `env:` and its `title` or `description`. The synopsis is
 the same line the documentation shows above an example's command.
+
+Then, under `Environment:`, every `variables:`, `secrets:` and `ports:` entry — in that block
+order, then declaration order — that binds `env:` and no argument (an entry with both is
+listed under its argument), each as its environment variable followed by its `title` or
+`description` and `[<type>; <default: …> | required; <block>.<name>]`. The type is the
+entry's `x-telo-type` name, else its `type`; a port's is `tcp port` or `udp port`. A secret
+is written `secret` in place of its default, with `required` when it declares none — a
+secret's value is never printed.
+
+When the application declares `needs:`, a last line names them and points at
+`telo needs report`: a need's environment variables are derived from its type's fields,
+which only the loaded graph knows, and `--help` resolves nothing.

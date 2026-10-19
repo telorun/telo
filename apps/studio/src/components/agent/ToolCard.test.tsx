@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ToolCallView } from "@/agent";
 import { DiagnosticsProvider } from "@/components/diagnostics/DiagnosticsContext";
@@ -117,7 +117,7 @@ describe("ToolCard", () => {
     expect(navigate).toHaveBeenCalledWith("editor:app/lib/telo.yaml", { start: at, end: at });
   });
 
-  it("shows a command's exit code and its last 20 lines, the full output and stderr behind the toggle", async () => {
+  it("shows a command's exit code and its last 20 lines, the full output and stderr in a dialog", async () => {
     const lines = Array.from({ length: 25 }, (_, i) => `line ${i + 1}`);
     renderCard({
       toolCallId: "r",
@@ -130,14 +130,39 @@ describe("ToolCard", () => {
     });
 
     expect(screen.getByText("exit 1")).toBeTruthy();
-    expect(screen.getByText("path: tests/telo.yaml")).toBeTruthy();
+    expect(screen.getByText("tests/telo.yaml")).toBeTruthy();
     expect(screen.getByText(/line 25/).textContent).toBe(lines.slice(5).join("\n"));
     expect(screen.queryByText("kernel: boom")).toBeNull();
 
-    await userEvent.click(screen.getByRole("button", { name: "Show full output" }));
+    await userEvent.click(screen.getByRole("button", { name: "View full output" }));
 
-    expect(screen.getByText(/line 25/).textContent).toBe(`${lines.join("\n")}\n`);
-    expect(screen.getByText("kernel: boom")).toBeTruthy();
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByText(/line 25/).textContent).toBe(`${lines.join("\n")}\n`);
+    expect(dialog.getByText("kernel: boom")).toBeTruthy();
+  });
+
+  it("shows no exit badge for a command that succeeded", () => {
+    renderCard({
+      toolCallId: "r0",
+      name: "telo",
+      args: { args: ["module", "manifest", "oci://ghcr.io/telorun/app@0.3.0"] },
+      state: "done",
+      output: "…",
+      structured: {},
+      run: { exitCode: 0, output: "ok\n", messages: "" },
+    });
+
+    expect(screen.getByText("module manifest oci://ghcr.io/telorun/app@0.3.0")).toBeTruthy();
+    expect(screen.queryByText(/exit 0/)).toBeNull();
+    expect(screen.getByLabelText("Completed")).toBeTruthy();
+  });
+
+  it("draws a failed call without a structured result in the same row as any other", () => {
+    renderCard({ toolCallId: "x", name: "get_kinds", args: { refs: ["a"] }, state: "error", output: "hub unreachable" });
+
+    expect(screen.getByRole("button", { name: /get_kinds/ })).toBeTruthy();
+    expect(screen.getByLabelText("Failed")).toBeTruthy();
+    expect(screen.getByText("hub unreachable")).toBeTruthy();
   });
 
   it("shows any other result under the tool's name and scalar arguments, its text parts as text", async () => {
@@ -150,7 +175,7 @@ describe("ToolCard", () => {
       structured: [{ type: "text", text: "Found 2 modules" }],
     });
 
-    expect(screen.getByText("query: queue")).toBeTruthy();
+    expect(screen.getByText("queue")).toBeTruthy();
 
     await userEvent.click(screen.getByRole("button", { name: /search_resources/ }));
 

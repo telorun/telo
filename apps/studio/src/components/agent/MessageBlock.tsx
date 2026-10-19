@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { Brain, ChevronDown, CircleStop, ListTree, Play, RotateCw, ScrollText, TriangleAlert } from "lucide-react";
-import { describeTurnError, messageCopyText, splitAgentText } from "@/agent";
+import { describeTurnError, messageCopyText, splitAgentText, splitUserText, withSelections } from "@/agent";
 import type { AssistantMessage, AssistantPart, ChatMessage, TurnError, UserMessage } from "@/agent";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import { Loader } from "@/components/ai-elements/loader";
 import { QuestionCard } from "./QuestionCard";
+import { SelectionChip } from "./SelectionChip";
 import { MessageActions, type MessageActionHandlers } from "./MessageActions";
 import { MessageAttachments } from "./MessageAttachments";
 import { ToolCard, toolFailed } from "./ToolCard";
@@ -43,11 +44,13 @@ export function MessageBlock({ message, ...props }: MessageBlockProps) {
 function UserMessageBlock({ message, actions }: { message: UserMessage; actions?: MessageActionHandlers }) {
   const [editing, setEditing] = useState<string | null>(null);
   const attachments = message.attachments ?? [];
+  // What the user typed, and the editor selections the message carried.
+  const { prose, selections } = useMemo(() => splitUserText(message.text), [message.text]);
   return (
     <Message from="user">
       <MessageContent className={cn(editing !== null && "w-full")}>
         {editing === null ? (
-          message.text && <div className="whitespace-pre-wrap">{message.text}</div>
+          prose && <div className="whitespace-pre-wrap">{prose}</div>
         ) : (
           <EditResend
             text={editing}
@@ -59,9 +62,16 @@ function UserMessageBlock({ message, actions }: { message: UserMessage; actions?
               const text = editing.trim();
               if (!text && attachments.length === 0) return;
               setEditing(null);
-              actions?.onEditResend?.(text);
+              actions?.onEditResend?.(withSelections(text, selections));
             }}
           />
+        )}
+        {selections.length > 0 && (
+          <div className="flex flex-col gap-1">
+            {selections.map((selection, i) => (
+              <SelectionChip key={i} selection={selection} />
+            ))}
+          </div>
         )}
         {attachments.length > 0 && <MessageAttachments attachments={attachments} />}
       </MessageContent>
@@ -69,7 +79,7 @@ function UserMessageBlock({ message, actions }: { message: UserMessage; actions?
         <MessageActions
           {...actions}
           copyText={messageCopyText(message)}
-          onEdit={actions.onEditResend ? () => setEditing(message.text) : undefined}
+          onEdit={actions.onEditResend ? () => setEditing(prose) : undefined}
           className="justify-end"
         />
       )}

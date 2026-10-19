@@ -221,6 +221,138 @@ describe("WorkingCopy", () => {
     await expect(copy.prepareImport(many, LIMITS)).rejects.toThrow(CommitLimitError);
     expect(await copy.changes()).toEqual([]);
   });
+
+  describe("sensitive env files", () => {
+    // `.env.local` at the root is sensitive by default; under apps/shop a
+    // nearer marker marks `.secrets` instead, so its `.env.local` is not.
+    const MARKER_TEXT = "env:\n  files: [.env.local, { name: .secrets, sensitive: true }]\n";
+    const MARKER = file("apps/shop/telo-workspace.yaml", MARKER_TEXT);
+    const COMMITTED_SECRET = file(".env.local", "TOKEN=committed\n");
+
+    async function seededWithSecrets() {
+      const store = new MemoryByteStore();
+      const copy = new WorkingCopy(store);
+      await copy.seed("main", "c1", [...BASE, MARKER, COMMITTED_SECRET]);
+      const adapter = new WorkingCopyAdapter("prj_1", store, () => undefined);
+      return { store, copy, adapter };
+    }
+
+    it("are never listed or committed, and a committed one is never deleted", async () => {
+      const { store, copy, adapter } = await seededWithSecrets();
+      expect(store.files.has("tree/.env.local")).toBe(false);
+      await adapter.writeFile("/cloud/prj_1/apps/shop/.secrets", "TOKEN=mine\n");
+      await adapter.writeFile("/cloud/prj_1/apps/shop/.env.local", "PORT=8080\n");
+      expect(await copy.changes()).toEqual([{ path: "apps/shop/.env.local", status: "added" }]);
+      const prepared = await copy.prepareCommit(LIMITS);
+      expect(prepared.changes.map((change) => change.path)).toEqual(["apps/shop/.env.local"]);
+    });
+
+    it("are left as they are by an update, a discard and a branch switch", async () => {
+      const { store, copy, adapter } = await seededWithSecrets();
+      await adapter.writeFile("/cloud/prj_1/apps/shop/.secrets", "TOKEN=mine\n");
+      await adapter.writeFile("/cloud/prj_1/.env.local", "TOKEN=mine\n");
+      const head = [
+        ...BASE,
+        MARKER,
+        file(".env.local", "TOKEN=theirs\n"),
+        file("apps/shop/.secrets", "TOKEN=theirs\n"),
+      ];
+      const prepared = await copy.prepareUpdate("c2", head);
+      expect(prepared.plan).toEqual({ takeHead: [], conflicts: [] });
+      await copy.applyUpdate(prepared, new Set());
+      await copy.discard();
+      await copy.seed("feature", "c3", head);
+      expect(text(await store.read("tree/apps/shop/.secrets"))).toBe("TOKEN=mine\n");
+      expect(text(await store.read("tree/.env.local"))).toBe("TOKEN=mine\n");
+      expect(await copy.changes()).toEqual([]);
+    });
+
+    it("are kept by a discard when only the base's markers mark them", async () => {
+      const { store, copy, adapter } = await seededWithSecrets();
+      await adapter.writeFile("/cloud/prj_1/apps/shop/telo-workspace.yaml", "env:\n  files: [.env.local]\n");
+      await adapter.writeFile("/cloud/prj_1/apps/shop/.secrets", "TOKEN=mine\n");
+      await copy.discard();
+      expect(text(await store.read("tree/apps/shop/.secrets"))).toBe("TOKEN=mine\n");
+      expect(await copy.changes()).toEqual([]);
+    });
+
+    it("are kept by a branch switch the snapshot does not mark, and then show as added", async () => {
+      const { store, copy, adapter } = await seededWithSecrets();
+      await adapter.writeFile("/cloud/prj_1/apps/shop/.secrets", "TOKEN=mine\n");
+      await copy.seed("feature", "c3", BASE);
+      expect(text(await store.read("tree/apps/shop/.secrets"))).toBe("TOKEN=mine\n");
+      expect(await copy.changes()).toEqual([{ path: "apps/shop/.secrets", status: "added" }]);
+    });
+
+    it("are left out of an update whose head newly marks them", async () => {
+      const { store, copy, adapter } = await seeded();
+      await adapter.writeFile("/cloud/prj_1/apps/shop/.secrets", "TOKEN=mine\n");
+      const head = [...BASE, MARKER, file("apps/shop/.secrets", "TOKEN=theirs\n")];
+      const prepared = await copy.prepareUpdate("c2", head);
+      expect(prepared.plan).toEqual({ takeHead: ["apps/shop/telo-workspace.yaml"], conflicts: [] });
+      await copy.applyUpdate(prepared, new Set());
+      expect(text(await store.read("tree/apps/shop/.secrets"))).toBe("TOKEN=mine\n");
+      expect(await copy.changes()).toEqual([]);
+    });
+
+    describe("when a marker's env block is refused", () => {
+      const BROKEN_TEXT = "env:\n  files: [{ name: .secrets, sensitve: true }]\n";
+      const BROKEN_MARKER = file("apps/shop/telo-workspace.yaml", BROKEN_TEXT);
+
+      it("seeds every file from a snapshot carrying it, then refuses to list or commit until it is fixed", async () => {
+        const store = new MemoryByteStore();
+        const copy = new WorkingCopy(store);
+        await copy.seed("main", "c1", [...BASE, BROKEN_MARKER, file("apps/shop/.secrets", "TOKEN=committed\n")]);
+        expect(text(await store.read("tree/apps/shop/.secrets"))).toBe("TOKEN=committed\n");
+        await expect(copy.changes()).rejects.toThrow(/sensitve/);
+        await expect(copy.prepareCommit(LIMITS)).rejects.toThrow(/sensitve/);
+        const adapter = new WorkingCopyAdapter("prj_1", store, () => undefined);
+        await adapter.writeFile("/cloud/prj_1/apps/shop/telo-workspace.yaml", MARKER_TEXT);
+        expect(await copy.changes()).toEqual([
+          { path: "apps/shop/telo-workspace.yaml", status: "modified" },
+        ]);
+      });
+
+      it("keeps a secret the working tree marks through a branch switch to a snapshot carrying it", async () => {
+        const { store, copy, adapter } = await seededWithSecrets();
+        await adapter.writeFile("/cloud/prj_1/apps/shop/.secrets", "TOKEN=mine\n");
+        await copy.seed("feature", "c3", [...BASE, BROKEN_MARKER, file("apps/shop/.secrets", "TOKEN=theirs\n")]);
+        expect(text(await store.read("tree/apps/shop/.secrets"))).toBe("TOKEN=mine\n");
+        expect(text(await store.read("tree/apps/shop/telo-workspace.yaml"))).toBe(BROKEN_TEXT);
+      });
+
+      it("refuses a seed, a discard and an update while the working tree carries it, changing nothing", async () => {
+        const { store, copy, adapter } = await seededWithSecrets();
+        await adapter.writeFile("/cloud/prj_1/apps/shop/telo-workspace.yaml", BROKEN_TEXT);
+        await adapter.writeFile("/cloud/prj_1/apps/shop/.secrets", "TOKEN=mine\n");
+        await adapter.writeFile("/cloud/prj_1/notes.md", "new");
+        const before = new Map([...store.files].map(([path, bytes]) => [path, [...bytes]]));
+        await expect(copy.seed("feature", "c3", BASE)).rejects.toThrow(/sensitve/);
+        await expect(copy.discard()).rejects.toThrow(/sensitve/);
+        await expect(copy.prepareUpdate("c2", BASE)).rejects.toThrow(/sensitve/);
+        expect(new Map([...store.files].map(([path, bytes]) => [path, [...bytes]]))).toEqual(before);
+      });
+
+      it("updates a clean working copy to a head carrying it", async () => {
+        const { store, copy } = await seeded();
+        const head = [...BASE, BROKEN_MARKER, file("apps/shop/.secrets", "TOKEN=theirs\n")];
+        const prepared = await copy.prepareUpdate("c2", head);
+        await copy.applyUpdate(prepared, new Set());
+        expect(text(await store.read("tree/apps/shop/.secrets"))).toBe("TOKEN=theirs\n");
+        expect(await copy.baseCommit()).toBe("c2");
+      });
+    });
+
+    it("refuses with the marker's message when its env block is refused", async () => {
+      const { copy, adapter } = await seededWithSecrets();
+      await adapter.writeFile(
+        "/cloud/prj_1/apps/shop/telo-workspace.yaml",
+        "env:\n  files: [{ name: .secrets, sensitve: true }]\n",
+      );
+      await expect(copy.changes()).rejects.toThrow(/sensitve/);
+      await expect(copy.prepareCommit(LIMITS)).rejects.toThrow(/sensitve/);
+    });
+  });
 });
 
 describe("WorkingCopyAdapter", () => {

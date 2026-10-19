@@ -22,7 +22,16 @@ export class TauriFsAdapter implements ManifestSource, WorkspaceAdapter {
 
   async readFile(path: string): Promise<string> {
     const { readTextFile } = await import("@tauri-apps/plugin-fs");
-    return readTextFile(path);
+    try {
+      return await readTextFile(path);
+    } catch (error) {
+      throw scopeRefusalExplained(path, error);
+    }
+  }
+
+  async readBytes(path: string): Promise<Uint8Array> {
+    const { readFile } = await import("@tauri-apps/plugin-fs");
+    return readFile(path);
   }
 
   async writeFile(path: string, text: string): Promise<void> {
@@ -31,7 +40,11 @@ export class TauriFsAdapter implements ManifestSource, WorkspaceAdapter {
     if (dir && !(await exists(dir))) {
       await mkdir(dir, { recursive: true });
     }
-    await writeTextFile(path, text);
+    try {
+      await writeTextFile(path, text);
+    } catch (error) {
+      throw scopeRefusalExplained(path, error);
+    }
   }
 
   async listDir(path: string): Promise<DirEntry[]> {
@@ -83,4 +96,15 @@ export class TauriFsAdapter implements ManifestSource, WorkspaceAdapter {
     const { exists } = await import("@tauri-apps/plugin-fs");
     return exists(pathResolve(base, relative));
   }
+}
+
+/** The shell's file scope refuses a path as `forbidden path: …`; said instead
+ *  in terms of what the scope (`capabilities/default.json`) allows. */
+function scopeRefusalExplained(path: string, error: unknown): unknown {
+  const said = error instanceof Error ? error.message : String(error);
+  if (!said.startsWith("forbidden path")) return error;
+  return new Error(
+    `${path} is outside Studio's desktop file scope, which reaches files under your home ` +
+      `directory and, of its dot-files, only those named .env or .env.*.`,
+  );
 }

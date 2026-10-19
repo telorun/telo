@@ -19,6 +19,7 @@ import {
 } from "./api";
 import { cloudBackend } from "./backend";
 import {
+  browserWorkspaceKeptFiles,
   filesDigest,
   readBrowserWorkspaceFiles,
   removeBrowserWorkspaceFiles,
@@ -127,8 +128,10 @@ interface CloudContextValue {
   ): Promise<BrowserWorkspaceCopyResult>;
   /** Set once a copied browser workspace is committed and still as it was
    *  copied: the project its files now live in. */
-  browserWorkspaceRemoval: { projectName: string } | null;
-  removeBrowserWorkspace(): void;
+  /** `kept`: the workspace-relative files removal keeps, holding secrets the
+   *  copy left out. */
+  browserWorkspaceRemoval: { projectName: string; kept: string[] } | null;
+  removeBrowserWorkspace(): Promise<void>;
   keepBrowserWorkspace(): void;
 
   active: ActiveCloudProject | null;
@@ -489,7 +492,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         return refused(`You can only read ${project.name}, so nothing can be copied into it.`);
       }
       try {
-        const files = readBrowserWorkspaceFiles();
+        const files = await readBrowserWorkspaceFiles();
         if (files.length === 0) return refused("The browser workspace holds no files to copy.");
         const repository = await repositoryOf(project.id);
         const copy = workingCopyOf(project.id);
@@ -539,9 +542,15 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     [api, ensureWorkingCopy, repositoryOf, serialized, snapshotAt],
   );
 
-  const removeBrowserWorkspace = useCallback(() => {
-    removeBrowserWorkspaceFiles();
+  const removeBrowserWorkspace = useCallback(async () => {
     setBrowserWorkspaceRemoval(null);
+    try {
+      await removeBrowserWorkspaceFiles();
+    } catch (err) {
+      toast.error(
+        `The browser workspace was not removed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }, []);
 
   const keepBrowserWorkspace = useCallback(() => setBrowserWorkspaceRemoval(null), []);
@@ -737,6 +746,23 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   // Commit
   // ---------------------------------------------------------------------------
 
+  // Compared after the commit landed, so a browser workspace whose sensitive
+  // files cannot be told apart leaves the commit standing and says why.
+  const offerBrowserWorkspaceRemoval = useCallback(async (digest: string, projectName: string) => {
+    let now: string;
+    let kept: string[];
+    try {
+      now = await filesDigest(await readBrowserWorkspaceFiles());
+      kept = await browserWorkspaceKeptFiles();
+    } catch (err) {
+      toast.error(
+        `The browser workspace was not offered for removal: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    if (now === digest) setBrowserWorkspaceRemoval({ projectName, kept });
+  }, []);
+
   const commitOn = useCallback(
     async (current: ActiveCloudProject, branch: string, message: string): Promise<CloudActionResult> => {
       const { projectId } = current;
@@ -783,9 +809,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         }));
         // The copied files are in git now. The browser's copy is offered for
         // removal only while it is still what was copied.
-        if (copied && (await filesDigest(readBrowserWorkspaceFiles())) === copied.digest) {
-          setBrowserWorkspaceRemoval({ projectName: current.name });
-        }
+        if (copied) await offerBrowserWorkspaceRemoval(copied.digest, current.name);
         patchActive(projectId, {
           branch,
           baseCommit: result.commit,
@@ -822,7 +846,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         throw err;
       }
     },
-    [api, patchActive, repositoryOf, scanChanges, serialized, updateTo],
+    [api, offerBrowserWorkspaceRemoval, patchActive, repositoryOf, scanChanges, serialized, updateTo],
   );
 
   const commit = useCallback(

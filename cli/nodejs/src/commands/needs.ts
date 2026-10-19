@@ -1,26 +1,8 @@
-import {
-  AnalysisRegistry,
-  StaticAnalyzer,
-  collectModuleDocuments,
-  flattenForAnalyzer,
-  needGraphFromLoadedGraph,
-  needGraphScopeOf,
-  resolveNeedTable,
-  DiagnosticSeverity,
-  type AnalysisDiagnostic,
-  type LoadedGraph,
-} from "@telorun/analyzer";
-import { nodeHostVersions } from "@telorun/kernel";
 import type { Argv } from "yargs";
-import {
-  cacheTargetFor,
-  loadFreshGraph,
-  openSession,
-  resolveEntryPath,
-} from "../check-session.js";
-import { createLogger, resolveLocation, type Logger } from "../logger.js";
+import { loadNeedTable } from "../load-need-table.js";
+import { createLogger, type Logger } from "../logger.js";
 import { buildNeedsReport, type NeedsReport } from "../needs-report.js";
-import { outErrLine, outLine, output } from "../output.js";
+import { outLine, output } from "../output.js";
 
 /**
  * `telo needs report <manifest>` — every need the application reads from the
@@ -30,89 +12,15 @@ import { outErrLine, outLine, output } from "../output.js";
  */
 async function runReport(argv: { manifest: string }): Promise<void> {
   const log = createLogger(false);
-  const entryPath = resolveEntryPath(argv.manifest);
-  const target = cacheTargetFor(entryPath);
-  const session = openSession(target ? [target] : []);
-  const { graph } = await loadFreshGraph(entryPath, session, log);
+  const loaded = await loadNeedTable(argv.manifest, log, "needs report");
+  if (!loaded) return;
 
-  const loadFailures = [
-    ...graph.errors.map((e) => e.error.message),
-    ...graph.parseDiagnostics.map((d) => d.message),
-  ];
-  if (loadFailures.length > 0) {
-    for (const message of loadFailures) outErrLine(`${log.err.error("error")}  ${message}`);
-    process.exitCode = 1;
-    return;
-  }
-  const root = graph.entry.owner.manifests.find((m) => m?.kind === "Telo.Application");
-  if (!root) {
-    outErrLine(
-      `${log.err.error("error")}  ${entryPath} is not a Telo.Application — a needs report ` +
-        `lists what an application being run reads from the environment.`,
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  const registry = new AnalysisRegistry();
-  const errors = new StaticAnalyzer()
-    .analyze(
-      flattenForAnalyzer(graph),
-      { moduleDocuments: collectModuleDocuments(graph), hostVersions: nodeHostVersions() },
-      registry,
-    )
-    .filter((d) => d.severity === DiagnosticSeverity.Error);
-  const table = resolveNeedTable(
-    needGraphFromLoadedGraph(
-      graph,
-      needGraphScopeOf(registry, root.metadata?.name as string | undefined),
-    ),
-  );
-  const refusals: AnalysisDiagnostic[] = [
-    ...errors,
-    ...table.problems
-      .filter(
-        (p) =>
-          !p.reportedElsewhere &&
-          !errors.some((e) => e.code === p.code && e.message === p.message),
-      )
-      .map((p) => ({
-        severity: DiagnosticSeverity.Error,
-        code: p.code,
-        source: "telo-analyzer",
-        message: p.message,
-        data: { resource: p.resource, filePath: p.filePath, path: p.path },
-      })),
-  ];
-  if (refusals.length > 0) {
-    printRefusals(refusals, graph, entryPath, log);
-    process.exitCode = 1;
-    return;
-  }
-
-  const report = buildNeedsReport(graph, table);
+  const report = buildNeedsReport(loaded.graph, loaded.table);
   if (output().isJson) {
     output().document(report);
     return;
   }
   printReport(report, log);
-}
-
-function printRefusals(
-  refusals: readonly AnalysisDiagnostic[],
-  graph: LoadedGraph,
-  entryPath: string,
-  log: Logger,
-): void {
-  for (const d of refusals) {
-    const at = resolveLocation(graph, d, entryPath);
-    outErrLine(
-      `${at ? `${at}  ` : ""}${log.err.error("error")}  ${d.message}${d.code ? `  ${log.err.dim(String(d.code))}` : ""}`,
-    );
-  }
-  outErrLine(
-    `\n${refusals.length} error${refusals.length === 1 ? "" : "s"} — the application does not load, so it has no needs report.`,
-  );
 }
 
 function printReport(report: NeedsReport, log: Logger): void {

@@ -1,11 +1,16 @@
-import type { RunBundle, WorkspaceChangeSet } from "./types";
+import type { RunBundle, RunBundleFile, WorkspaceChangeSet } from "./types";
 
 /** The files the editor last pushed into a watch session's workspace, by path.
  *  Keeping it is what lets a save produce a MINIMAL change set. */
-export type SyncedFiles = Map<string, string>;
+export type SyncedFiles = Map<string, Pick<RunBundleFile, "contents" | "encoding">>;
 
 export function bundleFiles(bundle: RunBundle): SyncedFiles {
-  return new Map(bundle.files.map((f) => [f.relativePath, f.contents]));
+  return new Map(
+    bundle.files.map(({ relativePath, contents, encoding }) => [
+      relativePath,
+      encoding ? { contents, encoding } : { contents },
+    ]),
+  );
 }
 
 /**
@@ -24,8 +29,10 @@ export function bundleFiles(bundle: RunBundle): SyncedFiles {
  */
 export function diffBundle(previous: SyncedFiles, next: SyncedFiles): WorkspaceChangeSet {
   const write: WorkspaceChangeSet["write"] = [];
-  for (const [path, content] of next) {
-    if (previous.get(path) !== content) write.push({ path, content });
+  for (const [path, file] of next) {
+    const before = previous.get(path);
+    if (before?.contents === file.contents && before.encoding === file.encoding) continue;
+    write.push({ path, content: file.contents, ...(file.encoding ? { encoding: file.encoding } : {}) });
   }
   const remove: string[] = [];
   for (const path of previous.keys()) {

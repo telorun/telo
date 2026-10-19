@@ -2,6 +2,7 @@ import type { WorkspaceBridge } from "../agent";
 import { sha256Hex } from "../agent/hash";
 import { SYNC_EXCLUDED_DIRS } from "../agent/sync";
 import { pathJoin } from "../loader/paths";
+import { workspaceFileRead } from "../loader/workspace-file-read";
 import type { WorkspaceAdapter } from "../model";
 
 /**
@@ -43,6 +44,11 @@ export function editorWorkspaceBridge({
       const workspace = adapter();
       if (!workspace) throw new Error("no workspace open");
       return workspace.readFile(abs(rel));
+    },
+    async probeFile(rel) {
+      const workspace = adapter();
+      if (!workspace) throw new Error("no workspace open");
+      return workspaceFileRead(workspace)(abs(rel));
     },
     async applyChanges(writes, deletes) {
       const workspace = adapter();

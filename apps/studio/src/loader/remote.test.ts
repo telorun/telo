@@ -24,6 +24,7 @@ metadata:
 function listDirAdapter(entriesByDir: Record<string, DirEntry[]>): WorkspaceAdapter {
   return {
     readFile: vi.fn(async () => ""),
+    readBytes: vi.fn(async () => new Uint8Array()),
     writeFile: vi.fn(async () => {}),
     listDir: vi.fn(async (dir: string) => entriesByDir[dir] ?? []),
     createDir: vi.fn(async () => {}),

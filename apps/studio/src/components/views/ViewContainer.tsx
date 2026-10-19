@@ -136,8 +136,8 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
           {renderedView === "run" && (
             <RunConfigView
               manifest={viewProps.viewData.manifest}
-              environment={viewProps.deployment.activeEnvironment}
-              onSetEnvVars={viewProps.deployment.onSetEnvVars}
+              environment={viewProps.environment}
+              readOnly={viewProps.readOnly}
             />
           )}
         </RegionErrorBoundary>

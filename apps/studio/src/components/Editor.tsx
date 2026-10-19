@@ -54,10 +54,7 @@ import type {
 } from "../model";
 import { closeTab, findTab, neighborTab, upsertTab } from "../tabs";
 import { DEFAULT_SETTINGS } from "../model";
-import {
-  readActiveEnvironment,
-  setActiveEnvironmentEnv,
-} from "../deployment";
+import { envFileProblems, resolveApplicationEnv } from "../run/application-env";
 import { resolveDeclaredPorts } from "./views/run/declared-ports";
 import {
   buildRunBundle,
@@ -66,7 +63,6 @@ import {
   isEmptyChangeSet,
   registry as runRegistry,
   runVersionFor,
-  selectModuleFiles,
   SessionGoneError,
   TeloVersionRefusedError,
   TermsRequiredError,
@@ -96,7 +92,6 @@ import { AGENT_APP_NAME } from "../agent/launch";
 import { editorWorkspaceBridge } from "./editor-workspace-bridge";
 import { AgentPanel } from "./agent/AgentPanel";
 import { EmptyWorkspacePanel } from "./EmptyWorkspacePanel";
-import { saveDeploymentsForWorkspace } from "../storage-deployments";
 import { findMissingRequiredEnv } from "./views/run/declared-env";
 import { buildModuleViewData } from "../view-data";
 import {
@@ -135,6 +130,7 @@ import { TermsGateDialog } from "./TermsGateDialog";
 import { TopBar } from "./TopBar";
 import { acceptTermsFor, isTermsAcceptedFor } from "../storage";
 import { ViewContainer } from "./views/ViewContainer";
+import type { ViewProps } from "./views/types";
 import type { RefWrite } from "./views/topology/application-canvas-model";
 import { templateGraphOf } from "./views/topology/module-graph-view/template-graph";
 import { leafConcreteIndex, writeConcretePath } from "../lib/concrete-path";
@@ -279,6 +275,7 @@ export function Editor() {
     fileTree,
     manifestAdapterRef,
     workspaceAdapterRef,
+    workspaceChanges,
     handleOpen,
     createNewModule,
     handleConfirmImport,
@@ -550,13 +547,19 @@ export function Editor() {
     setActiveAnalysis(path ? state.analysis.analysisByFile.get(path)?.() : undefined);
   }, [state.analysis, state.activeModulePath]);
 
-
-  // Persist deployment config on every mutation. Workspace-scoped, stored
-  // under its own localStorage key (not via saveState).
-  useEffect(() => {
-    if (!state.workspace) return;
-    saveDeploymentsForWorkspace(state.workspace.rootDir, state.deploymentsByApp);
-  }, [state.workspace, state.deploymentsByApp]);
+  // Where the Variables tab reads and writes: the open workspace's env files.
+  const workspaceRoot = state.workspace?.rootDir ?? null;
+  const viewEnvironment = useMemo<ViewProps["environment"] | null>(
+    () =>
+      workspaceRoot === null
+        ? null
+        : {
+            rootDir: workspaceRoot,
+            adapter: () => workspaceAdapterRef.current,
+            changes: workspaceChanges,
+          },
+    [workspaceRoot, workspaceAdapterRef, workspaceChanges],
+  );
 
   const activeManifest =
     state.workspace && state.activeModulePath
@@ -771,18 +774,31 @@ export function Editor() {
     // unflushed edit runs one revision behind. Acceptable for v1; revisit if
     // it bites.
 
-    // Read-only lookup — the seeded record is committed only on first user
-    // edit via `setActiveEnvironmentEnv`. Running doesn't need to persist a
-    // record just because the user ran it once with default env.
-    const environment = readActiveEnvironment(state.deploymentsByApp, filePath);
+    // The workspace's env files are the run's whole environment, read fresh
+    // now: Studio has no shell to fall back on, so a file it cannot read — or a
+    // marker that bounds them wrongly — refuses the run rather than leaving a
+    // value out.
+    let environment;
+    try {
+      environment = await resolveApplicationEnv(workspaceAdapter, workspace.rootDir, filePath);
+    } catch (err) {
+      setError(`Failed to read the env files: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    const envProblems = envFileProblems(environment, workspace.rootDir);
+    if (envProblems.length > 0) {
+      runContext.showBlocker(filePath, { kind: "env-files", problems: envProblems });
+      return;
+    }
+    const env = { ...environment.values };
 
     // Pre-flight required variables/secrets so a missing value sends the user to
-    // the Deployment tab instead of failing at boot with a validation error.
+    // the Variables tab instead of failing at boot with a validation error.
     const manifest =
       activeManifest?.filePath === filePath
         ? activeManifest
         : ([...workspace.modules.values()].find((m) => m.filePath === filePath) ?? null);
-    const missing = findMissingRequiredEnv(manifest, environment.env);
+    const missing = findMissingRequiredEnv(manifest, env);
     if (missing.length > 0) {
       runContext.showBlocker(filePath, {
         kind: "missing-config",
@@ -797,13 +813,7 @@ export function Editor() {
 
     let bundle;
     try {
-      bundle = await buildRunBundle(
-        workspace,
-        filePath,
-        (p) => workspaceAdapter.readFile(p),
-        (base, patterns) =>
-          selectModuleFiles(base, patterns, (dir) => workspaceAdapter.listDir(dir)),
-      );
+      bundle = await buildRunBundle(workspace, filePath, workspaceAdapter);
     } catch (err) {
       setError(
         `Failed to build run bundle: ${err instanceof Error ? err.message : String(err)}`,
@@ -818,8 +828,8 @@ export function Editor() {
         config,
         request: {
           bundle,
-          env: environment.env,
-          ports: resolveDeclaredPorts(manifest, environment.env),
+          env,
+          ports: resolveDeclaredPorts(manifest, env),
           acceptedTermsVersion,
           mode,
           ...(alignedRun
@@ -930,13 +940,8 @@ export function Editor() {
         // what the workspace holds is unknown: push everything once and diff from
         // there. Costs one extra reload after a refresh; the alternative is a
         // refreshed tab silently disconnecting saves from a running workspace.
-        const previous = syncedFilesRef.current.get(appPath) ?? new Map<string, string>();
-        const bundle = await buildRunBundle(
-          workspace,
-          appPath,
-          (p) => adapter.readFile(p),
-          (base, patterns) => selectModuleFiles(base, patterns, (dir) => adapter.listDir(dir)),
-        );
+        const previous: SyncedFiles = syncedFilesRef.current.get(appPath) ?? new Map();
+        const bundle = await buildRunBundle(workspace, appPath, adapter);
         const next = bundleFiles(bundle);
         const changes = diffBundle(previous, next);
         if (isEmptyChangeSet(changes)) return;
@@ -2060,15 +2065,6 @@ export function Editor() {
     setState((s) => ({ ...s, workspace: persisted }));
   }
 
-  function handleSetDeploymentEnvVars(env: Record<string, string>) {
-    const appPath = state.activeModulePath;
-    if (!appPath) return;
-    setState((s) => ({
-      ...s,
-      deploymentsByApp: setActiveEnvironmentEnv(s.deploymentsByApp, appPath, env),
-    }));
-  }
-
   /** Commits a source-view edit for one file in the active module. Replaces
    *  that file's `ModuleDocument` with a fresh parse, re-derives the
    *  ParsedManifest from the updated AST, reconciles imports whose source
@@ -2382,7 +2378,7 @@ export function Editor() {
                   saveFile={saveFileCb}
                   readOnly={editingPaused !== null}
                 />
-              ) : activeTab?.type === "module" && viewData ? (
+              ) : activeTab?.type === "module" && viewData && viewEnvironment ? (
                 <ViewContainer
                   activeView={state.activeView}
                   onChangeView={(view) => setState((s) => ({ ...s, activeView: view }))}
@@ -2431,13 +2427,7 @@ export function Editor() {
                       cloud: cloud.active
                         ? { modulePath: cloudActiveModule?.modulePath ?? null }
                         : null,
-                      deployment: {
-                        activeEnvironment: readActiveEnvironment(
-                          state.deploymentsByApp,
-                          state.activeModulePath,
-                        ),
-                        onSetEnvVars: handleSetDeploymentEnvVars,
-                      },
+                      environment: viewEnvironment,
                       run: {
                         appPath: activeAppPath,
                         editedTelo:

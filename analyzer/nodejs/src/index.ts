@@ -694,6 +694,8 @@ export type {
   ApplicationContractSecret,
   ApplicationContractVariable,
 } from "./application-contract.js";
+export { sensitiveEnvironmentInputs } from "./sensitive-environment-inputs.js";
+export type { SensitiveEnvironmentInput } from "./sensitive-environment-inputs.js";
 export {
   decodePlainLiterals,
   mapTextLeaves,
@@ -896,3 +898,6 @@ export {
   authoredModuleMetadata,
 } from "./module-metadata-scope.js";
 export * from "./release/index.js";
+// The workspace's env files — the walk, the format and the sensitive mark —
+// shared by the CLI, a packaged application and Studio.
+export * from "./workspace-env/index.js";

@@ -1,5 +1,6 @@
 import { LOCAL_KEYS, LOCAL_PREFIXES } from "../storage-keys";
 import { EMPTY_COMPOSER, storedComposer, type ComposerState } from "./composer";
+import { storedSelections } from "./editor-selection";
 import type { Attachment } from "./types";
 
 /** The panel's width before anyone drags it (Tailwind's `w-96`, which it was
@@ -122,23 +123,33 @@ function storedAttachments(value: unknown): Attachment[] {
  *  its uploaded files and its queued message. Empty when nothing was stored, or
  *  what is stored is not a composer. */
 export function loadComposer(key: string): ComposerState {
-  const raw = readJson<{ text?: unknown; attachments?: unknown; queued?: { text?: unknown; attachments?: unknown } | null }>(
-    COMPOSER_PREFIX + key,
-    {},
-  );
+  const raw = readJson<{
+    text?: unknown;
+    attachments?: unknown;
+    selections?: unknown;
+    queued?: { text?: unknown; attachments?: unknown; selections?: unknown } | null;
+  }>(COMPOSER_PREFIX + key, {});
   const text = typeof raw.text === "string" ? raw.text : "";
   const attachments = storedAttachments(raw.attachments).map((a) => ({ ...a, key: a.id, state: "uploaded" as const }));
+  const selections = storedSelections(raw.selections);
   const queuedFiles = storedAttachments(raw.queued?.attachments);
   const queuedText = typeof raw.queued?.text === "string" ? raw.queued.text : "";
-  const queued = queuedText || queuedFiles.length > 0 ? { text: queuedText, attachments: queuedFiles } : null;
-  return text || attachments.length > 0 || queued ? { text, attachments, queued } : EMPTY_COMPOSER;
+  const queued =
+    queuedText || queuedFiles.length > 0
+      ? { text: queuedText, attachments: queuedFiles, selections: storedSelections(raw.queued?.selections) }
+      : null;
+  return text || attachments.length > 0 || selections.length > 0 || queued
+    ? { text, attachments, selections, queued }
+    : EMPTY_COMPOSER;
 }
 
 /** Descriptors only, never bytes — and a composer with nothing to keep stores
  *  nothing: a key per conversation ever opened would only spend quota. */
 export function saveComposer(key: string, composer: ComposerState): void {
   const stored = storedComposer(composer);
-  if (stored.text === "" && stored.attachments.length === 0 && stored.queued === null) clearComposer(key);
+  const empty =
+    stored.text === "" && stored.attachments.length === 0 && stored.selections.length === 0 && stored.queued === null;
+  if (empty) clearComposer(key);
   else writeJson(COMPOSER_PREFIX + key, stored);
 }
 

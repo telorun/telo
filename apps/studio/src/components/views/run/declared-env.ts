@@ -21,7 +21,7 @@ export function extractDeclaredEnvEntries(
 }
 
 /** Declared env entries that the kernel would reject at boot: required (no
- *  `default`) and with no value supplied in the active deployment environment.
+ *  `default`) and with no value in the workspace's env files.
  *  Used to pre-flight a run so the user is sent to the Variables tab instead of
  *  hitting `ERR_MANIFEST_VALIDATION_FAILED` on the runner. */
 export function findMissingRequiredEnv(

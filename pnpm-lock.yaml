@@ -66,6 +66,9 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
+      dotenv:
+        specifier: ^17.4.0
+        version: 17.4.0
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
@@ -569,9 +572,6 @@ importers:
       '@telorun/templating':
         specifier: workspace:*
         version: link:../../templating/nodejs
-      dotenv:
-        specifier: ^17.4.0
-        version: 17.4.0
       packageurl-js:
         specifier: ^2.0.1
         version: 2.0.1

@@ -61,9 +61,9 @@ import {
  *
  * It NAVIGATES rather than edits: a chip opens a pointer-scoped selection and
  * the detail panel renders the form, which is the same split the canvas already
- * uses and the reason this adds no editor of its own. The Imports and Deployment
- * tabs stay the full editors — version upgrades, per-environment values — and
- * cannot drift from this, because all three write through the same operations.
+ * uses and the reason this adds no editor of its own. The Imports tab stays the
+ * full editor — version upgrades — and cannot drift from this, because both
+ * write through the same operations.
  *
  * The module root is not drawn on the canvas, so everything it declares is
  * reached from here — the Application's boot sequence and its `logging:` block

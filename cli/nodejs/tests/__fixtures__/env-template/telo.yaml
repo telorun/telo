@@ -1,0 +1,36 @@
+kind: Telo.Application
+metadata:
+  name: Orders
+imports:
+  Types: ../needs-report/types
+needs:
+  databaseAccess:
+    kind: Types.DatabaseAccess
+variables:
+  greeting:
+    type: string
+    env: GREETING
+    default: "Hello, # world"
+    description: The greeting it answers with.
+  bucket:
+    type: string
+    env: BUCKET
+  tags:
+    type: array
+    items: { type: string }
+    env: TAGS
+    default: ["a b", "it's"]
+  # Bound by the command line alone: no environment variable to template.
+  verbose:
+    type: boolean
+    arg: verbose
+    default: false
+secrets:
+  apiKey:
+    type: string
+    env: API_KEY
+    default: sk-dev
+ports:
+  http:
+    env: PORT
+    default: 8080

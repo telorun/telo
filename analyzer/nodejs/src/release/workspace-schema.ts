@@ -14,16 +14,65 @@
  */
 
 export interface WorkspaceKeySchema {
-  readonly type: "string" | "string[]" | "entry[]";
+  readonly type: "string" | "boolean" | "string[]" | "entry[]";
   readonly description: string;
   /** Values worth offering at this key when nothing better is known. */
   readonly examples?: readonly string[];
+  /** For `entry[]`: what one entry is — a bare string, or a mapping carrying
+   *  `key` plus the other properties. */
+  readonly entry?: WorkspaceEntrySchema;
+}
+
+/** One entry of an `entry[]` list: a bare string stands for `key` alone. */
+export interface WorkspaceEntrySchema {
+  readonly key: string;
+  readonly properties: Readonly<Record<string, WorkspaceKeySchema>>;
 }
 
 export interface WorkspaceBlockSchema {
   readonly description: string;
   readonly properties: Readonly<Record<string, WorkspaceKeySchema>>;
 }
+
+const REGISTRY: WorkspaceKeySchema = {
+  type: "string",
+  description:
+    "Publish destination base. A module's ref is `<registry>/<its own directory name>`. Omitted: --registry, then TELO_OCI_REGISTRY, then the base each module's own ledger entry recorded.",
+  examples: ["oci://ghcr.io/telorun"],
+};
+
+const RELEASE_IGNORE: WorkspaceKeySchema = {
+  type: "string[]",
+  description:
+    "Paths under a module whose changes are not release-relevant, so no changelog fragment is asked for. Module-relative, gitignore-style. Declaring it replaces the built-in default; [] ignores nothing.",
+  examples: ["**/tests/**", "**/docs/**", "**/plans/**", "**/README.md", "**/CHANGELOG.md"],
+};
+
+/** Keys a `release.modules` entry may carry in its object form. `path` is the
+ *  pattern; the rest override the block's own keys, key-wise. */
+export const MODULE_ENTRY_KEYS: Readonly<Record<string, WorkspaceKeySchema>> = {
+  path: {
+    type: "string",
+    description: "The gitignore-style pattern this entry matches modules with.",
+  },
+  registry: REGISTRY,
+  ignore: RELEASE_IGNORE,
+};
+
+/** Keys an `env.files` entry may carry in its object form. A bare filename is
+ *  an entry that is not sensitive. */
+export const ENV_FILE_ENTRY_KEYS: Readonly<Record<string, WorkspaceKeySchema>> = {
+  name: {
+    type: "string",
+    description: "The filename collected in each directory the walk visits. A / or a glob is an error.",
+    examples: [".env", ".env.local"],
+  },
+  sensitive: {
+    type: "boolean",
+    description:
+      "The file holds values that must not be committed or synced: secrets and sensitive need fields are written to it, and a secret read from any other file is warned about. It does not affect log redaction.",
+  },
+};
 
 /**
  * Every block, and every key in it, is optional — a marker whose whole content
@@ -33,22 +82,14 @@ export const WORKSPACE_SCHEMA: Readonly<Record<string, WorkspaceBlockSchema>> = 
   release: {
     description: "How `telo release` behaves: where modules are, where they publish, and which of their paths are not release-relevant.",
     properties: {
-      registry: {
-        type: "string",
-        description:
-          "Publish destination base. A module's ref is `<registry>/<its own directory name>`. Omitted: --registry, then TELO_OCI_REGISTRY, then the base each module's own ledger entry recorded.",
-        examples: ["oci://ghcr.io/telorun"],
-      },
-      ignore: {
-        type: "string[]",
-        description:
-          "Paths under a module whose changes are not release-relevant, so no changelog fragment is asked for. Module-relative, gitignore-style. Declaring it replaces the built-in default; [] ignores nothing.",
-        examples: ["**/tests/**", "**/docs/**", "**/plans/**", "**/README.md", "**/CHANGELOG.md"],
-      },
+      registry: REGISTRY,
+      ignore: RELEASE_IGNORE,
       modules: {
         type: "entry[]",
         description:
           "The subtrees that may hold modules — a place to look, never a module: what makes a directory a module is its telo.yaml. Workspace-relative, gitignore-style, last match wins. A bare string is an entry with no overrides.",
+        examples: ["modules/*", "apps/*"],
+        entry: { key: "path", properties: MODULE_ENTRY_KEYS },
       },
     },
   },
@@ -61,24 +102,14 @@ export const WORKSPACE_SCHEMA: Readonly<Record<string, WorkspaceBlockSchema>> = 
           "How far up the .env walk may climb. Workspace-relative, gitignore-style, matched against each ancestor directory; the nearest match stops the walk. Omitted: the walk stops at this file.",
       },
       files: {
-        type: "string[]",
+        type: "entry[]",
         description:
-          "Which files are collected in each directory, later winning within one directory. Filenames only — a / or a glob is an error. Declaring it replaces the default; [] collects none.",
+          "Which files are collected in each directory, later winning within one directory. Each is a filename, or { name, sensitive } — a sensitive file holds values that must not be committed or synced. Filenames only — a / or a glob is an error. Declaring it replaces the default [.env, { name: .env.local, sensitive: true }]; [] collects none.",
         examples: [".env", ".env.local"],
+        entry: { key: "name", properties: ENV_FILE_ENTRY_KEYS },
       },
     },
   },
-};
-
-/** Keys a `release.modules` entry may carry in its object form. `path` is the
- *  pattern; the rest override the block's own keys, key-wise. */
-export const MODULE_ENTRY_KEYS: Readonly<Record<string, WorkspaceKeySchema>> = {
-  path: {
-    type: "string",
-    description: "The gitignore-style pattern this entry matches modules with.",
-  },
-  registry: WORKSPACE_SCHEMA.release.properties.registry,
-  ignore: WORKSPACE_SCHEMA.release.properties.ignore,
 };
 
 export const WORKSPACE_BLOCKS: readonly string[] = Object.keys(WORKSPACE_SCHEMA);
@@ -94,6 +125,17 @@ export const DEFAULT_RELEASE_IGNORE: readonly string[] = [
   "**/CHANGELOG.md",
 ];
 
+/** One `env.files` entry. A bare filename in the file normalizes to this, not
+ *  sensitive. */
+export interface EnvFileEntry {
+  readonly name: string;
+  readonly sensitive: boolean;
+}
+
 /** Built-in when `env.files` is absent — the pair the walk hardcoded before it
- *  was authorable, in the order it applied them. */
-export const DEFAULT_ENV_FILES: readonly string[] = [".env", ".env.local"];
+ *  was authorable, in the order it applied them, `.env.local` the one that
+ *  holds secrets. */
+export const DEFAULT_ENV_FILES: readonly EnvFileEntry[] = [
+  { name: ".env", sensitive: false },
+  { name: ".env.local", sensitive: true },
+];

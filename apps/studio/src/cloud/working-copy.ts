@@ -1,5 +1,7 @@
+import { classifySensitiveEnvFiles, type EnvFileRead, type ReadEnvFile } from "@telorun/analyzer";
+import { encodeFileContent } from "../file-content-encoding";
 import type { CommitChange, RepositoryLimits } from "./api";
-import { listFilesRecursive, type ByteStore } from "./byte-store";
+import { FileNotFoundError, listFilesRecursive, type ByteStore } from "./byte-store";
 import type { SnapshotEntry } from "./snapshot-tar";
 import { planMerge, sameState, type MergePlan, type PathState } from "./three-way-merge";
 
@@ -79,22 +81,46 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return out;
 }
 
-function toBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const step = 0x8000;
-  for (let i = 0; i < bytes.length; i += step) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + step));
-  }
-  return btoa(binary);
+
+/** A path relative to a store directory, read as the classifier reads it. */
+function storeRead(store: ByteStore, directory: string): ReadEnvFile {
+  return async (path): Promise<EnvFileRead> => {
+    try {
+      return { kind: "text", text: new TextDecoder().decode(await store.read(`${directory}/${path}`)) };
+    } catch (error) {
+      if (!(error instanceof FileNotFoundError)) {
+        return { kind: "unreadable", reason: error instanceof Error ? error.message : String(error) };
+      }
+      return (await store.exists(`${directory}/${path}`)) ? { kind: "not-a-file" } : { kind: "missing" };
+    }
+  };
 }
 
-/** The file as text, or null when its bytes are not UTF-8. */
-function utf8Text(bytes: Uint8Array): string | null {
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return null;
-  }
+function snapshotRead(snapshot: SnapshotEntry[]): ReadEnvFile {
+  const files = new Map(snapshot.flatMap((entry) => (entry.kind === "file" ? [[entry.path, entry.bytes]] : [])));
+  return async (path) => {
+    const bytes = files.get(path);
+    return bytes ? { kind: "text", text: new TextDecoder().decode(bytes) } : { kind: "missing" };
+  };
+}
+
+/** The sensitive env files among `paths`, each governed by the nearest
+ *  `telo-workspace.yaml` that `read` finds at or above it. A marker that cannot
+ *  be read, or whose `env:` is refused, refuses the operation with its message:
+ *  deciding without it could send a secret to the repository. */
+async function sensitivePaths(paths: Iterable<string>, read: ReadEnvFile): Promise<ReadonlySet<string>> {
+  const answer = await classifySensitiveEnvFiles([...new Set(paths)], read);
+  if ("failed" in answer) throw new Error(answer.failed);
+  return answer.sensitive;
+}
+
+/** The sensitive env files among `paths` by the markers of what is about to be
+ *  written. Markers that cannot be classified mark nothing: the working tree's
+ *  own markers still decide what is kept, and a broken marker in a snapshot must
+ *  not lock the project out of the editor. */
+async function incomingSensitive(paths: Iterable<string>, read: ReadEnvFile): Promise<ReadonlySet<string>> {
+  const answer = await classifySensitiveEnvFiles([...new Set(paths)], read);
+  return "failed" in answer ? new Set() : answer.sensitive;
 }
 
 function mebibytes(bytes: number): string {
@@ -118,6 +144,21 @@ function entryOf(state: Exclude<PathState, null>): BaseEntry {
  * decided on bytes — the editor above reads files as text, which says nothing
  * about a binary one.
  *
+ * A sensitive env file is outside version control on every side: it is left
+ * out of the base, the working tree and the head alike when changes are
+ * listed or committed, so a secret committed before its file was marked stays
+ * as it is in the repository and never shows as changed or deleted. Which files
+ * are sensitive is the working tree's markers' answer, and a marker among them
+ * that cannot be classified refuses every operation with its message.
+ *
+ * Seeding, discarding and updating replace the tree with incoming files (the
+ * snapshot, the base, the head) and leave a tree file untouched when the
+ * tree's markers or the incoming markers mark it; an incoming file is written
+ * unless its path is left alone or the incoming markers mark it, and an
+ * update's merge leaves every such path out. Incoming markers that cannot be
+ * classified mark nothing. A file left alone only by the markers being
+ * replaced is an ordinary file afterwards and may show as a change.
+ *
  * Callers serialize: no two of these methods run at once on one working copy.
  */
 export class WorkingCopy {
@@ -137,20 +178,28 @@ export class WorkingCopy {
 
   /** Replaces everything with a snapshot: the first open, and a branch switch. */
   async seed(branch: string, commit: string | null, snapshot: SnapshotEntry[]): Promise<void> {
-    await this.store.remove(TREE_DIR);
-    await this.store.makeDirectory(TREE_DIR);
+    const { keep, skip } = await this.leftAlone(
+      snapshot.map((entry) => entry.path),
+      snapshotRead(snapshot),
+    );
+    await this.clearTreeExcept(keep);
     for (const entry of snapshot) {
-      if (entry.kind === "file") await this.store.write(`${TREE_DIR}/${entry.path}`, entry.bytes);
+      if (entry.kind !== "file" || skip.has(entry.path)) continue;
+      await this.store.write(`${TREE_DIR}/${entry.path}`, entry.bytes);
     }
     await this.writeBase(branch, commit, snapshot);
   }
 
-  /** Every difference between the working tree and the base, outside `.git`. */
+  /** Every difference between the working tree and the base, outside `.git`
+   *  and the sensitive env files. */
   async changes(): Promise<PathChange[]> {
     const record = await this.record();
     const local = await this.localTree(record);
+    const paths = new Set([...Object.keys(record.entries), ...local.keys()]);
+    const sensitive = await this.sensitiveInTree(paths);
     const changes: PathChange[] = [];
-    for (const path of new Set([...Object.keys(record.entries), ...local.keys()])) {
+    for (const path of paths) {
+      if (sensitive.has(path)) continue;
       const base = stateOf(record.entries[path]);
       const mine = local.get(path)?.state ?? null;
       if (sameState(base, mine)) continue;
@@ -167,10 +216,13 @@ export class WorkingCopy {
   async prepareCommit(limits: RepositoryLimits): Promise<PreparedCommit> {
     const record = await this.record();
     const local = await this.localTree(record);
+    const paths = new Set([...Object.keys(record.entries), ...local.keys()]);
+    const sensitive = await this.sensitiveInTree(paths);
     const prepared: PreparedCommit = { changes: [], written: new Map(), deleted: [] };
     let commitBytes = 0;
 
-    for (const path of [...new Set([...Object.keys(record.entries), ...local.keys()])].sort()) {
+    for (const path of [...paths].sort()) {
+      if (sensitive.has(path)) continue;
       const base = stateOf(record.entries[path]);
       const mine = local.get(path)?.state ?? null;
       if (sameState(base, mine)) continue;
@@ -193,14 +245,11 @@ export class WorkingCopy {
           `This commit exceeds ${mebibytes(limits.maxCommitBytes)} at ${path}. Commit fewer files at a time.`,
         );
       }
-      const text = utf8Text(bytes);
       prepared.changes.push({
         op: "put",
         path,
         mode: mine.executable ? "executable" : "file",
-        ...(text === null
-          ? { encoding: "base64" as const, content: toBase64(bytes) }
-          : { encoding: "utf8" as const, content: text }),
+        ...encodeFileContent(bytes),
       });
       prepared.written.set(path, {
         bytes,
@@ -214,13 +263,14 @@ export class WorkingCopy {
         `This commit changes ${prepared.changes.length} files; a commit may change at most ${limits.maxCommitChanges}.`,
       );
     }
-    if (local.size > limits.maxSnapshotFiles) {
+    const repository = await this.repositoryTree(record, local, sensitive);
+    if (repository.size > limits.maxSnapshotFiles) {
       throw new CommitLimitError(
-        `The workspace would hold ${local.size} files; a repository may hold at most ${limits.maxSnapshotFiles}.`,
+        `The workspace would hold ${repository.size} files; a repository may hold at most ${limits.maxSnapshotFiles}.`,
       );
     }
     let treeBytes = 0;
-    for (const [path, { size }] of local) {
+    for (const [path, size] of repository) {
       treeBytes += size;
       if (treeBytes > limits.maxSnapshotBytes) {
         throw new CommitLimitError(
@@ -254,7 +304,13 @@ export class WorkingCopy {
     const record = await this.record();
     const base = new Map(Object.entries(record.entries).map(([p, e]) => [p, stateOf(e)]));
     const local = new Map([...(await this.localTree(record))].map(([p, f]) => [p, f.state]));
-    return { headCommit, head, plan: planMerge(base, local, await headTree(head)) };
+    const theirs = await headTree(head);
+    const paths = [...base.keys(), ...local.keys(), ...theirs.keys()];
+    const byTree = await this.sensitiveInTree(paths);
+    const byHead = await incomingSensitive(paths, snapshotRead(head));
+    const shared = <T,>(tree: Map<string, T>) =>
+      new Map([...tree].filter(([path]) => !byTree.has(path) && !byHead.has(path)));
+    return { headCommit, head, plan: planMerge(shared(base), shared(local), shared(theirs)) };
   }
 
   /**
@@ -285,7 +341,9 @@ export class WorkingCopy {
    * working copy, where what it writes is the whole of that commit.
    */
   async prepareImport(files: ImportFile[], limits: RepositoryLimits): Promise<PreparedImport> {
-    const local = await this.localTree(await this.record());
+    const record = await this.record();
+    const local = await this.localTree(record);
+    const sensitive = await this.sensitiveInTree([...local.keys(), ...files.map((file) => file.path)]);
     const directories = new Set<string>();
     for (const path of local.keys()) {
       const segments = path.split("/");
@@ -293,10 +351,15 @@ export class WorkingCopy {
     }
 
     const prepared: PreparedImport = { files: [], overwrites: [] };
-    const sizes = new Map([...local].map(([path, file]) => [path, file.size]));
+    const sizes = await this.repositoryTree(record, local, sensitive);
     let commitBytes = 0;
     for (const file of files) {
       const { path, bytes } = file;
+      if (sensitive.has(path)) {
+        throw new ImportPathError(
+          `${path} cannot be copied: it is a sensitive env file in the project (by its nearest telo-workspace.yaml, or .env.local where none governs), so it is kept out of the repository.`,
+        );
+      }
       if (directories.has(path)) {
         throw new ImportPathError(`${path} cannot be copied: the project holds a directory there.`);
       }
@@ -357,10 +420,10 @@ export class WorkingCopy {
   /** Drops every local change: the working tree becomes the base again. */
   async discard(): Promise<void> {
     const record = await this.record();
-    await this.store.remove(TREE_DIR);
-    await this.store.makeDirectory(TREE_DIR);
+    const { keep, skip } = await this.leftAlone(Object.keys(record.entries), storeRead(this.store, BASE_DIR));
+    await this.clearTreeExcept(keep);
     for (const [path, entry] of Object.entries(record.entries)) {
-      if (entry.mode === "symlink") continue;
+      if (entry.mode === "symlink" || skip.has(path)) continue;
       await this.store.write(`${TREE_DIR}/${path}`, await this.store.read(`${BASE_DIR}/${path}`));
     }
   }
@@ -374,6 +437,64 @@ export class WorkingCopy {
   /** Removes the working copy from the device. */
   remove(): Promise<void> {
     return this.store.remove("");
+  }
+
+  /** The sensitive env files among `paths`, by the working tree's markers. */
+  private sensitiveInTree(paths: Iterable<string>): Promise<ReadonlySet<string>> {
+    return sensitivePaths(paths, storeRead(this.store, TREE_DIR));
+  }
+
+  /** What replacing the working tree with `incoming` (read through `read`)
+   *  leaves alone: `keep`, the tree's files sensitive by its own markers or by
+   *  the incoming ones, and `skip`, those plus every incoming file the incoming
+   *  markers mark. Refuses when the tree's own markers cannot be classified. */
+  private async leftAlone(
+    incoming: string[],
+    read: ReadEnvFile,
+  ): Promise<{ keep: ReadonlySet<string>; skip: ReadonlySet<string> }> {
+    const tree = await listFilesRecursive(this.store, TREE_DIR);
+    const byTree = await this.sensitiveInTree(tree);
+    const byIncoming = await incomingSensitive([...tree, ...incoming], read);
+    const keep = new Set(tree.filter((path) => byTree.has(path) || byIncoming.has(path)));
+    return { keep, skip: new Set([...keep, ...byIncoming]) };
+  }
+
+  /** Empties the working tree of everything but `keep`, and of the directories
+   *  that held nothing else. */
+  private async clearTreeExcept(keep: ReadonlySet<string>): Promise<void> {
+    if (keep.size === 0) {
+      await this.store.remove(TREE_DIR);
+      await this.store.makeDirectory(TREE_DIR);
+      return;
+    }
+    const clear = async (directory: string, relative: string): Promise<boolean> => {
+      let kept = false;
+      for (const entry of await this.store.list(directory)) {
+        const child = `${directory}/${entry.name}`;
+        const childRelative = relative ? `${relative}/${entry.name}` : entry.name;
+        if (entry.isDirectory ? await clear(child, childRelative) : keep.has(childRelative)) kept = true;
+        else await this.store.remove(child);
+      }
+      return kept;
+    };
+    await clear(TREE_DIR, "");
+  }
+
+  /** The repository's files after a commit of this working tree, with their
+   *  sizes: the tree's files outside the sensitive ones, and those the base
+   *  holds at a sensitive path, which no commit changes. */
+  private async repositoryTree(
+    record: BaseRecord,
+    local: Map<string, { state: Exclude<PathState, null>; size: number }>,
+    sensitive: ReadonlySet<string>,
+  ): Promise<Map<string, number>> {
+    const tree = new Map([...local].flatMap(([path, file]) => (sensitive.has(path) ? [] : [[path, file.size] as const])));
+    for (const path of sensitive) {
+      const entry = record.entries[path];
+      if (!entry) continue;
+      tree.set(path, entry.mode === "symlink" ? 0 : (await this.store.read(`${BASE_DIR}/${path}`)).length);
+    }
+    return tree;
   }
 
   private async record(): Promise<BaseRecord> {

@@ -29,6 +29,7 @@ it("follows a link when asked what a path is, and lists the link itself as a lin
   };
   const adapter: WorkspaceAdapter = {
     readFile: async () => "",
+    readBytes: async () => new Uint8Array(),
     writeFile: async () => undefined,
     listDir: async (path) => {
       const entries = listings[path];

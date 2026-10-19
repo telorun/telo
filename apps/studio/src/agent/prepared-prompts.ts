@@ -27,27 +27,9 @@ export function explainRunFailurePrompt(run: {
   return run.output ? `${head}\n\nLast lines of its output:\n\n${fenced(run.output)}` : head;
 }
 
-export function selectionPrompt(selection: {
-  file: string;
-  /** 1-based, inclusive. */
-  startLine: number;
-  endLine: number;
-  text: string;
-}): string {
-  const lines =
-    selection.startLine === selection.endLine
-      ? `line ${selection.startLine}`
-      : `lines ${selection.startLine}-${selection.endLine}`;
-  return `From \`${selection.file}\`, ${lines}:\n\n${fenced(selection.text, languageOf(selection.file))}`;
-}
-
-function languageOf(file: string): string {
-  return /\.ya?ml$/i.test(file) ? "yaml" : "";
-}
-
 /** A fence longer than any run of backticks inside the text it holds. */
-function fenced(text: string, language = ""): string {
+function fenced(text: string): string {
   const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
   const fence = "`".repeat(Math.max(3, longest + 1));
-  return `${fence}${language}\n${text.replace(/\n+$/, "")}\n${fence}`;
+  return `${fence}\n${text.replace(/\n+$/, "")}\n${fence}`;
 }
