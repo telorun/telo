@@ -61,11 +61,15 @@ function resolveRefSlot(value: unknown, ctx: ResourceContext): ResourceInstance 
  *  literals now; a pure `self.<path>` access is navigated directly so live
  *  instances pass through (CEL's output type checker rejects them). Shared by
  *  `base:` (construction, scope `{ self }`) and the dispatch mappings
- *  `inputs:` / `result:` (scope `{ self, inputs }` / `{ self, result }`). */
+ *  `inputs:` / `result:` (scope `{ self, inputs }` / `{ self, result }`).
+ *  A failing expression's message names the field it sits in (`path`) and the
+ *  definition that wrote it (`owner`), which is not the resource being created. */
 function expandMappingNode(
   value: unknown,
   scope: Record<string, unknown>,
   ctx: EvaluationContext,
+  path: string,
+  owner: string,
 ): unknown {
   if (isCompiledValue(value)) {
     const src = typeof value.source === "string" ? value.source.trim() : "";
@@ -77,20 +81,37 @@ function expandMappingNode(
       }
       return cur;
     }
-    return ctx.expandWith(value, scope);
+    try {
+      return ctx.expandWith(value, scope);
+    } catch (error) {
+      if (error instanceof Error) error.message = `in ${path} of ${owner}: ${error.message}`;
+      throw error;
+    }
   }
-  if (Array.isArray(value)) return value.map((v) => expandMappingNode(v, scope, ctx));
+  if (Array.isArray(value)) {
+    return value.map((v, i) => expandMappingNode(v, scope, ctx, `${path}[${i}]`, owner));
+  }
   // Asked of the value DOMAIN, never of the prototype: a branded CEL value (an
   // instant, a duration, a uint) is a plain object, and rebuilding one from its
   // entries drops the symbol its brand lives under.
   if (value !== null && typeof value === "object" && isCelRecord(value)) {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = expandMappingNode(v, scope, ctx);
+      const expanded = expandMappingNode(v, scope, ctx, `${path}.${k}`, owner);
+      // An absent optional stays absent: a key holding `undefined` would read
+      // as present to the next level's `has()` and hand CEL a non-value.
+      if (expanded !== undefined) out[k] = expanded;
     }
     return out;
   }
   return value;
+}
+
+/** `GoogleAuth.GoogleClient (oci://…/telo.yaml)` — the definition a mapping was written in. */
+function mappingOwner(definition: ResourceDefinition): string {
+  const source = (definition.metadata as { source?: unknown }).source;
+  const kind = `${definition.metadata.module}.${definition.metadata.name}`;
+  return typeof source === "string" ? `${kind} (${source})` : kind;
 }
 
 /**
@@ -134,11 +155,17 @@ function bindDispatchMapping(
   instance.invoke = async (inputs: any, ...rest: unknown[]) => {
     const mappedInputs =
       inputsMapping != null
-        ? (expandMappingNode(inputsMapping, { self, inputs }, ctx) as Record<string, unknown>)
+        ? (expandMappingNode(
+            inputsMapping,
+            { self, inputs },
+            ctx,
+            "inputs",
+            mappingOwner(definition),
+          ) as Record<string, unknown>)
         : inputs;
     const result = await original(mappedInputs, ...rest);
     return resultMapping != null
-      ? expandMappingNode(resultMapping, { self, result }, ctx)
+      ? expandMappingNode(resultMapping, { self, result }, ctx, "result", mappingOwner(definition))
       : result;
   };
 }
@@ -190,7 +217,13 @@ export function createInheritedController(
       // instances in `self`), minus the reserved keys.
       let parentConfig: Record<string, unknown>;
       if (base != null) {
-        parentConfig = expandMappingNode(base, { self }, definingContext) as Record<string, unknown>;
+        parentConfig = expandMappingNode(
+          base,
+          { self },
+          definingContext,
+          "base",
+          mappingOwner(definition),
+        ) as Record<string, unknown>;
       } else {
         const { kind: _kind, metadata: _metadata, name: _name, ...config } = self;
         parentConfig = config;

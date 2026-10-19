@@ -60,7 +60,7 @@ services:
       # `oci://ghcr.io/telorun/log` is RESERVED for the hub-web freshness test
       # (apps/hub-web/tests/e2e), which asserts it is unknown before registering
       # it: never seed it here, and never register it from another test.
-      SEED_REFS: '["oci://ghcr.io/telorun/kv-store","oci://ghcr.io/telorun/kv-store-redis","oci://ghcr.io/telorun/kv-store-memory","oci://ghcr.io/telorun/timer","oci://ghcr.io/telorun/scheduler","oci://ghcr.io/telorun/run","./modules/ocr","./modules/tesseract-model","./modules/tesseract","./modules/tesseract-lang/pol","./modules/tesseract-lang/deu","./modules/tesseract-lang/fra","oci://ghcr.io/telorun/console"]'
+      SEED_REFS: '["oci://ghcr.io/telorun/kv-store","oci://ghcr.io/telorun/kv-store-redis","oci://ghcr.io/telorun/kv-store-memory","oci://ghcr.io/telorun/timer","oci://ghcr.io/telorun/scheduler","oci://ghcr.io/telorun/run","./modules/ocr","./modules/tesseract-model","./modules/tesseract","./modules/tesseract-lang/pol","./modules/tesseract-lang/deu","./modules/tesseract-lang/fra","oci://ghcr.io/telorun/console","./apps/hub/tests/e2e/__fixtures__/quoted-kinds"]'
       ALLOW_LOCAL_REFS: "true"
       # Self-hosted embeddinggemma-300m sidecar, OpenAI-compatible /embeddings.
       # The controller appends `/embeddings`, so point at the `/v1` base.

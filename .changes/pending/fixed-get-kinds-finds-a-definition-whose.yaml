@@ -1,0 +1,7 @@
+modules:
+  apps/hub: Fixed
+body: "get_kinds finds a definition whose kind: or metadata.name is a quoted YAML
+  scalar, where it answered NOT DEFINED beside an export list naming the kind
+  (http-client's Client and Request). get_kinds takes implementation: true for debugging
+  an inherited kind: each document keeps its base:, controllers: and template body, and
+  a base: kind's parent is returned too."

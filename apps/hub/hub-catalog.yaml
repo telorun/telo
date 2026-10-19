@@ -267,6 +267,9 @@ inputType:
       # asked for at the version its child pins, which the hub may never have
       # ingested, and the latest definition is then the nearest one it holds.
       orLatest: { type: boolean, default: false }
+      # Keep what says how a kind is implemented, and follow a `base:` kind's
+      # parent too: what debugging an inherited kind needs to read.
+      implementation: { type: boolean, default: false }
     required: [ref, version, names]
 steps:
   - name: meta
@@ -317,14 +320,14 @@ steps:
         value: !cel >-
           split('\n' + steps.decode.result.text, '\n---\n')
             .map(c, {'text': c,
-                     'kind': regexGroups(c, '^kind:[ \t]*(\\S+)', 'm'),
-                     'name': regexGroups(c, '^metadata:[ \t]*(?:\\{[ \t]*|\n[ \t]+)name:[ \t]*([A-Za-z0-9_]+)', 'm')})
+                     'kind': regexGroups(c, '^kind:[ \t]*["\']?([^\\s"\']+)', 'm'),
+                     'name': regexGroups(c, '^metadata:[ \t]*(?:\\{[ \t]*|\n[ \t]+)name:[ \t]*["\']?([A-Za-z0-9_]+)', 'm')})
             .filter(d, size(d.kind) > 0 && size(d.name) > 0
                        && d.kind[0] in ['Telo.Definition', 'Telo.Abstract', 'Telo.NeedType', 'Telo.JsonSchema'])
-            .map(d, {'text': trim(regexReplace(
-                       regexReplace(trim(d.text), '^(?:---[ \t]*\n\\s*)+', '') + '\n',
-                       '^(?:controllers|resources|invoke|run|provide|targets|base):.*\n(?:(?:[ \t]+.*|[ \t]*-.*|[ \t]*)\n)*',
-                       '', 'm')),
+            .map(d, {'text': cel.bind(body, regexReplace(trim(d.text), '^(?:---[ \t]*\n\\s*)+', '') + '\n',
+                       trim(inputs.implementation ? body : regexReplace(body,
+                         '^(?:controllers|resources|invoke|run|provide|targets|base):.*\n(?:(?:[ \t]+.*|[ \t]*-.*|[ \t]*)\n)*',
+                         '', 'm'))),
                      'name': d.name[0],
                      'based': size(regexGroups(d.text, '^(base):', 'm')) > 0,
                      'reaches': distinct(
@@ -389,7 +392,8 @@ outputs:
     'selected' in steps
       ? steps.meta.result.rows[0].parents
           .filter(p, p.ref != '' && p.ref != inputs.ref
-                     && steps.selected.result.exists(d, d.name == p.name && !d.based))
+                     && steps.selected.result.exists(d, d.name == p.name
+                                                        && (inputs.implementation || !d.based)))
           .map(p, {'ref': p.ref, 'kind': p.kind,
                    'version': cel.bind(pin, regexGroups(steps.decode.result.text,
                        replace(replace(p.ref, '.', '[.]'), '+', '[+]') + '@([0-9][0-9A-Za-z.+-]*)'),
@@ -413,6 +417,7 @@ inputType:
             version: { type: string }
             names: { type: array, items: { type: string } }
             orLatest: { type: boolean }
+            implementation: { type: boolean }
           required: [ref, version, names]
     required: [requests]
 collection: !cel "inputs.requests"
@@ -424,6 +429,7 @@ steps:
       version: !cel "item.version"
       names: !cel "item.names"
       orLatest: !cel "item.?orLatest.orValue(false)"
+      implementation: !cel "item.?implementation.orValue(false)"
 outputs:
   ref: !cel "steps.module.result.ref"
   found: !cel "steps.module.result.found"
@@ -477,6 +483,7 @@ inputType:
           required: [ref, kind]
       # A telo version, or '' for the latest the hub tracks.
       telo: { type: string, default: "" }
+      implementation: { type: boolean, default: false }
     required: [kinds]
 steps:
   - name: teloVersions
@@ -525,6 +532,7 @@ steps:
           'version': ref == variables.builtinsRef
             ? (steps.telo.result != '' ? steps.telo.result : 'latest')
             : inputs.kinds.filter(k, k.ref == ref)[0].?version.orValue('latest'),
+          'implementation': inputs.implementation,
           'names': distinct(inputs.kinds.filter(k, k.ref == ref)
                               .map(k, regexReplace(k.kind, '^.*\\.', '')))})
   - name: parents
@@ -532,7 +540,7 @@ steps:
     inputs:
       requests: !cel >-
         distinct(flatten(steps.asked.result.map(m, m.parents)).map(p, p.ref)).map(ref, {
-          'ref': ref, 'orLatest': true,
+          'ref': ref, 'orLatest': true, 'implementation': inputs.implementation,
           'version': ref == variables.builtinsRef
             ? (steps.telo.result != '' ? steps.telo.result : 'latest')
             : flatten(steps.asked.result.map(m, m.parents)).filter(p, p.ref == ref)[0].version,
@@ -543,7 +551,7 @@ steps:
     inputs:
       requests: !cel >-
         distinct(flatten(steps.parents.result.map(m, m.parents)).map(p, p.ref)).map(ref, {
-          'ref': ref, 'orLatest': true,
+          'ref': ref, 'orLatest': true, 'implementation': inputs.implementation,
           'version': ref == variables.builtinsRef
             ? (steps.telo.result != '' ? steps.telo.result : 'latest')
             : flatten(steps.parents.result.map(m, m.parents)).filter(p, p.ref == ref)[0].version,

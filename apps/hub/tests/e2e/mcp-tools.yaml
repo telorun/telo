@@ -26,6 +26,8 @@ targets:
   - !ref searchResources_RefusesNoQuery
   - !ref getKinds_ReturnsDefinitionsAndImportLine
   - !ref getKinds_NamesWhatIsNotDefined
+  - !ref getKinds_ReadsQuotedScalars
+  - !ref getKinds_KeepsTheImplementationWhenAsked
   - !ref getKinds_ReportsAnUntrackedRef
   - !ref getKinds_ReadsTheParentTheChildPins
   - !ref getKinds_RefusesNoKinds
@@ -265,6 +267,55 @@ steps:
       expected:
         loopDefinition: true
         notDefined: true
+    invoke:
+      kind: Assert.Equals
+---
+# A definition whose `kind:` and `name:` are quoted YAML scalars is found, not
+# reported as undefined beside an export list naming it.
+kind: Run.Sequence
+metadata: { name: getKinds_ReadsQuotedScalars }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: get_kinds
+      arguments:
+        kinds:
+          - { ref: "./apps/hub/tests/e2e/__fixtures__/quoted-kinds", kind: Quoted }
+  - name: text
+    value: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        definition: !cel "steps.text.result.contains('\\n  name: \"Quoted\"\\n')"
+        notDefined: !cel "steps.text.result.contains('NOT DEFINED')"
+      expected:
+        definition: true
+        notDefined: false
+    invoke:
+      kind: Assert.Equals
+---
+# `implementation: true` keeps what the default answer cuts — here a kind's
+# `controllers:` — for a caller tracing a runtime error into a kind.
+kind: Run.Sequence
+metadata: { name: getKinds_KeepsTheImplementationWhenAsked }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: get_kinds
+      arguments:
+        kinds:
+          - { ref: "oci://ghcr.io/telorun/kv-store-redis", kind: Store }
+        implementation: true
+  - name: text
+    value: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        controllers: !cel "steps.text.result.contains('\\ncontrollers:')"
+      expected:
+        controllers: true
     invoke:
       kind: Assert.Equals
 ---

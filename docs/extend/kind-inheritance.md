@@ -144,6 +144,14 @@ the parent controller's contract: fixed for kinds that consume config in
 `create()` (like `Http.Client`), or baked defaults the controller re-layers per
 call (like `Http.Request`, whose `inputs` a caller can still override).
 
+**An absent field stays absent through every level.** A `base:` entry that forwards
+a field its author left out (`accessToken: !cel "self.accessToken"`) contributes
+no key to the parent's config, so a parent whose own `base:` asks
+`has(self.accessToken)` sees `false` however many levels of `base:` lie between.
+When an expression in a `base:` mapping fails, the error names the definition and
+field that wrote it — `in base.headers of GoogleAuth.GoogleClient (<source>)` —
+not only the resource being created.
+
 **A base-form child's own fields are compile-eval, without annotation.** They are
 construction inputs and nothing else — no controller ever sees them, `base:`
 reads them once at creation — so an expression written at one is evaluated there,

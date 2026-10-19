@@ -1379,6 +1379,10 @@ entries:
       zone attributes and formats a definition names) come back from the
       built-in vocabulary of one telo version, stated in the answer, with no
       import line: write them as `Telo.<Kind>`, never imported.
+      Pass `implementation: true` when DEBUGGING a kind rather than writing
+      one: each document then keeps `base:`, `controllers:` and its template
+      body, and the parent of a `base:` kind is returned too — where an
+      expression named in a runtime error is usually written.
     argumentsSchema:
       type: object
       properties:
@@ -1404,12 +1408,21 @@ entries:
             <names>`. Omitted, built-ins are read at the latest version the hub
             tracks; a version it does not track is refused, naming the ones it
             does.
+        implementation:
+          type: boolean
+          default: false
+          description: >-
+            Also return how each kind is implemented — `base:`, `controllers:`,
+            the template body — and follow a `base:` kind's parent. For
+            tracing a runtime error into an inherited kind; leave it off to
+            author.
       required: [kinds]
       additionalProperties: false
     handler: !ref Catalog.kindDefinitions
     inputs:
       kinds: !cel "request.arguments.?kinds.orValue([])"
       telo: !cel "request.arguments.?telo.orValue('')"
+      implementation: !cel "request.arguments.?implementation.orValue(false)"
     result:
       content:
         - type: text

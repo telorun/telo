@@ -18,8 +18,8 @@ Every filesystem tool and every spawned command resolves a relative path
 against it, and every path the agent or a client supplies is judged before it
 is used: one that is absolute, holds a backslash, starts with a drive letter or
 has a `..` segment is refused with `ERR_PATH_OUTSIDE_WORKSPACE` — by
-`write_file`, `edit_file`, `read_file`, `list_dir`, `delete_file`, `telo_check`
-and `run_manifest`, for every argument of the `telo` tool, and by the
+`write_file`, `edit_file`, `read_file`, `list_dir`, `search_files`,
+`delete_file`, `telo_check` and `run_manifest`, for every argument of the `telo` tool, and by the
 `/workspace` routes (400, nothing applied). A path naming the agent's state
 directory, or anything inside it, is refused the same way, by the same tools
 and routes. So is a removal — `delete_file`, recursive or not, and each
@@ -998,7 +998,7 @@ With `OTLP_ENDPOINT` empty the same spans are written as `debug` log records
 The tools are the security boundary, and they are declared:
 
 - **File tools** (`write_file`, `edit_file`, `read_file`, `list_dir`,
-  `delete_file`) are rooted at `WORKSPACE_DIR`, and a path outside it is
+  `search_files`, `delete_file`) are rooted at `WORKSPACE_DIR`, and a path outside it is
   refused (see The workspace).
 - **Every change `write_file`, `edit_file` and `delete_file` make is
   checkpointed** under its turn before the file is touched, within
