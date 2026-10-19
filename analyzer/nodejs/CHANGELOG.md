@@ -1,5 +1,17 @@
 # @telorun/analyzer
 
+## 0.120.0
+
+### Minor Changes
+
+- cc1a84e: `telo run <app> --help` now also lists, under `Environment:`, every `variables:` / `secrets:` / `ports:` entry read from an environment variable alone — its type, its default or `required`, and the input it fills — so an application with no command-line arguments no longer answers with a bare `Usage: <name>`. A secret shows only its type and whether it is required. An application declaring `needs:` gets a last line naming them and pointing at `telo needs report`. `renderApplicationUsage` returns the same text.
+- cc1a84e: An `env.files` entry in `telo-workspace.yaml` may now be `{ name, sensitive }` beside a bare filename; with no `files:` declared, `.env.local` is sensitive and `.env` is not. An unknown key in an entry is `WORKSPACE_UNKNOWN_KEY` and a wrong type `WORKSPACE_INVALID_VALUE`, both inside `env:`, so `telo run` refuses on them; an older telo refuses the object form the same way. `telo env template` writes secrets and sensitive need fields to the last sensitive entry and everything else to the last other one, refuses naming `env.files` when the workspace declares no entry of the kind needed, and warns about every sensitive file it wrote that git does not ignore. `telo run` warns when a secret or sensitive need field takes its value from a file not marked sensitive (`[env] secret DB_PASSWORD is set in ./.env, which env.files does not mark sensitive — move it to a sensitive file`) and proceeds. The env-file walk, the marker's `env:` block and the env-file format now live in the analyzer as browser-safe exports — `resolveWorkspaceEnv` over one injected read, `parseEnvFile` (reading every file as `dotenv` 17 does), `spellEnvFileValue`, `setEnvFileValue` / `appendEnvFileValue` / `appendEnvFileLines` / `clearEnvFileValue`, `classifySensitiveEnvFiles`, `envFileDestination`, `sensitiveEnvironmentInputs`, `sensitiveValueFindings` — and the CLI no longer depends on `dotenv`. `DEFAULT_ENV_FILES` and `EnvSettings.files` are now lists of `{ name, sensitive }`. The editor completes `name` / `sensitive` inside an entry and `true` / `false` for the mark.
+
+### Patch Changes
+
+- @telorun/cel@0.120.0
+- @telorun/templating@0.120.0
+
 ## 0.119.0
 
 ### Minor Changes
