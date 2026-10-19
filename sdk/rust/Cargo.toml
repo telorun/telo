@@ -1,6 +1,6 @@
 [package]
 name = "telorun-sdk"
-version = "0.120.0"
+version = "0.120.1"
 license = "MIT"
 edition = "2021"
 publish = false
