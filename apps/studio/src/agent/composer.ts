@@ -1,3 +1,4 @@
+import type { EditorSelection } from "./editor-selection";
 import type { Attachment } from "./types";
 
 /** A file on the composer. `key` names the chip; an uploaded one has the
@@ -11,6 +12,8 @@ export type ComposerAttachment =
 export interface QueuedMessage {
   text: string;
   attachments: Attachment[];
+  /** Written into the text as `telo-selection` blocks only when it is sent. */
+  selections: EditorSelection[];
 }
 
 /** What the user has written and not sent, for one conversation. Held by the
@@ -19,10 +22,13 @@ export interface QueuedMessage {
 export interface ComposerState {
   text: string;
   attachments: ComposerAttachment[];
+  /** Selections a queued message brought back to the composer; the live
+   *  editor selection is not among them. */
+  selections: EditorSelection[];
   queued: QueuedMessage | null;
 }
 
-export const EMPTY_COMPOSER: ComposerState = { text: "", attachments: [], queued: null };
+export const EMPTY_COMPOSER: ComposerState = { text: "", attachments: [], selections: [], queued: null };
 
 /** The composer's uploaded files, as a message carries them, in chip order. */
 export function uploadedAttachments(attachments: ComposerAttachment[]): Attachment[] {
@@ -32,14 +38,20 @@ export function uploadedAttachments(attachments: ComposerAttachment[]): Attachme
 }
 
 /** What of a composer is kept across a reload or a switch: its text, its
- *  uploaded files' descriptors and its queue. A file still uploading, or one
- *  that failed, is the session's alone. */
+ *  uploaded files' descriptors, the selections it carries and its queue. A file
+ *  still uploading, or one that failed, is the session's alone. */
 export function storedComposer(composer: ComposerState): {
   text: string;
   attachments: Attachment[];
+  selections: EditorSelection[];
   queued: QueuedMessage | null;
 } {
-  return { text: composer.text, attachments: uploadedAttachments(composer.attachments), queued: composer.queued };
+  return {
+    text: composer.text,
+    attachments: uploadedAttachments(composer.attachments),
+    selections: composer.selections,
+    queued: composer.queued,
+  };
 }
 
 /** Whether a submit is held: a file is still uploading, or one failed and has
@@ -69,22 +81,28 @@ export function appendBlock(text: string, addition: string): string {
 }
 
 /** The composer's message moved into the queue — after what is queued already,
- *  its files after the queued ones. */
+ *  its files and selections after the queued ones. */
 export function queueComposerMessage(composer: ComposerState): ComposerState {
   if (!hasMessage(composer)) return composer;
   const text = composer.text.trim();
   const attachments = uploadedAttachments(composer.attachments);
+  const { selections } = composer;
   return {
     text: "",
     attachments: [],
+    selections: [],
     queued: composer.queued
-      ? { text: appendBlock(composer.queued.text, text), attachments: [...composer.queued.attachments, ...attachments] }
-      : { text, attachments },
+      ? {
+          text: appendBlock(composer.queued.text, text),
+          attachments: [...composer.queued.attachments, ...attachments],
+          selections: [...composer.queued.selections, ...selections],
+        }
+      : { text, attachments, selections },
   };
 }
 
-/** The queued message moved back into the composer, ahead of what was typed
- *  and attached since. */
+/** The queued message moved back into the composer, ahead of what was typed,
+ *  attached and carried since. */
 export function unqueueIntoComposer(composer: ComposerState): ComposerState {
   if (!composer.queued) return composer;
   return {
@@ -93,6 +111,7 @@ export function unqueueIntoComposer(composer: ComposerState): ComposerState {
       ...composer.queued.attachments.map((a) => ({ ...a, key: a.id, state: "uploaded" as const })),
       ...composer.attachments,
     ],
+    selections: [...composer.queued.selections, ...composer.selections],
     queued: null,
   };
 }

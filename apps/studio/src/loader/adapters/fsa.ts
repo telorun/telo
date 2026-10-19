@@ -44,16 +44,23 @@ export class FsaAdapter implements ManifestSource, WorkspaceAdapter {
     return dir;
   }
 
-  async read(url: string): Promise<{ text: string; source: string }> {
-    const parts = this.toRelParts(url);
+  private async fileAt(path: string): Promise<File> {
+    const parts = this.toRelParts(path);
     const dir = await this.resolveDir(parts.slice(0, -1));
     const fileHandle = await dir.getFileHandle(parts[parts.length - 1]);
-    const file = await fileHandle.getFile();
-    return { text: await file.text(), source: url };
+    return fileHandle.getFile();
+  }
+
+  async read(url: string): Promise<{ text: string; source: string }> {
+    return { text: await (await this.fileAt(url)).text(), source: url };
   }
 
   async readFile(path: string): Promise<string> {
     return (await this.read(path)).text;
+  }
+
+  async readBytes(path: string): Promise<Uint8Array> {
+    return new Uint8Array(await (await this.fileAt(path)).arrayBuffer());
   }
 
   async writeFile(path: string, text: string): Promise<void> {

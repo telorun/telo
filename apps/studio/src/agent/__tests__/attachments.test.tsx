@@ -240,7 +240,7 @@ describe("a queued message's files", () => {
     const file = { id: "a1", name: "telo.yaml", mediaType: "application/yaml", size: 23 };
 
     act(() => result.current.submitComposer());
-    expect(result.current.composer).toEqual({ text: "", attachments: [], queued: { text: "use this", attachments: [file] } });
+    expect(result.current.composer).toEqual({ text: "", attachments: [], selections: [], queued: { text: "use this", attachments: [file], selections: [] } });
 
     act(() => result.current.editQueued());
     expect(result.current.composer).toMatchObject({ text: "use this", attachments: [{ ...file, state: "uploaded" }], queued: null });

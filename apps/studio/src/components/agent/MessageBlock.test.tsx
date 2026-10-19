@@ -1,11 +1,23 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MessageBlock } from "./MessageBlock";
 import type { AssistantMessage, AssistantPart } from "@/agent";
 
+// jsdom has no layout: a hovered action's tooltip measures nothing.
+class NoResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", NoResizeObserver);
+});
+
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 const tool = (name: string): AssistantPart => ({
@@ -150,5 +162,40 @@ describe("MessageBlock", () => {
     expect(container.textContent).toBe(
       "Couldn't name this conversation — ERR_TITLE_EMPTY: empty title. Rename it from the conversation list.Done.",
     );
+  });
+});
+
+describe("a user message carrying an editor selection", () => {
+  const sent = "why does this fail?\n\n```telo-selection apps/todo/telo.yaml:12-13\nkind: Http.Server\nport: 80\n```";
+
+  it("shows what was typed, and the selection as its file and lines", () => {
+    const { container } = render(
+      <MessageBlock message={{ id: "u", role: "user", text: sent }} questionCards answerable onAnswer={() => undefined} />,
+    );
+    expect(screen.getByText("why does this fail?")).toBeTruthy();
+    expect(screen.getByText("apps/todo/telo.yaml:12-13")).toBeTruthy();
+    expect(screen.getByText("2 lines")).toBeTruthy();
+    expect(container.textContent).not.toContain("telo-selection");
+  });
+
+  it("edits what was typed and resends the selection with it", async () => {
+    const onEditResend = vi.fn();
+    render(
+      <MessageBlock
+        message={{ id: "u", role: "user", text: sent }}
+        questionCards
+        answerable
+        onAnswer={() => undefined}
+        actions={{ busy: false, onEditResend }}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Edit & resend" }));
+    const input = screen.getByRole("textbox", { name: "Edit message" });
+    expect((input as HTMLTextAreaElement).value).toBe("why does this fail?");
+    await userEvent.clear(input);
+    await userEvent.type(input, "and this?");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(onEditResend).toHaveBeenCalledWith(sent.replace("why does this fail?", "and this?"));
   });
 });

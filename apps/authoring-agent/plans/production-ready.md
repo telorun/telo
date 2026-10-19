@@ -83,10 +83,10 @@ Editor tools are **always advertised**, because a tool list is fixed at load. Th
 *After:* the agent looks at it. (Tool results may already carry image parts, so this needs no new model plumbing.)
 *Verify:* "why does this look tangled?" produces an answer that names nodes actually on screen.
 
-**D6 — Selection and open file as context.**
-*Before:* the user copies YAML into the chat by hand.
-*After:* two paths, both explicit. (i) The composer's **@** menu inserts a reference to a workspace file, a resource, a diagnostic, or the current selection; the reference is resolved at send into an attachment-like context block carrying the exact text or the resource's YAML slice. (ii) A **Send selection to chat** action in the source view and a **Ask about this** action on a canvas node, on a diagnostic and on a failing run — each opens the panel with the reference already in the composer. The selection is never sent ambiently: a turn's context should be what the user chose, and an invisible "whatever was highlighted" is unreproducible.
-*Verify:* select ten lines, hit the action, and the agent quotes those lines back; the transcript shows the reference chip so a reader a week later knows what was sent.
+**D6 — Files, resources and diagnostics as context.**
+*Before:* an editor selection already rides the next message — shown on the composer as a removable chip and sent as a `telo-selection` block — but a whole file, a resource or a diagnostic is named only by typing it.
+*After:* the composer's **@** menu inserts a reference to a workspace file, a resource or a diagnostic, resolved at send into a context block carrying the file's text, the resource's YAML slice or the diagnostic, and drawn on the composer and in the user's bubble as a chip, the way a selection is.
+*Verify:* pick a resource from the **@** menu, ask about it, and the agent quotes its YAML back; the transcript shows the reference chip so a reader a week later knows what was sent.
 
 **D7 — Probing the running app.** `app_request(appPath, method, path, body?, headers?)` performs one HTTP call against the session's advertised endpoint from the editor and returns status, headers and a truncated body.
 *Before:* the agent verifies an HTTP app by writing a probe manifest, if manifest runs are even enabled.

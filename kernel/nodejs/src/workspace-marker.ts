@@ -4,18 +4,20 @@
  * Its LOCATION is a general anchor — the directory workspace-relative paths are
  * measured from, the outer bound on how far a walk-up may look, and the root the
  * `.telo` cache is anchored at — while its `modules:` list is release scope. So
- * the finder is deliberately separate from `release/`: `telo run` bounds its
- * `.env` collection with the marker and `resolveCacheRoot` anchors on it, and
- * neither may reach into the release namespace to do so, where `loadWorkspace`
- * (which parses `modules:` and throws when the file is absent) sits one import
- * away.
+ * the finder is deliberately separate from `release/`: `resolveCacheRoot`
+ * anchors on it and `telo release` finds its workspace with it, and neither may
+ * reach into the release namespace to do so, where `loadWorkspace` (which parses
+ * `modules:` and throws when the file is absent) sits one import away.
  *
  * It lives in the KERNEL rather than the CLI because the cache root is resolved
  * here, on a path a CLI-less embedder also takes (a child kernel started through
  * the runtime seam, a test harness). The CLI re-exports it; nothing is duplicated.
  *
  * Parsing the file is the analyzer's (`release/workspace-config.ts`); finding it
- * is the Node half, and this is all of it.
+ * for the cache root is the Node half, and this is all of it. The env-file walk
+ * finds the marker itself, through the read its host injects
+ * (`resolveWorkspaceEnv`), because Studio runs it with no filesystem of its own;
+ * both stop at the nearest file of this name and pass over a directory of it.
  */
 
 import { WORKSPACE_FILENAME } from "@telorun/analyzer";

@@ -1,11 +1,26 @@
-import type { Workspace } from "../model";
-import type { RunBundle } from "./types";
+import { collectModuleFileClaims, type ModuleFileClaim } from "@telorun/analyzer";
+import { encodeFileContent } from "../file-content-encoding";
+import { DirectoryNotFoundError } from "../loader/adapters/directory-not-found";
+import type { DirEntry, Workspace } from "../model";
+import { selectModuleFiles } from "./select-module-files";
+import type { RunBundle, RunBundleFile } from "./types";
 
+/** The two reads a bundle needs of the workspace's storage. */
+export interface RunBundleSource {
+  readBytes(absPath: string): Promise<Uint8Array>;
+  listDir(dir: string): Promise<DirEntry[]>;
+}
+
+/**
+ * The files a run of `entryFilePath` reads: every local module it reaches, their
+ * `include:` partials, their `files:` assets, and every file a tag in them claims
+ * (`!module-path`, `!include-text`, `!include-bytes`) — the set `telo publish`
+ * ships. A file whose bytes are not UTF-8 travels as base64.
+ */
 export async function buildRunBundle(
   workspace: Workspace,
   entryFilePath: string,
-  readFile: (absPath: string) => Promise<string>,
-  selectFiles?: (base: string, patterns: string[]) => Promise<string[]>,
+  source: RunBundleSource,
 ): Promise<RunBundle> {
   const entry = workspace.modules.get(entryFilePath);
   if (!entry) {
@@ -19,11 +34,8 @@ export async function buildRunBundle(
 
   const visitedModules = new Set<string>();
   const queue: string[] = [entryFilePath];
-  const collectedPaths: string[] = [];
-  // Modules declaring `files:` asset globs (e.g. an Http.Static `root:` dir).
-  // Expanded after the walk so the recursive directory listing runs once per
-  // owner rather than inline in the synchronous BFS.
-  const fileGlobs: Array<{ source: string; patterns: string[] }> = [];
+  // Each reached module's owner and its manifest files (owner + partials).
+  const modules: Array<{ owner: string; manifests: string[]; files?: string[] }> = [];
 
   while (queue.length > 0) {
     const currentPath = queue.shift()!;
@@ -33,18 +45,13 @@ export async function buildRunBundle(
     const mod = workspace.modules.get(currentPath);
     if (!mod) continue;
 
-    collectedPaths.push(currentPath);
-
-    if (mod.include) {
-      const moduleDir = posixDirname(toPosix(currentPath));
-      for (const includePath of mod.include) {
-        collectedPaths.push(posixResolve(moduleDir, includePath));
-      }
-    }
-
-    if (mod.files?.length) {
-      fileGlobs.push({ source: currentPath, patterns: mod.files });
-    }
+    const owner = toPosix(currentPath);
+    const moduleDir = posixDirname(owner);
+    modules.push({
+      owner,
+      manifests: [owner, ...(mod.include ?? []).map((p) => posixResolve(moduleDir, p))],
+      files: mod.files,
+    });
 
     for (const imp of mod.imports) {
       if (imp.importKind !== "local") continue;
@@ -54,23 +61,35 @@ export async function buildRunBundle(
     }
   }
 
-  if (fileGlobs.length > 0) {
-    if (!selectFiles) {
-      throw new Error(
-        `Cannot bundle 'files:' assets without a file selector: ${fileGlobs
-          .map((g) => g.source)
-          .join(", ")}`,
-      );
+  const listDir = (dir: string) => source.listDir(dir);
+  const bytes = new Map<string, Promise<Uint8Array>>();
+  const read = (p: string) => {
+    let pending = bytes.get(p);
+    if (!pending) {
+      pending = source.readBytes(p);
+      bytes.set(p, pending);
     }
-    const selected = await Promise.all(fileGlobs.map((g) => selectFiles(g.source, g.patterns)));
-    for (const group of selected) {
-      for (const assetPath of group) collectedPaths.push(toPosix(assetPath));
-    }
-  }
+    return pending;
+  };
 
-  const uniquePaths = Array.from(new Set(collectedPaths.map(toPosix)));
+  const claimsOf = async (owner: string, manifest: string) => {
+    const text = new TextDecoder().decode(await read(manifest));
+    const claimed = await Promise.all(collectModuleFileClaims(text).map((claim) => claimedFiles(owner, claim, listDir)));
+    return claimed.flat();
+  };
+  const perModule = await Promise.all(
+    modules.map(async ({ owner, manifests, files }) => {
+      const [assets, claimed] = await Promise.all([
+        files?.length ? selectModuleFiles(owner, files, listDir) : Promise.resolve([]),
+        Promise.all(manifests.map((manifest) => claimsOf(owner, manifest))),
+      ]);
+      return [...manifests, ...assets, ...claimed.flat()];
+    }),
+  );
 
-  const contents = await Promise.all(uniquePaths.map((p) => readFile(p)));
+  const uniquePaths = Array.from(new Set(perModule.flat().map(toPosix)));
+
+  const contents = await Promise.all(uniquePaths.map((p) => read(p)));
 
   // **Bundle paths are relative to the WORKSPACE root**, so the session's
   // workspace holds each file where the editor holds it: an Application at
@@ -91,11 +110,51 @@ export async function buildRunBundle(
 
   return {
     entryRelativePath: posixRelativeFromDir(bundleRoot, entryPosix),
-    files: uniquePaths.map((absPath, i) => ({
-      relativePath: posixRelativeFromDir(bundleRoot, absPath),
-      contents: contents[i]!,
-    })),
+    files: uniquePaths.map((absPath, i): RunBundleFile => {
+      const { content, encoding } = encodeFileContent(contents[i]!);
+      return {
+        relativePath: posixRelativeFromDir(bundleRoot, absPath),
+        contents: content,
+        ...(encoding === "base64" ? { encoding } : {}),
+      };
+    }),
   };
+}
+
+/**
+ * The files one asset claim names, resolved against the module root: the file
+ * itself, or every file beneath a directory a `!module-path` names — as
+ * `telo publish` expands them. A claim naming nothing it can ship contributes
+ * nothing: the kernel's own refusal (`MODULE_PATH_NOT_FOUND`,
+ * `INCLUDE_FILE_NOT_FOUND`) names it at load.
+ */
+async function claimedFiles(
+  owner: string,
+  claim: ModuleFileClaim,
+  listDir: (dir: string) => Promise<DirEntry[]>,
+): Promise<string[]> {
+  if (claim.role !== "assets") return [];
+  const target = posixResolve(posixDirname(owner), claim.path);
+  const entry = await entryAt(target, listDir);
+  if (!entry) return [];
+  if (!entry.isDirectory) return [target];
+  if (!claim.directory) return [];
+  return (await selectModuleFiles(owner, [`${claim.path}/**`], listDir)).map(toPosix);
+}
+
+async function entryAt(
+  path: string,
+  listDir: (dir: string) => Promise<DirEntry[]>,
+): Promise<DirEntry | null> {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  let entries: DirEntry[];
+  try {
+    entries = await listDir(posixDirname(path));
+  } catch (error) {
+    if (error instanceof DirectoryNotFoundError) return null;
+    throw error;
+  }
+  return entries.find((e) => e.name === name) ?? null;
 }
 
 function toPosix(p: string): string {

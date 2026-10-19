@@ -34,6 +34,16 @@ describe("makeBundleTarGz", () => {
     expect(entries[1]!.body).toBe("kind: Telo.Library\n");
   });
 
+  it("archives a base64 file as its decoded bytes", async () => {
+    const gz = await makeBundleTarGz({
+      entryRelativePath: "telo.yaml",
+      files: [{ relativePath: "logo.png", contents: "iVBOR/8A", encoding: "base64" }],
+    });
+    const tar = gunzipSync(gz);
+    expect(listTar(tar)[0]!.size).toBe(6);
+    expect([...tar.subarray(512, 518)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00]);
+  });
+
   it("rejects traversal paths", async () => {
     await expect(
       makeBundleTarGz({

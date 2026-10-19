@@ -28,6 +28,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/guides/distributing-an-application", label: "Distributing an application" },
         { type: "doc", id: "docs/guides/coming-from", label: "Coming from somewhere else" },
         { type: "doc", id: "docs/guides/vs-low-code", label: "Compared to low-code platforms" },
+        { type: "doc", id: "docs/guides/what-you-get", label: "What you get for free" },
         { type: "doc", id: "docs/guides/style-guide", label: "Style Guide" },
         { type: "doc", id: "docs/guides/glossary", label: "Glossary" },
       ],

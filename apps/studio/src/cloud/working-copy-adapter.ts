@@ -61,7 +61,11 @@ export class WorkingCopyAdapter implements ManifestSource, WorkspaceAdapter {
   }
 
   async readFile(path: string): Promise<string> {
-    return new TextDecoder().decode(await this.store.read(this.required(path)));
+    return new TextDecoder().decode(await this.readBytes(path));
+  }
+
+  async readBytes(path: string): Promise<Uint8Array> {
+    return this.store.read(this.required(path));
   }
 
   async writeFile(path: string, text: string): Promise<void> {

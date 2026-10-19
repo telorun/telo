@@ -58,6 +58,7 @@
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
+    "dotenv": "^17.4.0",
     "typescript": "^5.0.0",
     "vitest": "^2.1.8"
   },

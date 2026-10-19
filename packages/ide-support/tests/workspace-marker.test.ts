@@ -119,6 +119,24 @@ describe("marker completion", () => {
     const items = workspaceCompletions(text, { line: 3, character: 6 });
     expect(items.map((i) => i.label)).toEqual(["path", "registry", "ignore"]);
   });
+
+  it("offers name and sensitive inside an env.files entry, and true / false for the mark", () => {
+    const text = "env:\n  files:\n    - name: .secrets\n      \n";
+    expect(workspaceCompletions(text, { line: 3, character: 6 }).map((i) => i.label)).toEqual([
+      "name",
+      "sensitive",
+    ]);
+    const mark = "env:\n  files:\n    - name: .secrets\n      sensitive: \n";
+    expect(workspaceCompletions(mark, { line: 3, character: 17 }).map((i) => i.label)).toEqual(["true", "false"]);
+  });
+});
+
+describe("an env.files entry", () => {
+  it("anchors a misspelled key at the key inside the entry", () => {
+    const text = "env:\n  files:\n    - .env\n    - { name: .env.local, sensitve: true }\n";
+    const [found] = workspaceDiagnostics(text);
+    expect([found.code, found.range.start]).toEqual(["WORKSPACE_UNKNOWN_KEY", { line: 3, character: 26 }]);
+  });
 });
 
 describe("an entry that claims nothing", () => {

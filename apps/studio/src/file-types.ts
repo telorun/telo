@@ -61,8 +61,11 @@ export function isBinaryFile(path: string): boolean {
 }
 
 export function languageForFile(path: string): string {
+  const base = pathBasename(path).toLowerCase();
+  // An env file: a dot-file has no extension, and in `.env.local` the last dot
+  // names the variant rather than the format.
+  if (base === ".env" || base.startsWith(".env.")) return "ini";
   const ext = pathExtname(path).toLowerCase();
   if (ext && LANGUAGE_BY_EXTENSION[ext]) return LANGUAGE_BY_EXTENSION[ext];
-  const base = pathBasename(path).toLowerCase();
   return LANGUAGE_BY_BASENAME[base] ?? "plaintext";
 }

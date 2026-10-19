@@ -24,7 +24,6 @@ export const LOCAL_KEYS = {
   settings: "telo-studio:settings:v1",
   /** Accepted runner terms, keyed by runner id. */
   acceptedTerms: "telo-studio:accepted-terms",
-  deployments: "telo-studio:deployments:v1",
   /** Cross-reload run index. Bump the suffix if the entry shape changes. */
   runIndex: "telo-studio:run:index:v1",
   colorMode: "telo-studio:color-mode",

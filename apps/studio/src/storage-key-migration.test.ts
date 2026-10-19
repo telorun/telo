@@ -19,8 +19,9 @@ beforeEach(() => {
 
 describe("the legacy key set is covered", () => {
   // Written out independently of the tables: this is the closed, historical
-  // set of keys the pre-rename app wrote, so it never grows and a row deleted
-  // or re-filed under the wrong store shows up here. Asserting the opposite
+  // set of keys the pre-rename app wrote, plus the keys a later Studio wrote
+  // and this one no longer reads, so a row deleted or re-filed under the wrong
+  // store shows up here. Asserting the opposite
   // direction — that every CURRENT key has a row — would be wrong: a key added
   // after the rename has no legacy predecessor and must have no row.
   const LEGACY_LOCAL = [
@@ -37,6 +38,7 @@ describe("the legacy key set is covered", () => {
     "telo-editor:agent-settings-v1",
     "telo-editor:agent-chat:",
     "telo-editor:agent-conv:",
+    "telo-studio:deployments:v1",
   ];
   const LEGACY_SESSION = ["telo-editor:io-last-seq:", "telo-editor:sse-last-event-id:"];
 
@@ -140,12 +142,12 @@ describe("edge cases", () => {
     expect(window.localStorage.getItem("telo-editor-v2")).toBeNull();
   });
 
-  it("drops a legacy key no reader understands", () => {
-    window.localStorage.setItem("telo-editor-v1", "{}");
+  it.each(LOCAL_MIGRATION.droppedKeys)("drops %s, which no reader understands", (key) => {
+    window.localStorage.setItem(key, "{}");
 
     migrateLegacyStorageKeys();
 
-    expect(window.localStorage.getItem("telo-editor-v1")).toBeNull();
+    expect(window.localStorage.getItem(key)).toBeNull();
   });
 
   it("leaves unrelated keys untouched", () => {

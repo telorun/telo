@@ -59,6 +59,50 @@ describe("the marker's shape", () => {
     expect(diagnostics[0].path).toEqual(["env", "files", 1]);
   });
 
+  it("reads an env.files entry as a filename or { name, sensitive }", () => {
+    const { config, diagnostics } = read("env:\n  files: [.env, { name: .secrets, sensitive: true }]\n");
+    expect(diagnostics).toEqual([]);
+    expect(config.env?.files).toEqual([
+      { name: ".env", sensitive: false },
+      { name: ".secrets", sensitive: true },
+    ]);
+  });
+
+  it("reports an env.files entry's unknown key and wrong-typed mark inside env:", () => {
+    const { diagnostics } = read(
+      "env:\n  files:\n    - { name: .env.local, sensitve: true }\n    - { name: .secrets, sensitive: yes please }\n",
+    );
+    expect(diagnostics.map((d) => [d.code, d.path.join(".")])).toEqual([
+      ["WORKSPACE_UNKNOWN_KEY", "env.files.0.sensitve"],
+      ["WORKSPACE_INVALID_VALUE", "env.files.1.sensitive"],
+    ]);
+    expect(diagnostics[0].message).toContain("Did you mean 'sensitive'?");
+  });
+
+  it("reports a null sensitive: inside env.files, anchored at the key", () => {
+    const { diagnostics } = read("env:\n  files:\n    - { name: secrets.txt, sensitive: }\n");
+    expect(diagnostics.map((d) => [d.code, d.severity, d.path.join(".")])).toEqual([
+      ["WORKSPACE_INVALID_VALUE", "error", "env.files.0.sensitive"],
+    ]);
+    expect(diagnostics[0].message).toContain("must be true or false");
+    expect(diagnosticsFor(diagnostics, "env")).toHaveLength(1);
+  });
+
+  it("reports a null name: in an env.files entry", () => {
+    const { diagnostics } = read("env:\n  files:\n    - name:\n");
+    expect(diagnostics.map((d) => [d.code, d.path.join(".")])).toEqual([
+      ["WORKSPACE_INVALID_VALUE", "env.files.0.name"],
+    ]);
+    expect(diagnostics[0].message).toContain("names nothing");
+  });
+
+  it("reports a null path: in a release.modules entry", () => {
+    const { diagnostics } = read("release:\n  modules:\n    - { path: }\n");
+    expect(diagnostics.map((d) => [d.code, d.path.join(".")])).toEqual([
+      ["WORKSPACE_INVALID_VALUE", "release.modules.0.path"],
+    ]);
+  });
+
   it("normalizes a bare string entry and reads an object one", () => {
     const { config } = read(
       "release:\n  modules:\n    - modules/*\n    - path: vendor/aws/*\n      registry: oci://ghcr.io/telorun/aws\n",
@@ -168,7 +212,10 @@ describe("destinations", () => {
 });
 
 describe("env defaults", () => {
-  it("keeps the pair the walk hardcoded, in the order it applied them", () => {
-    expect(DEFAULT_ENV_FILES).toEqual([".env", ".env.local"]);
+  it("keeps the pair the walk hardcoded, in the order it applied them, .env.local sensitive", () => {
+    expect(DEFAULT_ENV_FILES).toEqual([
+      { name: ".env", sensitive: false },
+      { name: ".env.local", sensitive: true },
+    ]);
   });
 });

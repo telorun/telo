@@ -282,11 +282,18 @@ export function CloudProjectBar({
               The files you copied from the browser workspace are now committed to{" "}
               {cloud.browserWorkspaceRemoval?.projectName}. The browser workspace still holds its
               own copy of them on this device.
+              {cloud.browserWorkspaceRemoval?.kept.length ? (
+                <>
+                  {" "}
+                  {cloud.browserWorkspaceRemoval.kept.join(", ")} stay on this device: they hold
+                  secrets that were not copied, or mark the files that do.
+                </>
+              ) : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={cloud.keepBrowserWorkspace}>Keep it</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={cloud.removeBrowserWorkspace}>
+            <AlertDialogAction variant="destructive" onClick={() => void cloud.removeBrowserWorkspace()}>
               Remove
             </AlertDialogAction>
           </AlertDialogFooter>

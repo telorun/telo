@@ -204,7 +204,15 @@ export interface WorkspaceFileEntry {
 
 export interface RunBundle {
   entryRelativePath: string;
-  files: Array<{ relativePath: string; contents: string }>;
+  files: RunBundleFile[];
+}
+
+/** Mirrors one entry of runner-core's `RunBundle.files`; `encoding` is `utf8`
+ *  when omitted. */
+export interface RunBundleFile {
+  relativePath: string;
+  contents: string;
+  encoding?: "utf8" | "base64";
 }
 
 export interface RunSession {

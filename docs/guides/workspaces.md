@@ -92,12 +92,15 @@ env:
     - vendor/*
 
   # Which files are collected in each directory, later winning within one
-  # directory. Declaring it REPLACES the default (`[.env, .env.local]`); `[]`
-  # collects none. Filenames only — a `/` or a glob is an error.
+  # directory. Each is a filename, or `{ name, sensitive }` for a file holding
+  # values that must not be committed or synced. Declaring it REPLACES the
+  # default (`[.env, { name: .env.local, sensitive: true }]`); `[]` collects
+  # none. Filenames only — a `/` or a glob is an error.
   files:
     - .env
-    - .env.local
     - .env.production
+    - name: .env.local
+      sensitive: true
 ```
 
 Most workspaces need far less. A single-destination repo is two keys:
@@ -112,7 +115,8 @@ release:
 ## Two rules to keep in mind
 
 **A declared list replaces its default; it never extends it.** Adding
-`.env.production` means writing all three filenames, and adding one `ignore`
+`.env.production` means writing all three entries, `.env.local` with its
+`sensitive: true`, and adding one `ignore`
 pattern means writing the whole set. The set in force is then always exactly one
 authored list, readable in one place, rather than something you have to assemble
 from a built-in you cannot see.
@@ -155,6 +159,52 @@ env:
 
 A run under `vendor/aws/s3` now stops at `vendor/aws/`, and one under `modules/`
 — matched by no pattern — still walks to the marker.
+
+## Sensitive env files
+
+A sensitive env file holds values that must not be committed or synced. With no
+`files:` declared, `.env.local` is the sensitive one and `.env` is not — nothing
+changes for a workspace that declares nothing. With `files:` declared, a file is
+sensitive only when its entry says so, and no filename is special:
+
+```yaml
+env:
+  files:
+    - .env
+    - name: .secrets
+      sensitive: true
+```
+
+`sensitive` takes `true` or `false`. An unknown key in an entry
+(`sensitve: true`) is `WORKSPACE_UNKNOWN_KEY` and a wrong type is
+`WORKSPACE_INVALID_VALUE`, both inside `env:`, so `telo run` refuses on them.
+
+These read the mark:
+
+- **`telo env template`** writes every secret and every need field marked
+  sensitive to the LAST sensitive entry of `env.files`, and everything else to
+  the last entry that is not. When the workspace declares no entry of the kind a
+  value needs, it refuses and names what to add. It warns when a sensitive file
+  it wrote is not ignored by git.
+- **`telo run`** warns when a `secrets:` entry, or a need field marked
+  sensitive, takes its value from a file that is not:
+  `[env] secret DB_PASSWORD is set in ./.env, which env.files does not mark
+  sensitive — move it to a sensitive file`. The run proceeds.
+- **Studio's Variables tab** writes a new secret to the LAST sensitive entry
+  beside the manifest, refuses naming `env.files` when there is none, and shows
+  `telo run`'s warning on a secret's row.
+- **Telo Cloud working copies, Copy to Telo Cloud project and agent sync** leave
+  every sensitive file out — judged by the nearest `telo-workspace.yaml` at or
+  above the file, `.env.local` where none governs — so it is never committed,
+  copied into a project or synced into an agent's session.
+
+The mark has nothing to do with log redaction, which follows what a manifest
+declares as secret wherever the value came from.
+
+**telo 0.120.0 is the first release that reads the object form.** An older
+`telo run` refuses a marker using it (`WORKSPACE_INVALID_VALUE` inside `env:`),
+and a marker has no `requires:` to say why — so upgrade every machine and image
+that runs the workspace before writing an entry as `{ name, sensitive }`.
 
 ## What happens when the file is wrong
 

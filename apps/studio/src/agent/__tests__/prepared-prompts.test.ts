@@ -4,7 +4,6 @@ import {
   askAboutResourcePrompt,
   explainRunFailurePrompt,
   fixDiagnosticPrompt,
-  selectionPrompt,
 } from "../prepared-prompts";
 
 describe("the text an entry point prepares", () => {
@@ -28,15 +27,6 @@ describe("the text an entry point prepares", () => {
     expect(explainRunFailurePrompt({ ...run, output: "boom\n" })).toBe(
       "Explain this failure of the application `Todo` (`apps/todo/telo.yaml`):\n\nExited with code 1\n\n" +
         "Last lines of its output:\n\n```\nboom\n```",
-    );
-  });
-
-  it("names a selection's file and line range, its text fenced past any fence inside it", () => {
-    expect(selectionPrompt({ file: "telo.yaml", startLine: 3, endLine: 4, text: "kind: Http.Server\nport: 80\n" })).toBe(
-      "From `telo.yaml`, lines 3-4:\n\n```yaml\nkind: Http.Server\nport: 80\n```",
-    );
-    expect(selectionPrompt({ file: "README.md", startLine: 7, endLine: 7, text: "```sh" })).toBe(
-      "From `README.md`, line 7:\n\n````\n```sh\n````",
     );
   });
 });

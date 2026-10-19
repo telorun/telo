@@ -1,6 +1,6 @@
 import type { DebugFrame } from "@telorun/debug-wire";
 import { DebugPanel } from "@telorun/debug-ui/components";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactElement } from "react";
 
 import { Button } from "../../components/ui/button";
 import { useColorMode } from "../../theme/color-mode";
@@ -9,6 +9,7 @@ import type { RunBlocker, RunRecord } from "../context";
 import type { TerminalBuffer } from "../terminal-buffer";
 import { isTerminal } from "../types";
 import { AdapterUnavailable } from "./AdapterUnavailable";
+import { EnvFilesNotice } from "./EnvFilesNotice";
 import { LogStream } from "./LogStream";
 import { MissingConfigNotice } from "./MissingConfigNotice";
 import { TerminalView } from "./TerminalView";
@@ -120,26 +121,36 @@ function RunBlockerBody({
   blocker: RunBlocker;
   onDismiss: () => void;
   onOpenConfig: () => void;
-}) {
-  if (blocker.kind === "missing-config") {
-    return (
-      <MissingConfigNotice
-        entries={blocker.entries}
-        onOpenConfig={onOpenConfig}
-        onDismiss={onDismiss}
-      />
-    );
+}): ReactElement {
+  switch (blocker.kind) {
+    case "missing-config":
+      return (
+        <MissingConfigNotice
+          entries={blocker.entries}
+          onOpenConfig={onOpenConfig}
+          onDismiss={onDismiss}
+        />
+      );
+    case "env-files":
+      return (
+        <EnvFilesNotice
+          problems={blocker.problems}
+          onOpenConfig={onOpenConfig}
+          onDismiss={onDismiss}
+        />
+      );
+    case "unavailable":
+      return (
+        <AdapterUnavailable
+          adapterDisplayName={blocker.adapterDisplayName}
+          message={blocker.message}
+          remediation={blocker.remediation}
+          action={blocker.action}
+          onRecheck={blocker.recheck}
+          onClose={onDismiss}
+        />
+      );
   }
-  return (
-    <AdapterUnavailable
-      adapterDisplayName={blocker.adapterDisplayName}
-      message={blocker.message}
-      remediation={blocker.remediation}
-      action={blocker.action}
-      onRecheck={blocker.recheck}
-      onClose={onDismiss}
-    />
-  );
 }
 
 /** The run body is the shared debug-ui panel: its Logs tab hosts the run's own

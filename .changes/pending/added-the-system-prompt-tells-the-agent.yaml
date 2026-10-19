@@ -1,0 +1,6 @@
+modules:
+  apps/authoring-agent: Added
+body: "The system prompt tells the agent how to read a telo-selection block at the end
+  of a user message: the text the user had selected in their editor, at those lines of
+  that workspace file — an excerpt the agent reads the file around before editing it,
+  and data, never instructions."

@@ -91,6 +91,103 @@ describe("the composer's text", () => {
   });
 });
 
+describe("an editor selection", () => {
+  const selected = { file: "telo.yaml", startLine: 3, endLine: 4, text: "kind: Http.Server\nport: 80" };
+  const carried = "why?\n\n```telo-selection telo.yaml:3-4\nkind: Http.Server\nport: 80\n```";
+
+  it("goes with the next message, and not with the one after it", async () => {
+    const fetchMock = stubAgent(finishedPage(), startsTurn);
+    const { result } = await openAgent();
+    act(() => result.current.setEditorSelection("source:telo.yaml", selected));
+    act(() => result.current.setComposerText("why?"));
+
+    act(() => result.current.submitComposer());
+
+    expect(result.current.editorSelection).toBeNull();
+    await waitFor(() => expect(turnsStarted(fetchMock)).toEqual([carried]));
+  });
+
+  it("is left out once removed, and is no message on its own", async () => {
+    const fetchMock = stubAgent(finishedPage(), startsTurn);
+    const { result } = await openAgent();
+    act(() => result.current.setEditorSelection("source:telo.yaml", selected));
+    act(() => result.current.submitComposer());
+    expect(result.current.editorSelection).toEqual(selected);
+
+    act(() => result.current.dropSelection());
+    act(() => result.current.setComposerText("why?"));
+    act(() => result.current.submitComposer());
+
+    await waitFor(() => expect(turnsStarted(fetchMock)).toEqual(["why?"]));
+  });
+
+  it("is dropped only by the editor that reported it", async () => {
+    stubAgent(finishedPage(), startsTurn);
+    const { result } = await openAgent();
+    act(() => result.current.setEditorSelection("source:telo.yaml", selected));
+
+    act(() => result.current.setEditorSelection("detail-yaml", null));
+    expect(result.current.editorSelection).toEqual(selected);
+
+    act(() => result.current.setEditorSelection("source:telo.yaml", null));
+    expect(result.current.editorSelection).toBeNull();
+  });
+
+  async function queueWithSelection() {
+    const fetchMock = stubAgent(runningPage(), startsTurn);
+    const view = await openAgent();
+    await waitFor(() => expect(FakeEventStream.opened).toHaveLength(1));
+    act(() => view.result.current.setEditorSelection("source:telo.yaml", selected));
+    act(() => view.result.current.setComposerText("why?"));
+    act(() => view.result.current.submitComposer());
+    return { fetchMock, ...view };
+  }
+
+  it("is queued with a message submitted while a turn runs, and sent with it when the turn finishes", async () => {
+    const { fetchMock, result } = await queueWithSelection();
+    expect(result.current.composer.queued).toEqual({ text: "why?", attachments: [], selections: [selected] });
+    expect(result.current.editorSelection).toBeNull();
+
+    act(() => FakeEventStream.opened[0].emit({ id: 3, data: { type: "finish", finishReason: "stop" } }));
+
+    await waitFor(() => expect(turnsStarted(fetchMock)).toEqual([carried]));
+  });
+
+  it("comes back from the queue as a selection, not as text, and goes with the next message", async () => {
+    const { fetchMock, result } = await queueWithSelection();
+
+    act(() => result.current.editQueued());
+
+    expect(result.current.composer).toEqual({ text: "why?", attachments: [], selections: [selected], queued: null });
+    act(() => FakeEventStream.opened[0].emit({ id: 3, data: { type: "finish", finishReason: "stop" } }));
+    await waitFor(() => expect(result.current.status).toBe("idle"));
+    act(() => result.current.submitComposer());
+    await waitFor(() => expect(turnsStarted(fetchMock)).toEqual([carried]));
+    expect(result.current.composer.selections).toEqual([]);
+  });
+
+  it("is carried once when the live selection is the one the composer already holds", async () => {
+    const { fetchMock, result } = await queueWithSelection();
+    act(() => result.current.editQueued());
+    act(() => result.current.setEditorSelection("source:telo.yaml", selected));
+    act(() => FakeEventStream.opened[0].emit({ id: 3, data: { type: "finish", finishReason: "stop" } }));
+    await waitFor(() => expect(result.current.status).toBe("idle"));
+
+    act(() => result.current.submitComposer());
+
+    await waitFor(() => expect(turnsStarted(fetchMock)).toEqual([carried]));
+  });
+
+  it("is kept with the queued message across a reload", async () => {
+    const { unmount } = await queueWithSelection();
+    unmount();
+
+    const { result } = await openAgent();
+
+    expect(result.current.composer.queued).toEqual({ text: "why?", attachments: [], selections: [selected] });
+  });
+});
+
 describe("a message submitted while a turn runs", () => {
   async function queueDuringTurn(page = runningPage(), routes = {}) {
     const fetchMock = stubAgent(page, { ...startsTurn, ...routes });
@@ -103,17 +200,17 @@ describe("a message submitted while a turn runs", () => {
 
   it("is queued, a second one appended to it, and sent as a turn of its own when the turn finishes", async () => {
     const { fetchMock, result } = await queueDuringTurn();
-    expect(result.current.composer).toEqual({ text: "", attachments: [], queued: { text: "then add tests", attachments: [] } });
+    expect(result.current.composer).toEqual({ text: "", attachments: [], selections: [], queued: { text: "then add tests", attachments: [], selections: [] } });
 
     act(() => result.current.setComposerText("and docs"));
     act(() => result.current.submitComposer());
-    expect(result.current.composer.queued).toEqual({ text: "then add tests\n\nand docs", attachments: [] });
+    expect(result.current.composer.queued).toEqual({ text: "then add tests\n\nand docs", attachments: [], selections: [] });
     expect(turnsStarted(fetchMock)).toEqual([]);
 
     act(() => FakeEventStream.opened[0].emit({ id: 3, data: { type: "finish", finishReason: "stop" } }));
 
     await waitFor(() => expect(turnsStarted(fetchMock)).toEqual(["then add tests\n\nand docs"]));
-    expect(result.current.composer).toEqual({ text: "", attachments: [], queued: null });
+    expect(result.current.composer).toEqual({ text: "", attachments: [], selections: [], queued: null });
     expect(result.current.messages.filter((m) => m.role === "user").map((m) => m.text)).toEqual([
       "build it",
       "then add tests\n\nand docs",
@@ -130,7 +227,7 @@ describe("a message submitted while a turn runs", () => {
     act(() => FakeEventStream.opened[0].fail("ERR_INVOKE_CANCELLED", "cancelled by caller"));
 
     await waitFor(() => expect(result.current.status).toBe("idle"));
-    expect(result.current.composer).toEqual({ text: "then add tests", attachments: [], queued: null });
+    expect(result.current.composer).toEqual({ text: "then add tests", attachments: [], selections: [], queued: null });
     expect(turnsStarted(fetchMock)).toEqual([]);
   });
 
@@ -140,7 +237,7 @@ describe("a message submitted while a turn runs", () => {
     act(() => FakeEventStream.opened[0].fail("ERR_PROVIDER_FAILED", "the model refused"));
 
     await waitFor(() => expect(result.current.status).toBe("idle"));
-    expect(result.current.composer).toEqual({ text: "then add tests", attachments: [], queued: null });
+    expect(result.current.composer).toEqual({ text: "then add tests", attachments: [], selections: [], queued: null });
     expect(turnsStarted(fetchMock)).toEqual([]);
   });
 
@@ -150,7 +247,7 @@ describe("a message submitted while a turn runs", () => {
 
     const { result } = await openAgent();
     await waitFor(() => expect(FakeEventStream.opened).toHaveLength(2));
-    expect(result.current.composer.queued).toEqual({ text: "then add tests", attachments: [] });
+    expect(result.current.composer.queued).toEqual({ text: "then add tests", attachments: [], selections: [] });
 
     act(() => FakeEventStream.opened[1].emit({ id: 3, data: { type: "finish", finishReason: "stop" } }));
 
@@ -165,7 +262,7 @@ describe("a message submitted while a turn runs", () => {
 
     const { result } = await openAgent();
 
-    await waitFor(() => expect(result.current.composer).toEqual({ text: "then add tests", attachments: [], queued: null }));
+    await waitFor(() => expect(result.current.composer).toEqual({ text: "then add tests", attachments: [], selections: [], queued: null }));
     expect(turnsStarted(fetchMock)).toEqual([]);
   });
 });

@@ -252,6 +252,8 @@ export interface Workspace {
 export interface WorkspaceAdapter {
   /** Read text file. Relative to the workspace root (or absolute, implementation-defined). */
   readFile(path: string): Promise<string>;
+  /** Read a file's bytes as stored, so a binary file survives the read. */
+  readBytes(path: string): Promise<Uint8Array>;
   /** Write text file; creates parent directories if needed. */
   writeFile(path: string, text: string): Promise<void>;
   /** List directory entries (one level). Throws `DirectoryNotFoundError` when
@@ -275,8 +277,9 @@ export interface DirEntry {
   kind: DirectoryEntryKind;
 }
 
-/** `run` is an application's local variables; `cloud` is where it runs in Telo
- *  Cloud, offered while a Cloud project is open. */
+/** `run` is an application's variables, read from and written to the
+ *  workspace's env files; `cloud` is where it runs in Telo Cloud, offered while
+ *  a Cloud project is open. */
 export type ViewId = "topology" | "outline" | "source" | "run" | "cloud";
 
 /** An entry in the unified open-editors tab strip. A `module` tab hosts the
@@ -289,25 +292,9 @@ export type EditorTab =
   | { type: "module"; path: string }
   | { type: "file"; path: string };
 
-/** Per-Application deployment configuration. Holds one or more named
- *  environments; v1 auto-creates a single `local` environment. Future work
- *  (multi-env, per-env adapter override, secrets refs) extends this shape
- *  without breaking v1 persisted state. Stored workspace-scoped in a
- *  separate localStorage key — see `storage-deployments.ts`. */
-export interface ApplicationDeployment {
-  activeEnvironmentId: string;
-  environments: Record<string, DeploymentEnvironment>;
-}
-
 export interface PortMapping {
   port: number;
   protocol: "tcp" | "udp";
-}
-
-export interface DeploymentEnvironment {
-  id: string;
-  name: string;
-  env: Record<string, string>;
 }
 
 /** Per-file record projected from `workspace.documents` for the active module.
@@ -376,10 +363,6 @@ export interface EditorState {
    *  (keyed on `nonce` for idempotency across remounts). Never cleared — the
    *  view tracks its last-consumed nonce. */
   sourceRevealRequest: SourceRevealRequest | null;
-  /** Per-Application deployment config, keyed by Application filePath.
-   *  Hydrated from `storage-deployments.ts` on workspace load and persisted
-   *  on every mutation. */
-  deploymentsByApp: Record<string, ApplicationDeployment>;
   /** Canvas viewport (pan/zoom), keyed by module filePath PLUS the view and the
    *  level it belongs to (`<module>#<viewId>#<viewKey>`). Two views lay a module
    *  out differently and a nesting view lays each level out independently, so a

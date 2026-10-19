@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyReverted, reconcile, seedDelta } from "../sync";
+import { applyReverted, pullFile, reconcile, seedDelta, sharedEditorFile } from "../sync";
 import type { AgentWorkspace, TreeFile, WorkspaceBridge } from "../types";
 
 /** A workspace surface over an in-memory tree, so a test asserts on what the
@@ -41,6 +41,10 @@ function fakeBridge(
     },
     async readFile(path) {
       return files.get(path) ?? "";
+    },
+    async probeFile(path) {
+      const text = files.get(path);
+      return text === undefined ? { kind: "missing" } : { kind: "text", text };
     },
     async applyChanges(writes, deletes) {
       applied.push({ writes: writes.map((w) => w.path), deletes });
@@ -87,9 +91,10 @@ describe("seedDelta", () => {
       { "telo.yaml": "a", "telo-workspace.yaml": "theirs" },
       ["telo-workspace.yaml"],
     );
+    // The editor's own marker is read for the sensitive-file rule, so it is one.
     await seedDelta(
       workspace,
-      fakeBridge({ "telo.yaml": "a", "telo-workspace.yaml": "mine" }),
+      fakeBridge({ "telo.yaml": "a", "telo-workspace.yaml": "env: {}\n" }),
     );
     expect(workspace.applied).toEqual([]);
   });
@@ -112,6 +117,49 @@ describe("seedDelta", () => {
   });
 });
 
+describe("sensitive env files", () => {
+  // `.env.local` is sensitive where no marker governs; under app/ a nearer
+  // marker marks `.secrets` instead, so its `.env.local` is an ordinary file.
+  const editorFiles = {
+    ".env.local": "root-secret",
+    "app/telo-workspace.yaml": "env:\n  files: [.env.local, { name: .secrets, sensitive: true }]\n",
+    "app/.env.local": "PORT=1",
+    "app/.secrets": "app-secret",
+  };
+
+  it("are never pushed, by the nearest marker's mark", async () => {
+    const workspace = fakeWorkspace({});
+    const sensitive = await seedDelta(workspace, fakeBridge(editorFiles));
+    expect(workspace.applied).toEqual([
+      { write: ["app/telo-workspace.yaml", "app/.env.local"], remove: [] },
+    ]);
+    expect([...sensitive].sort()).toEqual([".env.local", "app/.secrets"]);
+  });
+
+  it("are not linked to the editor's file, by what the last pass left out", async () => {
+    const bridge = { ...fakeBridge(editorFiles), editorFile: (path: string) => `/root/${path}` };
+    const sensitive = await seedDelta(fakeWorkspace({}), bridge);
+    expect(sharedEditorFile({ excludedPaths: new Set() }, bridge, "app/.secrets", sensitive)).toBeNull();
+    expect(sharedEditorFile({ excludedPaths: new Set() }, bridge, "app/.env.local", sensitive)).toBe(
+      "/root/app/.env.local",
+    );
+  });
+
+  it("are not pulled mid-turn", async () => {
+    const bridge = fakeBridge(editorFiles);
+    await pullFile(fakeWorkspace({ "app/.secrets": "agent-secret" }), bridge, "app/.secrets");
+    await pullFile(fakeWorkspace({ "app/.env.local": "PORT=2" }), bridge, "app/.env.local");
+    expect(bridge.applied).toEqual([{ writes: ["app/.env.local"], deletes: [] }]);
+  });
+
+  it("refuse the pass with the marker's message when its env block is refused", async () => {
+    const workspace = fakeWorkspace({});
+    const bridge = fakeBridge({ "telo-workspace.yaml": "env:\n  files: [{ name: .secrets, sensitve: true }]\n" });
+    await expect(seedDelta(workspace, bridge)).rejects.toThrow(/sensitve/);
+    expect(workspace.applied).toEqual([]);
+  });
+});
+
 describe("reconcile", () => {
   it("pulls what the agent wrote and deletes what it removed", async () => {
     const workspace = fakeWorkspace({ "telo.yaml": "written-by-agent" });
@@ -120,6 +168,13 @@ describe("reconcile", () => {
     expect(bridge.applied).toEqual([
       { writes: ["telo.yaml"], deletes: ["removed.yaml"] },
     ]);
+  });
+
+  it("never pulls a sensitive env file the agent wrote, nor deletes the editor's", async () => {
+    const workspace = fakeWorkspace({ "app/.env.local": "agent-secret", "app/telo.yaml": "b" });
+    const bridge = fakeBridge({ ".env.local": "mine", "app/telo.yaml": "a" });
+    await reconcile(workspace, bridge);
+    expect(bridge.applied).toEqual([{ writes: ["app/telo.yaml"], deletes: [] }]);
   });
 
   it("does not pull runner infrastructure into the user's workspace", async () => {

@@ -322,7 +322,7 @@ Reported by `telo release`, and by the editor as you type. See
 | --- | --- |
 | `WORKSPACE_MODULES_MOVED` | `modules:` is at the top level. It is release scope — indent it under `release:`. |
 | `WORKSPACE_UNKNOWN_KEY` | A key nothing reads. A near-miss of a known one is an error, since its settings would go silently unapplied; an unrecognized top-level block is a warning, so a marker written for a newer telo still runs. |
-| `WORKSPACE_INVALID_VALUE` | A wrong type, an entry that is neither a pattern string nor a mapping carrying `path:`, an `env.files` entry that is a path or a glob, or an empty `release.modules`. |
+| `WORKSPACE_INVALID_VALUE` | A wrong type, an entry that is neither a string nor a mapping carrying its key (`path:` for `release.modules`, `name:` for `env.files`), an `env.files` entry that is a path or a glob, or an empty `release.modules`. |
 | `WORKSPACE_ENTRY_MATCHES_NOTHING` ⚠️ | A `release.modules` pattern under which no directory holds a `telo.yaml`, or an `env.roots` pattern matching no directory — usually a typo in a subtree name. |
 | `WORKSPACE_ENTRY_SHADOWED` ⚠️ | Every module an entry matches is also matched by a later one, so last-match-wins leaves this entry's settings applying to nothing. |
 | `WORKSPACE_MARKER_SHADOWED` ⚠️ | Another marker sits above this one, so everything beneath it takes a different cache root, different module keys and a different release scope. |

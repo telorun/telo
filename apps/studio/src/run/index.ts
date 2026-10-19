@@ -1,4 +1,5 @@
 export type {
+  EnvFileProblem,
   LogLine,
   MissingConfigEntry,
   RunBlocker,

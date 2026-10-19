@@ -41,6 +41,11 @@ export class LocalStorageAdapter implements ManifestSource, WorkspaceAdapter {
     return (await this.read(path)).text;
   }
 
+  /** This store holds text only, so a file's bytes are its text's. */
+  async readBytes(path: string): Promise<Uint8Array> {
+    return new TextEncoder().encode(await this.readFile(path));
+  }
+
   async writeFile(path: string, text: string): Promise<void> {
     window.localStorage.setItem(this.storageKey(path), text);
   }

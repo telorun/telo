@@ -17,7 +17,13 @@
     "fs:allow-stat",
     {
       "identifier": "fs:scope",
-      "allow": [{ "path": "$HOME/**" }, { "path": "$APPDATA" }, { "path": "$APPDATA/**" }]
+      "allow": [
+        { "path": "$HOME/**" },
+        { "path": "$HOME/**/.env" },
+        { "path": "$HOME/**/.env.*" },
+        { "path": "$APPDATA" },
+        { "path": "$APPDATA/**" }
+      ]
     },
     "opener:allow-open-url",
     "opener:allow-default-urls"

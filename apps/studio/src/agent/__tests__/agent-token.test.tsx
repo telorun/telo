@@ -8,7 +8,7 @@ import { AGENT_URL, FakeEventStream, installAgentGlobals, stubAgent } from "./ag
 
 const bridge: WorkspaceBridge = {
   snapshot: async () => new Map(),
-  readFile: async () => "",
+  readFile: async () => "", probeFile: async () => ({ kind: "missing" as const }),
   applyChanges: async () => undefined,
   editorFile: () => null, workspaceFile: () => null,
 };

@@ -317,8 +317,9 @@ export function renderArgumentSynopsis(moduleDoc: unknown): string {
 
 /**
  * The answer to `--help`: the synopsis, then every binding with its type,
- * default, environment variable and description, as the application declares
- * them. Normative: `kernel/specs/application-arguments.md` §5.
+ * default, environment variable and description, then every input read from the
+ * environment alone, and the needs, as the application declares them.
+ * Normative: `kernel/specs/application-arguments.md` §5.
  */
 export function renderApplicationUsage(moduleDoc: unknown): string {
   const metadata = isRecord(moduleDoc) && isRecord(moduleDoc.metadata) ? moduleDoc.metadata : {};
@@ -354,7 +355,45 @@ export function renderApplicationUsage(moduleDoc: unknown): string {
         return [`${short}${spelled}`, describe(binding)];
       }),
   );
+  section("Environment", environmentRows(moduleDoc, bindings));
+  const needs = isRecord(moduleDoc) && isRecord(moduleDoc.needs) ? Object.keys(moduleDoc.needs) : [];
+  if (needs.length > 0) {
+    lines.push(
+      "",
+      `Needs: ${needs.join(", ")} — \`telo needs report\` lists the environment variables they read.`,
+    );
+  }
   return lines.join("\n") + "\n";
+}
+
+/** Every `variables:` / `secrets:` / `ports:` entry bound by `env:` and by no
+ *  command-line argument, in that block order; a bound one is listed under its
+ *  argument. A secret shows its type and whether it is required, never a value. */
+function environmentRows(moduleDoc: unknown, bindings: readonly ArgBinding[]): Array<[string, string]> {
+  const rows: Array<[string, string]> = [];
+  for (const block of ["variables", "secrets", "ports"] as const) {
+    const entries = isRecord(moduleDoc) ? moduleDoc[block] : undefined;
+    if (!isRecord(entries)) continue;
+    for (const [name, entry] of Object.entries(entries)) {
+      if (!isRecord(entry) || typeof entry.env !== "string") continue;
+      if (bindings.some((binding) => binding.block === block && binding.name === name)) continue;
+      const notes = [valueTypeOf(block, entry)];
+      if (block === "secrets") notes.push(entry.default === undefined ? "secret; required" : "secret");
+      else notes.push(entry.default === undefined ? "required" : `default: ${JSON.stringify(entry.default)}`);
+      notes.push(`${block}.${name}`);
+      const text = [entry.title, entry.description].find((t) => typeof t === "string") as string | undefined;
+      rows.push([entry.env, [text, `[${notes.join("; ")}]`].filter(Boolean).join(" ")]);
+    }
+  }
+  return rows;
+}
+
+function valueTypeOf(block: string, entry: Record<string, unknown>): string {
+  if (block === "ports") return entry.protocol === "udp" ? "udp port" : "tcp port";
+  const valueType = entry["x-telo-type"];
+  if (typeof valueType === "string") return valueType;
+  if (isRecord(valueType) && typeof valueType.name === "string") return valueType.name;
+  return typeof entry.type === "string" ? entry.type : "any";
 }
 
 function describeFacts(binding: ArgBinding, facts: UsageFacts): string {

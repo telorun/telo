@@ -95,7 +95,7 @@ describe("a request made with no workspace open", () => {
 
     await waitFor(() => expect(FakeEventStream.opened).toHaveLength(1));
     await waitFor(() =>
-      expect(view.result.current.composer.queued).toEqual({ text: "Build a ticket API", attachments: [] }),
+      expect(view.result.current.composer.queued).toEqual({ text: "Build a ticket API", attachments: [], selections: [] }),
     );
     expect(turnsStarted(fetchMock)).toEqual([]);
   });

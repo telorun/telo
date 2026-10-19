@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "../../components/ui/button";
 import { RUN_DOCK_MIN_HEIGHT, useRun } from "../context";
-import type { RunRecord } from "../context";
+import type { RunBlocker, RunRecord } from "../context";
 import { RunOutput } from "./RunOutput";
 import { RunStatusChip } from "./RunStatusChip";
 import { describeTeloAlignment, staleRunVersion, teloAlignment } from "../telo-alignment";
@@ -132,9 +132,7 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
       : null;
 
   const headline = blocker
-    ? blocker.kind === "missing-config"
-      ? "Missing required configuration"
-      : blocker.adapterDisplayName
+    ? blockerHeadline(blocker)
     : starting
       ? "Starting run…"
       : (run?.adapterDisplayName ?? "");
@@ -242,6 +240,18 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
  * leaves the session `running`, so "the session is up" and "the last run
  * succeeded" are two different facts and are shown as two.
  */
+/** What the dock's header says about a run that never started. */
+function blockerHeadline(blocker: RunBlocker): string {
+  switch (blocker.kind) {
+    case "missing-config":
+      return "Missing required configuration";
+    case "env-files":
+      return "The env files could not be read";
+    case "unavailable":
+      return blocker.adapterDisplayName;
+  }
+}
+
 function RunGenerations({ runs }: { runs: RunRecord["runs"] }) {
   const entries = Object.values(runs);
   if (entries.length === 0) return null;

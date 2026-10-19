@@ -1,12 +1,13 @@
-import { useState, type ReactNode } from "react";
-import { CheckCircleIcon, ChevronDownIcon, WrenchIcon, XCircleIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { CheckCircleIcon, ChevronDownIcon, XCircleIcon } from "lucide-react";
 import type { CheckDiagnostic, ToolCallView } from "@/agent";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
+import { Loader } from "@/components/ai-elements/loader";
+import { ToolInput, ToolOutput } from "@/components/ai-elements/tool";
 import { DiffHunks, LineCounts } from "./DiffHunks";
 import { JsonTree } from "./JsonTree";
+import { ToolOutputPreview } from "./ToolOutputPreview";
 import { WorkspaceFileLink } from "./WorkspaceFileLink";
 
 export interface ToolCardProps {
@@ -48,49 +49,77 @@ function TextCard({ tool }: { tool: ToolCallView }) {
   const failed = tool.state === "error";
   const seen = typeof tool.output === "string" ? tool.output : undefined;
   return (
-    <Tool defaultOpen={failed}>
-      <ToolHeader
-        type={`tool-${tool.name}`}
-        title={tool.name}
-        state={tool.state === "running" ? "input-available" : failed ? "output-error" : "output-available"}
-      />
-      <ToolContent>
-        {tool.args != null && <ToolInput input={tool.args} />}
-        <ToolOutput output={failed ? undefined : tool.output} errorText={failed ? seen : undefined} />
-      </ToolContent>
-    </Tool>
+    <Shell tool={tool} status={tool.state === "running" ? "running" : failed ? "failed" : "done"} aside={<Arguments args={tool.args} />}>
+      {tool.args != null && <ToolInput input={tool.args} className="p-0" />}
+      <ToolOutput className="p-0" output={failed ? undefined : tool.output} errorText={failed ? seen : undefined} />
+    </Shell>
   );
 }
 
-/** The card the structured results share: the name and its verdict stay in
- *  view, `aside` beside them, the rest behind the toggle. */
+type ShellStatus = "running" | "failed" | "done";
+
+/** The card every tool call shares: one row with the name, `aside` and the
+ *  verdict, the details behind the toggle — `lead` whole, then a preview held
+ *  to a few lines, all of it (or `full`) in a dialog. */
 function Shell({
   tool,
-  failed,
+  status,
   aside,
+  lead,
+  full,
+  copyText,
+  offerFull,
+  anchor,
   children,
 }: {
   tool: ToolCallView;
-  failed: boolean;
+  status: ShellStatus;
   aside?: ReactNode;
+  /** What the card is opened for, never clipped: a failed check's diagnostics. */
+  lead?: ReactNode;
+  full?: ReactNode;
+  copyText?: string;
+  offerFull?: boolean;
+  anchor?: "start" | "end";
   children: ReactNode;
 }) {
   return (
-    <Collapsible defaultOpen={failed} className="group/tool not-prose mb-4 w-full rounded-md border">
-      <div className="flex items-center gap-2 p-3">
-        <CollapsibleTrigger className="flex shrink-0 items-center gap-2">
-          <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]/tool:rotate-180" />
-          <WrenchIcon className="size-4 text-muted-foreground" />
-          <span className="text-sm font-medium">{tool.name}</span>
+    <Collapsible defaultOpen={status === "failed"} className="group/tool not-prose mb-1.5 w-full rounded-md border">
+      <div className="flex items-center gap-2 px-2.5 py-1.5">
+        <CollapsibleTrigger className="flex shrink-0 items-center gap-1.5">
+          <ChevronDownIcon className="size-3.5 text-muted-foreground transition-transform group-data-[state=open]/tool:rotate-180" />
+          <span className="text-xs font-medium">{tool.name}</span>
         </CollapsibleTrigger>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-xs">{aside}</div>
-        {failed ? (
-          <XCircleIcon className="size-4 shrink-0 text-red-600" aria-label="Failed" />
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-xs">{aside}</div>
+        {status === "running" ? (
+          <Loader size={14} className="shrink-0 text-muted-foreground" aria-label="Running" />
+        ) : status === "failed" ? (
+          <XCircleIcon className="size-3.5 shrink-0 text-red-600" aria-label="Failed" />
         ) : (
-          <CheckCircleIcon className="size-4 shrink-0 text-green-600" aria-label="Completed" />
+          <CheckCircleIcon className="size-3.5 shrink-0 text-green-600" aria-label="Completed" />
         )}
       </div>
-      <CollapsibleContent className="space-y-2 px-3 pb-3 text-xs">{children}</CollapsibleContent>
+      <CollapsibleContent className="space-y-2 px-2.5 pb-2.5 text-xs">
+        {lead}
+        <ToolOutputPreview
+          title={tool.name}
+          description={headline(tool.args) ?? undefined}
+          full={
+            full ??
+            (lead ? (
+              <>
+                {lead}
+                {children}
+              </>
+            ) : undefined)
+          }
+          copyText={copyText}
+          offerFull={offerFull}
+          anchor={anchor}
+        >
+          {children}
+        </ToolOutputPreview>
+      </CollapsibleContent>
     </Collapsible>
   );
 }
@@ -111,16 +140,24 @@ function argumentEntries(args: unknown): Array<[string, unknown]> {
   return args && typeof args === "object" && !Array.isArray(args) ? Object.entries(args) : [];
 }
 
-/** The call's scalar arguments, as its headline. */
-function Arguments({ args }: { args: unknown }) {
+/** The call's scalar arguments as one line — a lone one without its key, so
+ *  a command reads as the command it ran. */
+function headline(args: unknown): string | null {
   const shown = argumentEntries(args).flatMap(([key, value]) => {
     const text = headlineText(value);
     return text === null ? [] : [{ key, text }];
   });
   if (shown.length === 0) return null;
+  if (shown.length === 1) return shown[0].text;
+  return shown.map(({ key, text }) => `${key}: ${text}`).join(" · ");
+}
+
+function Arguments({ args }: { args: unknown }) {
+  const text = headline(args);
+  if (text === null) return null;
   return (
-    <span className="min-w-0 truncate text-muted-foreground">
-      {shown.map(({ key, text }) => `${key}: ${text}`).join(" · ")}
+    <span className="min-w-0 truncate font-mono text-muted-foreground" title={text}>
+      {text}
     </span>
   );
 }
@@ -130,9 +167,9 @@ function diagnosticLine(d: CheckDiagnostic): string {
   return `${d.file}:${d.line}:${d.column}${d.code ? ` ${d.code}` : ""} ${d.message}`;
 }
 
-function CheckVerdict({ diagnostics, seen }: { diagnostics: CheckDiagnostic[]; seen?: string }) {
+function CheckVerdict({ diagnostics }: { diagnostics: CheckDiagnostic[] }) {
   return (
-    <div className="space-y-2 p-2">
+    <div className="p-2">
       {diagnostics.length > 0 && (
         <ul className="font-mono">
           {diagnostics.map((d, i) => (
@@ -144,12 +181,15 @@ function CheckVerdict({ diagnostics, seen }: { diagnostics: CheckDiagnostic[]; s
           ))}
         </ul>
       )}
-      {seen && (
-        <div className="space-y-1 text-muted-foreground">
-          <div className="text-[10px] uppercase tracking-wide">What the model saw</div>
-          <pre className="whitespace-pre-wrap font-mono">{seen}</pre>
-        </div>
-      )}
+    </div>
+  );
+}
+
+function ModelSaw({ seen }: { seen: string }) {
+  return (
+    <div className="space-y-1 text-muted-foreground">
+      <div className="text-[10px] uppercase tracking-wide">What the model saw</div>
+      <pre className="whitespace-pre-wrap font-mono">{seen}</pre>
     </div>
   );
 }
@@ -167,36 +207,40 @@ function FileToolCard({ tool, diffs }: { tool: ToolCallView; diffs: boolean }) {
   const changes = diffs ? tool.changes : undefined;
   const hunks = changes ? tool.hunks : undefined;
   const seen = typeof tool.output === "string" ? tool.output : undefined;
+  const verdict = checkFailed && (
+    <ToolOutput
+      className="p-0"
+      output={<CheckVerdict diagnostics={tool.diagnostics ?? []} />}
+      errorText={`telo check exited with ${tool.checkExitCode}`}
+    />
+  );
 
   return (
     <Shell
       tool={tool}
-      failed={checkFailed}
+      status={checkFailed ? "failed" : "done"}
+      lead={verdict}
       aside={
         <>
           {tool.path !== undefined ? (
-            <WorkspaceFileLink path={tool.path} line={hunks?.[0]?.newStart} className="truncate font-mono" />
+            <WorkspaceFileLink path={tool.path} line={hunks?.[0]?.newStart} className="min-w-0 truncate font-mono" />
           ) : (
-            changes && <span className="text-muted-foreground">{fileCount(changes.length)}</span>
+            changes && <span className="shrink-0 text-muted-foreground">{fileCount(changes.length)}</span>
           )}
           {changes?.length === 1 && <LineCounts change={changes[0]} />}
           {tool.checkExitCode != null &&
             (checkFailed ? (
-              <Badge variant="destructive">check failed</Badge>
+              <Badge variant="destructive" className="shrink-0">
+                check failed
+              </Badge>
             ) : (
-              <span className="text-muted-foreground">check: clean</span>
+              <span className="shrink-0 text-muted-foreground">check: clean</span>
             ))}
         </>
       }
     >
       {!changes && tool.args != null && <ToolInput input={tool.args} className="p-0" />}
-      {checkFailed && (
-        <ToolOutput
-          className="p-0"
-          output={<CheckVerdict diagnostics={tool.diagnostics ?? []} seen={changes ? undefined : seen} />}
-          errorText={`telo check exited with ${tool.checkExitCode}`}
-        />
-      )}
+      {checkFailed && !changes && seen && <ModelSaw seen={seen} />}
       {hunks && hunks.length > 0 && <DiffHunks hunks={hunks} />}
       {changes && tool.path !== undefined && changes.length === 0 && (
         <p className="text-muted-foreground">The file already held this content.</p>
@@ -230,43 +274,58 @@ export function fileCount(n: number): string {
 
 const TAIL_LINES = 20;
 
-/** A command's result: its exit code, and the end of what it printed — where a
- *  run says how it went — with everything it printed, stderr included, behind
- *  the toggle. */
+/** A command's result: a non-zero exit code beside the name, the end of what
+ *  it printed — where a run says how it went — and everything it printed,
+ *  stderr included, in the dialog. */
 function RunCard({ tool, run }: { tool: ToolCallView; run: NonNullable<ToolCallView["run"]> }) {
-  const [full, setFull] = useState(false);
   const lines = run.output.replace(/\n$/, "").split("\n");
-  const more = lines.length > TAIL_LINES || run.messages !== "";
-  const stdout = full ? run.output : lines.slice(-TAIL_LINES).join("\n");
+  const cut = lines.length > TAIL_LINES || run.messages !== "";
 
   return (
     <Shell
       tool={tool}
-      failed={run.exitCode !== 0}
+      status={run.exitCode !== 0 ? "failed" : "done"}
       aside={
         <>
           <Arguments args={tool.args} />
-          <Badge variant={run.exitCode === 0 ? "secondary" : "destructive"}>exit {run.exitCode}</Badge>
+          {run.exitCode !== 0 && (
+            <Badge variant="destructive" className="shrink-0">
+              exit {run.exitCode}
+            </Badge>
+          )}
         </>
       }
+      anchor="end"
+      offerFull={cut}
+      full={<RunOutput run={run} />}
+      copyText={run.messages === "" ? run.output : `${run.output}\n${run.messages}`}
     >
       {run.output === "" ? (
         <p className="text-muted-foreground">It printed nothing.</p>
       ) : (
-        <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/50 p-2 font-mono">{stdout}</pre>
-      )}
-      {full && run.messages !== "" && (
-        <div className="space-y-1">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">stderr</div>
-          <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/50 p-2 font-mono">{run.messages}</pre>
-        </div>
-      )}
-      {more && (
-        <Button variant="ghost" size="xs" onClick={() => setFull((shown) => !shown)}>
-          {full ? "Show the last lines only" : "Show full output"}
-        </Button>
+        <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-muted/50 p-2 font-mono">
+          {lines.slice(-TAIL_LINES).join("\n")}
+        </pre>
       )}
     </Shell>
+  );
+}
+
+function RunOutput({ run }: { run: NonNullable<ToolCallView["run"]> }) {
+  return (
+    <>
+      {run.output === "" ? (
+        <p className="text-muted-foreground">It printed nothing.</p>
+      ) : (
+        <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-2 font-mono">{run.output}</pre>
+      )}
+      {run.messages !== "" && (
+        <div className="space-y-1">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">stderr</div>
+          <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-2 font-mono">{run.messages}</pre>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -289,14 +348,23 @@ function contentParts(value: unknown): ContentPart[] | null {
 /**
  * Any other structured result — what a lookup through MCP returns. The
  * headline is the call's scalar arguments; the result's text parts are shown
- * as text, and data as a tree.
+ * as text, and data as a tree, copyable from the dialog.
  */
 function StructuredCard({ tool }: { tool: ToolCallView }) {
   const parts = contentParts(tool.structured);
   const nested = argumentEntries(tool.args).filter(([, value]) => headlineText(value) === null);
 
   return (
-    <Shell tool={tool} failed={false} aside={<Arguments args={tool.args} />}>
+    <Shell
+      tool={tool}
+      status="done"
+      aside={<Arguments args={tool.args} />}
+      copyText={
+        parts?.every((part) => part.type === "text")
+          ? parts.map((part) => (part.type === "text" ? part.text : "")).join("\n\n")
+          : JSON.stringify(tool.structured, null, 2)
+      }
+    >
       {nested.length > 0 && <JsonTree value={Object.fromEntries(nested)} />}
       {parts ? (
         parts.map((part, i) =>

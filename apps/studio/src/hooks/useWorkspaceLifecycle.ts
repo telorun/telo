@@ -20,6 +20,11 @@ import {
 } from "../loader";
 import type { FileNode, NewModuleSelection, OpenedWorkspace, RemoteImportPlan } from "../loader";
 import { LocalStorageAdapter } from "../loader/adapters/local-storage";
+import {
+  ObservedWorkspaceAdapter,
+  createWorkspaceChanges,
+  type WorkspaceChanges,
+} from "../loader/observed-workspace-adapter";
 import { pathBasename } from "../loader/paths";
 import type {
   AppSettings,
@@ -31,7 +36,6 @@ import type {
   WorkspaceAdapter,
 } from "../model";
 import { forgetWorkspaceRoot } from "../storage";
-import { loadDeploymentsForWorkspace } from "../storage-deployments";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { INITIAL_STATE, pickInitialActiveModule } from "../editor-state";
 import type { PersistedEditorState } from "./useEditorPersistence";
@@ -120,8 +124,12 @@ export interface WorkspaceLifecycle {
   /** Source for raw manifest reads (registry / disk); shared with import ops
    *  and source edits. */
   manifestAdapterRef: React.RefObject<ManifestSource | null>;
-  /** Source for workspace file I/O; shared with file ops, run, and persist. */
+  /** Source for workspace file I/O; shared with file ops, run, and persist.
+   *  Every write through it is published on `workspaceChanges`. */
   workspaceAdapterRef: React.RefObject<WorkspaceAdapter | null>;
+  /** The paths each write through the workspace adapter touched, and a
+   *  whole-workspace change whenever the workspace is read again. */
+  workspaceChanges: WorkspaceChanges;
   handleOpen: () => Promise<void>;
   /** Creates and opens a new module (blank or from a starter); throws
    *  `ModuleExistsError` when the target exists and `overwrite` is unset. */
@@ -172,7 +180,15 @@ export function useWorkspaceLifecycle({
   const [fileTree, setFileTree] = useState<FileNode[]>([]);
 
   const manifestAdapterRef = useRef<ManifestSource | null>(null);
-  const workspaceAdapterRef = useRef<WorkspaceAdapter | null>(null);
+  const workspaceAdapterRef = useRef<ObservedWorkspaceAdapter | null>(null);
+  const changesRef = useRef<ReturnType<typeof createWorkspaceChanges> | null>(null);
+  changesRef.current ??= createWorkspaceChanges();
+  const changes = changesRef.current;
+  // The adapter is wrapped once, as the workspace opens, so no write through it
+  // goes unpublished.
+  function attachWorkspaceAdapter(adapter: WorkspaceAdapter) {
+    workspaceAdapterRef.current = new ObservedWorkspaceAdapter(adapter, changes.publish);
+  }
   const autoRestoredRef = useRef(false);
   const remoteImportRef = useRef(false);
   // Set while the overwrite dialog is closing because the user confirmed, so
@@ -188,7 +204,7 @@ export function useWorkspaceLifecycle({
   ) {
     await writeRemoteImportPlan(adapter, plan);
     manifestAdapterRef.current = adapter;
-    workspaceAdapterRef.current = adapter;
+    attachWorkspaceAdapter(adapter);
     const workspace = await loadWorkspace(
       VIRTUAL_WORKSPACE_ROOT,
       adapter,
@@ -201,7 +217,6 @@ export function useWorkspaceLifecycle({
       activeModulePath: plan.rootDestPath,
       openTabs: [{ type: "module", path: plan.rootDestPath }],
       activeTabId: plan.rootDestPath,
-      deploymentsByApp: loadDeploymentsForWorkspace(VIRTUAL_WORKSPACE_ROOT),
     });
     const depCount = plan.files.length - 1;
     setToast({
@@ -261,7 +276,7 @@ export function useWorkspaceLifecycle({
     const reopened = reopenWorkspaceAt(persistedHint.rootDir);
     if (!reopened) return;
     manifestAdapterRef.current = reopened.manifestAdapter;
-    workspaceAdapterRef.current = reopened.workspaceAdapter;
+    attachWorkspaceAdapter(reopened.workspaceAdapter);
     const manifestSources = createManifestSources(settings);
     // Load only the workspace's own modules first (external dependency graphs —
     // by far the slowest, most variable part of the load — are deferred and
@@ -317,7 +332,6 @@ export function useWorkspaceLifecycle({
       openTabs,
       activeTabId,
       expandedDirs: persistedHint.expandedDirs,
-      deploymentsByApp: loadDeploymentsForWorkspace(reopened.rootDir),
     }));
   }
 
@@ -414,7 +428,7 @@ export function useWorkspaceLifecycle({
       const opened = await openWorkspaceDirectory();
       if (!opened) return;
       manifestAdapterRef.current = opened.manifestAdapter;
-      workspaceAdapterRef.current = opened.workspaceAdapter;
+      attachWorkspaceAdapter(opened.workspaceAdapter);
       const workspace = await loadWorkspace(
         opened.rootDir,
         opened.manifestAdapter,
@@ -428,7 +442,6 @@ export function useWorkspaceLifecycle({
         activeModulePath: initialActivePath,
         openTabs: initialActivePath ? [{ type: "module", path: initialActivePath }] : [],
         activeTabId: initialActivePath,
-        deploymentsByApp: loadDeploymentsForWorkspace(opened.rootDir),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -442,7 +455,7 @@ export function useWorkspaceLifecycle({
     setLoading(true);
     try {
       manifestAdapterRef.current = opened.manifestAdapter;
-      workspaceAdapterRef.current = opened.workspaceAdapter;
+      attachWorkspaceAdapter(opened.workspaceAdapter);
       const workspace = await loadWorkspace(
         opened.rootDir,
         opened.manifestAdapter,
@@ -456,7 +469,6 @@ export function useWorkspaceLifecycle({
         activeModulePath: initialActivePath,
         openTabs: initialActivePath ? [{ type: "module", path: initialActivePath }] : [],
         activeTabId: initialActivePath,
-        deploymentsByApp: loadDeploymentsForWorkspace(opened.rootDir),
       });
     } finally {
       setLoading(false);
@@ -512,9 +524,8 @@ export function useWorkspaceLifecycle({
   ) {
     const workspaceOpen = !!state.workspace && !!workspaceAdapterRef.current;
 
-    const adapter: ManifestSource & WorkspaceAdapter = workspaceOpen
-      ? (workspaceAdapterRef.current as ManifestSource & WorkspaceAdapter)
-      : createVirtualWorkspaceAdapter();
+    const virtualAdapter = workspaceOpen ? null : createVirtualWorkspaceAdapter();
+    const adapter: WorkspaceAdapter = virtualAdapter ?? workspaceAdapterRef.current!;
     const root = workspaceOpen ? state.workspace!.rootDir : VIRTUAL_WORKSPACE_ROOT;
     const manifestSources = createManifestSources(settings);
 
@@ -551,12 +562,12 @@ export function useWorkspaceLifecycle({
       });
       await refreshFileTree(workspace);
     } else {
-      manifestAdapterRef.current = adapter;
-      workspaceAdapterRef.current = adapter;
+      manifestAdapterRef.current = virtualAdapter!;
+      attachWorkspaceAdapter(virtualAdapter!);
       const workspace = await loadWorkspace(
         VIRTUAL_WORKSPACE_ROOT,
-        adapter,
-        adapter,
+        virtualAdapter!,
+        virtualAdapter!,
         manifestSources,
       );
       setState({
@@ -565,7 +576,6 @@ export function useWorkspaceLifecycle({
         activeModulePath: rootPath,
         openTabs: [{ type: "module", path: rootPath }],
         activeTabId: rootPath,
-        deploymentsByApp: loadDeploymentsForWorkspace(VIRTUAL_WORKSPACE_ROOT),
       });
     }
 
@@ -634,7 +644,14 @@ export function useWorkspaceLifecycle({
     const adapter = workspaceAdapterRef.current;
     const manifestAdapter = manifestAdapterRef.current;
     if (!ws || !adapter || !manifestAdapter) return null;
-    return loadWorkspace(ws.rootDir, manifestAdapter, adapter, createManifestSources(settings));
+    const reloaded = await loadWorkspace(
+      ws.rootDir,
+      manifestAdapter,
+      adapter,
+      createManifestSources(settings),
+    );
+    changes.publish({ kind: "workspace" });
+    return reloaded;
   }
 
   // After a file op: reload + re-parse the workspace only when one of the
@@ -665,6 +682,7 @@ export function useWorkspaceLifecycle({
     fileTree,
     manifestAdapterRef,
     workspaceAdapterRef,
+    workspaceChanges: changes,
     handleOpen,
     createNewModule,
     handleConfirmImport,
@@ -676,7 +694,7 @@ export function useWorkspaceLifecycle({
     openBrowserWorkspace,
     closeWorkspace,
     browserWorkspaceOpen:
-      !!state.workspace && workspaceAdapterRef.current instanceof LocalStorageAdapter,
+      !!state.workspace && workspaceAdapterRef.current?.inner instanceof LocalStorageAdapter,
     reloadFromDisk,
   };
 }

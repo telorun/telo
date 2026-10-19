@@ -29,7 +29,7 @@ export class BundleWorkdir {
       const rel = normalizeBundlePath(file.relativePath);
       const absPath = joinHostPath(sessionDir, ...rel.split("/"));
       await mkdir(dirnameHost(absPath), { recursive: true });
-      await writeFile(absPath, file.contents, { encoding: "utf8" });
+      await writeFile(absPath, Buffer.from(file.contents, file.encoding ?? "utf8"));
     }
 
     // chmod 0755 on the session dir so non-root spawned containers can traverse

@@ -4525,6 +4525,7 @@ dependencies = [
  "base64 0.22.1",
  "futures-util",
  "getrandom 0.4.2",
+ "glob",
  "keyring",
  "libc",
  "reqwest",

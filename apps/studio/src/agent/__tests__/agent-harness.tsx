@@ -2,7 +2,7 @@ import { afterEach, expect, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
-import { AgentProvider, useAgent } from "../context";
+import { AgentProvider, useAgent, useEditorSelection } from "../context";
 import type { RecordsPage } from "../records";
 import { AGENT_PANEL_DEFAULT_WIDTH, saveAgentSettings, saveConversationId } from "../storage";
 import type { Conversation, JournalRecord, TurnRecords, WorkspaceBridge } from "../types";
@@ -152,7 +152,7 @@ export function requestsMade(fetchMock: ReturnType<typeof stubAgent>): string[] 
 
 const bridge: WorkspaceBridge = {
   snapshot: async () => new Map(),
-  readFile: async () => "",
+  readFile: async () => "", probeFile: async () => ({ kind: "missing" as const }),
   applyChanges: async () => undefined,
   editorFile: () => null, workspaceFile: () => null,
 };
@@ -182,7 +182,7 @@ export { bridge as fakeWorkspaceBridge };
 /** Render the provider and open the conversation; resolves once its records
  *  were read. */
 export async function openAgent() {
-  const view = renderHook(() => useAgent(), {
+  const view = renderHook(() => ({ ...useAgent(), editorSelection: useEditorSelection() }), {
     wrapper: ({ children }: { children: ReactNode }) => <AgentProvider>{children}</AgentProvider>,
   });
   act(() => {

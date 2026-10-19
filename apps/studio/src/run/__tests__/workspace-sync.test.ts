@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { bundleFiles, diffBundle, isEmptyChangeSet } from "../workspace-sync";
+import { bundleFiles, diffBundle, isEmptyChangeSet, type SyncedFiles } from "../workspace-sync";
 
-const files = (entries: Record<string, string>): Map<string, string> =>
-  new Map(Object.entries(entries));
+const files = (entries: Record<string, string>): SyncedFiles =>
+  new Map(Object.entries(entries).map(([path, contents]) => [path, { contents }]));
 
 describe("diffBundle", () => {
   it("writes only what changed", () => {
@@ -35,6 +35,14 @@ describe("diffBundle", () => {
     expect(isEmptyChangeSet(diffBundle(same, files({ "telo.yaml": "a" })))).toBe(true);
   });
 
+  it("writes a base64 file with its encoding, and rewrites one whose encoding changed", () => {
+    const changes = diffBundle(
+      new Map([["logo.png", { contents: "AQI=" }]]),
+      new Map([["logo.png", { contents: "AQI=", encoding: "base64" as const }]]),
+    );
+    expect(changes.write).toEqual([{ path: "logo.png", content: "AQI=", encoding: "base64" }]);
+  });
+
   it("treats a first sync as writing everything", () => {
     const changes = diffBundle(new Map(), files({ "telo.yaml": "a", "b.yaml": "b" }));
     expect(changes.write).toHaveLength(2);
@@ -49,11 +57,13 @@ describe("bundleFiles", () => {
       files: [
         { relativePath: "telo.yaml", contents: "a" },
         { relativePath: "sub/b.yaml", contents: "b" },
+        { relativePath: "logo.png", contents: "AQI=", encoding: "base64" },
       ],
     });
     expect([...map.entries()]).toEqual([
-      ["telo.yaml", "a"],
-      ["sub/b.yaml", "b"],
+      ["telo.yaml", { contents: "a" }],
+      ["sub/b.yaml", { contents: "b" }],
+      ["logo.png", { contents: "AQI=", encoding: "base64" }],
     ]);
   });
 });

@@ -173,6 +173,42 @@ describe("application arguments — --help", () => {
     );
   });
 
+  it("lists every input read from the environment alone, and the needs", () => {
+    const app = {
+      kind: "Telo.Application",
+      metadata: { name: "Service" },
+      variables: {
+        name: { type: "string", arg: "name", env: "NAME", default: "x" },
+        bucket: { type: "string", env: "BUCKET", description: "Where manifests are stored." },
+        root: { "x-telo-type": "Telo.HostPath", env: "ROOT", default: "." },
+      },
+      secrets: {
+        token: { type: "string", env: "TOKEN" },
+        key: { type: "string", env: "KEY", default: "" },
+      },
+      ports: { http: { env: "PORT", default: 8080 } },
+      needs: { databaseAccess: { kind: "Postgres.DatabaseAccess" } },
+    };
+    expect(resolveApplicationEnv(app, {}, new SchemaValidator(), undefined, ["--help"]).help).toBe(
+      [
+        "Usage: Service [--name <string>]",
+        "",
+        "Options:",
+        '      --name <string>  [default: "x"; env: NAME]',
+        "",
+        "Environment:",
+        "  BUCKET  Where manifests are stored. [string; required; variables.bucket]",
+        '  ROOT    [Telo.HostPath; default: "."; variables.root]',
+        "  TOKEN   [string; secret; required; secrets.token]",
+        "  KEY     [string; secret; secrets.key]",
+        "  PORT    [tcp port; default: 8080; ports.http]",
+        "",
+        "Needs: databaseAccess — `telo needs report` lists the environment variables they read.",
+        "",
+      ].join("\n"),
+    );
+  });
+
   it("reads `--help` after `--` as a positional", () => {
     expect(resolve(["--", "--help"]).variables.filter).toBe("--help");
   });

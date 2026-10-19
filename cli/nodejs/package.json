@@ -51,7 +51,6 @@
     "@telorun/runner-core": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@telorun/templating": "workspace:*",
-    "dotenv": "^17.4.0",
     "packageurl-js": "^2.0.1",
     "postject": "^1.0.0-alpha.6",
     "semver": "^7.7.3",

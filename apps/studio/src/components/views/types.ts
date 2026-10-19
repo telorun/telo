@@ -1,11 +1,12 @@
 import type { AnalysisRegistry, ModuleGraph } from "@telorun/analyzer";
 import type { ImportableLibrary } from "../../loader";
+import type { WorkspaceChanges } from "../../loader/observed-workspace-adapter";
 import type {
-  DeploymentEnvironment,
   ModuleDocument,
   ModuleViewData,
   Selection,
   SourceRevealRequest,
+  WorkspaceAdapter,
 } from "../../model";
 import type { RefWrite } from "./topology/application-canvas-model";
 import type { TopologyHostState } from "./topology/topology-view";
@@ -155,17 +156,19 @@ export interface ViewProps {
    *  slot and removes its document. One mutation for the same reason, and
    *  refused — with its reason — when anything else still names the resource. */
   onInlineReference: (host: { kind: string; name: string }, pointer: string) => void;
-  /** Deployment config for the active Application. For Libraries this is still
-   *  populated (with a fresh ephemeral environment) but the Variables tab is hidden so
-   *  it goes unused. */
   /** The open Telo Cloud project's view of this module: the directory of its
    *  `telo.yaml` in the project's repository ("" at the root), or null for a
    *  module the project does not hold. Null when no Cloud project is open —
    *  the Cloud view is then not offered. */
   cloud: { modulePath: string | null } | null;
-  deployment: {
-    activeEnvironment: DeploymentEnvironment;
-    onSetEnvVars: (env: Record<string, string>) => void;
+  /** Where the Variables tab reads and writes the Application's environment:
+   *  the workspace's env files, through its adapter, re-read on `changes`. */
+  environment: {
+    /** The opened folder: the env-file walk never climbs above it. */
+    rootDir: string;
+    /** The workspace's adapter as it is now; null with none open. */
+    adapter: () => WorkspaceAdapter | null;
+    changes: WorkspaceChanges;
   };
   /** What it takes to start a run of this module. Status, history and dock
    *  geometry are NOT here — they come from the run context, which is keyed by

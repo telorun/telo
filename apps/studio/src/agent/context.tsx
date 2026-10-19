@@ -1,4 +1,14 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import {
   AgentClient,
   AgentRequestError,
@@ -54,6 +64,8 @@ import {
   type ComposerState,
 } from "./composer";
 import { fileRefusal, perMessageRefusal, uploadMediaType, uploadRefusal } from "./attachment-rules";
+import { carriedSelections, withSelections, type EditorSelection } from "./editor-selection";
+import { createEditorSelectionStore, type EditorSelectionStore } from "./editor-selection-store";
 import type {
   AgentIdentityState,
   AgentStatus,
@@ -159,6 +171,16 @@ interface AgentContextValue {
   attachmentBlob: (attachment: Attachment) => Promise<Blob>;
   /** Why the last submit was refused before sending, when it was. */
   composerNotice: string | null;
+  /** Report an editor's selection, null when it has none. `source` names the
+   *  editor, so one editor's empty selection does not drop another's. The live
+   *  selection is read with `useEditorSelection`: carried with the next message
+   *  sent or queued, then dropped until something is selected again. Never
+   *  stored on its own. */
+  setEditorSelection: (source: string, selection: EditorSelection | null) => void;
+  /** Leave the live selection out of the next message. */
+  dropSelection: () => void;
+  /** Leave the composer's `selections[index]` out of the next message. */
+  removeComposerSelection: (index: number) => void;
   /** Append prepared text to the composer, open the panel and focus the
    *  composer. Never sends: every editor entry point calls this. */
   compose: (text: string) => void;
@@ -390,12 +412,24 @@ const AgentContext = createContext<AgentContextValue | null>(null);
  *  knows an editor file by. */
 export interface AgentCompose {
   compose: (text: string) => void;
+  /** See {@link AgentContextValue.setEditorSelection}. */
+  select: (source: string, selection: EditorSelection | null) => void;
   /** The workspace-relative path of an editor file; the path as given for a
    *  file outside the workspace. */
   workspaceFile: (editorPath: string) => string;
 }
 
 const AgentComposeContext = createContext<AgentCompose | null>(null);
+
+const EditorSelectionContext = createContext<EditorSelectionStore | null>(null);
+const noSelectionStore = createEditorSelectionStore();
+
+/** The live editor selection the next message carries. Its own subscription,
+ *  so a selection being dragged re-renders only what reads it. */
+export function useEditorSelection(): EditorSelection | null {
+  const store = useContext(EditorSelectionContext) ?? noSelectionStore;
+  return useSyncExternalStore(store.subscribe, store.current);
+}
 
 /** The composer entry points write into — null where the panel is not offered,
  *  which is where they are not shown either. Its own context, so a canvas node
@@ -449,6 +483,21 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const returnQueued = useCallback(() => {
     if (!flushingQueueRef.current) writeComposer(unqueueIntoComposer);
   }, [writeComposer]);
+  const [selectionStore] = useState(createEditorSelectionStore);
+  const setEditorSelection = useCallback(
+    (source: string, selection: EditorSelection | null) => selectionStore.set(source, selection),
+    [selectionStore],
+  );
+  const dropSelection = useCallback(() => selectionStore.drop(), [selectionStore]);
+  const removeComposerSelection = useCallback(
+    (index: number) =>
+      writeComposer((c) =>
+        index < c.selections.length
+          ? { ...c, selections: [...c.selections.slice(0, index), ...c.selections.slice(index + 1)] }
+          : c,
+      ),
+    [writeComposer],
+  );
 
   const [conversationId, setConversationId] = useState<string | null>(null);
   // The open conversation's agent-side state, and the agent (URL + token) it
@@ -515,6 +564,14 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // The same two as state, for what is derived from them at render.
   const [bridge, setBridge] = useState<WorkspaceBridge | null>(null);
   const [coResident, setCoResident] = useState<CoResidentAgent | null>(null);
+  // The sensitive env files the last sync pass left out: the transcript's
+  // links follow the same inclusion rule as the sync.
+  const [syncSensitive, setSyncSensitive] = useState<ReadonlySet<string>>(NO_EXCLUDED_PATHS);
+  const noteSyncSensitive = useCallback((next: ReadonlySet<string>) => {
+    setSyncSensitive((prev) =>
+      prev.size === next.size && [...next].every((path) => prev.has(path)) ? prev : next,
+    );
+  }, []);
   const streamRef = useRef<AgentStreamHandle | null>(null);
   const assistantIdRef = useRef<string | null>(null);
   // Set while an accepted abort waits for the turn's cancellation to end its
@@ -721,6 +778,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const registerWorkspace = useCallback((next: WorkspaceBridge | null) => {
     bridgeRef.current = next;
     setBridge(next);
+    setSyncSensitive(NO_EXCLUDED_PATHS);
     deliverOpeningRef.current();
   }, []);
   const setRunner = useCallback((base: string | null) => {
@@ -892,7 +950,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     let converged = true;
     if (bridge && workspace) {
       try {
-        await serialized(() => reconcile(workspace, bridge));
+        noteSyncSensitive(await serialized(() => reconcile(workspace, bridge)));
       } catch (err) {
         converged = false;
         // The next turn re-seeds, but the user must know the editor may be
@@ -907,7 +965,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     if (!flush || !flushingQueueRef.current || composerKeyRef.current !== queueKey) return;
     flushingQueueRef.current = false;
     const queued = composerRef.current.queued;
-    if (queued && converged && sendRef.current(queued.text, queued.attachments)) {
+    if (queued && converged && sendRef.current(withSelections(queued.text, queued.selections), queued.attachments)) {
       writeComposer((c) => ({ ...c, queued: null }));
     }
     else returnQueued();
@@ -1105,7 +1163,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           // push the editor's stale copies back onto the restored files.
           await serialized(async () => {
             await applyPendingReverts(workspace, bridge);
-            await seedDelta(workspace, bridge);
+            noteSyncSensitive(await seedDelta(workspace, bridge));
           });
           if (superseded()) return;
           const convId = await conversationToSendTo();
@@ -1219,7 +1277,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     if (lockedRef.current || turnIdRef.current || flushingQueueRef.current) {
       writeComposer((c) => ({
         ...c,
-        queued: c.queued ? { ...c.queued, text: appendBlock(c.queued.text, text) } : { text, attachments: [] },
+        queued: c.queued
+          ? { ...c.queued, text: appendBlock(c.queued.text, text) }
+          : { text, attachments: [], selections: [] },
       }));
       return;
     }
@@ -1251,11 +1311,14 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       );
       return;
     }
-    if (queueing) writeComposer(queueComposerMessage);
-    else if (send(current.text, attachments)) writeComposer((c) => ({ ...c, text: "", attachments: [] }));
-    else return;
+    const live = selectionStore.current();
+    if (queueing) writeComposer((c) => queueComposerMessage({ ...c, selections: carriedSelections(c.selections, live) }));
+    else if (send(withSelections(current.text, carriedSelections(current.selections, live)), attachments)) {
+      writeComposer((c) => ({ ...c, text: "", attachments: [], selections: [] }));
+    } else return;
     for (const sent of current.attachments) attachmentFilesRef.current.delete(sent.key);
-  }, [send, writeComposer]);
+    dropSelection();
+  }, [dropSelection, selectionStore, send, writeComposer]);
   const editQueued = useCallback(() => writeComposer(unqueueIntoComposer), [writeComposer]);
   const removeQueued = useCallback(() => writeComposer((c) => (c.queued ? { ...c, queued: null } : c)), [writeComposer]);
   // ── attachments ─────────────────────────────────────────────────────────────
@@ -1422,7 +1485,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           setStatus("seeding");
           await serialized(async () => {
             await applyPendingReverts(agent.workspace, bridge);
-            await seedDelta(agent.workspace, bridge);
+            noteSyncSensitive(await seedDelta(agent.workspace, bridge));
           });
           if (superseded()) {
             setStatus("idle");
@@ -2139,9 +2202,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     (path: string) => {
       if (!bridge) return null;
       const excludedPaths = !overrideUrl && coResident ? coResident.workspace.excludedPaths : NO_EXCLUDED_PATHS;
-      return sharedEditorFile({ excludedPaths }, bridge, path);
+      return sharedEditorFile({ excludedPaths }, bridge, path, syncSensitive);
     },
-    [bridge, coResident, overrideUrl],
+    [bridge, coResident, overrideUrl, syncSensitive],
   );
 
   useEffect(
@@ -2176,8 +2239,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
   const workspaceFile = useCallback((editorPath: string) => bridge?.workspaceFile(editorPath) ?? editorPath, [bridge]);
   const composeValue = useMemo<AgentCompose | null>(
-    () => (panelAvailable ? { compose, workspaceFile } : null),
-    [compose, panelAvailable, workspaceFile],
+    () => (panelAvailable ? { compose, select: setEditorSelection, workspaceFile } : null),
+    [compose, panelAvailable, setEditorSelection, workspaceFile],
   );
 
   const value: AgentContextValue = {
@@ -2212,6 +2275,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     attachmentFile,
     attachmentBlob,
     composerNotice,
+    setEditorSelection,
+    dropSelection,
+    removeComposerSelection,
     compose,
     focusComposer,
     composerFocus,
@@ -2256,7 +2322,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
   return (
     <AgentContext.Provider value={value}>
-      <AgentComposeContext.Provider value={composeValue}>{children}</AgentComposeContext.Provider>
+      <AgentComposeContext.Provider value={composeValue}>
+        <EditorSelectionContext.Provider value={selectionStore}>{children}</EditorSelectionContext.Provider>
+      </AgentComposeContext.Provider>
     </AgentContext.Provider>
   );
 }

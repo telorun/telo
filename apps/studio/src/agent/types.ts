@@ -1,3 +1,5 @@
+import type { EnvFileRead } from "@telorun/analyzer";
+
 // The agent's journal records (from apps/authoring-agent): a turn's
 // `user-message` lead record, then every Ai.AgentStreamPart — and, where the
 // turn was continued, a `turn-continued` record opening each further attempt —
@@ -367,6 +369,10 @@ export interface WorkspaceBridge {
   /** Content-hash the editor's workspace (path → sha256 hex), excluding vendor dirs. */
   snapshot(): Promise<Map<string, string>>;
   readFile(path: string): Promise<string>;
+  /** One read that says what it found — text, nothing there, a directory, or a
+   *  file that cannot be read — for the markers the sync's sensitive-file rule
+   *  reads, where an absent marker is an answer rather than a failure. */
+  probeFile(path: string): Promise<EnvFileRead>;
   /** Apply agent → editor changes through WorkspaceAdapter + afterFileMutation. */
   applyChanges(writes: Array<{ path: string; content: string }>, deletes: string[]): Promise<void>;
   /** The editor's own path for the file a workspace-relative path names, or

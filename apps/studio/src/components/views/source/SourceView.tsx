@@ -8,8 +8,6 @@ import { isWorkspaceWrite } from "../../../language/workspace-models";
 import { commitSourceText } from "./commit-source-text";
 import { defineTeloThemes, teloThemeName } from "./monaco-theme";
 import { useSourceAgentActions } from "./source-agent-actions";
-import { Button } from "../../ui/button";
-import { MessageSquarePlus } from "lucide-react";
 
 const DEBOUNCE_MS = 500;
 
@@ -86,19 +84,6 @@ export function SourceView({
   const monacoTheme = teloThemeName(useMonacoTheme());
   const agentActions = useSourceAgentActions();
   const attachAgentActions = agentActions.attach;
-  // The context-menu entry's visible twin: a touch screen has no right-click.
-  const sendSelectionButton = (filePath: string) =>
-    agentActions.canSend(filePath) && (
-      <Button
-        variant="secondary"
-        size="xs"
-        className="absolute top-2 right-4 z-10 shadow md:hidden"
-        onClick={() => agentActions.sendSelection(filePath)}
-      >
-        <MessageSquarePlus />
-        Send selection to chat
-      </Button>
-    );
 
   // Keep tabStates in sync with external (form-edit) ModuleDocument.text
   // changes. Rule: a non-dirty tab tracks the AST; a dirty tab owns its
@@ -312,7 +297,6 @@ export function SourceView({
           </div>
         )}
         <div className="relative min-h-0 flex-1">
-          {sendSelectionButton(file.filePath)}
           <Editor
             key={file.filePath}
             height="100%"
@@ -389,7 +373,6 @@ export function SourceView({
               forceMount
               className="relative min-h-0 min-w-0 data-[state=inactive]:hidden"
             >
-              {sendSelectionButton(file.filePath)}
               <Editor
                 key={file.filePath}
                 height="100%"

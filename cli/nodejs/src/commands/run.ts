@@ -1,4 +1,11 @@
-import type { LoadedModule, ManifestSource } from "@telorun/analyzer";
+import {
+  describeSensitiveValueFinding,
+  sensitiveEnvironmentInputs,
+  sensitiveValueFindings,
+  type LoadedModule,
+  type ManifestSource,
+  type WorkspaceEnvResolution,
+} from "@telorun/analyzer";
 import {
   DebugWireSink,
   Kernel,
@@ -20,7 +27,7 @@ import { attachControllerProgress } from "../controller-progress.js";
 import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
-import { resolveEnvFiles } from "../env-files.js";
+import { nativePath, resolveEnvFiles } from "../env-files.js";
 import { countRootErrors, createLogger, formatDiagnostics, type Logger } from "../logger.js";
 import { canOpenBrowser, openBrowser } from "../open-browser.js";
 import { outErrLine, output } from "../output.js";
@@ -28,10 +35,19 @@ import { StartupProfiler, writeStartupProfile } from "../startup-profile.js";
 import { teeStdio } from "../stdio-tee.js";
 import { resolveUiBundle } from "../ui-fetch.js";
 
+/** What a run took from its env files, kept from process start so every load
+ *  of a watch session judges the same values. */
+interface AppliedEnvFiles {
+  resolution: WorkspaceEnvResolution;
+  /** The variables set from a file — every resolved one the real environment
+   *  did not already carry. */
+  applied: ReadonlySet<string>;
+}
+
 /**
  * Apply the env files visible to the manifest, then report.
  *
- * The walk itself is `env-files.ts`'s; what belongs here is the three decisions
+ * The walk itself is the analyzer's; what belongs here is the three decisions
  * a command makes about it — that these values go into `process.env` without
  * displacing anything the real environment already carries, that the file list
  * is `--debug` detail while a file that could not be READ is never quiet
@@ -39,8 +55,9 @@ import { resolveUiBundle } from "../ui-fetch.js";
  * rather than fatal. A run has no interest in a release typo; it does have an
  * interest in the bound on its own env walk, so a problem inside `env:` throws.
  */
-function applyEnvFiles(anchor: string, report: boolean): void {
-  const { values, loaded, unreadable, diagnostics, failed } = resolveEnvFiles(anchor);
+async function applyEnvFiles(anchor: string, report: boolean): Promise<AppliedEnvFiles> {
+  const resolution = await resolveEnvFiles(anchor);
+  const { values, files, unreadable, diagnostics, failed } = resolution;
   for (const diagnostic of diagnostics) outErrLine(`[env] ${diagnostic.message}`);
   if (failed) {
     throw new Error(
@@ -48,15 +65,39 @@ function applyEnvFiles(anchor: string, report: boolean): void {
         `proceed on one it could not read — it would widen the walk rather than narrow it.`,
     );
   }
+  const applied = new Set<string>();
   for (const [key, value] of Object.entries(values)) {
-    if (!(key in process.env)) process.env[key] = value;
+    if (key in process.env) continue;
+    process.env[key] = value;
+    applied.add(key);
   }
   for (const file of unreadable) {
-    outErrLine(`[env] could not read ${file.path} (${file.reason}) — its values were not applied`);
+    outErrLine(`[env] could not read ${nativePath(file.path)} (${file.reason}) — its values were not applied`);
   }
-  if (report && loaded.length > 0) {
-    outErrLine(`[env] loaded ${loaded.join(", ")}`);
+  if (report && files.length > 0) {
+    outErrLine(`[env] loaded ${files.map((file) => nativePath(file.path)).join(", ")}`);
   }
+  return { resolution, applied };
+}
+
+/**
+ * After a load: warn about every secret or sensitive need field the env files
+ * supplied from a file `env.files` does not mark sensitive. The run proceeds —
+ * the value is correct, only where it is kept is not.
+ */
+function warnSensitiveValues(kernel: Kernel, env: AppliedEnvFiles): void {
+  const root = kernel.getLoadedGraph()?.entry.owner.manifests.find((m) => m?.kind === "Telo.Application");
+  const inputs = sensitiveEnvironmentInputs(root, kernel.needTable?.environment ?? []);
+  for (const finding of sensitiveValueFindings(env.resolution, env.applied, inputs)) {
+    outErrLine(`[env] ${describeSensitiveValueFinding(finding, shownPath(nativePath(finding.file)))}`);
+  }
+}
+
+/** A file as the reader recognizes it from where they typed the command. */
+function shownPath(file: string): string {
+  const relative = path.relative(process.cwd(), file);
+  if (relative === "" || path.isAbsolute(relative)) return file;
+  return relative.startsWith("..") ? relative : `.${path.sep}${relative}`;
 }
 
 type WatchHandle = { cleanup: () => void };
@@ -650,7 +691,7 @@ export async function run(argv: RunArgv): Promise<void> {
 
     phase = "envFiles";
     profiler?.start("envFiles");
-    applyEnvFiles(argv.envAnchor ?? argv.path, argv.debug);
+    const env = await applyEnvFiles(argv.envAnchor ?? argv.path, argv.debug);
     profiler?.end("envFiles");
     phase = "load";
     profiler?.start("load");
@@ -661,6 +702,7 @@ export async function run(argv: RunArgv): Promise<void> {
     });
     profiler?.end("load");
     loaded = true;
+    warnSensitiveValues(kernel, env);
     if (answerApplicationHelp(kernel)) {
       await kernel.teardown();
       debug?.stop(kernel);
@@ -772,7 +814,7 @@ function emitRunFailed(
  * reported but does not exit; we keep watching so the next edit retries.
  */
 async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
-  applyEnvFiles(argv.path, argv.debug);
+  const env = await applyEnvFiles(argv.path, argv.debug);
   // Resolve the `.telo` cache root once per invocation, then thread it.
   const cacheRoot = argv.cacheDir ?? resolveCacheRoot(argv.path);
   // One inspect endpoint for the whole watch session — reloads re-attach the
@@ -842,6 +884,7 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
         cacheDir: cacheRoot,
         writeCache: argv.cacheWrite,
       });
+      warnSensitiveValues(kernel, env);
       if (answerApplicationHelp(kernel)) {
         requestStop();
         await kernel.teardown();

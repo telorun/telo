@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Clock, ListPlus, Paperclip, RotateCw, Send, Square, SquarePen, Upload, X, ChevronDown } from "lucide-react";
+import { ArrowUp, Clock, ListPlus, Paperclip, RotateCw, Square, SquarePen, Upload, X, ChevronDown } from "lucide-react";
 import {
   AGENT_PANEL_DEFAULT_WIDTH,
   AGENT_PANEL_MIN_WIDTH,
@@ -9,6 +9,7 @@ import {
   composerHold,
   formatBytes,
   hasMessage,
+  selectionLabel,
   turnAttachments,
   turnIds,
   turnOfUserMessage,
@@ -26,6 +27,7 @@ import { AgentEmptyState } from "./AgentEmptyState";
 import { AgentIdentityDetails, NoAuthBadge, NoTestRunsBadge, UnsupportedFeatures } from "./AgentIdentity";
 import { ComposerAttachments } from "./ComposerAttachments";
 import { ConversationSwitcher } from "./ConversationSwitcher";
+import { ComposerSelections } from "./ComposerSelections";
 import { AttachmentLoaderContext } from "./MessageAttachments";
 import { useTurnActions } from "./TurnActionConfirm";
 import { TurnSummaryCard } from "./TurnSummaryCard";
@@ -403,21 +405,6 @@ export function AgentPanel({ className }: { className?: string }) {
       )}
 
       <div className="border-t border-border p-3">
-        {agent.locked && (
-          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader size={14} />
-            <span>
-              {agent.status === "launching"
-                ? "Launching agent…"
-                : agent.status === "seeding"
-                  ? "Syncing workspace…"
-                  : agent.status === "stopping"
-                    ? "Stopping…"
-                    : "AI working…"}{" "}
-              Editing is paused.
-            </span>
-          </div>
-        )}
         {queued && (
           <div role="group" aria-label="Queued message" className="mb-2 rounded-md border border-border bg-muted/40 p-2 text-xs">
             <div className="flex items-center gap-1">
@@ -431,6 +418,11 @@ export function AgentPanel({ className }: { className?: string }) {
               </Button>
             </div>
             {queued.text && <p className="mt-1 line-clamp-4 whitespace-pre-wrap break-words">{queued.text}</p>}
+            {queued.selections.length > 0 && (
+              <p className="mt-1 break-words text-muted-foreground">
+                {queued.selections.map(selectionLabel).join(", ")}
+              </p>
+            )}
             {queued.attachments.length > 0 && (
               <p className="mt-1 break-words text-muted-foreground">
                 {queued.attachments.map((a) => `${a.name} (${formatBytes(a.size)})`).join(", ")}
@@ -446,8 +438,17 @@ export function AgentPanel({ className }: { className?: string }) {
             onRetry={agent.retryAttachment}
           />
         </AttachmentLoaderContext.Provider>
+        {canCompose && (
+          <EditorFileContext.Provider value={agent.editorFile}>
+            <ComposerSelections
+              carried={agent.composer.selections}
+              onRemoveCarried={agent.removeComposerSelection}
+              onDropLive={agent.dropSelection}
+            />
+          </EditorFileContext.Provider>
+        )}
         {agent.composerNotice && <p className="mb-2 text-xs text-destructive">{agent.composerNotice}</p>}
-        <div className="flex items-end gap-2">
+        <div className="rounded-xl border border-input bg-background p-1.5 transition-shadow focus-within:border-ring focus-within:ring-4 focus-within:ring-ring/20 has-[textarea:disabled]:opacity-60">
           <Textarea
             ref={composerInput}
             value={text}
@@ -471,9 +472,9 @@ export function AgentPanel({ className }: { className?: string }) {
             }
             disabled={!canCompose}
             rows={2}
-            className="max-h-[50vh] resize-none"
+            className="max-h-[50vh] resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 disabled:opacity-100 dark:bg-transparent"
           />
-          <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1">
             {canCompose && (
               <>
                 <input
@@ -489,7 +490,7 @@ export function AgentPanel({ className }: { className?: string }) {
                 />
                 <Button
                   variant="ghost"
-                  size="icon"
+                  size="icon-sm"
                   onClick={() => filePicker.current?.click()}
                   disabled={!canAttach}
                   title={
@@ -506,20 +507,39 @@ export function AgentPanel({ className }: { className?: string }) {
               </>
             )}
             {agent.locked && (
+              <span
+                className="flex min-w-0 items-center gap-1.5 px-1 text-xs text-muted-foreground"
+                title="Editing is paused while the agent works."
+              >
+                <Loader size={12} className="shrink-0" />
+                <span className="truncate">
+                  {agent.status === "launching"
+                    ? "Launching agent…"
+                    : agent.status === "seeding"
+                      ? "Syncing workspace…"
+                      : agent.status === "stopping"
+                        ? "Stopping…"
+                        : "AI working…"}
+                </span>
+              </span>
+            )}
+            {agent.locked && (
               <Button
-                variant="destructive"
-                size="icon"
+                variant="outline"
+                size="icon-sm"
                 onClick={agent.stop}
                 disabled={agent.status === "stopping"}
                 title="Stop (Esc)"
                 aria-label="Stop"
+                className="ml-auto rounded-full"
               >
-                <Square className="size-4" />
+                <Square className="size-3 fill-current" />
               </Button>
             )}
             <Button
-              size="icon"
+              size="icon-sm"
               variant={agent.locked ? "outline" : "default"}
+              className={agent.locked ? "rounded-full" : "ml-auto rounded-full"}
               onClick={agent.submitComposer}
               disabled={!hasMessage(agent.composer) || hold !== null || !canCompose}
               title={
@@ -528,19 +548,18 @@ export function AgentPanel({ className }: { className?: string }) {
                   : hold === "failed"
                     ? "Remove or retry the file that failed first"
                     : agent.locked
-                  ? `Queue for when this turn finishes (Enter or ${MOD_KEY_LABEL}Enter)`
-                  : `Send (Enter or ${MOD_KEY_LABEL}Enter)`
+                  ? `Queue for when this turn finishes (Enter or ${MOD_KEY_LABEL}Enter) · ${FOCUS_COMPOSER_LABEL} focuses this box`
+                  : `Send (Enter or ${MOD_KEY_LABEL}Enter) · ${FOCUS_COMPOSER_LABEL} focuses this box`
               }
               aria-label={agent.locked ? "Queue message" : "Send"}
             >
-              {agent.locked ? <ListPlus className="size-4" /> : <Send className="size-4" />}
+              {agent.locked ? <ListPlus className="size-4" /> : <ArrowUp className="size-4" />}
             </Button>
           </div>
         </div>
         {/* Keys a phone does not have. */}
-        <p className="mt-1.5 text-[11px] text-muted-foreground max-md:hidden">
-          Enter or {MOD_KEY_LABEL}Enter sends · Shift+Enter adds a line · Esc stops a running turn ·{" "}
-          {FOCUS_COMPOSER_LABEL} focuses this box
+        <p className="mt-1.5 px-1 text-[11px] text-muted-foreground max-md:hidden">
+          Enter sends · Shift+Enter adds a line
         </p>
       </div>
 

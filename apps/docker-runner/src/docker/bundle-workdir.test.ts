@@ -32,6 +32,15 @@ describe("BundleWorkdir", () => {
     expect(nested).toBe("kind: Telo.Library\n");
   });
 
+  it("writes a base64 file as its decoded bytes", async () => {
+    const wd = await BundleWorkdir.create(bundleRoot, "abc125", {
+      entryRelativePath: "telo.yaml",
+      files: [{ relativePath: "logo.png", contents: "iVBOR/8A", encoding: "base64" }],
+    });
+    const bytes = await readFile(join(wd.sessionDir, "logo.png"));
+    expect([...bytes]).toEqual([0x89, 0x50, 0x4e, 0x47, 0xff, 0x00]);
+  });
+
   // POSIX-only: Windows has no permission bits to assert. Node's `chmod` there
   // toggles the read-only attribute on files and is a no-op on directories, so
   // `stat` reports a fixed 0o666 and the assertion measures the platform rather

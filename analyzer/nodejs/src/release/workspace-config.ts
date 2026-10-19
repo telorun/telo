@@ -27,8 +27,9 @@
  * not a trade to make silently.
  *
  * Parsing lives here, in the browser-safe half, because the editor answers "what
- * does changing this library bump?" from the same model. Finding the file on
- * disk is the CLI's half — this side takes text. Gitignore matching is INJECTED
+ * does changing this library bump?" from the same model. This side takes text;
+ * the `env:` half is consumed by `workspace-env/`, which finds the file through
+ * a read its host injects. Gitignore matching is INJECTED
  * (`PatternMatch`) for the same reason: the grammar belongs to the glob package,
  * which this half does not depend on.
  */
@@ -37,15 +38,17 @@ import { parseDocument } from "yaml";
 import {
   DEFAULT_ENV_FILES,
   DEFAULT_RELEASE_IGNORE,
-  MODULE_ENTRY_KEYS,
   WORKSPACE_BLOCKS,
   WORKSPACE_SCHEMA,
+  type EnvFileEntry,
+  type WorkspaceEntrySchema,
   type WorkspaceKeySchema,
 } from "./workspace-schema.js";
 
 export const WORKSPACE_FILENAME = "telo-workspace.yaml";
 
 export { DEFAULT_ENV_FILES, DEFAULT_RELEASE_IGNORE };
+export type { EnvFileEntry };
 
 /** One `release.modules` entry. A bare string in the file normalizes to this
  *  with no overrides. */
@@ -63,7 +66,7 @@ export interface ReleaseSettings {
 
 export interface EnvSettings {
   readonly roots?: readonly string[];
-  readonly files?: readonly string[];
+  readonly files?: readonly EnvFileEntry[];
 }
 
 export interface WorkspaceConfig {
@@ -183,10 +186,23 @@ function readRelease(raw: unknown, where: string, report: Report): ReleaseSettin
   }
   const block = raw as Record<string, unknown>;
   const read = readBlock(block, WORKSPACE_SCHEMA.release.properties, where, ["release"], report);
+  if (Array.isArray(block.modules) && block.modules.length === 0) {
+    report(
+      "WORKSPACE_INVALID_VALUE",
+      `${where}: 'release.modules' is empty, so no directory can ever be discovered as a module. ` +
+        `List the subtrees that hold them, e.g. [modules/*, apps/*].`,
+      ["release", "modules"],
+    );
+  }
+  const entries = (read.modules as readonly ReadEntry[] | undefined) ?? [];
   return {
     ...(read.registry !== undefined ? { registry: read.registry as string } : {}),
     ...(read.ignore !== undefined ? { ignore: read.ignore as readonly string[] } : {}),
-    modules: (read.modules as readonly ModuleEntry[]) ?? [],
+    modules: entries.map(({ fields }) => ({
+      path: fields.path as string,
+      ...(fields.registry !== undefined ? { registry: fields.registry as string } : {}),
+      ...(fields.ignore !== undefined ? { ignore: fields.ignore as readonly string[] } : {}),
+    })),
   };
 }
 
@@ -212,66 +228,92 @@ function readBlock(
     const value =
       schema.type === "string"
         ? readString(block[name], where, [...at, name], report)
-        : schema.type === "string[]"
-          ? readStringList(block[name], where, [...at, name], report)
-          : readModuleEntries(block[name], where, report);
+        : schema.type === "boolean"
+          ? readBoolean(block[name], where, [...at, name], report)
+          : schema.type === "string[]"
+            ? readStringList(block[name], where, [...at, name], report)
+            : readEntries(block[name], schema, where, [...at, name], report);
     if (value !== undefined) out[name] = value;
   }
   return out;
 }
 
-function readModuleEntries(raw: unknown, where: string, report: Report): readonly ModuleEntry[] {
-  if (raw === undefined || raw === null) return [];
+/** One entry of an `entry[]` list as read: where it sits, whether it was a bare
+ *  string, and its fields — the entry's key always among them. */
+interface ReadEntry {
+  readonly index: number;
+  readonly bare: boolean;
+  readonly fields: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * A list whose entries are a bare string or a mapping carrying the entry's key
+ * plus the keys it adds — `release.modules` and `env.files` alike. An entry that
+ * cannot be read is reported and left out.
+ */
+function readEntries(
+  raw: unknown,
+  schema: WorkspaceKeySchema,
+  where: string,
+  at: (string | number)[],
+  report: Report,
+): readonly ReadEntry[] | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  const entry = schema.entry as WorkspaceEntrySchema;
+  const name = at.join(".");
+  const example = schema.examples?.length ? `, e.g. [${schema.examples.join(", ")}]` : "";
   if (!Array.isArray(raw)) {
     report(
       "WORKSPACE_INVALID_VALUE",
-      `${where}: 'release.modules' must be a list of path patterns, e.g. [modules/*, apps/*].`,
-      ["release", "modules"],
+      `${where}: '${name}' must be a list, each entry a string or a mapping carrying '${entry.key}:'${example}.`,
+      at,
     );
-    return [];
-  }
-  if (raw.length === 0) {
-    report(
-      "WORKSPACE_INVALID_VALUE",
-      `${where}: 'release.modules' is empty, so no directory can ever be discovered as a module. ` +
-        `List the subtrees that hold them, e.g. [modules/*, apps/*].`,
-      ["release", "modules"],
-    );
-    return [];
+    return undefined;
   }
 
-  const entries: ModuleEntry[] = [];
+  const entries: ReadEntry[] = [];
   for (const [index, item] of raw.entries()) {
-    const at = ["release", "modules", index];
+    const itemAt = [...at, index];
     if (typeof item === "string") {
-      entries.push({ path: item });
+      entries.push({ index, bare: true, fields: { [entry.key]: item } });
       continue;
     }
     if (item === null || typeof item !== "object" || Array.isArray(item)) {
       report(
         "WORKSPACE_INVALID_VALUE",
-        `${where}: 'release.modules' entry ${index} must be a pattern string, or a mapping ` +
-          `carrying 'path:' plus the keys it overrides.`,
-        at,
+        `${where}: '${name}' entry ${index} must be a string, or a mapping carrying ` +
+          `'${entry.key}:' plus the keys it adds.`,
+        itemAt,
       );
       continue;
     }
-    const entry = item as Record<string, unknown>;
-    const read = readBlock(entry, MODULE_ENTRY_KEYS, where, at, report);
-    const path = read.path as string | undefined;
-    if (path === undefined) {
-      report(
-        "WORKSPACE_INVALID_VALUE",
-        `${where}: 'release.modules' entry ${index} declares no 'path:', so it matches nothing.`,
-        at,
-      );
+    // A key written with no value is not an absence: dropping it would either
+    // name nothing or silently take the default (`sensitive:` read as false).
+    for (const [key, keySchema] of Object.entries(entry.properties)) {
+      if (!Object.hasOwn(item, key) || (item as Record<string, unknown>)[key] !== null) continue;
+      const keyName = [...itemAt, key].join(".");
+      const message =
+        key === entry.key
+          ? `${where}: '${keyName}' has no value, so the entry names nothing.`
+          : keySchema.type === "boolean"
+            ? `${where}: '${keyName}' must be true or false.`
+            : keySchema.type === "string[]"
+              ? `${where}: '${keyName}' must be a list of strings.`
+              : `${where}: '${keyName}' must be a string.`;
+      report("WORKSPACE_INVALID_VALUE", message, [...itemAt, key]);
+    }
+    const read = readBlock(item as Record<string, unknown>, entry.properties, where, itemAt, report);
+    if (read[entry.key] === undefined) {
+      if (!Object.hasOwn(item, entry.key)) {
+        report(
+          "WORKSPACE_INVALID_VALUE",
+          `${where}: '${name}' entry ${index} declares no '${entry.key}:', so it names nothing.`,
+          itemAt,
+        );
+      }
       continue;
     }
-    entries.push({
-      path,
-      ...(read.registry !== undefined ? { registry: read.registry as string } : {}),
-      ...(read.ignore !== undefined ? { ignore: read.ignore as readonly string[] } : {}),
-    });
+    entries.push({ index, bare: false, fields: read });
   }
   return entries;
 }
@@ -285,22 +327,25 @@ function readEnv(raw: unknown, where: string, report: Report): EnvSettings | und
   const block = raw as Record<string, unknown>;
   const read = readBlock(block, WORKSPACE_SCHEMA.env.properties, where, ["env"], report);
   const roots = read.roots as readonly string[] | undefined;
-  const files = read.files as readonly string[] | undefined;
-  if (files) {
-    for (const [index, name] of files.entries()) {
-      // A path would let one entry reach outside the bound `roots:` exists to
-      // state, so the list is filenames and the refusal is structural.
-      if (name.includes("/") || name.includes("\\") || name.includes("*")) {
-        report(
-          "WORKSPACE_INVALID_VALUE",
-          `${where}: 'env.files' entry '${name}' is a path or a glob. It names a file collected in ` +
-            `each directory the walk visits, so it must be a bare filename — the walk's reach is ` +
-            `'env.roots'.`,
-          ["env", "files", index],
-        );
-      }
+  const entries = read.files as readonly ReadEntry[] | undefined;
+  for (const { index, bare, fields } of entries ?? []) {
+    // A path would let one entry reach outside the bound `roots:` exists to
+    // state, so the list is filenames and the refusal is structural.
+    const name = fields.name as string;
+    if (name.includes("/") || name.includes("\\") || name.includes("*")) {
+      report(
+        "WORKSPACE_INVALID_VALUE",
+        `${where}: 'env.files' entry '${name}' is a path or a glob. It names a file collected in ` +
+          `each directory the walk visits, so it must be a bare filename — the walk's reach is ` +
+          `'env.roots'.`,
+        bare ? ["env", "files", index] : ["env", "files", index, "name"],
+      );
     }
   }
+  const files = entries?.map(({ fields }) => ({
+    name: fields.name as string,
+    sensitive: fields.sensitive === true,
+  }));
   return {
     ...(roots !== undefined ? { roots } : {}),
     ...(files !== undefined ? { files } : {}),
@@ -343,6 +388,20 @@ function readString(
     // through to the next rung of the cascade and publish somewhere the author
     // did not name, which is the one thing a declared destination must not do.
     report("WORKSPACE_INVALID_VALUE", `${where}: '${at.join(".")}' is empty.`, at);
+    return undefined;
+  }
+  return raw;
+}
+
+function readBoolean(
+  raw: unknown,
+  where: string,
+  at: (string | number)[],
+  report: Report,
+): boolean | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "boolean") {
+    report("WORKSPACE_INVALID_VALUE", `${where}: '${at.join(".")}' must be true or false.`, at);
     return undefined;
   }
   return raw;

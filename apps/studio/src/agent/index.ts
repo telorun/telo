@@ -1,15 +1,19 @@
-export { AgentProvider, CONTINUE_MESSAGE, CONVERSATION_POLL_MS, useAgent, useAgentCompose } from "./context";
+export {
+  AgentProvider,
+  CONTINUE_MESSAGE,
+  CONVERSATION_POLL_MS,
+  useAgent,
+  useAgentCompose,
+  useEditorSelection,
+} from "./context";
 export type { AgentCompose, ConversationDownload, TurnActionOutcome } from "./context";
 export { composerHold, hasMessage } from "./composer";
 export type { ComposerAttachment, ComposerState } from "./composer";
 export { formatBytes, isImageType } from "./attachment-rules";
 export { FOCUS_COMPOSER_LABEL, MOD_KEY_LABEL, isFocusComposerShortcut } from "./composer-shortcuts";
-export {
-  askAboutResourcePrompt,
-  explainRunFailurePrompt,
-  fixDiagnosticPrompt,
-  selectionPrompt,
-} from "./prepared-prompts";
+export { askAboutResourcePrompt, explainRunFailurePrompt, fixDiagnosticPrompt } from "./prepared-prompts";
+export { sameSelection, selectionLabel, splitUserText, withSelections } from "./editor-selection";
+export type { EditorSelection } from "./editor-selection";
 export { capabilityLine } from "./capability-line";
 export { STARTER_PROMPTS } from "./starter-prompts";
 export type { StarterPrompt } from "./starter-prompts";
