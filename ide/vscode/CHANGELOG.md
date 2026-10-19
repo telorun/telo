@@ -1,5 +1,12 @@
 # telo-kernel
 
+## 0.5.22
+
+### Patch Changes
+
+- Updated dependencies [cc1a84e]
+  - @telorun/kernel@0.120.0
+
 ## 0.5.21
 
 ### Patch Changes

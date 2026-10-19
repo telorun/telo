@@ -1,5 +1,22 @@
 # @telorun/studio
 
+## 0.30.0
+
+### Minor Changes
+
+- cc1a84e: The agent panel is more compact. The composer is one card with its actions in a row beneath the text and the turn's status beside them. Every tool call, failed, running or done, is a single row: the name, its arguments on one truncated line and the verdict last, with an exit code only when it is not 0. Its details are a preview of a few lines, and "View full output" opens everything in a dialog with Copy.
+- cc1a84e: A selection in the source view or the detail panel's YAML pane now goes with the next message to the agent: the composer shows it as a chip naming the file and lines, which opens the file there and can be removed, and the message carries it as a `telo-selection` block. The user's bubble and the queued preview show the same chip, and Edit & resend keeps the selection. The "Send selection to chat" action is removed.
+
+### Patch Changes
+
+- cc1a84e: A run started from Studio now ships every file a manifest names with a tag — a `!module-path` file or directory, an `!include-text` / `!include-bytes` file — in the entry module and every local module it imports, as `telo publish` does; before, only `files:` patterns and `include:` partials reached the session, so such an app failed to boot with `MODULE_PATH_NOT_FOUND` / `INCLUDE_FILE_NOT_FOUND`. A file whose bytes are not UTF-8 now travels as base64 (`encoding: base64` on a bundle file and on a watch session's writes) instead of being decoded as text and corrupted; the session route declares the field, and a one-shot run on the docker and k8s runners writes it as its decoded bytes.
+- Updated dependencies [cc1a84e]
+- Updated dependencies [cc1a84e]
+  - @telorun/analyzer@0.120.0
+  - @telorun/ide-support@0.120.0
+  - @telorun/sdk@0.120.0
+  - @telorun/templating@0.120.0
+
 ## 0.29.5
 
 ### Patch Changes
