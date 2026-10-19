@@ -1,0 +1,22 @@
+# Seeded into the e2e hub: a published manifest may quote any scalar, and
+# `get_kinds` must still find a definition whose `kind:` and `name:` are quoted.
+kind: Telo.Library
+metadata:
+  name: QuotedKinds
+  version: 0.1.0
+  description: >-
+    Test fixture whose kind document spells its kind and name as quoted YAML
+    scalars.
+exports:
+  kinds:
+    - Quoted
+---
+kind: "Telo.Definition"
+metadata:
+  name: "Quoted"
+  description: A kind declared with quoted scalars.
+capability: Telo.Type
+schema:
+  type: object
+  properties:
+    host: { type: string }

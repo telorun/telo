@@ -237,6 +237,16 @@ variables:
     # file whose two copies do not fit what is left is listed without counts
     # and hunks. No env binding: a test lowers it.
     default: 4194304
+  maxSearchFileBytes:
+    type: integer
+    minimum: 0
+    # The largest file search_files reads; a larger one is named as skipped.
+    default: 1048576
+  maxSearchMatches:
+    type: integer
+    minimum: 1
+    # The most matching lines one search_files answer carries.
+    default: 200
   maxCheckpointBytes:
     type: integer
     minimum: 0
@@ -870,6 +880,126 @@ steps:
       exclude: [".telo", "node_modules", ".git", "dist", ".probes", ".telo-agent"]
 outputs:
   entries: !cel "steps.list.result.entries"
+---
+# read_file: the file whole, or the lines [offset, offset + limit) under a
+# header naming them. A range is how a file past the tool-result bound is read
+# at all — whole, it is cut at the bound, and every later step re-sends it.
+kind: Run.Sequence
+metadata: { name: readWorkspaceLines }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path]
+    properties:
+      path: { type: string }
+      offset: { type: integer, minimum: 1 }
+      limit: { type: integer, minimum: 1 }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text]
+    properties:
+      text: { type: string }
+steps:
+  - name: file
+    invoke: !ref readWorkspaceFile
+    inputs:
+      path: !cel "inputs.path"
+outputs:
+  text: !cel >-
+    !has(inputs.offset) && !has(inputs.limit) ? steps.file.result.content
+      : cel.bind(lines, steps.file.result.content.split('\n'),
+          cel.bind(first, inputs.?offset.orValue(1),
+            cel.bind(end, first - 1 + inputs.?limit.orValue(size(lines)) > size(lines)
+                            ? size(lines) : first - 1 + inputs.?limit.orValue(size(lines)),
+              first > size(lines)
+                ? '[no lines: ' + inputs.path + ' has ' + string(size(lines)) + ']'
+                : '[lines ' + string(first) + '-' + string(end) + ' of ' + string(size(lines))
+                    + ' of ' + inputs.path + ']\n' + join(slice(lines, first - 1, end), '\n'))))
+---
+# search_files: every line of the workspace's files matching an RE2 pattern, as
+# `path:line: text`. It exists so a large file is never read whole to find one
+# expression in it. The exclude set is list_dir's; a file past `maxSearchFileBytes`
+# is passed over and counted, never read, and the answer stops at
+# `maxSearchMatches` lines, saying so.
+kind: Run.Sequence
+metadata: { name: searchWorkspace }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [pattern, path]
+    properties:
+      pattern: { type: string, minLength: 1 }
+      path: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [matches, truncated, skipped]
+    properties:
+      matches:
+        type: array
+        items:
+          type: object
+          required: [path, line, text]
+          properties:
+            path: { type: string }
+            line: { type: integer }
+            text: { type: string }
+      truncated: { type: boolean }
+      skipped:
+        type: array
+        items: { type: string }
+steps:
+  - name: confine
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
+    then:
+      - name: reject
+        throw:
+          code: ERR_PATH_OUTSIDE_WORKSPACE
+          message: !cel "Self.outsideWorkspaceMessage(inputs.path)"
+  - name: list
+    invoke: !ref listDir
+    inputs:
+      path: !cel "inputs.path"
+      recursive: true
+      exclude: [".telo", "node_modules", ".git", "dist", ".probes", ".telo-agent"]
+  - name: files
+    value: !cel "steps.list.result.entries.filter(e, e.type == 'file')"
+  - name: read
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.files"
+      steps:
+        - name: file
+          invoke: !ref readFile
+          inputs:
+            path: !cel "item.path"
+      outputs:
+        path: !cel "item.path"
+        hits: !cel >-
+          enumerate(steps.file.result.content.split('\n'))
+            .filter(e, e.value.matches(inputs.pattern))
+            .map(e, {'path': item.path, 'line': e.index + 1,
+                     'text': size(e.value) > 300 ? slice(e.value, 0, 300) + '…' : e.value})
+    inputs:
+      pattern: !cel "inputs.pattern"
+      files: !cel "steps.files.result.filter(f, f.size <= variables.maxSearchFileBytes)"
+  - name: hits
+    value: !cel "flatten(steps.read.result.map(f, f.hits))"
+outputs:
+  matches: !cel >-
+    size(steps.hits.result) > variables.maxSearchMatches
+      ? slice(steps.hits.result, 0, variables.maxSearchMatches) : steps.hits.result
+  truncated: !cel "size(steps.hits.result) > variables.maxSearchMatches"
+  skipped: !cel "steps.files.result.filter(f, f.size > variables.maxSearchFileBytes).map(f, f.path)"
 ---
 # delete_file, confined — the workspace root and a directory holding the
 # agent's state directory are never removed — then checkpointed and applied
@@ -5709,18 +5839,50 @@ tools:
       oldString: !cel "arguments.oldString"
       newString: !cel "arguments.newString"
     result: !cel "'wrote ' + result.path + '\\n' + Self.renderCheck(result.checkExitCode, result.checkReport, result.checkMessages)"
-  - tool: !ref readWorkspaceFile
+  - tool: !ref readWorkspaceLines
     name: read_file
     description: >-
-      Read a file, relative to the workspace root. The result is the file's
-      contents exactly as they are on disk.
+      Read a file, relative to the workspace root. Without `offset` / `limit`
+      the result is the file's contents exactly as they are on disk — cut at
+      the tool-result bound, so read a large file in ranges. With either, the
+      result is a `[lines A-B of N of <path>]` header, then those lines
+      verbatim. `offset` is the first line (1-based, default 1), `limit` how
+      many lines (default: to the end). To find WHERE something is, call
+      search_files first and read only the range around its hits.
     parameters:
       type: object
       additionalProperties: false
       required: [path]
       properties:
         path: { type: string }
-    result: !cel "result.content"
+        offset: { type: integer, minimum: 1 }
+        limit: { type: integer, minimum: 1 }
+    result: !cel "result.text"
+  - tool: !ref searchWorkspace
+    name: search_files
+    description: >-
+      Search every file under a workspace directory (`path`, default the root;
+      the directories list_dir filters are skipped) for lines matching an RE2
+      regular expression. The result is one `path:line: text` line per match,
+      in path order, each line cut at 300 characters; then a note when the
+      answer stopped at its match bound or a file was too large to read.
+      `no matches` when nothing matched. Use it before read_file to locate an
+      expression, a resource name or a kind in a large manifest.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [pattern]
+      properties:
+        pattern: { type: string, minLength: 1 }
+        path: { type: string }
+    inputs:
+      pattern: !cel "arguments.pattern"
+      path: !cel "'path' in arguments ? arguments.path : ''"
+    result: !cel >-
+      (size(result.matches) == 0 ? 'no matches'
+        : join(result.matches.map(m, m.path + ':' + string(m.line) + ': ' + m.text), '\n'))
+      + (result.truncated ? '\n[stopped at ' + string(size(result.matches)) + ' matches: narrow the pattern or the path]' : '')
+      + (size(result.skipped) > 0 ? '\n[not searched, too large: ' + join(result.skipped, ', ') + ']' : '')
   - tool: !ref listWorkspaceDir
     name: list_dir
     description: >-

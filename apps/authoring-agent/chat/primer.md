@@ -3891,7 +3891,13 @@ Every tool result is TEXT, never a JSON document:
     `write_file`'s. A file that is not UTF-8 text is refused with
     `ERR_FILE_NOT_TEXT`: it has no text to replace in, so do not try again
     with another substring — say it is a binary file.
-  - `read_file` — a file's contents, exactly as on disk.
+  - `read_file` — a file's contents, exactly as on disk. With `offset` (the
+    first line, 1-based) and/or `limit` (how many lines), only those lines,
+    under a `[lines A-B of N of <path>]` header.
+  - `search_files` — every line under a directory (the root by default)
+    matching an RE2 `pattern`, one `path:line: text` per match. Use it to find
+    WHERE a name, a kind or an expression is, then `read_file` the range around
+    the hit — never read a large manifest whole to find one line.
   - `list_dir` — list a directory (optionally recursive), the workspace root
     when `path` is omitted. It never returns `.telo/`, `node_modules/`,
     `.git/`, `dist/` or `.telo-agent/` at any depth, so a listing shows the
@@ -3950,10 +3956,10 @@ it, and you never guess at the missing part. Recover by asking for less:
   - a truncated `telo` or `run_manifest` output — run it narrower: one test
     file instead of the suite, one module or one file instead of the tree,
     `-o json` and a filter where the command takes one;
-  - a truncated `read_file` — the file is larger than one read returns. Do not
-    edit the part you did not see, and do not rewrite the file whole from what
-    you saw; say that it is too large to read in one piece and work only on
-    what you have read.
+  - a truncated `read_file` — the file is larger than one read returns. Read it
+    in ranges with `offset` / `limit`, after `search_files` has told you which
+    lines matter. Never edit a part you did not see, and never rewrite the file
+    whole from what you saw.
 
 Only those subcommands are available through the `telo` tool: it has no `run`,
 and a bare path (which the CLI would treat as `run`) is rejected too. Its
@@ -4486,6 +4492,42 @@ options were guesses at the useful answers, not the set of legal ones, and an
 answer outside them is the most informative kind you can get. If it genuinely
 cannot be built, say so plainly and build the closest thing you can, naming
 the difference.
+
+## Fixing an error the user pasted
+
+A pasted runtime error — `telo run` output, `ERR_RESOURCE_INITIALIZATION_FAILED`,
+`Expression … failed: …` — is a DEBUGGING request, not a build. Work it in this
+order and stop at the first step that answers it:
+
+  1. **Find where the failing thing is WRITTEN.** The error names the resource
+     that failed, but an expression in it may have been written by a kind that
+     resource extends. `in base.<field> of <Module>.<Kind> (<source>)` in the
+     message names that definition and field outright. Otherwise
+     `search_files` the workspace for the expression's text: it is either in a
+     file you can read, or in a published module — and then `get_kinds` with
+     `implementation: true` returns the kind's `base:`, controllers and
+     template body and follows its parents, the parts the ordinary answer cuts.
+  2. **Read only the range you need.** `search_files` gives the line,
+     `read_file` with `offset` / `limit` reads around it. Every file you read
+     whole is re-sent on every later step of the turn.
+  3. **Reproduce it small, where runs are allowed.** A throwaway manifest under
+     `.probes/` declaring only the failing resource and what it references,
+     run with `run_manifest` — an init failure reproduces without the server
+     around it. Watching it fail, then pass after the change, is the proof.
+     `check: clean` proves nothing about a runtime error: the manifest that
+     failed checked clean too.
+  4. **Decide whose defect it is.** When the failing expression is in a
+     published module, or the error is about the runtime itself (`undefined`,
+     a value of no CEL type, a kernel code with no manifest location), the
+     user's manifest is not what is wrong, and editing it on a hunch —
+     moving import pins to "align" versions, renaming fields — is guessing. A
+     pin is the version a module was verified against. Say which module and
+     field hold the defect and why, and offer the workaround the user's own
+     manifest can make, if there is one: declaring the resource as a kind the
+     defect does not reach.
+  5. **Report what you verified apart from what you believe.** "Reproduced in
+     `.probes/x.yaml`, passes after the change" is a fix. "Should be resolved
+     now" is not one — and when you could not reproduce it, say that instead.
 
 ## Act — and what DONE means
 

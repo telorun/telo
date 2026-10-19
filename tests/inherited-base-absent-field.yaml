@@ -1,0 +1,75 @@
+kind: Telo.Application
+metadata:
+  name: InheritedBaseAbsentField
+  version: 1.0.0
+imports:
+  Http: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref testAbsentFieldStaysAbsent
+---
+# Two levels of `base:`. Leaf forwards `accessToken` whether or not its author
+# set it, and Mid asks `has(self.accessToken)` before reading it — so a field
+# left out at Leaf must reach Mid absent, not present and empty.
+kind: Telo.Definition
+metadata:
+  name: Mid
+extends: Http.Client
+schema:
+  type: object
+  required: [ baseUrl ]
+  properties:
+    baseUrl: { type: string }
+    accessToken: { type: string }
+base:
+  baseUrl: !cel "self.baseUrl"
+  headers: !cel "has(self.accessToken) ? {'Authorization': 'Bearer ' + self.accessToken} : {}"
+---
+kind: Telo.Definition
+metadata:
+  name: Leaf
+extends: Self.Mid
+schema:
+  type: object
+  properties:
+    baseUrl: { type: string, x-telo-eval: compile }
+    accessToken: { type: string, x-telo-eval: compile }
+base:
+  baseUrl: !cel "self.?baseUrl.orValue('https://example.com')"
+  accessToken: !cel "self.accessToken"
+---
+kind: Self.Leaf
+metadata:
+  name: anonymous
+---
+kind: Self.Leaf
+metadata:
+  name: signed
+accessToken: abc
+---
+kind: Run.Sequence
+metadata:
+  name: testAbsentFieldStaysAbsent
+steps:
+  - name: assertAnonymousHasNoAuthorization
+    inputs:
+      actual: !cel "resources.anonymous"
+      expected:
+        baseUrl: https://example.com
+        headers: {}
+        timeout: 10000
+        followRedirects: true
+    invoke:
+      kind: Assert.Equals
+  - name: assertSignedCarriesToken
+    inputs:
+      actual: !cel "resources.signed"
+      expected:
+        baseUrl: https://example.com
+        headers:
+          Authorization: Bearer abc
+        timeout: 10000
+        followRedirects: true
+    invoke:
+      kind: Assert.Equals

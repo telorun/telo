@@ -124,6 +124,17 @@ export function readHostValue(value: unknown, range: SourceRange): CelValue {
   return asyncValueRefused(value, range) ?? (value as CelValue);
 }
 
+/** `undefined` is named, since it is how a host most often hands over an absent value as present. */
+function noCelTypeRefusal(name: string, value: unknown, range: SourceRange): CelValue {
+  return celError(
+    "no_matching_overload",
+    value === undefined
+      ? `${name} was handed undefined, which is no CEL value: the host held an absent value as present`
+      : `${name} was handed a value of no CEL type`,
+    range,
+  );
+}
+
 // --- names -----------------------------------------------------------------
 
 /** A bare name: the activation's own entry, then the library's constants. */
@@ -511,11 +522,7 @@ export class CallSite {
       if (held === undefined) {
         const named = readHostValue(values[at], this.range);
         if (isCelError(named)) return named;
-        return celError(
-          "no_matching_overload",
-          `${this.name} was handed a value of no CEL type`,
-          this.range,
-        );
+        return noCelTypeRefusal(this.name, values[at], this.range);
       }
       names[at] = held;
     }
@@ -546,11 +553,7 @@ export class CallSite {
         // slow path only: dispatch was about to fail either way.
         const named = readHostValue(value, this.range);
         if (isCelError(named)) return named;
-        return celError(
-          "no_matching_overload",
-          `${this.name} was handed a value of no CEL type`,
-          this.range,
-        );
+        return noCelTypeRefusal(this.name, value, this.range);
       }
       names[at] = held;
     }
