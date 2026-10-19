@@ -1,5 +1,13 @@
 # @telorun/analyzer
 
+## 0.120.1
+
+### Patch Changes
+
+- Updated dependencies [f59cacb]
+  - @telorun/cel@0.120.1
+  - @telorun/templating@0.120.1
+
 ## 0.120.0
 
 ### Minor Changes

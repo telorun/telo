@@ -1,5 +1,12 @@
 # @telorun/sdk
 
+## 0.120.1
+
+### Patch Changes
+
+- Updated dependencies [f59cacb]
+  - @telorun/cel@0.120.1
+
 ## 0.120.0
 
 ### Patch Changes
