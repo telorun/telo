@@ -2,7 +2,7 @@
 
 The CEL value domain for Rust: every value an expression can hold, the invariants each one keeps, and the text each is written as. It is the Rust half of the value-domain files of `@telorun/cel` (`cel/nodejs`), and it answers as they answer — the same acceptances, refusals, codes, messages and written text.
 
-It holds values and nothing that computes with them. Equality (`==`), ordering, arithmetic, time zones and reading a literal out of a syntax tree belong to the engine crate that stands on this one, `telorun-cel` (`cel/rust`), which today holds the front end — the reader, the namespace pass, the writer and the tree queries — and none of those yet.
+It holds values and nothing that computes with them. Equality (`==`), ordering, arithmetic, time zones and reading a literal out of a syntax tree belong to the engine crate that stands on this one, `telorun-cel` (`cel/rust`), which today holds the front end — the reader, the namespace pass, the writer and the tree queries — the type system and the checker. Of those five, it holds reading a literal (`literal_value`); equality, ordering, arithmetic and time zones arrive there with evaluation.
 
 ## The two rules
 
@@ -13,15 +13,15 @@ The crate is `publish = false`, licensed MIT, and carries `@telorun/cel`'s versi
 
 ## Files
 
-Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the syntax tree or the zone database belongs to the engine crate's file of the same name, which does not exist yet; one that describes a JavaScript representation has no twin.
+Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the syntax tree or the zone database belongs to the engine crate's file of the same name — `cel_value.rs` there exists, `timestamp_value.rs` does not yet; one that describes a JavaScript representation has no twin.
 
 | File | Twins | Public items | Node exports elsewhere |
 |---|---|---|---|
-| `cel_value.rs` | `cel-value.ts` | `CelValue`, `CelTimestamp`, `CelDuration`, `CelMap`, `CelMapKey`, `CelRecord`, `CelTypeValue`, `CelOptional`, `CelError`, `CelEvaluationCode`, `CelHostValue`, `ReservedTypeName`, `SourceRange`, `CEL_VALUE_KEYS`, `CEL_EVALUATION_CODES`, `cel_type_value`, `cel_none`, `cel_some`, `cel_error`, `cel_type_name_of` | Engine half, not yet written: `literalValue`. No twin: the brand symbol and the `isCel*` predicates (the variant is the identity), `celUint` (it is `CelValue::Uint`), `isThenable` / `asyncValueRefused` (no Rust value can be awaited) |
+| `cel_value.rs` | `cel-value.ts` | `CelValue`, `CelTimestamp`, `CelDuration`, `CelMap`, `CelMapKey`, `CelRecord`, `PropertyMap`, `CelTypeValue`, `CelOptional`, `CelError`, `CelEvaluationCode`, `CelHostValue`, `ReservedTypeName`, `SourceRange`, `CEL_VALUE_KEYS`, `CEL_EVALUATION_CODES`, `cel_type_value`, `cel_none`, `cel_some`, `cel_error`, `cel_type_name_of` | Engine half: `literalValue`, as `literal_value` in the engine's `cel_value.rs`, which also re-exports every item of this file. No twin: the brand symbol and the `isCel*` predicates (the variant is the identity), `celUint` (it is `CelValue::Uint`), `isThenable` / `asyncValueRefused` (no Rust value can be awaited) |
 | `cel_map_value.rs` | `cel-map-value.ts` | `cel_map_from_entries`, `cel_map_keys`, `map_key_identity` | No twin: `celMapOf` (the empty map is `CelMap::default()`) |
 | `duration_value.rs` | `duration-value.ts` | `cel_duration_from_nanos`, `duration_out_of_range`, `duration_nanos`, `parse_duration`, `duration_nanos_from_text`, `format_duration`, `DurationField`, `duration_field`, `MAX_DURATION_NANOS`, `MIN_DURATION_NANOS`, and `CelDuration`'s carrier constructors | — |
 | `timestamp_value.rs` | `timestamp-value.ts` | `cel_timestamp`, `cel_timestamp_from_millis`, `timestamp_nanos`, `parse_timestamp`, `format_timestamp`, `MIN_TIMESTAMP_SECONDS`, `MAX_TIMESTAMP_SECONDS`, `CelTimestamp`'s carrier constructors, and the civil calendar: `CivilFields`, `utc_fields`, `seconds_from_fields`, `days_from_civil`, `civil_from_days`, `days_in_month`, `is_leap_year` | Engine half, not yet written: `zonedFields`, `timestampField`, `TimestampField` — a getter reads a field in a zone, and the zone database is a dependency |
-| `value_text.rs` | `value-text.ts` | `text_to_bytes`, `bytes_to_text`, `double_text`, and two items Node calls its host for: `es_number` (ECMAScript's `Number::toString`) and `json_quote` (a string as `JSON.stringify` quotes one) | — |
+| `value_text.rs` | `value-text.ts` | `text_to_bytes`, `bytes_to_text`, `double_text`, and items Node calls its host for: `es_number` (ECMAScript's `Number::toString`), `json_quote` (a string as `JSON.stringify` quotes one), `is_es_whitespace` and `es_trim` (ECMAScript's whitespace, as `\s` and `trim` read it), `compare_code_units` (ECMAScript's string order) and `es_string_to_number` (ECMAScript's `Number(text)`) | — |
 
 `value-equality.ts` and `integer-arithmetic.ts` have no file here: both are operator semantics, and the engine crate owns them. The integer limits (`MAX_INT`, `MIN_INT`, `MAX_UINT`) are not declared either — an int is an `i64` and a uint a `u64`, so the range is the type.
 
@@ -87,6 +87,8 @@ Node answers differently for a map with typed keys and for a plain object a host
 
 **`CelRecord`** is a map whose keys are all strings. It ranges in ECMAScript's own-property order, because that is what a comprehension over a host's object answers on Node: keys that are canonical array indices (`0` … `4294967294`, no leading zero) first, ascending, then every other key in insertion order. Setting a key that is already held replaces its value and keeps its position.
 
+**`PropertyMap<V>`** is that order, for anything: a `CelRecord` is a `PropertyMap` of values, and every engine input Node takes as a plain JavaScript object — a JSON object, a named type's declared fields — is a `PropertyMap` of what it holds. `insert`, `get`, `contains_key`, `len`, `is_empty`, `iter`, `keys`, `values`; built from pairs with `collect`. Two are equal when they hold the same pairs, in any order. The rule has this one home.
+
 ## Durations: two ranges
 
 `CelDuration` is a total of nanoseconds whose whole seconds fit an `i64`. Seconds and nanoseconds therefore share a sign and `|nanos| < 1e9`. **CEL's own range is not part of the type.**
@@ -124,6 +126,8 @@ The civil calendar is public for the engine's zoned getters to build on: `utc_fi
 - `double_text` writes a double as the shortest digits that read back as it, in ECMAScript's layout (plain decimal from `1e-6` up to `1e21`, exponent notation outside), with `NaN`, `+Inf`, `-Inf` and `-0` named as cel-spec writes them. `es_number` is the same digits as `Number::toString` writes every double (`Infinity`, and `0` for either zero), written here once for every crate above.
 - `bytes_to_text` reads UTF-8 and refuses anything else with `invalid_conversion` / `the bytes are not UTF-8 text` rather than substitute a replacement character. One leading byte order mark is dropped, as on Node. `text_to_bytes` is the reverse.
 - `json_quote` quotes a string exactly as `JSON.stringify` does. Every refusal that names text quotes it this way.
+- `is_es_whitespace` is ECMAScript's whitespace — its `WhiteSpace` and `LineTerminator` sets, which `\s` matches and `trim` removes: U+0009–U+000D, the space, U+00A0, U+1680, U+2000–U+200A, U+2028, U+2029, U+202F, U+205F, U+3000 and U+FEFF; not U+0085, which `char::is_whitespace` holds. `es_trim` removes it from both ends.
+- `compare_code_units` orders two strings by their UTF-16 code units, as ECMAScript's `<` and its default `sort` do; it differs from byte order where a character outside the basic plane meets one from U+E000 to U+FFFF.
 
 ## The error value
 
@@ -136,6 +140,6 @@ The civil calendar is public for the engine's zoned getters to build on: `utc_fi
 
 ## Tests
 
-`tests/` holds the value-level twins of `cel/nodejs/tests/cel-value.test.ts`, `map-key-identity.test.ts` and the value-level cases of `evaluate.test.ts`, plus literal tables for what no Node test pins directly — duration and timestamp text, the double's written form, JSON quoting, UTF-8 reading and a record's order. Every expected value, code and message in them was produced by executing the Node build, not by reading it, and the tests read no file outside this directory.
+`tests/` holds the value-level twins of `cel/nodejs/tests/cel-value.test.ts`, `map-key-identity.test.ts` and the value-level cases of `evaluate.test.ts`, plus literal tables for what no Node test pins directly — duration and timestamp text, the double's written form, JSON quoting, UTF-8 reading, a record's and a property map's order, ECMAScript's whitespace and its string order. Every expected value, code and message in them was produced by executing the Node build, not by reading it, and the tests read no file outside this directory.
 
 Semantics shared with the Node engine, and the reasons behind them, are in `cel/nodejs/CLAUDE.md` ("The value domain", and the sections on the two durations and the declared ranges).

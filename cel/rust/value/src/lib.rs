@@ -8,7 +8,7 @@
 //!
 //! Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the
 //! syntax tree or the zone database belongs to the engine crate's file of the same
-//! name, which does not exist yet, and each header here lists those.
+//! name — its `cel_value.rs` exists, its `timestamp_value.rs` not yet — and each header here lists those.
 //!
 //! - `cel_value.rs`       — `cel-value.ts`
 //! - `cel_map_value.rs`   — `cel-map-value.ts`
@@ -26,7 +26,7 @@ pub use cel_map_value::{cel_map_from_entries, cel_map_keys, map_key_identity};
 pub use cel_value::{
     cel_error, cel_none, cel_some, cel_type_name_of, cel_type_value, CelDuration, CelError,
     CelEvaluationCode, CelHostValue, CelMap, CelMapKey, CelOptional, CelRecord, CelTimestamp,
-    CelTypeValue, CelValue, ReservedTypeName, SourceRange, CEL_EVALUATION_CODES, CEL_VALUE_KEYS,
+    CelTypeValue, CelValue, PropertyMap, ReservedTypeName, SourceRange, CEL_EVALUATION_CODES, CEL_VALUE_KEYS,
 };
 pub use duration_value::{
     cel_duration_from_nanos, duration_field, duration_nanos, duration_nanos_from_text,
@@ -38,4 +38,7 @@ pub use timestamp_value::{
     format_timestamp, is_leap_year, parse_timestamp, seconds_from_fields, timestamp_nanos,
     utc_fields, CivilFields, MAX_TIMESTAMP_SECONDS, MIN_TIMESTAMP_SECONDS,
 };
-pub use value_text::{bytes_to_text, double_text, es_number, json_quote, text_to_bytes};
+pub use value_text::{
+    bytes_to_text, compare_code_units, double_text, es_number, es_string_to_number, es_trim, is_es_whitespace, json_quote,
+    text_to_bytes,
+};
