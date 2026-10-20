@@ -6,16 +6,23 @@
 //! implementation, and every keyed implementation answers a registered signature).
 //! The by-name direction Node's test leaves unchecked is pinned inside the crate, where
 //! the by-name table is readable. The two evaluating cases — a host's function with no
-//! behaviour, and a call written wider than any signature — arrive with evaluation.
+//! behaviour, and a call written wider than any signature — evaluate through the
+//! environment; their answers are Node's `CelEnvironment.evaluate`, executed on the same
+//! build. The registration half of the second is `function_registry.rs`'s.
 //!
 //! The table calls each of the 119 keyed implementations and the seven by name at least
 //! once, about the range `[3, 9)`; each expected value is what `implementationOf` answered
 //! on Node, executed — `@telorun/cel 0.120.1 at b4a2b6e9`. Where the engine answers
 //! otherwise than Node, the row is a named test below that names Node's answer.
 
+mod evaluation_support;
 mod value_support;
 
+use std::sync::Arc;
+
+use evaluation_support::{loose, source_answer};
 use telorun_cel::{
+    FunctionMetadata,
     base64_text, cel_type_value_of, implementation_of, implemented_keys, json_as_cel_value, optional_of_non_zero,
     read_json_text, register_standard_library, signature_key, standard_constant_values, type_value_name,
     CelCallContext, CelHostValue, CelValue, FunctionRegistry, StandardLibraryOptions,
@@ -762,4 +769,43 @@ fn reads_json_of_any_depth_on_a_small_stack() {
         .unwrap()
         .join()
         .unwrap();
+}
+
+/// Node's reading, reproduced and reported: a registration with no implementation answers
+/// `no_matching_overload`, where Node's own docs say `unbound_function`.
+#[test]
+#[allow(unused_variables)]
+fn leaves_a_hosts_own_function_to_the_host_and_fails_a_call_to_one_with_no_behaviour() {
+    let mut environment = loose();
+    environment
+        .register_function("hostOnly(string): string", FunctionMetadata { host_backed: true, ..FunctionMetadata::default() })
+        .unwrap();
+    assert_eq!(
+        source_answer(&environment, "hostOnly('x')", &()),
+        "error no_matching_overload [0, 13] no overload of \"hostOnly\" takes (string)"
+    );
+    let implementation = Arc::new(|context: &CelCallContext, args: &[CelValue]| match args {
+        [CelValue::String(held)] => CelValue::String(format!("{held}!").into()),
+        _ => unreachable!("hostOnly is handed a string"),
+    });
+    environment
+        .register_function(
+            "hostOnly(string): string",
+            FunctionMetadata { implementation: Some(implementation), ..FunctionMetadata::default() },
+        )
+        .unwrap();
+    assert_eq!(source_answer(&environment, "hostOnly('x')", &()), "value string \"x!\"");
+}
+
+#[test]
+fn answers_a_call_written_wider_than_any_signature_with_the_ordinary_refusal() {
+    let environment = loose();
+    assert_eq!(
+        source_answer(&environment, "'42'.replace('2', '1', 1, false)", &()),
+        "error no_matching_overload [0, 32] no overload of \"replace\" takes (string, string, string, int, bool)"
+    );
+    assert_eq!(
+        source_answer(&environment, "size(1, 2, 3, 4, 5)", &()),
+        "error no_matching_overload [0, 19] no overload of \"size\" takes (int, int, int, int, int)"
+    );
 }

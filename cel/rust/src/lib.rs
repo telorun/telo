@@ -8,10 +8,12 @@
 //! and the environment's registrations, declarations and listing — and the checker: every
 //! verdict with its code, message, range and fix, and the call each name resolved to —
 //! RE2, the pattern language of `matches`: its parser, program and machine, over the
-//! engine's own Unicode 17.0 data — and the runtime library evaluation calls: what every
-//! operator and standard function does, member read, integer arithmetic, equality and
-//! ordering, a timestamp's fields in a time zone over the IANA database it bundles, and
-//! ECMAScript's casing. It answers as the Node engine answers.
+//! engine's own Unicode 17.0 data — the runtime library: what every operator and standard
+//! function does, member read, integer arithmetic, equality and ordering, a timestamp's
+//! fields in a time zone over the IANA database it bundles, and ECMAScript's casing — and
+//! evaluation: an expression compiled to a flat program over a snapshot of its
+//! environment, run in one loop with errors as values, its comprehensions, per-site
+//! dispatch, the compiled cache and namespaced calls. It answers as the Node engine answers.
 //!
 //! Three rules hold for every file here: two dependencies, the value crate by path and
 //! `jiff-tzdb` for the zone database's names and bytes, neither deciding a verdict; no
@@ -23,8 +25,10 @@
 //! re2js and its host's V8 fill; and the zone database, whose role its host's Intl
 //! fills. The exports below are the front-end block of Node's entry, its
 //! comprehension-binding table, the type system's and the checker's items, the value
-//! domain's `cel-value.ts` items, the pattern language's and the bounded cache, and the
-//! runtime library's, member read's, equality's, the timestamp file's and `value-text.ts`'s.
+//! domain's `cel-value.ts` items, the pattern language's and the bounded cache, the
+//! runtime library's, member read's, equality's, the timestamp file's and `value-text.ts`'s,
+//! and evaluation's: the activation, the program and its options, the compile refusal,
+//! the call-site capacity and the comprehension functions.
 //!
 //! - `reserved_words.rs`         — `reserved-words.ts`
 //! - `syntax_diagnostic.rs`      — `syntax-diagnostic.ts`
@@ -63,7 +67,12 @@
 //! - `macro_shape.rs`            — `macro-shape.ts`
 //! - `macro_check.rs`            — `macro-check.ts`
 //! - `checker.rs`                — `checker.ts`
-//! - `environment.rs`            — `environment.ts` (registration, listing, declarations and checking)
+//! - `environment.rs`            — `environment.ts` (less the emitter)
+//! - `activation.rs`             — `activation.ts`
+//! - `comprehension_runtime.rs`  — `comprehension-runtime.ts`
+//! - `backend_runtime.rs`        — `backend-runtime.ts`
+//! - `closure_backend.rs`        — `closure-backend.ts` (a flat program, not closures)
+//! - `cel_program.rs`            — `cel-program.ts`
 //! - `bounded_cache.rs`          — `bounded-cache.ts`
 //! - `regular_expression.rs`     — `regular-expression.ts`
 //! - `re2_syntax.rs`             — no twin: re2js's parser
@@ -71,13 +80,18 @@
 //! - `re2_machine.rs`            — no twin: re2js's machine
 //! - `unicode_tables.rs`         — no twin: generated from the Unicode 17.0 archive
 
+mod activation;
+mod backend_runtime;
 mod bounded_cache;
 mod cel_expression;
+mod cel_program;
 mod cel_type;
 mod cel_value;
 mod check_diagnostic;
 mod checker;
+mod closure_backend;
 mod comprehension_bindings;
+mod comprehension_runtime;
 mod declared_chain;
 mod environment;
 mod function_registry;
@@ -118,8 +132,11 @@ mod value_equality;
 mod value_text;
 mod zone_database;
 
+pub use activation::CelActivation;
+pub use backend_runtime::{CelCompileError, CALL_SITE_CACHE_CAPACITY};
 pub use bounded_cache::BoundedCache;
 pub use cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
+pub use cel_program::{CelProgram, EvaluateOptions};
 pub use cel_type::{
     admits_null, assignable, format_type, is_dyn, is_numeric, list_of, map_of, optional_of, parameter_of,
     types_equal, unify, union_of, without_null, without_parameters, CelType, ListType, MapType, NominalType,
@@ -138,9 +155,13 @@ pub use checker::{CheckResult, NamespaceFunction};
 pub use comprehension_bindings::{
     namespace_macro_binding, receiver_macro_binding, ComprehensionBinding, BINDING_FORMS,
 };
+pub use comprehension_runtime::{
+    cel_all, cel_exists, cel_exists_one, cel_filter, cel_map_comprehension, ComprehensionBody,
+};
 pub use declared_chain::{split_declared_chain, DeclaredChain};
 pub use environment::{
-    CelEnvironment, CelEnvironmentOptions, CelRegistrationError, Definitions, FunctionDefinition,
+    CelEnvironment, CelEnvironmentOptions, CelEvaluateError, CelProgramError, CelRegistrationError, Definitions,
+    FunctionDefinition, DEFAULT_COMPILED_CACHE_CAPACITY,
     NamespaceFunctionDeclaration, NamespaceFunctionForm, NamespaceListing, NamespaceOptions, SchemaRegistrationReport,
     SignatureDeclaration, TypeDeclaration, TypeDefinitionListing, VariableDefinition, WithheldReturns,
 };

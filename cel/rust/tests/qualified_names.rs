@@ -1,8 +1,8 @@
-//! Twin of `cel/nodejs/tests/qualified-names.test.ts`: every case, the one that evaluates
-//! twinned for its check alone — what the activation answers arrives with evaluation.
+//! Twin of `cel/nodejs/tests/qualified-names.test.ts`: every case.
 //!
 //! Every expected value is the Node build's answer, executed:
-//! `@telorun/cel 0.118.0 at 63c81d00`. Past the Node file: each refusal's whole
+//! `@telorun/cel 0.118.0 at 63c81d00`, and for what the activation answers at evaluation
+//! `@telorun/cel 0.120.1 at b4a2b6e9`. Past the Node file: each refusal's whole
 //! diagnostic.
 
 mod check_support;
@@ -10,7 +10,8 @@ mod check_support;
 use check_support::{assert_rows, environment, found, schema, unlisted_dyn};
 use telorun_cel::CelCheckCode::*;
 use telorun_cel::{
-    qualified_calls, root_references, serialize_tree, CelEnvironment, FieldDeclaration, NamespaceOptions, PropertyMap,
+    qualified_calls, root_references, serialize_tree, CelEnvironment, CelRecord, CelValue, EvaluateOptions,
+    FieldDeclaration, NamespaceOptions, PropertyMap,
 };
 
 fn declaring(declarations: &[(&str, &str)]) -> CelEnvironment {
@@ -63,8 +64,23 @@ fn a_dotted_declaration_yields_to_a_name_the_expression_itself_bound() {
 fn a_root_declaration_is_the_name_a_chain_reads() {
     let mut root_only = CelEnvironment::default();
     let fields: PropertyMap<FieldDeclaration> = [("b", FieldDeclaration::from("int"))].into_iter().collect();
-    root_only.register_variable("a", fields, None).unwrap();
+    root_only.register_variable("a", fields.clone(), None).unwrap();
     assert_rows(&root_only, vec![("a.b", "int", vec![])]);
+    // **The declared name wins at evaluation, not just at check**: an activation holding
+    // both `a` and the key `"a.b"` reads the name the checker typed.
+    let activation: PropertyMap<CelValue> = [
+        ("a", CelValue::Record([("b", CelValue::Int(1))].into_iter().collect::<CelRecord>())),
+        ("a.b", CelValue::Int(99)),
+    ]
+    .into_iter()
+    .collect();
+    let read = |environment: &CelEnvironment| environment.evaluate("a.b", &activation, &EvaluateOptions::default());
+    assert_eq!(read(&root_only), Ok(CelValue::Int(1)));
+    // And a dotted declaration still wins over a shorter one, which is the same rule.
+    let mut dotted = CelEnvironment::default();
+    dotted.register_variable("a", fields, None).unwrap();
+    dotted.register_variable("a.b", "int", None).unwrap();
+    assert_eq!(read(&dotted), Ok(CelValue::Int(99)));
 }
 
 #[test]

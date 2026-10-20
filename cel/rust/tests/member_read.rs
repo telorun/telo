@@ -5,9 +5,14 @@
 //! Every expected verdict, value and error is what Node's `celLookup`, `celRead`,
 //! `celHas`, `lookupAbsence` and `celIterable` answered, executed —
 //! `@telorun/cel 0.120.1 at b4a2b6e9` — except the named readings below, each naming
-//! Node's answer. The twin of `member-read.test.ts`, which evaluates expressions,
-//! arrives with evaluation.
+//! Node's answer.
+//!
+//! The last section is the twin of `member-read.test.ts`, which evaluates expressions:
+//! its answers are Node's `CelEnvironment.evaluate`, executed on the same build. Where
+//! Node hands over a host object that is not a plain one — an instance with a prototype
+//! of its own, a function — the value here is a host value of no CEL type.
 
+mod evaluation_support;
 mod value_support;
 
 use std::collections::{HashMap, HashSet};
@@ -352,4 +357,131 @@ fn reads_a_host_value_only_through_the_fields_its_type_declares() {
     let other = CelValue::Host(CelHostValue::with_entries("Other", Arc::new(()), [("amount", i(1))].into_iter().collect()).unwrap());
     assert_eq!(cel_lookup(&other, &s("amount"), fields), Lookup::UnsupportedContainer);
     assert_eq!(cel_has(&other, &s("amount"), Some(RANGE), fields), b(false));
+}
+
+// --- the twin of `member-read.test.ts`: the seam reached through evaluation -----------
+
+fn evaluation_rows(rows: &[(&str, &str)], activation: &PropertyMap<CelValue>) {
+    let environment = evaluation_support::language();
+    for (source, expected) in rows {
+        assert_eq!(evaluation_support::source_answer(&environment, source, activation), *expected, "{source}");
+    }
+}
+
+fn host_object() -> CelValue {
+    CelValue::Host(CelHostValue::unnamed(Arc::new(())))
+}
+
+#[test]
+fn round_trips_every_key_as_data_the_three_host_names_included() {
+    evaluation_rows(
+        &[
+            ("{'__proto__': 1, 'constructor': 2, 'prototype': 3}.__proto__", "value int 1"),
+            ("{'__proto__': 1, 'constructor': 2, 'prototype': 3}['constructor']", "value int 2"),
+            ("size({'__proto__': 1, 'constructor': 2, 'prototype': 3})", "value int 3"),
+            ("'prototype' in {'prototype': 3}", "value bool true"),
+        ],
+        &PropertyMap::new(),
+    );
+}
+
+#[test]
+fn finds_nothing_for_a_computed_key_naming_a_host_member() {
+    evaluation_rows(
+        &[
+            ("held[key]", "error no_such_key [0, 9] no such key: \"constructor\""),
+            ("has(held.constructor)", "value bool false"),
+            ("held[?key].hasValue()", "value bool false"),
+        ],
+        &[("held", rec(vec![("a", i(1))])), ("key", s("constructor"))].into_iter().collect(),
+    );
+}
+
+#[test]
+fn answers_a_missing_key_as_an_error_value_that_short_circuits() {
+    evaluation_rows(
+        &[
+            ("{'a': 1}.b", "error no_such_key [0, 10] no such key: \"b\""),
+            ("false && {'a': 1}.b == 1", "value bool false"),
+            ("true || {'a': 1}.b == 1", "value bool true"),
+        ],
+        &PropertyMap::new(),
+    );
+}
+
+#[test]
+fn refuses_a_select_on_a_value_that_holds_no_members_rather_than_finding_one() {
+    evaluation_rows(
+        &[
+            ("dyn('abc').length", "error unsupported_container [0, 17] this value holds no members"),
+            ("dyn(1).toString", "error unsupported_container [0, 15] this value holds no members"),
+            ("dyn([1, 2]).length", "error unsupported_key_type [0, 18] \"length\" cannot name an entry of this value"),
+        ],
+        &PropertyMap::new(),
+    );
+}
+
+#[test]
+fn reads_a_hosts_map_and_refuses_a_host_object_of_no_cel_type() {
+    evaluation_rows(&[("q.page", "value string \"2\"")], &[("q", rec(vec![("page", s("2"))]))].into_iter().collect());
+    // Node's query bag — an object whose prototype is its own — read as holding no members.
+    evaluation_rows(
+        &[
+            ("q.page", "error unsupported_container [0, 6] this value holds no members"),
+            ("'page' in q", "error no_matching_overload [0, 11] in was handed a value of no CEL type"),
+            ("has(q.page)", "value bool false"),
+        ],
+        &[("q", host_object())].into_iter().collect(),
+    );
+}
+
+#[test]
+fn answers_absence_for_a_presence_shaped_read_over_a_value_that_holds_no_members() {
+    evaluation_rows(
+        &[
+            ("dyn('abc').?length.hasValue()", "value bool false"),
+            ("dyn(1)[?'toString'].hasValue()", "value bool false"),
+            ("has(dyn('abc').length)", "value bool false"),
+            // The ordinary read is the mistake it is outside an optional, and an unusable
+            // key is a mistake in every form.
+            ("dyn('abc').length", "error unsupported_container [0, 17] this value holds no members"),
+            ("{true: dyn(0)}[?true].absent", "error unsupported_container [0, 28] this value holds no members"),
+            ("dyn([1, 2]).?length", "error unsupported_key_type [0, 19] \"length\" cannot name an entry of this value"),
+        ],
+        &PropertyMap::new(),
+    );
+}
+
+#[test]
+fn bounds_checks_an_index_into_a_list() {
+    evaluation_rows(
+        &[
+            ("[1, 2, 3][2]", "value int 3"),
+            ("[1, 2, 3][3]", "error index_out_of_range [0, 12] index out of range: 3"),
+            ("[1, 2, 3][-1]", "error index_out_of_range [0, 13] index out of range: -1"),
+            ("[1, 2, 3][?5].hasValue()", "value bool false"),
+        ],
+        &PropertyMap::new(),
+    );
+}
+
+#[test]
+fn reads_an_own_entry_of_a_hosts_map_never_an_inherited_one() {
+    evaluation_rows(
+        &[
+            ("held.own", "value int 2"),
+            ("held.toString", "error no_such_key [0, 13] no such key: \"toString\""),
+            ("held.hasOwnProperty", "error no_such_key [0, 19] no such key: \"hasOwnProperty\""),
+        ],
+        &[("held", rec(vec![("own", i(2))]))].into_iter().collect(),
+    );
+}
+
+#[test]
+fn treats_a_host_value_that_is_no_map_as_no_container_at_all() {
+    // Node: an instance with a prototype of its own, and a function, each answering this.
+    evaluation_rows(
+        &[("held.own", "error unsupported_container [0, 8] this value holds no members")],
+        &[("held", host_object())].into_iter().collect(),
+    );
 }
