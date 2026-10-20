@@ -130,6 +130,30 @@ export function withDerivedPublicUrls(
   return Object.keys(derived).length === 0 ? env : { ...env, ...derived };
 }
 
+/**
+ * The root `Telo.PublicUrl` needs the host's main template would answer once
+ * the port each names has a value, while it has none: what such a need resolves
+ * to depends on that port, so it is neither refused nor asked for until then.
+ */
+export function publicUrlsAwaitingPorts(
+  entries: readonly NeedTableEntry[],
+  env: Record<string, string | undefined>,
+  ports: Readonly<Record<string, number>>,
+): Set<NeedTableEntry> {
+  const awaiting = new Set<NeedTableEntry>();
+  const main = env[PUBLIC_URL_TEMPLATE_ENV];
+  if (main === undefined || main === "") return awaiting;
+  for (const entry of rootAddressEntries(entries)) {
+    if (entry.need.type !== PUBLIC_URL_TYPE) continue;
+    const port = portKeyOf(entry);
+    const field = entry.fields?.url;
+    if (port === undefined || ports[port] !== undefined || !field) continue;
+    if (env[field.env] !== undefined && env[field.env] !== "") continue;
+    awaiting.add(entry);
+  }
+  return awaiting;
+}
+
 /** One address need's resolved place: its host (or pattern) and port. */
 export interface ResolvedAddress {
   need: string;

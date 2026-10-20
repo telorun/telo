@@ -88,5 +88,8 @@ describe("the command an application container runs", () => {
     expect(run.trimEnd().endsWith('"$TELO_ENTRY"')).toBe(true);
     expect(run.indexOf("--watch")).toBeLessThan(run.indexOf('"$TELO_ENTRY"'));
     expect(run.indexOf("--inspect")).toBeLessThan(run.indexOf('"$TELO_ENTRY"'));
+    // A session's terminal is no person at it: a missing input is refused.
+    expect(run.indexOf("--no-input")).toBeGreaterThan(-1);
+    expect(run.indexOf("--no-input")).toBeLessThan(run.indexOf('"$TELO_ENTRY"'));
   });
 });

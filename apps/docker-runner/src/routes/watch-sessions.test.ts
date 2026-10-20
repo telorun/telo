@@ -109,7 +109,7 @@ describe("watch session validation", () => {
       bundle: BODY.bundle,
       env: BODY.env,
       mode: "watch",
-      telo: "0.105.0",
+      telo: "0.121.0",
     });
 
     expect(res.statusCode).toBe(201);

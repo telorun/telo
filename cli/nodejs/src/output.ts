@@ -139,6 +139,13 @@ export class Output {
     this.errStream.write(`${text}\n`);
   }
 
+  /** A question on stderr with no line break, so what the person types follows
+   *  it on the same row. Written in both formats: it is asked of a human. */
+  errPrompt(text: string): void {
+    this.clearTransient();
+    this.errStream.write(text);
+  }
+
   /**
    * A progress tick on stderr, written only in text format and only to a TTY.
    *

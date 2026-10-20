@@ -673,6 +673,7 @@ export {
   ARG_NEGATION_PREFIX,
   describeArgBinding,
   HELP_ARG_FLAG,
+  inputValueTypeName,
   readApplicationArguments,
   renderApplicationUsage,
   renderArgumentSynopsis,

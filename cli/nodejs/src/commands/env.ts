@@ -1,9 +1,9 @@
 import { DEFAULT_ENV_FILES, envFileDestination, type EnvFileEntry } from "@telorun/analyzer";
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Argv } from "yargs";
 import { resolveEnvFiles } from "../env-files.js";
+import { readEnvFileIfPresent, warnIfNotIgnored } from "../env-file-writes.js";
 import {
   appendEntries,
   entriesMissingFrom,
@@ -105,7 +105,7 @@ function writeTemplate(
     const own = entries.filter((entry) => entry.sensitive === file.sensitive);
     if (own.length === 0) continue;
     const target = path.join(directory, file.name);
-    const existing = readIfPresent(target);
+    const existing = readEnvFileIfPresent(target);
     const missing = existing === undefined ? own : entriesMissingFrom(existing, own);
     if (missing.length > 0) {
       fs.writeFileSync(
@@ -127,32 +127,6 @@ function writeTemplate(
     if (file.sensitive && written.some((entry) => entry.path === target)) warnIfNotIgnored(target, log);
   }
   outEmit({ ok: true, files: written });
-}
-
-function readIfPresent(file: string): string | undefined {
-  try {
-    return fs.readFileSync(file, "utf8");
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw err;
-  }
-}
-
-/** A sensitive file holds every secret the template names, so a repository
- *  that would commit it is worth a warning. Outside a repository there is
- *  nothing to commit it into, and nothing is said. */
-function warnIfNotIgnored(file: string, log: Logger): void {
-  const cwd = path.dirname(file);
-  const inside = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd, encoding: "utf8" });
-  if (inside.error || inside.status !== 0) return;
-  const ignored = spawnSync("git", ["check-ignore", "-q", path.basename(file)], { cwd, encoding: "utf8" });
-  if (ignored.status === 0) return;
-  const shown = path.relative(process.cwd(), file) || file;
-  outErrLine(
-    ignored.status === 1
-      ? `${log.err.warn("warning")}  ${shown} is not ignored by git, and it holds secrets — add it to .gitignore.`
-      : `${log.err.warn("warning")}  could not ask git whether ${shown} is ignored: ${ignored.stderr.trim() || `exit ${ignored.status}`}`,
-  );
 }
 
 function refuse(log: Logger, message: string): void {

@@ -2285,7 +2285,12 @@ to say.
   `.env` (committable) and `.env.local` (secrets) — the files the workspace's
   `env.files` marks sensitive or not (`{ name: .secrets, sensitive: true }`);
   `telo run` warns when a secret is read from a file not marked sensitive, so
-  put secrets only in the sensitive file. Studio runs read the same files,
+  put secrets only in the sensitive file. At a terminal, `telo run` asks for
+  each input nothing supplies (no env var, argument or `default:`) and offers
+  to save the answers to those files; with `--no-input`, without a terminal
+  and in a runner it refuses naming them instead — so a required input is
+  still declared required, never given a made-up `default:` to avoid the
+  question. Studio runs read the same files,
   and its Variables tab edits them; a sensitive file is never synced into
   your session, so a secret the user keeps there is not in your workspace.
   The command line wins over

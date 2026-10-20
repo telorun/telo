@@ -377,7 +377,7 @@ function environmentRows(moduleDoc: unknown, bindings: readonly ArgBinding[]): A
     for (const [name, entry] of Object.entries(entries)) {
       if (!isRecord(entry) || typeof entry.env !== "string") continue;
       if (bindings.some((binding) => binding.block === block && binding.name === name)) continue;
-      const notes = [valueTypeOf(block, entry)];
+      const notes = [inputValueTypeName(block, entry)];
       if (block === "secrets") notes.push(entry.default === undefined ? "secret; required" : "secret");
       else notes.push(entry.default === undefined ? "required" : `default: ${JSON.stringify(entry.default)}`);
       notes.push(`${block}.${name}`);
@@ -388,7 +388,10 @@ function environmentRows(moduleDoc: unknown, bindings: readonly ArgBinding[]): A
   return rows;
 }
 
-function valueTypeOf(block: string, entry: Record<string, unknown>): string {
+/** What an application input's value is, as `--help` names it: a port's
+ *  `tcp port` / `udp port`, else the entry's `x-telo-type` name, else its
+ *  `type`. Also how a host asking for a missing input names it. */
+export function inputValueTypeName(block: string, entry: Record<string, unknown>): string {
   if (block === "ports") return entry.protocol === "udp" ? "udp port" : "tcp port";
   const valueType = entry["x-telo-type"];
   if (typeof valueType === "string") return valueType;

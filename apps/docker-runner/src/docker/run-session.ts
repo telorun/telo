@@ -293,9 +293,11 @@ async function createSessionContainer(args: SpawnSessionArgs): Promise<SessionDo
   // runner reach it across the container boundary.
   // A self-contained image boots its own baked CMD/WORKDIR with no bundle mount;
   // otherwise the runner runs `telo <entry>` in the per-session bundle workdir.
+  // `--no-input`: a session's terminal is not a person at it, so a missing
+  // input is refused rather than asked for.
   const cmd = args.inspect
-    ? ["telo", "--inspect", `0.0.0.0:${INSPECT_PORT}`, "--no-open", args.entryRelativePath]
-    : ["telo", args.entryRelativePath];
+    ? ["telo", "--no-input", "--inspect", `0.0.0.0:${INSPECT_PORT}`, "--no-open", args.entryRelativePath]
+    : ["telo", "--no-input", args.entryRelativePath];
   const opts: CreateContainerOpts = {
     Image: args.image,
     name: args.containerName,

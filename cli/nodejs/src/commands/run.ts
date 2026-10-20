@@ -14,7 +14,9 @@ import {
   LocalManifestCacheSource,
   resolveCacheRoot,
   resolveEntryDir,
+  unresolvedInputsOf,
   writeManifestCache,
+  type ApplicationInputResolver,
   type RuntimeDiagnostic,
 } from "@telorun/kernel";
 import { SEVERITY, type RuntimeEvent } from "@telorun/sdk";
@@ -23,11 +25,17 @@ import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import type { Argv, Options } from "yargs";
+import { InputInterrupted, terminalPrompter } from "../application-input-prompt.js";
+import {
+  ApplicationInputSession,
+  offerToSaveAnswers,
+  unresolvedInputsHint,
+} from "../application-input-session.js";
 import { attachControllerProgress } from "../controller-progress.js";
 import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
-import { nativePath, resolveEnvFiles } from "../env-files.js";
+import { anchorDirectory, nativePath, resolveEnvFiles } from "../env-files.js";
 import { countRootErrors, createLogger, formatDiagnostics, type Logger } from "../logger.js";
 import { canOpenBrowser, openBrowser } from "../open-browser.js";
 import { outErrLine, output } from "../output.js";
@@ -327,6 +335,8 @@ export type RunArgv = {
   /** The application's own command line: every token after the manifest path,
    *  read against the `arg:` bindings its root Application declares. */
   applicationArgs?: readonly string[];
+  /** `--no-input`: never ask at the terminal for an input nothing supplies. */
+  input?: boolean;
 };
 
 const DEFAULT_INSPECT_HOST = "127.0.0.1";
@@ -598,6 +608,35 @@ async function persistManifestCache(
   }
 }
 
+/** The manifest cache written at most once per load — before the first question
+ *  when inputs are asked, otherwise after the load succeeds. */
+function manifestCacheWriter(
+  argv: RunArgv,
+  kernel: Kernel,
+  log: Logger,
+  cacheRoot: string | null,
+): () => Promise<void> {
+  let written = false;
+  return async () => {
+    if (written) return;
+    written = true;
+    await persistManifestCache(argv, kernel, log, cacheRoot);
+  };
+}
+
+/** The graph is loaded before any input is asked and does not depend on the
+ *  answers, so its cache is written first: a run cancelled at the prompt leaves
+ *  the next one warm. */
+function cacheFirstResolver(
+  inputs: ApplicationInputSession,
+  writeManifestCache: () => Promise<void>,
+): ApplicationInputResolver {
+  return async (unresolved) => {
+    await writeManifestCache();
+    return inputs.resolve(unresolved);
+  };
+}
+
 /** Format an error as diagnostics on the terminal. Returns the non-warning
  *  count so the single-shot path can pick an exit code while watch keeps going.
  *  The kernel's loaded graph is what turns a static failure's `origin` into a
@@ -669,6 +708,7 @@ export async function run(argv: RunArgv): Promise<void> {
     process.exitCode = 1;
   });
 
+  const inputs = inputSessionFor(argv);
   // Held outside the try so the catch can reach the loaded graph a static
   // failure's location resolves against.
   let bootedKernel: Kernel | undefined;
@@ -695,10 +735,12 @@ export async function run(argv: RunArgv): Promise<void> {
     profiler?.end("envFiles");
     phase = "load";
     profiler?.start("load");
+    const writeManifestCacheOnce = manifestCacheWriter(argv, kernel, log, cacheRoot);
     await kernel.load(argv.path, {
       cacheDir: cacheRoot,
       writeCache: argv.cacheWrite,
       ...(argv.analysisKey !== undefined ? { analysisKey: argv.analysisKey } : {}),
+      ...(inputs ? { inputResolver: cacheFirstResolver(inputs, writeManifestCacheOnce) } : {}),
     });
     profiler?.end("load");
     loaded = true;
@@ -709,9 +751,10 @@ export async function run(argv: RunArgv): Promise<void> {
       settled = true;
       return;
     }
+    if (inputs) await offerToSave(argv, inputs, env, log);
     phase = "manifestCachePersist";
     profiler?.start("manifestCachePersist");
-    await persistManifestCache(argv, kernel, log, cacheRoot);
+    await writeManifestCacheOnce();
     profiler?.end("manifestCachePersist");
     debug?.markReady(kernel);
 
@@ -758,13 +801,57 @@ export async function run(argv: RunArgv): Promise<void> {
         );
       }
     }
+    if (error instanceof InputInterrupted) {
+      debug?.stop();
+      outErrLine();
+      process.exit(130);
+    }
     // Emitted BEFORE the sinks are torn down, or the one frame naming the cause
     // never reaches a consumer.
     emitRunFailed(debug, loaded ? "start" : "load", error);
     debug?.stop();
     reportError(argv, error, log, bootedKernel);
+    hintUnresolvedInputs(error, inputs, argv);
     process.exit(1);
   }
+}
+
+/**
+ * The session that asks for an input nothing supplies — only when a person is
+ * at the terminal, which is both stdin and stderr being one, and `--no-input`
+ * was not given. Runners and scripts get the refusal instead.
+ */
+function inputSessionFor(argv: RunArgv): ApplicationInputSession | undefined {
+  if (argv.input === false || process.stdin.isTTY !== true || process.stderr.isTTY !== true) return undefined;
+  return new ApplicationInputSession(terminalPrompter(process.stdin, output()));
+}
+
+/** Once the kernel has accepted the answers, offer to keep them — written beside
+ *  the env files the run read, nothing for a manifest that is a URL. */
+async function offerToSave(
+  argv: RunArgv,
+  inputs: ApplicationInputSession,
+  env: AppliedEnvFiles,
+  log: Logger,
+): Promise<void> {
+  const remote = argv.envAnchor === undefined && /^https?:\/\//i.test(argv.path);
+  await offerToSaveAnswers(inputs.takeFresh(), {
+    directory: remote ? undefined : anchorDirectory(argv.envAnchor ?? argv.path),
+    envFiles: env.resolution.entries,
+    prompter: inputs.prompter,
+    log,
+  });
+}
+
+/** A refusal for missing values with nothing to ask names the two ways out. */
+function hintUnresolvedInputs(
+  error: unknown,
+  inputs: ApplicationInputSession | undefined,
+  argv: RunArgv,
+): void {
+  const unresolved = unresolvedInputsOf(error);
+  if (inputs || !unresolved || unresolved.length === 0) return;
+  outErrLine(unresolvedInputsHint(unresolved, argv.input === false));
 }
 
 /** `--help` among the application's arguments: print the usage its `arg:`
@@ -799,10 +886,13 @@ function emitRunFailed(
   if (!debug) return;
   const diagnostics = (error as { diagnostics?: RuntimeDiagnostic[] })?.diagnostics;
   const code = (error as { code?: string })?.code ?? diagnostics?.find((d) => d.code)?.code;
+  const unresolved = unresolvedInputsOf(error);
   debug.emitEvent("Kernel.RunFailed", {
     phase,
     ...(code ? { code } : {}),
     message: error instanceof Error ? error.message : String(error),
+    // The inputs a missing-values refusal names, so a host can ask for them.
+    ...(unresolved ? { unresolved } : {}),
   });
 }
 
@@ -815,6 +905,9 @@ function emitRunFailed(
  */
 async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
   const env = await applyEnvFiles(argv.path, argv.debug);
+  // One session for every reload: a reload asks only for what it has not
+  // been told, or for what it refuses.
+  const inputs = inputSessionFor(argv);
   // Resolve the `.telo` cache root once per invocation, then thread it.
   const cacheRoot = argv.cacheDir ?? resolveCacheRoot(argv.path);
   // One inspect endpoint for the whole watch session — reloads re-attach the
@@ -879,10 +972,12 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
       notifyChange();
     }
 
+    const writeManifestCacheOnce = manifestCacheWriter(argv, kernel, log, cacheRoot);
     try {
       await kernel.load(argv.path, {
         cacheDir: cacheRoot,
         writeCache: argv.cacheWrite,
+        ...(inputs ? { inputResolver: cacheFirstResolver(inputs, writeManifestCacheOnce) } : {}),
       });
       warnSensitiveValues(kernel, env);
       if (answerApplicationHelp(kernel)) {
@@ -890,7 +985,8 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
         await kernel.teardown();
         return;
       }
-      await persistManifestCache(argv, kernel, log, cacheRoot);
+      if (inputs) await offerToSave(argv, inputs, env, log);
+      await writeManifestCacheOnce();
       debug?.markReady(kernel);
       const count = watchers.sync(await collectWatchFiles(kernel));
       log.info(`[watch] watching ${count} file(s)`);
@@ -907,9 +1003,16 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
       kernel.forceIdle();
       await startPromise;
     } catch (error) {
+      if (error instanceof InputInterrupted) {
+        process.exitCode = 130;
+        if (!stopping) requestStop();
+        await kernel.teardown();
+        break;
+      }
       // Load failed before start(); report and wait for an edit before retrying.
       emitRunFailed(debug, "load", error);
       reportError(argv, error, log, kernel);
+      hintUnresolvedInputs(error, inputs, argv);
       await kernel.teardown();
       await changed;
     }
@@ -939,6 +1042,12 @@ export const RUN_OPTIONS = {
     type: "boolean",
     default: true,
     describe: "With --inspect, auto-open the UI in a browser. Use --no-open to suppress.",
+  },
+  input: {
+    type: "boolean",
+    default: true,
+    describe:
+      "At a terminal, ask for each application input nothing supplies. Use --no-input to refuse them instead.",
   },
 } satisfies Record<string, Options>;
 

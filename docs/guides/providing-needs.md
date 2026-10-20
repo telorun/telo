@@ -142,6 +142,12 @@ one.
    - a required need with none set is `ERR_NEED_UNMET`, naming its path, its
      type, the declaring module and every variable to set;
    - an optional need with none set is `null`.
+3. **Otherwise asked for**, when `telo run` is at a terminal and those two
+   refusals are the only reason the load would fail: each missing required field
+   is asked like any other missing input (a sensitive one without echo), its
+   answer read as the variable's text would be and delivered only into the need
+   — never set as the variable. See
+   [Being asked for what is missing](./configuration.md#being-asked-for-what-is-missing).
 
 Once read, a need's variables are hidden from the running application, by
 exact name: a controller reading one through `process.env` or `ctx.env` gets

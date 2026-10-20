@@ -124,7 +124,8 @@ configured. A secret shows only its type and whether it is required. Needs are
 named on a last line; `telo needs report` lists the variables they read.
 
 - **The first source with a value wins**: the command line, then the
-  environment variable, then `default:`.
+  environment variable, then `default:` — and, only at a terminal, what you
+  type when asked (see [Being asked for what is missing](#being-asked-for-what-is-missing)).
 - **Tokens are read by the entry's type** — a repeated flag fills an array, each
   token read by `items.type`; a boolean is `--flag` or `--no-flag`; `--` ends the
   options, so every later token is positional.
@@ -251,6 +252,43 @@ string, and a written default would override a later change to the manifest's
 variable is unset; a secret's default is never written. `--write` adds only the
 variables a file does not already mention, so it is safe to re-run after adding
 an input, and warns when `.env.local` is not ignored by git.
+
+## Being asked for what is missing
+
+Run an application at a terminal without setting everything it needs, and
+`telo run` asks instead of failing — one input at a time, on stderr:
+
+```txt
+2 inputs have no value — enter each below (an empty line is an empty value; Ctrl-D stops).
+GOOGLE_CLIENT_ID  The OAuth client id  [string; variables.googleClientId]
+GOOGLE_CLIENT_ID: 1234.apps.example.com
+GOOGLE_CLIENT_SECRET  [string; secret; secrets.googleClientSecret]
+GOOGLE_CLIENT_SECRET (hidden):
+Save GOOGLE_CLIENT_ID to .env and GOOGLE_CLIENT_SECRET to .env.local? [y/N]
+```
+
+- **Only what nothing supplies is asked**: an entry with no argument, no
+  environment variable and no `default:`, and each required field of a need
+  nothing supplies. An entry with a default, an optional need and a value that
+  is set but invalid are never asked — an invalid value still fails the load,
+  without asking anything.
+- **An answer is read like the environment variable** — `type: integer` reads
+  `3` as `3`, an `object` is JSON, a path is anchored where you ran the command —
+  and checked against the same schema. One it refuses is asked again, with the
+  reason. A secret, and a need field marked sensitive, are read without echo.
+- **Answers never become environment variables**: a controller, `ctx.env` and an
+  application this one starts do not see them, and a need field's answer goes
+  only into that need.
+- **Once every answer is accepted, `telo run` offers to save them** (default no):
+  secrets to `.env.local`, the rest to `.env`, beside the manifest — the same
+  files and rules as `telo env template --write`, written uncommented and only
+  appended. The next run reads them and asks nothing.
+- **`--watch` keeps the answers for the session**: a reload asks only for an
+  input added since, or one the edited manifest refuses.
+- **It only happens with a person at the terminal** — stdin and stderr both a
+  terminal. `telo run --no-input` (before the path) refuses instead, and so does
+  every runner. The refusal then ends with the variables to set and the two ways
+  to set them. Ctrl-D stops asking; Ctrl-C ends the run.
 
 ## See also
 
