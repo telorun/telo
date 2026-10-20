@@ -7,7 +7,7 @@
 //! library read from Node's own signature data, typing from JSON Schema with its reports,
 //! and the environment's registrations, declarations and listing — and the checker: every
 //! verdict with its code, message, range and fix, and the call each name resolved to —
-//! RE2, the pattern language of `matches`: its parser, program and machine, over the
+//! RE2, the pattern language of `matches`: its parser, program, machine and accelerators, over the
 //! engine's own Unicode 17.0 data — the runtime library: what every operator and standard
 //! function does, member read, integer arithmetic, equality and ordering, a timestamp's
 //! fields in a time zone over the IANA database it bundles, and ECMAScript's casing — and

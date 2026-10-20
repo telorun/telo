@@ -815,6 +815,7 @@ impl CelEnvironment {
             build_registered_type(&definition, &resolver)?
         };
         let self_type = registered.self_type.clone();
+        self.compiled.clear();
         Arc::make_mut(&mut self.runtime_types).insert(
             definition.name.clone(),
             NominalRuntime {
@@ -823,7 +824,6 @@ impl CelEnvironment {
             },
         );
         self.types.set(&definition.name, registered);
-        self.compiled.clear();
         self.register_type_signatures(&definition, &self_type)
     }
 

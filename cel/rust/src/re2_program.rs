@@ -860,8 +860,9 @@ impl Re2Program {
     }
 
     /// The leftmost-first match at or after byte `start` of `text`, with the spans of the
-    /// first `groups` groups — the whole match counting as the first, and no more than the
-    /// pattern has — as re2js's `matchMachineInput` answers with `ngroup` of `groups`. The
+    /// first `groups` groups — the whole match counting as the first — as re2js's
+    /// `matchMachineInput` answers with `ngroup` of `groups`, except that a search asked for
+    /// more groups than the pattern has answers those it has, where re2js pads. The
     /// text before `start` is still the context of `^`, `\b` and `\B`. With `groups` of zero
     /// only whether it matched is answered.
     ///
@@ -1236,6 +1237,11 @@ mod tests {
             ("\\bb", "ab".to_owned(), 1, [Backtracker, Backtracker, Backtracker]),
             ("\\Bb", "ab".to_owned(), 1, [Backtracker, Backtracker, Backtracker]),
             ("\\bfoo\\b", "a foo".to_owned(), 0, [Backtracker, Backtracker, Backtracker]),
+            // An alternation's prefilter: failure links find `bd` inside `abd`, the automaton
+            // reads from `start`, and two literals may share their lead byte.
+            ("abc|bd", "abd".to_owned(), 0, [Dfa, Backtracker, Backtracker]),
+            ("abc|bd", "abd".to_owned(), 2, [Prefilter, Prefilter, Prefilter]),
+            ("éa|ßb", "ßb".to_owned(), 0, [Dfa, Backtracker, Backtracker]),
             // The DFA over code points above Latin-1.
             ("日+本", "x日日本".to_owned(), 0, [Dfa, Backtracker, Backtracker]),
         ]

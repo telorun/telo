@@ -56,3 +56,58 @@ fn reads_a_text_key_by_borrowed_text() {
     assert_eq!(held.get("b"), None, "b was the least recently used");
     assert_eq!(held.get("a"), Some(&1));
 }
+
+/// A recency-ordered `Vec`, the least recently used first.
+struct Model {
+    capacity: usize,
+    entries: Vec<(u32, u32)>,
+}
+
+impl Model {
+    fn get(&mut self, key: u32) -> Option<u32> {
+        let at = self.entries.iter().position(|&(held, _)| held == key)?;
+        let entry = self.entries.remove(at);
+        self.entries.push(entry);
+        Some(entry.1)
+    }
+
+    fn set(&mut self, key: u32, value: u32) {
+        if let Some(at) = self.entries.iter().position(|&(held, _)| held == key) {
+            self.entries.remove(at);
+        }
+        self.entries.push((key, value));
+        if self.entries.len() > self.capacity {
+            self.entries.remove(0);
+        }
+    }
+}
+
+#[test]
+fn keeps_the_order_of_a_recency_list_through_a_long_mixed_sequence() {
+    for capacity in [1usize, 2, 128] {
+        let mut held: BoundedCache<u32, u32> =
+            BoundedCache::new(NonZeroUsize::new(capacity).expect("a capacity of one or more"));
+        let mut model = Model { capacity, entries: Vec::new() };
+        let keys = (capacity * 3) as u64;
+        let mut state: u64 = 0x2545_F491_4F6C_DD1D ^ capacity as u64;
+        for step in 0..100_000u32 {
+            state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            let roll = (state >> 33) % 100;
+            let key = ((state >> 20) % keys) as u32;
+            match roll {
+                0..=44 => {
+                    held.set(key, step);
+                    model.set(key, step);
+                }
+                45..=98 => {
+                    assert_eq!(held.get(&key).copied(), model.get(key), "get {key} at step {step}, capacity {capacity}");
+                }
+                _ => {
+                    held.clear();
+                    model.entries.clear();
+                }
+            }
+            assert_eq!(held.len(), model.entries.len(), "len at step {step}, capacity {capacity}");
+        }
+    }
+}
