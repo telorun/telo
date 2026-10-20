@@ -103,7 +103,7 @@ describe("POST /v1/sessions", () => {
     expect(opts?.HostConfig.NetworkMode).toBe("telo_default");
     expect(opts?.HostConfig.AutoRemove).toBe(true);
     expect(opts?.WorkingDir).toBe(`/srv/${sessionId}`);
-    expect(opts?.Cmd).toEqual(["telo", "./telo.yaml"]);
+    expect(opts?.Cmd).toEqual(["telo", "--no-input", "./telo.yaml"]);
   });
 
   it("Env contains exactly FORCE_COLOR + CLICOLOR_FORCE + request env — no runner leak", async () => {
@@ -658,10 +658,10 @@ describe("POST /v1/sessions — an application naming its telo version", () => {
 
   it("runs that version's kernel image", async () => {
     h = await buildHarness();
-    const res = await startSession(h, naming("0.105.0"));
+    const res = await startSession(h, naming("0.121.0"));
 
     expect(res.statusCode).toBe(201);
-    expect(h.docker._lastCreateOpts?.Image).toBe("telorun/node:0.105.0-slim");
+    expect(h.docker._lastCreateOpts?.Image).toBe("telorun/node:0.121.0-slim");
   });
 
   it("fails the session's start, not the request, for an image that cannot be pulled", async () => {
@@ -673,7 +673,7 @@ describe("POST /v1/sessions — an application naming its telo version", () => {
         throw new Error("manifest unknown");
       },
     });
-    const res = await startSession(h, naming("0.105.0"));
+    const res = await startSession(h, naming("0.121.0"));
 
     // The pull is the start's: it can take minutes, and the stream is where its
     // progress and its failure belong.
@@ -682,7 +682,7 @@ describe("POST /v1/sessions — an application naming its telo version", () => {
     const status = h.registry.get(sessionId)?.status;
     expect(status).toMatchObject({ kind: "failed" });
     expect((status as { message: string }).message).toMatch(
-      /telorun\/node:0\.105\.0-slim.*manifest unknown/,
+      /telorun\/node:0\.121\.0-slim.*manifest unknown/,
     );
     expect(h.docker._lastCreateOpts).toBeNull();
   });
@@ -690,7 +690,7 @@ describe("POST /v1/sessions — an application naming its telo version", () => {
   it("runs an unreleased build on the image the operator named for it", async () => {
     vi.stubEnv("RUNNER_TELO_UNRELEASED_IMAGE", "telo-dev/node:local");
     h = await buildHarness();
-    await startSession(h, naming("0.105.0+unreleased"));
+    await startSession(h, naming("0.121.0+unreleased"));
 
     expect(h.docker._lastCreateOpts?.Image).toBe("telo-dev/node:local");
   });
@@ -700,7 +700,7 @@ describe("POST /v1/sessions — an application naming its telo version", () => {
     const res = await h.app.inject({
       method: "POST",
       url: "/v1/sessions",
-      payload: naming("0.105.0+unreleased"),
+      payload: naming("0.121.0+unreleased"),
     });
 
     expect(res.statusCode).toBe(400);
@@ -714,7 +714,7 @@ describe("POST /v1/sessions — an application naming its telo version", () => {
     const res = await h.app.inject({
       method: "POST",
       url: "/v1/sessions",
-      payload: naming("0.105.0", { image: "telorun/node:0-slim", pullPolicy: "missing" }),
+      payload: naming("0.121.0", { image: "telorun/node:0-slim", pullPolicy: "missing" }),
     });
 
     expect(res.statusCode).toBe(400);
@@ -727,7 +727,7 @@ describe("POST /v1/sessions — an application naming its telo version", () => {
     const res = await h.app.inject({
       method: "POST",
       url: "/v1/sessions",
-      payload: naming("0.105.0", { pullPolicy: "always" }),
+      payload: naming("0.121.0", { pullPolicy: "always" }),
     });
 
     expect(res.statusCode).toBe(400);
@@ -745,10 +745,10 @@ describe("POST /v1/sessions — an application naming its telo version", () => {
         return Readable.from([]);
       },
     });
-    await startSession(h, naming("0.105.0"));
+    await startSession(h, naming("0.121.0"));
 
     // `always` pulls an image the daemon already holds; the default would not.
-    expect(pulled).toBe("telorun/node:0.105.0-slim");
+    expect(pulled).toBe("telorun/node:0.121.0-slim");
   });
 
   it("refuses a session where only some apps name a version", async () => {
@@ -760,7 +760,7 @@ describe("POST /v1/sessions — an application naming its telo version", () => {
         bundle: VALID_START_BODY.bundle,
         env: {},
         apps: [
-          { name: "one", entryRelativePath: "telo.yaml", telo: "0.105.0" },
+          { name: "one", entryRelativePath: "telo.yaml", telo: "0.121.0" },
           { name: "two", entryRelativePath: "telo.yaml" },
         ],
       },

@@ -107,7 +107,7 @@ export interface DockerWatchDeps {
  */
 export const APP_WATCH_COMMAND =
   'while [ ! -f "$TELO_ENTRY" ]; do sleep 0.2; done; ' +
-  'exec telo run --watch --inspect "$TELO_INSPECT_ADDR" --no-open "$TELO_ENTRY"';
+  'exec telo run --watch --no-input --inspect "$TELO_INSPECT_ADDR" --no-open "$TELO_ENTRY"';
 
 /**
  * A docker watch session. The same shape as the kubernetes one — one workspace,

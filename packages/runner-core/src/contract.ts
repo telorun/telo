@@ -224,18 +224,20 @@ export const TELO_VERSION_PATTERN = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za
 /**
  * The oldest telo release a runner supervises.
  *
- * A runner starts an application as `telo run --watch --inspect <addr> --no-open
- * <entry>` beside a seeded `telo-workspace.yaml`, and reads its run outcomes off
- * the debug stream. A release that predates any of those either fails to start
- * with an error about its own command line, or runs with no generation ever
- * opening — neither of which tells the user the version is simply too old.
+ * A runner starts an application as `telo run --watch --no-input --inspect <addr>
+ * --no-open <entry>` beside a seeded `telo-workspace.yaml`, and reads its run
+ * outcomes off the debug stream. A release that predates any of those either
+ * fails to start with an error about its own command line, or runs with no
+ * generation ever opening — neither of which tells the user the version is
+ * simply too old.
  *
- * This is the oldest release VERIFIED BY EXECUTION to do all of it (a watch
- * session on the local runner, whose generation opened; 0.103.2 likewise), not
- * the point where it breaks: nothing older was run. Lower it only by running
- * the candidate.
+ * The floor is the release that first carries `--no-input`, which every
+ * backend passes: an older `telo run` refuses it as an unknown option. Before
+ * that flag the floor was 0.95.0, the oldest release verified by execution to
+ * do the rest; raise it only for an option a runner starts passing, and lower
+ * it only by running the candidate.
  */
-export const MIN_SUPERVISABLE_TELO = "0.95.0";
+export const MIN_SUPERVISABLE_TELO = "0.121.0";
 
 /** Why `version` is too old to be supervised, or `undefined`. */
 export function unsupervisableTelo(version: string): string | undefined {

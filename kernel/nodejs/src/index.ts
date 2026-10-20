@@ -94,6 +94,12 @@ export type {
 } from "./transports/transport.js";
 export { ExecutionContext } from "./execution-context.js";
 export { Kernel, type KernelOptions } from "./kernel.js";
+export {
+  UnresolvedInputsError,
+  unresolvedInputsOf,
+  type ApplicationInputResolver,
+  type UnresolvedApplicationInput,
+} from "./unresolved-inputs.js";
 export { enableBigIntJson } from "./bigint-json.js";
 export { nodeCelHandlers } from "./cel-handlers.js";
 export { ModuleContext } from "./module-context.js";

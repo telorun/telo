@@ -38,8 +38,10 @@ function toWorkspacePath(native: string): string {
   return path.sep === "/" ? native : native.split(path.sep).join("/");
 }
 
-/** The anchor itself when it names a directory, else the directory holding it. */
-function anchorDirectory(anchor: string): string {
+/** The directory a walk from `anchor` starts at — and where a run writes the
+ *  values it is asked to save: the anchor itself when it names a directory,
+ *  else the directory holding it. */
+export function anchorDirectory(anchor: string): string {
   const resolved = realPath(path.resolve(anchor));
   return fs.existsSync(resolved) && fs.statSync(resolved).isDirectory() ? resolved : path.dirname(resolved);
 }

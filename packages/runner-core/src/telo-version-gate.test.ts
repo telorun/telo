@@ -55,12 +55,12 @@ describe("a runner advertising telo versions", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/sessions",
-      payload: { bundle, env: {}, telo: "0.94.9" },
+      payload: { bundle, env: {}, telo: "0.120.1" },
     });
     await app.close();
 
     expect(res.statusCode).toBe(400);
-    expect(res.json()).toMatchObject({ error: "telo_version_unavailable", version: "0.94.9" });
+    expect(res.json()).toMatchObject({ error: "telo_version_unavailable", version: "0.120.1" });
     expect(res.json().reason).toContain(MIN_SUPERVISABLE_TELO);
     expect(asked).toEqual([]);
   });
@@ -91,7 +91,7 @@ describe("a runner that does not advertise telo versions", () => {
 describe("the version floor and the unreleased identity", () => {
   it("compares by release number, ignoring a build tag", () => {
     expect(unsupervisableTelo(MIN_SUPERVISABLE_TELO)).toBeUndefined();
-    expect(unsupervisableTelo("0.108.0+unreleased")).toBeUndefined();
+    expect(unsupervisableTelo("0.121.0+unreleased")).toBeUndefined();
     expect(unsupervisableTelo("1.0.0")).toBeUndefined();
     expect(unsupervisableTelo("0.9.0")).toMatch(/older than/);
   });

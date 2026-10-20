@@ -1,15 +1,16 @@
 ---
-description: "Normative: how a root Telo.Application binds command-line flags and positional arguments to its variables and ports — the binding forms, the token grammar, value coercion, precedence and --help."
+description: "Normative: how a root Telo.Application binds command-line flags and positional arguments to its variables and ports — the binding forms, the token grammar, value coercion, precedence, asking the host for a missing input and --help."
 ---
 
 # Application arguments
 
 Normative. How a root `Telo.Application` reads its command line. A kernel and a `telo` CLI
 that bind Application inputs implement this exactly; the Node reference is
-`readApplicationArguments` (analyzer, the bindings) and `parseApplicationArguments` (kernel,
-the tokens). The Rust kernel binds no Application inputs yet and refuses a manifest that
-declares them, and the Rust CLI accepts no arguments after the path, so neither implements
-it today.
+`readApplicationArguments` (analyzer, the bindings), `parseApplicationArguments` (kernel,
+the tokens) and `resolveApplicationInputs` (kernel, the sources and §4.1). The Rust kernel
+binds no Application inputs yet and refuses a manifest that declares them, and the Rust CLI
+accepts no arguments after the path, so neither implements it today — §4.1 included, which
+the Rust kernel owes the day it binds Application inputs.
 
 ## 1. Ownership
 
@@ -92,9 +93,54 @@ For each entry the first source with a value wins:
    validated but never coerced;
 2. the command line;
 3. the environment variable `env:` names;
-4. `default:`.
+4. `default:`;
+5. an answer the host gives when asked (§4.1), reached only for an entry 1–4 leave empty.
 
 An entry with none of them is an error naming each channel it binds.
+
+### 4.1 Asking the host
+
+A host may supply an **input resolver** when it loads an application. It is asked only
+when every failure of the reading above is a missing value; any other failure — a token
+§3 refuses, an `env:` value that does not decode or validate, a supplied name the
+application does not declare — is refused at once, and nothing is asked. `--help` asks
+nothing.
+
+1. **What is missing.** The resolver is handed one entry per input with no value:
+   - a `variables:`, `secrets:` or `ports:` entry with no value from 1–4 and no `default:`;
+   - each required field of a required need reaching the root with nothing set in the
+     environment its fields are read from (`telo needs report` lists the names) — the
+     root's own needs and those bubbling up from imported libraries;
+   - each missing required field of a need set only in part;
+   - a `Telo.PublicUrl` field once neither its environment name nor the host's templates
+     answer it.
+
+   An entry with a `default:`, an optional need with nothing set, an optional field of any
+   need and an entry whose supplied value is invalid are never asked for.
+2. **Each entry** carries its identity — `variables.<name>`, `secrets.<name>`,
+   `ports.<name>`, `needs <need path>.<field>` — the environment variable it binds, its
+   command-line spelling when bound, whether it is sensitive (a secret, or a need field
+   marked `x-telo-sensitive`), its type as §5 names it, the schema an answer is validated
+   against, its `title` / `description`, and — when an earlier answer was refused — the
+   refusal's sentence, which never quotes a sensitive value.
+3. **An entry whose value depends on another missing entry is held back** until that
+   entry has a value: a `Telo.PublicUrl` the host's main template would derive from a
+   port that has none is neither asked for nor refused while the port is missing.
+4. **An answer is text**, decoded exactly as the same text in the `env:` variable would
+   be — JSON for an `object` or `array` entry, the plain encoding for an instance type, a
+   `Telo.HostPath` anchored at the working directory — and validated against the same
+   schema. The empty answer is the empty string.
+5. **The kernel asks again** for what is still missing and for each entry whose answer it
+   refused, until every input resolves or the resolver declines — by answering nothing,
+   or by leaving an asked entry unanswered — and then refuses with what is still missing.
+6. **An answer is never written to the environment**: not to the process environment, not
+   to the kernel's snapshot of it, not to `ctx.env`, and not to the environment of an
+   application it starts. A need field's answer reaches only that need's fulfilment.
+7. **The refusal is unchanged**: `ERR_MANIFEST_VALIDATION_FAILED`, or the need's own
+   `ERR_NEED_UNMET` / `ERR_NEED_PARTIALLY_SUPPLIED` when only needs are missing, its
+   message naming no command of any host. A refusal for missing values alone — with or
+   without a resolver — carries the same entries a resolver would have been handed, so a
+   host can say what to supply.
 
 ## 5. Usage
 

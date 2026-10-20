@@ -5,6 +5,7 @@ import {
   type NeedTableEntry,
   type NeedTypeShape,
   effectiveAuthorSchema,
+  inputValueTypeName,
   readApplicationArguments,
   renderApplicationUsage,
   residualEntrySchema,
@@ -22,8 +23,15 @@ import { parseApplicationArguments } from "./application-arguments.js";
 import { create as createJsonSchemaType } from "./controllers/type/json-schema-controller.js";
 import { decodeHostValue } from "./host-paths.js";
 import { acceptsBy, membersEntryText, membersRefusalEntry, settleMembersValue } from "./members-values.js";
+import { needRefusalError } from "./need-refusals.js";
 import { SchemaValidator } from "./schema-validator.js";
-import { withDerivedPublicUrls } from "./public-urls.js";
+import { publicUrlsAwaitingPorts, withDerivedPublicUrls } from "./public-urls.js";
+import {
+  type ApplicationInputResolver,
+  type UnresolvedApplicationInput,
+  UnresolvedInputsError,
+  unresolvedInputsOf,
+} from "./unresolved-inputs.js";
 import { resolveTypeFieldSchema } from "./type-field-schema.js";
 
 type EntryType = "string" | "integer" | "number" | "boolean" | "object" | "array";
@@ -46,9 +54,10 @@ export interface EnvResolutionResult {
   variables: Record<string, unknown>;
   secrets: Record<string, unknown>;
   ports: Record<string, number>;
-  /** What the environment holds for each need reaching the root unsupplied —
-   *  present when the caller asked for the needs to be read. */
-  needs?: NeedEnvironment;
+  /** The decoded fields of each need reaching the root unsupplied, by need path
+   *  (`Orders.databaseAccess`); `null` for an optional need with nothing set.
+   *  Present when the caller asked for the needs to be read. */
+  needs?: Map<string, Record<string, unknown> | null>;
   /** Set when the command line asked for `--help`: the application's usage,
    *  answered INSTEAD of resolving anything — nothing else in the result is
    *  populated, and the caller runs nothing. */
@@ -79,6 +88,14 @@ export interface ApplicationInputs {
   ports?: Record<string, number>;
 }
 
+/** Everything a root Application's inputs are read from besides the
+ *  environment. */
+export interface ApplicationInputSources {
+  inputs?: ApplicationInputs;
+  argv?: readonly string[];
+  needs?: NeedEnvironmentRequest;
+}
+
 /** Residual schema every resolved port value is validated against. Ports are
  *  implicitly integers in the IANA range; `protocol` selects transport and
  *  carries no validation. */
@@ -88,10 +105,14 @@ const PORT_RESIDUAL_SCHEMA: Record<string, unknown> = {
   maximum: 65535,
 };
 
+/** Where an answer a host gave stands in a message, beside `environment
+ *  variable X` and `argument --x`. */
+const ANSWER_SOURCE = "the answer";
+
 /**
  * Populate the root Application's `variables` / `secrets` / `ports` namespaces
  * from the host — the command line through each entry's `arg:` binding, the
- * environment through its `env:` binding.
+ * environment through its `env:` binding — and read the needs reaching it.
  *
  * For each entry the first source that has a value wins: a value supplied by
  * name (`inputs`), then the command line, then the environment, then
@@ -115,60 +136,38 @@ export function resolveApplicationEnv(
   argv: readonly string[] = [],
   needs?: NeedEnvironmentRequest,
 ): EnvResolutionResult {
-  const errors: string[] = [];
-  const declaredArguments = readApplicationArguments(manifest);
-  for (const issue of declaredArguments.issues) errors.push(issue.message);
-  const parsed = parseApplicationArguments(declaredArguments.bindings, argv);
-  if (parsed.help && errors.length === 0) {
-    return { variables: {}, secrets: {}, ports: {}, help: renderApplicationUsage(manifest) };
-  }
-  errors.push(...parsed.errors);
-  const channel = (block: "variables" | "ports"): ArgumentChannel => ({
-    values: parsed.values[block],
-    bindings: new Map(
-      declaredArguments.bindings.filter((b) => b.block === block).map((b) => [b.name, b]),
-    ),
-  });
+  const reading = readApplicationInputs(manifest, env, validator, { inputs, argv, needs }, new Map());
+  const refusal = refusalOf(reading);
+  if (refusal) throw refusal;
+  return reading.result;
+}
 
-  reportUndeclaredInputs(manifest, inputs, errors);
-  const variables = resolveBlock(
-    manifest.variables ?? {},
-    env,
-    validator,
-    errors,
-    false,
-    inputs?.variables,
-    channel("variables"),
-  );
-  const secrets = resolveBlock(
-    manifest.secrets ?? {},
-    env,
-    validator,
-    errors,
-    true,
-    inputs?.secrets,
-  );
-  const ports = resolvePorts(
-    manifest.ports ?? {},
-    env,
-    validator,
-    errors,
-    inputs?.ports,
-    channel("ports"),
-  );
-  // A `Telo.PublicUrl` nothing else supplies is answered from the host's
-  // templates, read as if its env name held the derived address.
-  const needValues = needs
-    ? resolveNeedEnvironment(needs, withDerivedPublicUrls(needs.entries, env, ports), validator, errors)
-    : undefined;
-  if (errors.length > 0) {
-    throw new RuntimeError(
-      "ERR_MANIFEST_VALIDATION_FAILED",
-      `Application input validation failed:\n` +
-        errors.map((e) => `  - ${e}`).join("\n"),
-    );
+/**
+ * {@link resolveApplicationEnv} with the fifth source: when every failure is a
+ * value nothing supplied, the missing entries are handed to `resolver`, its
+ * answers read as the environment's text would be, and the inputs read again —
+ * asking only for what is still missing or whose answer was refused — until
+ * they resolve or the resolver declines, which raises the missing-values
+ * refusal. Any other failure is raised at once, without asking.
+ */
+export async function resolveApplicationInputs(
+  manifest: Record<string, any>,
+  env: Record<string, string | undefined>,
+  validator: SchemaValidator,
+  sources: ApplicationInputSources,
+  resolver?: ApplicationInputResolver,
+): Promise<EnvResolutionResult> {
+  const answers = new Map<string, string>();
+  for (;;) {
+    const reading = readApplicationInputs(manifest, env, validator, sources, answers);
+    const refusal = refusalOf(reading);
+    if (!refusal) return reading.result;
+    const unresolved = unresolvedInputsOf(refusal);
+    if (!resolver || !unresolved) throw refusal;
+    const given = await resolver(unresolved);
+    if (!given || unresolved.some((input) => !given.has(input.id))) throw refusal;
+    for (const input of unresolved) answers.set(input.id, given.get(input.id)!);
   }
-  return { variables, secrets, ports, ...(needValues ? { needs: needValues } : {}) };
 }
 
 /** The needs a root reads from the environment, and the type each is of. */
@@ -180,55 +179,186 @@ export interface NeedEnvironmentRequest {
 /** A need the environment cannot fulfil: nothing set for a required one
  *  (`ERR_NEED_UNMET`), or some fields set and a required one not
  *  (`ERR_NEED_PARTIALLY_SUPPLIED`). */
-export interface NeedEnvironmentRefusal {
+interface NeedEnvironmentRefusal {
   code: "ERR_NEED_UNMET" | "ERR_NEED_PARTIALLY_SUPPLIED";
   message: string;
   entry: NeedTableEntry;
+  /** The required fields still without a value — what a host is asked for. */
+  missing: UnresolvedApplicationInput[];
 }
 
-export interface NeedEnvironment {
-  /** The decoded fields of each need the environment fulfils, by need path
-   *  (`Orders.databaseAccess`); `null` for an optional need with nothing set. */
-  values: Map<string, Record<string, unknown> | null>;
-  refusals: NeedEnvironmentRefusal[];
+/** One reading of every input, with what it could not resolve. */
+interface InputReading {
+  result: EnvResolutionResult;
+  /** Every failure, in reading order, as the refusal lists it. */
+  lines: string[];
+  /** A failure that is not a missing value — nothing is asked then. */
+  invalid: boolean;
+  /** The `variables:` / `secrets:` / `ports:` entries with no value. */
+  missing: UnresolvedApplicationInput[];
+  needRefusals: NeedEnvironmentRefusal[];
+}
+
+/** How a reading records what it found wrong. */
+interface Findings {
+  answers: ReadonlyMap<string, string>;
+  /** A failure no answer can repair. */
+  fail(line: string): void;
+  /** An entry with no value, or whose answer was refused (`input.refusal`). */
+  miss(line: string, input: UnresolvedApplicationInput): void;
+}
+
+function readApplicationInputs(
+  manifest: Record<string, any>,
+  env: Record<string, string | undefined>,
+  validator: SchemaValidator,
+  sources: ApplicationInputSources,
+  answers: ReadonlyMap<string, string>,
+): InputReading {
+  const reading: InputReading = {
+    result: { variables: {}, secrets: {}, ports: {} },
+    lines: [],
+    invalid: false,
+    missing: [],
+    needRefusals: [],
+  };
+  const findings: Findings = {
+    answers,
+    fail(line) {
+      reading.lines.push(line);
+      reading.invalid = true;
+    },
+    miss(line, input) {
+      reading.lines.push(line);
+      reading.missing.push(input);
+    },
+  };
+  const declaredArguments = readApplicationArguments(manifest);
+  for (const issue of declaredArguments.issues) findings.fail(issue.message);
+  const parsed = parseApplicationArguments(declaredArguments.bindings, sources.argv ?? []);
+  if (parsed.help && reading.lines.length === 0) {
+    reading.result.help = renderApplicationUsage(manifest);
+    return reading;
+  }
+  for (const error of parsed.errors) findings.fail(error);
+  const channel = (block: "variables" | "ports"): ArgumentChannel => ({
+    values: parsed.values[block],
+    bindings: new Map(
+      declaredArguments.bindings.filter((b) => b.block === block).map((b) => [b.name, b]),
+    ),
+  });
+
+  reportUndeclaredInputs(manifest, sources.inputs, findings);
+  const { inputs, needs } = sources;
+  const variables = resolveBlock(
+    "variables",
+    manifest.variables ?? {},
+    env,
+    validator,
+    findings,
+    inputs?.variables,
+    channel("variables"),
+  );
+  const secrets = resolveBlock("secrets", manifest.secrets ?? {}, env, validator, findings, inputs?.secrets);
+  const ports = resolvePorts(manifest.ports ?? {}, env, validator, findings, inputs?.ports, channel("ports"));
+  reading.result = { variables, secrets, ports };
+  if (needs) {
+    // A `Telo.PublicUrl` nothing else supplies is answered from the host's
+    // templates, read as if its env name held the derived address; one whose
+    // port has no value yet waits for it rather than being asked.
+    const derived = withDerivedPublicUrls(needs.entries, env, ports);
+    const awaiting = publicUrlsAwaitingPorts(needs.entries, env, ports);
+    reading.result.needs = resolveNeedEnvironment(needs, derived, validator, findings, reading, awaiting);
+  }
+  return reading;
+}
+
+/**
+ * The refusal a reading amounts to, or `undefined` when everything resolved.
+ * One that only lacks values carries those entries (`UnresolvedInputsError`),
+ * under the code it always had: a need refused alone keeps the need's,
+ * anything else is `ERR_MANIFEST_VALIDATION_FAILED`, listing the needs' too.
+ */
+function refusalOf(reading: InputReading): RuntimeError | undefined {
+  const { lines, needRefusals } = reading;
+  if (lines.length === 0 && needRefusals.length === 0) return undefined;
+  const askable = !reading.invalid && needRefusals.every((refusal) => refusal.missing.length > 0);
+  const unresolved = askable
+    ? [...reading.missing, ...needRefusals.flatMap((refusal) => refusal.missing)]
+    : undefined;
+  if (lines.length === 0) {
+    return needRefusalError(
+      needRefusals.map((refusal) => ({
+        runtimeCode: refusal.code,
+        message: refusal.message,
+        filePath: refusal.entry.filePath,
+        path: `needs.${refusal.entry.need.name}`,
+      })),
+      [],
+      unresolved,
+    );
+  }
+  const message =
+    `Application input validation failed:\n` +
+    [...lines, ...needRefusals.map((refusal) => `${refusal.message} (${refusal.code})`)]
+      .map((line) => `  - ${line}`)
+      .join("\n");
+  return unresolved
+    ? new UnresolvedInputsError("ERR_MANIFEST_VALIDATION_FAILED", message, unresolved)
+    : new RuntimeError("ERR_MANIFEST_VALIDATION_FAILED", message);
 }
 
 /**
  * Read every need reaching the root unsupplied from the one environment name of
- * each of its fields, and decode each value against the field's schema as a
- * root variable's is. A value that does not decode joins `errors` — the
- * application's `ERR_MANIFEST_VALIDATION_FAILED` — naming the variable and, for
- * a sensitive field, never the value.
+ * each of its fields — an answer standing in for a name the environment leaves
+ * unset — and decode each value against the field's schema as a root
+ * variable's is. A value that does not decode joins the application's
+ * `ERR_MANIFEST_VALIDATION_FAILED`, naming the variable and, for a sensitive
+ * field, never the value. A need in `awaiting` is left for a later reading.
  */
 function resolveNeedEnvironment(
   request: NeedEnvironmentRequest,
-  env: Record<string, string | undefined>,
+  environment: Record<string, string | undefined>,
   validator: SchemaValidator,
-  errors: string[],
-): NeedEnvironment {
+  findings: Findings,
+  reading: InputReading,
+  awaiting: ReadonlySet<NeedTableEntry>,
+): Map<string, Record<string, unknown> | null> {
   const values = new Map<string, Record<string, unknown> | null>();
-  const refusals: NeedEnvironmentRefusal[] = [];
   for (const entry of request.entries) {
+    if (awaiting.has(entry)) continue;
     const path = entry.path.join(".");
+    const shape = request.shapeOf(entry);
     const fields = Object.entries(entry.fields ?? {});
+    const inputOf = (name: string, field: { env: string; sensitive: boolean }, refusal?: string) =>
+      needFieldInput(path, name, field, shape?.fields[name] ?? {}, refusal);
+    // An answer is read only where the environment holds nothing.
+    const answered = new Set<string>();
+    const env: Record<string, string | undefined> = { ...environment };
+    for (const [name, field] of fields) {
+      const answer = findings.answers.get(inputOf(name, field).id);
+      if (answer === undefined || isSetIn(env, field.env)) continue;
+      env[field.env] = answer;
+      answered.add(field.env);
+    }
     const subject =
       `Need '${path}' (type '${entry.need.type ?? entry.need.kind}', declared by module ` +
       `'${entry.moduleName}')`;
-    const isSet = (name: string) => env[name] !== undefined && env[name] !== null;
-    const set = fields.filter(([, field]) => isSet(field.env));
+    const set = fields.filter(([, field]) => isSetIn(env, field.env));
     if (set.length === 0) {
       if (entry.need.optional) {
         values.set(path, null);
         continue;
       }
-      const required = fields.filter(([, field]) => field.required).map(([, field]) => field.env);
+      const required = fields.filter(([, field]) => field.required);
       const optional = fields.filter(([, field]) => !field.required).map(([, field]) => field.env);
-      refusals.push({
+      reading.needRefusals.push({
         code: "ERR_NEED_UNMET",
         entry,
+        missing: required.map(([name, field]) => inputOf(name, field)),
         message:
           `${subject} is required and nothing supplies it. Set ` +
-          `${required.length > 0 ? required.join(", ") : "its environment variables"}` +
+          `${required.length > 0 ? required.map(([, field]) => field.env).join(", ") : "its environment variables"}` +
           `${optional.length > 0 ? ` (optional: ${optional.join(", ")})` : ""}` +
           (entry.via
             ? `, supply it at the import that reaches it ('needs: { ${entry.need.name}: … }'), ` +
@@ -237,11 +367,12 @@ function resolveNeedEnvironment(
       });
       continue;
     }
-    const missing = fields.filter(([, field]) => field.required && !isSet(field.env));
+    const missing = fields.filter(([, field]) => field.required && !isSetIn(env, field.env));
     if (missing.length > 0) {
-      refusals.push({
+      reading.needRefusals.push({
         code: "ERR_NEED_PARTIALLY_SUPPLIED",
         entry,
+        missing: missing.map(([name, field]) => inputOf(name, field)),
         message:
           `${subject} is set in the environment only in part: ` +
           `${set.map(([, field]) => field.env).join(", ")} ${set.length === 1 ? "is" : "are"} set, ` +
@@ -250,37 +381,67 @@ function resolveNeedEnvironment(
       });
       continue;
     }
-    const shape = request.shapeOf(entry);
     const decoded: Record<string, unknown> = {};
     for (const [name, field] of set) {
       const schema = shape?.fields[name] ?? {};
       const label = `needs ${path}.${name}`;
+      const fromAnswer = answered.has(field.env);
+      const source = fromAnswer ? ANSWER_SOURCE : `environment variable ${field.env}`;
+      const report = (line: string) =>
+        fromAnswer ? findings.miss(line, inputOf(name, field, line)) : findings.fail(line);
       try {
-        const coerced = coerce(
-          env[field.env] as string,
-          fieldEntryType(schema),
-          `environment variable ${field.env}`,
-          field.sensitive,
-        );
+        const coerced = coerce(env[field.env] as string, fieldEntryType(schema), source, field.sensitive);
         const value = decodeFromOutside(coerced, schema, validator);
         const refused = membersEnvRefusal(value, schema, validator);
         if (refused) {
-          errors.push(`${label}: environment variable ${field.env}: ${refused}`);
+          report(`${label}: ${source}: ${refused}`);
           continue;
         }
         const validation = validateResidual(value, schema, validator);
         if (validation) {
-          errors.push(`${label}: environment variable ${field.env}: ${validation}`);
+          report(`${label}: ${source}: ${validation}`);
           continue;
         }
         decoded[name] = value;
       } catch (e) {
-        errors.push(`${label}: ${(e as Error).message}`);
+        report(`${label}: ${(e as Error).message}`);
       }
     }
     values.set(path, decoded);
   }
-  return { values, refusals };
+  return values;
+}
+
+function isSetIn(env: Record<string, string | undefined>, name: string): boolean {
+  return env[name] !== undefined && env[name] !== null;
+}
+
+function needFieldInput(
+  path: string,
+  name: string,
+  field: { env: string; sensitive: boolean },
+  schema: Record<string, unknown>,
+  refusal: string | undefined,
+): UnresolvedApplicationInput {
+  return {
+    id: `needs ${path}.${name}`,
+    block: "needs",
+    name: `${path}.${name}`,
+    env: field.env,
+    sensitive: field.sensitive,
+    type: inputValueTypeName("needs", schema),
+    schema,
+    ...describedBy(schema),
+    ...(refusal !== undefined ? { refusal } : {}),
+  };
+}
+
+/** The `title` / `description` an entry carries, for whoever is asked for it. */
+function describedBy(entry: Record<string, unknown>): { title?: string; description?: string } {
+  return {
+    ...(typeof entry.title === "string" ? { title: entry.title } : {}),
+    ...(typeof entry.description === "string" ? { description: entry.description } : {}),
+  };
 }
 
 /** How a field's environment text is read: by the JSON type its schema
@@ -501,16 +662,16 @@ export function precompileDefinitionSchemas(
 /**
  * Populate the root Application's `ports` namespace. Mirrors `resolveBlock` but
  * fixes the value type to a port integer (1–65535): the host text — from the
- * command line, else `entry.env` — is coerced as an integer and validated
- * against `PORT_RESIDUAL_SCHEMA`, falling back to `entry.default`. Failures
- * aggregate into the shared `errors` list so they surface alongside
- * variable/secret problems.
+ * command line, else `entry.env`, else an answer — is coerced as an integer and
+ * validated against `PORT_RESIDUAL_SCHEMA`, falling back to `entry.default`
+ * before an answer. Failures go to the shared findings so they surface
+ * alongside variable/secret problems.
  */
 function resolvePorts(
   block: Record<string, PortEntry> | unknown,
   env: Record<string, string | undefined>,
   validator: SchemaValidator,
-  errors: string[],
+  findings: Findings,
   supplied: Record<string, number> | undefined,
   args: ArgumentChannel,
 ): Record<string, number> {
@@ -524,36 +685,37 @@ function resolvePorts(
     // manifest, not from host text — so it is validated but never coerced.
     if (supplied && Object.hasOwn(supplied, name)) {
       const validation = validateResidual(supplied[name], PORT_RESIDUAL_SCHEMA, validator);
-      if (validation) errors.push(`${name}: ${validation}`);
+      if (validation) findings.fail(`${name}: ${validation}`);
       else out[name] = supplied[name];
       continue;
     }
+    const input = (refusal?: string) =>
+      entryInput("ports", name, entry as Record<string, unknown>, PORT_RESIDUAL_SCHEMA, args, refusal);
     const host = hostText(name, entry, env, args);
-    if (host === undefined) {
-      if (entry.default !== undefined) {
-        const validation = validateResidual(entry.default, PORT_RESIDUAL_SCHEMA, validator);
-        if (validation) {
-          errors.push(`${name}: ${validation}`);
-        } else {
-          out[name] = entry.default;
-        }
-        continue;
-      }
-      errors.push(`${name}: ${describeMissing(name, entry, args)}`);
+    if (host === undefined && entry.default !== undefined) {
+      const validation = validateResidual(entry.default, PORT_RESIDUAL_SCHEMA, validator);
+      if (validation) findings.fail(`${name}: ${validation}`);
+      else out[name] = entry.default;
       continue;
     }
+    const read = host ?? answerText(findings, input().id);
+    if (read === undefined) {
+      findings.miss(`${name}: ${describeMissing(name, entry, args)}`, input());
+      continue;
+    }
+    const report = (line: string) => (read.answered ? findings.miss(line, input(line)) : findings.fail(line));
 
     let coerced: unknown;
     try {
-      coerced = coerce(host.raw as string, "integer", host.source, false);
+      coerced = coerce(read.raw as string, "integer", read.source, false);
     } catch (e) {
-      errors.push(`${name}: ${(e as Error).message}`);
+      report(`${name}: ${(e as Error).message}`);
       continue;
     }
 
     const validation = validateResidual(coerced, PORT_RESIDUAL_SCHEMA, validator);
     if (validation) {
-      errors.push(`${name}: ${validation}`);
+      report(`${name}: ${validation}`);
       continue;
     }
 
@@ -563,11 +725,11 @@ function resolvePorts(
 }
 
 function resolveBlock(
+  blockName: "variables" | "secrets",
   block: Record<string, EnvEntry> | unknown,
   env: Record<string, string | undefined>,
   validator: SchemaValidator,
-  errors: string[],
-  isSecret: boolean,
+  findings: Findings,
   supplied?: Record<string, unknown>,
   args?: ArgumentChannel,
 ): Record<string, unknown> {
@@ -575,6 +737,7 @@ function resolveBlock(
   if (!block || typeof block !== "object" || Array.isArray(block)) {
     return out;
   }
+  const isSecret = blockName === "secrets";
   for (const [name, entry] of Object.entries(block as Record<string, EnvEntry>)) {
     if (!entry || typeof entry !== "object") continue;
     const residual = residualEntrySchema(entry as Record<string, unknown>);
@@ -584,44 +747,44 @@ function resolveBlock(
       const validation =
         membersEnvRefusal(supplied[name], residual, validator) ??
         validateResidual(supplied[name], residual, validator);
-      if (validation) errors.push(`${name}: ${validation}`);
+      if (validation) findings.fail(`${name}: ${validation}`);
       else out[name] = supplied[name];
       continue;
     }
+    const input = (refusal?: string) => entryInput(blockName, name, entry, residual, args, refusal);
     const host = hostText(name, entry, env, args);
-    if (host === undefined) {
-      if (entry.default !== undefined) {
-        // Decoded on a copy: the default is the manifest's own literal.
-        const fallback = decodeFromOutside(structuredClone(entry.default), residual, validator);
-        const validation =
-          membersEnvRefusal(fallback, residual, validator) ?? validateResidual(fallback, residual, validator);
-        if (validation) {
-          errors.push(`${name}: ${validation}`);
-        } else {
-          out[name] = fallback;
-        }
-        continue;
-      }
-      errors.push(`${name}: ${describeMissing(name, entry, args)}`);
+    if (host === undefined && entry.default !== undefined) {
+      // Decoded on a copy: the default is the manifest's own literal.
+      const fallback = decodeFromOutside(structuredClone(entry.default), residual, validator);
+      const validation =
+        membersEnvRefusal(fallback, residual, validator) ?? validateResidual(fallback, residual, validator);
+      if (validation) findings.fail(`${name}: ${validation}`);
+      else out[name] = fallback;
       continue;
     }
+    const read = host ?? answerText(findings, input().id);
+    if (read === undefined) {
+      findings.miss(`${name}: ${describeMissing(name, entry, args)}`, input());
+      continue;
+    }
+    const report = (line: string) => (read.answered ? findings.miss(line, input(line)) : findings.fail(line));
 
     let coerced: unknown;
     try {
-      coerced = decodeFromOutside(coerceHostText(host, entry, isSecret), residual, validator);
+      coerced = decodeFromOutside(coerceHostText(read, entry, isSecret), residual, validator);
     } catch (e) {
-      errors.push(`${name}: ${(e as Error).message}`);
+      report(`${name}: ${(e as Error).message}`);
       continue;
     }
 
     const refused = membersEnvRefusal(coerced, residual, validator);
     if (refused) {
-      errors.push(`${name}: ${host.source}: ${refused}`);
+      report(`${name}: ${read.source}: ${refused}`);
       continue;
     }
     const validation = validateResidual(coerced, residual, validator);
     if (validation) {
-      errors.push(`${name}: ${validation}`);
+      report(`${name}: ${validation}`);
       continue;
     }
 
@@ -630,12 +793,39 @@ function resolveBlock(
   return out;
 }
 
+/** A `variables:` / `secrets:` / `ports:` entry as a host is asked for it. */
+function entryInput(
+  block: "variables" | "secrets" | "ports",
+  name: string,
+  entry: Record<string, unknown>,
+  schema: Record<string, unknown>,
+  args: ArgumentChannel | undefined,
+  refusal: string | undefined,
+): UnresolvedApplicationInput {
+  const binding = args?.bindings.get(name);
+  return {
+    id: `${block}.${name}`,
+    block,
+    name,
+    ...(typeof entry.env === "string" ? { env: entry.env } : {}),
+    ...(binding ? { arg: describeArgBinding(binding) } : {}),
+    sensitive: block === "secrets",
+    type: inputValueTypeName(block, entry),
+    schema,
+    ...describedBy(entry),
+    ...(refusal !== undefined ? { refusal } : {}),
+  };
+}
+
 /** The host text an entry receives and where it came from — the command line
- *  first, then the environment — or `undefined` when neither supplies one. A
- *  boolean flag arrives already read; a repeated flag as its list of tokens. */
+ *  first, then the environment, and last an answer the host gave — or
+ *  `undefined` when none supplies one. A boolean flag arrives already read; a
+ *  repeated flag as its list of tokens. */
 interface HostText {
   raw: string | boolean | string[];
   source: string;
+  /** The text is an answer, so a refusal of it is asked again. */
+  answered?: boolean;
 }
 
 function hostText(
@@ -657,9 +847,14 @@ function hostText(
   return undefined;
 }
 
+function answerText(findings: Findings, id: string): HostText | undefined {
+  const raw = findings.answers.get(id);
+  return raw === undefined ? undefined : { raw, source: ANSWER_SOURCE, answered: true };
+}
+
 /** A command-line value is read per token — each element of a repeated flag by
- *  `items.type` — where an environment value of an array or object type is one
- *  JSON document. */
+ *  `items.type` — where an environment value (or an answer) of an array or
+ *  object type is one JSON document. */
 function coerceHostText(host: HostText, entry: EnvEntry, isSecret: boolean): unknown {
   if (typeof host.raw === "boolean") return host.raw;
   if (Array.isArray(host.raw)) {
@@ -694,7 +889,7 @@ function describeMissing(
 function reportUndeclaredInputs(
   manifest: Record<string, any>,
   inputs: ApplicationInputs | undefined,
-  errors: string[],
+  findings: Findings,
 ): void {
   if (!inputs) return;
   for (const block of ["variables", "secrets", "ports"] as const) {
@@ -707,14 +902,13 @@ function reportUndeclaredInputs(
         : [];
     for (const name of Object.keys(supplied)) {
       if (names.includes(name)) continue;
-      errors.push(
+      findings.fail(
         `${name}: this application declares no \`${block}\` entry by that name` +
           (names.length > 0 ? ` (it declares: ${names.join(", ")})` : ` (it declares none)`),
       );
     }
   }
 }
-
 /** An env value arrives from outside Telo, so every instance-typed slot in it is
  *  read from its plain encoding — the whole value (`x-telo-type: Telo.Timestamp`)
  *  or a field of a JSON-decoded one — and every host path in it is resolved

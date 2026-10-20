@@ -435,7 +435,8 @@ function spawnApp(args: SpawnAppArgs): ChildProcess {
   const entry = path.join(args.workspaceDir, args.app.entryRelativePath);
   // `telo run`'s own options precede the path: everything after it is the
   // application's.
-  const teloArgs = ["run"];
+  // `--no-input`: the session's terminal is the editor's, not a person's.
+  const teloArgs = ["run", "--no-input"];
   if (args.watch) teloArgs.push("--watch");
   if (args.inspectPort !== undefined) {
     // Loopback only, and never published: this endpoint is the runner's own

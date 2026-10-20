@@ -117,6 +117,10 @@ Application input validation failed:
   - tls: environment variable SERVER_TLS: value is not valid JSON: …
 ```
 
+## Asking for a missing value
+
+When every error is a missing value — and nothing else — a host that can ask someone does so before the load fails: `telo run` at a terminal asks for each entry on stderr (a secret without echo), and the kernel reads each answer exactly as it would read the same text in the environment variable, asking again with its own sentence for one it refuses. An answer is the last source, after `default:`, and is never written to the environment. Without a host that asks (`--no-input`, no terminal, a runner), the refusal above is unchanged. Normative: [Application arguments §4.1](../specs/application-arguments.md#41-asking-the-host).
+
 ---
 
 ## Command-line arguments

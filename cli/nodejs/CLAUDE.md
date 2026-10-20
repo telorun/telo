@@ -127,7 +127,7 @@ Three differences from the container runners, each **advertised rather than hidd
 
 **Studio ships this binary** and supervises `telo runner` on loopback (`apps/studio/scripts/stage-cli-sidecar.mjs` builds it per Rust target triple), so the standalone build now has a second consumer: a break in `telo runner` is a desktop editor that cannot run anything.
 
-**Polyglot debt, application arguments:** `kernel/specs/application-arguments.md` is not implemented by the Rust half — `kernel/rust` refuses a manifest declaring Application `variables:` / `ports:` at all, and `cli/rust` accepts no token after the manifest path. Both are consistent refusals rather than silent divergence, and both are owed.
+**Polyglot debt, application arguments:** `kernel/specs/application-arguments.md` is not implemented by the Rust half — `kernel/rust` refuses a manifest declaring Application `variables:` / `ports:` at all, and `cli/rust` accepts no token after the manifest path. Both are consistent refusals rather than silent divergence, and both are owed — §4.1, asking at the terminal for a missing input and `--no-input`, included.
 
 **Polyglot debt:** `telo runner` is part of the one `telo` surface — running an application on a named release included — so `cli/rust` owes it and `packages/runner-core` owes a Rust twin under the one-for-one layout rule. Unlike the retired editor-side runner, this is a second implementation of a WRITTEN contract — the case the mirroring rule exists to cover — rather than a second implementation of an unspecified concept.
 
@@ -146,6 +146,10 @@ Three differences from the container runners, each **advertised rather than hidd
 ## `telo run` — the env files
 
 **The walk, the marker's `env:` block, the precedence, the env-file format and the sensitive mark are the analyzer's** (`resolveWorkspaceEnv`, `src/workspace-env/` there), the one answer Studio also uses; `src/env-files.ts` is the Node half — the start directory (realpathed, a manifest's directory or the one named), the one read every file goes through, and native ↔ `/`-separated paths. The CLI no longer depends on `dotenv`. `run.ts` applies the values to `process.env` where the real environment has none and keeps the resolution and the applied keys from process start; after every successful `kernel.load` (once per watch reload, never on a failed load) it prints `[env] <secret|sensitive need field> X is set in ./<file>, which env.files does not mark sensitive — move it to a sensitive file` for every sensitive input whose applied value came from a file without the mark (`sensitiveValueFindings`; the sentence is the analyzer's, the path rendered relative to the working directory). The run proceeds. Under bun the runtime itself loads the working directory's `.env*` files before the CLI starts, so a value there is not one the walk applies. **Polyglot debt:** `cli/rust` reads no env files, and `analyzer/rust` reads no `env:` block.
+
+## `telo run` — asking for a missing input
+
+`run.ts` installs a kernel `inputResolver` only when stdin and stderr are both TTYs and `--no-input` is absent; every runner backend passes `--no-input`. `application-input-prompt.ts` asks one entry at a time on stderr, reads exactly one line and unshifts the rest so the app's own stdin is intact, enters raw mode only for a hidden (sensitive) entry, and re-raises Ctrl-C as SIGINT. `application-input-session.ts` keeps answers for the session keyed by entry identity (a watch reload asks only for what is new or refused), offers once to save them through the analyzer's `envFileDestination` / `appendEnvFileValue`, and builds the hint a missing-values refusal ends with when nothing could ask. The file reads and git-ignore check it shares with `env template --write` live in `env-file-writes.ts`.
 
 ## `telo changed` — selecting what a change reaches
 

@@ -127,9 +127,9 @@ describe("an application naming its telo version", () => {
 
   // What is certain without the network is refused before a session exists.
   it("refuses another build's unreleased identity, which no release can stand in for", async () => {
-    const res = await asking("0.110.0+unreleased");
+    const res = await asking("0.121.0+unreleased");
     expect(res.statusCode).toBe(400);
-    expect(res.json()).toMatchObject({ error: "telo_version_unavailable", app: "app", version: "0.110.0+unreleased" });
+    expect(res.json()).toMatchObject({ error: "telo_version_unavailable", app: "app", version: "0.121.0+unreleased" });
     expect(res.json().reason).toMatch(/unreleased build, which only the build it came from can run/);
     expect(res.json().reason).toMatch(/Pin a released telo version/);
   });
@@ -143,29 +143,29 @@ describe("an application naming its telo version", () => {
   // A release this machine does not hold is fetched by the session's start, so
   // its failure is that session's — carrying the same reason.
   it("fails the start for a release that publishes no binary, naming the version and the cause", async () => {
-    expect(await failedStart("0.105.0")).toMatch(
-      /telo 0\.105\.0 publishes no binary for linux-amd64-gnu \(HTTP 404/,
+    expect(await failedStart("0.121.0")).toMatch(
+      /telo 0\.121\.0 publishes no binary for linux-amd64-gnu \(HTTP 404/,
     );
   });
 
   it("fails the start for a download the release host fails, with its status", async () => {
-    release["telo-0.105.0-linux-amd64-gnu.tar.gz"] = { status: 503, body: "" };
-    expect(await failedStart("0.105.0")).toMatch(/HTTP 503/);
+    release["telo-0.121.0-linux-amd64-gnu.tar.gz"] = { status: 503, body: "" };
+    expect(await failedStart("0.121.0")).toMatch(/HTTP 503/);
   });
 
   it("fails the start for a binary the release publishes no checksum for", async () => {
-    release["telo-0.105.0-linux-amd64-gnu.tar.gz"] = { status: 200, body: "bytes" };
-    expect(await failedStart("0.105.0")).toMatch(/no checksums\.txt published/);
+    release["telo-0.121.0-linux-amd64-gnu.tar.gz"] = { status: 200, body: "bytes" };
+    expect(await failedStart("0.121.0")).toMatch(/no checksums\.txt published/);
   });
 
   it("fails the start for a binary whose checksum does not match", async () => {
-    release["telo-0.105.0-linux-amd64-gnu.tar.gz"] = { status: 200, body: "bytes" };
-    release["checksums.txt"] = { status: 200, body: `${"0".repeat(64)}  telo-0.105.0-linux-amd64-gnu.tar.gz\n` };
-    expect(await failedStart("0.105.0")).toMatch(/checksum mismatch/);
+    release["telo-0.121.0-linux-amd64-gnu.tar.gz"] = { status: 200, body: "bytes" };
+    release["checksums.txt"] = { status: 200, body: `${"0".repeat(64)}  telo-0.121.0-linux-amd64-gnu.tar.gz\n` };
+    expect(await failedStart("0.121.0")).toMatch(/checksum mismatch/);
   });
 
   it("leaves no session directory behind a start that could not get its telo", async () => {
-    await failedStart("0.105.0");
+    await failedStart("0.121.0");
     const left = fs.readdirSync(stateRoot).filter((name) => name !== "binaries");
     expect(left).toEqual([]);
   });

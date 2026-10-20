@@ -38,7 +38,7 @@ describe("buildSessionPod", () => {
       mountPath: "/telo-cache",
     });
     expect(pod.spec!.volumes).toContainEqual({ name: "telo-cache", emptyDir: {} });
-    expect(container.command).toEqual(["telo", "run", "/app/telo.yaml"]);
+    expect(container.command).toEqual(["telo", "run", "--no-input", "/app/telo.yaml"]);
   });
 
   it("is given headroom to resolve a closure, not just to run one", () => {

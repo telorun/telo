@@ -190,12 +190,14 @@ import {
   precompileApplicationEnvSchemas,
   precompileDefinitionSchemas,
   precompileTypeSchemas,
-  resolveApplicationEnv,
+  resolveApplicationInputs,
 } from "./application-env.js";
+import type { ApplicationInputResolver } from "./unresolved-inputs.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
 import { staticDiagnosticToRuntime } from "./static-analysis-diagnostics.js";
 import { importLoadFailure } from "./import-load-failure.js";
+import { needRefusalError } from "./need-refusals.js";
 import { refuseReservedKindPrefix } from "./reserved-kind-prefix.js";
 
 /** Walks up the EvaluationContext parent chain to the nearest enclosing
@@ -213,49 +215,6 @@ function findEnclosingModule(ctx: IEvaluationContext): ModuleContext | undefined
 
 function findEnclosingPolicy(ctx: IEvaluationContext): ControllerPolicy | undefined {
   return findEnclosingModule(ctx)?.getControllerPolicy();
-}
-
-/** Raise need refusals together with the rest of the analysis's errors, each
- *  line naming its own code — the error's code is only the first refusal's — so
- *  every one is findable on a child kernel's stderr. */
-function throwNeedRefusals(
-  refusals: ReadonlyArray<{
-    runtimeCode: string;
-    message: string;
-    filePath?: string;
-    path: string;
-    resource?: { kind: string; name: string };
-  }>,
-  others: readonly AnalysisDiagnostic[] = [],
-): never {
-  const [first] = refusals;
-  const rest = others.map(staticDiagnosticToRuntime);
-  throw new RuntimeError(
-    first!.runtimeCode,
-    [
-      ...refusals.map(
-        (p) => `${p.filePath ? `${p.filePath}: ` : ""}${p.message} (${p.runtimeCode})`,
-      ),
-      ...rest.map((d) => {
-        const filePath = d.origin?.filePath;
-        return `${filePath ? `${filePath}: ` : ""}${d.message}${d.code ? ` (${d.code})` : ""}`;
-      }),
-    ].join("\n"),
-    [
-      ...refusals.map((p) => ({
-        severity: "error" as const,
-        message: p.message,
-        code: p.runtimeCode,
-        ...(p.resource ? { resource: `${p.resource.kind}.${p.resource.name}` } : {}),
-        origin: {
-          ...(p.filePath !== undefined ? { filePath: p.filePath } : {}),
-          path: p.path,
-          ...(p.resource ? { resource: p.resource } : {}),
-        },
-      })),
-      ...rest,
-    ],
-  );
 }
 
 function throwInvalidState(operation: string, reason: string): never {
@@ -650,6 +609,10 @@ export class Kernel implements IKernel {
        *  survives the payload being unpacked somewhere other than where it was
        *  built. See `computeAnalysisSignature`. */
       analysisKey?: string;
+      /** Asked for the root Application's inputs no channel supplies — the
+       *  fifth source (`kernel/specs/application-arguments.md` §4.1). Without
+       *  one, a missing value is refused as it always was. */
+      inputResolver?: ApplicationInputResolver;
     },
   ): Promise<void> {
     // `writeCache: false` (`telo run --no-cache-write`) keeps the cache
@@ -729,7 +692,7 @@ export class Kernel implements IKernel {
     // `analyzeOnly` stops before instantiation, so there is nothing to install.
     if (!produced) return;
     this._declarationSignatures = produced.signatures;
-    this.installManifests(produced.manifests);
+    await this.installManifests(produced.manifests, options?.inputResolver);
   }
 
   /** Parsed YAML is restored from `<cache-root>/yaml-parses/`; a memory- or
@@ -1294,7 +1257,7 @@ export class Kernel implements IKernel {
         needGraphScopeOf(this.registry, rootModuleDoc?.metadata?.name as string | undefined),
       ),
     );
-    if (table.problems.length > 0) throwNeedRefusals(table.problems, others);
+    if (table.problems.length > 0) throw needRefusalError(table.problems, others);
     return table;
   }
 
@@ -1308,7 +1271,10 @@ export class Kernel implements IKernel {
    * itself rather than coming through here; what lives here is the whole-set
    * install, which happens once.
    */
-  private installManifests(normalizedManifests: ResourceManifest[]): void {
+  private async installManifests(
+    normalizedManifests: ResourceManifest[],
+    inputResolver?: ApplicationInputResolver,
+  ): Promise<void> {
     let rootApplicationManifest: ResourceManifest | undefined;
     for (const manifest of normalizedManifests) {
       if (isModuleKind(manifest.kind)) {
@@ -1397,31 +1363,22 @@ export class Kernel implements IKernel {
       ];
       const shapeOf = (entry: NeedTableEntry) =>
         entry.need.type ? needTypeOf(this.registry.resolveDefinition(entry.need.type)) : undefined;
-      const { variables, secrets, ports, help, needs } = resolveApplicationEnv(
+      // An answer the resolver gives is the host's fifth source: it is decoded
+      // like the environment's text, and never written to the environment.
+      const { variables, secrets, ports, help, needs } = await resolveApplicationInputs(
         rootApplicationManifest as Record<string, any>,
         this.env,
         this.sharedSchemaValidator,
-        this._inputs,
-        this.argv,
-        { entries: environment, shapeOf },
+        { inputs: this._inputs, argv: this.argv, needs: { entries: environment, shapeOf } },
+        inputResolver,
       );
       if (help !== undefined) {
         this._applicationHelp = help;
         return;
       }
-      if (needs && needs.refusals.length > 0) {
-        throwNeedRefusals(
-          needs.refusals.map((refusal) => ({
-            runtimeCode: refusal.code,
-            message: refusal.message,
-            filePath: refusal.entry.filePath,
-            path: `needs.${refusal.entry.need.name}`,
-          })),
-        );
-      }
       // A library's need is bound by the import that reaches it; the root's own
       // are bound here, before anything that could read or forward one exists.
-      const fromEnvironment = needs?.values ?? new Map<string, Record<string, unknown> | null>();
+      const fromEnvironment = needs ?? new Map<string, Record<string, unknown> | null>();
       setEnvironmentNeeds(this.rootContext, fromEnvironment);
       for (const entry of environment) {
         if (entry.via) continue;
