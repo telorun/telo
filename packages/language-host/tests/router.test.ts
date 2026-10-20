@@ -580,6 +580,141 @@ describe("the language router", () => {
     });
   });
 
+  describe("structured editing", () => {
+    const BOTH = { viewModelEngines: [BUNDLED, "0.103.0"] };
+    const modelOf = (engine: { version: string }, params: { owner: string }) => ({
+      owner: params.owner,
+      revision: 1,
+      engine: engine.version,
+    });
+
+    it("sends telo/viewModel and telo/celCompletion only to the engine serving the owner", async () => {
+      const { harness } = await appRequiring("0.103.0", BOTH);
+      harness.handlers["telo/viewModel"] = modelOf;
+      harness.handlers["telo/celCompletion"] = (engine) => [{ label: `from ${engine.version}` }];
+      harness.open(LONE);
+      harness.open(OWNER);
+      await onEngine(harness, "0.103.0", OWNER);
+      await harness.until(() => harness.router.supportsViewModel(OWNER) === true, "the owner's engine");
+      const model = await harness.client.sendRequest("telo/viewModel", { owner: OWNER });
+      expect(model).toMatchObject({ owner: OWNER, engine: "0.103.0" });
+      const items = await harness.client.sendRequest("telo/celCompletion", {
+        owner: OWNER,
+        resource: { kind: "Http.Api", name: "api" },
+        path: "routes[0].handler.inputs.x",
+        tag: "cel",
+        text: "variables.",
+        offset: 10,
+      });
+      expect(items).toEqual([{ label: "from 0.103.0" }]);
+      expect(harness.engine(BUNDLED)!.asked("telo/viewModel")).toEqual([]);
+      expect(harness.engine(BUNDLED)!.asked("telo/celCompletion")).toEqual([]);
+    });
+
+    it("answers null and [] without asking an engine that predates structured editing", async () => {
+      const { harness } = await appRequiring("0.103.0", { viewModelEngines: [BUNDLED] });
+      harness.handlers["telo/viewModel"] = modelOf;
+      harness.handlers["telo/celCompletion"] = () => [{ label: "never" }];
+      harness.open(OWNER);
+      await onEngine(harness, "0.103.0", OWNER);
+      await harness.until(() => harness.router.supportsViewModel(OWNER) === false, "the owner's engine");
+      expect(await harness.client.sendRequest("telo/viewModel", { owner: OWNER })).toBeNull();
+      expect(
+        await harness.client.sendRequest("telo/celCompletion", {
+          owner: OWNER,
+          resource: { kind: "Http.Api", name: "api" },
+          path: "x",
+          tag: "cel",
+          text: "",
+          offset: 0,
+        }),
+      ).toEqual([]);
+      for (const engine of harness.engines) {
+        expect(engine.asked("telo/viewModel")).toEqual([]);
+        expect(engine.asked("telo/celCompletion")).toEqual([]);
+      }
+    });
+
+    it("tells no engine from one that predates structured editing", async () => {
+      const { harness, registry } = await appRequiring("0.103.0", BOTH);
+      registry.offline = true;
+      harness.open(OWNER);
+      await harness.until(() => harness.router.statusOf(OWNER).error !== undefined, "the error state");
+      expect(harness.router.supportsViewModel(OWNER)).toBeUndefined();
+      expect(await harness.client.sendRequest("telo/viewModel", { owner: OWNER })).toBeNull();
+    });
+
+    it("passes on telo/viewModelChanged only from the owner's engine, in canonical form", async () => {
+      const { harness } = await appRequiring("0.103.0", BOTH);
+      harness.open(OWNER);
+      await onEngine(harness, "0.103.0", OWNER);
+      await harness.until(() => harness.router.supportsViewModel(OWNER) === true, "the owner's engine");
+      await new Promise((r) => setTimeout(r, 20));
+      const before = harness.viewModelChanges.length;
+      harness.engine(BUNDLED)!.send({ method: "telo/viewModelChanged", params: { owner: OWNER, revision: 7 } });
+      harness.engine("0.103.0")!.send({
+        method: "telo/viewModelChanged",
+        params: { owner: "file://localhost/ws/app/telo.yaml", revision: 1 },
+      });
+      await harness.until(() => harness.viewModelChanges.length > before, "the owner's engine's change");
+      await new Promise((r) => setTimeout(r, 20));
+      expect(harness.viewModelChanges.slice(before)).toEqual([
+        { owner: OWNER, revision: harness.viewModelChanges[before - 1]!.revision + 1 },
+      ]);
+    });
+
+    // Each engine counts revisions from its own start; the editor sees one
+    // increasing sequence per owner, with a change whenever its engine changes.
+    it("announces a change of the owner's engine and keeps its revisions increasing", async () => {
+      const registry = await fakeRegistry(["0.103.0"]);
+      const harness = new RouterHarness({ fetch: registry.fetch, ...BOTH });
+      harness.requirements.set(OWNER, requirementsFor(OWNER, [OWNER], []));
+      harness.handlers["telo/viewModel"] = modelOf;
+      await harness.initialize();
+      await harness.router.markVersions();
+      harness.open(OWNER);
+      await harness.until(() => harness.router.statusOf(OWNER).owner === OWNER, "the owner's analysis");
+      harness.engine(BUNDLED)!.send({ method: "telo/viewModelChanged", params: { owner: OWNER, revision: 5 } });
+      await harness.until(() => harness.viewModelChanges.length === 1, "the bundled engine's change");
+
+      await harness.router.setPin("0.103.0");
+      await onEngine(harness, "0.103.0", OWNER);
+      await harness.until(() => harness.viewModelChanges.length === 3, "the changes of engine");
+      expect(harness.router.supportsViewModel(OWNER)).toBe(true);
+      expect(harness.viewModelChanges).toEqual([
+        { owner: OWNER, revision: 5 },
+        { owner: OWNER, revision: 6 },
+        { owner: OWNER, revision: 7 },
+      ]);
+      expect(await harness.client.sendRequest("telo/viewModel", { owner: OWNER })).toMatchObject({
+        engine: "0.103.0",
+        revision: 8,
+      });
+    });
+
+    // Closing every document of an owner lets the router forget it; the owner
+    // reopened later must still never be shown a revision it has seen.
+    it("keeps an owner's revisions increasing after its documents close and reopen", async () => {
+      const harness = new RouterHarness(BOTH);
+      harness.requirements.set(OWNER, requirementsFor(OWNER, [OWNER], []));
+      await harness.initialize();
+      harness.open(OWNER);
+      await harness.until(() => harness.router.statusOf(OWNER).owner === OWNER, "the owner's analysis");
+      harness.engine(BUNDLED)!.send({ method: "telo/viewModelChanged", params: { owner: OWNER, revision: 5 } });
+      await harness.until(() => harness.viewModelChanges.length === 1, "the engine's change");
+
+      harness.close(OWNER);
+      await harness.until(() => harness.viewModelChanges.length === 2, "the owner served by nothing");
+      harness.open(OWNER);
+      await harness.until(() => harness.router.supportsViewModel(OWNER) === true, "the owner served again");
+      harness.engine(BUNDLED)!.send({ method: "telo/viewModelChanged", params: { owner: OWNER, revision: 1 } });
+      await harness.until(() => harness.viewModelChanges.length === 3, "the reopened owner's change");
+      const shown = harness.viewModelChanges.map((c) => c.revision);
+      expect(shown).toEqual([...shown].sort((a, b) => a - b));
+      expect(new Set(shown).size).toBe(shown.length);
+    });
+  });
+
   describe("resolutions stored per workspace", () => {
     const stored = (version: string) => ({ owners: { [OWNER]: { version, documents: [OWNER, PARTIAL] } } });
     const cachedEngine = async (version: string, code = engineCode(version)) => {

@@ -2,7 +2,7 @@ import { isRefSlot } from "@telorun/analyzer";
 import { inlineResourceKind } from "../../resource-schema-form/ref-candidates";
 import { isRecord } from "../../../lib/utils";
 import { getTopologyRole, resolveRef } from "../../../schema-utils";
-import { refTargetName } from "./overview-graph";
+import { refTargetName } from "./ref-target-name";
 import { summarizeValue } from "./value-summary";
 
 /**

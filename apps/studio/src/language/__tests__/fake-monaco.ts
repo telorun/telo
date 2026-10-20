@@ -139,6 +139,7 @@ export function fakeMonaco() {
       },
     },
     languages: {
+      register: () => undefined,
       CompletionItemKind: { Text: 18, Property: 9 },
       CompletionItemTag: { Deprecated: 1 },
       CompletionItemInsertTextRule: { InsertAsSnippet: 4 },

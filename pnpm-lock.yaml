@@ -2746,6 +2746,9 @@ importers:
       '@telorun/cel':
         specifier: workspace:*
         version: link:../../cel/nodejs
+      '@telorun/editor-protocol':
+        specifier: workspace:*
+        version: link:../editor-protocol
       '@telorun/templating':
         specifier: workspace:*
         version: link:../../templating/nodejs

@@ -6,3 +6,5 @@ export type { CompletionCtx } from "./detect-context.js";
 // `buildCompletions` stays the entry point for a document plus a cursor.
 export { celCompletions } from "./cel-completions.js";
 export type { CelCompletionTarget } from "./cel-completions.js";
+export { celCompletionAt } from "./cel-completion-at.js";
+export type { CelFieldCompletionRequest } from "./cel-completion-at.js";

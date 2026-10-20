@@ -4,8 +4,9 @@
  * `telo/*` request from the real fixture directories (and remote modules from
  * memory), and records everything the engine asks for and says.
  *
- * Every `telo/*` request and every `telo/requirements` notification is checked
- * against a closed projection of `editor-protocol-schema.json` (`closed-schema.ts`),
+ * Every `telo/*` message — the engine's requests and notifications, and its
+ * answers to the host's — is checked against a closed projection of
+ * `editor-protocol-schema.json` (`closed-schema.ts`),
  * and every `file:` URI the engine sends against the canonical form, so a test
  * passing here also means the engine spoke the published contract and nothing
  * beyond it.
@@ -136,7 +137,11 @@ export class HarnessHost {
   request(method: string, params: unknown): Promise<any> {
     const id = this.nextId++;
     return new Promise((resolvePromise, reject) => {
-      this.pending.set(id, (m) => (m.error ? reject(new Error(m.error.message)) : resolvePromise(m.result)));
+      this.pending.set(id, (m) => {
+        if (m.error) return reject(new Error(m.error.message));
+        this.check(method, "result", m.result);
+        resolvePromise(m.result);
+      });
       this.send({ jsonrpc: "2.0", id, method, params });
     });
   }

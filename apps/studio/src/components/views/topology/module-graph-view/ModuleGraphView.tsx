@@ -21,7 +21,7 @@ import { askAboutResourcePrompt, useAgentCompose } from "../../../../agent";
 import { isRecord } from "../../../../lib/utils";
 import { readConcretePath } from "../../../../lib/concrete-path";
 import { resolveRef } from "../../../../schema-utils";
-import type { RefWrite } from "../application-canvas-model";
+import type { RefWrite } from "../ref-write";
 import {
   BOOT_FIELD,
   bootEntries,
@@ -173,7 +173,7 @@ function edgeStyle(
 export function ModuleGraphView({
   moduleGraph,
   isEditableModule,
-  registry,
+  structuredModel,
   viewData,
   selectedResource,
   resource,
@@ -457,7 +457,7 @@ export function ModuleGraphView({
       if (hit) return hit;
       const kinds = new Set<string>();
       for (const ref of port.refs) {
-        for (const kind of registry?.userFacingKindsForRef(ref) ?? []) kinds.add(kind);
+        for (const kind of structuredModel?.userFacingKindsForRef(ref) ?? []) kinds.add(kind);
       }
       const answer = {
         candidates: pickerCandidates(port, moduleGraph.nodes, refResolver),
@@ -466,7 +466,7 @@ export function ModuleGraphView({
       cache.set(key, answer);
       return answer;
     };
-  }, [moduleGraph, refResolver, registry]);
+  }, [moduleGraph, refResolver, structuredModel]);
 
   /** Edit a call's argument map in the detail panel, typed by what the target
    *  declares it takes — the same contract `telo check` validates the site
@@ -477,7 +477,7 @@ export function ModuleGraphView({
       const target = row.targetNode ? moduleGraph?.nodeById(row.targetNode) : undefined;
       const targetKind = target ? (target.canonicalKind ?? target.kind) : undefined;
       const schema =
-        (targetKind ? registry?.inputTypeForKind(targetKind) : undefined) ??
+        (targetKind ? structuredModel?.inputTypeForKind(targetKind) : undefined) ??
         ({ type: "object", additionalProperties: true } as Record<string, unknown>);
       onSelect({
         resource: { kind: node.kind, name: node.name },
@@ -486,7 +486,7 @@ export function ModuleGraphView({
         celEval: "runtime",
       });
     },
-    [moduleGraph, registry, onSelect],
+    [moduleGraph, structuredModel, onSelect],
   );
 
   /**
@@ -567,7 +567,7 @@ export function ModuleGraphView({
     if (!wiring || !moduleGraph || !refResolver) return undefined;
     const createKinds = new Set<string>();
     for (const ref of siteRefs(wiring.site)) {
-      for (const kind of registry?.userFacingKindsForRef(ref) ?? []) createKinds.add(kind);
+      for (const kind of structuredModel?.userFacingKindsForRef(ref) ?? []) createKinds.add(kind);
     }
     return {
       candidates: [
@@ -577,7 +577,7 @@ export function ModuleGraphView({
       ].sort(),
       createKinds: [...createKinds].sort(),
     };
-  }, [wiring, moduleGraph, refResolver, registry]);
+  }, [wiring, moduleGraph, refResolver, structuredModel]);
 
   /**
    * Fill the open site with a name, or with a resource created for it.

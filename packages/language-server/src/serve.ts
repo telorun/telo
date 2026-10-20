@@ -27,6 +27,7 @@ import { registerImportUpgrades } from "./features/import-upgrades.js";
 import { registerRename } from "./features/rename.js";
 import { SEMANTIC_TOKENS_LEGEND, registerSemanticTokens } from "./features/semantic-tokens.js";
 import { SIGNATURE_HELP_TRIGGERS, registerSignatureHelp } from "./features/signature-help.js";
+import { registerViewModel } from "./features/view-model.js";
 import { HostClient, errorText } from "./host-client.js";
 import { HostManifestSource } from "./host-manifest-source.js";
 import { WorkspaceMarkers } from "./workspace-marker.js";
@@ -64,6 +65,10 @@ export function serve(port: EnginePort): void {
       connection
         .sendNotification(TeloMethod.requirements, params)
         .catch(reportSendFailure(`${TeloMethod.requirements} for ${params.owner}`)),
+    viewModelChanged: (params) =>
+      connection
+        .sendNotification(TeloMethod.viewModelChanged, params)
+        .catch(reportSendFailure(`${TeloMethod.viewModelChanged} for ${params.owner}`)),
     analysed: () => {
       if (!client.semanticTokensRefresh) return;
       connection.languages.semanticTokens.refresh().catch(reportSendFailure("a semantic tokens refresh"));
@@ -80,7 +85,7 @@ export function serve(port: EnginePort): void {
     client.semanticTokensRefresh = workspace?.semanticTokens?.refreshSupport === true;
     watchedFilesRegistration = workspace?.didChangeWatchedFiles?.dynamicRegistration === true;
     const experimental: TeloExperimentalCapabilities = {
-      telo: { protocol: TELO_EDITOR_PROTOCOL },
+      telo: { protocol: TELO_EDITOR_PROTOCOL, viewModel: true },
     };
     return {
       serverInfo: { name: TELO_SERVER_NAME, version: TELO_ENGINE_VERSION },
@@ -118,7 +123,7 @@ export function serve(port: EnginePort): void {
   });
 
   documents.onDidChangeContent(({ document }) => {
-    session.changed(sourceOfUri(document.uri), document.getText());
+    session.changed(sourceOfUri(document.uri), document.getText(), document.version);
   });
   documents.onDidClose(({ document }) => session.closed(sourceOfUri(document.uri)));
 
@@ -131,6 +136,7 @@ export function serve(port: EnginePort): void {
   registerSemanticTokens(context);
   registerCodeActions(context);
   registerImportUpgrades(context);
+  registerViewModel(context);
 
   documents.listen(connection);
   connection.listen();

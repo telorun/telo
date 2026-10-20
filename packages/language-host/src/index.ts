@@ -1,4 +1,5 @@
 export { LanguageRouter } from "./language-router.js";
+export { canonicalUri } from "./canonical-uri.js";
 export type {
   MarkedVersion,
   RouterOptions,

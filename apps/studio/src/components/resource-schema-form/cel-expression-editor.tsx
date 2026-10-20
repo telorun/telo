@@ -1,92 +1,17 @@
-import { buildCelSegments } from "@telorun/analyzer";
-import { celCompletions } from "@telorun/ide-support";
 import Editor, { type OnMount } from "@monaco-editor/react";
-import type { editor, Position } from "monaco-editor";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useCelFieldSource } from "../../language/cel-field-context";
+import {
+  bindCelField,
+  CEL_FIELD_LANGUAGE_ID,
+  registerCelFieldLanguage,
+  type CelFieldBinding,
+} from "../../language/cel-field-provider";
 import { useMonacoTheme } from "../../theme/color-mode";
-import { analysisRef } from "../views/source/provider-state";
 import type { CelFieldTarget } from "./types";
 
-type Monaco = Parameters<OnMount>[1];
 type MonacoEditor = Parameters<OnMount>[0];
-
-/** Its own language id rather than a mode of `yaml`: the source view registers
- *  its providers on `yaml`, and a model holding a bare CEL body is not a YAML
- *  document — offering it a manifest key would be a completion that cannot
- *  apply. */
-const CEL_LANGUAGE_ID = "telo-cel";
-
-/**
- * Which resource and which field each open CEL model belongs to.
- *
- * Monaco resolves a completion provider per LANGUAGE, so the provider is
- * registered once and reads what it needs per model — the `provider-state`
- * pattern the source view's providers already use, keyed by model here because
- * several fields can be open at once (a form and the panel beside it).
- */
-const targets = new Map<string, CelFieldTarget & { path: string; tag: string }>();
-
-let registered = false;
-
-function registerCelLanguage(monaco: Monaco): void {
-  if (registered) return;
-  registered = true;
-  monaco.languages.register({ id: CEL_LANGUAGE_ID });
-
-  monaco.languages.registerCompletionItemProvider(CEL_LANGUAGE_ID, {
-    triggerCharacters: ["."],
-    provideCompletionItems(model: editor.ITextModel, position: Position) {
-      const target = targets.get(model.uri.toString());
-      // The analysis of the module on screen — the same resolutions that
-      // produced its diagnostics, so what is offered is what type-checks.
-      const query = analysisRef.current?.celScope;
-      if (!target || !query) return { suggestions: [] };
-
-      const text = model.getValue();
-      const offset = model.getOffsetAt(position);
-      // The field holds the tag's scalar, so its engine says where the CEL is —
-      // the whole body for `!cel`, each hole for a tag with holes. Completion
-      // never parses it — `celCursorChain` is textual, which is what keeps the
-      // list alive while `request.` is mid-typed.
-      const segment = buildCelSegments(text, 0, `!${target.tag}`, text).find(
-        (s) => offset >= s.range[0] && offset <= s.range[1],
-      );
-      if (!segment) return { suggestions: [] };
-
-      const results = celCompletions(
-        text,
-        segment,
-        offset,
-        target.path,
-        target.resource,
-        query,
-      );
-
-      const word = model.getWordUntilPosition(position);
-      const range = {
-        startLineNumber: position.lineNumber,
-        endLineNumber: position.lineNumber,
-        startColumn: word.startColumn,
-        endColumn: word.endColumn,
-      };
-      return {
-        suggestions: results.map((r) => ({
-          label: r.label,
-          kind:
-            r.kind === "value"
-              ? monaco.languages.CompletionItemKind.Function
-              : monaco.languages.CompletionItemKind.Property,
-          detail: r.detail,
-          documentation: r.documentation,
-          insertText: r.insertText ?? r.label,
-          sortText: r.sortText,
-          range,
-        })),
-      };
-    },
-  });
-}
 
 interface CelExpressionEditorProps {
   /** The tag the scalar is written under, without its `!`. */
@@ -112,14 +37,14 @@ const PADDING_X = 8;
 
 /**
  * A tagged scalar holding CEL — a `!cel` body, or text with `${{ }}` holes —
- * with the completions the analyzer resolves for this exact site, inside
- * whichever expression the cursor is in.
+ * with the completions the module's engine resolves for this exact site,
+ * inside whichever expression the cursor is in.
  *
  * The alternative — a plain text box — is what the field had, and it made the
  * editor the one surface where an author writing CEL has no idea what is in
  * scope, while the same names are offered a keystroke away in the source view.
- * Nothing here models the scope: the candidates come from `celCompletions` over
- * the analysis on screen, so the list is the same claim `telo check` makes.
+ * Nothing here models the scope: the candidates come from the engine the
+ * module is edited against, so the list is the same claim `telo check` makes.
  */
 export function CelExpressionEditor({
   tag,
@@ -134,32 +59,39 @@ export function CelExpressionEditor({
   const onBlurRef = useRef(onBlur);
   onBlurRef.current = onBlur;
   const uriRef = useRef<string | undefined>(undefined);
-  const targetRef = useRef({ ...target, tag });
-  targetRef.current = { ...target, tag };
+  const source = useCelFieldSource();
+  const binding: CelFieldBinding | undefined = source
+    ? {
+        session: source.session,
+        site: { modulePath: source.modulePath, resource: target.resource, path: target.path, tag },
+      }
+    : undefined;
+  const bindingRef = useRef(binding);
+  bindingRef.current = binding;
 
-  // Re-published on every render: the same field can move to another resource
-  // or path while the model stays (a selection change re-renders the form), and
-  // a stale entry would resolve the scope of the field the user just left.
+  // Re-bound on every render: the same field can move to another resource or
+  // path while the model stays (a selection change re-renders the form), and a
+  // stale binding would resolve the scope of the field the user just left.
   useEffect(() => {
     const uri = uriRef.current;
-    if (uri) targets.set(uri, { ...target, tag });
+    if (uri) bindCelField(uri, binding);
   });
 
   useEffect(
     () => () => {
       const uri = uriRef.current;
-      if (uri) targets.delete(uri);
+      if (uri) bindCelField(uri, undefined);
     },
     [],
   );
 
   const handleMount: OnMount = (editor: MonacoEditor, monaco) => {
-    registerCelLanguage(monaco);
+    registerCelFieldLanguage(monaco);
     const model = editor.getModel();
     if (model) {
       uriRef.current = model.uri.toString();
-      targets.set(model.uri.toString(), targetRef.current);
-      monaco.editor.setModelLanguage(model, CEL_LANGUAGE_ID);
+      bindCelField(model.uri.toString(), bindingRef.current);
+      monaco.editor.setModelLanguage(model, CEL_FIELD_LANGUAGE_ID);
     }
     editor.onDidBlurEditorWidget(() => onBlurRef.current?.());
     const fit = () =>
@@ -180,7 +112,7 @@ export function CelExpressionEditor({
     >
       <Editor
         height={height}
-        language={CEL_LANGUAGE_ID}
+        language={CEL_FIELD_LANGUAGE_ID}
         theme={monacoTheme}
         value={value}
         onChange={(next) => onValueChange(next ?? "")}

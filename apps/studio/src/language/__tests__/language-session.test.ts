@@ -1,62 +1,15 @@
-import { sha512Integrity, type CachedEngine, type EngineCache } from "@telorun/language-host";
+import { sha512Integrity } from "@telorun/language-host";
 import { afterEach, expect, it } from "vitest";
-import type { WorkspaceAdapter } from "../../model";
-import { LanguageSession, type LanguageSessionOptions } from "../language-session";
+import type { LanguageSessionOptions } from "../language-session";
 import { writeTeloVersionSetting } from "../language-storage";
 import { fakeEngineSpawner, MemoryStorage } from "./fake-engine";
 import { fakeMonaco } from "./fake-monaco";
 import { ModelProjections } from "../model-projections";
+import { memoryEngineCache, startSession as start, stopSessions, until } from "./session-harness";
 
 const OTHER = "0.200.0";
-const sessions: LanguageSession[] = [];
 
-afterEach(async () => {
-  await Promise.all(sessions.splice(0).map((s) => s.dispose()));
-});
-
-const emptyWorkspace: WorkspaceAdapter = {
-  readFile: async (path) => {
-    throw new Error(`no file ${path}`);
-  },
-  readBytes: async (path) => {
-    throw new Error(`no file ${path}`);
-  },
-  writeFile: async () => undefined,
-  listDir: async () => [],
-  createDir: async () => undefined,
-  delete: async () => undefined,
-  rename: async () => undefined,
-};
-
-function memoryEngineCache(): EngineCache {
-  const entries = new Map<string, CachedEngine>();
-  return {
-    get: async (version) => entries.get(version),
-    put: async (version, engine) => void entries.set(version, engine),
-    has: async (version) => entries.has(version),
-  };
-}
-
-async function start(overrides: Partial<LanguageSessionOptions> & Pick<LanguageSessionOptions, "monaco" | "spawner">) {
-  const session = await LanguageSession.start({
-    rootDir: "/ws",
-    workspace: () => emptyWorkspace,
-    confineTo: "/ws",
-    hubUrl: () => "http://127.0.0.1:9",
-    manifestSources: () => [],
-    engineCache: memoryEngineCache(),
-    bundled: { load: async () => new Uint8Array() },
-    storage: new MemoryStorage(),
-    fetch: async () => {
-      throw new TypeError("offline in this test");
-    },
-    onDiagnostics: () => undefined,
-    onMessage: () => undefined,
-    ...overrides,
-  });
-  sessions.push(session);
-  return session;
-}
+afterEach(stopSessions);
 
 it("registers a Monaco feature only for what the engine advertised", async () => {
   const { monaco, registered, commands } = fakeMonaco();
@@ -127,14 +80,6 @@ it("offers a feature while an engine advertising it runs, and withdraws it when 
 });
 
 const token = { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => undefined }) };
-
-async function until(condition: () => boolean, what: string) {
-  const deadline = Date.now() + 5_000;
-  while (!condition()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
 
 it("serves a projected model through its source document, never opening it", async () => {
   const { monaco, providers } = fakeMonaco();

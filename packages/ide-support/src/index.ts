@@ -8,6 +8,7 @@ export * from "./rename/index.js";
 export * from "./signature-help/index.js";
 export * from "./import-upgrades/index.js";
 export * from "./workspace/index.js";
+export * from "./view-model/index.js";
 // Which YAML tags a field takes — shared so every host offers the same set.
 export { offeredValueTags, valueTag, type ValueTag } from "./value-tags/offered-value-tags.js";
 // The repo's single CEL-tree walk. Exported because every host that has to

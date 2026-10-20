@@ -1,4 +1,3 @@
-import { emptyAnalysis } from "./analysis";
 import { emptyDiagnostics } from "./language/engine-diagnostics";
 import { isWorkspaceModule } from "./loader";
 import type { EditorState, Workspace } from "./model";
@@ -13,7 +12,6 @@ export const INITIAL_STATE: EditorState = {
   selectedResource: null,
   panelStack: [],
   diagnostics: emptyDiagnostics(),
-  analysis: emptyAnalysis(),
   sourceRevealRequest: null,
   viewportByModule: {},
   topologyByModule: {},

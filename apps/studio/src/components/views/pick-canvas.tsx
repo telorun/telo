@@ -72,10 +72,9 @@ export function PickCanvas({
   return (
     <view.Component
       moduleGraph={null}
-      moduleGraphFor={() => null}
       isEditableModule={() => false}
       viewData={viewData}
-      registry={null}
+      structuredModel={null}
       refResolver={registry ?? null}
       resource={resource}
       schema={schema}

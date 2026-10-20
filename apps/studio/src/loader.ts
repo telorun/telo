@@ -297,9 +297,9 @@ export function mergeWorkspaceDependencies(
  * Registry/remote sources may resolve a raw input ref (`acme/foo@1.0.0`) to a
  * different canonical URL (e.g. `registry://acme/foo@1.0.0/telo.yaml`). The
  * returned `canonicalByRawInput` map lets `finalizeWorkspace` set each import's
- * `resolvedPath` to the canonical key — otherwise `analyzeWorkspace` looks up
- * the imported library's identity by the raw ref and misses, leaving every
- * imported `Telo.Definition` invisible to alias resolution.
+ * `resolvedPath` to the canonical key — otherwise the imported library is
+ * looked up by the raw ref and missed, leaving every imported
+ * `Telo.Definition` out of the module's available kinds.
  */
 async function loadExternalDeps(
   knownModules: Map<string, ParsedManifest>,

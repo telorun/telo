@@ -5,6 +5,7 @@ import {
   describeVersionMark,
   type VersionMarks,
 } from "@telorun/language-host";
+import { STUDIO_TELO_STATUS_HOST } from "../language/telo-status-host";
 import { versionMenuRows } from "../language/version-menu";
 import { AlertTriangle, CircleCheck, CircleX, Loader2, RotateCw } from "lucide-react";
 import { useState } from "react";
@@ -13,7 +14,6 @@ import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
-const HOST = { product: "studio", setting: "this workspace's telo version setting" };
 
 /**
  * "Telo X" for the active module, the workspace's telo version setting, and
@@ -36,7 +36,7 @@ export function TeloVersionControl({ language }: { language: TeloLanguage }) {
   }
 
   const { status, teloVersion } = language;
-  const { detail } = describeTeloStatus(status, HOST);
+  const { detail } = describeTeloStatus(status, STUDIO_TELO_STATUS_HOST);
   // Beside the menu, which already names the choice: the version in effect, and
   // only whether Auto chose it. Everything else about it is the tooltip's.
   const label =

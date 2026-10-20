@@ -16,6 +16,7 @@ import type { TeloVersionSetting } from "../language/language-storage";
 import type { LanguageModels } from "../language/language-models-context";
 import type { MonacoApi } from "../language/lsp-to-monaco";
 import { ModelProjections } from "../language/model-projections";
+import { ViewModelStore } from "../language/view-model-store";
 import { webWorkerEngineSpawner } from "../language/web-worker-engine-spawner";
 import { WorkspaceModels } from "../language/workspace-models";
 import type { AppSettings, EditorState, WorkspaceAdapter } from "../model";
@@ -42,7 +43,8 @@ export type TeloLanguage =
 /**
  * The workspace's language session: every manifest as a Monaco model, the
  * engine chosen for each module, and the diagnostics store fed from what the
- * engines publish — its only producer.
+ * engines publish — its only producer — and the store of the view models the
+ * engines serve for the structured views.
  */
 export function useLanguageSession(options: {
   state: EditorState;
@@ -54,7 +56,16 @@ export function useLanguageSession(options: {
   navigate(filePath: string, range?: Range): void;
   /** A message the engine asks to show the user. */
   onShowMessage(message: string): void;
-}): { language: TeloLanguage | null; models: LanguageModels | null } {
+}): {
+  language: TeloLanguage | null;
+  models: LanguageModels | null;
+  /** The view model each module's structured views read, served by the
+   *  engine the module is edited against. */
+  viewModels: ViewModelStore | null;
+  /** The running session, for what the structured views ask its engines
+   *  directly (a form field's CEL completion). */
+  session: LanguageSession | null;
+} {
   const { state, setState, settings, workspaceAdapterRef, navigate, onShowMessage } = options;
   const [monaco, setMonaco] = useState<MonacoApi | null>(null);
   const models = useMemo<LanguageModels | null>(
@@ -63,6 +74,7 @@ export function useLanguageSession(options: {
   );
   const [workspaceModels, setWorkspaceModels] = useState<WorkspaceModels | null>(null);
   const [session, setSession] = useState<LanguageSession | null>(null);
+  const [viewModels, setViewModels] = useState<ViewModelStore | null>(null);
   const [status, setStatus] = useState<TeloStatus | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [teloVersion, setTeloVersionState] = useState<TeloVersionSetting>("auto");
@@ -111,6 +123,7 @@ export function useLanguageSession(options: {
     const { monaco } = models;
     let live = true;
     let started: LanguageSession | undefined;
+    let store: ViewModelStore | undefined;
     let statusListener: { dispose(): void } | undefined;
     setState((s) => ({ ...s, diagnostics: emptyDiagnostics() }));
     setFailure(null);
@@ -155,6 +168,8 @@ export function useLanguageSession(options: {
         statusListener = s.onStatus(setStatus);
         setStatus(s.status());
         setTeloVersionState(s.teloVersion);
+        store = new ViewModelStore(s);
+        setViewModels(store);
         setSession(s);
       },
       (error: unknown) => {
@@ -165,6 +180,8 @@ export function useLanguageSession(options: {
     return () => {
       live = false;
       statusListener?.dispose();
+      store?.dispose();
+      setViewModels(null);
       setSession(null);
       setStatus(null);
       setWorkspaceModels(null);
@@ -189,10 +206,12 @@ export function useLanguageSession(options: {
     session?.setActiveDocument(activeModulePath ?? undefined);
   }, [session, activeModulePath]);
 
-  if (failure) return { language: { kind: "failed", failure }, models };
-  if (!session || !status) return { language: null, models };
+  if (failure) return { language: { kind: "failed", failure }, models, viewModels: null, session: null };
+  if (!session || !status) return { language: null, models, viewModels, session };
   return {
     models,
+    viewModels,
+    session,
     language: {
       kind: "running",
       status,

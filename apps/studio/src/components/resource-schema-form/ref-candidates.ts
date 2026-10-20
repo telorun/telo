@@ -29,9 +29,15 @@ function normalizeCapability(capability: string): string {
   return capability.trim().toLowerCase();
 }
 
-/** The slice of `AnalysisRegistry` candidate resolution needs. Declared here so
- *  the form layer stays decoupled from the analyzer package — `AnalysisRegistry`
- *  satisfies it structurally. */
+/** A resource offered at a reference slot. */
+export interface RefCandidate {
+  kind: string;
+  name?: string;
+  config?: Record<string, unknown>;
+}
+
+/** What candidate resolution asks about kinds — answered by the module's
+ *  structured model (`language/structured-model.ts`). */
 export interface RefResolver {
   /** Canonical (`module.Type`) kinds that satisfy a ref — an abstract expands to
    *  its implementations, a concrete kind yields itself. Undefined when the ref
@@ -46,9 +52,10 @@ export interface RefResolver {
   /** Why a candidate cannot fill a slot by what it RETURNS — the slot's
    *  `x-telo-ref` `outputType` against the candidate's output contract, the
    *  verdict `telo check` reports as `REFERENCE_OUTPUT_MISMATCH`. Empty when it
-   *  can. Optional so a host with only the resolution slice still type-checks;
-   *  without it no candidate is withheld for its output. */
-  outputRefusal?(slot: RefSlot, candidate: { kind: string; config?: Record<string, unknown> }): string[];
+   *  can. A host may judge the candidate by its kind and configuration, or by
+   *  its name in the module. Optional so a host with only the resolution slice
+   *  still type-checks; without it no candidate is withheld for its output. */
+  outputRefusal?(slot: RefSlot, candidate: RefCandidate): string[];
 }
 
 /**
@@ -181,7 +188,7 @@ export function resolveRefCandidates(
       if (seen.has(key)) continue;
       if (
         slot?.outputType &&
-        (registry?.outputRefusal?.(slot, { kind: match.kind, config: match.config })?.length ?? 0) > 0
+        (registry?.outputRefusal?.(slot, { kind: match.kind, name: match.name, config: match.config })?.length ?? 0) > 0
       ) {
         continue;
       }

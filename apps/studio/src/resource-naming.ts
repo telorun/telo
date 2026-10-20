@@ -5,7 +5,9 @@
  * empty ref slot, and extracting one out of an inline declaration — and a
  * second spelling would offer `crudResource` in one and `CrudResource` in the
  * other for the same kind. Case follows what the name DENOTES: a `Telo.Type`
- * instance names a shape, everything else names a value.
+ * instance names a shape, everything else names a value (`Ai.Tools` → `tools`).
+ * Only the first character moves, which is also all the naming check reads: the
+ * rest may be an acronym (`SQL`, `AI`) that lowercasing whole would mangle.
  */
 export function resourceNameBase(kind: string, capability: string | undefined): string {
   const kindName = kind.includes(".") ? kind.slice(kind.lastIndexOf(".") + 1) : kind;

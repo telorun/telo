@@ -1,0 +1,56 @@
+kind: Telo.Application
+metadata:
+  name: Shop
+imports:
+  Work: ./jobs
+targets:
+  - !ref main
+---
+kind: Work.Source
+metadata:
+  name: words
+value: hello
+---
+kind: Work.Task
+metadata:
+  name: main
+next: !ref tail
+source: !ref words
+---
+kind: Work.Task
+metadata:
+  name: tail
+---
+kind: Telo.Definition
+metadata:
+  name: Pipeline
+capability: Telo.Runnable
+schema:
+  type: object
+resources:
+  - kind: Work.Task
+    metadata:
+      name: first
+    next: !ref second
+  - kind: Work.Task
+    metadata:
+      name: second
+    source: !ref words
+  - kind: Work.Count
+    metadata:
+      name: words
+  - kind: Work.Source
+    metadata:
+      name: src
+    value: x
+run: !ref first
+---
+kind: Telo.Function
+metadata:
+  name: shout
+params:
+  - name: text
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "text + '!'"

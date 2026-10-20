@@ -55,12 +55,12 @@ import {
   toRefValue,
 } from "../../../resource-schema-form/ref-candidates";
 import type { ResolvedResourceOption } from "../../../resource-schema-form/types";
-import type { TypeSignature } from "../application-canvas-model";
 import {
   buildStepList,
   type StepAddition,
   type StepBranch,
   type StepEntry,
+  type TypeSignature,
 } from "../step-list-model";
 import {
   appendAt,
@@ -107,7 +107,7 @@ export function StepsView({
   viewData,
   refResolver,
   resolvedResources,
-  registry,
+  structuredModel,
   selection,
   onSelect,
   onSelectResource,
@@ -136,16 +136,15 @@ export function StepsView({
 
   const entries = useMemo(() => {
     if (!field || !stepSchema) return [];
-    // What a step's target DECLARES it takes, resolved through the registry's
-    // own contract resolver — the same one `telo check` validates the call site
-    // against, so the form offers the keys the checker demands. It used to be
-    // read off the old canvas model, which no longer exists; leaving it
-    // unsupplied silently turned every typed `inputs:` form into a freeform map.
+    // What a step's target DECLARES it takes, as the module's engine resolved
+    // it — the contract `telo check` validates the call site against, so the
+    // form offers the keys the checker demands. Leaving it unsupplied silently
+    // turns every typed `inputs:` form into a freeform map.
     const signatureOf = (name: string) => {
       const declared = viewData.manifest.resources.find((r) => r.name === name);
-      if (!declared || !registry) return undefined;
-      const input = registry.inputTypeForKind(declared.kind);
-      const output = registry.outputTypeForKind(declared.kind);
+      if (!declared || !structuredModel) return undefined;
+      const input = structuredModel.inputTypeForKind(declared.kind);
+      const output = structuredModel.outputTypeForKind(declared.kind);
       if (!input && !output) return undefined;
       return {
         ...(input ? { input: { schema: input, set: true } satisfies TypeSignature } : {}),
@@ -163,7 +162,7 @@ export function StepsView({
       ),
       signatureOf,
     });
-  }, [field, stepSchema, variants, schema, steps, viewData, registry]);
+  }, [field, stepSchema, variants, schema, steps, viewData, structuredModel]);
 
   const target = { kind: resource.kind, name: resource.name };
   const editable = !!onMoveField && !!onRemoveField;

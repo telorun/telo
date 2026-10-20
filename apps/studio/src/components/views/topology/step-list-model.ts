@@ -9,9 +9,18 @@ import {
   stepInputsField,
   type VariantMeta,
 } from "../../../schema-utils";
-import type { TypeSignature } from "./application-canvas-model";
-import { refTargetName } from "./overview-graph";
+import { refTargetName } from "./ref-target-name";
 import { authoredText } from "./value-summary";
+
+/** A step target's input or output type, resolved for display. */
+export interface TypeSignature {
+  /** Display name when the type is a named `Telo.Type` reference. */
+  name?: string;
+  /** Resolved JSON Schema. Undefined when only an unresolved name is known. */
+  schema?: Record<string, unknown>;
+  /** Whether the type is declared at all. */
+  set: boolean;
+}
 
 /**
  * A step body, read as the ordered thing it is.

@@ -1,9 +1,10 @@
-import type { AnalysisRegistry, ModuleGraph } from "@telorun/analyzer";
+import type { ModuleGraph } from "@telorun/analyzer";
 import type { ComponentType } from "react";
+import type { StructuredModel } from "../../../language/structured-model";
 import type { CanvasViewport, ModuleViewData, ParsedResource, Selection } from "../../../model";
 import type { RefResolver } from "../../resource-schema-form/ref-candidates";
 import type { ResolvedResourceOption, TypeKindOption } from "../../resource-schema-form/types";
-import type { GraphNode, RefWrite } from "./application-canvas-model";
+import type { RefWrite } from "./ref-write";
 
 /**
  * The contract a canvas is handed — the module graph on the topology tab, and
@@ -23,13 +24,12 @@ import type { GraphNode, RefWrite } from "./application-canvas-model";
 export interface TopologyViewProps {
   /** The module graph the canvas draws — see `ViewProps.moduleGraph`. */
   moduleGraph: ModuleGraph | null;
-  /** An imported module's own graph, by module name — see `ViewProps`. */
-  moduleGraphFor: (moduleName: string) => ModuleGraph | null;
   /** Whether that module's files can be edited here — see `ViewProps`. */
   isEditableModule: (moduleName: string) => boolean;
 
   viewData: ModuleViewData;
-  registry: AnalysisRegistry | null;
+  /** The module's kinds and contracts — see `ViewProps.structuredModel`. */
+  structuredModel: StructuredModel | null;
   /** Ref-candidate resolver — the narrow slice the schema form needs. */
   refResolver: RefResolver | null;
 
@@ -60,7 +60,7 @@ export interface TopologyViewProps {
   /** Creates a resource of `createKind` and writes `buildFields(newName)` back
    *  to `target` in one workspace mutation — what a ref slot offers when its
    *  kind has no instance yet. Required: a picker offers its create entries from
-   *  the registry alone, so a host without a handler would let the marker value
+   *  the structured model alone, so a host without a handler would let the marker value
    *  reach the manifest. */
   onCreateAndLink: (
     target: { kind: string; name: string },
@@ -107,22 +107,6 @@ export interface TopologyViewProps {
   /** Suppresses a view's own header where the host already renders one (the
    *  detail-panel peek). */
   hideHeader?: boolean;
-}
-
-/**
- * Resources a view does not draw, as a rail beside the canvas.
- *
- * NOTHING RENDERS THIS TODAY. The host's rail listed the ambient providers and
- * types, which the root level already lists as sections of itself — so beside
- * that level it said everything twice, and below it the reader was one
- * breadcrumb click from the level that says it once. {@link ResourceRail} is
- * kept for the next surface that needs a column of resources; this is the shape
- * it takes.
- */
-export interface RailSection {
-  id: string;
-  title: string;
-  items: GraphNode[];
 }
 
 /**
