@@ -1,8 +1,8 @@
 //! `re2_pattern` and `cel_matches`: what is accepted, what is refused and how the refusal
 //! is worded, the two limits on both sides, the flags, the shared cache.
 //!
-//! The evaluating case of `evaluate.test.ts` (`matches on RE2, and refuses a pattern RE2
-//! does not read`) is twinned here with Node's whole message, and the rest goes past it.
+//! The `cel_matches` rows below pin Node's whole message for a refused `matches`; the
+//! `evaluate.test.ts` case about RE2 is twinned by `evaluate.rs` alone.
 //! Every expected text is Node's, executed (`@telorun/cel 0.120.1 at b4a2b6e9`, its
 //! `re2Pattern` and `celMatches` over re2js 2.8.3), except the two rows of *Where it
 //! differs from Node*, each of which names Node's answer.
@@ -30,7 +30,7 @@ fn refused_match(message: &str) -> CelValue {
 }
 
 #[test]
-fn matches_on_re2_and_refuses_a_pattern_re2_does_not_read() {
+fn cel_matches_answers_and_refuses_with_nodes_whole_message() {
     assert_eq!(cel_matches("abc", "b", Some(RANGE)), CelValue::Bool(true));
     assert_eq!(cel_matches("abc", "^a.c$", Some(RANGE)), CelValue::Bool(true));
     assert_eq!(

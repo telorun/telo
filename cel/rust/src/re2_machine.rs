@@ -19,18 +19,20 @@
 //! Positions are byte offsets into UTF-8 text, where re2js's are UTF-16 code units: the same
 //! code points are stepped over, and the context of a position reads the same characters.
 //!
+//! When its run queue empties and the program begins with a literal prefix, the machine
+//! skips to the prefix's next occurrence, as re2js's does: no match can start before it.
+//!
 //! Not twinned: re2js's anchored modes, its longest-match mode, its set matching and its
-//! lookbehind tables — none is reachable from CEL — and the literal-prefix skip it takes
-//! when its run queue empties, which only skips positions where no match can start.
+//! lookbehind tables — none is reachable from CEL.
 
 use crate::re2_program::{
-    InstOp, Prog, EMPTY_BEGIN_LINE, EMPTY_BEGIN_TEXT, EMPTY_END_LINE, EMPTY_END_TEXT, EMPTY_NO_WORD_BOUNDARY,
-    EMPTY_WORD_BOUNDARY,
+    InstOp, Prog, Re2Literal, EMPTY_BEGIN_LINE, EMPTY_BEGIN_TEXT, EMPTY_END_LINE, EMPTY_END_TEXT,
+    EMPTY_NO_WORD_BOUNDARY, EMPTY_WORD_BOUNDARY,
 };
 use crate::re2_syntax::equals_ignore_case;
 
 /// A capture slot nothing wrote.
-const UNSET: usize = usize::MAX;
+pub(crate) const UNSET: usize = usize::MAX;
 
 /// A queue entry with no thread at it.
 const NO_THREAD: u32 = u32::MAX;
@@ -148,7 +150,7 @@ fn is_word(r: Option<char>) -> bool {
 }
 
 /// re2js's `Utils.emptyOpContext`: the conditions that hold between `before` and `after`.
-fn empty_op_context(before: Option<char>, after: Option<char>) -> u32 {
+pub(crate) fn empty_op_context(before: Option<char>, after: Option<char>) -> u32 {
     let mut op = 0;
     match before {
         None => op |= EMPTY_BEGIN_TEXT | EMPTY_BEGIN_LINE,
@@ -168,12 +170,13 @@ fn empty_op_context(before: Option<char>, after: Option<char>) -> u32 {
     op
 }
 
-fn context(text: &str, pos: usize) -> u32 {
+/// re2js's `MachineInput.context`: the conditions that hold at byte `pos` of `text`.
+pub(crate) fn context(text: &str, pos: usize) -> u32 {
     empty_op_context(text[..pos].chars().next_back(), text[pos..].chars().next())
 }
 
 /// The code point at `pos` and its width, or nothing and no width at the end.
-fn step_at(text: &str, pos: usize) -> (Option<char>, usize) {
+pub(crate) fn step_at(text: &str, pos: usize) -> (Option<char>, usize) {
     match text[pos..].chars().next() {
         Some(c) => (Some(c), c.len_utf8()),
         None => (None, 0),
@@ -199,8 +202,16 @@ impl Machine {
     }
 
     /// re2js's `Machine.match`, unanchored from `start`: the first `ncap` capture slots of
-    /// the match, or nothing.
-    pub(crate) fn find(&mut self, prog: &Prog, text: &str, start: usize, ncap: usize) -> Option<Vec<Option<usize>>> {
+    /// the match, or nothing. A non-empty `prefix` is the program's literal prefix, skipped
+    /// to whenever no thread is left.
+    pub(crate) fn find(
+        &mut self,
+        prog: &Prog,
+        text: &str,
+        start: usize,
+        ncap: usize,
+        prefix: &Re2Literal,
+    ) -> Option<Vec<Option<usize>>> {
         self.visits = 0;
         let slots = ncap.max(prog.num_cap).max(2);
         self.matchcap.clear();
@@ -229,6 +240,16 @@ impl Machine {
                 }
                 if self.matched {
                     break;
+                }
+                if let Some(first) = prefix.first() {
+                    if rune1.map(u32::from) != Some(first) {
+                        let Some(advance) = prefix.find(text, pos) else {
+                            break;
+                        };
+                        pos += advance;
+                        (rune, width) = step_at(text, pos);
+                        (rune1, width1) = step_at(text, pos + width);
+                    }
                 }
             }
             if !self.matched {

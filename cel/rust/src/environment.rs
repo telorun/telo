@@ -549,7 +549,7 @@ fn resolve_nominal(
 const COMPILED_LOCK: &str = "the compiled cache's lock is held only to read or write an entry";
 
 /// The programs compiled from text. A clone of it holds none.
-struct CompiledCache(Mutex<BoundedCache<String, Arc<CelProgram>>>);
+struct CompiledCache(Mutex<BoundedCache<Arc<str>, Arc<CelProgram>>>);
 
 impl CompiledCache {
     fn new(capacity: NonZeroUsize) -> Self {
@@ -557,11 +557,11 @@ impl CompiledCache {
     }
 
     fn get(&self, source: &str) -> Option<Arc<CelProgram>> {
-        self.0.lock().expect(COMPILED_LOCK).get(&source.to_owned()).cloned()
+        self.0.lock().expect(COMPILED_LOCK).get(source).cloned()
     }
 
     fn set(&self, source: &str, program: Arc<CelProgram>) {
-        self.0.lock().expect(COMPILED_LOCK).set(source.to_owned(), program);
+        self.0.lock().expect(COMPILED_LOCK).set(Arc::from(source), program);
     }
 
     fn clear(&mut self) {
@@ -680,24 +680,24 @@ impl CelEnvironment {
         metadata: FunctionMetadata,
     ) -> Result<(), CelRegistrationError> {
         let signature = self.signature_of(signature.into())?;
-        Arc::make_mut(&mut self.registry).register(signature, metadata)?;
         self.compiled.clear();
+        Arc::make_mut(&mut self.registry).register(signature, metadata)?;
         Ok(())
     }
 
     /// Removes the one registration answering that call. Answers whether it was there.
     pub fn remove_function(&mut self, signature: impl Into<SignatureDeclaration>) -> Result<bool, CelRegistrationError> {
         let signature = self.signature_of(signature.into())?;
-        let removed = Arc::make_mut(&mut self.registry).remove(&signature);
         self.compiled.clear();
+        let removed = Arc::make_mut(&mut self.registry).remove(&signature);
         Ok(removed)
     }
 
     /// Removes every registration of a name, so a call to it is unknown. Answers how
     /// many went.
     pub fn remove_functions_named(&mut self, name: &str) -> usize {
-        let removed = Arc::make_mut(&mut self.registry).remove_name(name);
         self.compiled.clear();
+        let removed = Arc::make_mut(&mut self.registry).remove_name(name);
         removed
     }
 
@@ -712,8 +712,8 @@ impl CelEnvironment {
         let parameters = parameters.iter().map(|text| self.read_type(text.as_ref())).collect::<Result<Vec<_>, _>>()?;
         let returns = self.read_type(returns)?;
         let signature = CelSignature { name: operator.into(), receiver: None, parameters, returns };
-        Arc::make_mut(&mut self.registry).register(signature, metadata)?;
         self.compiled.clear();
+        Arc::make_mut(&mut self.registry).register(signature, metadata)?;
         Ok(())
     }
 

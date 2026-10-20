@@ -76,8 +76,12 @@
 //! - `bounded_cache.rs`          — `bounded-cache.ts`
 //! - `regular_expression.rs`     — `regular-expression.ts`
 //! - `re2_syntax.rs`             — no twin: re2js's parser
-//! - `re2_program.rs`            — no twin: re2js's simplifier, compiler and program
+//! - `re2_program.rs`            — no twin: re2js's simplifier, compiler, program and engine choice
 //! - `re2_machine.rs`            — no twin: re2js's machine
+//! - `re2_prefilter.rs`          — no twin: re2js's prefilter
+//! - `re2_onepass.rs`            — no twin: re2js's OnePass
+//! - `re2_backtracker.rs`        — no twin: re2js's backtracker
+//! - `re2_dfa.rs`                — no twin: re2js's DFA
 //! - `unicode_tables.rs`         — no twin: generated from the Unicode 17.0 archive
 
 mod activation;
@@ -109,7 +113,11 @@ mod nominal_type;
 mod parse_limits;
 mod parser;
 mod qualified_calls;
+mod re2_backtracker;
+mod re2_dfa;
 mod re2_machine;
+mod re2_onepass;
+mod re2_prefilter;
 mod re2_program;
 mod re2_syntax;
 mod regular_expression;

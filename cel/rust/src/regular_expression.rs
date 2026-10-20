@@ -17,6 +17,8 @@
 
 use std::fmt;
 use std::num::NonZeroUsize;
+use std::borrow::Borrow;
+use std::hash::{Hash, Hasher};
 use std::ops::BitOr;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -148,8 +150,79 @@ impl std::error::Error for Re2PatternRefusal {}
 
 type Compiled = Result<Arc<Re2Program>, Re2PatternRefusal>;
 
-fn pattern_cache() -> &'static Mutex<BoundedCache<(u32, String), Compiled>> {
-    static CACHE: OnceLock<Mutex<BoundedCache<(u32, String), Compiled>>> = OnceLock::new();
+/// A cache key readable without being built: a lookup borrows the pattern as a view, so a
+/// hit allocates nothing, and the pattern text is held once.
+#[derive(Clone)]
+struct PatternKey {
+    flags: u32,
+    pattern: Arc<str>,
+}
+
+trait PatternKeyView {
+    fn flags(&self) -> u32;
+    fn pattern(&self) -> &str;
+}
+
+impl PatternKeyView for PatternKey {
+    fn flags(&self) -> u32 {
+        self.flags
+    }
+    fn pattern(&self) -> &str {
+        &self.pattern
+    }
+}
+
+struct PatternKeyRef<'a> {
+    flags: u32,
+    pattern: &'a str,
+}
+
+impl PatternKeyView for PatternKeyRef<'_> {
+    fn flags(&self) -> u32 {
+        self.flags
+    }
+    fn pattern(&self) -> &str {
+        self.pattern
+    }
+}
+
+impl<'a> Borrow<dyn PatternKeyView + 'a> for PatternKey {
+    fn borrow(&self) -> &(dyn PatternKeyView + 'a) {
+        self
+    }
+}
+
+impl PartialEq for dyn PatternKeyView + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.flags() == other.flags() && self.pattern() == other.pattern()
+    }
+}
+
+impl Eq for dyn PatternKeyView + '_ {}
+
+impl Hash for dyn PatternKeyView + '_ {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.flags().hash(state);
+        self.pattern().hash(state);
+    }
+}
+
+impl PartialEq for PatternKey {
+    fn eq(&self, other: &Self) -> bool {
+        <dyn PatternKeyView as PartialEq>::eq(self, other)
+    }
+}
+
+impl Eq for PatternKey {}
+
+impl Hash for PatternKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        <dyn PatternKeyView as Hash>::hash(self, state)
+    }
+}
+
+fn pattern_cache() -> &'static Mutex<BoundedCache<PatternKey, Compiled>> {
+    static CACHE: OnceLock<Mutex<BoundedCache<PatternKey, Compiled>>> = OnceLock::new();
     CACHE.get_or_init(|| {
         let capacity = NonZeroUsize::new(PATTERN_CACHE_CAPACITY).expect("the pattern cache holds at least one entry");
         Mutex::new(BoundedCache::new(capacity))
@@ -163,10 +236,11 @@ const CACHE_LOCK: &str = "the pattern cache's lock is held only to read or write
 /// The flags are applied as re2js applies them, as inline flags written before the
 /// pattern — `(?m)(?s)(?i)` — so a refusal quoting the whole pattern quotes them too.
 pub fn re2_pattern(pattern: &str, flags: Re2Flags) -> Result<Arc<Re2Program>, Re2PatternRefusal> {
-    let key = (flags.bits(), pattern.to_owned());
-    if let Some(held) = pattern_cache().lock().expect(CACHE_LOCK).get(&key) {
+    let lookup = PatternKeyRef { flags: flags.bits(), pattern };
+    if let Some(held) = pattern_cache().lock().expect(CACHE_LOCK).get(&lookup as &dyn PatternKeyView) {
         return held.clone();
     }
+    let key = PatternKey { flags: flags.bits(), pattern: Arc::from(pattern) };
     let mut written = pattern.to_owned();
     if flags.contains(Re2Flags::CASE_INSENSITIVE) {
         written = format!("(?i){written}");

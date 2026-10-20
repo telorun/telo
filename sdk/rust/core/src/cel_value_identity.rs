@@ -35,8 +35,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use telorun_cel_value::{
     cel_duration_from_nanos, cel_map_from_entries, cel_map_keys, cel_none, cel_some, cel_timestamp,
     cel_timestamp_from_millis, cel_type_value, duration_nanos, duration_nanos_from_text, format_duration, format_timestamp, parse_duration,
-    parse_timestamp, timestamp_nanos, CelDuration, CelError, CelEvaluationCode, CelHostValue, CelMap,
-    CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue, CelValue, ReservedTypeName, SourceRange,
+    parse_timestamp, timestamp_nanos, CelDuration, CelError, CelEvaluationCode, CelHostValue, CelList, CelMap,
+    CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue, CelValue, PropertyMap, ReservedTypeName,
+    SourceRange,
 };
 
 use crate::plain_encoding::{base64url, cel_duration, rfc3339};
@@ -348,7 +349,7 @@ mod tests {
     fn builds_every_variant_of_the_union_through_the_re_exported_names() {
         use crate::{
             cel_duration_from_nanos, cel_map_from_entries, cel_none, cel_some, cel_timestamp, cel_type_value,
-            CelError, CelEvaluationCode, CelHostValue, CelRecord, CelValue, SourceRange,
+            CelError, CelEvaluationCode, CelHostValue, CelList, CelRecord, CelValue, PropertyMap, SourceRange,
         };
         let error = CelError {
             code: CelEvaluationCode::NoSuchKey,
@@ -363,7 +364,7 @@ mod tests {
             CelValue::Double(1.5),
             CelValue::String("s".into()),
             CelValue::Bytes(vec![1].into()),
-            CelValue::List(vec![CelValue::Null].into()),
+            CelValue::List(CelList::from_iter([CelValue::Null])),
             CelValue::Map(cel_map_from_entries([(CelValue::Int(1), CelValue::Null)]).unwrap()),
             CelValue::Record(CelRecord::from_iter([("a", CelValue::Null)])),
             CelValue::Timestamp(cel_timestamp(0, 0).unwrap()),
@@ -375,6 +376,13 @@ mod tests {
             CelValue::Host(CelHostValue::named("Money", std::sync::Arc::new(5i64)).unwrap()),
             CelValue::Host(CelHostValue::unnamed(std::sync::Arc::new(()))),
         ];
+        let host = CelHostValue::with_entries(
+            "Money",
+            std::sync::Arc::new(5i64),
+            PropertyMap::from_iter([("amount", CelValue::Int(5))]),
+        )
+        .unwrap();
+        assert_eq!(host.entries().get("amount"), Some(&CelValue::Int(5)));
         let variants: std::collections::HashSet<_> = built.iter().map(std::mem::discriminant).collect();
         assert_eq!(variants.len(), 16);
     }

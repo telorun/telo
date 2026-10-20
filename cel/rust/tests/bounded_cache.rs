@@ -44,3 +44,15 @@ fn forgets_everything_when_cleared() {
     assert_eq!(held.get(&"a"), None);
     assert_eq!(held.capacity().get(), 3);
 }
+
+#[test]
+fn reads_a_text_key_by_borrowed_text() {
+    let mut held: BoundedCache<std::sync::Arc<str>, u32> =
+        BoundedCache::new(NonZeroUsize::new(2).expect("a capacity of one or more"));
+    held.set(std::sync::Arc::from("a"), 1);
+    held.set(std::sync::Arc::from("b"), 2);
+    assert_eq!(held.get("a"), Some(&1));
+    held.set(std::sync::Arc::from("c"), 3);
+    assert_eq!(held.get("b"), None, "b was the least recently used");
+    assert_eq!(held.get("a"), Some(&1));
+}

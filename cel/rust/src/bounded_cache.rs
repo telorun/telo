@@ -8,6 +8,7 @@
 //! Node items with no twin: the `RangeError` for a capacity below one — the capacity is a
 //! `NonZeroUsize`, so a cache of none is unrepresentable.
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use std::num::NonZeroUsize;
@@ -33,14 +34,19 @@ impl<K: Eq + Hash + Clone, V> BoundedCache<K, V> {
         self.clock
     }
 
-    /// The value held for `key`, which becomes the most recently used.
-    pub fn get(&mut self, key: &K) -> Option<&V> {
+    /// The value held for `key`, which becomes the most recently used. One hash lookup,
+    /// and nothing allocated.
+    pub fn get<Q>(&mut self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Eq + Hash + ?Sized,
+    {
         let stamp = self.tick();
-        let (_, used) = self.held.get_mut(key)?;
-        let key = self.order.remove(used).expect("every held entry is in the order");
+        let (value, used) = self.held.get_mut(key)?;
+        let held_key = self.order.remove(used).expect("every held entry is in the order");
         *used = stamp;
-        self.order.insert(stamp, key.clone());
-        self.held.get(&key).map(|(value, _)| value)
+        self.order.insert(stamp, held_key);
+        Some(&*value)
     }
 
     /// Holds `value` for `key` as the most recently used, dropping the least recently used

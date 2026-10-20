@@ -4,7 +4,7 @@
 //! Every expected field and refusal is what Node's `zonedFields` and `timestampField`
 //! answered, executed — `@telorun/cel 0.120.1 at b4a2b6e9`, on Node 24.21.0 with ICU
 //! 78.3 and tz data 2026c — except the named readings below, each naming Node's answer.
-//! The zone cases of `evaluate.test.ts` evaluate expressions and arrive with evaluation.
+//! The zone cases of `evaluate.test.ts` evaluate expressions; their twin is `evaluate.rs`.
 
 use telorun_cel::{
     parse_timestamp, timestamp_field, zoned_fields, CelEvaluationCode, CivilFields, SourceRange, TimestampField,

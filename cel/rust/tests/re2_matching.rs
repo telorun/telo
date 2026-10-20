@@ -7,7 +7,8 @@
 //! No Node test file asserts a match's place. Every row is Node's answer, executed
 //! (`@telorun/cel 0.120.1 at b4a2b6e9`: `re2Pattern(pattern, flags)`, then the matcher's
 //! `find(start)` and each group's `start` and `end`, over re2js 2.8.3), its UTF-16 offsets
-//! written as the byte offsets of the same positions.
+//! written as the byte offsets of the same positions. That a search asked for more groups
+//! than the pattern has answers those it has is this crate's own.
 
 use telorun_cel::{re2_pattern, Re2Flags, Re2Span};
 
@@ -117,6 +118,13 @@ fn answers_only_whether_it_matched_when_no_group_is_asked_for() {
     let program = re2_pattern("b(c)", Re2Flags::NONE).expect("accepted");
     assert_eq!(program.search("abc", 0, 0).groups, Some(Vec::new()));
     assert_eq!(program.search("abd", 0, 0).groups, None);
+}
+
+#[test]
+fn answers_no_more_groups_than_the_pattern_has() {
+    let program = re2_pattern("b(c)", Re2Flags::NONE).expect("accepted");
+    let spans = program.search("abc", 0, usize::MAX).groups.expect("it matches");
+    assert_eq!(spans, vec![Some(Re2Span { start: 1, end: 3 }), Some(Re2Span { start: 2, end: 3 })]);
 }
 
 #[test]

@@ -48,8 +48,8 @@ pub use cel_value_identity::{Bytes, Duration, Timestamp, Uint64};
 pub use cel_value_identity::{
     cel_duration_from_nanos, cel_map_from_entries, cel_map_keys, cel_none, cel_some, cel_timestamp,
     cel_timestamp_from_millis, cel_type_value, duration_nanos, duration_nanos_from_text, format_duration, format_timestamp, parse_duration,
-    parse_timestamp, timestamp_nanos, CelDuration, CelError, CelEvaluationCode, CelHostValue, CelMap,
-    CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue, CelValue, ReservedTypeName, SourceRange,
+    parse_timestamp, timestamp_nanos, CelDuration, CelError, CelEvaluationCode, CelHostValue, CelList, CelMap,
+    CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue, CelValue, PropertyMap, ReservedTypeName, SourceRange,
 };
 pub use function_controller::{Function, FunctionContext};
 pub use text_record::{MessageSource, TextRecord};
