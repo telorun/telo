@@ -6,16 +6,20 @@
 //! the static types, type text and signatures, the function registry with the standard
 //! library read from Node's own signature data, typing from JSON Schema with its reports,
 //! and the environment's registrations, declarations and listing — and the checker: every
-//! verdict with its code, message, range and fix, and the call each name resolved to. It
-//! answers as the Node engine answers.
+//! verdict with its code, message, range and fix, and the call each name resolved to — and
+//! RE2, the pattern language of `matches`: its parser, program and machine, over the
+//! engine's own Unicode 17.0 data. It answers as the Node engine answers.
 //!
 //! Three rules hold for every file here: one dependency, the value crate, by path; no
 //! host vocabulary; and nothing recurses with the depth of its input.
 //!
 //! Each file twins the `cel/nodejs/src` file of its name, and each header lists the
-//! Node items with no twin; `json_value.rs` alone has no Node twin. The exports below
-//! are the front-end block of Node's entry, its comprehension-binding table, the type
-//! system's and the checker's items, and the value domain's `cel-value.ts` items.
+//! Node items with no twin. Five files have no Node twin, each header saying why:
+//! `json_value.rs`, and the RE2 files and the Unicode data, whose roles Node's
+//! dependency re2js and its host's V8 fill. The exports below are the front-end block of
+//! Node's entry, its comprehension-binding table, the type system's and the checker's
+//! items, the value domain's `cel-value.ts` items, the pattern language's and the bounded
+//! cache.
 //!
 //! - `reserved_words.rs`         — `reserved-words.ts`
 //! - `syntax_diagnostic.rs`      — `syntax-diagnostic.ts`
@@ -49,7 +53,14 @@
 //! - `macro_check.rs`            — `macro-check.ts`
 //! - `checker.rs`                — `checker.ts`
 //! - `environment.rs`            — `environment.ts` (registration, listing, declarations and checking)
+//! - `bounded_cache.rs`          — `bounded-cache.ts`
+//! - `regular_expression.rs`     — `regular-expression.ts`
+//! - `re2_syntax.rs`             — no twin: re2js's parser
+//! - `re2_program.rs`            — no twin: re2js's simplifier, compiler and program
+//! - `re2_machine.rs`            — no twin: re2js's machine
+//! - `unicode_tables.rs`         — no twin: generated from the Unicode 17.0 archive
 
+mod bounded_cache;
 mod cel_expression;
 mod cel_type;
 mod cel_value;
@@ -71,6 +82,10 @@ mod nominal_type;
 mod parse_limits;
 mod parser;
 mod qualified_calls;
+mod re2_machine;
+mod re2_program;
+mod re2_syntax;
+mod regular_expression;
 mod reserved_words;
 mod resolved_call;
 mod root_references;
@@ -82,7 +97,11 @@ mod syntax_diagnostic;
 mod syntax_tree;
 mod tree_equality;
 mod type_expression;
+// The dataset is generated whole; not every table has a reader in every build.
+#[allow(dead_code)]
+mod unicode_tables;
 
+pub use bounded_cache::BoundedCache;
 pub use cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
 pub use cel_type::{
     admits_null, assignable, format_type, is_dyn, is_numeric, list_of, map_of, optional_of, parameter_of,
@@ -126,6 +145,11 @@ pub use nominal_type::{CelTypeRegistrationError, NominalOperatorDeclaration, Nom
 pub use parse_limits::{CelParseLimits, DEFAULT_PARSE_LIMITS};
 pub use parser::{parse_syntax, ParseOptions, ParseResult};
 pub use qualified_calls::{qualified_calls, QualifiedCall};
+pub use re2_program::{Re2Program, Re2Search, Re2Span};
+pub use regular_expression::{
+    cel_matches, re2_pattern, Re2Flags, Re2PatternErrorKind, Re2PatternRefusal, PATTERN_CACHE_CAPACITY,
+    RE2_FLAG_LETTERS, RE2_PATTERN_ERROR_KINDS,
+};
 pub use reserved_words::{is_identifier_spelling, is_reserved_word, LITERAL_WORDS, OPERATOR_WORDS, RESERVED_WORDS};
 pub use resolved_call::ResolvedCall;
 pub use root_references::root_references;
