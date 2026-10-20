@@ -11,7 +11,7 @@
 
 pub use telorun_cel_value::{
     cel_error, cel_none, cel_some, cel_type_name_of, cel_type_value, CelDuration, CelError, CelEvaluationCode,
-    CelHostValue, CelMap, CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue, CelValue, PropertyMap,
+    CelHostValue, CelList, CelMap, CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue, CelValue, PropertyMap,
     ReservedTypeName, CEL_EVALUATION_CODES, CEL_VALUE_KEYS,
 };
 
@@ -23,8 +23,8 @@ pub fn literal_value(literal: &CelLiteral) -> CelValue {
         CelLiteral::Int(value) => CelValue::Int(*value),
         CelLiteral::Uint(value) => CelValue::Uint(*value),
         CelLiteral::Double(value) => CelValue::Double(*value),
-        CelLiteral::String(value) => CelValue::String(value.clone()),
-        CelLiteral::Bytes(value) => CelValue::Bytes(value.clone()),
+        CelLiteral::String(value) => CelValue::String(value.as_str().into()),
+        CelLiteral::Bytes(value) => CelValue::Bytes(value.as_slice().into()),
         CelLiteral::Bool(value) => CelValue::Bool(*value),
         CelLiteral::Null => CelValue::Null,
     }

@@ -2,7 +2,7 @@
 
 The CEL value domain for Rust: every value an expression can hold, the invariants each one keeps, and the text each is written as. It is the Rust half of the value-domain files of `@telorun/cel` (`cel/nodejs`), and it answers as they answer — the same acceptances, refusals, codes, messages and written text.
 
-It holds values and nothing that computes with them. Equality (`==`), ordering, arithmetic, time zones and reading a literal out of a syntax tree belong to the engine crate that stands on this one, `telorun-cel` (`cel/rust`), which today holds the front end — the reader, the namespace pass, the writer and the tree queries — the type system and the checker. Of those five, it holds reading a literal (`literal_value`); equality, ordering, arithmetic and time zones arrive there with evaluation.
+It holds values and nothing that computes with them. Equality (`==`), ordering, arithmetic, time zones, casing and reading a literal out of a syntax tree belong to the engine crate that stands on this one, `telorun-cel` (`cel/rust`), which holds each of them: `value_equality.rs`, `integer_arithmetic.rs`, the engine halves of `timestamp_value.rs` and `value_text.rs`, and `literal_value`.
 
 ## The two rules
 
@@ -13,15 +13,15 @@ The crate is `publish = false`, licensed MIT, and carries `@telorun/cel`'s versi
 
 ## Files
 
-Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the syntax tree or the zone database belongs to the engine crate's file of the same name — `cel_value.rs` there exists, `timestamp_value.rs` does not yet; one that describes a JavaScript representation has no twin.
+Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the syntax tree, the zone database or the Unicode data belongs to the engine crate's file of the same name — its `cel_value.rs`, `timestamp_value.rs` and `value_text.rs`; one that describes a JavaScript representation has no twin.
 
 | File | Twins | Public items | Node exports elsewhere |
 |---|---|---|---|
-| `cel_value.rs` | `cel-value.ts` | `CelValue`, `CelTimestamp`, `CelDuration`, `CelMap`, `CelMapKey`, `CelRecord`, `PropertyMap`, `CelTypeValue`, `CelOptional`, `CelError`, `CelEvaluationCode`, `CelHostValue`, `ReservedTypeName`, `SourceRange`, `CEL_VALUE_KEYS`, `CEL_EVALUATION_CODES`, `cel_type_value`, `cel_none`, `cel_some`, `cel_error`, `cel_type_name_of` | Engine half: `literalValue`, as `literal_value` in the engine's `cel_value.rs`, which also re-exports every item of this file. No twin: the brand symbol and the `isCel*` predicates (the variant is the identity), `celUint` (it is `CelValue::Uint`), `isThenable` / `asyncValueRefused` (no Rust value can be awaited) |
+| `cel_value.rs` | `cel-value.ts` | `CelValue`, `CelTimestamp`, `CelDuration`, `CelList`, `CelMap`, `CelMapKey`, `CelRecord`, `PropertyMap`, `CelTypeValue`, `CelOptional`, `CelError`, `CelEvaluationCode`, `CelHostValue`, `ReservedTypeName`, `SourceRange`, `CEL_VALUE_KEYS`, `CEL_EVALUATION_CODES`, `cel_type_value`, `cel_none`, `cel_some`, `cel_error`, `cel_type_name_of` | Engine half: `literalValue`, as `literal_value` in the engine's `cel_value.rs`, which also re-exports every item of this file. No twin: the brand symbol and the `isCel*` predicates (the variant is the identity), `celUint` (it is `CelValue::Uint`), `isThenable` / `asyncValueRefused` (no Rust value can be awaited) |
 | `cel_map_value.rs` | `cel-map-value.ts` | `cel_map_from_entries`, `cel_map_keys`, `map_key_identity` | No twin: `celMapOf` (the empty map is `CelMap::default()`) |
 | `duration_value.rs` | `duration-value.ts` | `cel_duration_from_nanos`, `duration_out_of_range`, `duration_nanos`, `parse_duration`, `duration_nanos_from_text`, `format_duration`, `DurationField`, `duration_field`, `MAX_DURATION_NANOS`, `MIN_DURATION_NANOS`, and `CelDuration`'s carrier constructors | — |
-| `timestamp_value.rs` | `timestamp-value.ts` | `cel_timestamp`, `cel_timestamp_from_millis`, `timestamp_nanos`, `parse_timestamp`, `format_timestamp`, `MIN_TIMESTAMP_SECONDS`, `MAX_TIMESTAMP_SECONDS`, `CelTimestamp`'s carrier constructors, and the civil calendar: `CivilFields`, `utc_fields`, `seconds_from_fields`, `days_from_civil`, `civil_from_days`, `days_in_month`, `is_leap_year` | Engine half, not yet written: `zonedFields`, `timestampField`, `TimestampField` — a getter reads a field in a zone, and the zone database is a dependency |
-| `value_text.rs` | `value-text.ts` | `text_to_bytes`, `bytes_to_text`, `double_text`, and items Node calls its host for: `es_number` (ECMAScript's `Number::toString`), `json_quote` (a string as `JSON.stringify` quotes one), `is_es_whitespace` and `es_trim` (ECMAScript's whitespace, as `\s` and `trim` read it), `compare_code_units` (ECMAScript's string order) and `es_string_to_number` (ECMAScript's `Number(text)`) | — |
+| `timestamp_value.rs` | `timestamp-value.ts` | `cel_timestamp`, `cel_timestamp_from_millis`, `timestamp_nanos`, `parse_timestamp`, `format_timestamp`, `MIN_TIMESTAMP_SECONDS`, `MAX_TIMESTAMP_SECONDS`, `CelTimestamp`'s carrier constructors, and the civil calendar: `CivilFields`, `utc_fields`, `seconds_from_fields`, `days_from_civil`, `civil_from_days`, `days_in_month`, `is_leap_year` | Engine half, in the engine's `timestamp_value.rs`: `zonedFields`, `timestampField`, `TimestampField` — a getter reads a field in a zone, and the zone database is a dependency |
+| `value_text.rs` | `value-text.ts` | `text_to_bytes`, `bytes_to_text`, `double_text`, and items Node calls its host for: `es_number` (ECMAScript's `Number::toString`), `json_quote` (a string as `JSON.stringify` quotes one), `is_es_whitespace` and `es_trim` (ECMAScript's whitespace, as `\s` and `trim` read it), `compare_code_units` (ECMAScript's string order) and `es_string_to_number` (ECMAScript's `Number(text)`) | Engine half, in the engine's `value_text.rs`: ECMAScript's casing, which reads the engine's Unicode data |
 
 `value-equality.ts` and `integer-arithmetic.ts` have no file here: both are operator semantics, and the engine crate owns them. The integer limits (`MAX_INT`, `MIN_INT`, `MAX_UINT`) are not declared either — an int is an `i64` and a uint a `u64`, so the range is the type.
 
@@ -38,9 +38,9 @@ Every public item is exported at the crate root.
 | `Int` | `i64` |
 | `Uint` | `u64` |
 | `Double` | `f64` |
-| `String` | `String` |
-| `Bytes` | `Vec<u8>` |
-| `List` | `Vec<CelValue>` |
+| `String` | `Arc<str>` |
+| `Bytes` | `Arc<[u8]>` |
+| `List` | `CelList` — the values, in order |
 | `Map` | `CelMap` — typed keys |
 | `Record` | `CelRecord` — string keys, as a host hands a map over |
 | `Timestamp` | `CelTimestamp` |
@@ -50,7 +50,8 @@ Every public item is exported at the crate root.
 | `Error` | `CelError` |
 | `Host` | `CelHostValue` |
 
-- **Aggregates are owned**, not reference-counted. `CelValue` is `Clone + Debug + Send + Sync`, and deliberately neither `Eq` nor `Hash` (a double is in it).
+- **Aggregates are shared.** A string, bytes, a list, a map, a record, an optional's held value and a host value's entries are each held by an `Arc`, so a clone is O(1) and shares what it holds — a 10 MB string or a list of a million values clones by a count — as every Node value is a shared reference. A value is never changed once built: `CelRecord::insert` on a record whose entries another value shares copies them first. `CelValue` is `Clone + Debug + Send + Sync`, and deliberately neither `Eq` nor `Hash` (a double is in it).
+- **`CelList`** holds the values in order; it reads as a slice (`Deref<Target = [CelValue]>`, `as_slice`, `iter`) and is built from a `Vec` (`.into()`) or collected. An empty list, map, record or set of host entries allocates nothing.
 - **`PartialEq` is identity in the domain, never CEL's `==`.** Same variant, same content. A double compares by its bits, so NaN equals NaN and `-0.0` is not `0.0`; `Int(1)` is not `Uint(1)`. Two maps are equal when they hold the same key/value pairs in any order, a key compared as the value it is. The one crossing: a `Map` whose keys are all strings equals a `Record` of the same pairs, because they are one value written two ways.
 - **`cel_type_name_of`** answers what `type()` answers: `bool`, `string`, `double`, `int`, `uint`, `null_type`, `bytes`, `list`, `map` (for both `Map` and `Record`), `type`, `optional`, `google.protobuf.Timestamp`, `google.protobuf.Duration`, or a host value's own name. It answers nothing for an error and for an unnamed host value.
 - **`CEL_VALUE_KEYS`** is the closed set of seven type keys the domain's own values carry: `uint`, `google.protobuf.Timestamp`, `google.protobuf.Duration`, `type`, `optional`, `map`, `error`.
@@ -60,8 +61,9 @@ Every public item is exported at the crate root.
 A `CelHostValue` is an optional type name plus an opaque shared payload (`Arc<dyn Any + Send + Sync>`).
 
 - `CelHostValue::named(name, payload)` is a value of a host-registered type. A name that is one of `CEL_VALUE_KEYS` is refused with `ReservedTypeName`, which carries the name. It is the crate's only error that is not a `CelError`: it is raised where a host declares a type, never during evaluation.
+- `CelHostValue::with_entries(name, payload, entries)` is such a value holding its own entries, a `PropertyMap` of values, read by `entries()`. They are what a member read answers of it — and only for a field its registered type declares: the engine's member-read seam reads nothing else of a host value, its payload included.
 - `CelHostValue::unnamed(payload)` is a host object of no CEL type, such as a live handle.
-- Two host values are the same value only when they are the same object under the same name.
+- Two host values are the same value only when they are the same object: the same name, payload and entries.
 
 ## The two maps
 
@@ -88,6 +90,10 @@ Node answers differently for a map with typed keys and for a plain object a host
 **`CelRecord`** is a map whose keys are all strings. It ranges in ECMAScript's own-property order, because that is what a comprehension over a host's object answers on Node: keys that are canonical array indices (`0` … `4294967294`, no leading zero) first, ascending, then every other key in insertion order. Setting a key that is already held replaces its value and keeps its position.
 
 **`PropertyMap<V>`** is that order, for anything: a `CelRecord` is a `PropertyMap` of values, and every engine input Node takes as a plain JavaScript object — a JSON object, a named type's declared fields — is a `PropertyMap` of what it holds. `insert`, `get`, `contains_key`, `len`, `is_empty`, `iter`, `keys`, `values`; built from pairs with `collect`. Two are equal when they hold the same pairs, in any order. The rule has this one home.
+
+## Depth
+
+**No operation here recurses on a value's depth.** Releasing a value, comparing two (`==`) and printing one (`Debug`, which writes what `#[derive(Debug)]` would) each run on a heap work list, so a value a hundred thousand levels deep is released, compared and printed on a 256 KiB stack. A release takes each shared child out of its slot and lets go of it through `Arc::into_inner`, which hands its contents to exactly one of the holders letting go at the same moment — so a child held twice, or a value released on many threads at once, is released once, and a value whose every level holds the level below it twice through one `Arc` is released in time linear in its levels. `==` passes over two aggregates that share one `Arc` without walking them.
 
 ## Durations: two ranges
 
@@ -135,11 +141,11 @@ The civil calendar is public for the engine's zoned getters to build on: `utc_fi
 
 - `code` is a `CelEvaluationCode`: a closed enum of the sixteen codes every engine names, listed in one order by `CEL_EVALUATION_CODES` and written by `as_str()` (`no_such_key`, `invalid_conversion`, …). A code is never derived from a message. `async_value_unsupported` is in the set although no Rust value can raise it, because the set is one vocabulary across engines.
 - `message` is what `Display` writes, alone.
-- `range` is an optional `SourceRange`: a `[start, end)` pair of UTF-16 code-unit offsets into the expression's source. No function here knows where in a source it was called from, so each answers an error with no range; the engine crate attaches one with `CelError::with_range` where it evaluates, which it does not yet.
+- `range` is an optional `SourceRange`: a `[start, end)` pair of UTF-16 code-unit offsets into the expression's source. No function here knows where in a source it was called from, so each answers an error with no range; the engine crate attaches one with `CelError::with_range` where it evaluates.
 - No function of this crate answers `Ok` holding an `Error` variant.
 
 ## Tests
 
-`tests/` holds the value-level twins of `cel/nodejs/tests/cel-value.test.ts`, `map-key-identity.test.ts` and the value-level cases of `evaluate.test.ts`, plus literal tables for what no Node test pins directly — duration and timestamp text, the double's written form, JSON quoting, UTF-8 reading, a record's and a property map's order, ECMAScript's whitespace and its string order. Every expected value, code and message in them was produced by executing the Node build, not by reading it, and the tests read no file outside this directory.
+`tests/` holds the value-level twins of `cel/nodejs/tests/cel-value.test.ts`, `map-key-identity.test.ts` and the value-level cases of `evaluate.test.ts`, `shared_values.rs` for the domain's own properties — a clone sharing what it holds, a shared record copied before it changes, a host value's entries, the printed form, and release, comparison and printing a hundred thousand levels deep on a 256 KiB stack, with children shared at every level and from eight threads — plus literal tables for what no Node test pins directly — duration and timestamp text, the double's written form, JSON quoting, UTF-8 reading, a record's and a property map's order, ECMAScript's whitespace and its string order. Every expected value, code and message in them — but `shared_values.rs`'s, which no Node answer decides — was produced by executing the Node build, not by reading it, and the tests read no file outside this directory.
 
 Semantics shared with the Node engine, and the reasons behind them, are in `cel/nodejs/CLAUDE.md` ("The value domain", and the sections on the two durations and the declared ranges).

@@ -267,14 +267,14 @@ fn write_map(map: &CelMap, path: &mut Vec<String>) -> Result<String, TypedFrameE
     let mut plain = true;
     for (key, value) in map.iter() {
         let key_text = write_map_key(key, path)?;
-        if !matches!(key, CelValue::String(s) if s != TYPED_FRAME_TAG) {
+        if !matches!(key, CelValue::String(s) if &**s != TYPED_FRAME_TAG) {
             plain = false;
         }
         path.push(key_segment(key));
         let written = write_value(value, path)?;
         path.pop();
         let order = match key {
-            CelValue::String(s) => s.clone(),
+            CelValue::String(s) => s.to_string(),
             _ => key_text.clone(),
         };
         pairs.push(Pair { order, key: key_text, value: written });
@@ -299,7 +299,7 @@ fn write_record(record: &CelRecord, path: &mut Vec<String>) -> Result<String, Ty
 
 fn key_segment(key: &CelValue) -> String {
     match key {
-        CelValue::String(s) => s.clone(),
+        CelValue::String(s) => s.to_string(),
         CelValue::Bool(b) => b.to_string(),
         CelValue::Int(i) => i.to_string(),
         CelValue::Uint(u) => u.to_string(),
@@ -395,7 +395,7 @@ fn read_value(node: &Json, path: &mut Vec<String>) -> Result<CelValue, TypedFram
             "is a number beyond the range of a double; a non-finite double is tagged 'double'",
         )),
         Json::Number(n) => Ok(CelValue::Double(*n)),
-        Json::Text(text) => read_string(text, path).map(CelValue::String),
+        Json::Text(text) => read_string(text, path).map(|text| CelValue::String(text.into())),
         Json::Array(items) => {
             let mut out = Vec::with_capacity(items.len());
             for (index, item) in items.iter().enumerate() {
@@ -403,7 +403,7 @@ fn read_value(node: &Json, path: &mut Vec<String>) -> Result<CelValue, TypedFram
                 out.push(read_value(item, path)?);
                 path.pop();
             }
-            Ok(CelValue::List(out))
+            Ok(CelValue::List(out.into()))
         }
         Json::Object(members) => {
             if members.iter().any(|(k, _)| k.is(TYPED_FRAME_TAG)) {
@@ -493,7 +493,7 @@ fn read_scalar(tag: &str, text: &str, path: &[String]) -> Result<CelValue, Typed
         },
         TAG_BYTES => base64url::decode(text)
             .filter(|bytes| base64url::encode(bytes) == text)
-            .map(CelValue::Bytes)
+            .map(|bytes| CelValue::Bytes(bytes.into()))
             .ok_or_else(|| undecodable(path, format!("is '{text}', not base64url text without padding in its canonical written form"))),
         TAG_TIMESTAMP => rfc3339::decode(text)
             .filter(|t| rfc3339::encode(t) == text)
@@ -535,7 +535,7 @@ fn read_map(payload: &Json, path: &mut Vec<String>) -> Result<CelValue, TypedFra
         if !seen.insert(identity) {
             return Err(undecodable(path, "repeats a key already in the map"));
         }
-        if !matches!(&key, CelValue::String(s) if s != TYPED_FRAME_TAG) {
+        if !matches!(&key, CelValue::String(s) if &**s != TYPED_FRAME_TAG) {
             plain = false;
         }
         *path.last_mut().expect("the key segment") = "1".into();
@@ -727,12 +727,12 @@ mod tests {
             assert_eq!((alone.code, alone.path.as_str()), (ERR_TYPED_FRAME_UNENCODABLE, ""), "{what}");
             assert_eq!(alone.message, format!("Cannot write a typed frame: the value itself {what}."));
 
-            let record = CelRecord::from_iter([("held", CelValue::List(vec![CelValue::Null, value.clone()]))]);
+            let record = CelRecord::from_iter([("held", CelValue::List(vec![CelValue::Null, value.clone()].into()))]);
             let nested = encode_typed_frame(&CelValue::Record(record)).unwrap_err();
             assert_eq!((nested.code, nested.path.as_str()), (ERR_TYPED_FRAME_UNENCODABLE, "/held/1"), "{what}");
             assert_eq!(nested.message, format!("Cannot write a typed frame: the value at '/held/1' {what}."));
 
-            let keyed = cel_map_from_entries([(CelValue::Int(7), CelValue::List(vec![value]))]).unwrap();
+            let keyed = cel_map_from_entries([(CelValue::Int(7), CelValue::List(vec![value].into()))]).unwrap();
             assert_eq!(encode_typed_frame(&CelValue::Map(keyed)).unwrap_err().path, "/7/0", "{what}");
         }
     }
@@ -787,7 +787,7 @@ mod tests {
             (telorun_cel_value::cel_error(telorun_cel_value::CelEvaluationCode::NoSuchKey, "missing", None).into(), "an error value"),
             (CelValue::Host(telorun_cel_value::CelHostValue::unnamed(std::sync::Arc::new(()))), "a host value"),
         ] {
-            let refused = from_value::<serde_json::Value>(CelValue::List(vec![value])).unwrap_err();
+            let refused = from_value::<serde_json::Value>(CelValue::List(vec![value].into())).unwrap_err();
             assert_eq!(refused.code, ERR_TYPED_FRAME_UNDECODABLE, "{what}");
             assert_eq!(refused.message, format!("Cannot read a typed frame: the value is {what}, which has no serde form."));
         }
@@ -965,7 +965,7 @@ mod tests {
         match random.below(kinds) {
             0 => CelValue::Null,
             1 => CelValue::Bool(random.below(2) == 1),
-            2 => CelValue::String(random_string(random)),
+            2 => CelValue::String(random_string(random).into()),
             3 => CelValue::Double(match random.below(6) {
                 0 => f64::NAN,
                 1 => f64::INFINITY,
@@ -999,7 +999,7 @@ mod tests {
                 let mut entries: Vec<(CelValue, CelValue)> = Vec::new();
                 for _ in 0..random.below(4) {
                     let key = match random.below(4) {
-                        0 => CelValue::String(random_string(random)),
+                        0 => CelValue::String(random_string(random).into()),
                         1 => CelValue::Bool(random.below(2) == 1),
                         2 => CelValue::Int(random.below(5) as i64 - 2),
                         _ => CelValue::Uint(random.below(3)),

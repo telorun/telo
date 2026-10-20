@@ -4,13 +4,15 @@ version = "0.120.1"
 license = "MIT"
 edition = "2021"
 publish = false
-description = "The CEL language for Rust: the front end — reads an expression into the ranged syntax tree, resolves namespaced calls, writes a tree back as source and answers the two tree queries — and the type system: the static types, type text and signatures, the function registry with the standard library, typing from JSON Schema, and the environment's registrations, declarations and listing — and the checker: every verdict with its code, message, range and fix, and the call each name resolved to — and RE2, the pattern language of `matches`: its parser, program and machine, twins of re2js's, over the engine's own Unicode 17.0 data. One path dependency, no host vocabulary."
+description = "The CEL language for Rust: the front end — reads an expression into the ranged syntax tree, resolves namespaced calls, writes a tree back as source and answers the two tree queries — and the type system: the static types, type text and signatures, the function registry with the standard library, typing from JSON Schema, and the environment's registrations, declarations and listing — and the checker: every verdict with its code, message, range and fix, and the call each name resolved to — RE2, the pattern language of `matches`: its parser, program and machine, twins of re2js's, over the engine's own Unicode 17.0 data — and the runtime library evaluation calls: every standard function and operator, member read, integer arithmetic, equality and ordering, a timestamp's fields in a time zone over the bundled IANA 2026c database, and ECMAScript's casing. Two dependencies — the value crate by path, and jiff-tzdb for the zone database's names and bytes — and no host vocabulary."
 
 [lib]
 crate-type = ["rlib"]
 
 [dependencies]
 telorun-cel-value = { path = "value" }
+# The IANA time zone database 2026c: zone names and their compiled TZif bytes, nothing else.
+jiff-tzdb = "=0.1.8"
 
 [dev-dependencies]
 serde_json = "=1.0.149"

@@ -9,6 +9,9 @@
 //!   `String.prototype.trim` take as whitespace, one set for both.
 //! - `compare_code_units` — the order ECMAScript sorts and compares strings in.
 //! - `es_string_to_number` — ECMAScript's `StringToNumber`, what `Number(text)` answers.
+//!
+//! ECMAScript's casing, which Node also takes from its host, reads the engine's Unicode
+//! data and lives in the engine crate's `value_text.rs`.
 
 use std::cmp::Ordering;
 

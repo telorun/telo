@@ -6,20 +6,25 @@
 //! the static types, type text and signatures, the function registry with the standard
 //! library read from Node's own signature data, typing from JSON Schema with its reports,
 //! and the environment's registrations, declarations and listing — and the checker: every
-//! verdict with its code, message, range and fix, and the call each name resolved to — and
+//! verdict with its code, message, range and fix, and the call each name resolved to —
 //! RE2, the pattern language of `matches`: its parser, program and machine, over the
-//! engine's own Unicode 17.0 data. It answers as the Node engine answers.
+//! engine's own Unicode 17.0 data — and the runtime library evaluation calls: what every
+//! operator and standard function does, member read, integer arithmetic, equality and
+//! ordering, a timestamp's fields in a time zone over the IANA database it bundles, and
+//! ECMAScript's casing. It answers as the Node engine answers.
 //!
-//! Three rules hold for every file here: one dependency, the value crate, by path; no
+//! Three rules hold for every file here: two dependencies, the value crate by path and
+//! `jiff-tzdb` for the zone database's names and bytes, neither deciding a verdict; no
 //! host vocabulary; and nothing recurses with the depth of its input.
 //!
 //! Each file twins the `cel/nodejs/src` file of its name, and each header lists the
-//! Node items with no twin. Five files have no Node twin, each header saying why:
-//! `json_value.rs`, and the RE2 files and the Unicode data, whose roles Node's
-//! dependency re2js and its host's V8 fill. The exports below are the front-end block of
-//! Node's entry, its comprehension-binding table, the type system's and the checker's
-//! items, the value domain's `cel-value.ts` items, the pattern language's and the bounded
-//! cache.
+//! Node items with no twin. Six files have no Node twin, each header saying why:
+//! `json_value.rs`; the RE2 files and the Unicode data, whose roles Node's dependency
+//! re2js and its host's V8 fill; and the zone database, whose role its host's Intl
+//! fills. The exports below are the front-end block of Node's entry, its
+//! comprehension-binding table, the type system's and the checker's items, the value
+//! domain's `cel-value.ts` items, the pattern language's and the bounded cache, and the
+//! runtime library's, member read's, equality's, the timestamp file's and `value-text.ts`'s.
 //!
 //! - `reserved_words.rs`         — `reserved-words.ts`
 //! - `syntax_diagnostic.rs`      — `syntax-diagnostic.ts`
@@ -40,7 +45,13 @@
 //! - `signature.rs`              — `signature.ts`
 //! - `nominal_type.rs`           — `nominal-type.ts`
 //! - `check_diagnostic.rs`       — `check-diagnostic.ts`
-//! - `runtime_library.rs`        — `runtime-library.ts` (`CALL_SITE_DIRECT_ARITY`)
+//! - `runtime_library.rs`        — `runtime-library.ts`
+//! - `member_read.rs`            — `member-read.ts`
+//! - `value_equality.rs`         — `value-equality.ts`
+//! - `integer_arithmetic.rs`     — `integer-arithmetic.ts`
+//! - `timestamp_value.rs`        — `timestamp-value.ts` (the engine half)
+//! - `value_text.rs`             — `value-text.ts` (the engine half)
+//! - `zone_database.rs`          — no twin: the IANA database Node's host's Intl reads
 //! - `function_registry.rs`      — `function-registry.ts`
 //! - `standard_library.rs`       — `standard-library.ts`
 //! - `json_value.rs`             — no twin: the JSON value a JavaScript host holds
@@ -70,12 +81,14 @@ mod comprehension_bindings;
 mod declared_chain;
 mod environment;
 mod function_registry;
+mod integer_arithmetic;
 mod json_schema_type;
 mod json_text_scan;
 mod json_value;
 mod lexer;
 mod macro_check;
 mod macro_shape;
+mod member_read;
 mod namespace_resolution;
 mod nullable_access;
 mod nominal_type;
@@ -95,11 +108,15 @@ mod signature;
 mod standard_library;
 mod syntax_diagnostic;
 mod syntax_tree;
+mod timestamp_value;
 mod tree_equality;
 mod type_expression;
 // The dataset is generated whole; not every table has a reader in every build.
 #[allow(dead_code)]
 mod unicode_tables;
+mod value_equality;
+mod value_text;
+mod zone_database;
 
 pub use bounded_cache::BoundedCache;
 pub use cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
@@ -111,8 +128,8 @@ pub use cel_type::{
 };
 pub use cel_value::{
     cel_error, cel_none, cel_some, cel_type_name_of, cel_type_value, literal_value, CelDuration, CelError,
-    CelEvaluationCode, CelHostValue, CelMap, CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue, CelValue,
-    PropertyMap, ReservedTypeName, CEL_EVALUATION_CODES, CEL_VALUE_KEYS,
+    CelEvaluationCode, CelHostValue, CelList, CelMap, CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue,
+    CelValue, PropertyMap, ReservedTypeName, CEL_EVALUATION_CODES, CEL_VALUE_KEYS,
 };
 pub use check_diagnostic::{
     CelCheckCode, CelCheckDiagnostic, CelDiagnosticFix, CelEngineError, CelEngineErrorCode, CEL_CHECK_CODES,
@@ -138,6 +155,7 @@ pub use json_schema_type::{
 };
 pub use json_text_scan::{read_json_text, scan_json_prefix, JsonRefusal, JsonTextError};
 pub use json_value::JsonValue;
+pub use member_read::{cel_has, cel_iterable, cel_lookup, cel_read, lookup_absence, lookup_error, HostFields, Lookup};
 pub use namespace_resolution::{
     namespace_sets_equal, normalize_namespaces, resolve_namespaces, CelNamespaceError, RESERVED_NAMESPACES,
 };
@@ -153,13 +171,16 @@ pub use regular_expression::{
 pub use reserved_words::{is_identifier_spelling, is_reserved_word, LITERAL_WORDS, OPERATOR_WORDS, RESERVED_WORDS};
 pub use resolved_call::ResolvedCall;
 pub use root_references::root_references;
-pub use runtime_library::CALL_SITE_DIRECT_ARITY;
+pub use runtime_library::{
+    base64_text, cel_type_value_of, implementation_of, implemented_keys, json_as_cel_value, optional_of_non_zero,
+    standard_constant_values, type_value_name, CelCallContext, CelImplementation, CALL_SITE_DIRECT_ARITY,
+};
 pub use serializer::{serialize_tree, CelSerializeError};
 pub use signature::{
     format_signature, parse_signature, signature_key, CallForm, CelSignature, FunctionMetadata, LiteralArgumentCheck,
 };
 pub use standard_library::{
-    register_standard_library, standard_constants, standard_library_signatures, StandardConstant,
+    google_type_names, register_standard_library, standard_constants, standard_library_signatures, StandardConstant,
     StandardLibraryOptions, STANDARD_LIBRARY_GENERATION,
 };
 pub use syntax_diagnostic::{CelSyntaxCode, CelSyntaxDiagnostic};
@@ -169,7 +190,13 @@ pub use syntax_tree::{
     CelNode, CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, CelUnaryNode, CelUnaryOperator,
     CelUnparsedNode, SourceRange, TreeWalk,
 };
+pub use timestamp_value::{
+    cel_timestamp, cel_timestamp_from_millis, format_timestamp, parse_timestamp, timestamp_field, timestamp_nanos,
+    zoned_fields, CivilFields, TimestampField, MAX_TIMESTAMP_SECONDS, MIN_TIMESTAMP_SECONDS,
+};
 pub use tree_equality::trees_equal;
 pub use type_expression::{
     parse_type_expression, CelTypeExpressionError, CelTypeTextError, CelUnknownTypeNameError, NominalResolver,
 };
+pub use value_equality::{cel_compare, cel_equal};
+pub use value_text::{bytes_to_text, double_text, es_to_lower_case, es_to_upper_case, text_to_bytes};

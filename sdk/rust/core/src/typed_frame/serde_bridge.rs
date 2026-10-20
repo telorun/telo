@@ -157,13 +157,13 @@ impl<'p> ser::Serializer for ValueSerializer<'p> {
         Ok(CelValue::Double(v))
     }
     fn serialize_char(self, v: char) -> Result<CelValue, TypedFrameError> {
-        Ok(CelValue::String(v.to_string()))
+        Ok(CelValue::String(v.to_string().into()))
     }
     fn serialize_str(self, v: &str) -> Result<CelValue, TypedFrameError> {
-        Ok(CelValue::String(v.to_string()))
+        Ok(CelValue::String(v.to_string().into()))
     }
     fn serialize_bytes(self, v: &[u8]) -> Result<CelValue, TypedFrameError> {
-        Ok(CelValue::Bytes(v.to_vec()))
+        Ok(CelValue::Bytes(v.into()))
     }
     fn serialize_none(self) -> Result<CelValue, TypedFrameError> {
         Ok(CelValue::Null)
@@ -178,12 +178,12 @@ impl<'p> ser::Serializer for ValueSerializer<'p> {
         Ok(CelValue::Null)
     }
     fn serialize_unit_variant(self, _name: &'static str, _index: u32, variant: &'static str) -> Result<CelValue, TypedFrameError> {
-        Ok(CelValue::String(variant.to_string()))
+        Ok(CelValue::String(variant.into()))
     }
     fn serialize_newtype_struct<T: Serialize + ?Sized>(self, name: &'static str, value: &T) -> Result<CelValue, TypedFrameError> {
         let text = || -> Result<String, TypedFrameError> {
             match value.serialize(self)? {
-                CelValue::String(text) => Ok(text),
+                CelValue::String(text) => Ok(text.to_string()),
                 _ => Err(self.refuse(format!("is a {name} that serialized no text"))),
             }
         };
@@ -200,7 +200,7 @@ impl<'p> ser::Serializer for ValueSerializer<'p> {
             }
             BYTES_TOKEN => {
                 let text = text()?;
-                base64url::decode(&text).map(CelValue::Bytes).ok_or_else(|| refused(&text))
+                base64url::decode(&text).map(|bytes| CelValue::Bytes(bytes.into())).ok_or_else(|| refused(&text))
             }
             UINT_TOKEN => value.serialize(UintCapture { path: self.path, key: self.key }),
             _ => value.serialize(self),
@@ -307,7 +307,7 @@ impl ser::SerializeSeq for ListBuilder<'_> {
         Ok(())
     }
     fn end(self) -> Result<CelValue, TypedFrameError> {
-        Ok(CelValue::List(self.items))
+        Ok(CelValue::List(self.items.into()))
     }
 }
 
@@ -368,7 +368,7 @@ impl MapBuilder<'_> {
                     format!("is a map taken for a record although it holds the key {key:?}"),
                 ));
             };
-            record.insert(key, value);
+            record.insert(key.to_string(), value);
         }
         Ok(CelValue::Record(record))
     }
@@ -401,7 +401,7 @@ impl ser::SerializeStruct for MapBuilder<'_> {
     type Error = TypedFrameError;
     fn serialize_field<T: Serialize + ?Sized>(&mut self, key: &'static str, value: &T) -> Result<(), TypedFrameError> {
         let value = child(self.path, key.to_string(), value)?;
-        self.entries.push((CelValue::String(key.to_string()), value));
+        self.entries.push((CelValue::String(key.into()), value));
         Ok(())
     }
     fn end(self) -> Result<CelValue, TypedFrameError> {
@@ -464,11 +464,11 @@ impl<'de> de::Deserializer<'de> for ValueDeserializer {
         match self.0 {
             CelValue::Null => visitor.visit_unit(),
             CelValue::Bool(b) => visitor.visit_bool(b),
-            CelValue::String(s) => visitor.visit_string(s),
+            CelValue::String(s) => visitor.visit_string(s.to_string()),
             CelValue::Double(d) => visitor.visit_f64(d),
             CelValue::Int(i) => visitor.visit_i64(i),
             CelValue::Uint(u) => visitor.visit_u64(u),
-            CelValue::Bytes(bytes) => visitor.visit_byte_buf(bytes),
+            CelValue::Bytes(bytes) => visitor.visit_byte_buf(bytes.to_vec()),
             CelValue::Timestamp(t) => visitor.visit_string(rfc3339::encode(&t.into())),
             CelValue::Duration(d) => visitor.visit_string(cel_duration::encode(&d.into())),
             CelValue::List(items) => {
@@ -478,7 +478,7 @@ impl<'de> de::Deserializer<'de> for ValueDeserializer {
                 map.into_iter().map(|(key, value)| (ValueDeserializer(key), ValueDeserializer(value))),
             )),
             CelValue::Record(record) => visitor.visit_map(de::value::MapDeserializer::new(
-                record.into_iter().map(|(key, value)| (ValueDeserializer(CelValue::String(key)), ValueDeserializer(value))),
+                record.into_iter().map(|(key, value)| (ValueDeserializer(CelValue::String(key.into())), ValueDeserializer(value))),
             )),
             CelValue::Type(_) => Err(uncarried("a type value")),
             CelValue::Optional(_) => Err(uncarried("an optional")),
@@ -500,7 +500,7 @@ impl<'de> de::Deserializer<'de> for ValueDeserializer {
 
     fn deserialize_seq<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, TypedFrameError> {
         match self.0 {
-            CelValue::Bytes(bytes) => visitor.visit_seq(de::value::SeqDeserializer::new(bytes.into_iter())),
+            CelValue::Bytes(bytes) => visitor.visit_seq(de::value::SeqDeserializer::new(bytes.to_vec().into_iter())),
             other => ValueDeserializer(other).deserialize_any(visitor),
         }
     }
@@ -508,10 +508,10 @@ impl<'de> de::Deserializer<'de> for ValueDeserializer {
     fn deserialize_enum<V: Visitor<'de>>(self, _name: &'static str, _variants: &'static [&'static str], visitor: V) -> Result<V::Value, TypedFrameError> {
         let one = |mut entries: std::vec::IntoIter<(CelValue, CelValue)>| entries.next().filter(|_| entries.len() == 0);
         let entry = match self.0 {
-            CelValue::String(variant) => return visitor.visit_enum(variant.into_deserializer()),
+            CelValue::String(variant) => return visitor.visit_enum(variant.to_string().into_deserializer()),
             CelValue::Map(map) => one(map.into_iter()),
             CelValue::Record(record) => {
-                one(record.into_iter().map(|(key, value)| (CelValue::String(key), value)).collect::<Vec<_>>().into_iter())
+                one(record.into_iter().map(|(key, value)| (CelValue::String(key.into()), value)).collect::<Vec<_>>().into_iter())
             }
             _ => None,
         };

@@ -86,8 +86,8 @@ fn answers_the_type_name_of_every_kind_of_value() {
             "string" => text("s"),
             "double" => CelValue::Double(1.5),
             "int" => CelValue::Int(1),
-            "bytes" => CelValue::Bytes(vec![1]),
-            "list" => CelValue::List(vec![CelValue::Int(1)]),
+            "bytes" => CelValue::Bytes(vec![1].into()),
+            "list" => CelValue::List(vec![CelValue::Int(1)].into()),
             "record" => CelValue::Record(CelRecord::from_iter([("a", CelValue::Int(1))])),
             "look-alike record" => {
                 CelValue::Record(CelRecord::from_iter([("telo.cel.value", text("uint")), ("value", text("7"))]))
@@ -221,8 +221,8 @@ fn compares_two_values_by_identity_in_the_domain_never_by_cel_equality() {
     assert_ne!(Int(1), Uint(1));
     assert_ne!(Int(1), Double(1.0));
     assert_ne!(Null, Bool(false));
-    assert_eq!(List(vec![Int(1), text("a")]), List(vec![Int(1), text("a")]));
-    assert_ne!(Bytes(vec![97]), text("a"));
+    assert_eq!(List(vec![Int(1), text("a")].into()), List(vec![Int(1), text("a")].into()));
+    assert_ne!(Bytes(vec![97].into()), text("a"));
 
     // A map is its pairs, in any order; a key is the value it is.
     let forward = map([(Int(1), text("a")), (text("k"), Bool(true))]);

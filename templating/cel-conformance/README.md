@@ -91,7 +91,7 @@ A language row drives the language's own seams, and every row runs both halves:
 - **Check** — a copy of the language environment plus the row's `declarations` and `functions`, then the engine's type check of `source`.
 - **Evaluate** — a copy of the language environment plus the row's `functions` but **without** its `declarations`; `source` is parsed and evaluated with `bindings` as the activation. Evaluation type-checks first, so an ill-typed expression evaluates to the checker's error; that is what the row records.
 
-Not yet pinned: what `substring` and the receiver `split` answer where the result would hold an unpaired surrogate.
+Not yet pinned: what `substring` and the receiver `split` answer where the result would hold an unpaired surrogate; the wording with which `bytes.json()` refuses bytes that are not JSON text, and what it answers for an escape naming an unpaired surrogate; and how a refused lookup names a key that is not a string, a number, a bool or null.
 
 The row `timestamps/timestamp_selectors_tz/getHours` records the replaced engine's refusal in its JS host's wording (`Invalid time zone specified: 02:00`). `@telorun/cel` answers the row's `deviation.celSpec` instead: a zone written `HH:MM` is a fixed offset ahead of UTC, so the row evaluates to `1`. A zone it does not know it refuses in its own words — `"<zone>" is not a time zone`, the zone written as a JSON string — which no row holds.
 

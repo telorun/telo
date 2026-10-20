@@ -12,7 +12,7 @@
 //! `cel_map_from_entries` takes key/value pairs where Node takes a flat list: the flat
 //! shape is a JavaScript allocation device, and it admits an odd length.
 
-use crate::cel_value::{cel_error, CelError, CelEvaluationCode, CelMap, CelMapKey, CelValue};
+use crate::cel_value::{cel_error, CelError, CelEvaluationCode, CelMap, CelMapKey, CelValue, MapEntries};
 use crate::value_text::json_quote;
 
 /// What identifies a key. The integer covers the numeric types together: `1`, `1u` and
@@ -37,7 +37,7 @@ pub fn map_key_identity(key: &CelValue) -> Option<CelMapKey> {
 /// key or value is itself an error (the key's first), a key of a type no map is keyed
 /// by, or two keys CEL equality makes one.
 pub fn cel_map_from_entries(entries: impl IntoIterator<Item = (CelValue, CelValue)>) -> Result<CelMap, CelError> {
-    let mut map = CelMap::default();
+    let mut map = MapEntries::default();
     for (key, value) in entries {
         if let CelValue::Error(error) = key {
             return Err(error);
@@ -67,7 +67,7 @@ pub fn cel_map_from_entries(entries: impl IntoIterator<Item = (CelValue, CelValu
             ));
         }
     }
-    Ok(map)
+    Ok(CelMap::from_entries(map))
 }
 
 fn describe_key(key: &CelValue) -> String {
