@@ -1,6 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The system prompt tells the agent that secrets belong in the env file the
-  workspace marks sensitive, that telo run warns about a secret read from any other, and
-  that Studio runs read the same env files, whose sensitive ones are never synced into
-  the agent's session.

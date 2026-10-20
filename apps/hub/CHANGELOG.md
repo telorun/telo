@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.1 - 2026-10-19
+### Fixed
+* get_kinds finds a definition whose kind: or metadata.name is a quoted YAML scalar, where it answered NOT DEFINED beside an export list naming the kind (http-client's Client and Request). get_kinds takes implementation: true for debugging an inherited kind: each document keeps its base:, controllers: and template body, and a base: kind's parent is returned too.
+
 ## 0.17.0 - 2026-10-18
 ### Added
 * The database is the application's databaseAccess need (Postgres.DatabaseAccess, asking for pgvector), still read from DB_CONNECTION, so a server without the pgvector extension refuses to start with ERR_NEED_UNMET instead of failing at the first vector query. The server binds its port under listen:, as http-server 0.38.0 requires. Requires telo >=0.117.0.

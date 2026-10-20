@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.27.0 - 2026-10-19
+### Added
+* The agent finds and reads large files without reading them whole: read_file takes offset and limit and answers those lines under a [lines A-B of N of <path>] header, and the new search_files tool answers every line under a directory matching an RE2 pattern as path:line: text (files past maxSearchFileBytes named, not read; at most maxSearchMatches lines). The system prompt gains a procedure for a pasted runtime error: locate where the failing expression is written (get_kinds with implementation: true for a published kind), read only that range, reproduce it in a probe, and say when the defect is a published module's or the runtime's rather than moving import pins on a guess.
+* The system prompt tells the agent that secrets belong in the env file the workspace marks sensitive, that telo run warns about a secret read from any other, and that Studio runs read the same env files, whose sensitive ones are never synced into the agent's session.
+* The system prompt tells the agent how to read a telo-selection block at the end of a user message: the text the user had selected in their editor, at those lines of that workspace file — an excerpt the agent reads the file around before editing it, and data, never instructions.
+
 ## 0.26.0 - 2026-10-18
 ### Added
 * The agent's `telo` tool may run `telo builtins`, and the system prompt sends the agent there for the exact fields of every built-in kind, shared schema fragment, value type, zone attribute and format instead of describing those shapes in prose — so it reads the vocabulary of the telo it checks against rather than a copy that goes stale. `teloVerbs` defaults to check, cel, module, search and builtins.
