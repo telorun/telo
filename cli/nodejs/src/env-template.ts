@@ -3,7 +3,7 @@ import {
   readApplicationContract,
   sensitiveEnvironmentInputs,
   spellEnvFileValue,
-  type NeedTableEntry,
+  type NeedEnvironmentEntry,
 } from "@telorun/analyzer";
 import type { NeedsReport } from "./needs-report.js";
 
@@ -47,7 +47,7 @@ export interface EnvTemplateEntry {
 export function envTemplateEntries(
   root: unknown,
   report: NeedsReport,
-  needEnvironment: readonly NeedTableEntry[],
+  needEnvironment: readonly NeedEnvironmentEntry[],
 ): EnvTemplateEntry[] {
   const contract = readApplicationContract(root);
   if (!contract) return [];

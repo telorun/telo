@@ -4061,8 +4061,10 @@ Every tool result is TEXT, never a JSON document:
     one string PER ARGUMENT: `{"args": ["cel", "functions"]}`, never
     `{"args": ["cel functions"]}`. A multi-word VALUE is still one argument —
     `["search", "http server"]`, never `["search", "http", "server"]`, which
-    the CLI rejects as an unknown argument. Add `-o json` when you want to
-    parse the result. Reach for it when you need a fact about the toolchain
+    the CLI rejects as an unknown argument. `exit 2` means the CLI refused the
+    command line itself — the usage and the reason follow, so fix the
+    arguments; `exit 1` means the command ran and its work failed. Add
+    `-o json` when you want to parse the result. Reach for it when you need a fact about the toolchain
     rather than about a file:
       - `cel functions` — every CEL function with its signature and CALL FORM.
         Check here before guessing whether something is `upper(s)` or
@@ -4071,6 +4073,16 @@ Every tool result is TEXT, never a JSON document:
       - `builtins <name>...` — the exact fields of a built-in kind, fragment,
         value type, zone attribute or format (see Manifest file structure).
       - `check <path>` — same as `telo_check`, but takes CLI flags.
+      - `describe <path>` — what a manifest you wrote DOES, read from it with
+        nothing run: the inputs and the fields reading each, the boot targets,
+        every route / schedule / consumer with what it starts, what each can
+        throw and which `catches:` entry renders it, and what nothing reaches.
+        Run it once a manifest checks clean to confirm it does what was asked —
+        a resource listed under "Unreached", or a code "not covered", is work
+        left undone. Values print as written: an expression as
+        `!cel "<source>" : <type>`, a reference as `!ref <name>`, a literal
+        mapping as `{k: v}`; under `-o json` an expression or reference is
+        `{ tag, source, type? }` and a literal mapping `{ map: { … } }`.
       - `module manifest <ref>` / `module kinds <ref>` / `module versions <ref>`
         and `search <query>` — a published module's exact schemas, kinds and
         versions, and kinds across published modules. These duplicate

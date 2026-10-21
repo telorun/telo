@@ -156,20 +156,25 @@ export interface NeedProblem {
 }
 
 /** How a need is fulfilled: supplied whole or field by field at the import that
- *  reaches it, or — reaching the root with nothing supplying it, as every one of
- *  the root's own needs does — read from the environment. */
-export type NeedSupplyForm = "whole" | "fields" | "environment";
+ *  reaches it; or — reaching the root with nothing supplying it, the root's own
+ *  needs included — read from the environment under an Application root, and
+ *  left to whoever imports a Library root. */
+export type NeedSupplyForm = "whole" | "fields" | "environment" | "importer";
 
-/** The environment variable one field of a need is read from. */
-export interface NeedEnvField {
-  env: string;
-  /** `bound` — named by the root's `env:`; `derived` — from the need path. */
-  envSource: "bound" | "derived";
+/** One field of a need's type, as its supplier must fill it. */
+export interface NeedField {
   required: boolean;
   sensitive: boolean;
 }
 
-export interface NeedTableEntry {
+/** The environment variable one field of a need is read from. */
+export interface NeedEnvField extends NeedField {
+  env: string;
+  /** `bound` — named by the root's `env:`; `derived` — from the need path. */
+  envSource: "bound" | "derived";
+}
+
+interface NeedTableEntryBase {
   /** Need path: the need's name beneath each importer's alias. */
   path: string[];
   /** For a need supplied whole by an importer's own need: that need's path — the
@@ -185,23 +190,43 @@ export interface NeedTableEntry {
   /** The declaring module's document file, for a message about the need. */
   filePath?: string;
   need: NeedGraphNeed;
-  supply: NeedSupplyForm;
   /** Key of the module declaring the need's type, when the graph holds it. */
   typeModule?: string;
-  /** For a need read from the environment: each field of its type and the one
-   *  name it is read from. Empty when the type does not resolve. */
-  fields?: Record<string, NeedEnvField>;
   /** The root's import the need is reached through — absent for the root's own. */
   via?: NeedGraphImport;
 }
+
+/** A need an import inside the tree supplies, whole or field by field. */
+export interface NeedSuppliedEntry extends NeedTableEntryBase {
+  supply: "whole" | "fields";
+  fields?: undefined;
+}
+
+/** A need an Application root reads from the environment: each field of its
+ *  type and the one name it is read from. Empty when the type does not resolve. */
+export interface NeedEnvironmentEntry extends NeedTableEntryBase {
+  supply: "environment";
+  fields: Record<string, NeedEnvField>;
+}
+
+/** A need reaching a Library root unsupplied, its importer's to supply: each
+ *  field of its type, with no environment name. Empty when the type does not
+ *  resolve. */
+export interface NeedImporterEntry extends NeedTableEntryBase {
+  supply: "importer";
+  fields: Record<string, NeedField>;
+}
+
+export type NeedTableEntry = NeedSuppliedEntry | NeedEnvironmentEntry | NeedImporterEntry;
 
 export interface NeedTable {
   entries: NeedTableEntry[];
   /** Refusals decidable from the declarations. */
   problems: NeedProblem[];
-  /** The needs read from the environment at load: every need reaching the root
-   *  unsupplied, the root's own included — what an operator provisions. */
-  environment: NeedTableEntry[];
+  /** The needs read from the environment at load: under an Application root,
+   *  every need reaching it unsupplied, its own included — what an operator
+   *  provisions. Empty under a Library root, which reads no environment. */
+  environment: NeedEnvironmentEntry[];
 }
 
 const STATIC_TO_RUNTIME: Record<string, string> = {
@@ -272,7 +297,7 @@ export function resolveNeedTable(graph: NeedGraph): NeedTable {
 function checkRootSupplyReached(
   graph: NeedGraph,
   root: NeedGraphModule,
-  environment: readonly NeedTableEntry[],
+  environment: readonly NeedEnvironmentEntry[],
   report: Report,
 ): void {
   for (const entry of environment) {
@@ -711,7 +736,7 @@ function checkEnvBindings(
  */
 function checkEnvNames(
   root: NeedGraphModule,
-  environment: readonly NeedTableEntry[],
+  environment: readonly NeedEnvironmentEntry[],
   report: Report,
 ): void {
   const claimed = new Map<string, string>();
@@ -1087,10 +1112,14 @@ export function outermostNeedEntry(
  *  beneath its own name directly under the root. */
 function walkTree(graph: NeedGraph): {
   entries: NeedTableEntry[];
-  environment: NeedTableEntry[];
+  environment: NeedEnvironmentEntry[];
 } {
   const entries: NeedTableEntry[] = [];
   const sharedVisited = new Set<string>();
+  const root = graph.modules.get(graph.root);
+  // What fills a need nothing in the tree supplies: an Application's
+  // environment, a Library's importer.
+  const unsupplied: "environment" | "importer" = root?.application ? "environment" : "importer";
   const add = (
     module: NeedGraphModule,
     need: NeedGraphNeed,
@@ -1100,7 +1129,7 @@ function walkTree(graph: NeedGraph): {
     link?: { forwardedFrom?: string[]; suppliedBy?: string },
   ): void => {
     const typeModule = need.type ? graph.needTypeModule?.(need.type) : undefined;
-    entries.push({
+    const base: NeedTableEntryBase = {
       path,
       ...(link?.forwardedFrom ? { forwardedFrom: link.forwardedFrom } : {}),
       ...(link?.suppliedBy ? { suppliedBy: link.suppliedBy } : {}),
@@ -1108,17 +1137,21 @@ function walkTree(graph: NeedGraph): {
       moduleName: module.name,
       ...(sourceOf(module.doc) !== undefined ? { filePath: sourceOf(module.doc) } : {}),
       need,
-      supply,
       ...(typeModule !== undefined ? { typeModule } : {}),
-      ...(supply === "environment" ? { fields: envFields(graph, need, path) } : {}),
-      ...(via ? { via } : {}),
-    });
+    };
+    const reached = via ? { via } : {};
+    if (supply === "environment") {
+      entries.push({ ...base, supply, fields: envFields(graph, need, path), ...reached });
+    } else if (supply === "importer") {
+      entries.push({ ...base, supply, fields: importerFields(graph, need), ...reached });
+    } else {
+      entries.push({ ...base, supply, ...reached });
+    }
   };
 
-  // The root's own needs have no importer: each is read from the environment.
-  const root = graph.modules.get(graph.root);
-  if (root?.application) {
-    for (const need of root.needs) add(root, need, [need.name], "environment", undefined);
+  // The root's own needs have no importer inside the tree.
+  if (root) {
+    for (const need of root.needs) add(root, need, [need.name], unsupplied, undefined);
   }
 
   const visit = (
@@ -1141,7 +1174,7 @@ function walkTree(graph: NeedGraph): {
         const value = imp.supplied[need.name];
         const read = value === undefined ? undefined : needSupplyOf(value);
         const supply: NeedSupplyForm =
-          read === undefined ? "environment" : read.form === "whole" ? "whole" : "fields";
+          read === undefined ? unsupplied : read.form === "whole" ? "whole" : "fields";
         let link: { forwardedFrom?: string[]; suppliedBy?: string } | undefined;
         if (read?.form === "whole") {
           const name = read.target.name;
@@ -1157,7 +1190,22 @@ function walkTree(graph: NeedGraph): {
     }
   };
   visit(graph.root, [], new Set(), undefined);
-  return { entries, environment: entries.filter((entry) => entry.supply === "environment") };
+  return {
+    entries,
+    environment: entries.filter((entry): entry is NeedEnvironmentEntry => entry.supply === "environment"),
+  };
+}
+
+/** Each field of a need's type as its supplier must fill it. */
+function importerFields(graph: NeedGraph, need: NeedGraphNeed): Record<string, NeedField> {
+  const shape = need.type ? graph.needType(need.type) : undefined;
+  if (!shape) return {};
+  const sensitive = new Set(sensitiveNeedFields(shape));
+  const out: Record<string, NeedField> = {};
+  for (const field of Object.keys(shape.fields)) {
+    out[field] = { required: shape.required.includes(field), sensitive: sensitive.has(field) };
+  }
+  return out;
 }
 
 /** Each field of a need's type and the one environment name it is read from:
@@ -1167,17 +1215,13 @@ function envFields(
   need: NeedGraphNeed,
   path: readonly string[],
 ): Record<string, NeedEnvField> {
-  const shape = need.type ? graph.needType(need.type) : undefined;
-  if (!shape) return {};
-  const sensitive = new Set(sensitiveNeedFields(shape));
   const out: Record<string, NeedEnvField> = {};
-  for (const field of Object.keys(shape.fields)) {
+  for (const [field, info] of Object.entries(importerFields(graph, need))) {
     const bound = need.env?.[field];
     out[field] = {
       env: bound ?? derivedNeedEnvName(path, field),
       envSource: bound !== undefined ? "bound" : "derived",
-      required: shape.required.includes(field),
-      sensitive: sensitive.has(field),
+      ...info,
     };
   }
   return out;

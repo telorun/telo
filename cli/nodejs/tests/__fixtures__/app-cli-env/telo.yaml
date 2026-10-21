@@ -1,0 +1,22 @@
+kind: Telo.Application
+metadata:
+  name: AppCliEnv
+  version: 1.0.0
+targets:
+  - !ref probe
+---
+# Its controller prints the TELO_APP_CLI it sees, and the one a process it
+# starts sees.
+kind: Telo.Definition
+metadata:
+  name: Probe
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#probe
+schema:
+  type: object
+  additionalProperties: false
+---
+kind: Self.Probe
+metadata:
+  name: probe

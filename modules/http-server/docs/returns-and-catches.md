@@ -218,6 +218,8 @@ routes:
 that declares no `catches:` under a router that renders everything reports nothing. The same goes for the unbounded-union rule: one catch-all at the
 server satisfies it for every mounted route.
 
+A router mounted on several servers is covered for a code only when every server renders it, and the verdict is per code: one server may render it with an entry whose `when:` names the code and another with a catch-all.
+
 Each list is still checked against its own denominator. A route's is its handler's declared
 throw union; a scope list's is everything that resource drives — its routes' handlers, and,
 for a server, those of every mount. So an entry naming a code nothing can throw is reported

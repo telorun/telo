@@ -34,6 +34,7 @@ const X_TELO_CONTEXT_EVAL = "x-telo-context-eval" as const;
 const X_TELO_CONTEXT_FROM_REFERRER = "x-telo-context-from-referrer" as const;
 const X_TELO_CONTEXT_ITEM_FILLS = "x-telo-context-item-fills" as const;
 import { ANNOTATION_KEYWORDS } from "./value-type-keyword.js";
+import { TOPOLOGY_ROLES } from "./topology-role.js";
 
 /**
  * The `x-telo-*` annotation vocabulary — completion and hover only.
@@ -243,8 +244,10 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   },
   "x-telo-topology-role": {
     title: "Topology role",
-    description: "Names this field's part in the kind's topology, for the editor's graph view.",
+    description:
+      "Names this field's part in the kind's structure — a step body and how its statements nest, an entry list and what identifies (`matcher`) and dispatches (`handler`) each entry. A top-level `matcher` labels the kind's trigger slots outside its entry lists.",
     type: "string",
+    enum: [...TOPOLOGY_ROLES],
   },
   "x-telo-inline": {
     title: "Inline",

@@ -9,7 +9,7 @@ import {
   PUBLIC_URL_SECONDARY_TEMPLATE_ENV,
   PUBLIC_URL_TEMPLATE_ENV,
   PUBLIC_URL_TYPE,
-  type NeedTableEntry,
+  type NeedEnvironmentEntry,
 } from "@telorun/analyzer";
 import { RuntimeError } from "@telorun/sdk";
 
@@ -23,18 +23,18 @@ import { RuntimeError } from "@telorun/sdk";
 
 /** The root's own address needs: every one is a root need, the type being
  *  supplied only through one. */
-function rootAddressEntries(entries: readonly NeedTableEntry[]): NeedTableEntry[] {
+function rootAddressEntries(entries: readonly NeedEnvironmentEntry[]): NeedEnvironmentEntry[] {
   return entries.filter((entry) => !entry.via && isAddressNeedType(entry.need.type));
 }
 
-function parametersOf(entry: NeedTableEntry): Record<string, unknown> {
+function parametersOf(entry: NeedEnvironmentEntry): Record<string, unknown> {
   const parameters = entry.need.parameters;
   return parameters && typeof parameters === "object" && !Array.isArray(parameters)
     ? (parameters as Record<string, unknown>)
     : {};
 }
 
-function portKeyOf(entry: NeedTableEntry): string | undefined {
+function portKeyOf(entry: NeedEnvironmentEntry): string | undefined {
   const port = parametersOf(entry).port;
   return typeof port === "string" ? port : undefined;
 }
@@ -82,7 +82,7 @@ function readTemplate(
  * templates do not answer is left as it is, for the read to refuse.
  */
 export function withDerivedPublicUrls(
-  entries: readonly NeedTableEntry[],
+  entries: readonly NeedEnvironmentEntry[],
   env: Record<string, string | undefined>,
   ports: Readonly<Record<string, number>>,
 ): Record<string, string | undefined> {
@@ -91,7 +91,7 @@ export function withDerivedPublicUrls(
   const main = readTemplate(env, PUBLIC_URL_TEMPLATE_ENV, [], ["{label}"]);
   const secondary = readTemplate(env, PUBLIC_URL_SECONDARY_TEMPLATE_ENV, ["{label}"]);
   if (main === undefined) return env;
-  const groups = new Map<string, NeedTableEntry[]>();
+  const groups = new Map<string, NeedEnvironmentEntry[]>();
   for (const entry of urls) {
     const port = portKeyOf(entry);
     const number = port !== undefined ? ports[port] : undefined;
@@ -136,11 +136,11 @@ export function withDerivedPublicUrls(
  * to depends on that port, so it is neither refused nor asked for until then.
  */
 export function publicUrlsAwaitingPorts(
-  entries: readonly NeedTableEntry[],
+  entries: readonly NeedEnvironmentEntry[],
   env: Record<string, string | undefined>,
   ports: Readonly<Record<string, number>>,
-): Set<NeedTableEntry> {
-  const awaiting = new Set<NeedTableEntry>();
+): Set<NeedEnvironmentEntry> {
+  const awaiting = new Set<NeedEnvironmentEntry>();
   const main = env[PUBLIC_URL_TEMPLATE_ENV];
   if (main === undefined || main === "") return awaiting;
   for (const entry of rootAddressEntries(entries)) {
@@ -181,8 +181,8 @@ function urlMembers(value: unknown): { scheme?: string; host?: string; port?: un
  * same effective port.
  */
 export function resolveAddresses(
-  entries: readonly NeedTableEntry[],
-  valueOf: (entry: NeedTableEntry) => Record<string, unknown> | null | undefined,
+  entries: readonly NeedEnvironmentEntry[],
+  valueOf: (entry: NeedEnvironmentEntry) => Record<string, unknown> | null | undefined,
 ): ResolvedAddress[] {
   const resolved: ResolvedAddress[] = [];
   for (const entry of rootAddressEntries(entries)) {

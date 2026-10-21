@@ -62,7 +62,7 @@ async function packageApp(argv: PackageArgv): Promise<void> {
   // Which carrier this will use, decided before anything is built: every reason
   // packaging cannot proceed at all — no such platform, a working copy that may
   // not download one — is answerable from the CLI and the platform alone.
-  const plan = planCarrier(platform, version);
+  const plan = await planCarrier(platform, version);
 
   const out = outputPath(argv.out, platform);
   outLine(`Packaging ${log.dim(argv.manifest)} for ${log.dim(carrierTarget(platform))}`);
@@ -116,9 +116,8 @@ async function inspect(argv: { file: string }): Promise<void> {
       placement: payload.placement,
     },
   };
-  // A bare document, the way `TELO_APP_INFO=1` writes the same index: an
-  // envelope under `-o json` and machine JSON on the prose channel under text
-  // are two encodings of one surface the guide says are the same.
+  // A bare document in both formats: an envelope under `-o json` and machine
+  // JSON on the prose channel under text would be two encodings of one surface.
   outDocument(document);
 }
 

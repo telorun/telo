@@ -3,7 +3,7 @@ import {
   needVersionRange,
   type LoadedGraph,
   type NeedTable,
-  type NeedTableEntry,
+  type NeedEnvironmentEntry,
 } from "@telorun/analyzer";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -43,7 +43,7 @@ export function buildNeedsReport(graph: LoadedGraph, table: NeedTable): NeedsRep
   };
 }
 
-function reportEntry(graph: LoadedGraph, entry: NeedTableEntry): NeedsReportEntry {
+function reportEntry(graph: LoadedGraph, entry: NeedEnvironmentEntry): NeedsReportEntry {
   const type = entry.need.type ?? entry.need.kind;
   const fields: NeedsReportEntry["fields"] = {};
   for (const [name, field] of Object.entries(entry.fields ?? {})) {

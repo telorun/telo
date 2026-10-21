@@ -1,5 +1,5 @@
 ---
-description: "Ship a Telo application as one executable with telo package: what the payload carries, which controllers can travel, how arguments and .env reach it, and how to read a packaged binary."
+description: "Ship a Telo application as one executable with telo package: what the payload carries, which controllers can travel, how arguments and .env reach it, how to read a packaged binary, and how TELO_APP_CLI reaches the telo inside it."
 ---
 
 # Packaging an application
@@ -101,9 +101,9 @@ package manager and a toolchain.
 
 **Every argument belongs to your application.** `./orders --port 8080` passes
 `--port 8080` to the app exactly as `telo run ./telo.yaml --port 8080` does — read
-against the `arg:` bindings the application declares.
-A packaged binary has no subcommands and no telo flags: its user is not a telo
-user.
+against the `arg:` bindings the application declares. The binary's user is not a
+telo user, so nothing on its command line reaches telo; the telo inside it is
+reached through `TELO_APP_CLI=1` instead (*The telo inside it*, below).
 
 **Configuration** comes from the environment, as always — `variables:`,
 `secrets:` and `ports:` bind the same env vars they always did. `.env` and
@@ -134,6 +134,21 @@ needs; with nowhere writable at all, the app refuses at startup and says so.
 
 ## Reading a packaged binary
 
+Every telo command that takes a manifest takes a packaged binary in its place —
+`describe`, `check`, `needs report`, `env template`, `cel functions` and `run`:
+
+```sh
+telo describe dist/orders
+telo needs report dist/orders
+```
+
+The payload is unpacked into the same directory the binary itself uses and read
+from there, and nothing it carries is executed, so describing a binary prints
+exactly what describing its manifest prints.
+Reading changes nothing in that directory and asks no registry about a module
+the payload holds, so it works offline and leaves the binary's next start
+exactly as it was.
+
 ```sh
 telo package inspect dist/orders
 ```
@@ -143,8 +158,28 @@ the platform and abi, the telo version that built it, every module inside, and
 the payload's digest. It reads the trailer alone, so it is instant and works on
 a file someone else built.
 
-On the machine where the binary is deployed, `TELO_APP_INFO=1 ./orders` prints
-the same index and exits without starting the application.
+## The telo inside it
+
+A packaged binary carries the telo that packaged it, and `TELO_APP_CLI=1` makes
+the binary that telo for one start — so on the machine where it is deployed,
+with no telo installed, you can still describe, check, inspect or run it with
+every telo option:
+
+```sh
+TELO_APP_CLI=1 ./orders describe ./orders
+TELO_APP_CLI=1 ./orders package inspect ./orders
+TELO_APP_CLI=1 ./orders run --inspect --debug ./orders --port 8080
+```
+
+`./orders <arguments>` is exactly `TELO_APP_CLI=1 ./orders run ./orders
+<arguments>`: the same unpacked directory, the same cache, `.env` read from the
+working directory — and a `--debug` log, `.telo.debug.jsonl`, written there too.
+Unset or empty, the variable means the application; any value other than `1` is
+refused before anything starts, with exit status 2. Every telo removes it from its own environment
+when it starts, so your application and anything it spawns never see it.
+
+`TELO_APP_INFO` is retired: a binary started with it set refuses (exit status
+2) and names the `package inspect` command above instead.
 
 ## Size
 

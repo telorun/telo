@@ -15,7 +15,8 @@ import * as path from "node:path";
  *  packaged app's argv belongs to the application. */
 export const APP_DIR_ENV = "TELO_APP_DIR";
 
-/** Prints the payload index and exits, before the application is loaded. */
+/** Retired: it printed the payload index. A packaged executable that finds it
+ *  set refuses to start and names `package inspect` under `TELO_APP_CLI=1`. */
 export const APP_INFO_ENV = "TELO_APP_INFO";
 
 /** The user cache root, in each platform's own convention. `null` when none of

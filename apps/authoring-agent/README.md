@@ -1021,7 +1021,9 @@ The tools are the security boundary, and they are declared:
 - **The `telo` tool may only invoke a subcommand in `teloVerbs`**, which defaults
   to the verbs that merely inspect: `check`, `cel`, `module`, `search`,
   `builtins` (the built-in vocabulary's exact field shapes, which the system
-  prompt sends the agent to rather than describing them). `run`,
+  prompt sends the agent to rather than describing them) and `describe` (what a
+  written manifest does, which the system prompt has the agent read to confirm
+  it built what was asked). `run`,
   `publish`, `install` and `upgrade` are absent on purpose — `run` is arbitrary
   code execution on this host driven by an anonymous prompt, and `publish` would
   spend the operator's registry credentials. The check is on `argv[0]`, which

@@ -1,0 +1,15 @@
+kind: Telo.Library
+metadata:
+  name: Ledger
+  version: 0.1.0
+  description: Keeps a ledger in a database its runner provides.
+needs:
+  db: { kind: Self.Database }
+---
+kind: Telo.NeedType
+metadata:
+  name: Database
+  description: A database to keep the ledger in.
+fields:
+  url: { type: string, x-telo-sensitive: true }
+required: [url]

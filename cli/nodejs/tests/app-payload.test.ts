@@ -7,6 +7,7 @@ import {
   APP_FORMAT_VERSION,
   MACHO_SECTION,
   MACHO_SEGMENT,
+  carriesPayload,
   encodeTrailer,
   payloadDigest,
   readEmbeddedPayload,
@@ -85,6 +86,26 @@ describe("the trailer", () => {
     // The magic can occur by accident inside a 140 MB binary's own data, so the
     // digest is what separates a payload from a coincidence.
     await expect(readEmbeddedPayload(file)).rejects.toThrow(/does not match its digest/);
+  });
+
+  it("tells a carrier from a plain file by its trailer alone, in both placements", async () => {
+    const appended = path.join(dir, "appended");
+    await fs.writeFile(appended, Buffer.concat([Buffer.alloc(4096, 7), PAYLOAD, encodeTrailer(PAYLOAD)]));
+    const macho = path.join(dir, "carrier.macho");
+    await fs.writeFile(macho, machoCarrying(Buffer.concat([PAYLOAD, encodeTrailer(PAYLOAD)])));
+    const plain = path.join(dir, "plain");
+    await fs.writeFile(plain, Buffer.alloc(8192, 3));
+    // The payload is not read: a tampered one is still a carrier, refused when
+    // it is read rather than mistaken for a plain telo.
+    const tampered = path.join(dir, "tampered");
+    const bytes = Buffer.from(PAYLOAD);
+    bytes[0] ^= 0xff;
+    await fs.writeFile(tampered, Buffer.concat([bytes, encodeTrailer(PAYLOAD)]));
+
+    expect(await carriesPayload(appended)).toBe(true);
+    expect(await carriesPayload(macho)).toBe(true);
+    expect(await carriesPayload(plain)).toBe(false);
+    expect(await carriesPayload(tampered)).toBe(true);
   });
 
   it("refuses a format version it does not know", async () => {
@@ -280,6 +301,20 @@ describe("who may stand a DOWNLOADED carrier around an application", () => {
         /build:standalone/,
       );
     }
+  });
+
+  it("never makes an executable carrying an application a carrier, and says what packages instead", () => {
+    // Even for its own platform: its bytes are an application, and a second
+    // payload would be written over a binary that is no longer telo alone.
+    const refusal = () =>
+      assertMayDownloadCarrier("checkout", "linux-amd64-gnu", "1.0.0", {
+        isBinary: true,
+        hostTarget: "linux-amd64-gnu",
+        carriesApp: true,
+      });
+    expect(refusal).toThrow(/carries an application of its own, so it is the carrier for no\nplatform/);
+    expect(refusal).toThrow(/installed telo release[\s\S]*build:standalone/);
+    expect(refusal).not.toThrow(/its own platform \(linux-amd64-gnu\)/);
   });
 
   it("does not tell a binary to build the binary it already is", () => {

@@ -1,21 +1,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { outDocument } from "../output.js";
-import { APP_INFO_ENV, appsRoot } from "./app-home.js";
+import { APP_DIR_ENV, appsRoot } from "./app-home.js";
 import { CACHE_PREFIX, readPayloadIndex, unpackPayload, type AppIndex } from "./app-payload.js";
 import { payloadDigest, readEmbeddedPayload } from "./app-trailer.js";
 
 /**
- * What a packaged application does before it is an application.
+ * A packaged executable's payload, on disk where a command can load it.
  *
- * The payload is unpacked once, keyed by its digest, and the run that follows is
- * `telo run`'s own — there is no second code path, which is what carries the
- * SIGINT/SIGTERM handling and the kernel's exit code into a packaged service.
- *
- * Every argument belongs to the application, so nothing here reads argv. The two
- * questions an operator still has are answered by the environment instead:
- * `TELO_APP_DIR` relocates the unpack root, `TELO_APP_INFO` prints what this
- * binary carries.
+ * The payload is unpacked once, keyed by its digest, and every command that is
+ * handed the executable — a run, a check, a describe — loads from that one tree.
+ * Nothing the payload carries is executed here: it is data, written under a
+ * directory this process owns.
  */
 
 /** Written last, so a directory is only reused once it is complete. */
@@ -24,20 +19,9 @@ const READY_MARKER = ".telo-app-ready";
  *  question with an answer rather than an age heuristic. */
 const LIVE_DIR = "live";
 
-/**
- * What this executable turned out to be.
- *
- * `info` is its own outcome rather than an exit inside the reader: a payload
- * write is followed by `process.exitCode`, never `process.exit()` — on a pipe
- * the write is asynchronous and `exit` does not flush, so
- * `TELO_APP_INFO=1 ./orders | jq` could read truncated JSON.
- */
-export type CarrierContents =
-  | { readonly kind: "none" }
-  | { readonly kind: "info" }
-  | { readonly kind: "app"; readonly app: PackagedApp };
-
 export interface PackagedApp {
+  /** The packaged executable, absolute. */
+  readonly executable: string;
   readonly index: AppIndex;
   /** The unpacked tree. */
   readonly dir: string;
@@ -47,36 +31,33 @@ export interface PackagedApp {
   readonly cacheDir: string;
 }
 
+export interface UnpackOptions {
+  /** Reclaim the application's other unpacked trees. Only a run does: a tree is
+   *  reclaimed because a newer build of the app replaced it, and a command that
+   *  only reads a binary says nothing about which build is deployed. */
+  readonly reclaim: boolean;
+  readonly env?: NodeJS.ProcessEnv;
+}
+
 /**
- * The application this executable carries, unpacked and ready to run, or
- * `undefined` when this is an ordinary `telo`.
- *
- * The cost on the ordinary CLI's startup path is one 52-byte read of its own
- * file.
+ * The application `executable` carries, unpacked and held by this process, or
+ * `undefined` when it carries none.
  */
-export async function loadPackagedApp(
-  execPath: string = process.execPath,
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<CarrierContents> {
-  const payload = await readEmbeddedPayload(execPath);
-  if (!payload) return { kind: "none" };
+export async function openPackagedApp(
+  executable: string,
+  options: UnpackOptions,
+): Promise<PackagedApp | undefined> {
+  const payload = await readEmbeddedPayload(executable);
+  if (!payload) return undefined;
 
   const index = await readPayloadIndex(payload.bytes);
   const digest = payloadDigest(payload.bytes);
-  if (env[APP_INFO_ENV]?.trim()) {
-    // A bare document, through the Output seam like every other CLI-owned
-    // write: this is the one thing a packaged binary says about itself rather
-    // than about its application.
-    outDocument({ ...index, payload: `sha256:${digest}` });
-    return { kind: "info" };
-  }
-
-  const root = appsRoot(env);
+  const root = appsRoot(options.env ?? process.env);
   if (!root) {
     throw new Error(
       `${index.app.name} could not find a writable directory to unpack into. ` +
         `It tried the user cache directory and the temporary directory. ` +
-        `Set TELO_APP_DIR to a writable path (a mounted volume, under a read-only root filesystem).`,
+        `Set ${APP_DIR_ENV} to a writable path (a mounted volume, under a read-only root filesystem).`,
     );
   }
 
@@ -91,14 +72,15 @@ export async function loadPackagedApp(
     // rolling deploy the sweep exists for.
     await materialize(payload.bytes, dir, digest);
   }
-  sweepSiblings(root, index.app.name, dir);
+  if (options.reclaim) sweepSiblings(root, index.app.name, dir);
 
-  // The payload IS the cache. It is handed to the run as a value rather than
-  // written into `process.env`: the run already takes its entry, its env anchor
-  // and its analysis key that way, and a process-global side channel for the
-  // fourth would be one concept addressed two ways.
-  const cacheDir = path.join(dir, CACHE_PREFIX);
-  return { kind: "app", app: { index, dir, entry: path.join(dir, index.entry), cacheDir } };
+  return {
+    executable,
+    index,
+    dir,
+    entry: path.join(dir, index.entry),
+    cacheDir: path.join(dir, CACHE_PREFIX),
+  };
 }
 
 /** Unpack beside the target and rename into place, so two copies starting at
@@ -127,6 +109,21 @@ async function materialize(payload: Buffer, dir: string, digest: string): Promis
   }
 }
 
+/** Every hold this process has taken, dropped together when it exits — one
+ *  listener however many times a tree is opened (a watch session reopens its
+ *  executable on every reload). */
+const heldMarks = new Set<string>();
+
+function dropHolds(): void {
+  for (const mark of heldMarks) {
+    try {
+      fs.rmSync(mark, { force: true });
+    } catch {
+      // A sweep answers for it: the pid is gone either way.
+    }
+  }
+}
+
 /** Record that this process is using the tree, so another copy's sweep leaves
  *  it alone. Best-effort: a tree that cannot be marked is one that may be
  *  reclaimed early, which costs an extraction, never correctness. */
@@ -137,15 +134,10 @@ function holdDirectory(dir: string): void {
     const mark = path.join(live, String(process.pid));
     fs.writeFileSync(mark, "", { mode: 0o600 });
     // The mark travels with the tree when the staging directory is renamed into
-    // place, so the path to remove is resolved at exit rather than captured.
-    const drop = (): void => {
-      try {
-        fs.rmSync(mark, { force: true });
-      } catch {
-        // A sweep answers for it: the pid is gone either way.
-      }
-    };
-    process.once("exit", drop);
+    // place, so the tree is re-held under the path it then lives at and both
+    // paths are removed at exit — the staging one by then names nothing.
+    if (heldMarks.size === 0) process.once("exit", dropHolds);
+    heldMarks.add(mark);
   } catch {
     // No hold; see above.
   }
@@ -207,31 +199,4 @@ function heldByLiveProcess(dir: string): boolean {
     }
   }
   return false;
-}
-
-/**
- * Run the packaged application through `telo run`'s own implementation.
- *
- * Every argument after the program name is the application's, exactly as
- * `telo run app.yaml -- …` passes them today. The CLI is unreachable from a
- * packaged binary: the user of `./orders` is not a telo user.
- */
-export async function runPackagedApp(app: PackagedApp, argv: readonly string[]): Promise<void> {
-  const { run } = await import("../commands/run.js");
-  await run({
-    path: app.entry,
-    verbose: false,
-    debug: false,
-    open: false,
-    watch: false,
-    cacheWrite: true,
-    // The deployment's configuration surface is where the operator stands, not
-    // the digest-keyed tree the payload happens to unpack into.
-    envAnchor: process.cwd(),
-    // An external `TELO_CACHE_DIR` is deliberately not honoured here: it would
-    // point the kernel at a tree holding none of this application's modules.
-    cacheDir: app.cacheDir,
-    analysisKey: app.index.analysisKey,
-    applicationArgs: [...argv],
-  });
 }

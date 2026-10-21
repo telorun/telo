@@ -1,0 +1,18 @@
+# The library the payload carries at oci://registry.test/acme/greetings@1.0.0.
+kind: Telo.Library
+metadata:
+  name: Greetings
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata:
+  name: Greeting
+capability: Telo.Type
+schema:
+  type: object
+  properties:
+    text:
+      type: string
+      x-telo-eval: compile
+  required: [text]
+  additionalProperties: false

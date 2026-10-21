@@ -162,6 +162,7 @@ import {
   type RefSlotIssue,
 } from "./validate-ref-slots.js";
 import { scopeSlotProblems } from "./validate-scope-slots.js";
+import { topologyRoleProblems } from "./validate-topology-roles.js";
 import {
   validateValueTypeSlots,
   type ValueTypeSlotIssue,
@@ -1182,7 +1183,7 @@ export class StaticAnalyzer {
     // a library's internals. Shared with the registry so an editor's contract
     // query resolves the same hops `telo check` does.
     const libraries = libraryDeclarations(options?.moduleDocuments ?? []);
-    registry?._setLibraries(libraries);
+    registry?._setLibraries(libraries, options?.moduleDocuments ?? []);
     // Per-module-scope seen aliases for DUPLICATE_IMPORT_ALIAS. Authored
     // Telo.Import docs and synthetic-from-inline-`imports:` share one alias
     // namespace per module, so a repeat — across either form — is an error
@@ -1683,6 +1684,28 @@ export class StaticAnalyzer {
             moduleNames: moduleCallNamesOf(moduleCallNames, declarer),
           }),
         );
+      }
+      // A topology role outside the vocabulary, and a `matcher` nothing reads.
+      // Judged once every kind is registered, since a trigger slot the kind
+      // inherits makes a top-level matcher legal.
+      const resolveDef = (k: string) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
+      for (const declarer of ownRuleDeclarers) {
+        for (const problem of topologyRoleProblems(
+          declarer as unknown as ResourceDefinition,
+          effectiveAuthorSchema(declarer as any, resolveDef),
+        )) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Warning,
+            code: problem.code,
+            source: SOURCE,
+            message: `${declarer.kind} ${problem.message}`,
+            data: {
+              resource: { kind: declarer.kind, name: declarer.metadata?.name as string },
+              filePath: (declarer.metadata as { source?: string } | undefined)?.source,
+              path: problem.path,
+            },
+          });
+        }
       }
     }
 

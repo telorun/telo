@@ -1,0 +1,59 @@
+kind: Telo.Library
+metadata:
+  name: Payments
+  version: 0.2.0
+  description: Charges a card and records the charge in a journal its importer hands over.
+imports:
+  Ledger: ./ledger
+variables:
+  currency: { type: string, default: EUR }
+secrets:
+  token: { type: string }
+resources:
+  journal: { kind: Self.Journal }
+needs:
+  bank: { kind: Self.Bank }
+exports:
+  kinds: [Charge, Journal]
+  resources: [charge]
+---
+kind: Telo.NeedType
+metadata:
+  name: Bank
+  description: The bank charges are made through.
+fields:
+  url: { type: string }
+  key: { type: string, x-telo-sensitive: true }
+required: [url, key]
+---
+kind: Telo.Definition
+metadata:
+  name: Journal
+  description: Where charges are recorded.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/payments.mjs&local_path=./nodejs/src/index.ts#Journal
+schema:
+  type: object
+  properties: {}
+---
+kind: Telo.Definition
+metadata:
+  name: Charge
+  description: Charges an amount and records it.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/payments.mjs&local_path=./nodejs/src/index.ts#Charge
+schema:
+  type: object
+  properties:
+    journal:
+      x-telo-ref: { kind: Self.Journal, use: dependency }
+    note: { type: string, x-telo-eval: compile }
+    bankUrl: { type: string, x-telo-eval: compile }
+---
+kind: Self.Charge
+metadata: { name: charge }
+journal: !ref journal
+note: !cel "'charged in ' + variables.currency"
+bankUrl: !cel "resources.bank.url"

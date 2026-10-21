@@ -1,8 +1,4 @@
 import {
-  AnalysisRegistry,
-  StaticAnalyzer,
-  collectModuleDocuments,
-  flattenForAnalyzer,
   needGraphFromLoadedGraph,
   needGraphScopeOf,
   resolveNeedTable,
@@ -11,17 +7,14 @@ import {
   type LoadedGraph,
   type NeedTable,
 } from "@telorun/analyzer";
-import { nodeHostVersions } from "@telorun/kernel";
-import {
-  cacheTargetFor,
-  loadFreshGraph,
-  openSession,
-  resolveEntryPath,
-} from "./check-session.js";
-import { resolveLocation, type Logger } from "./logger.js";
+import { loadAnalyzedGraph, printRefusals } from "./analyzed-graph.js";
+import type { Logger } from "./logger.js";
+import type { ManifestInput } from "./manifest-input.js";
 import { outErrLine } from "./output.js";
 
 export interface LoadedNeedTable {
+  /** What the command was handed, resolved — a packaged executable included. */
+  input: ManifestInput;
   entryPath: string;
   graph: LoadedGraph;
   /** The root `Telo.Application` document. */
@@ -42,20 +35,9 @@ export async function loadNeedTable(
   log: Logger,
   product: string,
 ): Promise<LoadedNeedTable | undefined> {
-  const entryPath = resolveEntryPath(manifest);
-  const target = cacheTargetFor(entryPath);
-  const session = openSession(target ? [target] : []);
-  const { graph } = await loadFreshGraph(entryPath, session, log);
-
-  const loadFailures = [
-    ...graph.errors.map((e) => e.error.message),
-    ...graph.parseDiagnostics.map((d) => d.message),
-  ];
-  if (loadFailures.length > 0) {
-    for (const message of loadFailures) outErrLine(`${log.err.error("error")}  ${message}`);
-    process.exitCode = 1;
-    return undefined;
-  }
+  const analyzed = await loadAnalyzedGraph(manifest, log);
+  if (!analyzed) return undefined;
+  const { input, entryPath, graph, registry, errors } = analyzed;
   const root = graph.entry.owner.manifests.find((m) => m?.kind === "Telo.Application");
   if (!root) {
     outErrLine(
@@ -66,14 +48,6 @@ export async function loadNeedTable(
     return undefined;
   }
 
-  const registry = new AnalysisRegistry();
-  const errors = new StaticAnalyzer()
-    .analyze(
-      flattenForAnalyzer(graph),
-      { moduleDocuments: collectModuleDocuments(graph), hostVersions: nodeHostVersions() },
-      registry,
-    )
-    .filter((d) => d.severity === DiagnosticSeverity.Error);
   const table = resolveNeedTable(
     needGraphFromLoadedGraph(
       graph,
@@ -97,17 +71,8 @@ export async function loadNeedTable(
       })),
   ];
   if (refusals.length > 0) {
-    for (const d of refusals) {
-      const at = resolveLocation(graph, d, entryPath);
-      outErrLine(
-        `${at ? `${at}  ` : ""}${log.err.error("error")}  ${d.message}${d.code ? `  ${log.err.dim(String(d.code))}` : ""}`,
-      );
-    }
-    outErrLine(
-      `\n${refusals.length} error${refusals.length === 1 ? "" : "s"} — the application does not load, so it has no ${product}.`,
-    );
-    process.exitCode = 1;
+    printRefusals(analyzed, refusals, log, "application", product);
     return undefined;
   }
-  return { entryPath, graph, root, table };
+  return { input, entryPath, graph, root, table };
 }

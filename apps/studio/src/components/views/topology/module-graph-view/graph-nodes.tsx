@@ -53,6 +53,7 @@ import {
   type CollapsibleProp,
 } from "./collapsible";
 import { drawnRows } from "./box-geometry";
+import { matchLabel } from "./match-label";
 import { isPickerPort, pickerRows } from "./picker-port";
 import { branchingRows } from "./row-tree";
 
@@ -936,7 +937,7 @@ function RowLine({
   // else what matches it, else what it dispatches to — a boot target has none of
   // the first two and is entirely "run this". The concrete path is the last
   // resort, and says nothing a reader wanted.
-  const matched = row.match ? Object.values(row.match).filter(Boolean).join(" ") : undefined;
+  const matched = row.match ? matchLabel(row.match) : undefined;
   // A DECLARATION written at the site is named by the kind it declares — there
   // is nothing elsewhere to point at, so the kind is the whole identity.
   //

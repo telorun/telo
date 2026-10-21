@@ -54,6 +54,12 @@ import {
   walkCelExpressions,
 } from "@telorun/templating";
 import {
+  writtenLeafOf,
+  writtenMap,
+  type WrittenValue,
+  type WrittenValueContext,
+} from "./written-value.js";
+import {
   nodeIdFor,
   resolveScopedName,
   resourceId,
@@ -62,17 +68,18 @@ import {
   type ResourceGraphNode,
   type StepGraphNode,
 } from "./call-graph.js";
-import { propertySchemas, resolveLocalRef } from "./manifest-navigation.js";
+import { propertySchemas } from "./manifest-navigation.js";
 import { isStepSlot } from "./step-slot.js";
 import { isInlineResource } from "./reference-field-map.js";
 import { findZoneProviders } from "./resolve-zone-containment.js";
-import type { RefUse } from "./ref-slot.js";
+import { isTriggerUse, topFieldOf, type RefUse } from "./ref-slot.js";
 import { canonicalJson } from "./canonical-json.js";
 import { isForwardedShape } from "./forwarded-declaration.js";
 import { isKindDocument, kindDeclarationOf } from "./kind-declaration.js";
 import { accessChains } from "./cel-access-chains.js";
 import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
 import { selfForwardPath } from "./template-forward.js";
+import { entryListsOf, rootMatchersOf, type EntryListDeclaration } from "./topology-role.js";
 
 /** How a node's declaration reached the module, which is what decides where a
  *  view may draw it — an inline child exists nowhere but its parent's YAML, so
@@ -194,8 +201,11 @@ export interface GraphRow {
   inputs?: string;
   /** The values a matcher-role field holds (`{path: "/orders", method: "POST"}`)
    *  — what identifies an entry to a reader, and what its content key is
-   *  derived from. Entry rows only. */
-  match?: Record<string, unknown>;
+   *  derived from — as written-values (`written-value.ts`): a list in written
+   *  order, an expression or a reference as `{ tag, source }`, a literal
+   *  mapping as `{ map }`; a field left unwritten is absent. Untyped, so an
+   *  expression's type never moves the id. Entry rows only. */
+  match?: Record<string, WrittenValue>;
   /**
    * What this row IS, in the grammar's own words — `invoke`, `if/then/else`,
    * `while/do`, `switch/cases/default`, `try/catch/finally`, `throw`, `value`.
@@ -217,6 +227,10 @@ export interface GraphRow {
    * loop is the whole behaviour.
    */
   predicate?: string;
+  /** The field holding {@link predicate} — `if`, `while`, `switch`, a
+   *  dispatch's `when` — as the step grammar names it; a boot target's guard is
+   *  `when`. Where a reader finds the expression: `<path>.<predicateField>`. */
+  predicateField?: string;
   /** This row declares an error branch — a field the kind annotated
    *  `x-telo-error-context`, which is where a raised code is discharged. Found
    *  by the annotation, so a third-party composer's `catches:` is seen too. */
@@ -366,6 +380,13 @@ export interface GraphEdge {
    *  the module's own, `<Alias>.<name>` through an import. A call is written in
    *  an expression, so these edges leave from no port (`slot` is `cel`). */
   call?: string;
+  /**
+   * A trigger edge outside the declaring resource's entry lists: the values its
+   * kind's top-level `matcher` fields hold (`{every: "5m"}`), in the shape an
+   * entry row's `match` takes. Absent when the kind declares none. An edge
+   * inside an entry list is labelled by its row's `match` instead.
+   */
+  match?: Record<string, WrittenValue>;
 }
 
 /**
@@ -665,14 +686,10 @@ class IdMinter {
   }
 }
 
-/** Every array field of a kind carrying `x-telo-topology-role: entries`, with
- *  the roles declared inside its items — `matcher` fields identify an entry to
- *  a reader, `handler` fields say what it dispatches to. No kind is named: a
- *  third-party router declaring the same three tokens renders identically. */
-interface EntryListSpec {
-  field: string;
-  matchers: string[];
-  handlers: string[];
+/** An entry list as the topology-role reader declares it, plus the sub-fields
+ *  that discharge a raised code. No kind is named: a third-party router
+ *  declaring the same roles renders identically. */
+interface EntryListSpec extends EntryListDeclaration {
   /** Sub-fields annotated `x-telo-error-context` — where an entry discharges a
    *  raised code. */
   errorBranches: string[];
@@ -696,24 +713,13 @@ function isErrorBranch(schema: Record<string, any> | undefined): boolean {
   );
 }
 
-function entryListsOf(rootSchema: Record<string, any> | undefined): EntryListSpec[] {
-  if (!rootSchema) return [];
-  const out: EntryListSpec[] = [];
-  for (const [key, propSchema] of propertySchemas(rootSchema)) {
-    if (propSchema?.["x-telo-topology-role"] !== "entries") continue;
-    const items = resolveLocalRef(propSchema.items as Record<string, any>, rootSchema);
-    const matchers: string[] = [];
-    const handlers: string[] = [];
-    const errorBranches: string[] = [];
-    for (const [subKey, subSchema] of propertySchemas(items ?? {})) {
-      const role = subSchema?.["x-telo-topology-role"];
-      if (role === "matcher") matchers.push(subKey);
-      else if (role === "handler") handlers.push(subKey);
-      if (isErrorBranch(subSchema)) errorBranches.push(subKey);
-    }
-    out.push({ field: key, matchers, handlers, errorBranches });
-  }
-  return out;
+function entryListSpecsOf(rootSchema: Record<string, any> | undefined): EntryListSpec[] {
+  return entryListsOf(rootSchema).map((list) => ({
+    ...list,
+    errorBranches: propertySchemas(list.items ?? {})
+      .filter(([, subSchema]) => isErrorBranch(subSchema))
+      .map(([subKey]) => subKey),
+  }));
 }
 
 /** A value written AT a ref slot that declares a resource rather than naming
@@ -959,6 +965,17 @@ export function buildModuleGraph(
   // recursion; entry lists and boot targets are read here, since neither is a
   // step body and neither has a node of its own.
   const callGraphIdByNode = invertProjectedIds(projectedId);
+  // The concrete paths of a resource's filled reference sites — what decides
+  // that a matcher value is a reference. Read once per node, on demand.
+  const refSitePaths = new Map<string, ReadonlySet<string>>();
+  const refSitePathsOf = (nodeId: string, manifest: ResourceManifest): ReadonlySet<string> => {
+    let paths = refSitePaths.get(nodeId);
+    if (!paths) {
+      paths = new Set(deps.refSites(manifest).map((site) => site.path));
+      refSitePaths.set(nodeId, paths);
+    }
+    return paths;
+  };
   const callGraphIdOf = (nodeId: string): string => callGraphIdByNode.get(nodeId) ?? nodeId;
 
   for (const node of nodes) {
@@ -976,7 +993,7 @@ export function buildModuleGraph(
         : exportRows(node, manifest, rowIdByPath)
       : [
           ...stepRows(node, callGraph, callGraphIdOf(node.id), rowIdByPath),
-          ...entryRows(node, manifest, schema, rowIdByPath),
+          ...entryRows(node, manifest, schema, rowIdByPath, () => refSitePathsOf(node.id, manifest)),
         ];
     if (!node.root) node.rowArrays = declaredRowArrays(schema);
   }
@@ -1028,6 +1045,31 @@ export function buildModuleGraph(
     }
   }
 
+  // What labels a node's trigger edges outside its entry lists — its kind's
+  // top-level matchers and the values the resource gives them — read once per
+  // node.
+  const labels = new Map<string, TriggerLabels | undefined>();
+  const labelsOf = (nodeId: string): TriggerLabels | undefined => {
+    if (labels.has(nodeId)) return labels.get(nodeId);
+    const node = byId.get(nodeId);
+    const manifest = manifestById.get(nodeId);
+    const schema = node && manifest
+      ? (deps.definition(node.kind, node.module)?.schema as Record<string, any> | undefined)
+      : undefined;
+    const matchers = rootMatchersOf(schema).map((p) => p.name);
+    const found =
+      manifest && matchers.length > 0
+        ? {
+            match: matchOf(manifest as unknown as Record<string, unknown>, matchers, "", {
+              isReferenceSite: (at) => refSitePathsOf(nodeId, manifest).has(at),
+            }),
+            entryFields: new Set(entryListsOf(schema).map((list) => list.field)),
+          }
+        : undefined;
+    labels.set(nodeId, found);
+    return found;
+  };
+
   // Edges come from the call graph — one per site, already resolved — re-keyed
   // onto the boxes a view draws: a step's edge is attributed to the resource
   // whose body declares it, with the row that declared it named, because a step
@@ -1058,6 +1100,10 @@ export function buildModuleGraph(
     // other slots — so the flag is stamped here rather than by a second pass
     // over `targets`, which emitted a duplicate edge for every one of them.
     if (root && projected.from === root.id) projected.boot = true;
+    else if (callGraph.nodes.get(edge.from)?.type === "resource" && !edge.moduleCall) {
+      const match = triggerMatchOf(projected, labelsOf(projected.from));
+      if (match) projected.match = match;
+    }
     edges.push(projected);
   }
 
@@ -1397,7 +1443,7 @@ function stepRows(
       ...(step.name !== undefined ? { name: step.name } : {}),
       ...(step.variant !== undefined ? { variant: step.variant } : {}),
       ...(step.variantLabel !== undefined ? { variantLabel: step.variantLabel } : {}),
-      ...(step.predicate !== undefined ? { predicate: step.predicate } : {}),
+      ...(step.predicate !== undefined ? { predicate: step.predicate, predicateField: step.predicateField } : {}),
       ...(parentId ? { parent: parentId } : {}),
     };
     rows.push(row);
@@ -1680,7 +1726,7 @@ function forwardSitesOf(
       if (!self || byPath.has(slot.path)) continue;
       // Every step slot of one body shares its field-map path, however deeply
       // the step nests — the call graph's own spelling of it.
-      const fieldPath = `${step.array.split(/[.[]/)[0]}[].${slot.key}`;
+      const fieldPath = `${topFieldOf(step.array)}[].${slot.key}`;
       byPath.set(slot.path, {
         path: slot.path,
         self,
@@ -1720,9 +1766,10 @@ function entryRows(
   manifest: ResourceManifest,
   schema: Record<string, any> | undefined,
   rowIdByPath: Map<string, string>,
+  refSites: () => ReadonlySet<string>,
 ): GraphRow[] {
   const rows: GraphRow[] = [];
-  for (const spec of entryListsOf(schema)) {
+  for (const spec of entryListSpecsOf(schema)) {
     const value = (manifest as Record<string, unknown>)[spec.field];
     if (!Array.isArray(value)) continue;
     const minter = new IdMinter();
@@ -1733,11 +1780,12 @@ function entryRows(
       // also carries the request schema. Taking the schema would put a row's
       // identity at the mercy of an edit to a property it does not show, so a
       // reader loses their selection by editing something else entirely.
-      const match = scalarLeaves(
-        Object.fromEntries(spec.matchers.filter((m) => entry[m] !== undefined).map((m) => [m, entry[m]])),
-      );
-      const key = Object.keys(match).length > 0 ? contentKey(match) : contentKey(entry);
       const path = `${spec.field}[${index}]`;
+      const match =
+        spec.matchers.length > 0
+          ? matchOf(entry, spec.matchers, path, { isReferenceSite: (at) => refSites().has(at) })
+          : {};
+      const key = Object.keys(match).length > 0 ? contentKey(match) : contentKey(entry);
       const id = minter.mint(`${node.id}#entry:${spec.field}/${key}`);
       rowIdByPath.set(`${node.id}\0${path}`, id);
 
@@ -1764,23 +1812,105 @@ function entryRows(
 }
 
 /**
- * The scalar leaves of a value, flattened to one map, to a bounded depth.
+ * What identifies an entry, or labels a trigger slot: the values the matcher
+ * fields hold, in the written-value encoding (`written-value.ts`). A field left
+ * unwritten is absent.
  *
  * A matcher is whatever the kind declared it to be: a flat `path` / `method`
- * pair on one router, a nested `request:` object on another. Reading the scalars
- * out of it works for both without naming either — and stopping at scalars is
- * what keeps a nested JSON Schema (which is an object all the way down) out of
- * something a reader is meant to recognize the row by.
+ * pair on one router, a nested `request:` object on another, a list of
+ * references on a mount. An object is read for its leaves, flattened to one map
+ * to a bounded depth — which works for every shape without naming one, and
+ * keeps a nested JSON Schema (an object all the way down) out of what a reader
+ * recognizes the row by. A list is carried whole, in written order, only as a
+ * matcher field's own value — an object element as the mapping of its leaves;
+ * one nested deeper is schema, not identity.
+ *
+ * The caller's `context` decides what a reference is — the kind's reference
+ * sites, concrete paths under `at`, never the value's shape: a `{kind, name}`
+ * object at a field no slot declares is author data — and whether an expression
+ * carries a type. The module graph passes no typing, since a row's id derives
+ * from its `match`; the outline re-reads the same fields with its own.
  */
-function scalarLeaves(value: unknown, depth = 0): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  if (depth > 2 || !value || typeof value !== "object" || Array.isArray(value)) return out;
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (child === null) continue;
-    if (typeof child !== "object") out[key] = child;
-    else Object.assign(out, scalarLeaves(child, depth + 1));
+function matchOf(
+  record: Record<string, unknown>,
+  matchers: readonly string[],
+  at: string,
+  context: WrittenValueContext,
+): Record<string, WrittenValue> {
+  const out: Record<string, WrittenValue> = {};
+  for (const field of matchers) {
+    const value = record[field];
+    if (value === undefined || value === null) continue;
+    const path = at ? `${at}.${field}` : field;
+    if (Array.isArray(value)) {
+      out[field] = value.flatMap((item, index) => {
+        const element = matchElementOf(item, `${path}[${index}]`, context);
+        return element === undefined ? [] : [element];
+      });
+    } else readMatchLeaves(out, field, value, path, context, 1);
   }
   return out;
+}
+
+/** One element of a matcher list: a leaf, or the mapping of an object's leaves. */
+function matchElementOf(value: unknown, path: string, context: WrittenValueContext): WrittenValue | undefined {
+  if (value === null) return undefined;
+  const leaf = writtenLeafOf(value, path, context);
+  if (leaf !== undefined) return leaf;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const out: Record<string, WrittenValue> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    readMatchLeaves(out, key, child, `${path}.${key}`, context, 2);
+  }
+  return Object.keys(out).length > 0 ? writtenMap(out) : undefined;
+}
+
+/** Read `value` into `out` under `key` when it is a leaf, else its own leaves,
+ *  descending two object levels below the matcher field. */
+function readMatchLeaves(
+  out: Record<string, WrittenValue>,
+  key: string,
+  value: unknown,
+  path: string,
+  context: WrittenValueContext,
+  level: number,
+): void {
+  if (value === null || value === undefined) return;
+  const leaf = writtenLeafOf(value, path, context);
+  if (leaf !== undefined) {
+    out[key] = leaf;
+    return;
+  }
+  if (level > 2 || typeof value !== "object" || Array.isArray(value)) return;
+  for (const [childKey, child] of Object.entries(value as Record<string, unknown>)) {
+    readMatchLeaves(out, childKey, child, `${path}.${childKey}`, context, level + 1);
+  }
+}
+
+/**
+ * The `match` the module graph carries for an entry `row` — or, with no row, for
+ * a trigger edge outside every entry list — read again from `manifest` by the
+ * same matcher reader, with the caller's written-value `context`. `schema` is
+ * the kind's, resolved as the graph resolved it. `undefined` when nothing
+ * matcher-role is written.
+ */
+export function readGraphMatch(
+  manifest: ResourceManifest,
+  schema: Record<string, any> | undefined,
+  row: Pick<GraphRow, "array" | "index" | "path"> | undefined,
+  context: WrittenValueContext,
+): Record<string, WrittenValue> | undefined {
+  const record = manifest as unknown as Record<string, unknown>;
+  let match: Record<string, WrittenValue>;
+  if (row) {
+    const matchers = entryListsOf(schema).find((list) => list.field === row.array)?.matchers ?? [];
+    const entry = (record[row.array] as unknown[] | undefined)?.[row.index];
+    if (matchers.length === 0 || !entry || typeof entry !== "object") return undefined;
+    match = matchOf(entry as Record<string, unknown>, matchers, row.path, context);
+  } else {
+    match = matchOf(record, rootMatchersOf(schema).map((p) => p.name), "", context);
+  }
+  return Object.keys(match).length > 0 ? match : undefined;
 }
 
 /**
@@ -1794,7 +1924,7 @@ function declaredRowArrays(
   schema: Record<string, any> | undefined,
 ): { field: string; kind: RowKind }[] {
   const out: { field: string; kind: RowKind }[] = [];
-  for (const spec of entryListsOf(schema)) out.push({ field: spec.field, kind: "entry" });
+  for (const spec of entryListSpecsOf(schema)) out.push({ field: spec.field, kind: "entry" });
   for (const [key, propSchema] of propertySchemas(schema ?? {})) {
     if (isStepSlot(propSchema)) out.push({ field: key, kind: "step" });
   }
@@ -1894,7 +2024,7 @@ function targetRows(
       // A boot target's shapes carry no branch titles, so there is no variant
       // to report — but a GATED one is the same fact a step's `when:` is, and
       // a target drawn without its guard says it always runs.
-      ...(guardOf(record) !== undefined ? { predicate: guardOf(record)! } : {}),
+      ...(guardOf(record) !== undefined ? { predicate: guardOf(record)!, predicateField: "when" } : {}),
     };
   });
 }
@@ -2032,6 +2162,24 @@ function appendPathFor(path: string, manifest: ResourceManifest): string | undef
 function containerArrayOf(path: string): string {
   const marker = path.indexOf("[]");
   return marker === -1 ? path : path.slice(0, marker);
+}
+
+/** A node's top-level matcher values, and the entry lists whose edges its rows
+ *  label instead. */
+interface TriggerLabels {
+  match: Record<string, WrittenValue>;
+  entryFields: ReadonlySet<string>;
+}
+
+/** The `match` a resource-level edge carries: its node's top-level matcher
+ *  values, when the edge is a trigger outside every entry list. */
+function triggerMatchOf(
+  edge: GraphEdge,
+  labels: TriggerLabels | undefined,
+): Record<string, WrittenValue> | undefined {
+  if (!labels || !edge.use.some(isTriggerUse)) return undefined;
+  if (labels.entryFields.has(topFieldOf(edge.slot))) return undefined;
+  return Object.keys(labels.match).length > 0 ? { ...labels.match } : undefined;
 }
 
 /** Re-key one call-graph edge onto the boxes a view draws. A step's edge is

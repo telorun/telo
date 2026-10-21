@@ -45,6 +45,8 @@ routes:
 
 A route declaring a stream body for a content type that arrives parsed fails with `ERR_REQUEST_BODY_NOT_STREAMED`, which names the `contentTypeParsers` entry to add. A `contentTypeParsers` entry is either `parser` or `stream`, never both.
 
+`contentTypeParsers` is an ordered entry list, like `mounts`: each entry is identified by its `contentType` and dispatches to its `parser`, which is how an editor lists the server's parsers and labels each one.
+
 A multipart body needs no entry: the server hands it over as raw bytes, which is what a multipart decoder reads. An entry naming an exact multipart type still takes precedence for that type alone.
 
 ## The body limit

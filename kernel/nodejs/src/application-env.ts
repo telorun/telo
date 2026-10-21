@@ -2,7 +2,7 @@ import {
   type ArgBinding,
   type DefResolver,
   describeArgBinding,
-  type NeedTableEntry,
+  type NeedEnvironmentEntry,
   type NeedTypeShape,
   effectiveAuthorSchema,
   inputValueTypeName,
@@ -172,8 +172,8 @@ export async function resolveApplicationInputs(
 
 /** The needs a root reads from the environment, and the type each is of. */
 export interface NeedEnvironmentRequest {
-  entries: readonly NeedTableEntry[];
-  shapeOf(entry: NeedTableEntry): NeedTypeShape | undefined;
+  entries: readonly NeedEnvironmentEntry[];
+  shapeOf(entry: NeedEnvironmentEntry): NeedTypeShape | undefined;
 }
 
 /** A need the environment cannot fulfil: nothing set for a required one
@@ -182,7 +182,7 @@ export interface NeedEnvironmentRequest {
 interface NeedEnvironmentRefusal {
   code: "ERR_NEED_UNMET" | "ERR_NEED_PARTIALLY_SUPPLIED";
   message: string;
-  entry: NeedTableEntry;
+  entry: NeedEnvironmentEntry;
   /** The required fields still without a value — what a host is asked for. */
   missing: UnresolvedApplicationInput[];
 }
@@ -322,7 +322,7 @@ function resolveNeedEnvironment(
   validator: SchemaValidator,
   findings: Findings,
   reading: InputReading,
-  awaiting: ReadonlySet<NeedTableEntry>,
+  awaiting: ReadonlySet<NeedEnvironmentEntry>,
 ): Map<string, Record<string, unknown> | null> {
   const values = new Map<string, Record<string, unknown> | null>();
   for (const entry of request.entries) {

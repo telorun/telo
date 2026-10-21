@@ -65,6 +65,18 @@ export function transfersControl(use: RefUse): boolean {
   return use !== "schema" && use !== "dependency";
 }
 
+/** True for a use by which the declaring resource registers the target for
+ *  control arriving later — a request, a timer, a drained value: an entry point. */
+export function isTriggerUse(use: string): boolean {
+  return use === "trigger.inbound" || use === "trigger.consumer";
+}
+
+/** The top-level field a slot pattern or a concrete site starts at
+ *  (`routes[].handler` and `routes[1].handler` → `routes`). */
+export function topFieldOf(path: string): string {
+  return path.split(/[.[]/, 1)[0]!;
+}
+
 /** A slot whose use is selected by a sibling config field. The selector must be
  *  statically resolvable — a literal or a schema default — because a call graph
  *  known only at runtime is not statically analyzable. */

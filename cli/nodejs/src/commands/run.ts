@@ -37,6 +37,7 @@ import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
 import { anchorDirectory, nativePath, resolveEnvFiles } from "../env-files.js";
 import { countRootErrors, createLogger, formatDiagnostics, type Logger } from "../logger.js";
+import { resolveManifestInput } from "../manifest-input.js";
 import { canOpenBrowser, openBrowser } from "../open-browser.js";
 import { outErrLine, output } from "../output.js";
 import { StartupProfiler, writeStartupProfile } from "../startup-profile.js";
@@ -319,18 +320,18 @@ export type RunArgv = {
   cacheWrite: boolean;
   /** Write one JSON startup timing report; an empty value uses the entry directory. */
   startupProfile?: string;
-  /** Where the env-file walk starts. The manifest's own directory for an
-   *  ordinary run — which is at or near where the command was typed — and the
-   *  WORKING DIRECTORY for a packaged application, whose manifest sits at a
-   *  digest-keyed path inside the unpack cache that no operator should have to
-   *  find. One walk, one anchor, chosen by the caller. */
+  /** Where the env-file walk starts, and where `--debug` writes its log. The
+   *  manifest's own directory for an ordinary run — which is at or near where the
+   *  command was typed — and the WORKING DIRECTORY for a packaged executable,
+   *  whose manifest sits at a digest-keyed path inside the unpack cache that no
+   *  operator should have to find. Set by {@link resolveRunInput}. */
   envAnchor?: string;
-  /** A packaged application's payload identity, under which its analysis verdict
-   *  is filed and signed. Absent everywhere else. */
+  /** A packaged executable's payload identity, under which its analysis verdict
+   *  is filed and signed. Set by {@link resolveRunInput}; absent everywhere else. */
   analysisKey?: string;
-  /** The cache root to run against. A packaged application passes its unpacked
-   *  payload, which is the only cache it has; everywhere else it is resolved
-   *  from the entry as usual. */
+  /** The cache root to run against: a packaged executable's sealed payload,
+   *  which is the only cache it has. Set by {@link resolveRunInput}; everywhere
+   *  else it is resolved from the entry as usual. */
   cacheDir?: string;
   /** The application's own command line: every token after the manifest path,
    *  read against the `arg:` bindings its root Application declares. */
@@ -401,8 +402,9 @@ async function startDebugSession(
   let fileSink: DebugEventSubscriber | undefined;
   let eventLogPath: string | undefined;
   if (argv.debug) {
-    // Stream next to the manifest by default (cwd fallback for URL entries).
-    const debugDir = resolveEntryDir(argv.path) ?? process.cwd();
+    // Written where the env files are read: next to the manifest, the working
+    // directory for a packaged executable (and for a URL entry).
+    const debugDir = resolveEntryDir(argv.envAnchor ?? argv.path) ?? process.cwd();
     eventLogPath = path.join(debugDir, ".telo.debug.jsonl");
     fileSink = new DebugEventSubscriber(eventLogPath);
     await fileSink.open();
@@ -677,17 +679,49 @@ function reportError(argv: RunArgv, error: unknown, log: Logger, kernel?: Kernel
   return errorCount;
 }
 
-export async function run(argv: RunArgv): Promise<void> {
-  if (argv.watch && argv.startupProfile !== undefined) {
+/**
+ * The run `argv` describes once its path is resolved: a manifest runs as given,
+ * and a packaged executable runs from its unpacked entry against its payload's
+ * sealed cache — its only cache, which the kernel never revalidates and which a
+ * run alone may add a module it lacked to — under its payload's analysis key,
+ * with env files read from the working directory, so `./orders <args>` and
+ * `telo run ./orders <args>` are one run. A run is what reclaims the
+ * application's other unpacked trees.
+ */
+async function resolveRunInput(argv: RunArgv): Promise<{ argv: RunArgv; executable?: string }> {
+  const input = await resolveManifestInput(argv.path, { reclaim: true });
+  if (!input.packaged) return { argv };
+  return {
+    argv: {
+      ...argv,
+      path: input.entryPath,
+      envAnchor: argv.envAnchor ?? input.packaged.envAnchor,
+      cacheDir: argv.cacheDir ?? input.cacheRoot ?? undefined,
+      analysisKey: argv.analysisKey ?? input.packaged.index.analysisKey,
+    },
+    executable: input.packaged.executable,
+  };
+}
+
+export async function run(given: RunArgv): Promise<void> {
+  if (given.watch && given.startupProfile !== undefined) {
     throw new Error("--startup-profile cannot be used with --watch; a watch session has multiple startup generations.");
   }
 
-  const startupProfile = argv.startupProfile;
+  const startupProfile = given.startupProfile;
   const profiler = startupProfile === undefined ? undefined : new StartupProfiler();
-  const log = createLogger(argv.verbose);
-  if (argv.watch) {
-    await runWatch(argv, log);
+  const log = createLogger(given.verbose);
+  if (given.watch) {
+    await runWatch(given, log);
     return;
+  }
+
+  let argv: RunArgv;
+  try {
+    ({ argv } = await resolveRunInput(given));
+  } catch (error) {
+    reportError(given, error, log);
+    process.exit(1);
   }
 
   // Resolve the `.telo` cache root once per invocation, then thread it.
@@ -902,19 +936,31 @@ function emitRunFailed(
  * start (held alive so one-shot apps don't exit) → wait for a file change →
  * cancel + forceIdle to drive teardown → rebuild. A load/boot failure is
  * reported but does not exit; we keep watching so the next edit retries.
+ *
+ * The path is resolved again every cycle. For a packaged executable the file
+ * that changes is the executable — its unpacked tree never does — so it is the
+ * one file watched, and a rebuilt binary reloads from its own new tree.
  */
-async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
-  const env = await applyEnvFiles(argv.path, argv.debug);
+async function runWatch(given: RunArgv, log: Logger): Promise<void> {
+  // The first resolution fixes what the session shares: where env files are
+  // read, the debug log, and the inspect endpoint.
+  let first: Awaited<ReturnType<typeof resolveRunInput>>;
+  try {
+    first = await resolveRunInput(given);
+  } catch (error) {
+    reportError(given, error, log);
+    process.exit(1);
+  }
+  const env = await applyEnvFiles(first.argv.envAnchor ?? first.argv.path, given.debug);
   // One session for every reload: a reload asks only for what it has not
   // been told, or for what it refuses.
-  const inputs = inputSessionFor(argv);
-  // Resolve the `.telo` cache root once per invocation, then thread it.
-  const cacheRoot = argv.cacheDir ?? resolveCacheRoot(argv.path);
+  const inputs = inputSessionFor(given);
+  const sessionCacheRoot = first.argv.cacheDir ?? resolveCacheRoot(first.argv.path);
   // One inspect endpoint for the whole watch session — reloads re-attach the
   // rebuilt kernel to it (see startDebugSession), so the UI connection survives.
   const debug =
-    argv.debug || argv.inspect !== undefined
-      ? await startDebugSession(argv, log, cacheRoot)
+    given.debug || given.inspect !== undefined
+      ? await startDebugSession(first.argv, log, sessionCacheRoot)
       : undefined;
 
   let stopping = false;
@@ -948,17 +994,10 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
 
   // Watch the entry up-front so an edit during the first (possibly slow) load
   // still queues a reload; the graph's full file set is added after each load.
-  watchers.sync(new Set([entryFilePath(argv.path)]));
+  watchers.sync(new Set([first.executable ?? entryFilePath(given.path)]));
 
+  let resolved: Awaited<ReturnType<typeof resolveRunInput>> | undefined = first;
   while (!stopping) {
-    const kernel = await buildKernel(argv, log, cacheRoot);
-    debug?.attach(kernel);
-    currentKernel = kernel;
-    // Hold the kernel alive across the cycle so apps without their own hold
-    // (e.g. script-only manifests) stay up until a change or Ctrl+C; forceIdle()
-    // overrides every hold (including a server's own) when we want to reload.
-    kernel.acquireHold("watch-mode");
-
     const changed = new Promise<void>((resolve) => {
       // Clearing the slot on resolve is what routes a later change into
       // `pendingChange` instead of onto this already-settled gate.
@@ -972,11 +1011,34 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
       notifyChange();
     }
 
-    const writeManifestCacheOnce = manifestCacheWriter(argv, kernel, log, cacheRoot);
+    let cycle: RunArgv;
+    let executable: string | undefined;
     try {
-      await kernel.load(argv.path, {
+      ({ argv: cycle, executable } = resolved ?? (await resolveRunInput(given)));
+    } catch (error) {
+      // A binary being rewritten does not unpack until the write completes.
+      reportError(given, error, log);
+      await changed;
+      continue;
+    } finally {
+      resolved = undefined;
+    }
+
+    const cacheRoot = cycle.cacheDir ?? resolveCacheRoot(cycle.path);
+    const kernel = await buildKernel(cycle, log, cacheRoot);
+    debug?.attach(kernel);
+    currentKernel = kernel;
+    // Hold the kernel alive across the cycle so apps without their own hold
+    // (e.g. script-only manifests) stay up until a change or Ctrl+C; forceIdle()
+    // overrides every hold (including a server's own) when we want to reload.
+    kernel.acquireHold("watch-mode");
+
+    const writeManifestCacheOnce = manifestCacheWriter(cycle, kernel, log, cacheRoot);
+    try {
+      await kernel.load(cycle.path, {
         cacheDir: cacheRoot,
-        writeCache: argv.cacheWrite,
+        writeCache: cycle.cacheWrite,
+        ...(cycle.analysisKey !== undefined ? { analysisKey: cycle.analysisKey } : {}),
         ...(inputs ? { inputResolver: cacheFirstResolver(inputs, writeManifestCacheOnce) } : {}),
       });
       warnSensitiveValues(kernel, env);
@@ -985,10 +1047,12 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
         await kernel.teardown();
         return;
       }
-      if (inputs) await offerToSave(argv, inputs, env, log);
+      if (inputs) await offerToSave(cycle, inputs, env, log);
       await writeManifestCacheOnce();
       debug?.markReady(kernel);
-      const count = watchers.sync(await collectWatchFiles(kernel));
+      const count = watchers.sync(
+        executable !== undefined ? new Set([executable]) : await collectWatchFiles(kernel),
+      );
       log.info(`[watch] watching ${count} file(s)`);
 
       // start() resolves on its own only on boot error or one-shot completion
@@ -996,7 +1060,7 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
       // so the cycle advances on a file change. Errors are reported, not thrown.
       const startPromise = kernel.start().catch((err) => {
         emitRunFailed(debug, "start", err);
-        return reportError(argv, err, log, kernel);
+        return reportError(cycle, err, log, kernel);
       });
       await changed;
       kernel.cancel("reload");
@@ -1011,8 +1075,8 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
       }
       // Load failed before start(); report and wait for an edit before retrying.
       emitRunFailed(debug, "load", error);
-      reportError(argv, error, log, kernel);
-      hintUnresolvedInputs(error, inputs, argv);
+      reportError(cycle, error, log, kernel);
+      hintUnresolvedInputs(error, inputs, cycle);
       await kernel.teardown();
       await changed;
     }
@@ -1026,7 +1090,8 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
 export const RUN_OPTIONS = {
   debug: {
     type: "boolean",
-    describe: "Write a .telo.debug.jsonl event log next to the manifest.",
+    describe:
+      "Write a .telo.debug.jsonl event log where the env files are read: next to the manifest, or the working directory for a packaged executable.",
   },
   inspect: {
     type: "string",
@@ -1066,7 +1131,8 @@ export function runCommand(yargs: Argv, applicationArgs: readonly string[]): Arg
     (y) =>
       y
         .positional("path", {
-          describe: "Path to YAML manifest, directory containing telo.yaml, or HTTP(S) URL",
+          describe:
+            "Path to YAML manifest, directory containing telo.yaml, packaged executable, or HTTP(S) URL",
           type: "string",
           demandOption: true,
         })

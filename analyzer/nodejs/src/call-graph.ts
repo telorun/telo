@@ -59,6 +59,7 @@ import {
   type RefUseCases,
 } from "./ref-slot.js";
 import { isStepSlot } from "./step-slot.js";
+import { topologyRoleOf, type TopologyRole } from "./topology-role.js";
 import { isInlineResource, type RefFieldEntry } from "./reference-field-map.js";
 import { enclosingDefault, siteRefEntry, type ReachRef } from "./reference-reach.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
@@ -131,6 +132,9 @@ export interface StepGraphNode {
    * composer annotating its own predicate is read the same way.
    */
   predicate?: string;
+  /** The field holding {@link predicate} (`if`, `while`, `switch`, `when`) — the
+   *  one the step grammar annotates as a predicate or discriminator. */
+  predicateField?: string;
   /**
    * Every reference slot this step's grammar declares — filled, empty, or
    * holding a declaration written at the site.
@@ -498,7 +502,7 @@ function classifyStep(
   step: Record<string, unknown>,
   itemSchema: Record<string, any> | undefined,
   rootSchema: Record<string, any>,
-): { variant?: string; variantLabel?: string; predicate?: string } {
+): { variant?: string; variantLabel?: string; predicate?: string; predicateField?: string } {
   if (!itemSchema) return {};
   const branches = Array.isArray(itemSchema.oneOf) ? itemSchema.oneOf : [];
   let variant: string | undefined;
@@ -514,19 +518,21 @@ function classifyStep(
   }
 
   let predicate: string | undefined;
+  let predicateField: string | undefined;
   for (const [key, propSchema] of propertySchemas(itemSchema)) {
-    const role = propSchema?.["x-telo-topology-role"];
+    const role = topologyRoleOf(propSchema);
     if (role !== "predicate" && role !== "discriminator") continue;
     const written = expressionSource(step[key]);
     if (written !== undefined) {
       predicate = written;
+      predicateField = key;
       break;
     }
   }
   return {
     ...(variant ? { variant } : {}),
     ...(variantLabel ? { variantLabel } : {}),
-    ...(predicate ? { predicate } : {}),
+    ...(predicate ? { predicate, predicateField } : {}),
   };
 }
 
@@ -626,7 +632,7 @@ function walkSteps(
 ): void {
   const dispatchRole = (
     data: unknown,
-    role: string,
+    role: TopologyRole,
     itemsSchema: Record<string, any> | undefined,
     path: string,
     stepId: string,
@@ -643,8 +649,8 @@ function walkSteps(
       data.forEach((entry, i) => {
         if (!entry || typeof entry !== "object") return;
         for (const [subKey, subSchema] of propertySchemas(entrySchema)) {
-          const subRole = subSchema["x-telo-topology-role"];
-          if (typeof subRole !== "string") continue;
+          const subRole = topologyRoleOf(subSchema);
+          if (!subRole) continue;
           dispatchRole(
             (entry as Record<string, any>)[subKey],
             subRole,
@@ -677,10 +683,13 @@ function walkSteps(
       step: value,
     };
     if (typeof value.name === "string") node.name = value.name;
-    const { variant, variantLabel, predicate } = classifyStep(value, ctx.itemSchema, ctx.rootSchema);
+    const { variant, variantLabel, predicate, predicateField } = classifyStep(value, ctx.itemSchema, ctx.rootSchema);
     if (variant) node.variant = variant;
     if (variantLabel) node.variantLabel = variantLabel;
-    if (predicate) node.predicate = predicate;
+    if (predicate) {
+      node.predicate = predicate;
+      node.predicateField = predicateField;
+    }
     if (parent) node.parent = parent;
     ctx.nodes.set(id, node);
     ctx.order.push(node);
@@ -688,8 +697,8 @@ function walkSteps(
 
     if (!ctx.itemSchema) return;
     for (const [key, propSchema] of propertySchemas(ctx.itemSchema)) {
-      const role = propSchema["x-telo-topology-role"];
-      if (typeof role !== "string") continue;
+      const role = topologyRoleOf(propSchema);
+      if (!role) continue;
       dispatchRole(
         value[key],
         role,

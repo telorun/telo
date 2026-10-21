@@ -1,0 +1,15 @@
+# Every way a need reaches the environment: the application's own, bound by
+# `env:`; a library's, reaching the root unsupplied; and a shared library's,
+# named beneath the library itself.
+kind: Telo.Application
+metadata:
+  name: Store
+  version: 1.0.0
+imports:
+  Types: ../../needs-report/types
+  Orders: ../../needs-report/orders
+  Audit: ./shared
+needs:
+  sessionKey:
+    kind: Types.SigningKey
+    env: { value: SESSION_KEY }

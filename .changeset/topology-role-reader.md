@@ -1,0 +1,5 @@
+---
+"@telorun/analyzer": minor
+---
+
+`x-telo-topology-role` is read by one reader (`topologyRoleOf`, `entryListsOf`, `rootMatchersOf`, `TOPOLOGY_ROLES`) with a closed vocabulary; a value outside it reads as no role. A `matcher` may now also sit on a top-level property of a kind whose top level reaches a trigger slot outside its entry lists, and the module graph carries those values as `match` on each such trigger edge. A matcher's value is carried as written in both places: a list in written order, an expression as `{ tag, source }`, a reference — decided by the kind's reference sites — as `{ tag: "ref", source }` with the `!ref` text, and an object element of a matcher list as `{ map: { … } }`, the written-value encoding the outline shares (`readWrittenValue`, `WrittenValue`). An entry row's id follows every matcher, so a mount with `hostnames` gets a new id, which stays put when mounts are reordered. A matcher anywhere else is the warning `TOPOLOGY_ROLE_MISPLACED`, and a role outside the vocabulary the warning `TOPOLOGY_ROLE_UNKNOWN`, which suggests the nearest role; both are reported at the kind. Completion offers the role values.

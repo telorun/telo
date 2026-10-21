@@ -1,0 +1,194 @@
+{
+  "outlineVersion": 1,
+  "module": {
+    "name": "Doors",
+    "kind": "Telo.Application",
+    "version": "0.1.0",
+    "description": "Serves one router through a public door and an internal door, each rendering a busy store its own way."
+  },
+  "inputs": [],
+  "boot": [
+    {
+      "id": "Telo.Application\u0000Doors#target:publicDoor",
+      "index": 0,
+      "target": "Doors\u0000Doors.Server\u0000publicDoor",
+      "targetName": "publicDoor"
+    },
+    {
+      "id": "Telo.Application\u0000Doors#target:internalDoor",
+      "index": 1,
+      "target": "Doors\u0000Doors.Server\u0000internalDoor",
+      "targetName": "internalDoor"
+    }
+  ],
+  "roots": [
+    "Doors\u0000Doors.Server\u0000publicDoor",
+    "Doors\u0000Doors.Server\u0000internalDoor"
+  ],
+  "entryPoints": [
+    {
+      "id": "Doors\u0000Doors.Router\u0000routes\u0000routes[].handler\u0000routes[0].handler",
+      "owner": "Doors\u0000Doors.Router\u0000routes",
+      "row": "Doors\u0000Doors.Router\u0000routes#entry:routes/s5g00g",
+      "slot": "routes[].handler",
+      "path": "routes[0].handler",
+      "use": [
+        "trigger.inbound"
+      ],
+      "match": {
+        "path": "/work"
+      },
+      "handler": "Doors\u0000Doors.Task\u0000work",
+      "handlerName": "work",
+      "throws": {
+        "codes": [
+          "ERR_BUSY"
+        ],
+        "unbounded": false
+      },
+      "catches": [
+        {
+          "code": "ERR_BUSY",
+          "covered": true,
+          "scope": {
+            "resource": "Doors\u0000Doors.Router\u0000routes",
+            "covered": true,
+            "enclosers": [
+              {
+                "resource": "Doors\u0000Doors.Server\u0000publicDoor",
+                "covered": true,
+                "list": {
+                  "list": "catches",
+                  "entry": 1,
+                  "undecided": []
+                },
+                "enclosers": []
+              },
+              {
+                "resource": "Doors\u0000Doors.Server\u0000internalDoor",
+                "covered": true,
+                "list": {
+                  "list": "catches",
+                  "entry": 0,
+                  "undecided": []
+                },
+                "enclosers": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "id": "Doors\u0000Doors.Server\u0000publicDoor",
+      "name": "publicDoor",
+      "kind": "Doors.Server",
+      "module": "Doors",
+      "capability": "Telo.Service",
+      "rows": [
+        {
+          "id": "Doors\u0000Doors.Server\u0000publicDoor#entry:mounts/x2jshm",
+          "kind": "entry",
+          "path": "mounts[0]",
+          "match": {
+            "prefix": "/"
+          },
+          "edges": [
+            {
+              "id": "Doors\u0000Doors.Server\u0000publicDoor\u0000mounts[].router\u0000mounts[0].router",
+              "use": [
+                "dependency"
+              ],
+              "class": "holds",
+              "slot": "mounts[].router",
+              "path": "mounts[0].router",
+              "target": "Doors\u0000Doors.Router\u0000routes",
+              "targetName": "routes"
+            }
+          ]
+        }
+      ],
+      "edges": []
+    },
+    {
+      "id": "Doors\u0000Doors.Router\u0000routes",
+      "name": "routes",
+      "kind": "Doors.Router",
+      "module": "Doors",
+      "capability": "Telo.Mount",
+      "rows": [
+        {
+          "id": "Doors\u0000Doors.Router\u0000routes#entry:routes/s5g00g",
+          "kind": "entry",
+          "path": "routes[0]",
+          "match": {
+            "path": "/work"
+          },
+          "edges": [
+            {
+              "id": "Doors\u0000Doors.Router\u0000routes\u0000routes[].handler\u0000routes[0].handler",
+              "use": [
+                "trigger.inbound"
+              ],
+              "class": "flow",
+              "slot": "routes[].handler",
+              "path": "routes[0].handler",
+              "target": "Doors\u0000Doors.Task\u0000work",
+              "targetName": "work"
+            }
+          ]
+        }
+      ],
+      "edges": []
+    },
+    {
+      "id": "Doors\u0000Doors.Task\u0000work",
+      "name": "work",
+      "kind": "Doors.Task",
+      "module": "Doors",
+      "capability": "Telo.Invocable",
+      "rows": [],
+      "edges": [],
+      "throws": {
+        "codes": [
+          "ERR_BUSY"
+        ],
+        "unbounded": false
+      }
+    },
+    {
+      "id": "Doors\u0000Doors.Server\u0000internalDoor",
+      "name": "internalDoor",
+      "kind": "Doors.Server",
+      "module": "Doors",
+      "capability": "Telo.Service",
+      "rows": [
+        {
+          "id": "Doors\u0000Doors.Server\u0000internalDoor#entry:mounts/x2jshm",
+          "kind": "entry",
+          "path": "mounts[0]",
+          "match": {
+            "prefix": "/"
+          },
+          "edges": [
+            {
+              "id": "Doors\u0000Doors.Server\u0000internalDoor\u0000mounts[].router\u0000mounts[0].router",
+              "use": [
+                "dependency"
+              ],
+              "class": "holds",
+              "slot": "mounts[].router",
+              "path": "mounts[0].router",
+              "target": "Doors\u0000Doors.Router\u0000routes",
+              "targetName": "routes"
+            }
+          ]
+        }
+      ],
+      "edges": []
+    }
+  ],
+  "unreached": []
+}

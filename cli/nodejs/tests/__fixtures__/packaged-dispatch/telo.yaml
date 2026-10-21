@@ -1,0 +1,34 @@
+kind: Telo.Application
+metadata:
+  name: Greeter
+  version: 1.0.0
+variables:
+  greeting:
+    env: GREETING
+    arg: { flag: greeting }
+    type: string
+    default: hello
+targets:
+  - !ref say
+---
+# Its controller prints its text and the directory it was loaded from, so a
+# run shows both what it was given and which unpacked tree it ran out of.
+kind: Telo.Definition
+metadata:
+  name: Say
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./say.mjs#say
+schema:
+  type: object
+  properties:
+    text:
+      type: string
+      x-telo-eval: compile
+  required: [text]
+  additionalProperties: false
+---
+kind: Self.Say
+metadata:
+  name: say
+text: !cel "variables.greeting"

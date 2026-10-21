@@ -10,7 +10,7 @@
  */
 
 import { readApplicationContract } from "./application-contract.js";
-import type { NeedTableEntry } from "./need-table.js";
+import type { NeedEnvironmentEntry } from "./need-table.js";
 
 export interface SensitiveEnvironmentInput {
   /** The environment variable. */
@@ -25,7 +25,7 @@ export interface SensitiveEnvironmentInput {
  *  none for any other document. */
 export function sensitiveEnvironmentInputs(
   root: unknown,
-  needEnvironment: readonly NeedTableEntry[],
+  needEnvironment: readonly NeedEnvironmentEntry[],
 ): SensitiveEnvironmentInput[] {
   const contract = readApplicationContract(root);
   if (!contract) return [];

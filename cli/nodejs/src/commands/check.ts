@@ -11,7 +11,6 @@ import {
   cacheTargetFor,
   loadFreshGraph,
   openSession,
-  resolveEntryPath,
   type CacheTarget,
   type CheckSession,
 } from "../check-session.js";
@@ -23,6 +22,7 @@ import {
   type Logger,
 } from "../logger.js";
 import { probeControllerTools } from "../controller-tool-probe.js";
+import { resolveManifestInput, type ManifestInput } from "../manifest-input.js";
 import { writeOriginDigests } from "../manifest-freshness.js";
 import { outErrLine, output } from "../output.js";
 
@@ -34,14 +34,14 @@ interface CheckOutcome {
 }
 
 async function checkOne(
-  inputPath: string,
+  input: ManifestInput,
   session: CheckSession,
-  cacheTarget: CacheTarget | null,
   cacheWrite: boolean,
   log: Logger,
 ): Promise<CheckOutcome> {
-  const entryPath = resolveEntryPath(inputPath);
+  const entryPath = input.entryPath;
   const isUrl = entryPath.startsWith("http://") || entryPath.startsWith("https://");
+  const cacheTarget = cacheTargetFor(input);
 
   try {
     // Freshness before analysis: a verdict computed from a moved tag would be
@@ -70,10 +70,12 @@ async function checkOne(
     diagnostics.push(...(await probeControllerTools(graph)));
     const counts = formatAnalysisDiagnostics(diagnostics, graph, log, entryPath);
 
-    if (cacheWrite && cacheTarget) {
+    if (cacheWrite && cacheTarget && !cacheTarget.sealed) {
       // Write-through so the next check — and the next `telo run` from this
       // directory, which reads the same cache — is hermetic. Caching is an
       // optimization: a read-only filesystem warns rather than fails the check.
+      // A sealed root is the binary's, and only a run of the application adds
+      // to it.
       try {
         await writeManifestCache(graph, cacheTarget.entryDir, cacheTarget.manifestsDir);
         await writeOriginDigests(cacheTarget.manifestsDir, digests);
@@ -88,25 +90,35 @@ async function checkOne(
   } catch (err) {
     const sourceLine = (err as any).sourceLine as number | undefined;
     const displayPath = isUrl ? entryPath : path.relative(process.cwd(), entryPath);
-    const loc = sourceLine !== undefined ? `:${sourceLine + 1}` : "";
-    const message = err instanceof Error ? err.message : String(err);
-    formatDiagnostics([{ message }], log, `${displayPath}${loc}`);
-    // A load failure is a diagnostic like any other to a `-o json` consumer;
-    // dropping it there would make the payload disagree with the exit code.
-    return {
-      errorCount: 1,
-      warnCount: 0,
-      diagnostics: [
-        {
-          file: displayPath,
-          line: sourceLine !== undefined ? sourceLine + 1 : 1,
-          column: 1,
-          severity: "error",
-          message,
-        },
-      ],
-    };
+    return loadFailure(displayPath, err, log, sourceLine);
   }
+}
+
+/** A path that did not load, as one diagnostic. A load failure is a diagnostic
+ *  like any other to a `-o json` consumer; dropping it there would make the
+ *  payload disagree with the exit code. */
+function loadFailure(
+  displayPath: string,
+  err: unknown,
+  log: Logger,
+  sourceLine?: number,
+): CheckOutcome {
+  const loc = sourceLine !== undefined ? `:${sourceLine + 1}` : "";
+  const message = err instanceof Error ? err.message : String(err);
+  formatDiagnostics([{ message }], log, `${displayPath}${loc}`);
+  return {
+    errorCount: 1,
+    warnCount: 0,
+    diagnostics: [
+      {
+        file: displayPath,
+        line: sourceLine !== undefined ? sourceLine + 1 : 1,
+        column: 1,
+        severity: "error",
+        message,
+      },
+    ],
+  };
 }
 
 export async function check(argv: {
@@ -117,21 +129,38 @@ export async function check(argv: {
 
   const cacheWrite = argv.cacheWrite !== false;
 
-  const cacheTargets = new Map<string, CacheTarget>();
+  // Each path resolved once, before the sessions open: a packaged executable is
+  // unpacked here. Every other path's cache root joins one shared session; a
+  // packaged executable's sealed payload is a session of its own, so it neither
+  // serves another path nor is served by one.
+  const inputs: Array<{ path: string; input?: ManifestInput; failure?: unknown }> = [];
   for (const p of argv.paths) {
-    const target = cacheTargetFor(resolveEntryPath(p));
-    if (target) cacheTargets.set(target.manifestsDir, target);
+    try {
+      inputs.push({ path: p, input: await resolveManifestInput(p) });
+    } catch (failure) {
+      inputs.push({ path: p, failure });
+    }
   }
 
-  const session = openSession([...cacheTargets.values()]);
+  const sharedTargets = new Map<string, CacheTarget>();
+  for (const { input } of inputs) {
+    const target = input ? cacheTargetFor(input) : null;
+    if (target && !target.sealed) sharedTargets.set(target.manifestsDir, target);
+  }
+  const shared = openSession([...sharedTargets.values()]);
+  const sessionFor = (input: ManifestInput): CheckSession => {
+    const target = cacheTargetFor(input);
+    return target?.sealed ? openSession([target]) : shared;
+  };
 
   let totalErrors = 0;
   let totalWarns = 0;
   const allDiagnostics: JsonDiagnostic[] = [];
 
-  for (const p of argv.paths) {
-    const cacheTarget = cacheTargetFor(resolveEntryPath(p));
-    const outcome = await checkOne(p, session, cacheTarget, cacheWrite, log);
+  for (const { path: p, input, failure } of inputs) {
+    const outcome = input
+      ? await checkOne(input, sessionFor(input), cacheWrite, log)
+      : loadFailure(p, failure, log);
     totalErrors += outcome.errorCount;
     totalWarns += outcome.warnCount;
     allDiagnostics.push(...outcome.diagnostics);
@@ -173,7 +202,8 @@ export function checkCommand(yargs: Argv): Argv {
     (y) =>
       y
         .positional("paths", {
-          describe: "Paths to YAML manifests, directories containing telo.yaml, or HTTP(S) URLs",
+          describe:
+            "Paths to YAML manifests, directories containing telo.yaml, packaged executables, or HTTP(S) URLs",
           type: "string",
           array: true,
           demandOption: true,

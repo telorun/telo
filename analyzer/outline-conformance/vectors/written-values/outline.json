@@ -1,0 +1,270 @@
+{
+  "outlineVersion": 1,
+  "module": {
+    "name": "Values",
+    "kind": "Telo.Application",
+    "description": "Shows each value as written, a literal mapping never mistaken for an expression."
+  },
+  "inputs": [
+    {
+      "block": "variables",
+      "name": "limits",
+      "binding": {
+        "env": "LIMITS"
+      },
+      "type": "object",
+      "required": false,
+      "default": {
+        "map": {
+          "tag": "cel",
+          "source": "1+1"
+        }
+      },
+      "readBy": []
+    },
+    {
+      "block": "variables",
+      "name": "region",
+      "binding": {
+        "env": "REGION"
+      },
+      "type": "string",
+      "required": false,
+      "default": "eu",
+      "readBy": [
+        {
+          "resource": "Values\u0000Values.Listener\u0000listener",
+          "path": "queue"
+        },
+        {
+          "resource": "Values\u0000Values.Router\u0000router",
+          "path": "routes[0].path"
+        }
+      ]
+    }
+  ],
+  "boot": [
+    {
+      "id": "Telo.Application\u0000Values#target:listener",
+      "index": 0,
+      "target": "Values\u0000Values.Listener\u0000listener",
+      "targetName": "listener"
+    },
+    {
+      "id": "Telo.Application\u0000Values#target:router",
+      "index": 1,
+      "target": "Values\u0000Values.Router\u0000router",
+      "targetName": "router"
+    }
+  ],
+  "roots": [
+    "Values\u0000Values.Listener\u0000listener",
+    "Values\u0000Values.Router\u0000router"
+  ],
+  "entryPoints": [
+    {
+      "id": "Values\u0000Values.Listener\u0000listener\u0000invoke\u0000invoke",
+      "owner": "Values\u0000Values.Listener\u0000listener",
+      "slot": "invoke",
+      "path": "invoke",
+      "use": [
+        "trigger.inbound"
+      ],
+      "match": {
+        "topics": [
+          "orders",
+          {
+            "map": {
+              "tag": "cel",
+              "source": "1+1"
+            }
+          }
+        ],
+        "queue": {
+          "tag": "cel",
+          "source": "variables.region",
+          "type": "string"
+        }
+      },
+      "handler": "Values\u0000Values.Sequence\u0000work",
+      "handlerName": "work",
+      "throws": {
+        "codes": [],
+        "unbounded": false
+      },
+      "catches": []
+    },
+    {
+      "id": "Values\u0000Values.Router\u0000router\u0000routes[].handler\u0000routes[0].handler",
+      "owner": "Values\u0000Values.Router\u0000router",
+      "row": "Values\u0000Values.Router\u0000router#entry:routes/vnyn6s",
+      "slot": "routes[].handler",
+      "path": "routes[0].handler",
+      "use": [
+        "trigger.inbound"
+      ],
+      "match": {
+        "path": {
+          "tag": "interpolate",
+          "source": "/orders/${{ variables.region }}",
+          "type": "string"
+        }
+      },
+      "handler": "Values\u0000Values.Task\u0000task",
+      "handlerName": "task",
+      "throws": {
+        "codes": [],
+        "unbounded": false
+      },
+      "catches": []
+    }
+  ],
+  "resources": [
+    {
+      "id": "Values\u0000Values.Listener\u0000listener",
+      "name": "listener",
+      "kind": "Values.Listener",
+      "module": "Values",
+      "capability": "Telo.Service",
+      "rows": [],
+      "edges": [
+        {
+          "id": "Values\u0000Values.Listener\u0000listener\u0000invoke\u0000invoke",
+          "use": [
+            "trigger.inbound"
+          ],
+          "class": "flow",
+          "slot": "invoke",
+          "path": "invoke",
+          "target": "Values\u0000Values.Sequence\u0000work",
+          "targetName": "work",
+          "inputs": {
+            "map": {
+              "next": {
+                "tag": "ref",
+                "source": "task"
+              }
+            }
+          },
+          "match": {
+            "topics": [
+              "orders",
+              {
+                "map": {
+                  "tag": "cel",
+                  "source": "1+1"
+                }
+              }
+            ],
+            "queue": {
+              "tag": "cel",
+              "source": "variables.region",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "id": "Values\u0000Values.Listener\u0000listener\u0000inputs.next\u0000inputs.next",
+          "use": [
+            "dependency"
+          ],
+          "class": "holds",
+          "slot": "inputs.next",
+          "path": "inputs.next",
+          "target": "Values\u0000Values.Task\u0000task",
+          "targetName": "task"
+        }
+      ]
+    },
+    {
+      "id": "Values\u0000Values.Sequence\u0000work",
+      "name": "work",
+      "kind": "Values.Sequence",
+      "module": "Values",
+      "capability": "Telo.Invocable",
+      "rows": [
+        {
+          "id": "Values\u0000Values.Sequence\u0000work#step:run",
+          "kind": "step",
+          "path": "steps[0]",
+          "name": "run",
+          "variant": "invoke",
+          "edges": [
+            {
+              "id": "Values\u0000Values.Sequence\u0000work\u0000steps[].invoke\u0000steps[0].invoke",
+              "use": [
+                "call"
+              ],
+              "class": "flow",
+              "slot": "steps[].invoke",
+              "path": "steps[0].invoke",
+              "target": "Values\u0000Values.Task\u0000task",
+              "targetName": "task",
+              "inputs": {
+                "map": {
+                  "literal": {
+                    "map": {
+                      "tag": "cel",
+                      "source": "1+1"
+                    }
+                  },
+                  "expression": {
+                    "tag": "cel",
+                    "source": "1+1",
+                    "type": "int"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "edges": []
+    },
+    {
+      "id": "Values\u0000Values.Task\u0000task",
+      "name": "task",
+      "kind": "Values.Task",
+      "module": "Values",
+      "capability": "Telo.Invocable",
+      "rows": [],
+      "edges": []
+    },
+    {
+      "id": "Values\u0000Values.Router\u0000router",
+      "name": "router",
+      "kind": "Values.Router",
+      "module": "Values",
+      "capability": "Telo.Service",
+      "rows": [
+        {
+          "id": "Values\u0000Values.Router\u0000router#entry:routes/vnyn6s",
+          "kind": "entry",
+          "path": "routes[0]",
+          "match": {
+            "path": {
+              "tag": "interpolate",
+              "source": "/orders/${{ variables.region }}",
+              "type": "string"
+            }
+          },
+          "edges": [
+            {
+              "id": "Values\u0000Values.Router\u0000router\u0000routes[].handler\u0000routes[0].handler",
+              "use": [
+                "trigger.inbound"
+              ],
+              "class": "flow",
+              "slot": "routes[].handler",
+              "path": "routes[0].handler",
+              "target": "Values\u0000Values.Task\u0000task",
+              "targetName": "task"
+            }
+          ]
+        }
+      ],
+      "edges": []
+    }
+  ],
+  "unreached": []
+}

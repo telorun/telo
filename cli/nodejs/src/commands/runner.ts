@@ -5,6 +5,7 @@ import type { RunnerCoreConfig } from "@telorun/runner-core";
 import type { Argv } from "yargs";
 
 import { cliVersion } from "../distribution-versions.js";
+import { EXIT_REFUSED } from "../exit-status.js";
 import { outEmit, outErrLine, outLine } from "../output.js";
 
 interface RunnerArgv {
@@ -84,13 +85,13 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
       `telo runner: refusing to bind ${argv.host}. This API runs applications as ${os.userInfo().username} ` +
         `with no authentication, so a non-loopback bind must be asked for explicitly: pass --allow-remote.`,
     );
-    process.exitCode = 2;
+    process.exitCode = EXIT_REFUSED;
     return;
   }
 
   if (!Number.isInteger(argv.port) || argv.port < 0 || argv.port > 65535) {
     outErrLine(`telo runner: --port must be 0 (pick a free one) or 1..65535, got '${argv.port}'.`);
-    process.exitCode = 2;
+    process.exitCode = EXIT_REFUSED;
     return;
   }
 
@@ -155,7 +156,7 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
     base = loadCoreConfig(process.env, { port: argv.port > 0 ? argv.port : DEFAULT_PORT });
   } catch (err) {
     outErrLine(`telo runner: ${message(err)}`);
-    process.exitCode = 2;
+    process.exitCode = EXIT_REFUSED;
     return;
   }
   const config: RunnerCoreConfig = {

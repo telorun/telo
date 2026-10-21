@@ -76,7 +76,8 @@ export function createTeloSupply(options: TeloSupplyOptions): TeloSupply {
           report,
           fetch: options.fetch,
         });
-        return { command: file, prefix: [] };
+        // A release asset carries no application, so it is telo as it stands.
+        return { command: file, prefix: [], env: {} };
       } catch (err) {
         if (err instanceof ReleaseBinaryError) throw new TeloVersionUnavailable(err.message);
         throw err;

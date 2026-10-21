@@ -30,6 +30,7 @@ import { refSlotOfEntry, type ReachPosition, type ReachSite } from "./reference-
 import { resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
 import type { AnalysisContext } from "./types.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
+import type { ModuleDocuments } from "./module-documents.js";
 import { possibleUses, type RefSlot } from "./ref-slot.js";
 import { producedOutputContract, referenceOutputRefusal } from "./validate-reference-output.js";
 
@@ -60,8 +61,9 @@ export interface AnalysisRegistryScope {
   aliases: AliasResolver;
   aliasesByModule: Map<string, AliasResolver>;
   views: Map<string, AnalysisRegistry>;
-  /** The last analysis's library declarations, shared by every view. */
-  libraries: { current?: LibraryDeclarations };
+  /** The last analysis's library declarations and the full documents they were
+   *  indexed from, shared by every view. */
+  libraries: { current?: LibraryDeclarations; documents?: readonly ModuleDocuments[] };
 }
 
 /**
@@ -74,7 +76,7 @@ export class AnalysisRegistry {
   private readonly aliases: AliasResolver;
   private readonly aliasesByModule: Map<string, AliasResolver>;
   private readonly views: Map<string, AnalysisRegistry>;
-  private readonly libraries: { current?: LibraryDeclarations };
+  private readonly libraries: { current?: LibraryDeclarations; documents?: readonly ModuleDocuments[] };
   /** Each definition's governed eval sites, as the last analysis left the
    *  definition — read on every editor question, so walked once per analysis. */
   private governedSites = new WeakMap<ResourceDefinition, CelEvalSites | null>();
@@ -457,12 +459,16 @@ export class AnalysisRegistry {
    * function of the whole manifest set.
    */
   analysisOf(manifests: ResourceManifest[]): ManifestAnalysis {
-    return new ManifestAnalysis(manifests, {
-      defs: this.defs,
-      aliases: this.aliases,
-      aliasesByModule: this.aliasesByModule,
-      libraries: this.libraries.current,
-    });
+    return new ManifestAnalysis(
+      manifests,
+      {
+        defs: this.defs,
+        aliases: this.aliases,
+        aliasesByModule: this.aliasesByModule,
+        libraries: this.libraries.current,
+      },
+      this.libraries.documents ?? [],
+    );
   }
 
   /**
@@ -665,9 +671,11 @@ export class AnalysisRegistry {
   }
 
   /** @internal Set by `StaticAnalyzer.analyze` — the imported libraries' own
-   *  declarations its last analysis indexed, which a projection hop reads. */
-  _setLibraries(libraries: LibraryDeclarations): void {
+   *  declarations its last analysis indexed, which a projection hop reads, and
+   *  the full documents they came from, which an analysis's need table reads. */
+  _setLibraries(libraries: LibraryDeclarations, documents: readonly ModuleDocuments[]): void {
     this.libraries.current = libraries;
+    this.libraries.documents = documents;
     this.governedSites = new WeakMap();
   }
 

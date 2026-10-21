@@ -22,13 +22,13 @@ import {
   Plus,
   X,
 } from "lucide-react";
+import { topologyRoleOf } from "@telorun/analyzer";
 import { useMemo, useState } from "react";
 import { isModuleRootKind } from "../../../../application-adapter";
 import { isRecord } from "../../../../lib/utils";
 import {
   buildEditableSchema,
   getStepSchema,
-  getTopologyRole,
   getVariants,
   type VariantMeta,
 } from "../../../../schema-utils";
@@ -993,7 +993,7 @@ function stepsFieldName(kindSchema: Record<string, unknown>): string | null {
   const props = kindSchema.properties;
   if (!isRecord(props)) return null;
   for (const [name, prop] of Object.entries(props)) {
-    if (getTopologyRole(prop) === "steps") return name;
+    if (topologyRoleOf(prop) === "steps") return name;
   }
   return null;
 }

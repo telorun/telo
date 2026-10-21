@@ -2,7 +2,7 @@ import { ChevronDownIcon, ChevronRightIcon, Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { Selection, ParsedResource } from "../../../model";
 import { summarizeResource } from "../../../diagnostics-aggregate";
-import { getTopologyRole } from "../../../schema-utils";
+import { entryListsOf } from "@telorun/analyzer";
 import { isRecord } from "../../../lib/utils";
 import { DiagnosticBadge } from "../../diagnostics/DiagnosticBadge";
 import {
@@ -29,7 +29,6 @@ interface RouterSchemaInfo {
   entriesField: string | null;
   matcherField: string | null;
   handlerField: string | null;
-  entriesSchema: Record<string, unknown> | null;
   matcherSchema: Record<string, unknown> | null;
   entryItemSchema: Record<string, unknown> | null;
   outcomeLists: OutcomeListField[];
@@ -54,58 +53,30 @@ function getOutcomeListFields(
   return result;
 }
 
+/** The kind's first entry list, read off the analyzer's `entryListsOf` — the
+ *  one reader of the roles, a role behind a local `$defs` reference included. */
 function getRouterSchemaInfo(schema: Record<string, unknown>): RouterSchemaInfo {
-  const empty: RouterSchemaInfo = {
-    entriesField: null,
-    matcherField: null,
-    handlerField: null,
-    entriesSchema: null,
-    matcherSchema: null,
-    entryItemSchema: null,
-    outcomeLists: [],
-  };
-  const properties = isRecord(schema.properties) ? schema.properties : null;
-  if (!properties) return empty;
-
-  for (const [fieldName, fieldSchema] of Object.entries(properties)) {
-    if (getTopologyRole(fieldSchema) !== "entries" || !isRecord(fieldSchema)) continue;
-
-    const items = isRecord(fieldSchema.items) ? fieldSchema.items : null;
-    const itemProperties = items && isRecord(items.properties) ? items.properties : null;
-    if (!itemProperties) {
-      return {
-        ...empty,
-        entriesField: fieldName,
-        entriesSchema: isRecord(fieldSchema) ? fieldSchema : null,
-        entryItemSchema: items,
-      };
-    }
-
-    let matcherField: string | null = null;
-    let handlerField: string | null = null;
-    let matcherSchema: Record<string, unknown> | null = null;
-
-    for (const [entryFieldName, entryFieldSchema] of Object.entries(itemProperties)) {
-      const role = getTopologyRole(entryFieldSchema);
-      if (role === "matcher") {
-        matcherField = entryFieldName;
-        matcherSchema = isRecord(entryFieldSchema) ? entryFieldSchema : null;
-      }
-      if (role === "handler") handlerField = entryFieldName;
-    }
-
+  const declared = entryListsOf(schema)[0];
+  if (!declared) {
     return {
-      entriesField: fieldName,
-      matcherField,
-      handlerField,
-      entriesSchema: isRecord(fieldSchema) ? fieldSchema : null,
-      matcherSchema,
-      entryItemSchema: items,
-      outcomeLists: getOutcomeListFields(items),
+      entriesField: null,
+      matcherField: null,
+      handlerField: null,
+      matcherSchema: null,
+      entryItemSchema: null,
+      outcomeLists: [],
     };
   }
-
-  return empty;
+  const items = isRecord(declared.items) ? declared.items : null;
+  const last = declared.matchers.length - 1;
+  return {
+    entriesField: declared.field,
+    matcherField: declared.matchers[last] ?? null,
+    handlerField: declared.handlers[declared.handlers.length - 1] ?? null,
+    matcherSchema: declared.matcherNodes[last] ?? null,
+    entryItemSchema: items,
+    outcomeLists: getOutcomeListFields(items),
+  };
 }
 
 function buildDefaultMatcher(schema: Record<string, unknown> | null): Record<string, unknown> {

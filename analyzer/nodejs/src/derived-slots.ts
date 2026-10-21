@@ -37,6 +37,7 @@ import { withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
 import { isSchemaFromSite, schemaFromSites } from "./schema-from-sites.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
+import { topologyRoleOf } from "./topology-role.js";
 import { dispatchTargetOf } from "./template-body.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
 import { isKindDocument } from "./kind-declaration.js";
@@ -159,7 +160,7 @@ export function stepCallSites(
     if (!itemSchema) continue;
     let inputsField: string | undefined;
     for (const [key, sub] of gatherPropertySchemas(itemSchema)) {
-      if (sub?.["x-telo-topology-role"] === "inputs") inputsField = key;
+      if (topologyRoleOf(sub) === "inputs") inputsField = key;
     }
     if (!inputsField) continue;
     walkStepArray(steps, itemSchema, defSchema, fieldName, (step, stepPath) => {

@@ -13,8 +13,8 @@ import * as fs from "node:fs/promises";
  * failed strict validation" means and an unsigned arm64 binary does not launch
  * at all.
  *
- * A carrier with no payload is an ordinary `telo`, which is why the read is one
- * 52-byte tail read before anything else happens.
+ * A carrier with no payload is an ordinary `telo`, which is why the question is
+ * one 52-byte tail read before anything else happens.
  */
 
 /** Ends the trailer, and says the bytes before it are a telo application. */
@@ -93,45 +93,79 @@ function verify(trailer: Trailer, payload: Buffer, where: string): Buffer {
   return payload;
 }
 
+/** Where a trailer was found, and so where the payload it describes ends. */
+interface LocatedTrailer {
+  readonly trailer: Trailer;
+  /** The offset of the trailer's first byte; the payload is the `length` bytes before it. */
+  readonly at: number;
+  readonly placement: EmbeddedPayload["placement"];
+}
+
 /**
- * The payload embedded in `file`, or `undefined` when it carries none.
- *
- * Two lookups, in the order that costs least: the tail read every `telo`
- * startup pays, then — only for a Mach-O — a walk of its load commands.
+ * The trailer of `file`, read without reading the payload. Two lookups, in the
+ * order that costs least: the tail read every `telo` startup pays, then — only
+ * for a Mach-O — a walk of its load commands.
  */
+async function locateTrailer(
+  handle: fs.FileHandle,
+  file: string,
+): Promise<LocatedTrailer | undefined> {
+  const size = (await handle.stat()).size;
+  if (size < TRAILER_SIZE) return undefined;
+
+  const tail = Buffer.alloc(TRAILER_SIZE);
+  await handle.read(tail, 0, TRAILER_SIZE, size - TRAILER_SIZE);
+  const appended = decodeTrailer(tail);
+  if (appended) {
+    return checkedExtent({ trailer: appended, at: size - TRAILER_SIZE, placement: "appended" }, file);
+  }
+
+  const section = await machoSection(handle, size);
+  if (!section || section.size < TRAILER_SIZE) return undefined;
+  const sectionTail = Buffer.alloc(TRAILER_SIZE);
+  const at = section.offset + section.size - TRAILER_SIZE;
+  await handle.read(sectionTail, 0, TRAILER_SIZE, at);
+  const embedded = decodeTrailer(sectionTail);
+  if (!embedded) return undefined;
+  return checkedExtent({ trailer: embedded, at, placement: "macho-segment" }, file);
+}
+
+function checkedExtent(located: LocatedTrailer, file: string): LocatedTrailer {
+  if (located.at - located.trailer.length < 0) {
+    throw new Error(
+      `${file} carries a telo application trailer claiming ${located.trailer.length} payload bytes, ` +
+        `which is more than the file holds.`,
+    );
+  }
+  return located;
+}
+
+/**
+ * Whether `file` carries a telo application — its trailer or segment, found
+ * without reading or verifying the payload. What decides, at every start,
+ * whether this executable is an application or the CLI; the payload itself is
+ * verified when it is read.
+ */
+export async function carriesPayload(file: string): Promise<boolean> {
+  const handle = await fs.open(file, "r");
+  try {
+    return (await locateTrailer(handle, file)) !== undefined;
+  } finally {
+    await handle.close();
+  }
+}
+
+/** The payload embedded in `file`, verified against its trailer, or `undefined`
+ *  when it carries none. */
 export async function readEmbeddedPayload(file: string): Promise<EmbeddedPayload | undefined> {
   const handle = await fs.open(file, "r");
   try {
-    const size = (await handle.stat()).size;
-    if (size < TRAILER_SIZE) return undefined;
-
-    const tail = Buffer.alloc(TRAILER_SIZE);
-    await handle.read(tail, 0, TRAILER_SIZE, size - TRAILER_SIZE);
-    const appended = decodeTrailer(tail);
-    if (appended) {
-      const start = size - TRAILER_SIZE - appended.length;
-      if (start < 0) {
-        throw new Error(
-          `${file} carries a telo application trailer claiming ${appended.length} payload bytes, ` +
-            `which is more than the file holds.`,
-        );
-      }
-      const bytes = Buffer.alloc(appended.length);
-      await handle.read(bytes, 0, appended.length, start);
-      return { bytes: verify(appended, bytes, file), placement: "appended" };
-    }
-
-    const section = await machoSection(handle, size);
-    if (!section) return undefined;
-    const carried = Buffer.alloc(section.size);
-    await handle.read(carried, 0, section.size, section.offset);
-    const embedded = decodeTrailer(carried);
-    if (!embedded) return undefined;
-    const payload = carried.subarray(
-      carried.length - TRAILER_SIZE - embedded.length,
-      carried.length - TRAILER_SIZE,
-    );
-    return { bytes: verify(embedded, payload, file), placement: "macho-segment" };
+    const located = await locateTrailer(handle, file);
+    if (!located) return undefined;
+    const { trailer, at, placement } = located;
+    const bytes = Buffer.alloc(trailer.length);
+    await handle.read(bytes, 0, trailer.length, at - trailer.length);
+    return { bytes: verify(trailer, bytes, file), placement };
   } finally {
     await handle.close();
   }

@@ -25,6 +25,7 @@ grows with every release.
 ### Configuration
 
 - **See what an app needs.** `--help` lists every argument and every environment-only input with its type and default; `telo needs report` lists the variables its dependencies read; `telo module manifest --json` reports all of it; `telo env template` writes the `.env` / `.env.local` lines. Nothing is booted for any of them.
+- **See what an app does.** `telo describe` says what an application does without running it: the environment variables and arguments it reads and which fields read each, what it starts, every route, schedule and consumer with what it runs, which `catches:` entry renders each error it can throw, and what nothing reaches. `-o json` gives the same as a versioned document.
 - **Validated before start.** Inputs are declared once with `env:` and `type:`, and every missing or invalid one is reported together before anything starts. A declared variable reads as unset through the process environment, so code reading it directly gets nothing.
 - **Asked for at the terminal.** `telo run` at a terminal asks for each input nothing supplies — a secret without echo, each answer checked as the environment variable would be and asked again with the reason when refused — then offers to save the answers to `.env` / `.env.local`. A watch session asks once; nothing is asked under `--no-input`, in a runner or without a terminal.
 - **Dependency settings without inventing names.** A library's settings are read from derived names (`TELO_NEED_ORDERS__DATABASE_ACCESS__URL`); a missing one names every variable to set; two settings reading one variable are refused; a stated `version:` or `features:` is checked against what the dependency finds at start.
@@ -57,7 +58,7 @@ grows with every release.
 ### Delivery
 
 - **No install step.** `telo run` fetches each import on first use, verified against its pin, and only the parts this machine needs — under `--watch` too, so an import added while editing is fetched on the next reload. An app has no package manifest, dependency directory or lockfile of its own.
-- **One executable.** `telo package` produces a file that runs with no telo and no network, and refuses to write one that would be incomplete.
+- **One executable.** `telo package` produces a file that runs with no telo and no network, and refuses to write one that would be incomplete. The file is also the telo that runs it: `telo describe ./orders` reads it from any installed telo, and `TELO_APP_CLI=1 ./orders describe ./orders` (or `check`, or `run --inspect --debug`) describes, checks or runs it with live inspection where it is deployed.
 - **Run a published app by reference.** `telo run oci://…@<version>#sha256-<pin>`, verified before anything runs.
 - **No image per change.** Runners run a manifest without building an image, and watch sessions reload on edit.
 - **Offline boot.** `telo install` warms `.telo/`, so the tree boots with no network.

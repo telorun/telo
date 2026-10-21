@@ -44,6 +44,14 @@ A monorepo therefore keeps its cache at the workspace root, which matters when y
 
 **Environment variables the CLI reads** are listed in [Running in production](/deploy/production#runtime-configuration).
 
+## Exit status
+
+- `0` — the command did its work.
+- `1` — the work failed: a manifest that does not load or that `telo check` refuses, an application argument the manifest does not declare, a name `telo builtins` does not know.
+- `2` — the invocation was refused before any work began, with the reason on stderr and nothing on stdout: an unknown flag, a missing argument or subcommand, a value outside an option's choices (`-o yaml`), `TELO_APP_CLI` set to anything but `1` or empty, a packaged application started with `TELO_APP_INFO`, a `telo runner` bind or port it refuses.
+
+`telo run` and a packaged application exit with the application's own status; `2` there still means the CLI refused its own options before the manifest path. A first word that names no command is a manifest path, so `telo frobnicate` is a run of `./frobnicate`, and fails with `1`.
+
 ## Commands
 
 ### `telo publish <paths..>`
@@ -136,7 +144,7 @@ telo check ./modules/my-module/telo.yaml
 telo check https://example.com/manifest.yaml
 ```
 
-Accepts local paths, directories containing a `telo.yaml`, or HTTP(S) URLs.
+Accepts local paths, directories containing a `telo.yaml`, packaged executables (`telo package`), or HTTP(S) URLs.
 
 Imports resolve through the same `.telo/manifests/` cache `telo run` reads, and `check` writes through to it after a successful load (disable with `--no-cache-write`). Freshness depends on how the import addresses its target:
 
@@ -163,6 +171,21 @@ On success:
 ```
 ✓  No issues found
 ```
+
+---
+
+### `telo describe <manifest>`
+
+Prints what an application or library does, read from its manifest with nothing booted: its inputs — every `variables:` / `secrets:` / `ports:` / `needs:` entry with its environment variable and command-line argument, and the resource fields whose expressions read it — what it starts at boot, and the tree of what each started resource reaches. Every entry point (a route, a schedule, a consumer) is labelled by what selects it (`routes path=/orders method=POST`), with what its handler can throw and, per code, which `catches:` entry renders it on each rung of the ladder — the route's own list, its router's, each server mounting it — or that nothing does. Resources declared and reached by nothing are listed last.
+
+```bash
+telo describe ./orders
+telo describe -o json ./orders
+```
+
+Every value is shown as written: an expression with its tag (`!cel "variables.sweepEvery"`) and its type where the analyzer has one, a reference as `!ref <name>`, a literal mapping as `{k: v}`, and a string inside a list or a mapping quoted, so a literal string never reads as an expression or a mapping; nothing is evaluated. Under `-o json` an expression or reference is `{ "tag", "source", "type"? }` and a literal mapping `{ "map": { … } }`, so a literal never reads as an expression. A secret appears by name and binding, never by value or default. A resource is shown by its kind, what it throws and its deprecation — never its configuration — and a resource reached a second time is named rather than expanded again.
+
+Under `-o json` it writes the outline document (`outlineVersion: 1`; later versions only add to it): `module`, `inputs`, `boot`, `roots`, `entryPoints`, `resources` and `unreached`, every item identified by the id the editor's module graph gives the same manifest path. It reads a manifest as `telo check` reads one — a file, a directory holding `telo.yaml`, a packaged executable, or an HTTP(S) URL — a library included. A packaged executable describes byte for byte as its own manifest does. A manifest `telo check` refuses has no outline: its errors are printed on stderr, nothing on stdout, and the command exits 1.
 
 ---
 
@@ -343,7 +366,11 @@ telo package inspect dist/orders
 
 The binary carries the telo that packaged it, enforced rather than assumed: there is no flag to choose another version, and only a *released* telo may download a carrier. A working copy and the release of the same version number are different code, so from a source checkout you build that checkout's own binary (`pnpm --filter @telorun/cli build:standalone`) and package with it; that binary is the carrier for its own platform, and packaging for another platform needs an installed release. A payload carries only controllers that are files on the target machine: a closure whose kind is delivered from npm (`pkg:npm`) or built from a crate (`pkg:cargo`) is refused, naming the kind and the candidate.
 
-Running the result: every argument belongs to the application, `.env` files are read from the working directory, and signals and exit codes behave exactly as under `telo run`. `TELO_APP_INFO=1 ./orders` prints what the binary carries; `TELO_APP_DIR` moves the directory it unpacks into (`~/.cache/telo/apps/<name>-<digest>` by default). `TELO_CACHE_DIR` is ignored inside a packaged app — the payload is its cache.
+Running the result: every argument belongs to the application, `.env` files are read from the working directory, and signals and exit codes behave exactly as under `telo run`. `TELO_APP_DIR` moves the directory it unpacks into (`~/.cache/telo/apps/<name>-<digest>` by default). `TELO_CACHE_DIR` is ignored inside a packaged app — the payload is its cache.
+
+A packaged binary is a manifest source: `telo describe ./orders`, `telo check ./orders`, `telo needs report ./orders`, `telo env template ./orders`, `telo cel functions ./orders` and `telo run ./orders` read its payload, unpacked where the binary itself unpacks it, and execute nothing it carries. Reading changes nothing in that directory and asks no registry about a module the payload holds, so it works offline and leaves the binary's next start as it was.
+
+**`TELO_APP_CLI=1` makes the binary the telo it carries** for one start, so it can be described, checked, inspected or run with every telo option where it is deployed: `TELO_APP_CLI=1 ./orders describe ./orders`, `TELO_APP_CLI=1 ./orders package inspect ./orders`, `TELO_APP_CLI=1 ./orders run --inspect --debug ./orders <app args>`. `./orders <args>` is exactly `TELO_APP_CLI=1 ./orders run ./orders <args>`, the `--debug` log included, written to the working directory. Unset or empty means the application; any other value is refused before anything starts, with exit status 2; every telo removes the variable from its own environment at start, so no application or child process sees it. `TELO_APP_INFO` is retired — a binary started with it refuses (exit status 2) and names `TELO_APP_CLI=1 <binary> package inspect <binary>`. The contract is `kernel/specs/packaged-application.md`.
 
 Full guide: [Packaging an application](/guides/packaging-an-app).
 

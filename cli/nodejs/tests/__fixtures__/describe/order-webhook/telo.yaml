@@ -1,0 +1,252 @@
+# The order-webhook example's shape, importing the standard library from this
+# checkout by relative path: a webhook route behind a mount, a body that runs at
+# most once per delivery, and a schedule draining the queue in the background.
+kind: Telo.Application
+metadata:
+  name: OrderWebhook
+  version: 1.0.0
+  description: Records each webhook delivery once and ships it in the background.
+imports:
+  Http: ../../../../../../modules/http-server
+  Sql: ../../../../../../modules/sql
+  SQLite: ../../../../../../modules/sqlite
+  Idempotency: ../../../../../../modules/idempotency
+  KvStore: ../../../../../../modules/kv-store-memory
+  Schedule: ../../../../../../modules/scheduler
+  Run: ../../../../../../modules/run
+  Console: ../../../../../../modules/console
+  JS: ../../../../../../modules/javascript
+targets:
+  - !ref migrate
+  - !ref server
+  - !ref sweeper
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8099
+variables:
+  sweepEvery:
+    env: SWEEP_EVERY
+    type: string
+    default: "3s"
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: orders.db
+secrets:
+  webhookToken:
+    env: WEBHOOK_TOKEN
+    type: string
+    default: local-dev-token
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: orders }
+table: orders
+columns:
+  order_id: { type: text, primaryKey: true }
+  amount_cents: { type: integer, nullable: false }
+  currency: { type: text, nullable: false }
+---
+kind: SQLite.Table
+metadata: { name: fulfilments }
+table: fulfilments
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  order_id: { type: text, nullable: false }
+  status: { type: text, nullable: false, default: pending }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+tables:
+  - !ref orders
+  - !ref fulfilments
+---
+kind: KvStore.Store
+metadata: { name: claims }
+---
+kind: Sql.Command
+metadata: { name: exec }
+connection: !ref db
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref db
+---
+# Declared and reached by nothing.
+kind: Sql.Query
+metadata: { name: audit }
+connection: !ref db
+---
+kind: JS.Script
+metadata: { name: stamp }
+code: |
+  function main() {
+    return { at: new Date().toISOString() };
+  }
+---
+kind: Run.Sequence
+metadata: { name: recordOrder }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [orderId, amountCents, currency]
+    properties:
+      orderId: { type: string }
+      amountCents: { type: integer }
+      currency: { type: string }
+steps:
+  - name: insertOrder
+    invoke: !ref exec
+    inputs:
+      sql: "INSERT INTO orders (order_id, amount_cents, currency) VALUES (?, ?, ?)"
+      bindings:
+        - !cel "inputs.orderId"
+        - !cel "inputs.amountCents"
+        - !cel "inputs.currency"
+  - name: enqueueFulfilment
+    invoke: !ref exec
+    inputs:
+      sql: "INSERT INTO fulfilments (order_id) VALUES (?)"
+      bindings:
+        - !cel "inputs.orderId"
+outputs:
+  orderId: !cel "inputs.orderId"
+---
+kind: Idempotency.Once
+metadata: { name: recordOrderOnce }
+store: !ref claims
+claimTtl: "30s"
+ttl: "24h"
+invoke: !ref recordOrder
+---
+kind: Run.Sequence
+metadata: { name: handleDelivery }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [token, deliveryId, orderId, amountCents, currency]
+    properties:
+      token: { type: string }
+      deliveryId: { type: string }
+      orderId: { type: string }
+      amountCents: { type: integer }
+      currency: { type: string }
+steps:
+  - name: rejectUnknownSender
+    if: !cel "inputs.token != 'Bearer ' + secrets.webhookToken"
+    then:
+      - name: deny
+        throw:
+          code: ERR_WEBHOOK_UNAUTHORIZED
+          message: bad or missing webhook token
+    else:
+      - name: accepted
+        invoke: !ref stamp
+  - name: record
+    invoke: !ref recordOrderOnce
+    inputs:
+      key: !cel "inputs.deliveryId"
+      inputs:
+        orderId: !cel "inputs.orderId"
+        amountCents: !cel "inputs.amountCents"
+        currency: !cel "inputs.currency"
+outputs:
+  state: !cel "steps.record.result.state"
+  orderId: !cel "steps.record.result.result.orderId"
+---
+kind: Http.Api
+metadata: { name: webhookRoutes }
+routes:
+  - request:
+      path: /orders
+      method: POST
+      schema:
+        headers:
+          type: object
+          required: [authorization]
+          properties:
+            authorization: { type: string }
+        body:
+          type: object
+          additionalProperties: false
+          required: [deliveryId, orderId, amountCents, currency]
+          properties:
+            deliveryId: { type: string, minLength: 1 }
+            orderId: { type: string, minLength: 1 }
+            amountCents: { type: integer, minimum: 1 }
+            currency: { type: string, minLength: 3, maxLength: 3 }
+    handler: !ref handleDelivery
+    inputs:
+      token: !cel "request.headers.authorization"
+      deliveryId: !cel "request.body.deliveryId"
+      orderId: !cel "request.body.orderId"
+      amountCents: !cel "request.body.amountCents"
+      currency: !cel "request.body.currency"
+    returns:
+      - status: 202
+        content:
+          application/json:
+            body:
+              orderId: !cel "result.orderId"
+              state: !cel "result.state"
+    catches:
+      - when: !cel "error.code == 'ERR_WEBHOOK_UNAUTHORIZED'"
+        status: 401
+        content:
+          application/json:
+            body:
+              error: unauthorized
+      - when: !cel "error.code == 'ERR_CLAIM_LOST'"
+        status: 503
+        content:
+          application/json:
+            body:
+              error: retry_later
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.code"
+---
+kind: Http.Server
+metadata: { name: server }
+listen:
+  port: !cel "ports.http"
+mounts:
+  - path: /webhooks
+    mount: !ref webhookRoutes
+---
+kind: Run.Sequence
+metadata: { name: shipPending }
+steps:
+  - name: pending
+    invoke: !ref query
+    inputs:
+      sql: "SELECT id, order_id FROM fulfilments WHERE status = 'pending' ORDER BY id LIMIT 20"
+      bindings: []
+  - name: ship
+    if: !cel "size(steps.pending.result.rows) > 0"
+    then:
+      - name: mark
+        invoke: !ref exec
+        inputs:
+          sql: "UPDATE fulfilments SET status = 'sent' WHERE status = 'pending'"
+          bindings: []
+      - name: report
+        invoke: !ref Console.writeLine
+        inputs:
+          output: !cel "'shipped ' + string(size(steps.pending.result.rows))"
+---
+kind: Schedule.Interval
+metadata: { name: sweeper }
+every: !cel "variables.sweepEvery"
+invoke: !ref shipPending

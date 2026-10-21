@@ -135,7 +135,7 @@ const NAME_MAP_KEYWORDS: ReadonlySet<string> = new Set([
 
 /** One schema directly beneath a schema node: the keyword holding it, and the
  *  name or index it sits at when the keyword holds several. */
-interface SchemaChild {
+export interface SchemaChild {
   readonly keyword: string;
   readonly at?: string | number;
   readonly schema: Record<string, any>;
@@ -151,7 +151,7 @@ const isSchemaNode = (value: unknown): value is Record<string, any> =>
  * value of `default` / `const` / `enum` / `examples` is data and holds no
  * schema, while an entry of a name map is a schema whatever it is called.
  */
-function schemaChildren(node: Record<string, any>): SchemaChild[] {
+export function schemaChildren(node: Record<string, any>): SchemaChild[] {
   const out: SchemaChild[] = [];
   for (const [keyword, value] of Object.entries(node)) {
     if (keyword.startsWith("x-telo-") || DATA_KEYWORDS.has(keyword)) continue;

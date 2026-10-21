@@ -444,6 +444,9 @@ schema:
     contentTypeParsers:
       title: Content Type Parsers
       description: Custom parsers for specific content types.
+      # A dispatch list like `mounts`: `contentType` selects an entry, `parser`
+      # is what it dispatches to.
+      x-telo-topology-role: entries
       type: "array"
       x-telo-eval: compile
       items:
@@ -456,9 +459,11 @@ schema:
             title: Content Type
             description: HTTP content type matched by this parser.
             type: "string"
+            x-telo-topology-role: matcher
           parser:
             title: Parser
             description: Invocable or runnable parser resource for this content type.
+            x-telo-topology-role: handler
             # Accept either capability: a controller may implement `invoke()`
             # (typical) or `run()` (e.g. a Run.Sequence dispatching to a parser
             # pipeline). The kernel calls whichever method exists.
