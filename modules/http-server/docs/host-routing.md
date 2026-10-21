@@ -85,6 +85,10 @@ mounts:
 - The server applies a mount's `hostnames` to every route the mount registers,
   as it applies `path` — an `Http.Api`, `Http.Static`, `Http.Reference` or any
   other mount works unchanged.
+- An editor and an outline of the application identify and label a mount by its
+  `path` and its `hostnames` as written (`/ [!ref admin]`), so two mounts at `/`
+  answering different addresses are told apart, whatever their order. A mount's
+  `guard` is labelled by its mount.
 
 What an entry may be is checked by `telo check`:
 

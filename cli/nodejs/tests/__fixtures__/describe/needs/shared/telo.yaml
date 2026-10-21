@@ -1,0 +1,11 @@
+kind: Telo.Library
+metadata:
+  name: Audit
+  version: 0.0.0
+  description: One audit trail for the whole application, written to a database.
+lifecycle: shared
+imports:
+  Types: ../../../needs-report/types
+needs:
+  trail:
+    kind: Types.DatabaseAccess

@@ -49,6 +49,8 @@ Listing a schedule in `targets` is what makes its start position explicit. A sch
 | `inputs` | Forwarded to the body, re-evaluated per tick. | Same. |
 | `when` | Optional CEL boolean gating each fire. | Same. |
 
+A schedule is identified by what it fires on: `every` for `Schedule.Interval`, `cron` and `timezone` for `Schedule.Cron`. An editor or an outline of the application labels the `invoke` trigger with those values, as written — `every: 1m`, or the expression when one is given — the way a route is labelled by its method and path. An unwritten `timezone` is left out of the label.
+
 ## Gating a tick with `when`
 
 `when` is evaluated before each fire. A false gate **skips the tick entirely** — no dispatch, no lease or idempotency claim, no trace event — and the timer re-arms. It is a skip, not an error.

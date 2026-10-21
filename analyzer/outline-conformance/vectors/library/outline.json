@@ -1,0 +1,143 @@
+{
+  "outlineVersion": 1,
+  "module": {
+    "name": "Payments",
+    "kind": "Telo.Library",
+    "version": "0.2.0",
+    "description": "Charges a card and records the charge in a journal its importer hands over."
+  },
+  "inputs": [
+    {
+      "block": "variables",
+      "name": "currency",
+      "type": "string",
+      "required": false,
+      "default": "EUR",
+      "readBy": [
+        {
+          "resource": "Payments\u0000Self.Charge\u0000charge",
+          "path": "note"
+        }
+      ]
+    },
+    {
+      "block": "secrets",
+      "name": "token",
+      "type": "string",
+      "required": true,
+      "readBy": []
+    },
+    {
+      "block": "resources",
+      "name": "journal",
+      "type": "Self.Journal",
+      "required": true,
+      "readBy": []
+    },
+    {
+      "block": "needs",
+      "name": "bank",
+      "fields": {
+        "url": {
+          "required": true,
+          "sensitive": false
+        },
+        "key": {
+          "required": true,
+          "sensitive": true
+        }
+      },
+      "type": "Payments.Bank",
+      "required": true,
+      "readBy": [
+        {
+          "resource": "Payments\u0000Self.Charge\u0000charge",
+          "path": "bankUrl"
+        }
+      ]
+    },
+    {
+      "block": "needs",
+      "name": "Ledger.db",
+      "fields": {
+        "url": {
+          "required": true,
+          "sensitive": true
+        }
+      },
+      "type": "Ledger.Database",
+      "required": true,
+      "readBy": []
+    }
+  ],
+  "boot": [],
+  "roots": [
+    "Payments\u0000Self.Charge\u0000charge"
+  ],
+  "entryPoints": [],
+  "resources": [
+    {
+      "id": "Payments\u0000Self.Charge\u0000charge",
+      "name": "charge",
+      "kind": "Self.Charge",
+      "canonicalKind": "Payments.Charge",
+      "module": "Payments",
+      "capability": "Telo.Invocable",
+      "rows": [],
+      "edges": [
+        {
+          "id": "Payments\u0000Self.Charge\u0000charge\u0000journal\u0000journal",
+          "use": [
+            "dependency"
+          ],
+          "class": "holds",
+          "slot": "journal",
+          "path": "journal",
+          "target": "Payments\u0000Self.Journal\u0000journal",
+          "targetName": "journal"
+        },
+        {
+          "id": "Payments\u0000Self.Charge\u0000charge\u0000data\u0000bankUrl\u0000resources.bank.url",
+          "use": [],
+          "class": "data",
+          "slot": "cel",
+          "path": "bankUrl",
+          "target": "Payments\u0000Self.Bank\u0000bank",
+          "targetName": "bank",
+          "read": "resources.bank.url"
+        }
+      ]
+    },
+    {
+      "id": "Payments\u0000Self.Journal\u0000journal",
+      "name": "journal",
+      "kind": "Self.Journal",
+      "canonicalKind": "Payments.Journal",
+      "module": "Payments",
+      "injected": true,
+      "capability": "Telo.Provider",
+      "rows": [],
+      "edges": [],
+      "throws": {
+        "codes": [],
+        "unbounded": true
+      }
+    },
+    {
+      "id": "Payments\u0000Self.Bank\u0000bank",
+      "name": "bank",
+      "kind": "Self.Bank",
+      "canonicalKind": "Payments.Bank",
+      "module": "Payments",
+      "injected": true,
+      "capability": "Telo.Provider",
+      "rows": [],
+      "edges": [],
+      "throws": {
+        "codes": [],
+        "unbounded": true
+      }
+    }
+  ],
+  "unreached": []
+}

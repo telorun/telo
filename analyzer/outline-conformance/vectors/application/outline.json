@@ -1,0 +1,512 @@
+{
+  "outlineVersion": 1,
+  "module": {
+    "name": "Shop",
+    "kind": "Telo.Application",
+    "version": "0.1.0",
+    "description": "Takes orders through one front door and warms a cache on a timer."
+  },
+  "inputs": [
+    {
+      "block": "variables",
+      "name": "region",
+      "binding": {
+        "env": "REGION",
+        "arg": "[--region|-r <string>]"
+      },
+      "type": "string",
+      "required": false,
+      "default": "eu",
+      "readBy": [
+        {
+          "resource": "Shop\u0000Shop.Sequence\u0000placeOrder",
+          "path": "steps[0].if"
+        },
+        {
+          "resource": "Shop\u0000Shop.Sequence\u0000placeOrder",
+          "path": "steps[0].else[0].inputs.label"
+        }
+      ]
+    },
+    {
+      "block": "variables",
+      "name": "warm",
+      "binding": {
+        "env": "WARM"
+      },
+      "type": "boolean",
+      "required": false,
+      "default": false,
+      "readBy": [
+        {
+          "resource": "Telo.Application\u0000Shop",
+          "path": "targets[1].when"
+        }
+      ]
+    },
+    {
+      "block": "secrets",
+      "name": "apiKey",
+      "binding": {
+        "env": "API_KEY"
+      },
+      "type": "string",
+      "required": false,
+      "readBy": [
+        {
+          "resource": "Shop\u0000Shop.Task\u0000warmCache",
+          "path": "label"
+        }
+      ]
+    },
+    {
+      "block": "ports",
+      "name": "http",
+      "binding": {
+        "env": "PORT"
+      },
+      "type": "Telo.TcpPort",
+      "required": false,
+      "default": 8080,
+      "readBy": [
+        {
+          "resource": "Shop\u0000Shop.Server\u0000front",
+          "path": "port"
+        }
+      ]
+    },
+    {
+      "block": "needs",
+      "name": "store",
+      "fields": {
+        "url": {
+          "env": "STORE_URL",
+          "envSource": "bound",
+          "required": true,
+          "sensitive": true
+        }
+      },
+      "type": "Shop.Store",
+      "required": true,
+      "readBy": [
+        {
+          "resource": "Shop\u0000Shop.Task\u0000unused",
+          "path": "label"
+        }
+      ]
+    }
+  ],
+  "boot": [
+    {
+      "id": "Telo.Application\u0000Shop#target:front",
+      "index": 0,
+      "target": "Shop\u0000Shop.Server\u0000front",
+      "targetName": "front"
+    },
+    {
+      "id": "Telo.Application\u0000Shop#target:warm",
+      "index": 1,
+      "name": "warm",
+      "target": "Shop\u0000Shop.Task\u0000warmCache",
+      "targetName": "warmCache",
+      "when": {
+        "tag": "cel",
+        "source": "variables.warm",
+        "type": "bool"
+      }
+    },
+    {
+      "id": "Telo.Application\u0000Shop#target:sweeper",
+      "index": 2,
+      "target": "Shop\u0000Shop.Timer\u0000sweeper",
+      "targetName": "sweeper"
+    }
+  ],
+  "roots": [
+    "Shop\u0000Shop.Server\u0000front",
+    "Shop\u0000Shop.Task\u0000warmCache",
+    "Shop\u0000Shop.Timer\u0000sweeper"
+  ],
+  "entryPoints": [
+    {
+      "id": "Shop\u0000Shop.Router\u0000orders\u0000routes[].handler\u0000routes[0].handler",
+      "owner": "Shop\u0000Shop.Router\u0000orders",
+      "row": "Shop\u0000Shop.Router\u0000orders#entry:routes/ugyc30",
+      "slot": "routes[].handler",
+      "path": "routes[0].handler",
+      "use": [
+        "trigger.inbound"
+      ],
+      "match": {
+        "path": "/orders"
+      },
+      "handler": "Shop\u0000Shop.Sequence\u0000placeOrder",
+      "handlerName": "placeOrder",
+      "throws": {
+        "codes": [
+          "ERR_BUSY",
+          "ERR_REGION"
+        ],
+        "unbounded": false
+      },
+      "catches": [
+        {
+          "code": "ERR_BUSY",
+          "covered": true,
+          "own": {
+            "list": "routes[0].catches",
+            "undecided": [
+              0
+            ]
+          },
+          "scope": {
+            "resource": "Shop\u0000Shop.Router\u0000orders",
+            "covered": true,
+            "enclosers": [
+              {
+                "resource": "Shop\u0000Shop.Server\u0000front",
+                "covered": true,
+                "list": {
+                  "list": "catches",
+                  "entry": 0,
+                  "undecided": []
+                },
+                "enclosers": []
+              }
+            ]
+          }
+        },
+        {
+          "code": "ERR_REGION",
+          "covered": true,
+          "own": {
+            "list": "routes[0].catches",
+            "entry": 1,
+            "undecided": [
+              0
+            ]
+          },
+          "scope": {
+            "resource": "Shop\u0000Shop.Router\u0000orders",
+            "covered": true,
+            "enclosers": [
+              {
+                "resource": "Shop\u0000Shop.Server\u0000front",
+                "covered": true,
+                "list": {
+                  "list": "catches",
+                  "entry": 1,
+                  "undecided": []
+                },
+                "enclosers": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Shop\u0000Shop.Router\u0000orders\u0000routes[].handler\u0000routes[1].handler",
+      "owner": "Shop\u0000Shop.Router\u0000orders",
+      "row": "Shop\u0000Shop.Router\u0000orders#entry:routes/ondtdw",
+      "slot": "routes[].handler",
+      "path": "routes[1].handler",
+      "use": [
+        "trigger.inbound"
+      ],
+      "match": {
+        "path": "/relay"
+      },
+      "handler": "Shop\u0000Shop.Relay\u0000relay",
+      "handlerName": "relay",
+      "throws": {
+        "codes": [],
+        "unbounded": true
+      },
+      "catches": [
+        {
+          "code": null,
+          "covered": true,
+          "scope": {
+            "resource": "Shop\u0000Shop.Router\u0000orders",
+            "covered": true,
+            "enclosers": [
+              {
+                "resource": "Shop\u0000Shop.Server\u0000front",
+                "covered": true,
+                "list": {
+                  "list": "catches",
+                  "entry": 1,
+                  "undecided": []
+                },
+                "enclosers": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "Shop\u0000Shop.Timer\u0000sweeper\u0000invoke\u0000invoke",
+      "owner": "Shop\u0000Shop.Timer\u0000sweeper",
+      "slot": "invoke",
+      "path": "invoke",
+      "use": [
+        "trigger.inbound"
+      ],
+      "match": {
+        "every": "5m"
+      },
+      "handler": "Shop\u0000Shop.Task\u0000warmCache",
+      "handlerName": "warmCache",
+      "throws": {
+        "codes": [
+          "ERR_BUSY"
+        ],
+        "unbounded": false
+      },
+      "catches": [
+        {
+          "code": "ERR_BUSY",
+          "covered": false,
+          "scope": {
+            "resource": "Shop\u0000Shop.Timer\u0000sweeper",
+            "covered": false,
+            "enclosers": []
+          }
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "id": "Shop\u0000Shop.Server\u0000front",
+      "name": "front",
+      "kind": "Shop.Server",
+      "module": "Shop",
+      "capability": "Telo.Service",
+      "rows": [
+        {
+          "id": "Shop\u0000Shop.Server\u0000front#entry:mounts/agve4",
+          "kind": "entry",
+          "path": "mounts[0]",
+          "match": {
+            "prefix": "/api"
+          },
+          "edges": [
+            {
+              "id": "Shop\u0000Shop.Server\u0000front\u0000mounts[].router\u0000mounts[0].router",
+              "use": [
+                "dependency"
+              ],
+              "class": "holds",
+              "slot": "mounts[].router",
+              "path": "mounts[0].router",
+              "target": "Shop\u0000Shop.Router\u0000orders",
+              "targetName": "orders"
+            }
+          ]
+        }
+      ],
+      "edges": []
+    },
+    {
+      "id": "Shop\u0000Shop.Router\u0000orders",
+      "name": "orders",
+      "kind": "Shop.Router",
+      "module": "Shop",
+      "capability": "Telo.Mount",
+      "rows": [
+        {
+          "id": "Shop\u0000Shop.Router\u0000orders#entry:routes/ugyc30",
+          "kind": "entry",
+          "path": "routes[0]",
+          "match": {
+            "path": "/orders"
+          },
+          "edges": [
+            {
+              "id": "Shop\u0000Shop.Router\u0000orders\u0000routes[].handler\u0000routes[0].handler",
+              "use": [
+                "trigger.inbound"
+              ],
+              "class": "flow",
+              "slot": "routes[].handler",
+              "path": "routes[0].handler",
+              "target": "Shop\u0000Shop.Sequence\u0000placeOrder",
+              "targetName": "placeOrder"
+            }
+          ]
+        },
+        {
+          "id": "Shop\u0000Shop.Router\u0000orders#entry:routes/ondtdw",
+          "kind": "entry",
+          "path": "routes[1]",
+          "match": {
+            "path": "/relay"
+          },
+          "edges": [
+            {
+              "id": "Shop\u0000Shop.Router\u0000orders\u0000routes[].handler\u0000routes[1].handler",
+              "use": [
+                "trigger.inbound"
+              ],
+              "class": "flow",
+              "slot": "routes[].handler",
+              "path": "routes[1].handler",
+              "target": "Shop\u0000Shop.Relay\u0000relay",
+              "targetName": "relay"
+            }
+          ]
+        }
+      ],
+      "edges": []
+    },
+    {
+      "id": "Shop\u0000Shop.Sequence\u0000placeOrder",
+      "name": "placeOrder",
+      "kind": "Shop.Sequence",
+      "module": "Shop",
+      "capability": "Telo.Invocable",
+      "rows": [
+        {
+          "id": "Shop\u0000Shop.Sequence\u0000placeOrder#step:check",
+          "kind": "step",
+          "path": "steps[0]",
+          "name": "check",
+          "variant": "if+then",
+          "predicateField": "if",
+          "predicate": {
+            "tag": "cel",
+            "source": "variables.region == 'eu'",
+            "type": "bool"
+          },
+          "edges": []
+        },
+        {
+          "id": "Shop\u0000Shop.Sequence\u0000placeOrder#step:check/reject",
+          "kind": "step",
+          "path": "steps[0].then[0]",
+          "name": "reject",
+          "parent": "Shop\u0000Shop.Sequence\u0000placeOrder#step:check",
+          "branch": "then",
+          "variant": "throw",
+          "edges": []
+        },
+        {
+          "id": "Shop\u0000Shop.Sequence\u0000placeOrder#step:check/book",
+          "kind": "step",
+          "path": "steps[0].else[0]",
+          "name": "book",
+          "parent": "Shop\u0000Shop.Sequence\u0000placeOrder#step:check",
+          "branch": "else",
+          "variant": "invoke",
+          "edges": [
+            {
+              "id": "Shop\u0000Shop.Sequence\u0000placeOrder\u0000steps[].invoke\u0000steps[0].else[0].invoke",
+              "use": [
+                "call"
+              ],
+              "class": "flow",
+              "slot": "steps[].invoke",
+              "path": "steps[0].else[0].invoke",
+              "target": "Shop\u0000Shop.Task\u0000booker",
+              "targetName": "booker",
+              "inputs": {
+                "map": {
+                  "label": {
+                    "tag": "cel",
+                    "source": "'order in ' + variables.region",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "edges": [],
+      "throws": {
+        "codes": [
+          "ERR_BUSY",
+          "ERR_REGION"
+        ],
+        "unbounded": false
+      }
+    },
+    {
+      "id": "Shop\u0000Shop.Task\u0000booker",
+      "name": "booker",
+      "kind": "Shop.Task",
+      "module": "Shop",
+      "capability": "Telo.Invocable",
+      "rows": [],
+      "edges": [],
+      "throws": {
+        "codes": [
+          "ERR_BUSY"
+        ],
+        "unbounded": false
+      }
+    },
+    {
+      "id": "Shop\u0000Shop.Relay\u0000relay",
+      "name": "relay",
+      "kind": "Shop.Relay",
+      "module": "Shop",
+      "capability": "Telo.Invocable",
+      "rows": [],
+      "edges": [],
+      "throws": {
+        "codes": [],
+        "unbounded": true
+      }
+    },
+    {
+      "id": "Shop\u0000Shop.Task\u0000warmCache",
+      "name": "warmCache",
+      "kind": "Shop.Task",
+      "module": "Shop",
+      "capability": "Telo.Invocable",
+      "rows": [],
+      "edges": [],
+      "throws": {
+        "codes": [
+          "ERR_BUSY"
+        ],
+        "unbounded": false
+      }
+    },
+    {
+      "id": "Shop\u0000Shop.Timer\u0000sweeper",
+      "name": "sweeper",
+      "kind": "Shop.Timer",
+      "module": "Shop",
+      "capability": "Telo.Service",
+      "rows": [],
+      "edges": [
+        {
+          "id": "Shop\u0000Shop.Timer\u0000sweeper\u0000invoke\u0000invoke",
+          "use": [
+            "trigger.inbound"
+          ],
+          "class": "flow",
+          "slot": "invoke",
+          "path": "invoke",
+          "target": "Shop\u0000Shop.Task\u0000warmCache",
+          "targetName": "warmCache",
+          "match": {
+            "every": "5m"
+          }
+        }
+      ]
+    }
+  ],
+  "unreached": [
+    {
+      "id": "Shop\u0000Shop.Task\u0000unused",
+      "name": "unused",
+      "kind": "Shop.Task"
+    }
+  ]
+}

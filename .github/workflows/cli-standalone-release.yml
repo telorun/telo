@@ -321,7 +321,7 @@ jobs:
             # HOME — the refusal names TELO_APP_DIR when it has neither.
             export HOME=/tmp
             /dist/hello | grep "Hello from Telo!"
-            TELO_APP_INFO=1 /dist/hello | grep HelloConsole
+            TELO_APP_CLI=1 /dist/hello package inspect /dist/hello | grep HelloConsole
           '
 
   release:

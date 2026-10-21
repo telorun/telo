@@ -167,7 +167,7 @@ variables:
     # default-command hole: `telo ./x.yaml` with no verb means `run ./x.yaml`,
     # and a bare path matches no entry here, so it is rejected rather than
     # silently executed.
-    default: [check, cel, module, search, builtins]
+    default: [check, cel, module, search, builtins, describe]
   allowManifestRuns:
     type: boolean
     # Whether the agent may EXECUTE a manifest, through the `run_manifest` tool.
@@ -5938,9 +5938,11 @@ tools:
       signature and CALL FORM; `cel eval "<expr>"` evaluates one), `module`
       (`versions` / `manifest` / `kinds` / `resources` / `digest` for a module
       ref — read a kind's exact schema before writing against it), `search`
-      (find kinds across published modules), and `builtins` (the exact fields
+      (find kinds across published modules), `builtins` (the exact fields
       of a built-in kind, fragment, value type, zone attribute or format — `builtins
-      Application Step`). Pass `-o json` for a parseable
+      Application Step`), and `describe` (what a manifest does, read from it
+      with nothing run: its inputs, what it starts, its entry points and which
+      `catches:` entry renders each code). Pass `-o json` for a parseable
       document. Running a manifest is not available here. The result is the
       command's stdout as printed, an `exit N` line only when it failed, and its
       stderr under `stderr:` only when it wrote any. Every argument is judged as

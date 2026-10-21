@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: Announcer
+  version: 1.0.0
+variables:
+  greeting:
+    env: GREETING
+    type: string
+    default: hello
+targets:
+  - !ref announce
+---
+# Its controller throws on import, so describing the packaged executable proves
+# nothing it carries is run.
+kind: Telo.Definition
+metadata:
+  name: Announce
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./boom.mjs#boom
+schema:
+  type: object
+  properties:
+    text:
+      type: string
+      x-telo-eval: compile
+  required: [text]
+  additionalProperties: false
+---
+kind: Self.Announce
+metadata:
+  name: announce
+text: !cel "variables.greeting"

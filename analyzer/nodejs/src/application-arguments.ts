@@ -307,6 +307,19 @@ function synopsisItem(binding: ArgBinding, facts: UsageFacts): string {
   return binding.repeated ? `${bracketed}...` : bracketed;
 }
 
+/** The command-line argument bound to one `variables:` / `ports:` entry, in the
+ *  synopsis notation (`[--port|-p <integer>]`), or undefined when none is. */
+export function argumentSynopsisOf(
+  moduleDoc: unknown,
+  block: ArgBindingBlock,
+  name: string,
+): string | undefined {
+  const binding = readApplicationArguments(moduleDoc).bindings.find(
+    (b) => b.block === block && b.name === name,
+  );
+  return binding ? synopsisItem(binding, factsOf(moduleDoc, binding)) : undefined;
+}
+
 /** Every command-line argument a root Application accepts, as one line:
  *  `[--also|-a <string>]... [--[no-]shout] [<name>]`. Empty when it declares none. */
 export function renderArgumentSynopsis(moduleDoc: unknown): string {

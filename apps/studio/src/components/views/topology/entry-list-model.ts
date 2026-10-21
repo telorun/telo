@@ -1,7 +1,6 @@
-import { isRefSlot } from "@telorun/analyzer";
+import { entryListsOf, isRefSlot } from "@telorun/analyzer";
 import { inlineResourceKind } from "../../resource-schema-form/ref-candidates";
 import { isRecord } from "../../../lib/utils";
-import { getTopologyRole, resolveRef } from "../../../schema-utils";
 import { refTargetName } from "./ref-target-name";
 import { summarizeValue } from "./value-summary";
 
@@ -33,13 +32,12 @@ export interface EntryField {
 /**
  * The entry grammar a kind declares, or null when it declares none.
  *
- * THE single accessor — the `ref-slot.ts` precedent — because the annotation is
- * read in three places (whether the view applies, what the view renders, which
- * property the rail leaves alone) and a second reading of the same tokens is
- * how two surfaces come to disagree about what a manifest means. That already
- * happened once here: the array was annotated `entries` while the view sniffed
- * for "any property that is a ref slot", so the route table read `handler` and
- * the list read something else.
+ * Read off the analyzer's `entryListsOf` — the one reader of the roles, which
+ * follows a role written on a local `$defs` node behind a `$ref` and a root
+ * variant's properties — because the view's three questions (whether it
+ * applies, what it renders, which property the rail leaves alone) are the
+ * module graph's, and a second reading of the same tokens is how two surfaces
+ * come to disagree about what a manifest means.
  */
 export interface EntryList {
   /** The array property, e.g. `mounts`. */
@@ -94,52 +92,30 @@ export interface EntryRow {
  * form rather than to a broken canvas.
  */
 export function entryListOf(kindSchema: Record<string, unknown>): EntryList | null {
-  const properties = kindSchema.properties;
-  if (!isRecord(properties)) return null;
-  for (const [name, prop] of Object.entries(properties)) {
-    if (!isRecord(prop) || getTopologyRole(prop) !== "entries") continue;
-    const itemSchema = resolveRef(prop.items, kindSchema);
-    if (!isRecord(itemSchema)) return null;
-    const handler = handlerField(itemSchema);
-    if (!handler) return null;
-    return { name, itemSchema, handler, matchers: itemRoleFields(itemSchema, "matcher") };
-  }
-  return null;
+  const declared = entryListsOf(kindSchema)[0];
+  if (!declared || !isRecord(declared.items)) return null;
+  const handler = declared.handlers[0] ?? refSlotField(declared.items);
+  if (!handler) return null;
+  return { name: declared.field, itemSchema: declared.items, handler, matchers: declared.matchers };
 }
 
 /**
- * The item property holding the reference this entry dispatches to.
+ * The item property a kind declaring no `handler` role dispatches through.
  *
- * The DECLARED `handler` role wins; a ref slot is the fallback. Two spellings,
- * one answer — the `x-telo-step-context` precedent: a kind that names its own
- * handler is describing its own manifest, while the fallback is what keeps an
- * artifact published before the role was written on it readable. The fallback
- * takes the first ref slot, which is arbitrary but stable; a kind with two is
- * exactly the case the role exists to disambiguate.
+ * The DECLARED role wins; a ref slot is the fallback. Two spellings, one answer
+ * — the `x-telo-step-context` precedent: a kind that names its own handler is
+ * describing its own manifest, while the fallback is what keeps an artifact
+ * published before the role was written on it readable. The fallback takes the
+ * first ref slot, which is arbitrary but stable; a kind with two is exactly the
+ * case the role exists to disambiguate.
  */
-function handlerField(itemSchema: Record<string, unknown>): string | null {
-  const declared = itemRoleField(itemSchema, "handler");
-  if (declared) return declared;
+function refSlotField(itemSchema: Record<string, unknown>): string | null {
   const properties = itemSchema.properties;
   if (!isRecord(properties)) return null;
   for (const [name, prop] of Object.entries(properties)) {
     if (isRecord(prop) && isRefSlot(prop)) return name;
   }
   return null;
-}
-
-/** The item property carrying `role`, if any. */
-function itemRoleField(itemSchema: Record<string, unknown>, role: string): string | null {
-  return itemRoleFields(itemSchema, role)[0] ?? null;
-}
-
-/** Every item property carrying `role`, in declaration order. */
-function itemRoleFields(itemSchema: Record<string, unknown>, role: string): string[] {
-  const properties = itemSchema.properties;
-  if (!isRecord(properties)) return [];
-  return Object.entries(properties).flatMap(([name, prop]) =>
-    isRecord(prop) && getTopologyRole(prop) === role ? [name] : [],
-  );
 }
 
 export interface EntryListOptions {

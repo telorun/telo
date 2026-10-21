@@ -1,0 +1,18 @@
+# Another build of oci://registry.test/acme/greetings@1.0.0, held in `other`'s
+# own cache: a `Greeting` here takes `salutation`, which `orders` does not write.
+kind: Telo.Library
+metadata:
+  name: Greetings
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata:
+  name: Greeting
+capability: Telo.Type
+schema:
+  type: object
+  properties:
+    salutation:
+      type: string
+  required: [salutation]
+  additionalProperties: false

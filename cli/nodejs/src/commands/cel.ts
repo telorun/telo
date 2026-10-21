@@ -14,7 +14,8 @@ import { functionSignature } from "@telorun/ide-support";
 import { enableBigIntJson, nodeCelHandlers, nodeHostVersions } from "@telorun/kernel";
 import type { ResourceManifest } from "@telorun/sdk";
 import type { Argv } from "yargs";
-import { cacheTargetFor, loadFreshGraph, openSession, resolveEntryPath } from "../check-session.js";
+import { cacheTargetFor, loadFreshGraph, openSession } from "../check-session.js";
+import { resolveManifestInput } from "../manifest-input.js";
 import { createLogger, resolveLocation } from "../logger.js";
 import { output } from "../output.js";
 
@@ -110,7 +111,8 @@ export function functionListing(): (CelFunctionInfo | CelBuiltinInfo)[] {
 
 /**
  * The analyzed manifest set of `manifestPath`, loaded and analyzed exactly as
- * `telo check` does — through the manifest cache, with mutable tags revalidated —
+ * `telo check` does — through the manifest cache, with mutable tags revalidated
+ * outside a packaged executable's sealed payload —
  * and refusing one that did not load or that analysis reports errors in: a
  * listing computed over a partial graph, or over a call that did not resolve,
  * would omit functions silently.
@@ -118,8 +120,9 @@ export function functionListing(): (CelFunctionInfo | CelBuiltinInfo)[] {
 export async function analyzedManifests(
   manifestPath: string,
 ): Promise<{ manifests: ResourceManifest[]; registry: AnalysisRegistry }> {
-  const entryPath = resolveEntryPath(manifestPath);
-  const target = cacheTargetFor(entryPath);
+  const input = await resolveManifestInput(manifestPath);
+  const entryPath = input.entryPath;
+  const target = cacheTargetFor(input);
   const session = openSession(target ? [target] : []);
   const { graph } = await loadFreshGraph(entryPath, session, createLogger(false));
   if (graph.errors.length > 0) {
@@ -278,7 +281,8 @@ export function celCommand(yargs: Argv): Argv {
         (y) =>
           y
             .positional("manifest", {
-              describe: "A manifest whose callable module functions to list, with their determinism",
+              describe:
+                "A manifest (or a packaged executable) whose callable module functions to list, with their determinism",
               type: "string",
             })
             .option("json", { type: "boolean", default: false, describe: "Output as JSON" }),

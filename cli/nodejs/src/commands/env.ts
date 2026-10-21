@@ -19,8 +19,9 @@ import { outEmit, outErrLine, outLine, output } from "../output.js";
 /**
  * `telo env template <manifest>` — every environment variable the application
  * reads, as commented-out env-file lines, with nothing booted. Printed by
- * default; `--write` adds to the files beside the manifest only the variables
- * they do not already mention, never touching a line that is there. Sensitive
+ * default; `--write` adds to the files the application reads — beside the
+ * manifest, or in the working directory for a packaged executable — only the
+ * variables they do not already mention, never touching a line that is there. Sensitive
  * values go to the last sensitive entry of the workspace's `env.files`, the
  * rest to the last entry that is not — `.env.local` and `.env` by default.
  */
@@ -40,11 +41,15 @@ async function runTemplate(argv: { manifest: string; write: boolean }): Promise<
     refuse(log, `--write needs a manifest on disk; ${loaded.entryPath} is a URL. Print the template instead.`);
     return;
   }
-  const directory = onDisk
-    ? fs.statSync(loaded.entryPath).isDirectory()
-      ? loaded.entryPath
-      : path.dirname(loaded.entryPath)
-    : undefined;
+  // Where the application reads its env files: beside the manifest, or — for a
+  // packaged executable — the working directory it is started in.
+  const directory = loaded.input.packaged
+    ? loaded.input.packaged.envAnchor
+    : onDisk
+      ? fs.statSync(loaded.entryPath).isDirectory()
+        ? loaded.entryPath
+        : path.dirname(loaded.entryPath)
+      : undefined;
   const files = await templateFiles(directory, entries, log);
   if (!files) return;
 
@@ -146,13 +151,14 @@ export function envCommand(yargs: Argv): Argv {
           (yy) =>
             yy
               .positional("manifest", {
-                describe: "Path to the application's manifest, or a directory containing telo.yaml",
+                describe:
+                  "Path to the application's manifest, a directory containing telo.yaml, or a packaged executable",
                 type: "string",
                 demandOption: true,
               })
               .option("write", {
                 describe:
-                  "Add to the .env and .env.local beside the manifest the variables they do not mention yet, instead of printing",
+                  "Add to the .env and .env.local the application reads (beside the manifest; the working directory for a packaged executable) the variables they do not mention yet, instead of printing",
                 type: "boolean",
                 default: false,
               }),

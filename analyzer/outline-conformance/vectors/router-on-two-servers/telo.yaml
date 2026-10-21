@@ -1,0 +1,105 @@
+kind: Telo.Application
+metadata:
+  name: Doors
+  version: 0.1.0
+  description: Serves one router through a public door and an internal door, each rendering a busy store its own way.
+targets:
+  - !ref publicDoor
+  - !ref internalDoor
+---
+kind: Telo.Definition
+metadata:
+  name: Server
+  description: Serves its mounted routers and renders what they throw.
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/doors.mjs&local_path=./nodejs/src/index.ts#Server
+schema:
+  type: object
+  properties:
+    mounts:
+      type: array
+      x-telo-topology-role: entries
+      items:
+        type: object
+        properties:
+          prefix: { type: string, x-telo-topology-role: matcher }
+          router:
+            x-telo-topology-role: handler
+            x-telo-ref: { kind: Doors.Router, use: dependency, throwsThrough: true }
+    catches:
+      type: array
+      x-telo-outcome-list: catches
+      x-telo-catches-for: ""
+      x-telo-context:
+        type: object
+        properties:
+          error: { type: object, properties: { code: { type: string } } }
+      items:
+        type: object
+        properties:
+          when: { type: boolean }
+          status: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: Router
+  description: Dispatches each route to its handler.
+capability: Telo.Mount
+controllers:
+  - pkg:telo/local/js?path=./nodejs/doors.mjs&local_path=./nodejs/src/index.ts#Router
+schema:
+  type: object
+  properties:
+    routes:
+      type: array
+      x-telo-topology-role: entries
+      items:
+        type: object
+        properties:
+          path: { type: string, x-telo-topology-role: matcher }
+          handler:
+            x-telo-topology-role: handler
+            x-telo-ref: { kind: Telo.Invocable, use: trigger.inbound }
+---
+kind: Telo.Definition
+metadata:
+  name: Task
+  description: Does one unit of work and may report the store busy.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_BUSY: { description: The store is busy. }
+controllers:
+  - pkg:telo/local/js?path=./nodejs/doors.mjs&local_path=./nodejs/src/index.ts#Task
+schema:
+  type: object
+  properties: {}
+---
+kind: Doors.Task
+metadata: { name: work }
+---
+kind: Doors.Router
+metadata: { name: routes }
+routes:
+  - path: /work
+    handler: !ref work
+---
+kind: Doors.Server
+metadata: { name: publicDoor }
+mounts:
+  - prefix: /
+    router: !ref routes
+catches:
+  - when: !cel "error.code == 'ERR_INPUT_INVALID'"
+    status: 400
+  - when: !cel "error.code == 'ERR_BUSY'"
+    status: 503
+---
+kind: Doors.Server
+metadata: { name: internalDoor }
+mounts:
+  - prefix: /
+    router: !ref routes
+catches:
+  - status: 500

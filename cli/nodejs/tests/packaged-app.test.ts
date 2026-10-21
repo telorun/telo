@@ -7,11 +7,13 @@ import { readTarGz } from "@telorun/kernel";
 import { PAYLOAD_INDEX, packPayload } from "../src/package/app-payload.js";
 import { encodeTrailer, payloadDigest } from "../src/package/app-trailer.js";
 import { buildAppPayload } from "../src/package/build-app-payload.js";
-import { loadPackagedApp } from "../src/package/run-packaged-app.js";
+import { openPackagedApp } from "../src/package/app-unpack.js";
+import { resolveManifestInput } from "../src/manifest-input.js";
 
 /**
- * What a packaged application does to the machine it runs on: it unpacks once,
- * holds the tree it is using, and reclaims its own older ones.
+ * What a packaged executable does to the machine it is read on: it unpacks
+ * once, holds the tree it is using, and — when it is run — reclaims its own
+ * older ones.
  *
  * The sweep is the half worth pinning down. Reclaiming is safe BECAUSE a tree
  * comes back out of the binary that owns it — but only for a tree nothing is
@@ -56,19 +58,18 @@ async function carrier(body = "kind: Telo.Application\n"): Promise<{ file: strin
 
 const env = () => ({ TELO_APP_DIR: appDir });
 
-/** The unpacked application, or a failure naming what the carrier turned out to
- *  be instead. */
+/** The unpacked application a run of `file` would use. */
 async function app(file: string) {
-  const carried = await loadPackagedApp(file, env());
-  if (carried.kind !== "app") throw new Error(`expected an application, got ${carried.kind}`);
-  return carried.app;
+  const carried = await openPackagedApp(file, { reclaim: true, env: env() });
+  if (!carried) throw new Error(`expected an application in ${file}`);
+  return carried;
 }
 
 describe("a packaged binary", () => {
   it("reports nothing for a carrier with no payload", async () => {
     const plain = path.join(dir, "plain");
     await fs.writeFile(plain, Buffer.alloc(4096, 2));
-    expect((await loadPackagedApp(plain, env())).kind).toBe("none");
+    expect(await openPackagedApp(plain, { reclaim: true, env: env() })).toBeUndefined();
   });
 
   it("unpacks once, keyed by the payload's digest, and reuses the tree", async () => {
@@ -107,11 +108,24 @@ describe("a packaged binary", () => {
     const other = path.join(root, "Invoices-2222222222222222");
     mkdirSync(other, { recursive: true });
 
-    await loadPackagedApp(file, env());
+    await app(file);
 
     expect(existsSync(idle)).toBe(false);
     expect(existsSync(held)).toBe(true);
     expect(existsSync(other)).toBe(true);
+  });
+
+  it("reclaims nothing when it is only read", async () => {
+    // A check or a describe of a binary says nothing about which build is
+    // deployed, so another build's idle tree is not its to remove.
+    const { file } = await carrier();
+    const idle = path.join(appDir, "apps", "Orders-0000000000000000");
+    mkdirSync(idle, { recursive: true });
+    writeFileSync(path.join(idle, ".telo-app-ready"), "x");
+
+    const read = await openPackagedApp(file, { reclaim: false, env: env() });
+    expect(existsSync(read!.entry)).toBe(true);
+    expect(existsSync(idle)).toBe(true);
   });
 
   it("sweeps a hold left by a process that is gone", async () => {
@@ -123,7 +137,7 @@ describe("a packaged binary", () => {
     // guessing at an age.
     writeFileSync(path.join(stale, "live", "2147483646"), "");
 
-    await loadPackagedApp(file, env());
+    await app(file);
     expect(existsSync(stale)).toBe(false);
   });
 
@@ -135,6 +149,34 @@ describe("a packaged binary", () => {
     expect(first.dir).not.toBe(second.dir);
     // The second start reclaimed the first, which nothing was holding.
     expect(existsSync(second.dir)).toBe(true);
+  });
+});
+
+describe("a packaged executable as a manifest source", () => {
+  it("loads the unpacked entry against the payload's cache, its env files read where the command runs", async () => {
+    const { file } = await carrier();
+    // An operator's cache root names a tree holding none of this application's
+    // modules, so it does not apply to a payload.
+    process.env.TELO_CACHE_DIR = path.join(dir, "elsewhere");
+    const input = await resolveManifestInput(file, { env: env() });
+    const unpacked = await app(file);
+    expect(input.entryPath).toBe(unpacked.entry);
+    expect(input.cacheRoot).toBe(unpacked.cacheDir);
+    expect(input.cacheSealed).toBe(true);
+    expect(input.packaged?.index.analysisKey).toBe(INDEX.analysisKey);
+    expect(input.packaged?.envAnchor).toBe(process.cwd());
+  });
+
+  it("passes a manifest through untouched", async () => {
+    const manifest = path.join(dir, "telo.yaml");
+    writeFileSync(manifest, "kind: Telo.Application\nmetadata:\n  name: Plain\n");
+    const input = await resolveManifestInput(manifest, { env: env() });
+    expect(input).toEqual({
+      entryPath: manifest,
+      cacheRoot: path.join(dir, ".telo"),
+      cacheSealed: false,
+    });
+    expect(existsSync(path.join(appDir, "apps"))).toBe(false);
   });
 });
 

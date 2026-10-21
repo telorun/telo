@@ -40,6 +40,30 @@ import {
 import { isModuleKind } from "./module-kinds.js";
 import type { RefSlot } from "./ref-slot.js";
 import { producedOutputContract, referenceOutputRefusal } from "./validate-reference-output.js";
+import { buildCelEnvironment, CEL_ENGINE, producedTypeOf } from "@telorun/templating";
+import { CatchLadder } from "./catch-scope.js";
+import { declaringModuleScope } from "./module-alias-scope.js";
+import type { ModuleDocuments } from "./module-documents.js";
+import { needGraphFromManifests, resolveNeedTable, type NeedGraph, type NeedTable } from "./need-table.js";
+import { needTypeOf } from "./need-type.js";
+import { buildOutline, type OutlineDocument } from "./outline.js";
+
+/** An answer kept for the exact `(deps, options)` objects it was built from. */
+interface Memo<T> {
+  deps: ModuleGraphDeps;
+  options: BuildModuleGraphOptions;
+  value: T;
+}
+
+/** How a tag's fixed produced type is named: its value type, else its JSON type. */
+function producedTypeName(schema: Record<string, unknown> | undefined): string | undefined {
+  const valueType = schema?.["x-telo-type"];
+  if (typeof valueType === "string") return valueType;
+  if (valueType && typeof valueType === "object" && typeof (valueType as { name?: unknown }).name === "string") {
+    return (valueType as { name: string }).name;
+  }
+  return typeof schema?.type === "string" ? schema.type : undefined;
+}
 
 /**
  * A reference as the loader leaves it — the internal `{kind, name, alias?}`
@@ -52,14 +76,20 @@ export interface ManifestRef {
 }
 
 export class ManifestAnalysis {
-  private readonly scopes: ModuleScopes;
+  private readonly scopes: ModuleScopes & { rootModules: Set<string> };
   private celScopeQuery: CelScopeQuery | undefined;
   private callGraphMemo: CallGraph | undefined;
-  private moduleGraphMemo: ModuleGraph | undefined;
+  private moduleGraphMemo: Memo<ModuleGraph> | undefined;
+  private outlineMemo: Memo<OutlineDocument> | undefined;
+  private needsMemo: { graph: NeedGraph; table: NeedTable } | null | undefined;
+  private catchLadderMemo: CatchLadder | undefined;
 
   constructor(
     readonly manifests: ResourceManifest[],
     private readonly ctx: CelScopeQueryContext,
+    /** Every imported library's full document set — what the flattened set
+     *  forwards only the export surface of. */
+    private readonly moduleDocuments: readonly ModuleDocuments[] = [],
   ) {
     const rootModules = new Set<string>();
     for (const m of manifests) {
@@ -97,12 +127,92 @@ export class ManifestAnalysis {
    * class holds the manifests, not the rules for reading a kind.
    */
   moduleGraph(deps: ModuleGraphDeps, options: BuildModuleGraphOptions = {}): ModuleGraph {
-    return (this.moduleGraphMemo ??= buildModuleGraph(
+    const memo = this.moduleGraphMemo;
+    if (memo && memo.deps === deps && memo.options === options) return memo.value;
+    const value = buildModuleGraph(this.manifests, this.callGraph, deps, options);
+    this.moduleGraphMemo = { deps, options, value };
+    return value;
+  }
+
+  /**
+   * What the module does, as the `outlineVersion: 1` document: its inputs and
+   * what reads them, its boot sequence, its entry points with what each can
+   * throw and which `catches:` entry renders it, the resources the module
+   * reaches and the ones nothing reaches.
+   *
+   * A projection of {@link moduleGraph} over exactly its `(deps, options)` —
+   * `options.root` is the module doc described — so an outline item's id is
+   * the graph's for the same manifest path. Kept for the same objects only.
+   */
+  outline(deps: ModuleGraphDeps, options: BuildModuleGraphOptions = {}): OutlineDocument {
+    const memo = this.outlineMemo;
+    if (memo && memo.deps === deps && memo.options === options) return memo.value;
+    const root = options.root ?? this.manifests.find((m) => isModuleKind(m.kind));
+    const value = buildOutline({
+      manifests: this.manifests,
+      root,
+      graph: this.moduleGraph(deps, options),
+      callGraph: this.callGraph,
+      definition: (kind, module) => deps.definition(kind, module),
+      ladder: this.catchLadder,
+      needs: this.needs?.table,
+      contract: (manifest, direction) =>
+        resolveContract(
+          direction,
+          manifest as Record<string, any>,
+          deps.definition(manifest.kind, (manifest.metadata as { module?: string } | undefined)?.module),
+          analyzerContractScope(this.ctx.defs, this.ctx.aliases, this.scopes, this.manifests as Record<string, any>[]),
+        )?.schema,
+      expressionType: (manifest, path, engine, source) => {
+        if (engine !== CEL_ENGINE) return producedTypeName(producedTypeOf(engine));
+        const checked = this.celScope.scopeAt(manifest, path).env.check(source);
+        // `dyn` is the checker saying it has no type for the expression.
+        return checked.valid && checked.typeName !== "dyn" ? checked.typeName : undefined;
+      },
+      referenceSites: (manifest) => new Set(deps.refSites(manifest).map((site) => site.path)),
+    });
+    this.outlineMemo = { deps, options, value };
+    return value;
+  }
+
+  /** The catch ladder of this set, over every imported library's documents —
+   *  the reader the coverage pass derives its verdict from. */
+  private get catchLadder(): CatchLadder {
+    if (this.catchLadderMemo) return this.catchLadderMemo;
+    const libraries = new Map<string, ResourceManifest[]>();
+    for (const doc of this.moduleDocuments) libraries.set(doc.module, doc.manifests);
+    return (this.catchLadderMemo = new CatchLadder(
       this.manifests,
-      this.callGraph,
-      deps,
-      options,
+      this.ctx.defs,
+      this.ctx.aliases,
+      buildCelEnvironment(),
+      this.ctx.aliasesByModule,
+      this.scopes.rootModules,
+      libraries,
     ));
+  }
+
+  /** This set's need table, built over its own modules and every imported
+   *  library's full documents, each kind resolved in its declaring module's
+   *  scope — the table `telo check` reports from. Null when the set holds no
+   *  module doc. */
+  private get needs(): { graph: NeedGraph; table: NeedTable } | null {
+    if (this.needsMemo !== undefined) return this.needsMemo;
+    const { defs, aliases, aliasesByModule } = this.ctx;
+    const rootModules = this.scopes.rootModules;
+    const graph = needGraphFromManifests(
+      this.manifests,
+      rootModules,
+      {
+        resolveKind: (module, kind) =>
+          declaringModuleScope(module, aliases, { aliasesByModule, rootModules }).resolveKind(kind),
+        needType: (kind) => needTypeOf(defs.resolve(kind)),
+        isKind: (kind) => defs.resolve(kind) !== undefined,
+        referenceSites: (manifest) => defs.referenceSites(manifest, aliases, aliasesByModule),
+      },
+      this.moduleDocuments,
+    );
+    return (this.needsMemo = graph ? { graph, table: resolveNeedTable(graph) } : null);
   }
 
   /** Whether a resource's name denotes a type or a value — the rule the naming

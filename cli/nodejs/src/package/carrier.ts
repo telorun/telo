@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { distributionKind } from "../distribution-versions.js";
 import { carriersRoot } from "./app-home.js";
-import { APP_MAGIC, MACHO_SECTION, MACHO_SEGMENT, encodeTrailer } from "./app-trailer.js";
+import { APP_MAGIC, MACHO_SECTION, MACHO_SEGMENT, carriesPayload, encodeTrailer } from "./app-trailer.js";
 import {
   hostReleaseTarget,
   RELEASE_BINARY_TARGETS,
@@ -16,8 +16,11 @@ import type { PlatformLike } from "./app-payload.js";
 
 /**
  * The carrier is the released `telo` binary for the platform, at this CLI's own
- * version — this executable itself when it IS that binary and the platform is
- * the host's, and the release asset otherwise.
+ * version — this executable itself when it IS that binary, carries no
+ * application of its own and the platform is the host's, and the release asset
+ * otherwise. An executable carrying an application is never a carrier: its
+ * bytes are that application, and a second payload would be written over a
+ * binary that is no longer telo alone.
  *
  * There is no flag naming a carrier file and no `--telo-version`: a carrier and
  * the CLI inside it are one version by construction, and a flag would be the
@@ -83,17 +86,20 @@ export function hostCarrierTarget(): string | null {
  * the CLI and the platform alone, so asking after the build spends a minute of
  * warming and building on a question that was answerable at the first line.
  */
-export function planCarrier(platform: PlatformLike, version: string): CarrierPlan {
+export async function planCarrier(platform: PlatformLike, version: string): Promise<CarrierPlan> {
   assertCarrierExists(platform);
   const target = carrierTarget(platform);
-  if (runningAsBinary() && target === hostCarrierTarget()) {
+  const isBinary = runningAsBinary();
+  const carriesApp = isBinary && (await carriesPayload(process.execPath));
+  if (isBinary && !carriesApp && target === hostCarrierTarget()) {
     // This executable reads payloads by construction — it is the code doing the
     // packaging — so it needs neither the release check nor the probe.
     return { target, from: "self" };
   }
   assertMayDownloadCarrier(distributionKind(), target, version, {
-    isBinary: runningAsBinary(),
+    isBinary,
     hostTarget: hostCarrierTarget(),
+    carriesApp,
   });
   return { target, from: "release" };
 }
@@ -133,7 +139,10 @@ export function assertMayDownloadCarrier(
   kind: ReturnType<typeof distributionKind>,
   target: string,
   version: string,
-  where: { isBinary: boolean; hostTarget: string | null } = { isBinary: false, hostTarget: null },
+  where: { isBinary: boolean; hostTarget: string | null; carriesApp?: boolean } = {
+    isBinary: false,
+    hostTarget: null,
+  },
 ): void {
   if (kind === "release") return;
   const cause =
@@ -142,7 +151,13 @@ export function assertMayDownloadCarrier(
       : `this telo cannot say whether it is the published ${version} or a build of its own`;
   // The remedy differs by where the reader is standing, and telling a binary to
   // build the binary it already is would be advice it has taken.
-  const remedy = where.isBinary
+  const remedy = where.carriesApp
+    ? [
+        `This executable carries an application of its own, so it is the carrier for no`,
+        `platform. Package with an installed telo release, or with this checkout's own`,
+        `standalone build (pnpm --filter @telorun/cli build:standalone).`,
+      ].join("\n")
+    : where.isBinary
     ? [
         `This binary can be the carrier for its own platform${where.hostTarget ? ` (${where.hostTarget})` : ""} and for no`,
         `other, since it cannot build another platform's runtime. Package ${target} with an`,

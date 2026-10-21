@@ -11,6 +11,7 @@
 import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
 import type { RefSlot } from "./ref-slot.js";
 import type { StepSlot } from "./step-slot.js";
+import { topologyRoleOf, type TopologyRole } from "./topology-role.js";
 import { drivenSites, reachOfSchema, refSlotOfEntry, type ReachRef } from "./reference-reach.js";
 
 /** Resolve a local `$ref` (only `#/$defs/<name>` form) against the root schema.
@@ -98,7 +99,7 @@ export function walkStepArray(
 ): void {
   const dispatchRole = (
     data: unknown,
-    role: string,
+    role: TopologyRole,
     itemsSchema: Record<string, any> | undefined,
     path: string,
   ): void => {
@@ -114,8 +115,8 @@ export function walkStepArray(
       data.forEach((entry, i) => {
         if (!entry || typeof entry !== "object") return;
         for (const [subKey, subSchema] of gatherPropertySchemas(entrySchema)) {
-          const subRole = subSchema["x-telo-topology-role"];
-          if (typeof subRole !== "string") continue;
+          const subRole = topologyRoleOf(subSchema);
+          if (!subRole) continue;
           dispatchRole(
             (entry as Record<string, any>)[subKey],
             subRole,
@@ -134,8 +135,8 @@ export function walkStepArray(
     visit(s, stepPath);
     if (!stepItemSchema) return;
     for (const [propKey, propSchema] of gatherPropertySchemas(stepItemSchema)) {
-      const role = propSchema["x-telo-topology-role"];
-      if (typeof role !== "string") continue;
+      const role = topologyRoleOf(propSchema);
+      if (!role) continue;
       dispatchRole(
         s[propKey],
         role,

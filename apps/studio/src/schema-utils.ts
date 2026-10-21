@@ -1,17 +1,5 @@
+import { topologyRoleOf } from "@telorun/analyzer";
 import { isRecord } from "./lib/utils";
-
-const TOPOLOGY_ROLE_ALIASES: Record<string, string> = {
-  branchList: "branch-list",
-  caseMap: "case-map",
-  condition: "predicate",
-};
-
-export function getTopologyRole(schema: unknown): string | null {
-  if (!isRecord(schema)) return null;
-  const role = schema["x-telo-topology-role"];
-  if (typeof role !== "string" || role.length === 0) return null;
-  return TOPOLOGY_ROLE_ALIASES[role] ?? role;
-}
 
 /**
  * Resolves a single `$ref` against the root schema.
@@ -57,7 +45,7 @@ export interface VariantMeta {
 export function stepsFieldName(kindSchema: Record<string, unknown>): string | null {
   if (!isRecord(kindSchema.properties)) return null;
   for (const [name, prop] of Object.entries(kindSchema.properties)) {
-    if (getTopologyRole(prop) === "steps") return name;
+    if (topologyRoleOf(prop) === "steps") return name;
   }
   return null;
 }
@@ -71,7 +59,7 @@ export function getStepSchema(
 ): Record<string, unknown> | null {
   if (!isRecord(topologySchema.properties)) return null;
   for (const prop of Object.values(topologySchema.properties)) {
-    if (getTopologyRole(prop) !== "steps" || !isRecord(prop)) continue;
+    if (topologyRoleOf(prop) !== "steps" || !isRecord(prop)) continue;
     const items = resolveRef(prop.items, topologySchema);
     return isRecord(items) ? items : null;
   }
@@ -119,7 +107,7 @@ function branchListItemKey(
   const items = resolveRef(listProp.items, root);
   if (isRecord(items) && isRecord(items.properties)) {
     for (const [k, p] of Object.entries(items.properties)) {
-      if (getTopologyRole(p) === role) return k;
+      if (topologyRoleOf(p) === role) return k;
     }
   }
   return null;
@@ -134,7 +122,7 @@ export function stepInputsField(
   for (const source of [variant?.schema.properties, stepSchema.properties]) {
     if (!isRecord(source)) continue;
     for (const [name, prop] of Object.entries(source)) {
-      if (getTopologyRole(prop) === "inputs") return name;
+      if (topologyRoleOf(prop) === "inputs") return name;
     }
   }
   return "inputs";
@@ -170,7 +158,7 @@ export function getVariants(
 
     for (const [name, prop] of Object.entries(variant.properties)) {
       if (!isRecord(prop)) continue;
-      const role = getTopologyRole(prop);
+      const role = topologyRoleOf(prop);
       if (role === "invoke") meta.invokeField = name;
       else if (role === "predicate") meta.predicateFields.push(name);
       else if (role === "discriminator") meta.discriminatorFields.push(name);
@@ -243,7 +231,7 @@ export function buildUnclassifiedSchema(
   if (isRecord(stepSchema.properties)) {
     for (const [name, prop] of Object.entries(stepSchema.properties)) {
       if (!isRecord(prop)) continue;
-      const role = getTopologyRole(prop);
+      const role = topologyRoleOf(prop);
       if (typeof role === "string" && BODY_ROLES.has(role)) continue;
       properties[name] = resolveRef(prop, root) ?? prop;
     }
@@ -275,7 +263,7 @@ export function buildEditableSchema(
     if (!isRecord(source)) return;
     for (const [name, prop] of Object.entries(source)) {
       if (!isRecord(prop)) continue;
-      const role = getTopologyRole(prop);
+      const role = topologyRoleOf(prop);
       if (typeof role === "string" && BODY_ROLES.has(role)) continue;
       if (
         variant.branchFields.includes(name) ||

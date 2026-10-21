@@ -122,10 +122,14 @@ export {
 export type { ObservationDeadline, ObservesProblem } from "./observing-slot.js";
 export type {
   NeedEnvField,
+  NeedEnvironmentEntry,
+  NeedField,
   NeedGraph,
   NeedGraphReference,
   NeedGraphScope,
+  NeedImporterEntry,
   NeedProblem,
+  NeedSuppliedEntry,
   NeedSupplyForm,
   NeedTable,
   NeedTableEntry,
@@ -513,6 +517,20 @@ export type {
 export type { TextSlotAccessorProblem } from "./text-slot-accessor.js";
 export { moduleLangOf, moduleLangs, recordLangOf } from "./module-lang.js";
 export { TextLanguageScope } from "./validate-texts.js";
+export {
+  entryListsOf,
+  rootMatchersOf,
+  roledProperties,
+  topologyRoleOf,
+  TOPOLOGY_ROLES,
+} from "./topology-role.js";
+export type {
+  EntryListDeclaration,
+  RoledProperty,
+  TopologyRole,
+} from "./topology-role.js";
+export { topologyRoleProblems } from "./validate-topology-roles.js";
+export type { TopologyRoleProblem } from "./validate-topology-roles.js";
 export { readDeprecation } from "./deprecation.js";
 export type { Deprecation } from "./deprecation.js";
 export {
@@ -970,6 +988,33 @@ export type { CelScopeQueryContext, ContextDeclarationSite } from "./cel-scope-q
 export { navigateConcretePath } from "./manifest-path.js";
 export { ManifestAnalysis } from "./manifest-analysis.js";
 export type { ManifestRef } from "./manifest-analysis.js";
+// What a module does, read from its manifest — `ManifestAnalysis.outline`.
+export { OUTLINE_VERSION } from "./outline.js";
+// A value as written, as the module graph's `match` and the outline carry it.
+export { readWrittenValue } from "./written-value.js";
+export type {
+  TaggedWrittenValue,
+  WrittenMap,
+  WrittenScalar,
+  WrittenValue,
+  WrittenValueReading,
+} from "./written-value.js";
+export type {
+  OutlineBootTarget,
+  OutlineCatchAnswer,
+  OutlineDocument,
+  OutlineEdge,
+  OutlineEntryPoint,
+  OutlineInput,
+  OutlineListAnswer,
+  OutlineModule,
+  OutlineNeedField,
+  OutlineRead,
+  OutlineResource,
+  OutlineRow,
+  OutlineScopeRung,
+  OutlineUnreached,
+} from "./outline.js";
 export {
   DEFAULT_MANIFEST_FILENAME,
   DiagnosticSeverity,

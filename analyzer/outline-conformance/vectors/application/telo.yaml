@@ -1,0 +1,228 @@
+kind: Telo.Application
+metadata:
+  name: Shop
+  version: 0.1.0
+  description: Takes orders through one front door and warms a cache on a timer.
+targets:
+  - !ref front
+  - name: warm
+    invoke: !ref warmCache
+    when: !cel "variables.warm"
+  - !ref sweeper
+variables:
+  region:
+    env: REGION
+    arg: { flag: region, short: r }
+    type: string
+    default: eu
+  warm:
+    env: WARM
+    type: boolean
+    default: false
+secrets:
+  apiKey:
+    env: API_KEY
+    type: string
+    default: not-a-real-key
+ports:
+  http:
+    env: PORT
+    default: 8080
+needs:
+  store:
+    kind: Shop.Store
+    env: { url: STORE_URL }
+---
+kind: Telo.NeedType
+metadata:
+  name: Store
+  description: A store to keep orders in.
+fields:
+  url: { type: string, x-telo-sensitive: true }
+required: [url]
+---
+kind: Telo.Definition
+metadata:
+  name: Server
+  description: Serves its mounted routers on a port and renders what they throw.
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/shop.mjs&local_path=./nodejs/src/index.ts#Server
+schema:
+  type: object
+  properties:
+    port: { type: integer, x-telo-eval: compile }
+    mounts:
+      type: array
+      x-telo-topology-role: entries
+      items:
+        type: object
+        properties:
+          prefix: { type: string, x-telo-topology-role: matcher }
+          router:
+            x-telo-topology-role: handler
+            x-telo-ref: { kind: Shop.Router, use: dependency, throwsThrough: true }
+    catches:
+      type: array
+      x-telo-outcome-list: catches
+      x-telo-catches-for: ""
+      x-telo-context:
+        type: object
+        properties:
+          error: { type: object, properties: { code: { type: string } } }
+      items:
+        type: object
+        properties:
+          when: { type: boolean }
+          status: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: Router
+  description: Dispatches each route to its handler and renders what the handler throws.
+capability: Telo.Mount
+controllers:
+  - pkg:telo/local/js?path=./nodejs/shop.mjs&local_path=./nodejs/src/index.ts#Router
+schema:
+  type: object
+  properties:
+    routes:
+      type: array
+      x-telo-topology-role: entries
+      items:
+        type: object
+        properties:
+          path: { type: string, x-telo-topology-role: matcher }
+          handler:
+            x-telo-topology-role: handler
+            x-telo-ref: { kind: Telo.Invocable, use: trigger.inbound }
+          catches:
+            type: array
+            x-telo-outcome-list: catches
+            x-telo-catches-for: handler
+            x-telo-context:
+              type: object
+              properties:
+                error: { type: object, properties: { code: { type: string } } }
+            items:
+              type: object
+              properties:
+                when: { type: boolean }
+                status: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: Timer
+  description: Invokes its target on a fixed period.
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/shop.mjs&local_path=./nodejs/src/index.ts#Timer
+schema:
+  type: object
+  properties:
+    every: { type: string, x-telo-topology-role: matcher }
+    invoke:
+      x-telo-ref: { kind: Telo.Invocable, use: trigger.inbound }
+---
+kind: Telo.Definition
+metadata:
+  name: Sequence
+  description: Runs its steps in order.
+capability: Telo.Invocable
+throws: { inherit: true }
+controllers:
+  - pkg:telo/local/js?path=./nodejs/shop.mjs&local_path=./nodejs/src/index.ts#Sequence
+schema:
+  type: object
+  properties:
+    steps:
+      type: array
+      x-telo-topology-role: steps
+      items: { $ref: "telo://manifest#/$defs/Step" }
+---
+kind: Telo.Definition
+metadata:
+  name: Task
+  description: Does one unit of work and may report the store busy.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_BUSY: { description: The store is busy. }
+controllers:
+  - pkg:telo/local/js?path=./nodejs/shop.mjs&local_path=./nodejs/src/index.ts#Task
+schema:
+  type: object
+  properties:
+    label: { type: string, x-telo-eval: compile }
+---
+kind: Telo.Definition
+metadata:
+  name: Relay
+  description: Forwards a call elsewhere; what it throws is whatever comes back.
+capability: Telo.Invocable
+throws: { passthrough: true }
+controllers:
+  - pkg:telo/local/js?path=./nodejs/shop.mjs&local_path=./nodejs/src/index.ts#Relay
+schema:
+  type: object
+  properties: {}
+---
+kind: Shop.Sequence
+metadata: { name: placeOrder }
+steps:
+  - name: check
+    if: !cel "variables.region == 'eu'"
+    then:
+      - name: reject
+        throw:
+          code: ERR_REGION
+          message: closed in this region
+    else:
+      - name: book
+        invoke: !ref booker
+        inputs:
+          label: !cel "'order in ' + variables.region"
+---
+kind: Shop.Task
+metadata: { name: booker }
+label: book
+---
+kind: Shop.Relay
+metadata: { name: relay }
+---
+kind: Shop.Router
+metadata: { name: orders }
+routes:
+  - path: /orders
+    handler: !ref placeOrder
+    catches:
+      - when: !cel "error.code.startsWith('ERR_R')"
+        status: 400
+      - when: !cel "error.code == 'ERR_REGION'"
+        status: 403
+  - path: /relay
+    handler: !ref relay
+---
+kind: Shop.Server
+metadata: { name: front }
+port: !cel "ports.http"
+mounts:
+  - prefix: /api
+    router: !ref orders
+catches:
+  - when: !cel "error.code == 'ERR_BUSY'"
+    status: 503
+  - status: 500
+---
+kind: Shop.Task
+metadata: { name: warmCache }
+label: !cel "'key ' + secrets.apiKey"
+---
+kind: Shop.Timer
+metadata: { name: sweeper }
+every: 5m
+invoke: !ref warmCache
+---
+kind: Shop.Task
+metadata: { name: unused }
+label: !cel "resources.store.url"

@@ -65,6 +65,35 @@ describe("entry list model", () => {
     expect(entryListOf(legacy)).toMatchObject({ name: "list", handler: "target" });
   });
 
+  it("shows a matcher a third-party router declares behind a local $defs reference", () => {
+    const router = {
+      $defs: { Path: { type: "string", "x-telo-topology-role": "matcher" } },
+      properties: {
+        routes: {
+          "x-telo-topology-role": "entries",
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              path: { $ref: "#/$defs/Path" },
+              handler: {
+                "x-telo-topology-role": "handler",
+                "x-telo-ref": { kind: "Telo.Invocable", use: "trigger.inbound" },
+              },
+            },
+          },
+        },
+      },
+    };
+    const [row] = buildEntryList({
+      entries: [{ path: "/orders", handler: ref("placeOrder") }],
+      list: entryListOf(router)!,
+      pointer: "/routes",
+      declared: new Set(["placeOrder"]),
+    });
+    expect(row!.matchers).toEqual([{ name: "path", label: "path", value: "/orders" }]);
+  });
+
   it("claims nothing when the entries have no handler to dispatch to", () => {
     // A list of entries dispatching to nothing is not this view's shape, and
     // rendering it would be a column of rows all saying "(nothing attached)".

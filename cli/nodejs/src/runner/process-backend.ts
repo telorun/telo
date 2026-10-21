@@ -76,7 +76,7 @@ export function createProcessBackend(deps: ProcessBackendDeps): RunnerBackend {
       // how to re-invoke itself, and the state root must be writable. Both are
       // reported as what they are rather than discovered at start.
       try {
-        selfInvocation();
+        await selfInvocation();
       } catch (err) {
         return {
           status: "unavailable",
@@ -450,8 +450,10 @@ function spawnApp(args: SpawnAppArgs): ChildProcess {
     cwd: args.workspaceDir,
     // The workload inherits this process's environment: a local run's whole
     // point is the machine it runs on (PATH, HOME, certificates), and the
-    // session's own env wins over it.
-    env: { ...process.env, ...args.env },
+    // session's own env wins over it — and the telo's own (`TELO_APP_CLI=1` for
+    // an executable carrying an application) wins over both, since without it
+    // the child would be that application rather than telo.
+    env: { ...process.env, ...args.env, ...args.telo.env },
     stdio: ["pipe", "pipe", "pipe"],
     detached: process.platform !== "win32",
     windowsHide: true,

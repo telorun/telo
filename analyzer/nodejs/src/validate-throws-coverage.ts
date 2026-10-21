@@ -1,30 +1,26 @@
-import type { CelEnvironment, CelNode } from "@telorun/cel";
+import type { CelEnvironment } from "@telorun/cel";
 import { isKindDocument } from "./kind-declaration.js";
-import { CEL_ENGINE, celExpressionsOf, isTaggedSentinel } from "@telorun/templating";
+import { celExpressionsOf, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import {
   AMBIENT_CONTRACT_ERROR_CODES,
   isAmbientContractErrorCode,
-  type ResourceDefinition,
   type ResourceManifest,
 } from "@telorun/sdk";
-import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js";
+import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
-  createResolveCtx,
   handsFailureBack,
-  resolveScopeUnion,
-  resolveThrowsUnion,
   throwsUses,
   type ThrowsCodeMeta,
   type ThrowsUnion,
 } from "./resolve-throws-union.js";
 import { forEachDeclaredSlot } from "./schema-walk.js";
 import {
-  buildEnclosers,
-  collectScopedManifests,
-  enclosingCoverage,
-  type ProvenCoverage,
-  type ScopedManifest,
+  CatchLadder,
+  collectOutcomeLists,
+  extractCoveredCodes,
+  type CatchList,
+  type OutcomeEntry,
 } from "./catch-scope.js";
 import type { ValidateFunction } from "ajv";
 import { schemaIssues } from "./schema-error-report.js";
@@ -35,186 +31,6 @@ import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
 
 const SOURCE = "telo-analyzer";
-
-interface OutcomeEntry {
-  /** A `!cel` TaggedSentinel. */
-  when?: unknown;
-  body?: unknown;
-  headers?: Record<string, unknown>;
-  status?: number;
-  schema?: Record<string, unknown>;
-}
-
-interface ReturnsLocation {
-  manifest: ResourceManifest;
-  entries: OutcomeEntry[];
-  arrayPath: string;
-}
-
-/** Walk `definition.schema` and `data` in tandem, invoking `onOutcome` each
- *  time an array schema annotated with `x-telo-outcome-list` is encountered.
- *  Keeps schema/data in lockstep so callers can resolve sibling fields. */
-function collectOutcomeLists(
-  manifest: ResourceManifest,
-  schema: Record<string, any> | undefined,
-  onReturns: (loc: ReturnsLocation) => void,
-  onCatches: (
-    arr: OutcomeEntry[],
-    arrayPath: string,
-    siblingData: Record<string, any>,
-    catchesFor: string,
-  ) => void,
-): void {
-  if (!schema) return;
-  walkSchemaData(schema, manifest as Record<string, any>, "", {
-    manifest,
-    onReturns,
-    onCatches,
-  });
-}
-
-type WalkCtx = {
-  manifest: ResourceManifest;
-  onReturns: (loc: ReturnsLocation) => void;
-  onCatches: (
-    arr: OutcomeEntry[],
-    arrayPath: string,
-    siblingData: Record<string, any>,
-    catchesFor: string,
-  ) => void;
-};
-
-function walkSchemaData(
-  schema: Record<string, any>,
-  data: unknown,
-  path: string,
-  ctx: WalkCtx,
-): void {
-  if (!schema || typeof schema !== "object") return;
-
-  const outcomeKind = schema["x-telo-outcome-list"] as "returns" | "catches" | undefined;
-  if (outcomeKind && Array.isArray(data)) {
-    // The sibling data is the parent object (not reachable here without tracking).
-    // collectOutcomeListsInObject passes the parent; this branch is a fallback
-    // for top-level outcome lists (never occurs in practice).
-    if (outcomeKind === "returns") {
-      ctx.onReturns({ manifest: ctx.manifest, entries: data as OutcomeEntry[], arrayPath: path });
-    }
-    return;
-  }
-
-  if (schema.properties && typeof data === "object" && data !== null && !Array.isArray(data)) {
-    const dataObj = data as Record<string, unknown>;
-    for (const [key, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
-      const nextPath = path ? `${path}.${key}` : key;
-      const child = dataObj[key];
-      const outcome = propSchema["x-telo-outcome-list"] as "returns" | "catches" | undefined;
-      if (outcome) {
-        const entries = Array.isArray(child) ? (child as OutcomeEntry[]) : [];
-        if (outcome === "returns") {
-          // Only fire for present arrays — rule 6 (missing returns) is
-          // enforced by schema required fields, not here.
-          if (Array.isArray(child)) {
-            ctx.onReturns({ manifest: ctx.manifest, entries, arrayPath: nextPath });
-          }
-        } else {
-          const catchesFor = propSchema["x-telo-catches-for"] as string | undefined;
-          // The EMPTY pointer names the resource the list is written on, the
-          // spelling `x-telo-schema-projection-from` already uses for the same
-          // "this declaration, not one it references" meaning — so the test is
-          // presence, never truthiness.
-          if (catchesFor !== undefined) {
-            // Fire even when absent so the coverage check can flag handlers
-            // whose declared union is non-empty but the list is missing.
-            ctx.onCatches(entries, nextPath, dataObj, catchesFor);
-          }
-        }
-        continue;
-      }
-      if (child !== undefined) walkSchemaData(propSchema, child, nextPath, ctx);
-    }
-  }
-
-  if (schema.items && Array.isArray(data)) {
-    for (const [i, item] of data.entries()) {
-      walkSchemaData(schema.items, item, `${path}[${i}]`, ctx);
-    }
-  }
-}
-
-/** Read a referenced handler's `{kind, name}` from a sibling field. Handles
- *  both `"Alias.Kind"` strings and `{ kind, name? }` objects. */
-function resolveHandlerRef(sibling: unknown): { kind: string; name?: string } | null {
-  if (!sibling) return null;
-  if (typeof sibling === "string") return { kind: sibling };
-  if (typeof sibling === "object") {
-    const obj = sibling as { kind?: string; name?: string };
-    if (typeof obj.kind === "string") {
-      return { kind: obj.kind, name: obj.name };
-    }
-  }
-  return null;
-}
-
-/** Parse a `when:` CEL expression and extract the set of `error.code` literals
- *  it covers. Recognised forms (per the plan's "coverage-proving" list):
- *  - `error.code == 'FOO'`
- *  - a disjunction of the above (`||`)
- *  - `error.code in ['FOO', 'BAR']`
- *  Parenthesised nestings of `||` over equality/in are flattened.
- *  Any non-matching sub-expression forfeits coverage for the whole `when:`. */
-function extractCoveredCodes(
-  whenExpr: unknown,
-  env: CelEnvironment,
-): { proven: boolean; codes: Set<string> } {
-  // The `when:` value is a `!cel` TaggedSentinel carrying the raw CEL source.
-  const source =
-    isTaggedSentinel(whenExpr) && whenExpr.engine === CEL_ENGINE ? whenExpr.source : undefined;
-  if (!source) return { proven: false, codes: new Set() };
-  const parsed = env.parse(source.trim());
-  if (parsed.diagnostics.length > 0) return { proven: false, codes: new Set() };
-  const codes = new Set<string>();
-  const proven = extractFromNode(parsed.root, codes);
-  return { proven, codes };
-}
-
-function extractFromNode(node: CelNode, codes: Set<string>): boolean {
-  if (node.kind !== "binary") return false;
-  if (node.operator === "||") {
-    return extractFromNode(node.left, codes) && extractFromNode(node.right, codes);
-  }
-  if (node.operator === "==") {
-    const lit = readErrorCodeEq(node.left, node.right) ?? readErrorCodeEq(node.right, node.left);
-    if (lit === null) return false;
-    codes.add(lit);
-    return true;
-  }
-  if (node.operator === "in") {
-    if (!isErrorCodeRef(node.left) || node.right.kind !== "list") return false;
-    for (const element of node.right.elements) {
-      const text = stringLiteral(element.value);
-      if (text === null) return false;
-      codes.add(text);
-    }
-    return true;
-  }
-  return false;
-}
-
-/** The text of a string literal, or null for anything else. */
-function stringLiteral(node: CelNode): string | null {
-  if (node.kind !== "literal" || node.literal.type !== "string") return null;
-  return node.literal.value;
-}
-
-function readErrorCodeEq(ref: CelNode, lit: CelNode): string | null {
-  return isErrorCodeRef(ref) ? stringLiteral(lit) : null;
-}
-
-function isErrorCodeRef(node: CelNode): boolean {
-  if (node.kind !== "select" || node.field !== "code") return false;
-  return node.operand.kind === "ident" && node.operand.name === "error";
-}
 
 /** Rule 7: within an outcome list, a no-`when:` entry must be the last entry. */
 function checkCatchAllPlacement(
@@ -239,24 +55,6 @@ function checkCatchAllPlacement(
     }
   }
   return diagnostics;
-}
-
-/** Read one list's {@link ProvenCoverage} — the codes its coverage-proving
- *  `when:` clauses name, and whether it ends in a catch-all. */
-function provenCoverage(entries: OutcomeEntry[], env: CelEnvironment): ProvenCoverage {
-  const codes = new Set<string>();
-  let hasCatchAll = false;
-  for (const e of entries) {
-    if (!e) continue;
-    if (!e.when) {
-      hasCatchAll = true;
-      continue;
-    }
-    const { proven, codes: entryCodes } = extractCoveredCodes(e.when, env);
-    if (!proven) continue;
-    for (const c of entryCodes) codes.add(c);
-  }
-  return { codes, hasCatchAll };
 }
 
 /** Rule 4: a coverage-proving `when:` may only name a code the list's own
@@ -302,29 +100,21 @@ function checkUndeclaredCodes(
   return diagnostics;
 }
 
-/** Rule 1 + the unbounded-union rule, asked ONCE per dispatch site over every
- *  list that can render its throws — the site's own, its resource's scope list,
- *  and every scope enclosing that resource.
+/** Rule 1 + the unbounded-union rule, asked ONCE per dispatch site over its
+ *  catch ladder — the site's own list, its resource's scope list, and every
+ *  scope enclosing that resource.
  *
  *  Asking it per list is what would make this a false check rather than a
  *  missing one: a route that declares no `catches:` under a router that renders
  *  everything is completely covered, and reporting it fires on precisely the
  *  manifests scope lists exist to enable. */
-function checkCoverage(
-  union: ThrowsUnion,
-  resource: { kind: string; name: string },
-  filePath: string | undefined,
-  arrayPath: string,
-  handler: { kind: string; name?: string } | null,
-  covered: ProvenCoverage,
-  routing: { kind: string; name: string } = resource,
-): AnalysisDiagnostic[] {
+function checkCoverage(site: CatchList, union: ThrowsUnion, ladder: CatchLadder): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
-  if (covered.hasCatchAll) return diagnostics;
+  const { routing, filePath, arrayPath } = site;
 
   // Unbounded union (passthrough or transitive): authors can't enumerate the
   // codes, so a catch-all is mandatory — at this list or any enclosing scope.
-  if (union.unbounded) {
+  if (union.unbounded && !ladder.ladderFor(site.manifest, site, null).covered) {
     diagnostics.push({
       severity: DiagnosticSeverity.Error,
       code: "UNBOUNDED_UNION_NEEDS_CATCHALL",
@@ -337,20 +127,34 @@ function checkCoverage(
   // One diagnostic per site, not per code: every uncovered code sits at the
   // same dispatch site, and one catch-all answers all of them at once. A
   // diagnostic each repeated the same location and the same fix N times.
-  const uncovered = [...union.codes.keys()].filter((c) => !covered.codes.has(c)).sort();
+  const uncovered = [...union.codes.keys()]
+    .filter((c) => !ladder.ladderFor(site.manifest, site, c).covered)
+    .sort();
   if (uncovered.length > 0) {
     diagnostics.push({
       severity: DiagnosticSeverity.Error,
       code: "UNCOVERED_THROW_CODE",
       source: SOURCE,
       message:
-        `handler ${handler?.name ? `\`!ref ${handler.name}\`` : `\`${handler?.kind ?? "?"}\``} can throw ${uncovered.length} code${uncovered.length === 1 ? "" : "s"} that no catches: entry handles — at this list or any enclosing scope: ${uncovered.map((c) => `'${c}'`).join(", ")}. ` +
+        `handler ${handlerLabel(site.handler)} can throw ${uncovered.length} code${uncovered.length === 1 ? "" : "s"} that no catches: entry handles — at this list or any enclosing scope: ${uncovered.map((c) => `'${c}'`).join(", ")}. ` +
         `Give each a matching \`when:\` (e.g. \`when: !cel "error.code == '${uncovered[0]}'"\`), or add a catch-all entry — one with no \`when:\`, placed last.`,
       data: { resource: routing, filePath, path: arrayPath, uncovered },
     });
   }
 
   return diagnostics;
+}
+
+/** A handler as a message names it: `!ref <name>` for a reference, its kind
+ *  for a kind string. */
+function handlerLabel(handler: unknown): string {
+  if (isRefSentinel(handler)) return `\`!ref ${handler.source}\``;
+  if (handler && typeof handler === "object") {
+    const { kind, name } = handler as { kind?: unknown; name?: unknown };
+    if (typeof name === "string") return `\`!ref ${name}\``;
+    if (typeof kind === "string") return `\`${kind}\``;
+  }
+  return typeof handler === "string" ? `\`${handler}\`` : "`?`";
 }
 
 /** Rule 2: for each `error.data.<field>` chain in a catches entry's expressions,
@@ -648,124 +452,48 @@ export function validateThrowsCoverage(
   const diagnostics: AnalysisDiagnostic[] = [];
   diagnostics.push(...validateThrowsDeclarations(manifests));
 
-  // A `with:`-scoped declaration is a resource like any other — it has a kind, a
-  // name, and, for a scoped `Http.Server`, a catch list that renders what its
-  // mounts throw. It is simply not in the flat set, so every check here used to
-  // skip it: its own entries went unchecked AND its coverage reached nothing it
-  // encloses. Standing a server up around a test is exactly that shape, so the
-  // sanctioned pattern was the one the pass could not see.
-  //
-  // Discovered through the shared visitor rather than a second scope walk, and
-  // folded into the pool every name is resolved against — a scoped mount whose
-  // target the resolver cannot find reads as an empty union, which reports every
-  // entry of that server's list as naming a code nothing throws.
-  const scoped = collectScopedManifests(manifests, defs, aliases, aliasesByModule, rootModules);
-  const allManifests = [...manifests, ...scoped.map((s) => s.manifest)];
-  const resolveCtx = createResolveCtx(
-    allManifests,
+  // Every catch list — a `with:`-scoped declaration's included, since standing
+  // a server up around a test is exactly that shape — with the ladder each
+  // dispatch site climbs. A scope list has to be known before any site it
+  // covers is judged, so the ladder is built whole first.
+  const ladder = new CatchLadder(
+    manifests,
     defs,
     aliases,
+    env,
     aliasesByModule,
     rootModules,
     moduleManifests,
   );
 
-  // The alias resolver for a manifest's own lexical scope — an imported library's
-  // resolver when it owns the manifest, else undefined (fall back to root aliases).
-  const scopeResolverFor = (m: ResourceManifest): AliasResolver | undefined =>
-    scopeResolverForModule(
-      (m.metadata as { module?: string } | undefined)?.module,
-      rootModules,
-      aliasesByModule,
-    );
-
-  // Pass 1 — read every outcome list, and record which resources each scope
-  // list encloses. A scope list has to be known before any site it covers is
-  // judged, so collection and judgement cannot be one loop.
-  const sites: CatchSite[] = [];
-  const scopeOf = new Map<ResourceManifest, ProvenCoverage>();
-  const scopedBy = new Map<ResourceManifest, ScopedManifest>();
-  for (const s of scoped) scopedBy.set(s.manifest, s);
-
-  const definitionFor = (manifest: ResourceManifest) => {
-    // A scoped declaration's kind is written in the alias scope of the module
-    // that declared the ENCLOSING resource; it carries no `metadata.module` of
-    // its own to find one by.
-    const anchor = scopedBy.get(manifest)?.owner ?? manifest;
-    const scopeResolver = scopeResolverFor(anchor);
-    const resolvedKind =
-      scopeResolver?.resolveKind(manifest.kind) ?? aliases.resolveKind(manifest.kind);
-    return defs.resolve(manifest.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
-  };
-
-  const enclosers = buildEnclosers(
-    allManifests,
-    definitionFor,
-    (m) => ((scopedBy.get(m)?.owner ?? m).metadata as { module?: string } | undefined)?.module,
-    resolveCtx,
-  );
-
-  for (const manifest of allManifests) {
+  for (const manifest of ladder.allManifests) {
     if (!manifest.kind || !manifest.metadata?.name) continue;
     if (isKindDocument(manifest)) continue;
+    const definition = ladder.definitionOf(manifest);
+    if (!definition?.schema) continue;
     // A scoped declaration is reported against the document it is WRITTEN in —
-    // its owner's — at its own position inside that owner's scope array, because
-    // position lookup finds a TOP-LEVEL doc by (kind, name) and a scoped
-    // resource is not one. The message still names the scoped resource, so the
-    // reader is not sent to a resource that has no `catches:` at all.
-    const enclosing = scopedBy.get(manifest);
+    // its owner's — at its own position inside that owner's scope array.
+    const enclosing = ladder.scopedBy.get(manifest);
     const anchor = enclosing?.owner ?? manifest;
     const pathPrefix = enclosing ? `${enclosing.path}.` : "";
-    const scopeResolver = scopeResolverFor(anchor);
-    const definition = definitionFor(manifest);
-    if (!definition?.schema) continue;
     const resource = { kind: manifest.kind, name: manifest.metadata.name as string };
-    const routing = enclosing
-      ? { kind: anchor.kind, name: anchor.metadata!.name as string }
-      : resource;
+    const routing = enclosing ? { kind: anchor.kind, name: anchor.metadata!.name as string } : resource;
     const filePath = (anchor.metadata as { source?: string } | undefined)?.source;
-
     collectOutcomeLists(
       manifest,
       definition.schema,
-      (ret) => {
+      (entries, arrayPath) => {
         diagnostics.push(
-          ...checkCatchAllPlacement(
-            ret.entries,
-            resource,
-            "returns",
-            filePath,
-            `${pathPrefix}${ret.arrayPath}`,
-            routing,
-          ),
+          ...checkCatchAllPlacement(entries, resource, "returns", filePath, `${pathPrefix}${arrayPath}`, routing),
         );
       },
-      (entries, arrayPath, siblingData, catchesFor) => {
-        const site: CatchSite = {
-          manifest,
-          definition,
-          resource,
-          routing,
-          filePath,
-          entries,
-          arrayPath: `${pathPrefix}${arrayPath}`,
-          scopeResolver,
-          handlerRef: catchesFor === "" ? null : resolveHandlerRef(siblingData[catchesFor]),
-          isScope: catchesFor === "",
-        };
-        sites.push(site);
-        if (site.isScope) scopeOf.set(manifest, provenCoverage(entries, env));
-      },
+      () => {},
     );
   }
 
-  const coverageMemo = new Map<ResourceManifest, ProvenCoverage>();
-  const scopeCoverageFor = (manifest: ResourceManifest): ProvenCoverage =>
-    enclosingCoverage(manifest, scopeOf, enclosers, coverageMemo);
-
-  // Pass 2 — judge each list against its own denominator, and each dispatch site
-  // against everything that can render its throws.
-  for (const site of sites) {
+  // Each list against its own denominator, and each dispatch site against
+  // everything that can render its throws.
+  for (const site of ladder.lists) {
     diagnostics.push(
       ...checkCatchAllPlacement(
         site.entries,
@@ -776,9 +504,7 @@ export function validateThrowsCoverage(
         site.routing,
       ),
     );
-    const union = site.isScope
-      ? resolveScopeUnion(site.manifest, site.definition, resolveCtx)
-      : handlerRefUnion(site.handlerRef, allManifests, resolveCtx, site.scopeResolver);
+    const union = ladder.unionOf(site);
     diagnostics.push(
       ...checkUndeclaredCodes(
         site.entries,
@@ -805,82 +531,8 @@ export function validateThrowsCoverage(
       ),
     );
     if (site.isScope) continue;
-
-    const own = provenCoverage(site.entries, env);
-    const scope = scopeCoverageFor(site.manifest);
-    const covered: ProvenCoverage = {
-      codes: new Set([...own.codes, ...scope.codes]),
-      hasCatchAll: own.hasCatchAll || scope.hasCatchAll,
-    };
-    diagnostics.push(
-      ...checkCoverage(
-        union,
-        site.resource,
-        site.filePath,
-        site.arrayPath,
-        site.handlerRef,
-        covered,
-        site.routing,
-      ),
-    );
+    diagnostics.push(...checkCoverage(site, union, ladder));
   }
 
   return diagnostics;
-}
-
-/** One `catches:` list in one manifest, with everything needed to judge it. */
-interface CatchSite {
-  manifest: ResourceManifest;
-  definition: ResourceDefinition;
-  /** Named in the MESSAGE — the resource whose list this is. */
-  resource: { kind: string; name: string };
-  /** Named in `data.resource`, which is how position lookup finds a document:
-   *  it searches TOP-LEVEL docs by (kind, name), so a scoped resource routes
-   *  through its owner while the message still names the scoped one. */
-  routing: { kind: string; name: string };
-  filePath: string | undefined;
-  entries: OutcomeEntry[];
-  arrayPath: string;
-  scopeResolver: AliasResolver | undefined;
-  /** The handler this list renders throws for; null for a scope list. */
-  handlerRef: { kind: string; name?: string } | null;
-  /** `x-telo-catches-for: ""` — the list covers everything its resource drives
-   *  and owes coverage of nothing on its own. */
-  isScope: boolean;
-}
-
-/** Resolve a handler ref's effective throw union. Prefers the named manifest
- *  (so `inherit: true` handlers expose their transitive union); falls back to
- *  the definition's own codes when no name is given. */
-function handlerRefUnion(
-  handlerRef: { kind: string; name?: string } | null,
-  manifests: ResourceManifest[],
-  ctx: ReturnType<typeof createResolveCtx>,
-  scopeResolver: AliasResolver | undefined,
-): ThrowsUnion {
-  if (!handlerRef) return { codes: new Map(), unbounded: false };
-  if (handlerRef.name) {
-    const resolvedKind = scopeResolver?.resolveKind(handlerRef.kind) ?? ctx.aliases.resolveKind(handlerRef.kind);
-    const targetManifest = manifests.find(
-      (m) =>
-        m.metadata?.name === handlerRef.name &&
-        (m.kind === handlerRef.kind ||
-          m.kind === resolvedKind ||
-          scopeResolver?.resolveKind(m.kind) === handlerRef.kind ||
-          ctx.aliases.resolveKind(m.kind) === handlerRef.kind),
-    );
-    if (targetManifest) return resolveThrowsUnion(targetManifest, ctx);
-  }
-  // No named target — fall back to the handler kind's own declared codes,
-  // resolving the kind in the owner's lexical scope first, then root aliases.
-  const resolved = scopeResolver?.resolveKind(handlerRef.kind) ?? ctx.aliases.resolveKind(handlerRef.kind);
-  const def =
-    ctx.defs.resolve(handlerRef.kind) ?? (resolved ? ctx.defs.resolve(resolved) : undefined);
-  if (!def?.throws) return { codes: new Map(), unbounded: false };
-  const codes = new Map<string, ThrowsCodeMeta>();
-  for (const [c, meta] of Object.entries(def.throws.codes ?? {})) {
-    codes.set(c, { data: (meta as { data?: Record<string, any> }).data });
-  }
-  const unbounded = def.throws.passthrough === true || def.throws.inherit === true;
-  return { codes, unbounded };
 }

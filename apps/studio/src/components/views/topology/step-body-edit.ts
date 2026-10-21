@@ -1,6 +1,7 @@
+import { topologyRoleOf } from "@telorun/analyzer";
 import { valueTypeOf } from "@telorun/sdk";
 import { isRecord } from "../../../lib/utils";
-import { getTopologyRole, type VariantMeta } from "../../../schema-utils";
+import { type VariantMeta } from "../../../schema-utils";
 
 /**
  * Writes into a step body at a JSON pointer.
@@ -130,7 +131,7 @@ export function newStep(variant: VariantMeta, name: string): Record<string, unkn
     if (field === "name") continue;
     const props = isRecord(variant.schema.properties) ? variant.schema.properties : {};
     const prop = props[field];
-    const role = getTopologyRole(prop);
+    const role = topologyRoleOf(prop);
     if (typeof role === "string" && picked.has(role)) continue;
     // A slot holding a live instance — bytes, a stream — has no value a YAML
     // author could write, so seeding it writes something the schema rejects.

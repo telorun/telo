@@ -61,7 +61,8 @@ export function needsCommand(yargs: Argv): Argv {
           "List every need the application reads from the environment, and the variable each field is read from — nothing is booted",
           (yy) =>
             yy.positional("manifest", {
-              describe: "Path to the application's manifest, or a directory containing telo.yaml",
+              describe:
+                "Path to the application's manifest, a directory containing telo.yaml, or a packaged executable",
               type: "string",
               demandOption: true,
             }),

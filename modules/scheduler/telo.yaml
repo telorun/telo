@@ -40,6 +40,8 @@ schema:
       title: Every
       type: string
       x-telo-eval: compile
+      # Labels the `invoke` trigger: what a reader recognises this schedule by.
+      x-telo-topology-role: matcher
       description: Tick period as a duration (`30s`, `1m`, `1h`).
     invoke:
       title: Invoke
@@ -91,6 +93,8 @@ schema:
       title: Cron
       type: string
       x-telo-eval: compile
+      # `cron` and `timezone` together label the `invoke` trigger.
+      x-telo-topology-role: matcher
       description: >-
         Cron expression — 5 fields (`m h dom mon dow`), or 6 with a leading
         seconds field. `0 2 * * *` is daily at 02:00.
@@ -99,6 +103,7 @@ schema:
       type: string
       default: UTC
       x-telo-eval: compile
+      x-telo-topology-role: matcher
       description: >-
         IANA timezone the expression is interpreted in (`Europe/Warsaw`).
         Defaults to UTC so a schedule means the same thing on every host.

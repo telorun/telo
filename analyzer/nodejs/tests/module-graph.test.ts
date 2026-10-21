@@ -17,6 +17,12 @@ import {
   type ModuleGraphDeps,
 } from "../src/module-graph.js";
 import { kindDeclarationOf } from "../src/kind-declaration.js";
+import { AnalysisRegistry } from "../src/analysis-registry.js";
+import { StaticAnalyzer } from "../src/analyzer.js";
+import { collectModuleDocuments } from "../src/index.js";
+import { flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
+import { Loader } from "../src/manifest-loader.js";
+import type { ManifestSource } from "../src/types.js";
 
 /** Every use the slots at one declared pattern can take — the registry's rule. */
 const usesOf = (entries: DeclaredReference["entries"]) => [
@@ -1576,6 +1582,282 @@ describe("what identifies an entry row", () => {
       ]).nodes.find((n) => n.name === "api")!.rows[0].id;
     // Editing a property the row does not show must not detach the selection.
     expect(id({ query: { type: "object" } })).toBe(id(undefined));
+  });
+
+  it("carries an expression in a matcher as its tag and source", () => {
+    const graph = fixtureWith([nestedMatcherDef], [
+      {
+        kind: "web.Router",
+        metadata: { name: "api" },
+        routes: [
+          {
+            request: { path: { __tagged: true, engine: "cel", source: "variables.base" }, method: "GET" },
+            handler: ref("h", "run.Sequence"),
+          },
+        ],
+      } as never,
+      { kind: "run.Sequence", metadata: { name: "h" }, steps: [] } as never,
+    ]);
+    expect(graph.nodes.find((n) => n.name === "api")!.rows[0].match).toEqual({
+      path: { tag: "cel", source: "variables.base" },
+      method: "GET",
+    });
+  });
+
+  it("keeps a row's identity when its matcher expression's type changes or cannot be found", async () => {
+    // Only the declaration of `variables.base` differs: `string`, `integer`,
+    // and none at all, where the expression has no type.
+    const appWith = (variable: string) => `kind: Telo.Application
+metadata: { name: Web }
+targets:
+  - !ref server
+${variable}---
+kind: Telo.Definition
+metadata: { name: Server }
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/web.mjs&local_path=./nodejs/src/index.ts#Server
+schema:
+  type: object
+  properties:
+    routes:
+      type: array
+      x-telo-topology-role: entries
+      items:
+        type: object
+        properties:
+          path: { x-telo-topology-role: matcher, x-telo-eval: compile }
+          handler:
+            x-telo-topology-role: handler
+            x-telo-ref: { kind: Telo.Invocable, use: trigger.inbound }
+---
+kind: Telo.Definition
+metadata: { name: Task }
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/web.mjs&local_path=./nodejs/src/index.ts#Task
+schema: { type: object, properties: {} }
+---
+kind: Web.Server
+metadata: { name: server }
+routes:
+  - path: !cel "variables.base"
+    handler: !ref task
+---
+kind: Web.Task
+metadata: { name: task }
+`;
+    const rowOf = async (variable: string) => {
+      const url = "/app/telo.yaml";
+      const source: ManifestSource = {
+        supports: () => true,
+        async read(at: string) {
+          if (at !== url) throw new Error(`File not found: ${at}`);
+          return { text: appWith(variable), source: at };
+        },
+        resolveRelative: (base: string, relative: string) => new URL(relative, `file://${base}`).pathname,
+      };
+      const loaded = await new Loader([source]).loadGraph(url, { desugarImports: true });
+      const manifests = flattenForAnalyzer(loaded);
+      const registry = new AnalysisRegistry();
+      new StaticAnalyzer().analyze(manifests, { moduleDocuments: collectModuleDocuments(loaded) }, registry);
+      const root = manifests.find((m) => m.kind === "Telo.Application")!;
+      const options = { root, entryModule: "Web" };
+      const deps = registry.moduleGraphDeps(manifests, options);
+      const analysis = registry.analysisOf(manifests);
+      const id = analysis.moduleGraph(deps, options).nodes.find((n) => n.name === "server")!.rows[0]!.id;
+      const outlined = analysis.outline(deps, options).resources.find((r) => r.name === "server")!.rows[0]!;
+      return { id, match: outlined.match };
+    };
+
+    const asString = await rowOf("variables:\n  base: { env: BASE, type: string, default: /a }\n");
+    const asInteger = await rowOf("variables:\n  base: { env: BASE, type: integer, default: 1 }\n");
+    const untypeable = await rowOf("");
+    // The outline types the expression, so each declaration reads differently…
+    expect(asString.match).toEqual({ path: { tag: "cel", source: "variables.base", type: "string" } });
+    expect(asInteger.match).toEqual({ path: { tag: "cel", source: "variables.base", type: "int" } });
+    expect(untypeable.match).toEqual({ path: { tag: "cel", source: "variables.base" } });
+    // …while the row the graph identifies it by stays the same row.
+    expect(asInteger.id).toBe(asString.id);
+    expect(untypeable.id).toBe(asString.id);
+  });
+});
+
+describe("what labels a trigger outside an entry list", () => {
+  // A kind no analyzer code knows: its top-level matchers label every trigger
+  // slot of the resource that no entry list holds.
+  const cronDef = {
+    kind: "Telo.Definition",
+    metadata: { name: "Cron", module: "timer" },
+    capability: "Telo.Service",
+    schema: {
+      type: "object",
+      properties: {
+        cron: { "x-telo-topology-role": "matcher", type: "string" },
+        timezone: { "x-telo-topology-role": "matcher", type: "string", default: "UTC" },
+        invoke: { "x-telo-ref": { kind: "telo.Executable", use: "trigger.inbound" } },
+        store: { "x-telo-ref": { kind: "sql.Connection", use: "dependency" } },
+      },
+    },
+  };
+
+  const edgesOf = (cron: unknown) => {
+    const graph = fixtureWith([cronDef], [
+      {
+        kind: "timer.Cron",
+        metadata: { name: "nightly" },
+        cron,
+        invoke: ref("job", "run.Sequence"),
+        store: ref("db", "sql.Connection"),
+      } as never,
+      { kind: "run.Sequence", metadata: { name: "job" }, steps: [] } as never,
+      { kind: "sql.Connection", metadata: { name: "db" } } as never,
+    ]);
+    return graph.edgesFrom(named(graph, "nightly").id);
+  };
+
+  it("labels the trigger edge by the matcher values written, an omitted one absent, and leaves other edges unlabelled", () => {
+    const edges = edgesOf("0 2 * * *");
+    expect(edges.find((e) => e.slot === "invoke")!.match).toEqual({ cron: "0 2 * * *" });
+    expect(edges.find((e) => e.slot === "store")!.match).toBeUndefined();
+  });
+
+  // A consumer selected by a reference — and by a filter whose value happens to
+  // look like one.
+  const consumerDef = {
+    kind: "Telo.Definition",
+    metadata: { name: "Consumer", module: "queue" },
+    capability: "Telo.Service",
+    schema: {
+      type: "object",
+      properties: {
+        topic: {
+          "x-telo-topology-role": "matcher",
+          "x-telo-ref": { kind: "queue.Topic", use: "dependency" },
+        },
+        filter: { "x-telo-topology-role": "matcher", type: "object" },
+        invoke: { "x-telo-ref": { kind: "telo.Executable", use: "trigger.consumer" } },
+      },
+    },
+  };
+  const topicDef = {
+    kind: "Telo.Definition",
+    metadata: { name: "Topic", module: "queue" },
+    capability: "Telo.Provider",
+    schema: { type: "object" },
+  };
+
+  const consumerMatch = (fields: Record<string, unknown>) => {
+    const graph = fixtureWith([consumerDef, topicDef], [
+      {
+        kind: "queue.Consumer",
+        metadata: { name: "orders" },
+        ...fields,
+        invoke: ref("job", "run.Sequence"),
+      } as never,
+      { kind: "queue.Topic", metadata: { name: "placed" } } as never,
+      { kind: "run.Sequence", metadata: { name: "job" }, steps: [] } as never,
+    ]);
+    return graph.edgesFrom(named(graph, "orders").id).find((e) => e.slot === "invoke")!.match;
+  };
+
+  it("carries a reference-valued matcher as the reference written", () => {
+    expect(consumerMatch({ topic: ref("placed", "queue.Topic") })).toEqual({
+      topic: { tag: "ref", source: "placed" },
+    });
+  });
+
+  it("reads a reference-shaped literal at a matcher no slot declares as data", () => {
+    expect(consumerMatch({ filter: { kind: "Order", name: "placed" } })).toEqual({
+      kind: "Order",
+      name: "placed",
+    });
+  });
+});
+
+describe("what identifies a mount answering by host", () => {
+  const hostServerDef = {
+    kind: "Telo.Definition",
+    metadata: { name: "HostServer", module: "web" },
+    capability: "Telo.Service",
+    schema: {
+      type: "object",
+      properties: {
+        mounts: {
+          "x-telo-topology-role": "entries",
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              path: { "x-telo-topology-role": "matcher", type: "string" },
+              hostnames: {
+                "x-telo-topology-role": "matcher",
+                type: "array",
+                items: { "x-telo-ref": { kind: "web.Address", use: "dependency" } },
+              },
+              mount: {
+                "x-telo-topology-role": "handler",
+                "x-telo-ref": { kind: "telo.Mount", use: "dependency" },
+              },
+              guard: {
+                type: "object",
+                properties: {
+                  invoke: { "x-telo-ref": { kind: "telo.Executable", use: "trigger.inbound" } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+  const addressDef = {
+    kind: "Telo.Definition",
+    metadata: { name: "Address", module: "web" },
+    capability: "Telo.Provider",
+    schema: { type: "object" },
+  };
+
+  const siteMount = {
+    path: "/",
+    hostnames: [ref("site", "web.Address")],
+    mount: ref("siteApi", "http.Api"),
+    guard: { invoke: ref("auth", "run.Sequence") },
+  };
+  const adminMount = {
+    path: "/",
+    hostnames: [ref("admin", "web.Address")],
+    mount: ref("adminApi", "http.Api"),
+  };
+
+  const serverWith = (mounts: unknown[]) => {
+    const graph = fixtureWith([hostServerDef, addressDef], [
+      { kind: "web.HostServer", metadata: { name: "server" }, mounts } as never,
+      { kind: "web.Address", metadata: { name: "site" } } as never,
+      { kind: "web.Address", metadata: { name: "admin" } } as never,
+      { kind: "http.Api", metadata: { name: "siteApi" }, routes: [] } as never,
+      { kind: "http.Api", metadata: { name: "adminApi" }, routes: [] } as never,
+      { kind: "run.Sequence", metadata: { name: "auth" }, steps: [] } as never,
+    ]);
+    return { graph, server: named(graph, "server") };
+  };
+
+  it("tells two mounts at one path apart by their hostnames, whatever their order", () => {
+    const idsOf = (mounts: unknown[]) =>
+      Object.fromEntries(serverWith(mounts).server.rows.map((row) => [row.target, row.id]));
+    const ids = idsOf([siteMount, adminMount]);
+    expect(ids.siteApi).not.toBe(ids.adminApi);
+    expect(Object.values(ids).some((id) => id.includes("~"))).toBe(false);
+    expect(idsOf([adminMount, siteMount])).toEqual(ids);
+  });
+
+  it("labels a guard by its mount's path and hostnames", () => {
+    const { graph, server } = serverWith([siteMount, adminMount]);
+    const guard = graph.edgesFrom(server.id).find((e) => e.path === "mounts[0].guard.invoke")!;
+    expect(server.rows.find((row) => row.id === guard.row)!.match).toEqual({
+      path: "/",
+      hostnames: [{ tag: "ref", source: "site" }],
+    });
   });
 });
 

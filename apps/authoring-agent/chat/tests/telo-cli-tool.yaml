@@ -117,6 +117,7 @@ steps:
 kind: Run.Sequence
 metadata: { name: testDeniedVerbs }
 steps:
+  # The refusal names every verb the default list allows.
   - name: denyRun
     try:
       - name: attempt
@@ -127,8 +128,12 @@ steps:
       - name: assertCode
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: !cel "error.code"
-          expected: ERR_TELO_VERB_NOT_ALLOWED
+          actual:
+            code: !cel "error.code"
+            message: !cel "error.message"
+          expected:
+            code: ERR_TELO_VERB_NOT_ALLOWED
+            message: "telo run is not available here. Allowed subcommands: check, cel, module, search, builtins, describe; `--version` alone is also available. Note a bare path means `run`, which is not allowed."
   - name: denyBarePath
     try:
       - name: attempt

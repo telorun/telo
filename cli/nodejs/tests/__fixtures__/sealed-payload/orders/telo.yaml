@@ -1,0 +1,19 @@
+# Packaged by `packaged-sealed-cache.test.ts` with its import served by a stub
+# registry, so the payload's cache holds the library under a mutable tag and
+# nothing reachable serves it afterwards.
+kind: Telo.Application
+metadata:
+  name: Orders
+  version: 1.0.0
+variables:
+  greeting:
+    env: GREETING
+    type: string
+    default: hello
+imports:
+  Greetings: oci://registry.test/acme/greetings@1.0.0
+---
+kind: Greetings.Greeting
+metadata:
+  name: Welcome
+text: !cel "variables.greeting"

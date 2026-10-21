@@ -1,0 +1,7 @@
+# Refused by `telo check`: the boot target names nothing.
+kind: Telo.Application
+metadata:
+  name: Broken
+  version: 1.0.0
+targets:
+  - !ref missing
