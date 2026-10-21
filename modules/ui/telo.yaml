@@ -7,22 +7,36 @@ metadata:
   categories: [UI]
   description: >-
     Declarative user interfaces written as data: pages built from layout, text,
-    links and images, plus data tables with sorting, paging and row actions,
-    create and edit forms validated against a data model, filter bars, custom
-    components and design tokens. A renderer turns the result into a web admin
-    panel, dashboard or back-office screen without hand-written frontend code.
+    links and images, records read when a page opens with content shown by
+    condition, data tables with sorting, paging and row actions, forms
+    validated live against a data model with grouped fields, option lists and
+    pickers read from an API, date ranges with presets and values kept between
+    visits, filter bars, custom components and design tokens. A renderer turns
+    the result into a web admin panel, dashboard or back-office screen without
+    hand-written frontend code.
 requires:
-  # 0.111.0 checks this file clean, but does not know `x-telo-eval: accessor`:
-  # its kernel evaluates `row.<property>`
-  # in a table ("no such variable: row.isDone"), and a table placed on a page
-  # is refused on the application's own lines (`'row' is not defined`,
-  # CEL_UNKNOWN_FIELD). Verified by execution (`run` and `check` of
-  # applications over these kinds) against 0.111.0.
-  telo: ">=0.112.0"
+  # 0.120.1 refuses this file: it does not know `x-telo-context-eval` (an
+  # unknown keyword in a context binding), the relative pointer of
+  # `x-telo-context-element-from-item`, `x-telo-match-for` or format
+  # `re2-pattern`. Field kinds also need what 0.121.0 adds: bindings typed by
+  # the resource referencing them (`x-telo-context-from-referrer`), the members
+  # a list's entries fill (`x-telo-context-item-fills`), the member form of
+  # `x-telo-value-schema-from` and rules reading through several references
+  # (`resolveSelf:`), and the text vocabulary its words and displayed texts
+  # are written in (module `lang:`, the `Text` and `TextRecord` fragments,
+  # `x-telo-text-values`). Verified by execution against 0.120.1.
+  telo: ">=0.121.0"
+lang: en
+# The conformance rows a renderer's tests read: the interpreted profile's, and
+# which control fits which property.
+files:
+  - conformance/match.json
+  - conformance/control-fits.json
 imports:
   Font: ../font
 exports:
   kinds:
+    - Words
     - Composite
     - Surface
     - Overlay
@@ -49,7 +63,29 @@ exports:
     - Component
     - ComponentExport
     - Theme
+    - Data
+    - Field
+    - InputField
+    - ChoiceField
+    - PickerField
+    - DateRangeField
+    - OptionSource
+    - CollectionOptions
   resources:
+    - words
+    - BoundText
+    - Match
+    - Condition
+    - Enablement
+    - RequestError
+    - QueryParameters
+    - Control
+    - FieldGroup
+    - StateRecord
+    - FieldAnswer
+    - OptionSourceSpec
+    - controlFits
+    - RowAction
     - Node
     - SpecNode
     - OverlaySpec
@@ -69,10 +105,398 @@ exports:
       path: ./nodejs/ui.mjs
       source: ./nodejs/src/index.ts
 ---
+# A text shown to a person, or a text with the values it is formatted with —
+# each value a path into a root the place it is written binds, or a fixed one —
+# so a heading over an answer ("3 unpaid items") is composed where it is drawn.
+kind: Telo.JsonSchema
+metadata:
+  name: BoundText
+schema:
+  anyOf:
+    - $ref: "telo://manifest#/$defs/Text"
+      x-telo-text-values: {}
+    - type: object
+      additionalProperties: false
+      required: [text, values]
+      properties:
+        text:
+          title: Text
+          description: The text, its placeholders and plural selectors named by `values`.
+          $ref: "telo://manifest#/$defs/Text"
+        values:
+          title: Values
+          description: >-
+            A value for every placeholder and plural selector the text reads, by
+            name: a path into a root in scope, or a fixed value.
+          type: object
+          x-telo-text-values-for: /text
+          additionalProperties:
+            x-telo-eval: accessor
+---
+# A condition's schema: one closed keyword set — the interpreted profile — that
+# a renderer interprets as data for conditions and for live validation alike.
+# What each keyword means is pinned by the rows in `conformance/match.json`.
+kind: Telo.JsonSchema
+metadata:
+  name: Match
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    type:
+      anyOf:
+        - $ref: "#/$defs/TypeName"
+        - type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: "#/$defs/TypeName" }
+    const: {}
+    enum: { type: array, minItems: 1 }
+    not: { $ref: "#" }
+    allOf: { type: array, minItems: 1, items: { $ref: "#" } }
+    anyOf: { type: array, minItems: 1, items: { $ref: "#" } }
+    required: { type: array, uniqueItems: true, items: { type: string } }
+    properties:
+      type: object
+      additionalProperties: { $ref: "#" }
+    items: { $ref: "#" }
+    minItems: { type: integer, minimum: 0 }
+    maxItems: { type: integer, minimum: 0 }
+    uniqueItems: { type: boolean }
+    minLength: { type: integer, minimum: 0 }
+    maxLength: { type: integer, minimum: 0 }
+    pattern: { type: string, format: re2-pattern }
+    minimum: { type: number }
+    maximum: { type: number }
+    exclusiveMinimum: { type: number }
+    exclusiveMaximum: { type: number }
+    multipleOf: { type: number, exclusiveMinimum: 0 }
+  $defs:
+    TypeName:
+      enum: ["null", boolean, object, array, number, integer, string]
+---
+# Whether something is drawn: it holds when the value `at` names validates
+# against `matches`. A missing value never satisfies a condition, even under
+# `not`; `null` is a present value.
+kind: Telo.JsonSchema
+metadata:
+  name: Condition
+schema:
+  type: object
+  additionalProperties: false
+  required: [at, matches]
+  properties:
+    at:
+      title: At
+      description: The value the condition reads, as a path from a root the place it is written binds, or a fixed value.
+      x-telo-eval: accessor
+    matches:
+      title: Matches
+      description: The schema the value must satisfy.
+      x-telo-match-for: /at
+      $ref: "telo:Ui/Match"
+---
+# Whether something can be pressed: a condition plus the reason shown while it
+# does not hold.
+kind: Telo.JsonSchema
+metadata:
+  name: Enablement
+schema:
+  type: object
+  additionalProperties: false
+  required: [at, matches, disabledText]
+  properties:
+    at:
+      title: At
+      description: The value the condition reads, as a path from a root the place it is written binds, or a fixed value.
+      x-telo-eval: accessor
+    matches:
+      title: Matches
+      description: The schema the value must satisfy for the control to be enabled.
+      x-telo-match-for: /at
+      $ref: "telo:Ui/Match"
+    disabledText:
+      title: Disabled text
+      description: Why the control cannot be pressed, shown while the condition does not hold.
+      allOf:
+        - $ref: "telo:Ui/BoundText"
+        - minLength: 1
+---
+# What a request that did not succeed reads as: `status` absent when nothing
+# answered, `code` and `message` from a `{ code, message }` body.
+kind: Telo.JsonSchema
+metadata:
+  name: RequestError
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    status: { type: integer, title: Status }
+    code: { type: string, title: Code }
+    message: { type: string, title: Message }
+---
+# The query parameters a page or a reader declares: each a string, or a list
+# of strings for a key given more than once. A name is a Telo name that does not
+# begin `_telo`, which the renderer keeps for its own keys.
+kind: Telo.JsonSchema
+metadata:
+  name: QueryParameters
+schema:
+  type: object
+  additionalProperties: false
+  patternProperties:
+    "^(?!_telo)(?!(as|break|const|continue|else|false|for|function|if|import|in|let|loop|namespace|null|package|return|true|var|void|while)$)[A-Za-z_][A-Za-z0-9_]*$":
+      anyOf:
+        - allOf:
+            - $ref: "telo:Ui/Match"
+            - required: [type]
+              properties:
+                type: { const: string }
+        - allOf:
+            - $ref: "telo:Ui/Match"
+            - required: [type, items]
+              properties:
+                type: { const: array }
+                items:
+                  required: [type]
+                  properties:
+                    type: { const: string }
+---
+# How a value is entered: derived from what the model says it is (`auto`), a
+# `select` list, `options` side by side, a `toggle`, a `slider`, or typed
+# `tags`. One vocabulary for form fields and filters, judged by `controlFits`.
+kind: Telo.JsonSchema
+metadata:
+  name: Control
+schema:
+  enum: [auto, select, options, toggle, slider, tags]
+---
+# A labelled section of a form. Its fields name it by `group` and are listed
+# one after another, so the list's order is the order they are drawn in.
+kind: Telo.JsonSchema
+metadata:
+  name: FieldGroup
+schema:
+  type: object
+  additionalProperties: false
+  required: [name, label]
+  properties:
+    name:
+      title: Name
+      description: What the group's fields name it by, letters and digits.
+      type: string
+      pattern: "^[A-Za-z][A-Za-z0-9]*$"
+    label: { title: Label, description: The section's heading., $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    description: { title: Description, description: Text shown under the heading., $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    shown:
+      title: Shown
+      description: Whether the section and its fields are drawn, over the form's current `values`.
+      $ref: "telo:Ui/Condition"
+---
+# Where the values a form, an action or a filter bar holds are kept between
+# visits: the page's address, a store, or both — the address winning at start.
+kind: Telo.JsonSchema
+metadata:
+  name: StateRecord
+schema:
+  type: object
+  additionalProperties: false
+  required: [key]
+  anyOf:
+    - required: [store]
+    - required: [address]
+      properties:
+        address: { const: true }
+  properties:
+    key:
+      title: Key
+      description: The name the values are kept under, letters and digits.
+      type: string
+      pattern: "^[A-Za-z][A-Za-z0-9]*$"
+    address:
+      title: Address
+      description: Whether the values are part of the page's address.
+      type: boolean
+      default: false
+    store:
+      title: Store
+      description: Where the values are stored between visits.
+      x-telo-ref: { kind: Self.StateStore, use: dependency }
+    fields:
+      title: Fields
+      description: >-
+        The properties kept. Omitted, every property shown is kept. A property
+        the model marks `writeOnly` is never kept.
+      type: array
+      uniqueItems: true
+      items: { type: string }
+---
+# What a field answers for the model it is entered into: the property it
+# enters, why it cannot be entered there, and — when it can — what a renderer
+# draws for it.
+kind: Telo.JsonSchema
+metadata:
+  name: FieldAnswer
+schema:
+  type: object
+  additionalProperties: false
+  required: [property, problems]
+  properties:
+    property: { type: string }
+    problems:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [code, message]
+        properties:
+          code: { type: string, pattern: "^[A-Z][A-Z0-9_]*$" }
+          message: { type: string }
+    # Present exactly when the model declares the property and nothing is wrong.
+    spec: { $ref: "telo:Ui/SpecNode#/$defs/Field" }
+---
+# Where a field's options come from, as a renderer receives it. Tagged on
+# `type`, one branch per kind of source.
+kind: Telo.JsonSchema
+metadata:
+  name: OptionSourceSpec
+schema:
+  type: object
+  oneOf:
+    # Read through the collection contract: paged by `next`, searched with the
+    # `search` pair, labelled by `value` filtered with `in`.
+    - additionalProperties: false
+      required: [type, schema, value, label, basePath, filters, pageSize]
+      properties:
+        type: { const: collection }
+        schema: { type: object }
+        value: { $ref: "#/$defs/Binding" }
+        label: { $ref: "#/$defs/Binding" }
+        hint: { $ref: "#/$defs/Binding" }
+        href: { $ref: "#/$defs/Binding" }
+        basePath: { type: string }
+        filters:
+          type: object
+          additionalProperties: { $ref: "#/$defs/Binding" }
+        # Sent as `limit` on every request, a label lookup's batches included.
+        pageSize: { type: integer }
+        search:
+          type: object
+          additionalProperties: false
+          required: [property, operator]
+          properties:
+            property: { type: string }
+            operator: { enum: [eq, contains, gt, gte, lt, lte, in] }
+  $defs:
+    Binding:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [root, path]
+          properties:
+            root: { type: string }
+            path: { type: array, items: { type: string } }
+        - type: object
+          additionalProperties: false
+          required: [value]
+          properties:
+            value: {}
+---
+# Whether a control can enter a property. `operator` is the filter's, or null
+# for a form field, whose value is a list when the property is an `array` and
+# is then entered by its `items`. A control states what it needs, so a type it
+# cannot read is refused: types are read with `null` set aside. A field's
+# property must hold one plain value or a list of them whatever its control.
+kind: Telo.Function
+metadata:
+  name: controlFits
+  description: >-
+    Whether a control fits a property: auto, select, options, toggle, slider or
+    tags, over a filter's operator or a form field's property.
+params:
+  - name: control
+    schema: { type: string }
+  - name: property
+    schema: { type: object }
+  - name: operator
+    schema: { type: [string, "null"] }
+returns:
+  schema: { type: boolean }
+body: !cel >-
+  cel.bind(declared, !('type' in property) ? [] : (type(property.type) == type([]) ? property.type : [property.type]).filter(t, t != 'null'),
+  cel.bind(listed, operator == null && declared == ['array'],
+  cel.bind(element, !listed ? property : ('items' in property && type(property.items) == type({}) ? property.items : {}),
+  cel.bind(types, !('type' in element) ? [] : (type(element.type) == type([]) ? element.type : [element.type]).filter(t, t != 'null'),
+  cel.bind(plain, types.size() == 0 ? ('enum' in element && type(element.enum) == type([])) : types.all(t, t in ['string', 'number', 'integer', 'boolean']),
+  cel.bind(single, operator == null ? !listed : operator in ['eq', 'gt', 'gte', 'lt', 'lte'],
+    (operator != null || plain)
+    && (control == 'auto' ? plain
+      : control == 'select' || control == 'options' ? ('enum' in element && type(element.enum) == type([])) || types == ['boolean']
+      : control == 'toggle' ? types == ['boolean'] && (operator == null ? !listed : operator == 'eq')
+      : control == 'slider' ? types.size() > 0 && types.all(t, t in ['number', 'integer'])
+          && 'minimum' in element && 'maximum' in element && single
+      : control == 'tags' ? (operator == null ? listed : operator == 'in')
+      : control == 'none' && operator != null)))))))
+---
+# An operation a row offers: the action run, what of the row it is sent, and
+# how a press is asked and allowed. Shared by a table's rows and a list node's;
+# `row` and the other roots its accessors read are bound where it is used.
+kind: Telo.JsonSchema
+metadata:
+  name: RowAction
+schema:
+  type: object
+  additionalProperties: false
+  required: [action, inputs]
+  properties:
+    action:
+      title: Action
+      description: >-
+        The operation run. Its path, input model, label, answer trees and
+        `onSuccess` are used, and its fields where `prompt` asks for them; its
+        own `enabled` governs its own form only.
+      x-telo-ref: { kind: Self.Action, use: dependency, inputs: /inputs }
+    inputs:
+      title: Inputs
+      description: >-
+        What the operation receives, by input property: a path into the row or
+        another root in scope, or a fixed value. Every input the action
+        requires is bound. Read when the row's button is pressed.
+      type: object
+      minProperties: 1
+      additionalProperties:
+        x-telo-eval: accessor
+    confirm:
+      title: Confirm
+      description: >-
+        A question asked before the operation runs. Omitted, a press runs it at
+        once, unless `prompt` opens a dialog.
+      allOf:
+        - $ref: "telo:Ui/BoundText"
+        - minLength: 1
+    prompt:
+      title: Prompt
+      description: >-
+        Whether a press opens a dialog that asks for the action's fields the
+        row's `inputs` do not bind — a reason, a note — and sends them with the
+        row's values. The dialog is titled with `confirm`, or with the action's
+        label.
+      type: boolean
+      default: false
+    enabled:
+      title: Enabled
+      description: >-
+        When the row's button can be pressed, over the row and the roots in
+        scope, and the reason shown while it cannot. Omitted, it always can.
+      $ref: "telo:Ui/Enablement"
+---
 # One node of a page, as an author writes it. Internally tagged on `type`, each
 # branch closed, so a misspelled type lists the valid ones and a stray key is
 # reported on the branch it was written in. Layout is not a field anywhere: it
-# belongs to the styling contract of whatever renders the tree.
+# belongs to the styling contract of whatever renders the tree. `when` decides
+# whether a node is delivered — evaluated per request on a page's own nodes, at
+# creation inside a composite — and `shown` whether a delivered node is drawn,
+# a condition the renderer reads over the roots the place it is written binds.
 kind: Telo.JsonSchema
 metadata:
   name: Node
@@ -87,37 +511,97 @@ schema:
         children: { type: array, items: { $ref: "#" } }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
     - additionalProperties: false
       required: [type, text]
       properties:
         type: { enum: [text, badge] }
-        text: { type: string }
+        text: { $ref: "telo:Ui/BoundText" }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
     - additionalProperties: false
       required: [type, text, href]
       properties:
         type: { const: link }
-        text: { type: string }
+        text: { $ref: "telo:Ui/BoundText" }
         href: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://|mailto:)" }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
     - additionalProperties: false
       required: [type, src, alt]
       properties:
         type: { const: image }
         src: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://)" }
-        alt: { type: string }
+        alt: { $ref: "telo:Ui/BoundText" }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
     - additionalProperties: false
       required: [type, markup, alt]
       properties:
         type: { const: svg }
         markup: { type: string }
-        alt: { type: string }
+        alt: { $ref: "telo:Ui/BoundText" }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
+    # One value, presented as its schema says: a `format: uri` /
+    # `uri-reference` string is a link, drawn as `text` when that is given.
+    - additionalProperties: false
+      required: [type, value]
+      properties:
+        type: { const: value }
+        value: { x-telo-eval: accessor }
+        text: { $ref: "telo:Ui/BoundText" }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
+    # The rows of a list one answer holds, a column per value. Bounded by the
+    # answer: it never pages.
+    - additionalProperties: false
+      required: [type, rows, columns]
+      properties:
+        type: { const: list }
+        heading: { $ref: "telo:Ui/BoundText" }
+        rows:
+          type: array
+          x-telo-eval: accessor
+        columns:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [value]
+            properties:
+              header: { $ref: "telo:Ui/BoundText" }
+              value:
+                x-telo-eval: accessor
+                x-telo-context:
+                  type: object
+                  properties:
+                    row:
+                      x-telo-context-element-from-item: "2/rows"
+                      x-telo-context-eval: accessor
+              # Reads the roots the list is drawn under, never `row`.
+              shown: { $ref: "telo:Ui/Condition" }
+        # Operations each row offers, over `row` and the roots the list is
+        # drawn under. A pressed one draws its own answer in place of its
+        # button.
+        rowActions:
+          type: array
+          x-telo-context:
+            type: object
+            properties:
+              row:
+                x-telo-context-element-from-item: "0/rows"
+                x-telo-context-eval: accessor
+          items: { $ref: "telo:Ui/RowAction" }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
     - additionalProperties: false
       required: [type, ref]
       properties:
@@ -126,6 +610,7 @@ schema:
           x-telo-ref: { kind: Self.Composite, use: dependency }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
   $defs:
     StyleName:
       enum: [heading, subheading, muted, strong, accent, danger, warning, success]
@@ -150,42 +635,52 @@ schema:
         type: { enum: [box, stack, columns] }
         children: { type: array, items: { $ref: "#" } }
         style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
       required: [type, text]
       properties:
         type: { enum: [text, badge] }
-        text: { type: string }
+        text: { $ref: "#/$defs/NodeText" }
         style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
       required: [type, text, href]
       properties:
         type: { const: link }
-        text: { type: string }
+        text: { $ref: "#/$defs/NodeText" }
         href: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://|mailto:)" }
         style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
       required: [type, src, alt]
       properties:
         type: { const: image }
         src: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://)" }
-        alt: { type: string }
+        alt: { $ref: "#/$defs/NodeText" }
         style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
       required: [type, markup, alt]
       properties:
         type: { const: svg }
         markup: { type: string }
-        alt: { type: string }
+        alt: { $ref: "#/$defs/NodeText" }
         style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
-      required: [type, schema, basePath, rowKey, pageSize, columns, rowActions, delete]
+      required: [type, schema, basePath, query, rowKey, pageSize, columns, rowActions, delete]
       properties:
         type: { const: table }
         schema: { type: object }
         basePath: { type: string }
+        # The declared query parameters its row actions read, by name; empty
+        # when none is.
+        query: { type: object }
+        # Equalities sent with every request, each a fixed value or a path
+        # into a root in scope; while one holds nothing, nothing is read.
         filters:
           type: object
-          additionalProperties: { type: [string, number, boolean] }
+          additionalProperties: { $ref: "#/$defs/Binding" }
         rowKey: { type: string }
         pageSize: { type: integer }
         rowStyle: { $ref: "#/$defs/StyleRule" }
@@ -212,44 +707,18 @@ schema:
         # run with values of the row.
         rowActions:
           type: array
-          items:
-            type: object
-            additionalProperties: false
-            required: [path, label, inputs]
-            properties:
-              path: { type: string }
-              label: { type: string }
-              inputs:
-                type: object
-                additionalProperties: { $ref: "#/$defs/Binding" }
-              # Present when the press asks first.
-              confirm: { type: string }
-              # Present when the press opens a dialog that enters these fields
-              # of the operation's input model before anything is sent.
-              prompt:
-                type: object
-                additionalProperties: false
-                required: [schema, fields]
-                properties:
-                  schema: { type: object }
-                  fields:
-                    type: array
-                    items:
-                      type: object
-                      additionalProperties: false
-                      required: [property, label]
-                      properties:
-                        property: { type: string }
-                        label: { type: string }
+          items: { $ref: "#/$defs/RowAction" }
         columns:
           type: array
           items:
             type: object
             additionalProperties: false
-            required: [header]
+            required: [header, labels]
             properties:
-              header: { type: string }
+              header: { $ref: "#/$defs/Text" }
               value: { $ref: "#/$defs/Binding" }
+              # What each value the model labels is shown as.
+              labels: { $ref: "#/$defs/Labels" }
               # Present when the column is sortable: the property sent as `sort`.
               sort: { type: string }
               # The model's own description of the value, which decides how a
@@ -259,60 +728,23 @@ schema:
               # A component node, or the error node standing in for one.
               cell: { $ref: "#" }
         style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
-      required: [type, schema, basePath, fields]
+      required: [type, schema, basePath, fields, groups, state]
       properties:
         type: { const: form }
         schema: { type: object }
         basePath: { type: string }
         fields:
           type: array
-          items:
-            type: object
-            additionalProperties: false
-            required: [property, label]
-            properties:
-              property: { type: string }
-              label: { type: string }
-        style: { $ref: "#/$defs/Style" }
-    - additionalProperties: false
-      required: [type, schema, path, label, fields, lists]
-      properties:
-        type: { const: action }
-        schema: { type: object }
-        path: { type: string }
-        label: { type: string }
-        fields:
+          items: { $ref: "#/$defs/Field" }
+        groups:
           type: array
-          items:
-            type: object
-            additionalProperties: false
-            required: [property, label]
-            properties:
-              property: { type: string }
-              label: { type: string }
-        # What is drawn from the answer, in order. Empty when nothing is.
-        lists:
-          type: array
-          items:
-            type: object
-            additionalProperties: false
-            required: [rows, columns]
-            properties:
-              heading: { type: string }
-              rows: { $ref: "#/$defs/Binding" }
-              columns:
-                type: array
-                items:
-                  type: object
-                  additionalProperties: false
-                  required: [header, value]
-                  properties:
-                    header: { type: string }
-                    value: { $ref: "#/$defs/Binding" }
-                    # The answer model's own description of the value.
-                    present: { type: object }
+          items: { $ref: "#/$defs/Group" }
+        state: { $ref: "#/$defs/State" }
         style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+    - $ref: "#/$defs/Action"
     - additionalProperties: false
       required: [type, fields, content, show, placement, controls, apply, summary, state, presets]
       properties:
@@ -322,11 +754,12 @@ schema:
           items:
             type: object
             additionalProperties: false
-            required: [property, operator, label, schema, pinned, control]
+            required: [property, operator, label, labels, schema, pinned, control]
             properties:
               property: { type: string }
               operator: { enum: [eq, contains, gt, gte, lt, lte, in] }
-              label: { type: string }
+              label: { $ref: "#/$defs/Text" }
+              labels: { $ref: "#/$defs/Labels" }
               schema: { type: object }
               pinned: { type: boolean }
               control: { enum: [auto, select, options, toggle, slider, tags, none] }
@@ -340,15 +773,7 @@ schema:
         controls: { enum: [direct, chips] }
         apply: { enum: [commit, typing, button] }
         summary: { enum: [none, chips] }
-        state:
-          type: object
-          additionalProperties: false
-          required: [address, store]
-          properties:
-            # Present exactly when the bar declares `state`.
-            key: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" }
-            address: { type: boolean }
-            store: { $ref: "telo:Ui/StateStoreSpec" }
+        state: { $ref: "#/$defs/State" }
         presets:
           type: array
           items:
@@ -356,7 +781,7 @@ schema:
             additionalProperties: false
             required: [label, values]
             properties:
-              label: { type: string }
+              label: { $ref: "#/$defs/Text" }
               values:
                 type: array
                 items:
@@ -370,6 +795,7 @@ schema:
                       type: array
                       items: { type: [string, number, boolean] }
         style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
       required: [type, module, export, external, stylesheets, props]
       properties:
@@ -383,13 +809,311 @@ schema:
           type: object
           additionalProperties: { $ref: "#/$defs/Binding" }
         style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+    # One value of a data scope, with what its schema says about it.
+    - additionalProperties: false
+      required: [type, value, labels]
+      properties:
+        type: { const: value }
+        value: { $ref: "#/$defs/Binding" }
+        text: { $ref: "#/$defs/NodeText" }
+        # What each value the model labels is shown as.
+        labels: { $ref: "#/$defs/Labels" }
+        present: { type: object }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+    - additionalProperties: false
+      required: [type, rows, columns]
+      properties:
+        type: { const: list }
+        heading: { $ref: "#/$defs/NodeText" }
+        rows: { $ref: "#/$defs/Binding" }
+        columns:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [header, value, labels]
+            properties:
+              header: { $ref: "#/$defs/NodeText" }
+              value: { $ref: "#/$defs/Binding" }
+              labels: { $ref: "#/$defs/Labels" }
+              # The model's own description of the value.
+              present: { type: object }
+              shown: { $ref: "#/$defs/Shown" }
+        rowActions:
+          type: array
+          items: { $ref: "#/$defs/RowAction" }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+    # Data read when it is drawn, under the record contract: `content` drawn
+    # over `data` once an answer is in, `loading` before the first, `failure`
+    # over `error` when the read does not succeed.
+    - additionalProperties: false
+      required: [type, schema, source, query, content, loading, failure, reloadOn]
+      properties:
+        type: { const: data }
+        schema: { type: object }
+        source:
+          type: object
+          additionalProperties: false
+          required: [path, params]
+          properties:
+            path: { type: string }
+            params:
+              type: object
+              additionalProperties: { $ref: "#/$defs/Binding" }
+        # The declared query parameters, by name; empty when none is.
+        query: { type: object }
+        content: { $ref: "#" }
+        loading: { $ref: "#" }
+        failure: { $ref: "#" }
+        reloadOn:
+          type: array
+          items: { enum: [focus, unauthorized] }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
       required: [type, code, message]
       properties:
         type: { const: error }
         code: { type: string }
         message: { type: string }
+        shown: { $ref: "#/$defs/Shown" }
   $defs:
+    # A text as the renderer receives it from `ui`: the record a controller
+    # was handed (its renderer translates it), or one of the renderer's own
+    # words by id.
+    Text:
+      anyOf:
+        - $ref: "telo://manifest#/$defs/TextRecord"
+        - $ref: "#/$defs/Word"
+    # A text of a node: a text, or a text with the values it is formatted with.
+    NodeText:
+      anyOf:
+        - $ref: "#/$defs/Text"
+        - $ref: "#/$defs/BoundText"
+    BoundText:
+      type: object
+      additionalProperties: false
+      required: [text, values]
+      properties:
+        text: { $ref: "telo://manifest#/$defs/TextRecord" }
+        values:
+          type: object
+          additionalProperties: { $ref: "#/$defs/Binding" }
+    # One of the words a renderer shows of its own, every one a property of
+    # `Ui.Words`.
+    Word:
+      type: object
+      additionalProperties: false
+      required: [word]
+      properties:
+        word: { enum: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, yes, no, none, any, select, choose, more, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems] }
+    # A text, or none.
+    Description:
+      anyOf:
+        - $ref: "#/$defs/Text"
+        - type: "null"
+    # What each value of an enumeration is shown as: a titled `const` branch's
+    # title, else the string value itself. The value sent back is the value.
+    Labels:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [value, label]
+        properties:
+          value: {}
+          label: { $ref: "#/$defs/Text" }
+    # An operation run from a page: its form, and what it draws of the answer
+    # — `result` over `result`, `input` and `values`, `failure` over `error`,
+    # `input` and `values`.
+    Action:
+      type: object
+      additionalProperties: false
+      required: [type, schema, path, label, fields, groups, state, failure, onSuccess, concurrency, clearAnswerOn]
+      properties:
+        type: { const: action }
+        schema: { type: object }
+        path: { type: string }
+        label: { $ref: "#/$defs/Text" }
+        fields:
+          type: array
+          items: { $ref: "#/$defs/Field" }
+        groups:
+          type: array
+          items: { $ref: "#/$defs/Group" }
+        state: { $ref: "#/$defs/State" }
+        # Present when the button is enabled by a condition over the values.
+        enabled: { $ref: "#/$defs/Enablement" }
+        # Present when the answer is declared: what a success's body is held to.
+        answer: { type: object }
+        # Present when something is drawn from a success.
+        result: { $ref: "#" }
+        failure: { $ref: "#" }
+        onSuccess:
+          type: object
+          additionalProperties: false
+          required: [refreshes]
+          properties:
+            navigate: { $ref: "#/$defs/Binding" }
+            refreshes: { type: array, items: { type: string } }
+        concurrency: { enum: [parallel, serial] }
+        clearAnswerOn: { type: array, items: { type: string } }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+    # An operation a row offers: the action, what of the row it sends, and how
+    # a press is asked and allowed. The action's own `enabled` is its form's.
+    RowAction:
+      type: object
+      additionalProperties: false
+      required: [action, inputs]
+      properties:
+        action: { $ref: "#/$defs/Action" }
+        inputs:
+          type: object
+          additionalProperties: { $ref: "#/$defs/Binding" }
+        # Present when the press asks first.
+        confirm: { $ref: "#/$defs/NodeText" }
+        # Present when the press opens a dialog that enters these fields of the
+        # action's input model before anything is sent.
+        prompt:
+          type: object
+          additionalProperties: false
+          required: [fields]
+          properties:
+            fields:
+              type: array
+              items: { $ref: "#/$defs/Field" }
+        enabled: { $ref: "#/$defs/Enablement" }
+    # A condition deciding whether a button can be pressed, and why not.
+    Enablement:
+      type: object
+      additionalProperties: false
+      required: [at, matches, disabledText]
+      properties:
+        at: { $ref: "#/$defs/Binding" }
+        matches: { $ref: "telo:Ui/Match" }
+        disabledText: { $ref: "#/$defs/NodeText" }
+    # A field of a record being entered, drawn while `shown` holds: one branch
+    # per kind of field, tagged on `type`.
+    Field:
+      type: object
+      oneOf:
+        - $ref: "#/$defs/InputField"
+        - $ref: "#/$defs/ChoiceField"
+        - $ref: "#/$defs/PickerField"
+        - $ref: "#/$defs/DateRangeField"
+    # Entered with a control: derived from the property (`auto`) or the one named.
+    InputField:
+      type: object
+      additionalProperties: false
+      required: [type, property, label, description, labels, control]
+      properties:
+        type: { const: input }
+        property: { type: string }
+        label: { $ref: "#/$defs/Text" }
+        description: { $ref: "#/$defs/Description" }
+        labels: { $ref: "#/$defs/Labels" }
+        control: { $ref: "telo:Ui/Control" }
+        group: { type: string }
+        shown: { $ref: "#/$defs/Shown" }
+    # One or several of the options a source offers, in a list (`auto` or
+    # `select`) or side by side (`options`).
+    ChoiceField:
+      type: object
+      additionalProperties: false
+      required: [type, property, label, description, labels, control, options]
+      properties:
+        type: { const: choice }
+        property: { type: string }
+        label: { $ref: "#/$defs/Text" }
+        description: { $ref: "#/$defs/Description" }
+        labels: { $ref: "#/$defs/Labels" }
+        control: { enum: [auto, select, options] }
+        options: { $ref: "telo:Ui/OptionSourceSpec" }
+        group: { type: string }
+        shown: { $ref: "#/$defs/Shown" }
+    # One or several options searched for and chosen in a surface of their own.
+    PickerField:
+      type: object
+      additionalProperties: false
+      required: [type, property, label, description, labels, options, surface]
+      properties:
+        type: { const: picker }
+        property: { type: string }
+        label: { $ref: "#/$defs/Text" }
+        description: { $ref: "#/$defs/Description" }
+        labels: { $ref: "#/$defs/Labels" }
+        options: { $ref: "telo:Ui/OptionSourceSpec" }
+        surface: { $ref: "telo:Ui/OverlaySpec" }
+        group: { type: string }
+        shown: { $ref: "#/$defs/Shown" }
+    # A `from` and a `to` date, with presets computed in the viewer's time zone.
+    DateRangeField:
+      type: object
+      additionalProperties: false
+      required: [type, property, label, description, labels, presets, weekStart, initialPreset]
+      properties:
+        type: { const: dateRange }
+        property: { type: string }
+        label: { $ref: "#/$defs/Text" }
+        description: { $ref: "#/$defs/Description" }
+        labels: { $ref: "#/$defs/Labels" }
+        presets:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [label, unit, offset]
+            properties:
+              label: { $ref: "#/$defs/Text" }
+              unit: { enum: [day, week, month, quarter, year] }
+              offset: { type: integer }
+        weekStart: { enum: [monday, sunday] }
+        # The index of the preset the field starts at, or null.
+        initialPreset: { type: [integer, "null"] }
+        warnLongerThan:
+          type: object
+          additionalProperties: false
+          required: [unit, count]
+          properties:
+            unit: { enum: [day, week, month, quarter, year] }
+            count: { type: integer }
+        group: { type: string }
+        shown: { $ref: "#/$defs/Shown" }
+    # A labelled section of a form, drawn while `shown` holds.
+    Group:
+      type: object
+      additionalProperties: false
+      required: [name, label]
+      properties:
+        name: { type: string }
+        label: { $ref: "#/$defs/Text" }
+        description: { $ref: "#/$defs/Text" }
+        shown: { $ref: "#/$defs/Shown" }
+    # Where entered or chosen values are kept: the properties kept, the
+    # address, and the store (`memory` when none is named).
+    State:
+      type: object
+      additionalProperties: false
+      required: [address, store, fields]
+      properties:
+        # Present exactly when the component declares `state`.
+        key: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" }
+        address: { type: boolean }
+        store: { $ref: "telo:Ui/StateStoreSpec" }
+        fields: { type: array, items: { type: string } }
+    # A condition as a renderer receives it: the binding it reads and the
+    # schema the value must satisfy.
+    Shown:
+      type: object
+      additionalProperties: false
+      required: [at, matches]
+      properties:
+        at: { $ref: "#/$defs/Binding" }
+        matches: { $ref: "telo:Ui/Match" }
     StyleName:
       enum: [heading, subheading, muted, strong, accent, danger, warning, success]
     Style:
@@ -613,31 +1337,9 @@ schema:
     state:
       title: State
       description: >-
-        Where the bar's state is kept between visits. Omitted, in memory only.
-        At least one of `address: true` and `store` is written.
-      type: object
-      additionalProperties: false
-      required: [key]
-      anyOf:
-        - required: [store]
-        - required: [address]
-          properties:
-            address: { const: true }
-      properties:
-        key:
-          title: Key
-          description: The name the state is kept under, letters and digits. Bars sharing a key share its state.
-          type: string
-          pattern: "^[A-Za-z][A-Za-z0-9]*$"
-        address:
-          title: Address
-          description: Whether the filter values are part of the page's address.
-          type: boolean
-          default: false
-        store:
-          title: Store
-          description: Where the state is stored between visits.
-          x-telo-ref: { kind: Self.StateStore, use: dependency }
+        Where the bar's values are kept between visits. Omitted, in memory
+        only. At least one of `address: true` and `store` is written.
+      $ref: "telo:Ui/StateRecord"
 ---
 # Where a filter bar's controls sit, as a renderer receives it. Tagged on
 # `type`, one branch per kind.
@@ -1302,6 +2004,121 @@ schema:
       description: The node this view stands for.
       $ref: "telo://Self/Node"
 ---
+kind: Telo.Definition
+metadata:
+  name: Data
+  description: >-
+    Loads a record when a page is drawn and shows content built from it: an
+    account panel, a sign-in gate, a context card over one API answer. Draws a
+    loading state before the first answer and a failure state for a refused
+    read, reloads on window focus or when a request inside answers 401, and
+    passes declared page query parameters to the read.
+capability: Telo.Provider
+extends: Self.Composite
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DataController
+schema:
+  type: object
+  additionalProperties: false
+  required: [model, source, content]
+  examples:
+    - model:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [authorized]
+          properties:
+            authorized: { type: boolean }
+            email: { type: string }
+      source: { path: /api/auth }
+      reloadOn: [focus, unauthorized]
+      content:
+        type: stack
+        children:
+          - type: value
+            value: !cel "data.email"
+            shown:
+              at: !cel "data.authorized"
+              matches: { const: true }
+  properties:
+    model:
+      title: Model
+      description: The shape of the record the read answers with.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    query:
+      title: Query
+      description: >-
+        The page query parameters this reader reads, each a string or a list of
+        strings for a key given more than once. Read as `query`.
+      $ref: "telo://Self/QueryParameters"
+    source:
+      title: Source
+      type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path:
+          title: Path
+          description: >-
+            App-relative URL of the record: `/` followed by anything but `/` or
+            `\`, holding no control character. Read with `GET`.
+          type: string
+          pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+        params:
+          title: Parameters
+          description: >-
+            Query parameters sent with the read, by name: a path into `query`
+            or a fixed value. A value that is absent is not sent.
+          type: object
+          x-telo-context:
+            type: object
+            properties:
+              query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          additionalProperties:
+            type: [string, number, integer, boolean]
+            x-telo-eval: accessor
+    content:
+      title: Content
+      description: What is drawn once an answer is in, over `data` and `query`.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          data:
+            x-telo-context-from-root: "model"
+            x-telo-context-eval: accessor
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+    loading:
+      title: Loading
+      description: What is drawn before the first answer. Omitted, the renderer's muted loading word.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+    failure:
+      title: Failure
+      description: >-
+        What is drawn when the read does not succeed, over `error` and `query`.
+        Omitted, the error's code and message.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          error:
+            x-telo-context-eval: accessor
+            $ref: "telo://Self/RequestError"
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+    reloadOn:
+      title: Reload on
+      description: >-
+        What reads the record again: `focus` — the window regains focus or the
+        page returns from the back/forward cache — and `unauthorized` — a
+        request made inside the content answers 401.
+      type: array
+      uniqueItems: true
+      items: { enum: [focus, unauthorized] }
+---
 # What a list request may ask of a collection. A screen offers only what is
 # declared here, and whatever serves the collection accepts only the same — so
 # the two cannot drift apart. A kind serving a collection extends this one.
@@ -1407,10 +2224,19 @@ schema:
         filters:
           title: Filters
           description: >-
-            Equalities applied to every request, keyed by model property. Each
-            is a filter the collection accepts with `eq`.
+            Equalities applied to every request, keyed by model property: a
+            fixed value, or a path into `query`. Each is a filter the
+            collection accepts with `eq`. While one holds nothing, the table
+            reads nothing.
           type: object
-          additionalProperties: { type: [string, number, boolean] }
+          x-telo-context:
+            type: object
+            properties:
+              query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+          additionalProperties:
+            type: [string, number, integer, boolean]
+            x-telo-eval: accessor
+            x-telo-value-schema-from: { from: /model, member: "0#" }
     rowKey:
       title: Row key
       description: The property identifying a row in item URLs.
@@ -1426,7 +2252,7 @@ schema:
         type: object
         additionalProperties: false
         properties:
-          header: { title: Header, type: string }
+          header: { title: Header, $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
           value:
             title: Value
             description: The value shown, as a path into the row or a fixed value.
@@ -1434,7 +2260,7 @@ schema:
             x-telo-context:
               type: object
               properties:
-                row: { x-telo-context-from-root: "model" }
+                row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
           cell:
             title: Cell
             description: A component drawn in place of a value.
@@ -1452,7 +2278,7 @@ schema:
                 x-telo-context:
                   type: object
                   properties:
-                    row: { x-telo-context-from-root: "model" }
+                    row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
               cases:
                 title: Cases
                 description: Styles keyed by the plain text of the value.
@@ -1483,7 +2309,7 @@ schema:
           x-telo-context:
             type: object
             properties:
-              row: { x-telo-context-from-root: "model" }
+              row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
         cases:
           title: Cases
           description: Styles keyed by the plain text of the value.
@@ -1549,51 +2375,25 @@ schema:
       description: Whether each row offers a confirmed delete.
       type: boolean
       default: false
+    query:
+      title: Query
+      description: >-
+        The page query parameters its row actions read, each a string or a
+        list of strings for a key given more than once. Read as `query`.
+      $ref: "telo://Self/QueryParameters"
     rowActions:
       title: Row actions
       description: >-
-        Operations each row offers, in order, drawn before edit and delete.
+        Operations each row offers, in order, drawn before edit and delete,
+        over `row` and `query`. A pressed one draws its action's answer in
+        place of its button, kept while that row is on the shown page.
       type: array
-      items:
+      x-telo-context:
         type: object
-        additionalProperties: false
-        required: [action, inputs]
         properties:
-          action:
-            title: Action
-            description: >-
-              The operation run. Its path, input model and label are used, and
-              its fields where `prompt` asks for them.
-            x-telo-ref: { kind: Self.Action, use: dependency, inputs: /inputs }
-          inputs:
-            title: Inputs
-            description: >-
-              What the operation receives, by input property: a path into the
-              row or a fixed value. Every input the action requires is bound.
-            type: object
-            minProperties: 1
-            x-telo-context:
-              type: object
-              properties:
-                row: { x-telo-context-from-root: "model" }
-            additionalProperties:
-              x-telo-eval: accessor
-          confirm:
-            title: Confirm
-            description: >-
-              A question asked before the operation runs. Omitted, a press runs
-              it at once, unless `prompt` opens a dialog.
-            type: string
-            minLength: 1
-          prompt:
-            title: Prompt
-            description: >-
-              Whether a press opens a dialog that asks for the action's fields
-              the row's `inputs` do not bind — a reason, a note — and sends them
-              with the row's values. The dialog is titled with `confirm`, or
-              with the action's label.
-            type: boolean
-            default: false
+          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+      items: { $ref: "telo://Self/RowAction" }
   $defs:
     StyleName:
       enum: [heading, subheading, muted, strong, accent, danger, warning, success]
@@ -1620,13 +2420,6 @@ schema:
         filters its source by a property the collection does not accept an
         equality on. Declare it with operator `eq` under the collection's
         `query.filters`, or remove this filter.
-    - resolve: [/rowActions]
-      in: /rowActions
-      condition: !cel "!has(this.action.lists) || size(this.action.lists) == 0"
-      code: UI_ROW_ACTION_DRAWS_LISTS
-      message: >-
-        offers in a row an action that draws lists from its answer, and a row
-        has nowhere to draw them. Declare an action without `lists` for the row.
 ---
 kind: Telo.Definition
 metadata:
@@ -1667,43 +2460,125 @@ schema:
     fields:
       title: Fields
       description: >-
-        The fields, top to bottom. Omitted, every model property a control can
+        The fields, top to bottom: a property name, entered as the model
+        says, or a field kind. Omitted, every model property a control can
         enter: a scalar, or a list of scalars.
       type: array
-      items:
+      x-telo-context:
         type: object
-        additionalProperties: false
-        required: [property]
         properties:
-          property: { title: Property, type: string }
+          values:
+            x-telo-context-from-root: "model"
+            x-telo-context-eval: accessor
+            x-telo-context-item-fills: ["", "/property"]
+      items:
+        anyOf:
+          - title: Property
+            description: A property, entered with the control its schema calls for.
+            type: string
+          - title: Field
+            description: A field kind entering one property.
+            x-telo-ref: { kind: Self.Field, use: call }
+    groups:
+      title: Groups
+      description: >-
+        Labelled sections the fields name by `group`. A group's fields are
+        listed one after another, so the list's order is the order they are
+        drawn in.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          values:
+            x-telo-context-from-root: "model"
+            x-telo-context-eval: accessor
+      items: { $ref: "telo://Self/FieldGroup" }
+    state:
+      title: State
+      description: >-
+        Where the values entered are kept between visits. Omitted, they are
+        not kept.
+      $ref: "telo://Self/StateRecord"
   x-telo-resource-rules:
-    - resolve: [/model]
+    - resolve: [/model, /fields]
       in: /fields
-      condition: !cel "has((has(self.model.schema) ? self.model.schema : self.model).properties) && this.property in (has(self.model.schema) ? self.model.schema : self.model).properties"
-      code: UI_FORM_FIELD_UNKNOWN_PROPERTY
+      condition: !cel >-
+        cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
+          has(m.properties) && (type(this) == string ? this : this.property) in m.properties)
+      code: UI_FIELD_UNKNOWN_PROPERTY
       message: >-
         lists a field for a property the model does not declare. Use a property
         of `model`, or add this one to it.
-    # The predicate `UI_ACTION_FIELD_UNSUPPORTED` holds an action's fields to.
     - resolve: [/model]
       in: /fields
       condition: !cel >-
-        !has((has(self.model.schema) ? self.model.schema : self.model).properties) || !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
-        || [(has(self.model.schema) ? self.model.schema : self.model).properties[this.property]].all(p,
-             [!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')].all(types,
-               (types.size() == 0
-                 ? ('enum' in p && type(p.enum) == list)
-                 : types.all(t, t in ['string', 'number', 'integer', 'boolean']))
-               || (types == ['array'] && 'items' in p && type(p.items) == map
-                   && [!('type' in p.items) ? [] : (type(p.items.type) == list ? p.items.type : [p.items.type]).filter(t, t != 'null')].all(itemTypes,
-                        itemTypes.size() == 0
-                          ? ('enum' in p.items && type(p.items.enum) == list)
-                          : itemTypes.all(t, t in ['string', 'number', 'integer', 'boolean'])))))
-      code: UI_FORM_FIELD_UNSUPPORTED
+        cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
+          type(this) != string || !has(m.properties) || !(this in m.properties)
+          || Self.controlFits('auto', m.properties[this], null))
+      code: UI_FIELD_UNSUPPORTED
       message: >-
-        lists a field for a property no control can enter. A field enters a
+        lists a property no control can enter. A property name enters a
         string, a number, a boolean, one of an `enum`, or a list of those:
-        remove this field, or give `model` a property of such a type.
+        remove it, give `model` a property of such a type, or name a field
+        kind that enters it.
+    - resolve: [/model, /fields]
+      condition: !cel >-
+        cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
+          !has(m.required) || m.required.all(r,
+            has(self.fields)
+              ? self.fields.exists(e, (type(e) == string ? e : e.property) == r)
+              : has(m.properties) && r in m.properties && Self.controlFits('auto', m.properties[r], null)))
+      code: UI_FIELD_REQUIRED_NOT_ENTERED
+      message: >-
+        leaves a property the model requires with no field, so a valid record
+        could never be sent. List a field for every required property, or leave
+        `fields` out where each one is a scalar or a list of scalars.
+    - resolve: [/fields]
+      in: /fields
+      condition: !cel >-
+        cel.bind(p, type(this) == string ? this : this.property,
+          self.fields.filter(e, (type(e) == string ? e : e.property) == p).size() == 1)
+      code: UI_FIELD_DUPLICATE
+      message: >-
+        enters a property another field enters too. Each property is entered by
+        one field: remove one of the two.
+    - resolve: [/fields]
+      in: /fields
+      condition: !cel >-
+        type(this) == string || !('group' in this)
+        || (has(self.groups) && self.groups.exists(g, g.name == this.group))
+      code: UI_FIELD_GROUP_UNKNOWN
+      message: >-
+        names a group `groups` does not declare. Declare it under `groups`, or
+        correct the name.
+    - in: /groups
+      condition: !cel "self.groups.exists_one(g, g.name == this.name)"
+      code: UI_FIELD_GROUP_DUPLICATE
+      message: >-
+        has the name of another group. A field names its group: give each its
+        own.
+    - resolve: [/fields]
+      in: /groups
+      condition: !cel >-
+        !has(self.fields) || cel.bind(gs, self.fields.map(e, type(e) != string && 'group' in e ? e.group : ''),
+          enumerate(gs).filter(p, p.value == this.name && (p.index == 0 || gs[p.index - 1] != this.name)).size() <= 1)
+      code: UI_FIELD_GROUP_SPLIT
+      message: >-
+        is named by fields that are not listed one after another. A group is
+        drawn where its fields are: list them together.
+    # Anchored at the resource: `in:` cannot reach into a named shape.
+    - resolve: [/model, /fields]
+      condition: !cel >-
+        cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
+          !has(self.state) || !has(self.state.fields) || self.state.fields.all(k,
+            has(self.fields)
+              ? self.fields.exists(e, (type(e) == string ? e : e.property) == k)
+              : has(m.properties) && k in m.properties && Self.controlFits('auto', m.properties[k], null)))
+      code: UI_STATE_FIELD_UNKNOWN
+      message: >-
+        keeps a property under `state.fields` no field shows. Name only
+        properties the fields enter, or leave `state.fields` out to keep every
+        one.
 ---
 kind: Telo.Definition
 metadata:
@@ -1711,9 +2586,10 @@ metadata:
   description: >-
     A button that runs a server operation from a page, with an optional input
     form generated from the request's data model and validated before anything
-    is sent. Results come back as lists drawn under the form: generated files,
-    report links, search hits. A data grid can offer one on every row, for
-    commands such as archive, approve or export.
+    is sent. Draws the answer as content — generated files, report links,
+    search hits — and a refusal as an error, then navigates or refreshes data
+    on success; presses run in parallel or one at a time. Data grids and lists
+    offer one on every row.
 capability: Telo.Provider
 extends: Self.Composite
 controllers:
@@ -1753,12 +2629,15 @@ schema:
                   url: { type: string, title: Download, format: uri-reference }
       source: { path: /api/reports }
       label: Generate
-      lists:
-        - heading: Files
-          rows: !cel "result.files"
-          columns:
-            - value: !cel "row.name"
-            - value: !cel "row.url"
+      result:
+        type: list
+        heading: Files
+        rows: !cel "result.files"
+        columns:
+          - value: !cel "row.name"
+          - value: !cel "row.url"
+      onSuccess:
+        refreshes: [/api/reports]
   properties:
     inputModel:
       title: Input model
@@ -1766,7 +2645,9 @@ schema:
       x-telo-ref: { kind: Telo.Type, use: schema }
     outputModel:
       title: Output model
-      description: The shape of the answer. Lists are drawn from it.
+      description: >-
+        The shape of the answer, read as `result`. A success's body is held to
+        it before anything is drawn from it.
       x-telo-ref: { kind: Telo.Type, use: schema }
     source:
       title: Source
@@ -1784,120 +2665,241 @@ schema:
     label:
       title: Label
       description: The text of the button that runs the operation.
-      type: string
+      $ref: "telo://manifest#/$defs/Text"
+      x-telo-text-values: {}
     fields:
       title: Fields
       description: >-
-        The fields, top to bottom. Omitted, every input model property a
-        control can enter: a scalar, or a list of scalars.
+        The fields, top to bottom: a property name, entered as the input model
+        says, or a field kind. Omitted, every input model property a control
+        can enter: a scalar, or a list of scalars.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          values:
+            x-telo-context-from-root: "inputModel"
+            x-telo-context-eval: accessor
+            x-telo-context-item-fills: ["", "/property"]
+      items:
+        anyOf:
+          - title: Property
+            description: A property, entered with the control its schema calls for.
+            type: string
+          - title: Field
+            description: A field kind entering one property.
+            x-telo-ref: { kind: Self.Field, use: call }
+    groups:
+      title: Groups
+      description: >-
+        Labelled sections the fields name by `group`. A group's fields are
+        listed one after another, so the list's order is the order they are
+        drawn in.
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          values:
+            x-telo-context-from-root: "inputModel"
+            x-telo-context-eval: accessor
+      items: { $ref: "telo://Self/FieldGroup" }
+    state:
+      title: State
+      description: >-
+        Where the values entered are kept between visits. Omitted, they are
+        not kept.
+      $ref: "telo://Self/StateRecord"
+    enabled:
+      title: Enabled
+      description: >-
+        When the button can be pressed, over the form's current `values`, and
+        the reason shown while it cannot. Omitted, it always can.
+      $ref: "telo://Self/Enablement"
+      x-telo-context:
+        type: object
+        properties:
+          values:
+            x-telo-context-from-root: "inputModel"
+            x-telo-context-eval: accessor
+    result:
+      title: Result
+      description: >-
+        What is drawn from a success, over `result` (the answer), `input` (the
+        record sent) and `values` (the form's current values). Omitted, a
+        success draws nothing.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          result:
+            x-telo-context-from-root: "outputModel"
+            x-telo-context-eval: accessor
+            type: object
+            properties: {}
+            additionalProperties: false
+          input:
+            x-telo-context-from-root: "inputModel"
+            x-telo-context-eval: accessor
+          values:
+            x-telo-context-from-root: "inputModel"
+            x-telo-context-eval: accessor
+    failure:
+      title: Failure
+      description: >-
+        What is drawn when the operation does not succeed — any answer but a
+        2xx, no answer at all, or a 2xx body the output model refuses — over
+        `error`, `input` and `values`. Omitted, the error's code and message.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          error:
+            x-telo-context-eval: accessor
+            $ref: "telo://Self/RequestError"
+          input:
+            x-telo-context-from-root: "inputModel"
+            x-telo-context-eval: accessor
+          values:
+            x-telo-context-from-root: "inputModel"
+            x-telo-context-eval: accessor
+    onSuccess:
+      title: On success
+      description: What happens once the operation succeeds, besides drawing `result`.
+      type: object
+      additionalProperties: false
+      properties:
+        navigate:
+          title: Navigate
+          description: >-
+            Where the page goes: a path into `result`, or a fixed address. An
+            app-relative path of a declared page moves within the application,
+            any other loads it; an `https://` or `http://` address replaces the
+            page. A value that is no such address navigates nowhere.
+          type: string
+          pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://|mailto:)"
+          x-telo-eval: accessor
+          x-telo-context:
+            type: object
+            properties:
+              result:
+                x-telo-context-from-root: "outputModel"
+                x-telo-context-eval: accessor
+                type: object
+                properties: {}
+                additionalProperties: false
+        refreshes:
+          title: Refreshes
+          description: >-
+            App-relative paths read again: every table whose `source.basePath`
+            and every reader whose `source.path` equals one of them.
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+    concurrency:
+      title: Concurrency
+      description: >-
+        Whether presses of this action run at once (`parallel`) or one after
+        another in the order they were made on this page (`serial`). Either
+        way the form, or one row, takes no press while its last is pending.
+      enum: [parallel, serial]
+      default: parallel
+    clearAnswerOn:
+      title: Clear answer on
+      description: >-
+        Input properties whose change clears what was drawn from the last
+        answer. A new submission always clears it.
       type: array
       uniqueItems: true
-      items:
-        type: object
-        additionalProperties: false
-        required: [property]
-        properties:
-          property: { title: Property, type: string }
-    lists:
-      title: Lists
-      description: The lists drawn from the answer, top to bottom.
-      type: array
-      items:
-        type: object
-        additionalProperties: false
-        required: [rows, columns]
-        properties:
-          heading: { title: Heading, type: string }
-          rows:
-            title: Rows
-            description: The list in the answer, as a path into it.
-            type: array
-            x-telo-eval: accessor
-            x-telo-context:
-              type: object
-              properties:
-                result:
-                  x-telo-context-from-root: "outputModel"
-                  type: object
-                  properties: {}
-                  additionalProperties: false
-          columns:
-            title: Columns
-            description: The columns, left to right.
-            type: array
-            minItems: 1
-            x-telo-context:
-              type: object
-              properties:
-                result:
-                  x-telo-context-from-root: "outputModel"
-                  type: object
-                  properties: {}
-                  additionalProperties: false
-                row: { x-telo-context-element-from-item: "rows" }
-            items:
-              type: object
-              additionalProperties: false
-              required: [value]
-              properties:
-                header: { title: Header, type: string }
-                value:
-                  title: Value
-                  description: The value shown, as a path into the row or the answer, or a fixed value.
-                  x-telo-eval: accessor
+      items: { type: string }
   x-telo-resource-rules:
     - resolve: [/inputModel]
-      in: /fields
-      condition: !cel "has((has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties) && this.property in (has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties"
-      code: UI_ACTION_FIELD_UNKNOWN_PROPERTY
+      in: /clearAnswerOn
+      condition: !cel "has((has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties) && this in (has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties"
+      code: UI_ACTION_CLEAR_UNKNOWN_PROPERTY
       message: >-
-        lists a field for a property the input model does not declare. Use a
-        property of `inputModel`, or add this one to it.
-    # A control enters one plain value or a list of them: a property typed
-    # `string`, `number`, `integer` or `boolean` (`null` aside) or declaring an
-    # `enum`, or an `array` whose `items` is one.
+        clears its answer on a property the input model does not declare, which
+        never changes. Use a property of `inputModel`, or remove this entry.
+    - resolve: [/inputModel, /fields]
+      in: /fields
+      condition: !cel >-
+        cel.bind(m, has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel,
+          has(m.properties) && (type(this) == string ? this : this.property) in m.properties)
+      code: UI_FIELD_UNKNOWN_PROPERTY
+      message: >-
+        lists a field for a property the input model does not declare. Use a property
+        of `inputModel`, or add this one to it.
     - resolve: [/inputModel]
       in: /fields
       condition: !cel >-
-        !has((has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties) || !(this.property in (has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties)
-        || [(has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties[this.property]].all(p,
-             [!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')].all(types,
-               (types.size() == 0
-                 ? ('enum' in p && type(p.enum) == list)
-                 : types.all(t, t in ['string', 'number', 'integer', 'boolean']))
-               || (types == ['array'] && 'items' in p && type(p.items) == map
-                   && [!('type' in p.items) ? [] : (type(p.items.type) == list ? p.items.type : [p.items.type]).filter(t, t != 'null')].all(itemTypes,
-                        itemTypes.size() == 0
-                          ? ('enum' in p.items && type(p.items.enum) == list)
-                          : itemTypes.all(t, t in ['string', 'number', 'integer', 'boolean'])))))
-      code: UI_ACTION_FIELD_UNSUPPORTED
+        cel.bind(m, has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel,
+          type(this) != string || !has(m.properties) || !(this in m.properties)
+          || Self.controlFits('auto', m.properties[this], null))
+      code: UI_FIELD_UNSUPPORTED
       message: >-
-        lists a field for a property no control can enter. A field enters a
+        lists a property no control can enter. A property name enters a
         string, a number, a boolean, one of an `enum`, or a list of those:
-        remove this field, or give the operation a property of such a type.
-    - resolve: [/inputModel]
+        remove it, give `inputModel` a property of such a type, or name a field
+        kind that enters it.
+    - resolve: [/inputModel, /fields]
       condition: !cel >-
-        !has((has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).required)
-        || (has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).required.all(r,
-             has(self.fields)
-               ? self.fields.exists(f, f.property == r)
-               : (has((has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties) && r in (has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties
-                  && [(has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties[r]].all(p,
-                       [!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')].all(types,
-                         (types.size() == 0
-                           ? ('enum' in p && type(p.enum) == list)
-                           : types.all(t, t in ['string', 'number', 'integer', 'boolean']))
-                         || (types == ['array'] && 'items' in p && type(p.items) == map
-                             && [!('type' in p.items) ? [] : (type(p.items.type) == list ? p.items.type : [p.items.type]).filter(t, t != 'null')].all(itemTypes,
-                                  itemTypes.size() == 0
-                                    ? ('enum' in p.items && type(p.items.enum) == list)
-                                    : itemTypes.all(t, t in ['string', 'number', 'integer', 'boolean'])))))))
-      code: UI_ACTION_REQUIRED_INPUT_NOT_ENTERED
+        cel.bind(m, has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel,
+          !has(m.required) || m.required.all(r,
+            has(self.fields)
+              ? self.fields.exists(e, (type(e) == string ? e : e.property) == r)
+              : has(m.properties) && r in m.properties && Self.controlFits('auto', m.properties[r], null)))
+      code: UI_FIELD_REQUIRED_NOT_ENTERED
       message: >-
-        leaves a property the input model requires with no field, so the
-        operation could never be sent a valid record. List a field for every
-        required property, or leave `fields` out where each one is a scalar or
-        a list of scalars.
+        leaves a property the input model requires with no field, so a valid record
+        could never be sent. List a field for every required property, or leave
+        `fields` out where each one is a scalar or a list of scalars.
+    - resolve: [/fields]
+      in: /fields
+      condition: !cel >-
+        cel.bind(p, type(this) == string ? this : this.property,
+          self.fields.filter(e, (type(e) == string ? e : e.property) == p).size() == 1)
+      code: UI_FIELD_DUPLICATE
+      message: >-
+        enters a property another field enters too. Each property is entered by
+        one field: remove one of the two.
+    - resolve: [/fields]
+      in: /fields
+      condition: !cel >-
+        type(this) == string || !('group' in this)
+        || (has(self.groups) && self.groups.exists(g, g.name == this.group))
+      code: UI_FIELD_GROUP_UNKNOWN
+      message: >-
+        names a group `groups` does not declare. Declare it under `groups`, or
+        correct the name.
+    - in: /groups
+      condition: !cel "self.groups.exists_one(g, g.name == this.name)"
+      code: UI_FIELD_GROUP_DUPLICATE
+      message: >-
+        has the name of another group. A field names its group: give each its
+        own.
+    - resolve: [/fields]
+      in: /groups
+      condition: !cel >-
+        !has(self.fields) || cel.bind(gs, self.fields.map(e, type(e) != string && 'group' in e ? e.group : ''),
+          enumerate(gs).filter(p, p.value == this.name && (p.index == 0 || gs[p.index - 1] != this.name)).size() <= 1)
+      code: UI_FIELD_GROUP_SPLIT
+      message: >-
+        is named by fields that are not listed one after another. A group is
+        drawn where its fields are: list them together.
+    # Anchored at the resource: `in:` cannot reach into a named shape.
+    - resolve: [/inputModel, /fields]
+      condition: !cel >-
+        cel.bind(m, has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel,
+          !has(self.state) || !has(self.state.fields) || self.state.fields.all(k,
+            has(self.fields)
+              ? self.fields.exists(e, (type(e) == string ? e : e.property) == k)
+              : has(m.properties) && k in m.properties && Self.controlFits('auto', m.properties[k], null)))
+      code: UI_STATE_FIELD_UNKNOWN
+      message: >-
+        keeps a property under `state.fields` no field shows. Name only
+        properties the fields enter, or leave `state.fields` out to keep every
+        one.
 ---
 kind: Telo.Definition
 metadata:
@@ -1956,7 +2958,9 @@ schema:
               `select` list, `options` side by side, a `toggle`, a `slider`,
               typed `tags`, or `none` — drawn nowhere, set by a preset or a
               default only.
-            enum: [auto, select, options, toggle, slider, tags, none]
+            anyOf:
+              - $ref: "telo://Self/Control"
+              - const: none
             default: auto
           default:
             title: Default
@@ -1978,7 +2982,7 @@ schema:
         additionalProperties: false
         required: [label, values]
         properties:
-          label: { title: Label, type: string }
+          label: { title: Label, $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
           values:
             title: Values
             type: array
@@ -2100,21 +3104,14 @@ schema:
         property's type or not one of its `enum`, a list without the `in`
         operator, a single value with it, or `false` for a filter entered with
         a `toggle`, which holds true or nothing.
-    # A control states what it needs of the property, so a type it cannot read
-    # is refused: the property's types are read with `null` set aside.
+    # The one fit predicate every control rule reads, over the filter's operator.
     - resolve: [/model]
       in: /fields
       condition: !cel >-
         !('control' in this) || this.control in ['auto', 'none']
         || !has((has(self.model.schema) ? self.model.schema : self.model).properties)
         || !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
-        || [(has(self.model.schema) ? self.model.schema : self.model).properties[this.property]].all(p,
-             [!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')].all(types,
-               (this.control in ['select', 'options'] && ('enum' in p || types == ['boolean']))
-               || (this.control == 'toggle' && types == ['boolean'] && this.operator == 'eq')
-               || (this.control == 'slider' && types.size() > 0 && types.all(t, t in ['number', 'integer'])
-                   && 'minimum' in p && 'maximum' in p && this.operator in ['eq', 'gt', 'gte', 'lt', 'lte'])
-               || (this.control == 'tags' && this.operator == 'in')))
+        || Self.controlFits(this.control, (has(self.model.schema) ? self.model.schema : self.model).properties[this.property], this.operator)
       code: UI_FILTER_CONTROL_UNSUPPORTED
       message: >-
         asks for a control its filter cannot be entered with: `select` and
@@ -2162,6 +3159,18 @@ schema:
       message: >-
         has the label of another preset. A preset is chosen by its label: give
         each its own.
+    - resolve: [/collection]
+      condition: !cel >-
+        !has(self.policy) || !has(self.policy.state) || !has(self.policy.state.fields)
+        || self.policy.state.fields.all(k, has(self.fields)
+          ? self.fields.exists(f, f.property == k)
+          : !has(self.collection.query) || !has(self.collection.query.filters)
+            || self.collection.query.filters.exists(f, f.property == k))
+      code: UI_STATE_FIELD_UNKNOWN
+      message: >-
+        keeps a property under `policy.state.fields` no filter of the bar
+        shows. Name only properties its filters enter, or leave
+        `state.fields` out to keep every one.
     # With a placement written, the placement's own rule answers this.
     - severity: warning
       condition: !cel >-
@@ -2174,6 +3183,561 @@ schema:
         pins a field, but nothing folds: every filter is on show whatever is
         pinned. Use a placement that folds, show only the `chosen` filters, or
         remove `pinned`.
+---
+# One entry of a form or an action. Its kind judges whether it can enter its
+# property in the model of whoever places it: a rule on the referrer for
+# `telo check`, the same answer from `invoke` at creation.
+kind: Telo.Abstract
+metadata:
+  name: Field
+  description: >-
+    One entry of a data-entry form: the property it enters, the labelled
+    section it is drawn in and when it is shown. Answers, for the data model
+    of the form placing it, whether it can enter that property there and what
+    a renderer draws for it, so a field from any module is checked against the
+    model it is placed in.
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [model]
+    properties:
+      model:
+        title: Model
+        description: The schema of the record the form or action enters.
+        type: object
+outputType: !ref FieldAnswer
+schema:
+  type: object
+  required: [property]
+  properties:
+    property:
+      title: Property
+      description: The model property the field enters.
+      type: string
+    group:
+      title: Group
+      description: The name of the section of `groups` the field is drawn in.
+      type: string
+    shown:
+      title: Shown
+      description: >-
+        Whether the field is drawn, over the form's current `values`. A hidden
+        field keeps what it holds and is neither sent nor checked, while the
+        record is still held to the model.
+      $ref: "telo://Self/Condition"
+      x-telo-context:
+        type: object
+        properties:
+          values: { x-telo-context-from-referrer: values, x-telo-context-eval: accessor }
+---
+kind: Telo.Definition
+metadata:
+  name: InputField
+  description: >-
+    A form field entering one property with a control: chosen from the
+    property's type, or a select list, options side by side, an on/off switch,
+    a slider or typed tags. A control the property cannot be entered with is
+    caught before the page is ever served.
+capability: Telo.Invocable
+extends: Self.Field
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#InputFieldController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    control:
+      title: Control
+      description: >-
+        How the value is entered: derived from the property (`auto`), a
+        `select` list, `options` side by side, a `toggle`, a `slider`, or
+        typed `tags`.
+      $ref: "telo://Self/Control"
+      default: auto
+  x-telo-referrer-rules:
+    - referrer: Self.Form
+      resolve: [/model]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
+          !has(m.properties) || !(self.property in m.properties)
+          || Self.controlFits(has(self.control) ? self.control : 'auto', m.properties[self.property], null))
+      code: UI_FIELD_CONTROL_UNSUPPORTED
+      message: >-
+        asks for a control its property cannot be entered with. Every control
+        needs one plain value or a list of them; `select` and `options` need an
+        `enum` or a boolean, `toggle` a boolean, `slider` a number declaring
+        `minimum` and `maximum`, and `tags` a list.
+    - referrer: Self.Action
+      resolve: [/inputModel]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+          !has(m.properties) || !(self.property in m.properties)
+          || Self.controlFits(has(self.control) ? self.control : 'auto', m.properties[self.property], null))
+      code: UI_FIELD_CONTROL_UNSUPPORTED
+      message: >-
+        asks for a control its property cannot be entered with. Every control
+        needs one plain value or a list of them; `select` and `options` need an
+        `enum` or a boolean, `toggle` a boolean, `slider` a number declaring
+        `minimum` and `maximum`, and `tags` a list.
+---
+kind: Telo.Definition
+metadata:
+  name: ChoiceField
+  description: >-
+    A form field choosing one value, or several for a list, from options read
+    from an API: drawn as a select list or as options side by side, narrowed
+    by other values of the form. An option value of another type than the
+    property is caught before deploy.
+capability: Telo.Invocable
+extends: Self.Field
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ChoiceFieldController
+schema:
+  type: object
+  additionalProperties: false
+  required: [options]
+  properties:
+    options:
+      title: Options
+      description: Where the options come from, over the form's current `values`.
+      x-telo-ref: { kind: Self.OptionSource, use: dependency }
+      x-telo-context:
+        type: object
+        properties:
+          values: { x-telo-context-from-referrer: values, x-telo-context-eval: accessor }
+    control:
+      title: Control
+      description: >-
+        How the options are drawn: a `select` list (`auto`), or `options` side
+        by side.
+      $ref: "telo://Self/Control"
+      default: auto
+  x-telo-referrer-rules:
+    - referrer: Self.Form
+      resolve: [/model]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
+          !has(m.properties) || !(self.property in m.properties)
+          || ((!has(self.control) || self.control in ['auto', 'select', 'options'])
+              && Self.controlFits('auto', m.properties[self.property], null)))
+      code: UI_FIELD_CONTROL_UNSUPPORTED
+      message: >-
+        asks for a control a choice cannot be drawn with, or for a property no
+        choice can enter. A choice is a `select` list or `options` side by side,
+        over a string, a number, a boolean, or a list of those.
+    - referrer: Self.Action
+      resolve: [/inputModel]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+          !has(m.properties) || !(self.property in m.properties)
+          || ((!has(self.control) || self.control in ['auto', 'select', 'options'])
+              && Self.controlFits('auto', m.properties[self.property], null)))
+      code: UI_FIELD_CONTROL_UNSUPPORTED
+      message: >-
+        asks for a control a choice cannot be drawn with, or for a property no
+        choice can enter. A choice is a `select` list or `options` side by side,
+        over a string, a number, a boolean, or a list of those.
+    - referrer: Self.Form
+      resolve: [/model]
+      resolveSelf: [/options/model]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
+        cel.bind(o, has(self.options.model.schema) ? self.options.model.schema : self.options.model,
+          !has(m.properties) || !(self.property in m.properties)
+          || !('root' in self.options.value) || size(self.options.value.path) != 1
+          || !has(o.properties) || !(self.options.value.path[0] in o.properties)
+          || cel.bind(p, m.properties[self.property],
+             cel.bind(e, (!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')) == ['array'] ? ('items' in p && type(p.items) == map ? p.items : {}) : p,
+             cel.bind(want, (!('type' in e) ? [] : (type(e.type) == list ? e.type : [e.type]).filter(t, t != 'null')),
+             cel.bind(v, o.properties[self.options.value.path[0]],
+             cel.bind(have, (!('type' in v) ? [] : (type(v.type) == list ? v.type : [v.type]).filter(t, t != 'null')),
+               want.size() == 0 || have.size() == 0
+               || have.all(t, t in want || (t == 'integer' && 'number' in want)))))))))
+      code: UI_FIELD_OPTION_VALUE_MISMATCH
+      message: >-
+        offers options whose value is of another type than the property holds,
+        or than its items hold for a list. Make the source's `value` read a
+        property of the property's type, or enter another property.
+    - referrer: Self.Action
+      resolve: [/inputModel]
+      resolveSelf: [/options/model]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+        cel.bind(o, has(self.options.model.schema) ? self.options.model.schema : self.options.model,
+          !has(m.properties) || !(self.property in m.properties)
+          || !('root' in self.options.value) || size(self.options.value.path) != 1
+          || !has(o.properties) || !(self.options.value.path[0] in o.properties)
+          || cel.bind(p, m.properties[self.property],
+             cel.bind(e, (!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')) == ['array'] ? ('items' in p && type(p.items) == map ? p.items : {}) : p,
+             cel.bind(want, (!('type' in e) ? [] : (type(e.type) == list ? e.type : [e.type]).filter(t, t != 'null')),
+             cel.bind(v, o.properties[self.options.value.path[0]],
+             cel.bind(have, (!('type' in v) ? [] : (type(v.type) == list ? v.type : [v.type]).filter(t, t != 'null')),
+               want.size() == 0 || have.size() == 0
+               || have.all(t, t in want || (t == 'integer' && 'number' in want)))))))))
+      code: UI_FIELD_OPTION_VALUE_MISMATCH
+      message: >-
+        offers options whose value is of another type than the property holds,
+        or than its items hold for a list. Make the source's `value` read a
+        property of the property's type, or enter another property.
+---
+kind: Telo.Definition
+metadata:
+  name: PickerField
+  description: >-
+    A form field choosing a record, or several, from a large set read from an
+    API: searched as the viewer types and paged as the list scrolls in a dialog
+    or other overlay, the choice shown as its label and linked. Suits foreign
+    keys, assignees and anything too long for a select list.
+capability: Telo.Invocable
+extends: Self.Field
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PickerFieldController
+schema:
+  type: object
+  additionalProperties: false
+  required: [options]
+  properties:
+    options:
+      title: Options
+      description: Where the options come from, over the form's current `values`.
+      x-telo-ref: { kind: Self.OptionSource, use: dependency }
+      x-telo-context:
+        type: object
+        properties:
+          values: { x-telo-context-from-referrer: values, x-telo-context-eval: accessor }
+    surface:
+      title: Surface
+      description: Where the options are searched and chosen. Omitted, a dialog with its defaults.
+      x-telo-ref: { kind: Self.Overlay, use: dependency }
+  x-telo-referrer-rules:
+    - referrer: Self.Form
+      resolve: [/model]
+      resolveSelf: [/options/model]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
+        cel.bind(o, has(self.options.model.schema) ? self.options.model.schema : self.options.model,
+          !has(m.properties) || !(self.property in m.properties)
+          || !('root' in self.options.value) || size(self.options.value.path) != 1
+          || !has(o.properties) || !(self.options.value.path[0] in o.properties)
+          || cel.bind(p, m.properties[self.property],
+             cel.bind(e, (!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')) == ['array'] ? ('items' in p && type(p.items) == map ? p.items : {}) : p,
+             cel.bind(want, (!('type' in e) ? [] : (type(e.type) == list ? e.type : [e.type]).filter(t, t != 'null')),
+             cel.bind(v, o.properties[self.options.value.path[0]],
+             cel.bind(have, (!('type' in v) ? [] : (type(v.type) == list ? v.type : [v.type]).filter(t, t != 'null')),
+               want.size() == 0 || have.size() == 0
+               || have.all(t, t in want || (t == 'integer' && 'number' in want)))))))))
+      code: UI_FIELD_OPTION_VALUE_MISMATCH
+      message: >-
+        offers options whose value is of another type than the property holds,
+        or than its items hold for a list. Make the source's `value` read a
+        property of the property's type, or enter another property.
+    - referrer: Self.Action
+      resolve: [/inputModel]
+      resolveSelf: [/options/model]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+        cel.bind(o, has(self.options.model.schema) ? self.options.model.schema : self.options.model,
+          !has(m.properties) || !(self.property in m.properties)
+          || !('root' in self.options.value) || size(self.options.value.path) != 1
+          || !has(o.properties) || !(self.options.value.path[0] in o.properties)
+          || cel.bind(p, m.properties[self.property],
+             cel.bind(e, (!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')) == ['array'] ? ('items' in p && type(p.items) == map ? p.items : {}) : p,
+             cel.bind(want, (!('type' in e) ? [] : (type(e.type) == list ? e.type : [e.type]).filter(t, t != 'null')),
+             cel.bind(v, o.properties[self.options.value.path[0]],
+             cel.bind(have, (!('type' in v) ? [] : (type(v.type) == list ? v.type : [v.type]).filter(t, t != 'null')),
+               want.size() == 0 || have.size() == 0
+               || have.all(t, t in want || (t == 'integer' && 'number' in want)))))))))
+      code: UI_FIELD_OPTION_VALUE_MISMATCH
+      message: >-
+        offers options whose value is of another type than the property holds,
+        or than its items hold for a list. Make the source's `value` read a
+        property of the property's type, or enter another property.
+---
+kind: Telo.Definition
+metadata:
+  name: DateRangeField
+  description: >-
+    A form field entering a period from one date to another, with named
+    presets — today, this week, last month, this quarter — computed in the
+    viewer's time zone, an optional starting preset, and a warning for a range
+    longer than a limit. A start after the end blocks submission.
+capability: Telo.Invocable
+extends: Self.Field
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DateRangeFieldController
+schema:
+  type: object
+  additionalProperties: false
+  required: [presets]
+  properties:
+    presets:
+      title: Presets
+      description: >-
+        Ranges a press sets: the whole `unit` holding today, moved by `offset`
+        units — `{ unit: month, offset: -1 }` is last month.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [label, unit, offset]
+        properties:
+          label: { title: Label, $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+          unit: { title: Unit, enum: [day, week, month, quarter, year] }
+          offset: { title: Offset, type: integer }
+    weekStart:
+      title: Week start
+      description: The day a week begins on, for a `week` preset.
+      enum: [monday, sunday]
+      default: monday
+    initialPreset:
+      title: Initial preset
+      description: >-
+        The label of the preset the field starts at — its text as written —
+        when the record, the address and the store hold nothing for it.
+      type: string
+    warnLongerThan:
+      title: Warn longer than
+      description: A length past which the range is shown a warning, without blocking.
+      type: object
+      additionalProperties: false
+      required: [unit, count]
+      properties:
+        unit: { title: Unit, enum: [day, week, month, quarter, year] }
+        count: { title: Count, type: integer, minimum: 1 }
+  x-telo-resource-rules:
+    - condition: !cel >-
+        !has(self.initialPreset) || self.presets.exists(x,
+          type(x.label) == string ? x.label == self.initialPreset : 'text' in x.label && x.label.text == self.initialPreset)
+      code: UI_DATE_RANGE_PRESET_UNKNOWN
+      message: >-
+        starts at a preset it does not declare. Name the label of one of its
+        `presets`, or remove `initialPreset`.
+    - in: /presets
+      condition: !cel "self.presets.exists_one(x, x.label == this.label)"
+      code: UI_DATE_RANGE_PRESET_LABEL_DUPLICATE
+      message: >-
+        has the label of another preset. A preset is chosen by its label: give
+        each its own.
+  x-telo-referrer-rules:
+    - referrer: Self.Form
+      resolve: [/model]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
+          !has(m.properties) || !(self.property in m.properties)
+          || cel.bind(p, m.properties[self.property],
+             'type' in p && p.type == 'object' && 'properties' in p && type(p.properties) == map
+             && size(p.properties) == 2 && 'from' in p.properties && 'to' in p.properties
+             && [p.properties.from, p.properties.to].all(d,
+                  type(d) == map && 'type' in d && d.type == 'string' && 'format' in d && d.format == 'date')))
+      code: UI_DATE_RANGE_PROPERTY_INVALID
+      message: >-
+        enters a property that is not a date range: an object of exactly `from`
+        and `to`, each `type: string` with `format: date`.
+    - referrer: Self.Action
+      resolve: [/inputModel]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+          !has(m.properties) || !(self.property in m.properties)
+          || cel.bind(p, m.properties[self.property],
+             'type' in p && p.type == 'object' && 'properties' in p && type(p.properties) == map
+             && size(p.properties) == 2 && 'from' in p.properties && 'to' in p.properties
+             && [p.properties.from, p.properties.to].all(d,
+                  type(d) == map && 'type' in d && d.type == 'string' && 'format' in d && d.format == 'date')))
+      code: UI_DATE_RANGE_PROPERTY_INVALID
+      message: >-
+        enters a property that is not a date range: an object of exactly `from`
+        and `to`, each `type: string` with `format: date`.
+    - referrer: Self.Form
+      resolve: [/model]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.model.schema) ? referrer.model.schema : referrer.model),
+          !has(self.initialPreset) || !has(m.properties) || !(self.property in m.properties)
+          || !('default' in m.properties[self.property]))
+      code: UI_DATE_RANGE_DEFAULT_CONFLICT
+      message: >-
+        starts at a preset while the model gives the property a `default` too.
+        Remove `initialPreset`, or the property's `default`.
+    - referrer: Self.Action
+      resolve: [/inputModel]
+      condition: !cel >-
+        cel.bind(m, (has(referrer.inputModel.schema) ? referrer.inputModel.schema : referrer.inputModel),
+          !has(self.initialPreset) || !has(m.properties) || !(self.property in m.properties)
+          || !('default' in m.properties[self.property]))
+      code: UI_DATE_RANGE_DEFAULT_CONFLICT
+      message: >-
+        starts at a preset while the model gives the property a `default` too.
+        Remove `initialPreset`, or the property's `default`.
+---
+# Where a field's options come from. Each option is a record of `model`, read
+# as its `value`, its `label`, and an optional `hint` and `href`.
+kind: Telo.Abstract
+metadata:
+  name: OptionSource
+  description: >-
+    Where the options of a choice or picker field come from: records read
+    from an API, each offered as the value it yields, a label, an optional
+    hint and an optional link. Provides what a renderer reads them with, so a
+    source of options is declared once and used by any field.
+capability: Telo.Provider
+outputType: !ref OptionSourceSpec
+schema:
+  type: object
+  required: [model, value, label]
+  properties:
+    model:
+      title: Model
+      description: The shape of one option's record.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    value:
+      title: Value
+      description: What choosing the option yields, as a path into the record.
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+    label:
+      title: Label
+      description: How the option is shown, as a path into the record or a fixed text.
+      type: string
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+    hint:
+      title: Hint
+      description: Text shown beside the label.
+      type: string
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+    href:
+      title: Link
+      description: Where the chosen option links to, as a path into the record.
+      type: string
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+---
+kind: Telo.Definition
+metadata:
+  name: CollectionOptions
+  description: >-
+    Options read from a REST collection: paged as the list scrolls, searched
+    as the viewer types with a filter the collection accepts, narrowed by
+    fixed filters or by other values of the form, and a chosen value labelled
+    by one lookup when its label is not in hand. A search or value the
+    collection would refuse is caught before deploy.
+capability: Telo.Provider
+extends: Self.OptionSource
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionOptionsController
+schema:
+  type: object
+  additionalProperties: false
+  required: [collection, source]
+  properties:
+    collection:
+      title: Collection
+      description: >-
+        What the collection's list request accepts: `value` is filtered with
+        `in`, `search` and every source filter are filters it lists.
+      x-telo-ref: { kind: Self.Collection, use: dependency }
+    source:
+      title: Source
+      type: object
+      additionalProperties: false
+      required: [basePath]
+      properties:
+        basePath:
+          title: Base path
+          description: >-
+            App-relative URL of the collection: `/` followed by anything but
+            `/` or `\`, holding no control character.
+          type: string
+          pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+        filters:
+          title: Filters
+          description: >-
+            Equalities applied to every request, keyed by model property: a
+            fixed value, or a path into the form's `values`. While one holds
+            nothing, nothing is read or offered; when one changes, the options
+            are read again.
+          type: object
+          x-telo-context:
+            type: object
+            properties:
+              values: { x-telo-context-from-referrer: values, x-telo-context-eval: accessor }
+          additionalProperties:
+            type: [string, number, integer, boolean]
+            x-telo-eval: accessor
+            x-telo-value-schema-from: { from: /model, member: "0#" }
+    pageSize:
+      title: Page size
+      description: >-
+        Options per request, sent as `limit`: a page as the list scrolls, and
+        at most this many chosen values per label lookup.
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 25
+    search:
+      title: Search
+      description: >-
+        The filter what the viewer types is sent as, after a pause or at once
+        on Enter. Omitted, the options are not searched.
+      type: object
+      additionalProperties: false
+      required: [property, operator]
+      properties:
+        property: { title: Property, type: string }
+        operator: { title: Operator, enum: [eq, contains, gt, gte, lt, lte, in] }
+  x-telo-resource-rules:
+    - resolve: [/model]
+      in: /source/filters
+      condition: !cel "has((has(self.model.schema) ? self.model.schema : self.model).properties) && key in (has(self.model.schema) ? self.model.schema : self.model).properties"
+      code: UI_SOURCE_FILTER_UNKNOWN_PROPERTY
+      message: >-
+        filters its source by a property the option model does not declare.
+        Use a property of `model`, or add this one to it.
+    - resolve: [/collection]
+      in: /source/filters
+      condition: !cel >-
+        !has(self.collection.query) || !has(self.collection.query.filters)
+        || self.collection.query.filters.exists(f, f.property == key && f.operator == 'eq')
+      code: UI_SOURCE_FILTER_NOT_ACCEPTED
+      message: >-
+        filters its source by a property the collection does not accept an
+        equality on. Declare it with operator `eq` under the collection's
+        `query.filters`, or remove this filter.
+    - resolve: [/collection]
+      condition: !cel >-
+        !has(self.search) || !has(self.collection.query) || !has(self.collection.query.filters)
+        || self.collection.query.filters.exists(f, f.property == self.search.property && f.operator == self.search.operator)
+      code: UI_OPTION_SEARCH_NOT_ACCEPTED
+      message: >-
+        searches with a property and operator the collection does not accept.
+        Declare the pair under the collection's `query.filters`, or change
+        `search`.
+    - resolve: [/collection]
+      condition: !cel >-
+        'root' in self.value && self.value.root == 'row' && size(self.value.path) == 1
+        && (!has(self.collection.query) || !has(self.collection.query.filters)
+            || self.collection.query.filters.exists(f, f.property == self.value.path[0] && f.operator == 'in'))
+      code: UI_OPTION_VALUE_NOT_FILTERABLE
+      message: >-
+        yields a value no request can look options up by: `value` must be a
+        property of the record, read as `row.<property>`, that the collection
+        accepts with operator `in`, so a chosen value is labelled by one
+        request.
 ---
 kind: Telo.Definition
 metadata:
@@ -2208,7 +3772,7 @@ schema:
       x-telo-context:
         type: object
         properties:
-          row: { x-telo-context-from-root: "model" }
+          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
       additionalProperties:
         x-telo-eval: accessor
 ---
@@ -2296,3 +3860,190 @@ schema:
         font-size.xl: { type: string }
         line-height.body: { type: string }
         line-height.heading: { type: string }
+---
+# The words a renderer of this vocabulary shows of its own — loading, empty
+# states, buttons, confirmations, each profile keyword's validation message, the
+# date range's — each a `Text` with the values it is formatted with, keyed by
+# word id. `words` holds them in English; a renderer sends each translated.
+kind: Telo.Definition
+metadata:
+  name: Words
+  description: >-
+    The fixed words a user interface shows of its own, keyed by id: loading and
+    empty states, save and cancel, paging, confirmations, filter captions,
+    validation messages and date range warnings, each with the values it is
+    formatted with, translated like any other text of the screen.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#WordsController
+schema:
+  type: object
+  additionalProperties: false
+  required: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, yes, no, none, any, select, choose, more, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems]
+  properties:
+    loading: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    noRows: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    nothingFound: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    save: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    cancel: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    close: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    newRecord: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    edit: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    delete: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    deleteRowQuestion: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    deleteRowDetail: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    previousPage: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    pagerRange: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"first": {"type": "integer"}, "last": {"type": "integer"}, "total": {"type": "integer"}} }
+    pagerEmpty: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"total": {"type": "integer"}} }
+    nextPage: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    yes: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    no: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    none: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    any: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    select: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    choose: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    more: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    search: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}} }
+    remove: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}} }
+    clear: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}} }
+    filters: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    addFilter: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    apply: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    reset: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    done: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    presets: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    operatorEq: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    operatorContains: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    operatorGt: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    operatorGte: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    operatorLt: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    operatorLte: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    operatorIn: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    filterControl: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}, "operator": {"type": "string"}} }
+    filterChip: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}, "operator": {"type": "string"}, "value": {"type": "string"}} }
+    filterGroupSummary: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}, "summary": {"type": "string"}} }
+    rangeFrom: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    rangeTo: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    rangeStartsAfterEnd: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    rangeLongerThanDays: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"count": {"type": "integer"}} }
+    rangeLongerThanWeeks: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"count": {"type": "integer"}} }
+    rangeLongerThanMonths: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"count": {"type": "integer"}} }
+    rangeLongerThanQuarters: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"count": {"type": "integer"}} }
+    rangeLongerThanYears: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"count": {"type": "integer"}} }
+    notFound: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    noPageAt: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"path": {"type": "string"}} }
+    unsavedQuestion: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    unsavedDetail: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    discard: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    keepEditing: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    requestUnauthorized: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    requestForbidden: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    requestFailedStatus: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"status": {"type": "integer"}} }
+    requestFailed: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"reason": {"type": "string"}} }
+    recordRefused: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    answerNotJson: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    answerNotObject: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    answerNotModel: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"detail": {"type": "string"}} }
+    invalid: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    required: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    type: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"types": {"type": "string"}} }
+    enum: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"allowed": {"type": "string"}} }
+    const: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"value": {"type": "string"}} }
+    not: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    anyOf: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    minLength: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
+    maxLength: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
+    pattern: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    minimum: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "number"}} }
+    maximum: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "number"}} }
+    exclusiveMinimum: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "number"}} }
+    exclusiveMaximum: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "number"}} }
+    multipleOf: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "number"}} }
+    minItems: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
+    maxItems: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
+    uniqueItems: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+---
+kind: Self.Words
+metadata:
+  name: words
+loading: "Loading…"
+noRows: "No rows."
+nothingFound: "Nothing found."
+save: "Save"
+cancel: "Cancel"
+close: "Close"
+newRecord: "New"
+edit: "Edit"
+delete: "Delete"
+deleteRowQuestion: "Delete this row?"
+deleteRowDetail: "This cannot be undone."
+previousPage: "Previous page"
+pagerRange: "{$first}–{$last} of {$total}"
+pagerEmpty: "0 of {$total}"
+nextPage: "Next page"
+yes: "Yes"
+no: "No"
+none: "None"
+any: "Any"
+select: "Select…"
+choose: "Choose…"
+more: "More"
+search: "Search {$label}"
+remove: "Remove {$label}"
+clear: "Clear {$label}"
+filters: "Filters"
+addFilter: "Add filter"
+apply: "Apply"
+reset: "Reset"
+done: "Done"
+presets: "Presets"
+operatorEq: "is"
+operatorContains: "contains"
+operatorGt: "after"
+operatorGte: "from"
+operatorLt: "before"
+operatorLte: "to"
+operatorIn: "one of"
+filterControl: "{$label} {$operator}"
+filterChip: "{$label} {$operator} {$value}"
+filterGroupSummary: "{$label}: {$summary}"
+rangeFrom: "From"
+rangeTo: "To"
+rangeStartsAfterEnd: "Must not start after it ends"
+rangeLongerThanDays: {"plural": "count", "cases": {"one": "Longer than {$count} day", "other": "Longer than {$count} days"}}
+rangeLongerThanWeeks: {"plural": "count", "cases": {"one": "Longer than {$count} week", "other": "Longer than {$count} weeks"}}
+rangeLongerThanMonths: {"plural": "count", "cases": {"one": "Longer than {$count} month", "other": "Longer than {$count} months"}}
+rangeLongerThanQuarters: {"plural": "count", "cases": {"one": "Longer than {$count} quarter", "other": "Longer than {$count} quarters"}}
+rangeLongerThanYears: {"plural": "count", "cases": {"one": "Longer than {$count} year", "other": "Longer than {$count} years"}}
+notFound: "Not found"
+noPageAt: "This application has no page at {$path}."
+unsavedQuestion: "Discard unsaved changes?"
+unsavedDetail: "What you entered has not been saved."
+discard: "Discard"
+keepEditing: "Keep editing"
+requestUnauthorized: "You are not signed in, or your session has ended."
+requestForbidden: "You are not allowed to do this."
+requestFailedStatus: "The request failed with status {$status}."
+requestFailed: "The request failed: {$reason}"
+recordRefused: "The record was refused."
+answerNotJson: "The answer is not JSON."
+answerNotObject: "The answer is not a JSON object."
+answerNotModel: "The answer does not fit its model: {$detail}"
+invalid: "Is not valid"
+required: "Is required"
+type: "Must be {$types}"
+enum: "Must be one of: {$allowed}"
+const: "Must be {$value}"
+not: "Is not allowed"
+anyOf: "Is not one of the allowed forms"
+minLength: {"plural": "limit", "cases": {"one": "Must be at least {$limit} character", "other": "Must be at least {$limit} characters"}}
+maxLength: {"plural": "limit", "cases": {"one": "Must be at most {$limit} character", "other": "Must be at most {$limit} characters"}}
+pattern: "Is not in the expected format"
+minimum: "Must be at least {$limit}"
+maximum: "Must be at most {$limit}"
+exclusiveMinimum: "Must be greater than {$limit}"
+exclusiveMaximum: "Must be less than {$limit}"
+multipleOf: "Must be a multiple of {$limit}"
+minItems: {"plural": "limit", "cases": {"one": "Must have at least {$limit} item", "other": "Must have at least {$limit} items"}}
+maxItems: {"plural": "limit", "cases": {"one": "Must have at most {$limit} item", "other": "Must have at most {$limit} items"}}
+uniqueItems: "Must not repeat an item"

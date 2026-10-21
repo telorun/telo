@@ -1,0 +1,739 @@
+{
+  "rows": [
+    {
+      "id": "number-001",
+      "lang": "en",
+      "value": {
+        "int": "0"
+      },
+      "text": "0",
+      "category": "other"
+    },
+    {
+      "id": "number-002",
+      "lang": "en",
+      "value": {
+        "int": "1"
+      },
+      "text": "1",
+      "category": "one"
+    },
+    {
+      "id": "number-003",
+      "lang": "en",
+      "value": {
+        "int": "-1"
+      },
+      "text": "-1",
+      "category": "one"
+    },
+    {
+      "id": "number-004",
+      "lang": "en",
+      "value": {
+        "double": "1.0"
+      },
+      "text": "1",
+      "category": "one"
+    },
+    {
+      "id": "number-005",
+      "lang": "en",
+      "value": {
+        "double": "1.5"
+      },
+      "text": "1.5",
+      "category": "other"
+    },
+    {
+      "id": "number-006",
+      "lang": "en",
+      "value": {
+        "double": "-1.5"
+      },
+      "text": "-1.5",
+      "category": "other"
+    },
+    {
+      "id": "number-007",
+      "lang": "en",
+      "value": {
+        "int": "1000"
+      },
+      "text": "1,000",
+      "category": "other"
+    },
+    {
+      "id": "number-008",
+      "lang": "en",
+      "value": {
+        "int": "999"
+      },
+      "text": "999",
+      "category": "other"
+    },
+    {
+      "id": "number-009",
+      "lang": "en",
+      "value": {
+        "double": "1234567.891"
+      },
+      "text": "1,234,567.891",
+      "category": "other"
+    },
+    {
+      "id": "number-010",
+      "lang": "en",
+      "value": {
+        "int": "9007199254740993"
+      },
+      "text": "9,007,199,254,740,993",
+      "category": "other"
+    },
+    {
+      "id": "number-011",
+      "lang": "en",
+      "value": {
+        "int": "9223372036854775807"
+      },
+      "text": "9,223,372,036,854,775,807",
+      "category": "other"
+    },
+    {
+      "id": "number-012",
+      "lang": "en",
+      "value": {
+        "int": "-9223372036854775808"
+      },
+      "text": "-9,223,372,036,854,775,808",
+      "category": "other"
+    },
+    {
+      "id": "number-013",
+      "lang": "en",
+      "value": {
+        "uint": "18446744073709551615"
+      },
+      "text": "18,446,744,073,709,551,615",
+      "category": "other"
+    },
+    {
+      "id": "number-014",
+      "lang": "en",
+      "value": {
+        "double": "0.0125"
+      },
+      "text": "0.012",
+      "category": "other"
+    },
+    {
+      "id": "number-015",
+      "lang": "en",
+      "value": {
+        "double": "0.0135"
+      },
+      "text": "0.014",
+      "category": "other"
+    },
+    {
+      "id": "number-016",
+      "lang": "en",
+      "value": {
+        "double": "0.0005"
+      },
+      "text": "0",
+      "category": "other"
+    },
+    {
+      "id": "number-017",
+      "lang": "en",
+      "value": {
+        "double": "0.0015"
+      },
+      "text": "0.002",
+      "category": "other"
+    },
+    {
+      "id": "number-018",
+      "lang": "en",
+      "value": {
+        "double": "-0.0"
+      },
+      "text": "0",
+      "category": "other"
+    },
+    {
+      "id": "number-019",
+      "lang": "en",
+      "value": {
+        "double": "-0.0001"
+      },
+      "text": "0",
+      "category": "other"
+    },
+    {
+      "id": "number-020",
+      "lang": "en",
+      "value": {
+        "double": "0.9996"
+      },
+      "text": "1",
+      "category": "one"
+    },
+    {
+      "id": "number-021",
+      "lang": "en",
+      "value": {
+        "double": "1.0004"
+      },
+      "text": "1",
+      "category": "one"
+    },
+    {
+      "id": "number-022",
+      "lang": "en",
+      "value": {
+        "double": "9.9995"
+      },
+      "text": "10",
+      "category": "other"
+    },
+    {
+      "id": "number-023",
+      "lang": "en",
+      "value": {
+        "double": "999.9995"
+      },
+      "text": "1,000",
+      "category": "other"
+    },
+    {
+      "id": "number-024",
+      "lang": "en",
+      "value": {
+        "double": "0.30000000000000004"
+      },
+      "text": "0.3",
+      "category": "other"
+    },
+    {
+      "id": "number-025",
+      "lang": "en",
+      "value": {
+        "double": "1e+21"
+      },
+      "text": "1,000,000,000,000,000,000,000",
+      "category": "other"
+    },
+    {
+      "id": "number-026",
+      "lang": "en",
+      "value": {
+        "double": "1e-7"
+      },
+      "text": "0",
+      "category": "other"
+    },
+    {
+      "id": "number-027",
+      "lang": "en",
+      "value": {
+        "double": "123456789012345680000.0"
+      },
+      "text": "123,456,789,012,345,680,000",
+      "category": "other"
+    },
+    {
+      "id": "number-028",
+      "lang": "en",
+      "value": {
+        "double": "1.7976931348623157e+308"
+      },
+      "text": "179,769,313,486,231,570,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000,000",
+      "category": "other"
+    },
+    {
+      "id": "number-029",
+      "lang": "en",
+      "value": {
+        "double": "5e-324"
+      },
+      "text": "0",
+      "category": "other"
+    },
+    {
+      "id": "number-030",
+      "lang": "en",
+      "value": {
+        "double": "2.5"
+      },
+      "text": "2.5",
+      "category": "other"
+    },
+    {
+      "id": "number-031",
+      "lang": "en",
+      "value": {
+        "double": "0.5"
+      },
+      "text": "0.5",
+      "category": "other"
+    },
+    {
+      "id": "number-032",
+      "lang": "pl",
+      "value": {
+        "int": "1"
+      },
+      "text": "1",
+      "category": "one"
+    },
+    {
+      "id": "number-033",
+      "lang": "pl",
+      "value": {
+        "int": "2"
+      },
+      "text": "2",
+      "category": "few"
+    },
+    {
+      "id": "number-034",
+      "lang": "pl",
+      "value": {
+        "int": "5"
+      },
+      "text": "5",
+      "category": "many"
+    },
+    {
+      "id": "number-035",
+      "lang": "pl",
+      "value": {
+        "int": "12"
+      },
+      "text": "12",
+      "category": "many"
+    },
+    {
+      "id": "number-036",
+      "lang": "pl",
+      "value": {
+        "int": "22"
+      },
+      "text": "22",
+      "category": "few"
+    },
+    {
+      "id": "number-037",
+      "lang": "pl",
+      "value": {
+        "int": "25"
+      },
+      "text": "25",
+      "category": "many"
+    },
+    {
+      "id": "number-038",
+      "lang": "pl",
+      "value": {
+        "double": "1.5"
+      },
+      "text": "1,5",
+      "category": "other"
+    },
+    {
+      "id": "number-039",
+      "lang": "pl",
+      "value": {
+        "int": "1234"
+      },
+      "text": "1234",
+      "category": "few"
+    },
+    {
+      "id": "number-040",
+      "lang": "pl",
+      "value": {
+        "int": "12345"
+      },
+      "text": "12 345",
+      "category": "many"
+    },
+    {
+      "id": "number-041",
+      "lang": "pl",
+      "value": {
+        "double": "-12345.678"
+      },
+      "text": "-12 345,678",
+      "category": "other"
+    },
+    {
+      "id": "number-042",
+      "lang": "ar",
+      "value": {
+        "int": "0"
+      },
+      "text": "0",
+      "category": "zero"
+    },
+    {
+      "id": "number-043",
+      "lang": "ar",
+      "value": {
+        "int": "1"
+      },
+      "text": "1",
+      "category": "one"
+    },
+    {
+      "id": "number-044",
+      "lang": "ar",
+      "value": {
+        "int": "2"
+      },
+      "text": "2",
+      "category": "two"
+    },
+    {
+      "id": "number-045",
+      "lang": "ar",
+      "value": {
+        "int": "3"
+      },
+      "text": "3",
+      "category": "few"
+    },
+    {
+      "id": "number-046",
+      "lang": "ar",
+      "value": {
+        "int": "11"
+      },
+      "text": "11",
+      "category": "many"
+    },
+    {
+      "id": "number-047",
+      "lang": "ar",
+      "value": {
+        "int": "100"
+      },
+      "text": "100",
+      "category": "other"
+    },
+    {
+      "id": "number-048",
+      "lang": "ar",
+      "value": {
+        "double": "1.5"
+      },
+      "text": "1.5",
+      "category": "other"
+    },
+    {
+      "id": "number-049",
+      "lang": "ar",
+      "value": {
+        "double": "-1234.5"
+      },
+      "text": "‎-1,234.5",
+      "category": "other"
+    },
+    {
+      "id": "number-050",
+      "lang": "ar-BH",
+      "value": {
+        "double": "1234.5"
+      },
+      "text": "١٬٢٣٤٫٥",
+      "category": "other"
+    },
+    {
+      "id": "number-051",
+      "lang": "ar-BH",
+      "value": {
+        "int": "-7"
+      },
+      "text": "؜-٧",
+      "category": "few"
+    },
+    {
+      "id": "number-052",
+      "lang": "fr",
+      "value": {
+        "double": "1234.5"
+      },
+      "text": "1 234,5",
+      "category": "other"
+    },
+    {
+      "id": "number-053",
+      "lang": "fr",
+      "value": {
+        "double": "1.5"
+      },
+      "text": "1,5",
+      "category": "one"
+    },
+    {
+      "id": "number-054",
+      "lang": "fr",
+      "value": {
+        "int": "2"
+      },
+      "text": "2",
+      "category": "other"
+    },
+    {
+      "id": "number-055",
+      "lang": "fr",
+      "value": {
+        "int": "1000000"
+      },
+      "text": "1 000 000",
+      "category": "many"
+    },
+    {
+      "id": "number-056",
+      "lang": "de",
+      "value": {
+        "double": "1234.5"
+      },
+      "text": "1.234,5",
+      "category": "other"
+    },
+    {
+      "id": "number-057",
+      "lang": "de-CH",
+      "value": {
+        "int": "1234567"
+      },
+      "text": "1'234'567",
+      "category": "other"
+    },
+    {
+      "id": "number-058",
+      "lang": "de-Cyrl",
+      "value": {
+        "double": "1234.5"
+      },
+      "text": "1,234.5",
+      "category": "other"
+    },
+    {
+      "id": "number-059",
+      "lang": "de-Cyrl-AT",
+      "value": {
+        "double": "1234.5"
+      },
+      "text": "1,234.5",
+      "category": "other"
+    },
+    {
+      "id": "number-060",
+      "lang": "DE-ch",
+      "value": {
+        "int": "1234567"
+      },
+      "text": "1'234'567",
+      "category": "other"
+    },
+    {
+      "id": "number-061",
+      "lang": "hi",
+      "value": {
+        "int": "1234567"
+      },
+      "text": "12,34,567",
+      "category": "other"
+    },
+    {
+      "id": "number-062",
+      "lang": "bn",
+      "value": {
+        "double": "1234567.5"
+      },
+      "text": "১২,৩৪,৫৬৭.৫",
+      "category": "other"
+    },
+    {
+      "id": "number-063",
+      "lang": "tok",
+      "value": {
+        "int": "1234"
+      },
+      "text": "12 34",
+      "category": "other"
+    },
+    {
+      "id": "number-064",
+      "lang": "ff-Adlm",
+      "value": {
+        "double": "1234.5"
+      },
+      "text": "𞥑⹁𞥒𞥓𞥔.𞥕",
+      "category": "other"
+    },
+    {
+      "id": "number-065",
+      "lang": "es",
+      "value": {
+        "int": "1234"
+      },
+      "text": "1234",
+      "category": "other"
+    },
+    {
+      "id": "number-066",
+      "lang": "es",
+      "value": {
+        "int": "12345"
+      },
+      "text": "12.345",
+      "category": "other"
+    },
+    {
+      "id": "number-067",
+      "lang": "pt",
+      "value": {
+        "double": "1.5"
+      },
+      "text": "1,5",
+      "category": "one"
+    },
+    {
+      "id": "number-068",
+      "lang": "pt-PT",
+      "value": {
+        "double": "1.5"
+      },
+      "text": "1,5",
+      "category": "other"
+    },
+    {
+      "id": "number-069",
+      "lang": "pt-AO",
+      "value": {
+        "double": "1.5"
+      },
+      "text": "1,5",
+      "category": "one"
+    },
+    {
+      "id": "number-070",
+      "lang": "en-GB",
+      "value": {
+        "double": "1234.5"
+      },
+      "text": "1,234.5",
+      "category": "other"
+    },
+    {
+      "id": "number-071",
+      "lang": "en-u-nu-arab",
+      "value": {
+        "int": "1234"
+      },
+      "text": "1,234",
+      "category": "other"
+    },
+    {
+      "id": "number-072",
+      "lang": "xx",
+      "value": {
+        "double": "1234.5"
+      },
+      "text": "1,234.5",
+      "category": "other"
+    },
+    {
+      "id": "number-073",
+      "lang": "und",
+      "value": {
+        "int": "1"
+      },
+      "text": "1",
+      "category": "other"
+    },
+    {
+      "id": "number-074",
+      "lang": "root",
+      "value": {
+        "int": "1234"
+      },
+      "text": "1,234",
+      "category": "other"
+    },
+    {
+      "id": "number-075",
+      "lang": "",
+      "value": {
+        "int": "1234"
+      },
+      "text": "1,234",
+      "category": "other"
+    },
+    {
+      "id": "number-076",
+      "lang": "az-Cyrl",
+      "value": {
+        "double": "1234.5"
+      },
+      "text": "1.234,5",
+      "category": "other"
+    },
+    {
+      "id": "number-077",
+      "lang": "sr-Latn",
+      "value": {
+        "double": "1234.5"
+      },
+      "text": "1.234,5",
+      "category": "other"
+    },
+    {
+      "id": "number-078",
+      "lang": "zh-Hant-TW",
+      "value": {
+        "double": "1234.5"
+      },
+      "text": "1,234.5",
+      "category": "other"
+    },
+    {
+      "id": "number-079",
+      "lang": "en",
+      "value": {
+        "double": "NaN"
+      },
+      "refusal": {
+        "code": "MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED",
+        "message": "the value is not a finite number"
+      }
+    },
+    {
+      "id": "number-080",
+      "lang": "en",
+      "value": {
+        "double": "Infinity"
+      },
+      "refusal": {
+        "code": "MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED",
+        "message": "the value is not a finite number"
+      }
+    },
+    {
+      "id": "number-081",
+      "lang": "en",
+      "value": {
+        "double": "-Infinity"
+      },
+      "refusal": {
+        "code": "MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED",
+        "message": "the value is not a finite number"
+      }
+    }
+  ]
+}

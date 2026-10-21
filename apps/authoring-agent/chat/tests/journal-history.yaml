@@ -348,5 +348,5 @@ steps:
           steps.sent.result.body.requests.map(r,
             r.input.exists(i, 'type' in i && i.type == 'reasoning'))
       expected:
-        models: [gpt-5.2, gpt-5.2, gpt-5.2, gpt-5.2, gpt-5.2, another-model]
+        models: [gpt-6-luna, gpt-6-luna, gpt-6-luna, gpt-6-luna, gpt-6-luna, another-model]
         carriesReasoning: [false, false, true, true, true, false]

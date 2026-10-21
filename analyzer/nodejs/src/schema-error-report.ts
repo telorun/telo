@@ -644,15 +644,22 @@ export function schemaIssues(
   errors: AjvErrorLike[] | null | undefined,
   data?: unknown,
 ): SchemaIssue[] {
-  return reduceSchemaErrors(explained(errors, data)).map((err) => {
+  // One finding reached through several union branches sharing a named shape
+  // reads identically at one place; it is one finding.
+  const seen = new Set<string>();
+  return reduceSchemaErrors(explained(errors, data)).flatMap((err) => {
     const { missingProperty: missing, valueType } = err.params ?? {};
-    return {
+    const issue: SchemaIssue = {
       message: formatSingleError(err),
       path: ajvErrorToPath(err),
       ...(err.keyword ? { keyword: err.keyword } : {}),
       ...(typeof missing === "string" ? { missingProperty: missing } : {}),
       ...(typeof valueType === "string" && valueType !== "" ? { valueType } : {}),
     };
+    const key = `${issue.path}\u0000${issue.message}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [issue];
   });
 }
 
@@ -660,5 +667,5 @@ export function schemaIssues(
 export function formatAjvErrors(errors: AjvErrorLike[] | null | undefined, data?: unknown): string {
   const reduced = reduceSchemaErrors(explained(errors, data));
   if (reduced.length === 0) return "Unknown schema error";
-  return reduced.map(formatSingleError).join("; ");
+  return [...new Set(reduced.map(formatSingleError))].join("; ");
 }

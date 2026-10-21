@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: ElementFromItemMigrationTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref testLegacySpellingTypesConsumer
+  - !ref testLegacySpellingWarnsItsAuthor
+---
+# A library published with the bare spelling still types a consumer's rows: the
+# bare name is rewritten to the pointer at load. Only the library's own files
+# report the deprecation (a consumer's check carries none; `expect.warnings`
+# asserts presence only, so that half is the migrations suite's).
+kind: Assert.Manifest
+metadata:
+  name: testLegacySpellingTypesConsumer
+source: ./__fixtures__/element-from-item-migration/consumer/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'row.nmae' is not defined (available: name)"
+---
+# Checked as the entry, the library is told the spelling it should write.
+kind: Assert.Manifest
+metadata:
+  name: testLegacySpellingWarnsItsAuthor
+source: ./__fixtures__/element-from-item-migration/lib/telo.yaml
+expect:
+  errors: []
+  warnings:
+    - code: DEPRECATED_ELEMENT_FROM_ITEM_FIELD
+      message: "0/rows"

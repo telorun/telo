@@ -1,0 +1,42 @@
+# Instantiates the templated kind next door: each function in its body answers
+# from the configuration it was handed — a sibling's, an imported instance's,
+# and the table this application forwards.
+kind: Telo.Application
+metadata:
+  name: CallableDataTemplateApp
+  version: 1.0.0
+imports:
+  Kinds: ../kinds
+  Template: ../template
+  Run: ../../../../../modules/run
+  Assert: ../../../../../modules/assert
+targets:
+  - !ref check
+---
+kind: Kinds.Table
+metadata:
+  name: forwarded
+rows:
+  a: forwarded
+---
+kind: Template.Probe
+metadata:
+  name: probe
+label: one
+source: !ref forwarded
+---
+kind: Run.Sequence
+metadata:
+  name: check
+steps:
+  - name: ask
+    invoke: !ref probe
+  - name: read
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.ask.result"
+      expected:
+        answers:
+          - '{"frozen":true,"at":"sibling"}'
+          - '{"frozen":true,"at":"exported"}'
+          - '{"frozen":true,"at":"forwarded"}'

@@ -5,8 +5,10 @@ import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /**
  * `x-telo-context-element-from-item`: a binding typed as the element of the
- * collection a field of the PER-SCOPE ITEM names. Each `lists[]` entry names
- * its own `rows`, and the context on its `columns` types `row` from them.
+ * collection the chain at another field names — a relative JSON pointer from
+ * the object holding the field the region is declared on, the chain typed as
+ * at its own site. Each `lists[]` entry names its own `rows`, and the context
+ * on its `columns` types `row` from them (`0/rows`).
  */
 
 const cel = (source: string) => ({ __tagged: true, engine: "cel", source });
@@ -52,7 +54,7 @@ function gridDef(columnBindings: Record<string, unknown>): ResourceManifest {
                   type: "object",
                   properties: {
                     ...columnBindings,
-                    row: { "x-telo-context-element-from-item": "rows" },
+                    row: { "x-telo-context-element-from-item": "0/rows" },
                   },
                 },
                 items: {
@@ -149,10 +151,10 @@ describe("x-telo-context-element-from-item", () => {
     expect(unknown[0]).toContain("row.txt");
   });
 
-  it("types a chain rooted at `inputs` from the declared contract", () => {
+  it("types the chain as at its own site, a binding from the declared contract included", () => {
     const unknown = unknownFields(
       check(
-        gridDef({ inputs: {} }),
+        gridDef({ inputs: { "x-telo-context-from-root": "inputType" } }),
         grid([{ rows: cel("inputs.files"), values: ["row.path", "row.pth"] }], {
           inputType: outputModel,
         }),
@@ -229,5 +231,54 @@ describe("x-telo-context-element-from-item", () => {
     expect(unknown).toHaveLength(1);
     expect(unknown[0]).toContain("row.pth");
     expect(unknown[0]).toContain("size");
+  });
+
+  it("climbs from a region on an item's own field to the list holding it", () => {
+    const def = gridDef({ result: { "x-telo-context-from-root": "outputModel" } }) as any;
+    const columns = def.schema.properties.lists.items.properties.columns;
+    delete columns["x-telo-context"];
+    columns.items.properties.value["x-telo-context"] = {
+      type: "object",
+      properties: {
+        result: { "x-telo-context-from-root": "outputModel" },
+        row: { "x-telo-context-element-from-item": "2/rows" },
+      },
+    };
+    const unknown = unknownFields(
+      check(def, grid([{ rows: cel("result.files"), values: ["row.path", "row.pth"] }])),
+    );
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0]).toContain("row.pth");
+  });
+
+  it.each([
+    ["3/rows", "above the resource"],
+    ["0/nothing", "which the schema does not declare there"],
+    ["0/columns/0/value", "lands at or beneath the field the region is declared on"],
+    ["0/model", "no CEL is typed at"],
+  ])("refuses %s where it is written", (pointer, reason) => {
+    const def = gridDef({ result: { "x-telo-context-from-root": "outputModel" } }) as any;
+    def.schema.properties.lists.items.properties.columns["x-telo-context"].properties.row[
+      "x-telo-context-element-from-item"
+    ] = pointer;
+    delete def.metadata.module;
+    const refused = new StaticAnalyzer()
+      .analyze(withSyntheticPositions([def]))
+      .filter((d) => d.code === "ELEMENT_FROM_ITEM_INVALID");
+    expect(refused.map((d) => (d.data as any)?.path)).toEqual([
+      "schema.properties.lists.items.properties.columns.x-telo-context.properties.row.x-telo-context-element-from-item",
+    ]);
+    expect(refused[0]!.message).toContain(reason);
+  });
+
+  it("is a schema violation outside the pointer grammar", () => {
+    const def = gridDef({}) as any;
+    def.schema.properties.lists.items.properties.columns["x-telo-context"].properties.row[
+      "x-telo-context-element-from-item"
+    ] = "/rows";
+    delete def.metadata.module;
+    const codes = new StaticAnalyzer().analyze(withSyntheticPositions([def])).map((d) => d.code);
+    expect(codes).toContain("SCHEMA_VIOLATION");
+    expect(codes).not.toContain("ELEMENT_FROM_ITEM_INVALID");
   });
 });

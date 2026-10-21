@@ -91,7 +91,7 @@ Two licenses, split by directory. Each MIT directory carries its own `LICENSE`; 
 
 | MIT | Sustainable Use |
 | --- | --- |
-| `cel/`, `sdk/`, `templating/`, `packages/glob/`, `packages/editor-protocol/` — the expression engine, the SDK and what a controller links against | `analyzer/`, `kernel/`, `cli/` — what loads, checks and runs a manifest |
+| `cel/`, `message-format/`, `sdk/`, `templating/`, `packages/glob/`, `packages/editor-protocol/` — the expression engine, the message core, the SDK and what a controller links against | `analyzer/`, `kernel/`, `cli/` — what loads, checks and runs a manifest |
 | `modules/`, `blueprints/` — the standard library | `packages/ide-support/`, `packages/language-server/`, `packages/language-host/`, `ide/` — the editor tooling |
 | `starters/`, `examples/`, `docs/`, `benchmarks/` | `packages/runner-core/`, `packages/debug-wire/`, `packages/debug-ui/`, `apps/docker-runner/`, `apps/k8s-runner/` — the runners |
 | `apps/hub/`, `apps/hub-web/`, `apps/plan-approval*/` | `apps/studio/`, `apps/authoring-agent/`, `pages/` and everything not listed |

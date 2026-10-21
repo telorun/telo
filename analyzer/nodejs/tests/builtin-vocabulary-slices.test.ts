@@ -45,6 +45,6 @@ describe("selecting entries of the built-in vocabulary", () => {
       "  formats",
     ]);
     expect(lines[1]).toContain("Abstract, Application,");
-    expect(lines[5]).toBe("  formats: css-selector");
+    expect(lines[5]).toBe("  formats: css-selector, language-tag, message-pattern, re2-pattern");
   });
 });

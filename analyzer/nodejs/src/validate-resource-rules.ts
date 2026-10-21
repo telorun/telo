@@ -39,6 +39,7 @@ import {
   type PeerBindingFailure,
 } from "./peer-binding.js";
 import type { DiagnosticFix } from "./types.js";
+import { readRefSlot } from "./ref-slot.js";
 import {
   RESOURCE_RULES_ANNOTATION,
   celSourceOf,
@@ -103,6 +104,55 @@ export function schemaAtPointer(schema: unknown, pointer: string): unknown {
   return node;
 }
 
+/** The schemas a reference slot's kind may hold — the kind's and each of its
+ *  implementations'. */
+export type KindSchemas = (kind: string) => readonly Record<string, any>[];
+
+/**
+ * Whether a rule's `resolve:` pointer names something the schema declares: a
+ * field at each segment (`*` for every item or value), continuing past a
+ * reference slot inside every kind the slot may hold. `unknown` where a slot's
+ * kinds cannot be read here.
+ */
+export function rulePointerReaches(
+  schema: unknown,
+  pointer: string,
+  kindSchemas?: KindSchemas,
+): "ok" | "absent" | "unknown" {
+  const segments = pointerSegments(pointer);
+  if (!segments) return "absent";
+  const seen = new Set<unknown>();
+  const walk = (node: unknown, rest: readonly string[]): "ok" | "absent" | "unknown" => {
+    if (!isObject(node)) return rest.length === 0 && node !== undefined ? "ok" : "absent";
+    if (rest.length === 0) return "ok";
+    const slot = readRefSlot(node as Record<string, any>);
+    if (slot) {
+      if (!kindSchemas || slot.kinds.length === 0) return "unknown";
+      const schemas = slot.kinds.flatMap((kind) => kindSchemas(kind));
+      if (schemas.length === 0 || seen.has(node)) return "unknown";
+      seen.add(node);
+      const verdicts = schemas.map((s) => walk(s, rest));
+      return verdicts.includes("ok") ? "ok" : verdicts.includes("unknown") ? "unknown" : "absent";
+    }
+    const [segment, ...tail] = rest;
+    const properties = isObject(node.properties) ? node.properties : undefined;
+    const next =
+      segment === "*"
+        ? (node.items ?? (isObject(node.additionalProperties) ? node.additionalProperties : undefined))
+        : (properties?.[segment!] ??
+          (node.type === "array" ? node.items : undefined) ??
+          (isObject(node.additionalProperties) ? node.additionalProperties : undefined));
+    const verdicts: Array<"ok" | "absent" | "unknown"> = [];
+    if (next !== undefined) verdicts.push(walk(next, tail));
+    for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+      const branches = node[key];
+      if (Array.isArray(branches)) for (const branch of branches) verdicts.push(walk(branch, rest));
+    }
+    return verdicts.includes("ok") ? "ok" : verdicts.includes("unknown") ? "unknown" : "absent";
+  };
+  return walk(schema, segments);
+}
+
 /** True when a schema node describes something a rule can iterate. Unknown or
  *  absent `type` passes: an open schema is not evidence of a defect. */
 export function isIterableSchema(node: unknown): boolean {
@@ -135,6 +185,8 @@ export function validateResourceRuleDeclarations(
    *  function, and classifying such a call against the catalog would refuse it
    *  as a missing method. */
   moduleNames?: ReadonlySet<string>,
+  /** What a `resolve:` pointer continuing past a reference slot reads in. */
+  kindSchemas?: KindSchemas,
 ): ResourceRuleIssue[] {
   const own = (manifest as unknown as Record<string, unknown>).schema;
   const schema = effectiveSchema ?? own;
@@ -231,11 +283,12 @@ export function validateResourceRuleDeclarations(
         entry.resolve.forEach((pointer: unknown, i: number) => {
           if (typeof pointer !== "string" || !pointerSegments(pointer)) {
             issue(`${at}.resolve[${i}]`, "Each 'resolve' entry must be a JSON Pointer starting with '/'.");
-          } else if (schemaAtPointer(schema, pointer) === undefined) {
+          } else if (rulePointerReaches(schema, pointer, kindSchemas) === "absent") {
             issue(
               `${at}.resolve[${i}]`,
               `'resolve' names '${pointer}', which this kind's schema does not declare. It must ` +
-                "name a reference slot of this kind, or a collection of them.",
+                "name a reference slot of this kind, or a collection of them, and may continue " +
+                "inside what it names.",
             );
           }
         });
@@ -313,7 +366,7 @@ export function evaluateResourceRules(
   const findings: ResourceRuleFinding[] = [];
 
   for (const rule of rules) {
-    const bound = resolvedView(manifest, rule, binder, kind);
+    const bound = resolvedRuleView(manifest, rule.resolve, binder, kind);
     if (!bound.ok) {
       findings.push({ kind: "unbound", rule, failure: bound.failure });
       continue;
@@ -388,33 +441,22 @@ export function evaluateResourceRules(
  * reported as defective. After this all three subject views agree: absent means
  * absent, never a present key holding nothing.
  */
-function resolvedView(
+export function resolvedRuleView(
   manifest: ResourceManifest,
-  rule: ResourceRule,
+  resolve: readonly string[] | undefined,
   binder: PeerBinder | undefined,
   kind: string,
 ): { ok: true; self: Record<string, unknown> } | { ok: false; failure: PeerBindingFailure } {
   let self = (binder?.view(manifest) ?? manifest) as unknown as Record<string, unknown>;
-  for (const pointer of rule.resolve ?? []) {
+  for (const pointer of resolve ?? []) {
     if (!binder) return { ok: false, failure: { reason: "unknown-shape", at: pointer } };
-    const resolved = binder.resolveReferences(manifest, kind, pointer);
+    // A pointer may continue past a reference into what it names, a hop at a
+    // time, and range over a collection with `*`.
+    const resolved = binder.resolveAlong(manifest, kind, self, pointer);
     if (!resolved.ok) return resolved;
-    if (resolved.value === undefined) continue;
-    self = replaceAt(self, pointerSegments(pointer)!, resolved.value) as Record<string, unknown>;
+    self = resolved.view;
   }
   return { ok: true, self };
-}
-
-function replaceAt(value: unknown, segments: readonly string[], replacement: unknown): unknown {
-  if (segments.length === 0) return replacement;
-  const [head, ...rest] = segments;
-  if (Array.isArray(value)) {
-    const copy = [...value];
-    copy[Number(head)] = replaceAt(copy[Number(head)], rest, replacement);
-    return copy;
-  }
-  const record = isObject(value) ? value : {};
-  return { ...record, [head!]: replaceAt(record[head!], rest, replacement) };
 }
 
 /** Whether a rule found anything to iterate on this resource — the input to the

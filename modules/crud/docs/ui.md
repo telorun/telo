@@ -26,6 +26,7 @@ model: !ref taskModel
 kind: UiReact.App
 metadata: { name: admin }
 title: Tasks
+words: !ref Ui.words
 pages:
   - path: /
     title: Tasks

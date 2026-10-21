@@ -1,0 +1,13 @@
+modules:
+  modules/ui-react: Added
+body: "UiReact.App serves every text translated: translator: names an I18n.Translator,
+  lang: is evaluated per request (a language tag, or CEL over request.headers), and the
+  documents and the shell's html lang use the effective language - the catalog language
+  the request's tag falls back to, else the language the title is written in - with one
+  cached copy per language. Each text crosses as { message, lang } (the chosen Message,
+  parsed) and the browser formats plurals, placeholders and numbers with the message
+  core; enumeration values are shown by their translated labels and a field's
+  description is drawn as a hint. Vary names exactly the request headers the per-request
+  expressions read. Breaking: words: !ref Ui.words is required, and title and page
+  titles are Texts. The built renderer entry is held to the message core's conformance
+  vectors and carries the CLDR notice."

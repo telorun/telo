@@ -1,0 +1,53 @@
+# Kinds holding text a reader formats itself: a heading whose reader declares
+# the values it formats with, and a caption that is a text or a text with
+# values of its own — a union the text walk reads by what each branch admits.
+kind: Telo.Library
+metadata:
+  name: TextValuesKinds
+  version: 1.0.0
+  description: Fixture kinds holding a text formatted with declared values, and a text or a text with values.
+lang: en
+exports:
+  kinds: [Heading, Caption]
+---
+kind: Telo.Definition
+metadata:
+  name: Heading
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    text:
+      $ref: "telo://manifest#/$defs/Text"
+      x-telo-text-values: { count: { type: integer }, name: { type: string } }
+provide: !ref shape
+resources:
+  - kind: Telo.JsonSchema
+    metadata: { name: shape }
+    schema: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: Caption
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Caption
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    label: { $ref: "#/$defs/Caption" }
+    computedLabel: { $ref: "#/$defs/Caption", x-telo-eval: compile }
+  $defs:
+    Caption:
+      anyOf:
+        - $ref: "telo://manifest#/$defs/Text"
+        - type: object
+          additionalProperties: false
+          required: [text, values]
+          properties:
+            text: { $ref: "telo://manifest#/$defs/Text" }
+            values:
+              type: object
+              x-telo-text-values-for: /text
+              additionalProperties: { type: [string, number] }

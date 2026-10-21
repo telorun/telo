@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseAllDocuments } from "yaml";
 import * as placements from "../src/filter-placement.js";
+import { DateRangeFieldController, InputFieldController } from "../src/field-controllers.js";
 import * as FiltersController from "../src/filters-controller.js";
+import * as CollectionOptionsController from "../src/option-source.js";
 import * as surfaces from "../src/surface-controllers.js";
 import * as TableController from "../src/table-controller.js";
 
@@ -53,20 +55,45 @@ describe("a default the manifest declares", () => {
         content: { type: "text", text: "Todos" },
         policy,
       });
-    const { state, ...policy } = defaultsOf(declared("FilterPolicy"));
+    const policy = defaultsOf(declared("FilterPolicy"));
     // Members holding nothing, as a template forwards absent ones.
     for (const written of [undefined, { show: undefined, placement: undefined, controls: undefined, apply: undefined, summary: undefined, state: undefined }]) {
       const { node } = await bar(written);
       expect({ show: node.show, controls: node.controls, apply: node.apply, summary: node.summary }).toEqual(policy);
       const { type, ...placement } = node.placement;
       expect([type, placement]).toEqual(["above", defaultsOf(declared("AbovePlacement"))]);
-      expect(node.state).toEqual({ address: false, store: { type: "memory" } });
+      expect(node.state).toEqual({ address: false, store: { type: "memory" }, fields: ["text"] });
       const { pinned, control } = node.fields[0];
       expect({ pinned, control }).toEqual(defaultsOf(declared("Filters").properties.fields.items));
     }
     const store = { provide: async () => ({ type: "local" }) };
     const { node } = await bar({ state: { key: "todos", address: undefined, store } });
-    expect({ address: node.state.address }).toEqual(state);
+    expect({ address: node.state.address }).toEqual(defaultsOf(declared("StateRecord")));
+  });
+
+  it("is what a field kind answers for a member left out", async () => {
+    const answer = async (controller: { create: (...args: any[]) => Promise<any> }, config: Schema, property: Schema) =>
+      (await (await controller.create(resource(config), ctx)).invoke({ model: { type: "object", properties: { at: property } } })).spec;
+    const input = await answer(InputFieldController, { property: "at", control: undefined }, { type: "string" });
+    expect({ control: input.control }).toEqual(defaultsOf(declared("InputField")));
+    const range = await answer(
+      DateRangeFieldController,
+      { property: "at", presets: [], weekStart: undefined },
+      { type: "object", properties: { from: { type: "string", format: "date" }, to: { type: "string", format: "date" } } },
+    );
+    expect({ weekStart: range.weekStart }).toEqual(defaultsOf(declared("DateRangeField")));
+  });
+
+  it("is what an option source sends for a page size left out", async () => {
+    const spec = await provided(CollectionOptionsController, {
+      model: { type: "object", properties: { id: { type: "string" } } },
+      value: { root: "row", path: ["id"] },
+      label: { root: "row", path: ["id"] },
+      collection: { query: { filters: [{ property: "id", operator: "in" }], sort: [] } },
+      source: { basePath: "/api/people" },
+      pageSize: undefined,
+    });
+    expect({ pageSize: spec.pageSize }).toEqual(defaultsOf(declared("CollectionOptions")));
   });
 
   it("is what a table's opener carries when it names only its form", async () => {

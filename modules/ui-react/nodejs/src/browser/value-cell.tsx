@@ -3,11 +3,16 @@ import { presentValue } from "./bindings.js";
 import { useHostStore } from "./host.js";
 import { applicationPath, linkAddress } from "./link-address.js";
 import { RendererContext } from "./renderer-context.js";
+import { labelFor, useSay, useText, type ValueLabel } from "./texts.js";
 
 interface PresentedProps {
   value: unknown;
   /** What the model says the value is. */
   present?: { type?: unknown; format?: unknown };
+  /** What each value the model labels is shown as. */
+  labels?: readonly ValueLabel[];
+  /** Drawn for a link in place of its address. */
+  text?: string;
 }
 
 /**
@@ -16,9 +21,13 @@ interface PresentedProps {
  * link to a page of the application moves within it; any other — a file the
  * origin serves, another site — opens beside the application.
  */
-export function Presented({ value, present }: PresentedProps): ReactNode {
+export function Presented({ value, present, labels, text }: PresentedProps): ReactNode {
   const store = useHostStore();
   const { prefix, pages } = useContext(RendererContext);
+  const format = useText();
+  const say = useSay();
+  const label = labelFor(labels, value);
+  if (label) return format(label);
   if (typeof value === "string" && (present?.format === "uri" || present?.format === "uri-reference")) {
     const href = linkAddress(store, value);
     if (href !== undefined) {
@@ -26,10 +35,10 @@ export function Presented({ value, present }: PresentedProps): ReactNode {
       const page = path !== undefined && pages.includes(path);
       return (
         <a data-telo-part="link" href={href} target={page ? undefined : "_blank"} rel={page ? undefined : "noopener"}>
-          {value}
+          {text ?? value}
         </a>
       );
     }
   }
-  return presentValue(value, present);
+  return presentValue(value, present, say);
 }

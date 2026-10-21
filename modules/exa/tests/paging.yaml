@@ -20,7 +20,7 @@ kind: Exa.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18866" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18866" }
 ---
 # More results than Exa's maximum exist for `deep`; the mock serves as many as
 # `numResults` asks for.

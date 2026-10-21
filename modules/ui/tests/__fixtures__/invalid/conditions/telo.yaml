@@ -1,0 +1,94 @@
+# Conditions and readers that each name what their scope cannot answer for:
+# a keyword outside the interpreted profile, a query parameter the renderer
+# keeps for itself, a schema no value of its type can satisfy, roots read
+# where nothing binds them, and a browser-only root read by an expression the
+# server evaluates.
+kind: Telo.Library
+metadata:
+  name: UiInvalidConditions
+  version: 1.0.0
+  description: >-
+    Test fixture declaring views and readers whose conditions and values name
+    roots, keywords and query parameters their scope does not declare.
+imports:
+  Ui: ../../../../
+---
+kind: Ui.View
+metadata:
+  name: outsideProfile
+content:
+  type: text
+  text: Never
+  shown:
+    at: true
+    matches:
+      if: { const: true }
+---
+kind: Ui.Data
+metadata:
+  name: reservedQuery
+model:
+  kind: Telo.JsonSchema
+  schema: { type: object }
+query:
+  _teloOpen: { type: string }
+source: { path: /api/auth }
+content: { type: text, text: Signed in }
+---
+kind: Ui.Data
+metadata:
+  name: unsatisfiable
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      count: { type: integer }
+source: { path: /api/counts }
+content:
+  type: text
+  text: Billing
+  shown:
+    at: !cel "data.count"
+    matches: { const: billing }
+---
+kind: Ui.View
+metadata:
+  name: dataOutsideReader
+content:
+  type: value
+  value: !cel "data.x"
+---
+kind: Ui.View
+metadata:
+  name: valuesOutsideForm
+content:
+  type: value
+  value: !cel "values.x"
+---
+kind: Ui.Data
+metadata:
+  name: undeclaredQuery
+model:
+  kind: Telo.JsonSchema
+  schema: { type: object }
+query:
+  signin: { type: string }
+source: { path: /api/auth }
+content:
+  type: value
+  value: !cel "query.signn"
+---
+kind: Ui.Data
+metadata:
+  name: evaluatedData
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      x: { type: string }
+source: { path: /api/x }
+content:
+  type: text
+  text: !cel "data.x"

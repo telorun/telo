@@ -1,0 +1,198 @@
+# The console in Polish: its own texts, its models' titles and descriptions,
+# and the words the renderer draws on its own. A plural source is matched by
+# the text its `other` case reads, and translated into Polish's four cases.
+kind: I18n.Translator
+metadata:
+  name: t
+catalogs:
+  - kind: I18n.Catalog
+    lang: pl
+    texts:
+      # Pages and the sign-in gate.
+      - { text: Reports, translation: Raporty }
+      - { text: Projects, translation: Projekty }
+      - { text: Monthly reports, translation: Raporty miesięczne }
+      - { text: Checking your sign-in…, translation: Sprawdzanie logowania… }
+      - { text: Google sign-in was cancelled., translation: Logowanie przez Google zostało anulowane. }
+      - { text: Your sign-in expired before it completed. Connect again., translation: Logowanie wygasło przed zakończeniem. Połącz się ponownie. }
+      - { text: Connect your Google account to read timesheets., translation: "Połącz konto Google, aby odczytać arkusze czasu pracy." }
+      - { text: Connect Google, translation: Połącz z Google }
+      - { text: Sign out, translation: Wyloguj }
+      - { text: Signed in as, translation: Zalogowano jako }
+      # The report form.
+      - { text: Generate, translation: Generuj }
+      - { text: Source, translation: Źródło }
+      - { text: The timesheet the hours are read from., translation: "Arkusz, z którego czytane są godziny." }
+      - { text: Period, translation: Okres }
+      - { text: Content, translation: Zawartość }
+      - { text: Output, translation: Wynik }
+      - { text: Timesheet, translation: Arkusz czasu pracy }
+      - { text: Upload folder, translation: Folder docelowy }
+      - { text: Where Upload puts a report., translation: Tu przycisk Prześlij umieszcza raport. }
+      - { text: None chosen means every project of the sheet., translation: Bez wyboru oznacza wszystkie projekty arkusza. }
+      - { text: Columns, translation: Kolumny }
+      - { text: Always in this order., translation: Zawsze w tej kolejności. }
+      - { text: Date, translation: Data }
+      - { text: Person, translation: Osoba }
+      - { text: Task, translation: Zadanie }
+      - { text: Hours, translation: Godziny }
+      - { text: Amount, translation: Kwota }
+      - { text: Hours as, translation: Godziny jako }
+      - { text: Decimal (7.5), translation: "Ułamek dziesiętny (7,5)" }
+      - { text: Hours and minutes (7:30), translation: "Godziny i minuty (7:30)" }
+      - { text: One file, translation: Jeden plik }
+      - { text: Merge every project into one PDF., translation: Połącz wszystkie projekty w jeden plik PDF. }
+      - { text: Chart, translation: Wykres }
+      - { text: Add a chart of hours per person., translation: Dodaj wykres godzin na osobę. }
+      - { text: This month, translation: Ten miesiąc }
+      - { text: Last month, translation: Poprzedni miesiąc }
+      - { text: Last week, translation: Poprzedni tydzień }
+      - { text: This quarter, translation: Ten kwartał }
+      - { text: Choose at least one column., translation: Wybierz co najmniej jedną kolumnę. }
+      # Drive files and projects.
+      - { text: Name, translation: Nazwa }
+      - { text: Kind, translation: Rodzaj }
+      - { text: Spreadsheet, translation: Arkusz }
+      - { text: Folder, translation: Folder }
+      - { text: Owner, translation: Właściciel }
+      - { text: Open, translation: Otwórz }
+      - { text: Closed, translation: Zamknięty }
+      - { text: Project, translation: Projekt }
+      - { text: Billing e-mail, translation: E-mail do faktur }
+      # The answer.
+      - text: "{$count} projects with logged time, {$period}"
+        translation:
+          plural: count
+          cases:
+            one: "{$count} projekt z zalogowanym czasem, {$period}"
+            few: "{$count} projekty z zalogowanym czasem, {$period}"
+            many: "{$count} projektów z zalogowanym czasem, {$period}"
+            other: "{$count} projektu z zalogowanym czasem, {$period}"
+      - text: "{$count} chosen projects have no time in the period and were skipped."
+        translation:
+          plural: count
+          cases:
+            one: "{$count} wybrany projekt nie ma czasu w tym okresie i został pominięty."
+            few: "{$count} wybrane projekty nie mają czasu w tym okresie i zostały pominięte."
+            many: "{$count} wybranych projektów nie ma czasu w tym okresie i zostało pominiętych."
+            other: "{$count} wybranego projektu nie ma czasu w tym okresie i zostało pominiętych."
+      - { text: No project has logged time in this period., translation: Żaden projekt nie ma zalogowanego czasu w tym okresie. }
+      - { text: "Time was logged, but no file was produced.", translation: "Czas został zalogowany, ale nie powstał żaden plik." }
+      - { text: Hours without a rate, translation: Godziny bez stawki }
+      - { text: Hours on no project, translation: Godziny bez projektu }
+      - { text: Projects with no currency, translation: Projekty bez waluty }
+      - { text: Download all as one file, translation: Pobierz wszystko jako jeden plik }
+      - { text: Download the chart, translation: Pobierz wykres }
+      - { text: Files, translation: Pliki }
+      - { text: E-mail, translation: E-mail }
+      - { text: Currency, translation: Waluta }
+      - { text: PDF, translation: PDF }
+      - { text: Projects of the sheet, translation: Projekty arkusza }
+      - { text: See the sheet's projects, translation: Zobacz projekty arkusza }
+      - { text: Draft e-mail, translation: Szkic e-maila }
+      - { text: Draft, translation: Szkic }
+      - { text: Open the draft, translation: Otwórz szkic }
+      - { text: The project has no billing e-mail., translation: Projekt nie ma adresu e-mail do faktur. }
+      - { text: Upload, translation: Prześlij }
+      - { text: Uploaded file, translation: Przesłany plik }
+      - { text: "Uploaded to {$target}", translation: "Przesłano do {$target}" }
+      - { text: Choose an upload folder first., translation: Najpierw wybierz folder docelowy. }
+      - { text: "HTTP {$status} · {$code}", translation: "HTTP {$status} · {$code}" }
+      - { text: "No answer · {$code}", translation: "Brak odpowiedzi · {$code}" }
+      # The projects page.
+      - { text: Projects of a timesheet, translation: Projekty arkusza czasu pracy }
+      - { text: Sign in on the Reports page first., translation: Najpierw zaloguj się na stronie Raporty. }
+      - { text: Remind, translation: Przypomnij }
+      - { text: "Reminder sent to {$address}", translation: "Wysłano przypomnienie do {$address}" }
+      - { text: Remind the client to log this month's time?, translation: Przypomnieć klientowi o zalogowaniu czasu za ten miesiąc? }
+      # The renderer's own words, as `Ui.words` writes them.
+      - { text: Loading…, translation: Ładowanie… }
+      - { text: No rows., translation: Brak wierszy. }
+      - { text: Nothing found., translation: Nic nie znaleziono. }
+      - { text: Save, translation: Zapisz }
+      - { text: Cancel, translation: Anuluj }
+      - { text: Close, translation: Zamknij }
+      - { text: New, translation: Nowy }
+      - { text: Edit, translation: Edytuj }
+      - { text: Delete, translation: Usuń }
+      - { text: Delete this row?, translation: Usunąć ten wiersz? }
+      - { text: This cannot be undone., translation: Tego nie można cofnąć. }
+      - { text: Previous page, translation: Poprzednia strona }
+      - { text: "{$first}–{$last} of {$total}", translation: "{$first}–{$last} z {$total}" }
+      - { text: "0 of {$total}", translation: "0 z {$total}" }
+      - { text: Next page, translation: Następna strona }
+      - { text: "Yes", translation: Tak }
+      - { text: "No", translation: Nie }
+      - { text: None, translation: Brak }
+      - { text: Any, translation: Dowolne }
+      - { text: Select…, translation: Wybierz… }
+      - { text: Choose…, translation: Wskaż… }
+      - { text: More, translation: Więcej }
+      - { text: "Search {$label}", translation: "Szukaj: {$label}" }
+      - { text: "Remove {$label}", translation: "Usuń: {$label}" }
+      - { text: "Clear {$label}", translation: "Wyczyść: {$label}" }
+      - { text: Filters, translation: Filtry }
+      - { text: Add filter, translation: Dodaj filtr }
+      - { text: Apply, translation: Zastosuj }
+      - { text: Reset, translation: Wyczyść }
+      - { text: Done, translation: Gotowe }
+      - { text: Presets, translation: Gotowe zakresy }
+      - { text: is, translation: jest }
+      - { text: contains, translation: zawiera }
+      - { text: after, translation: po }
+      - { text: from, translation: od }
+      - { text: before, translation: przed }
+      - { text: to, translation: do }
+      - { text: one of, translation: jedno z }
+      - { text: "{$label} {$operator}", translation: "{$label} {$operator}" }
+      - { text: "{$label} {$operator} {$value}", translation: "{$label} {$operator} {$value}" }
+      - { text: "{$label}: {$summary}", translation: "{$label}: {$summary}" }
+      - { text: From, translation: Od }
+      - { text: To, translation: Do }
+      - { text: Must not start after it ends, translation: Nie może zaczynać się po swoim końcu }
+      - text: "Longer than {$count} days"
+        translation: { plural: count, cases: { one: "Dłużej niż {$count} dzień", few: "Dłużej niż {$count} dni", many: "Dłużej niż {$count} dni", other: "Dłużej niż {$count} dnia" } }
+      - text: "Longer than {$count} weeks"
+        translation: { plural: count, cases: { one: "Dłużej niż {$count} tydzień", few: "Dłużej niż {$count} tygodnie", many: "Dłużej niż {$count} tygodni", other: "Dłużej niż {$count} tygodnia" } }
+      - text: "Longer than {$count} months"
+        translation: { plural: count, cases: { one: "Dłużej niż {$count} miesiąc", few: "Dłużej niż {$count} miesiące", many: "Dłużej niż {$count} miesięcy", other: "Dłużej niż {$count} miesiąca" } }
+      - text: "Longer than {$count} quarters"
+        translation: { plural: count, cases: { one: "Dłużej niż {$count} kwartał", few: "Dłużej niż {$count} kwartały", many: "Dłużej niż {$count} kwartałów", other: "Dłużej niż {$count} kwartału" } }
+      - text: "Longer than {$count} years"
+        translation: { plural: count, cases: { one: "Dłużej niż {$count} rok", few: "Dłużej niż {$count} lata", many: "Dłużej niż {$count} lat", other: "Dłużej niż {$count} roku" } }
+      - { text: Not found, translation: Nie znaleziono }
+      - { text: "This application has no page at {$path}.", translation: "Ta aplikacja nie ma strony pod adresem {$path}." }
+      - { text: Discard unsaved changes?, translation: Odrzucić niezapisane zmiany? }
+      - { text: What you entered has not been saved., translation: "To, co wpisano, nie zostało zapisane." }
+      - { text: Discard, translation: Odrzuć }
+      - { text: Keep editing, translation: Edytuj dalej }
+      - { text: "You are not signed in, or your session has ended.", translation: "Nie jesteś zalogowany albo sesja wygasła." }
+      - { text: You are not allowed to do this., translation: Nie masz do tego uprawnień. }
+      - { text: "The request failed with status {$status}.", translation: "Żądanie nie powiodło się, status {$status}." }
+      - { text: "The request failed: {$reason}", translation: "Żądanie nie powiodło się: {$reason}" }
+      - { text: The record was refused., translation: Rekord został odrzucony. }
+      - { text: The answer is not JSON., translation: Odpowiedź nie jest w formacie JSON. }
+      - { text: The answer is not a JSON object., translation: Odpowiedź nie jest obiektem JSON. }
+      - { text: "The answer does not fit its model: {$detail}", translation: "Odpowiedź nie pasuje do modelu: {$detail}" }
+      - { text: Is not valid, translation: Jest niepoprawne }
+      - { text: Is required, translation: Jest wymagane }
+      - { text: "Must be {$types}", translation: "Musi być typu {$types}" }
+      - { text: "Must be one of: {$allowed}", translation: "Musi być jednym z: {$allowed}" }
+      - { text: "Must be {$value}", translation: "Musi być równe {$value}" }
+      - { text: Is not allowed, translation: Jest niedozwolone }
+      - { text: Is not one of the allowed forms, translation: Nie ma żadnej z dozwolonych postaci }
+      - text: "Must be at least {$limit} characters"
+        translation: { plural: limit, cases: { one: "Co najmniej {$limit} znak", few: "Co najmniej {$limit} znaki", many: "Co najmniej {$limit} znaków", other: "Co najmniej {$limit} znaku" } }
+      - text: "Must be at most {$limit} characters"
+        translation: { plural: limit, cases: { one: "Najwyżej {$limit} znak", few: "Najwyżej {$limit} znaki", many: "Najwyżej {$limit} znaków", other: "Najwyżej {$limit} znaku" } }
+      - { text: Is not in the expected format, translation: Ma niewłaściwy format }
+      - { text: "Must be at least {$limit}", translation: "Musi wynosić co najmniej {$limit}" }
+      - { text: "Must be at most {$limit}", translation: "Musi wynosić najwyżej {$limit}" }
+      - { text: "Must be greater than {$limit}", translation: "Musi być większe niż {$limit}" }
+      - { text: "Must be less than {$limit}", translation: "Musi być mniejsze niż {$limit}" }
+      - { text: "Must be a multiple of {$limit}", translation: "Musi być wielokrotnością {$limit}" }
+      - text: "Must have at least {$limit} items"
+        translation: { plural: limit, cases: { one: "Co najmniej {$limit} element", few: "Co najmniej {$limit} elementy", many: "Co najmniej {$limit} elementów", other: "Co najmniej {$limit} elementu" } }
+      - text: "Must have at most {$limit} items"
+        translation: { plural: limit, cases: { one: "Najwyżej {$limit} element", few: "Najwyżej {$limit} elementy", many: "Najwyżej {$limit} elementów", other: "Najwyżej {$limit} elementu" } }
+      - { text: Must not repeat an item, translation: Elementy nie mogą się powtarzać }

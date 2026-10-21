@@ -193,3 +193,101 @@ describe("x-telo-value-schema-from", () => {
     expect(found.some((d) => d.message.includes("'costt' is not allowed"))).toBe(true);
   });
 });
+
+/** A map whose values are each held to the model property their own key names
+ *  (`{ from: /model, member: "0#" }`), read through an accessor over `row`. */
+function pickerDef(member: unknown = "0#", extra: Record<string, unknown> = {}): ResourceManifest {
+  return {
+    kind: "Telo.Definition",
+    metadata: { name: "Picker", module: "run" },
+    capability: "Telo.Invocable",
+    schema: {
+      type: "object",
+      properties: {
+        model: { "x-telo-ref": "telo#Type" },
+        rowModel: { "x-telo-ref": "telo#Type" },
+        filters: {
+          type: "object",
+          "x-telo-context": {
+            type: "object",
+            properties: {
+              row: { "x-telo-context-from-root": "rowModel", "x-telo-context-eval": "accessor" },
+            },
+          },
+          additionalProperties: {
+            type: ["string", "number", "integer", "boolean"],
+            "x-telo-eval": "accessor",
+            "x-telo-value-schema-from": { from: "/model", member },
+          },
+        },
+        ...extra,
+      },
+    },
+  } as unknown as ResourceManifest;
+}
+
+const pickerModel = {
+  kind: "Type.JsonSchema",
+  schema: { type: "object", properties: { status: { type: "string" }, size: { type: "integer" } } },
+};
+const rowModel = {
+  kind: "Type.JsonSchema",
+  schema: { type: "object", properties: { label: { type: "string" }, count: { type: "integer" } } },
+};
+const cel = (source: string) => ({ __tagged: true, engine: "cel", source });
+function picker(filters: Record<string, unknown>): ResourceManifest {
+  return {
+    kind: "run.Picker",
+    metadata: { name: "p", module: "test" },
+    model: pickerModel,
+    rowModel,
+    filters,
+  } as unknown as ResourceManifest;
+}
+const codes = (manifests: ResourceManifest[], wanted: string) =>
+  new StaticAnalyzer().analyze(withSyntheticPositions(manifests)).filter((d) => d.code === wanted);
+
+describe("x-telo-value-schema-from with a member", () => {
+  it("holds a literal to the property its own key names", () => {
+    const found = codes([pickerDef(), picker({ status: 5, size: 3 })], "SCHEMA_VIOLATION");
+    expect(found.map((d) => d.data?.path)).toEqual(["filters.status"]);
+  });
+
+  it("holds an accessor's type to the property its own key names", () => {
+    const found = codes(
+      [pickerDef(), picker({ status: cel("row.count"), size: cel("row.count") })],
+      "CEL_TYPE_ERROR",
+    );
+    expect(found.map((d) => d.data?.path)).toEqual(["filters.status"]);
+  });
+
+  it("lets a key the type does not declare contribute nothing", () => {
+    expect(codes([pickerDef(), picker({ other: cel("row.count") })], "CEL_TYPE_ERROR")).toEqual([]);
+  });
+
+  it("refuses a key member on a node that is no map value", () => {
+    const def = pickerDef("0#") as any;
+    delete def.metadata.module;
+    def.schema.properties.single = {
+      "x-telo-eval": "accessor",
+      items: {},
+      type: "array",
+    };
+    def.schema.properties.single.items["x-telo-value-schema-from"] = { from: "/model", member: "0#" };
+    const found = codes([def], "VALUE_SCHEMA_FROM_INVALID");
+    expect(found.map((d) => d.data?.path)).toEqual([
+      "schema.properties.single.items.x-telo-value-schema-from",
+    ]);
+    expect(found[0]!.message).toContain("no map value");
+  });
+
+  it("refuses a pointer member naming no string", () => {
+    const def = pickerDef("2/size", {
+      size: { type: "integer" },
+    }) as any;
+    delete def.metadata.module;
+    const found = codes([def], "VALUE_SCHEMA_FROM_INVALID");
+    expect(found).toHaveLength(1);
+    expect(found[0]!.message).toContain("not declared a string");
+  });
+});

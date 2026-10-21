@@ -1,0 +1,15 @@
+# A condition whose schema can never hold for the row value it names.
+kind: Telo.Library
+metadata:
+  name: MatchLib
+  version: 1.0.0
+  description: Fixture library holding a condition whose schema can never hold for the integer it names.
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Probe
+metadata:
+  name: overdue
+condition:
+  at: !cel "row.amount"
+  matches: { type: string }

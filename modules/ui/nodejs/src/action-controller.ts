@@ -1,90 +1,52 @@
-import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
-import type { Provided, SpecNode } from "./composite.js";
 import {
-  enterableFields,
-  headerOf,
-  isEnterable,
-  itemsOf,
-  labelOf,
-  modelSchema,
-  modelShape,
-  presentation,
-  schemaAt,
-  type JsonSchema,
-  type Shape,
-} from "./model-schema.js";
-import { isChain, type Binding } from "./row-binding.js";
-
-/** A list drawn from the answer. A member holding nothing is one left out. */
-interface ListConfig {
-  heading?: string;
-  rows: Binding;
-  columns: { header?: string; value: Binding }[];
-}
+  canonicalTypeSchemaId,
+  RuntimeError,
+  type ResourceContext,
+  type ResourceInstance,
+  type RuntimeResource,
+  type TextRecord,
+} from "@telorun/sdk";
+import { mergeAssets, type Provided, type SpecNode } from "./composite.js";
+import { DEFAULT_FAILURE, NOTHING } from "./request-failure.js";
+import { enteredFields, type GroupConfig, type GroupSpec } from "./entered-fields.js";
+import type { FieldSpec } from "./field-answer.js";
+import { modelSchema, modelShape, type JsonSchema } from "./model-schema.js";
+import { resolveNode, type AuthoredNode } from "./node-resolution.js";
+import type { Binding, Condition } from "./row-binding.js";
+import { stateSpec, type StateConfig } from "./state-record.js";
 
 type ActionResource = RuntimeResource & {
   inputModel: unknown;
   outputModel?: unknown;
   source: { path: string };
-  label: string;
-  fields?: { property: string }[];
-  lists?: ListConfig[];
+  label: TextRecord;
+  fields?: unknown[] | null;
+  groups?: GroupConfig[] | null;
+  state?: StateConfig | null;
+  enabled?: (Condition & { disabledText: unknown }) | null;
+  result?: AuthoredNode | null;
+  failure?: AuthoredNode | null;
+  onSuccess?: { navigate?: Binding | null; refreshes?: string[] | null } | null;
+  concurrency?: "parallel" | "serial" | null;
+  clearAnswerOn?: string[] | null;
 };
 
-/** What whoever runs an action without its form needs of it. */
+/** What whoever runs an action from a row needs of it before it is provided. */
 export interface Operation {
-  path: string;
-  label: string;
   /** The input model. */
   schema: JsonSchema;
-  /** The fields its form shows, read when something shows them. */
-  fields(): { property: string; label: string }[];
-  drawsLists: boolean;
+  /** The fields and groups its form shows, read when something shows them. */
+  fields(): Promise<{ fields: FieldSpec[]; groups: GroupSpec[] }>;
 }
 
 export interface ActionInstance {
   operation(): Operation;
+  provide(): Promise<Provided>;
 }
 
 export function isAction(candidate: unknown): candidate is ActionInstance {
-  return typeof (candidate as ActionInstance | null)?.operation === "function";
-}
-
-/** The fields an action shows — the ones listed, or every property a control
- *  can enter — which between them enter every property the model requires. */
-export function actionFields(
-  schema: JsonSchema,
-  listed: { property: string }[] | undefined,
-  owner: string,
-): { property: string; label: string }[] {
-  const properties = (schema.properties ?? {}) as Record<string, JsonSchema>;
-  const fields = listed
-    ? listed.map(({ property }, index) => {
-        if (!Object.hasOwn(properties, property)) {
-          throw new RuntimeError(
-            "ERR_UI_ACTION_FIELD_UNKNOWN_PROPERTY",
-            `${owner}: 'fields[${index}]' lists a field for a property the input model does not declare ('${property}'). Use a property of 'inputModel', or add this one to it.`,
-          );
-        }
-        if (!isEnterable(properties[property])) {
-          throw new RuntimeError(
-            "ERR_UI_ACTION_FIELD_UNSUPPORTED",
-            `${owner}: 'fields[${index}]' lists a field for a property no control can enter ('${property}'). A field enters a string, a number, a boolean, one of an 'enum', or a list of those: remove this field, or give the operation a property of such a type.`,
-          );
-        }
-        return { property, label: labelOf(property, properties[property]) };
-      })
-    : enterableFields(schema);
-  const missing = ((Array.isArray(schema.required) ? schema.required : []) as string[]).filter(
-    (required) => !fields.some((field) => field.property === required),
-  );
-  if (missing.length > 0) {
-    throw new RuntimeError(
-      "ERR_UI_ACTION_REQUIRED_INPUT_NOT_ENTERED",
-      `${owner}: leaves a property the input model requires with no field (${missing.map((name) => `'${name}'`).join(", ")}), so the operation could never be sent a valid record. List a field for every required property, or leave 'fields' out where each one is a scalar or a list of scalars.`,
-    );
-  }
-  return fields;
+  const action = candidate as ActionInstance | null;
+  return typeof action?.operation === "function" && typeof action.provide === "function";
 }
 
 class Action implements ResourceInstance, ActionInstance {
@@ -100,55 +62,65 @@ class Action implements ResourceInstance, ActionInstance {
   operation(): Operation {
     const schema = modelSchema(this.resource.inputModel, this.ctx, this.owner, "inputModel");
     return {
-      path: this.resource.source.path,
-      label: this.resource.label,
       schema,
-      fields: () => actionFields(schema, this.resource.fields ?? undefined, this.owner),
-      drawsLists: (this.resource.lists ?? []).length > 0,
+      fields: () => enteredFields(schema, this.resource.fields, this.resource.groups, this.ctx, this.owner, "inputModel"),
     };
   }
 
   async provide(): Promise<Provided> {
     const resource = this.resource;
-    const { path, label, schema, fields } = this.operation();
+    const { schema, fields: entered } = this.operation();
+    const { fields, groups } = await entered();
+    const state = await stateSpec(resource.state, fields.map((field) => field.property), schema, this.ctx, this.owner, "state", "field");
+    const properties = (schema.properties ?? {}) as Record<string, JsonSchema>;
+    for (const [index, property] of (resource.clearAnswerOn ?? []).entries()) {
+      if (!Object.hasOwn(properties, property)) {
+        throw new RuntimeError(
+          "ERR_UI_ACTION_CLEAR_UNKNOWN_PROPERTY",
+          `${this.owner}: 'clearAnswerOn[${index}]' clears its answer on a property the input model does not declare ('${property}'), which never changes. Use a property of 'inputModel', or remove this entry.`,
+        );
+      }
+    }
     const reader = { ctx: this.ctx, owner: this.owner };
-    const answer =
-      resource.outputModel == null
+    const answer = resource.outputModel == null ? undefined : modelSchema(resource.outputModel, this.ctx, this.owner, "outputModel");
+    const input = modelShape(schema, reader, "inputModel");
+    const result = answer
+      ? modelShape(answer, reader, "outputModel")
+      : modelShape({ type: "object", properties: {}, additionalProperties: false }, reader, "outputModel");
+    const error = modelShape({ $ref: canonicalTypeSchemaId("Ui", "RequestError") }, reader, "failure");
+    const drawn =
+      resource.result == null
         ? undefined
-        : modelShape(modelSchema(resource.outputModel, this.ctx, this.owner, "outputModel"), reader, "outputModel");
-    const lists = (resource.lists ?? []).map((list) => {
-      const rowsAt = isChain(list.rows) ? ["outputModel", ...list.rows.path].join(".") : "";
-      const rows = isChain(list.rows) && answer ? schemaAt(answer, list.rows.path, reader, "outputModel") : undefined;
-      const row = rows && itemsOf(rows, reader, rowsAt);
-      const shapeAt = (value: { root: string; path: string[] }): Shape | undefined => {
-        if (value.root === "row") return row && schemaAt(row, value.path, reader, `${rowsAt}.items`);
-        return answer && schemaAt(answer, value.path, reader, "outputModel");
-      };
-      return {
-        ...(list.heading != null ? { heading: list.heading } : {}),
-        rows: list.rows,
-        columns: list.columns.map(({ header, value }) => {
-          if (!isChain(value)) return { header: header ?? "", value };
-          const target = shapeAt(value);
-          const last = value.path[value.path.length - 1];
-          const present = presentation(target);
-          return {
-            header: header ?? (last === undefined ? "" : headerOf(last, target)),
-            value,
-            ...(present ? { present } : {}),
-          };
-        }),
-      };
-    });
+        : ((await resolveNode(resource.result, this.ctx, `${this.owner} result`, { result, input, values: input })) ?? {
+            node: NOTHING,
+            assets: [],
+          });
+    const failure = (await resolveNode(resource.failure ?? DEFAULT_FAILURE, this.ctx, `${this.owner} failure`, {
+      error,
+      input,
+      values: input,
+    })) ?? { node: NOTHING, assets: [] };
+    const navigate = resource.onSuccess?.navigate;
     const node: SpecNode = {
       type: "action",
       schema,
-      path,
-      label,
-      fields: fields(),
-      lists,
+      path: resource.source.path,
+      label: resource.label,
+      fields,
+      groups,
+      state,
+      ...(resource.enabled != null ? { enabled: resource.enabled } : {}),
+      ...(answer ? { answer } : {}),
+      ...(drawn ? { result: drawn.node ?? NOTHING } : {}),
+      failure: failure.node ?? NOTHING,
+      onSuccess: {
+        ...(navigate != null ? { navigate } : {}),
+        refreshes: resource.onSuccess?.refreshes ?? [],
+      },
+      concurrency: resource.concurrency ?? "parallel",
+      clearAnswerOn: resource.clearAnswerOn ?? [],
     };
-    return { node, assets: [] };
+    return { node, assets: mergeAssets(drawn?.assets ?? [], failure.assets) };
   }
 }
 

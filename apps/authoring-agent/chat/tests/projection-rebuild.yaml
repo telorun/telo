@@ -159,8 +159,8 @@ steps:
     inputs:
       actual: !cel "steps.projected.result.projections.map(p, [int(p.tokens), p.model, int(p.context_tokens)])"
       expected:
-        - [45, gpt-5.2, 15]
-        - [15, gpt-5.2, 15]
+        - [45, gpt-6-luna, 15]
+        - [15, gpt-6-luna, 15]
   - name: dropMessages
     invoke: !ref stateCommand
     inputs:

@@ -20,6 +20,7 @@ import {
   type SignatureResult,
 } from "./callable-signature.js";
 import { declaredScalarPaths, normalizeDeclaredScalars } from "./invocation-contract.js";
+import { liftFragmentDefs } from "./manifest-schemas.js";
 
 /** Resolves a type reference to the schema it names. */
 export type ShapeResolver = (ref: string) => Record<string, any> | undefined;
@@ -137,7 +138,7 @@ function scalarNormalizer(
   resolveRef: ShapeResolver,
 ): (value: unknown) => unknown {
   if (!schema) return (value) => value;
-  const paths = declaredScalarPaths({ type: "object", properties: { value: schema } }, resolveRef);
+  const paths = declaredScalarPaths(liftFragmentDefs({ type: "object", properties: { value: schema } }), resolveRef);
   if (paths.length === 0) return (value) => value;
   return (value) => (normalizeDeclaredScalars({ value }, paths) as { value: unknown }).value;
 }

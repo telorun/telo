@@ -4,7 +4,9 @@
 # through the same rules, by the kernel when it registers the kind.
 #
 # Every clause sits on a kind that is otherwise registrable, so the kernel
-# reports them all in one boot rather than stopping at the first.
+# reports them all in one boot rather than stopping at the first. The two slots
+# whose constraint is refused take `use: call`: a `use: dependency` slot of a
+# native function is a data slot, which may name any kind (`callable-data`).
 kind: Telo.Library
 metadata:
   name: CallableKindsLib
@@ -28,7 +30,7 @@ schema:
   type: object
   properties:
     sink:
-      x-telo-ref: { kind: Telo.LogSink, use: dependency }
+      x-telo-ref: { kind: Telo.LogSink, use: call }
     anyFn:
       x-telo-ref: { kind: Telo.Callable, use: dependency }
     late:
@@ -83,7 +85,7 @@ schema:
   type: object
   properties:
     signer:
-      x-telo-ref: { kind: Self.LooseSigner, use: dependency }
+      x-telo-ref: { kind: Self.LooseSigner, use: call }
 controllers:
   - pkg:telo/local/js?path=./nowhere.mjs#Never
 ---

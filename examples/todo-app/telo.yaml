@@ -12,16 +12,21 @@ metadata:
     is the same screen written out, with presets and a pinned filter. The UI and the API share one
     model, so renaming a property is a `telo check` error rather than a broken page,
     and a column the database fills in is read by both and written by neither.
-# The UI modules are not published yet, so every import is the workspace's own
-# copy. They become pinned `oci://` refs, like every other example's, once they
-# are released.
+# Module `lang:` — the language this application's texts are written in — and
+# `UiReact.App.words` are read from 0.121.0.
+requires:
+  telo: ">=0.121.0"
+lang: en
+# `ui`, `ui-react` and `crud` come from this repository while their changes
+# are unreleased, and `http-server` with them, because `crud` imports this
+# repository's copy; `telo upgrade --pin-local` pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
+  Http: ../../modules/http-server
   Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.1#sha256-1WEaTSJ_-AD9dVAa9JTdqtD94jzkkBvoGLdm2jrlroM
-  Crud: oci://ghcr.io/telorun/crud@0.28.1#sha256-QgmEfnGf7vMr74HGBgIvuryLMqGE0clBXD70IO3VAFw
-  Ui: oci://ghcr.io/telorun/ui@0.4.0#sha256-9hNZj-hzEkskbX-GgG3eabew02lvQIjMbAHILQ7ca3U
-  UiReact: oci://ghcr.io/telorun/ui-react@0.5.0#sha256-xyuX5J_vK5o817qrpjNTlhi3TerS7dxPqisDyNTl4WA
+  Crud: ../../modules/crud
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
 targets:
   - !ref migrate
   - !ref server
@@ -142,7 +147,7 @@ kind: UiReact.App
 metadata:
   name: ui
 title: Todos
-lang: en
+words: !ref Ui.words
 theme: !ref theme
 pages:
   - path: /

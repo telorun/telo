@@ -1,3 +1,4 @@
+import { readBinding, type Binding } from "./bindings.js";
 import type { Host } from "./host.js";
 import { networkError, responseError } from "./ui-error.js";
 
@@ -9,6 +10,18 @@ export type Param = [name: string, value: string];
 /** The parameter a filter sends: `<property>=` for equality, `<property>.<operator>=` otherwise. */
 export function filterParam(property: string, operator: Operator, value: string): Param {
   return [operator === "eq" ? property : `${property}.${operator}`, value];
+}
+
+/** The equalities a source sends, each binding read over the roots in scope;
+ *  nothing when one of them holds nothing, since the source then reads nothing. */
+export function boundFilters(filters: Record<string, Binding> | undefined, roots: Readonly<Record<string, unknown>>): Param[] | undefined {
+  const params: Param[] = [];
+  for (const [name, binding] of Object.entries(filters ?? {})) {
+    const read = readBinding(binding, roots);
+    if (!read.present || read.value === null) return undefined;
+    params.push([name, String(read.value)]);
+  }
+  return params;
 }
 
 export interface CollectionView {

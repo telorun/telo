@@ -30,6 +30,9 @@
 !.changeset
 !packages/language-server
 !cel/nodejs
+# The SDK's message core; its `prepare` generates its module from the CLDR data.
+!message-format/nodejs
+!message-format/cldr
 !packages/editor-protocol
 !pnpm-*
 !tsconfig.base.json

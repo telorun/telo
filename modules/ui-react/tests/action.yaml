@@ -3,12 +3,13 @@ metadata:
   name: UiReactActionTest
   version: 1.0.0
   description: |
-    An application serves an action and a table's row actions as the nodes
-    they provide, and the routes they name take exactly what the renderer
-    sends: the record a jsdom test holds the action's form to is answered with
-    the files its list is drawn from, a record the shared input shape refuses
-    is the 400 envelope naming the property, and the record a row action binds
-    is accepted by its route.
+    An application serves an action, a table's row actions and a page list's
+    row actions as the nodes they provide — each row action carrying its
+    action's own node, its inputs and its condition — and the routes they name
+    take exactly what the renderer sends: the record a jsdom test holds the
+    action's form to is answered with the files its result is drawn from, a
+    record the shared input shape refuses is the 400 envelope naming the
+    property, and the record a row action binds is accepted by its route.
 imports:
   App: ../../app
   Run: ../../run
@@ -38,7 +39,8 @@ steps:
         status: !cel "steps.page.result.status"
         action: !cel "steps.page.result.body.children[0]"
         table: !cel "steps.page.result.body.children[1].type"
-        rowActions: !cel "steps.page.result.body.children[1].rowActions"
+        rowActions: !cel "steps.page.result.body.children[1].rowActions.map(r, {'action': [r.action.path, r.action.label, r.action.result], 'inputs': r.inputs, 'confirm': r.confirm, 'enabled': r.enabled})"
+        months: !cel "steps.page.result.body.children[2]"
       expected:
         status: 200
         action:
@@ -53,26 +55,67 @@ steps:
               formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
               recipients: { type: array, title: Recipients, items: { type: string, minLength: 3 } }
           path: /api/reports
-          label: Generate
+          label: { lang: und, message: [Generate] }
           fields:
-            - { property: month, label: Month }
-            - { property: copies, label: Copies }
-            - { property: formats, label: Formats }
-            - { property: recipients, label: Recipients }
-          lists:
-            - heading: Files
-              rows: { root: result, path: [files] }
-              columns:
-                - { header: File, value: { root: row, path: [name] }, present: { type: string } }
-                - { header: Download, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }
+            - { type: input, property: month, label: { lang: und, message: [Month] }, description: null, labels: [], control: auto }
+            - { type: input, property: copies, label: { lang: und, message: [Copies] }, description: null, labels: [], control: auto }
+            - type: input
+              property: formats
+              label: { lang: und, message: [Formats] }
+              description: null
+              labels: [{ value: pdf, label: { lang: und, message: [pdf] } }, { value: csv, label: { lang: und, message: [csv] } }]
+              control: auto
+            - { type: input, property: recipients, label: { lang: und, message: [Recipients] }, description: null, labels: [], control: auto }
+          groups: []
+          state: { address: false, store: { type: memory }, fields: [month, copies, formats, recipients] }
+          answer:
+            type: object
+            required: [files]
+            properties:
+              files:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name: { type: string, title: File }
+                    url: { type: string, title: Download, format: uri-reference }
+          result:
+            type: list
+            heading: { lang: und, message: [Files] }
+            rows: { root: result, path: [files] }
+            columns:
+              - { header: { lang: und, message: [File] }, labels: [], value: { root: row, path: [name] }, present: { type: string } }
+              - { header: { lang: und, message: [Download] }, labels: [], value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }
+          failure:
+            type: stack
+            style: danger
+            children:
+              - { type: value, value: { root: error, path: [code] }, labels: [], present: { type: string }, style: strong }
+              - { type: value, value: { root: error, path: [message] }, labels: [], present: { type: string } }
+          onSuccess: { refreshes: [/api/todos] }
+          concurrency: serial
+          clearAnswerOn: [month]
         table: table
         rowActions:
-          - path: /api/archive
-            label: Archive
+          - action: [ /api/archive, { lang: und, message: [Archive] }, { type: value, value: { root: result, path: [ archived ] }, labels: [], present: { type: boolean } } ]
             inputs:
               id: { root: row, path: [id] }
               status: { value: archived }
-            confirm: Archive this task?
+            confirm: { lang: und, message: [Archive this task?] }
+            enabled:
+              at: { root: row, path: [text] }
+              matches: { minLength: 1 }
+              disabledText: { lang: und, message: [Name it first.] }
+        months:
+          type: list
+          heading: { lang: und, message: [Months] }
+          rows: { root: query, path: [months] }
+          columns:
+            - { header: { lang: und, message: [Month] }, labels: [], value: { root: row, path: [] }, present: { type: string } }
+          rowActions:
+            - action: !cel "steps.page.result.body.children[0]"
+              inputs:
+                month: { root: row, path: [] }
 
   - name: run
     invoke:

@@ -1,0 +1,24 @@
+# `pl` and `PL` are one language: one text, translated twice into it.
+kind: Telo.Library
+metadata:
+  name: CatalogSetCase
+  version: 1.0.0
+  description: Fixture library whose catalog set translates one text twice.
+imports:
+  Kinds: ../../kinds
+---
+kind: Kinds.Catalog
+metadata: { name: lower }
+lang: pl
+texts:
+  - { text: Open, translation: Otwórz }
+---
+kind: Kinds.Catalog
+metadata: { name: upper }
+lang: PL
+texts:
+  - { text: Open, translation: Otwórzcie }
+---
+kind: Kinds.Set
+metadata: { name: set }
+catalogs: [!ref lower, !ref upper]

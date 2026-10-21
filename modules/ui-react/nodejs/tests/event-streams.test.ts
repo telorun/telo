@@ -48,11 +48,14 @@ function context(faults: Faults = {}) {
       return { specifier, file: pathToFileURL(file).href, siblings: [], digest: specifier, abi: "ui_react-1", external: [], exports: [] };
     },
     createTypeValidator: () => ({ validate() {}, isValid: () => true }),
+    resolveRef: (value: unknown) => value,
     log: { error: (message: string, attributes: Record<string, unknown>) => void logged.push({ message, attributes }) },
   };
 }
 
-const RESOURCE = { kind: "UiReact.App", metadata: { name: "admin" }, title: "Events", pages: [{ path: "/", title: "Home", children: [] }] };
+const text = (written: string) => ({ text: written, context: null, lang: "en", computed: false });
+const WORDS = { provide: async () => ({}) };
+const RESOURCE = { kind: "UiReact.App", metadata: { name: "admin" }, title: text("Events"), words: WORDS, pages: [{ path: "/", title: text("Home"), children: [] }] };
 
 /** The application listening under `/admin`, and how to open a stream on it. */
 async function listening(ctx: ReturnType<typeof context>) {
@@ -68,7 +71,7 @@ async function listening(ctx: ReturnType<typeof context>) {
 describe("an event stream", () => {
   it("says hello, keeps alive, and ends with the server without holding it open", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    const resource = { kind: "UiReact.App", metadata: { name: "admin" }, title: "Events", pages: [{ path: "/", title: "Home", children: [] }] };
+    const resource = RESOURCE;
     const app = await create(resource as unknown as AppResource, context() as never);
     const server = Fastify();
     app.register(server, "/admin");

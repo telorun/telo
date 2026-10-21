@@ -12,6 +12,16 @@ in the browser by a React renderer this module ships prebuilt.
   is no generated code and nothing to compile per application.
 - **Per-request pages.** A node's `when:` and its text may read the request's
   headers, so a role or a tenant decides what a page shows.
+- **Data on page load, drawn by condition.** A [`Ui.Data`](../ui/docs/data.md)
+  is read when it is drawn — a loading state first, a failure state for a
+  refused read — and read again on window focus or when a request inside it
+  answers 401, so a sign-in gate is a reader and a condition. A node's `shown`
+  is decided in the browser over the answer, the page's query parameters or a
+  form's values; hidden content keeps what it holds and requests nothing.
+- **Operations that answer in place.** An action draws its answer, or why it
+  failed, under its form; a row's action draws its answer in place of its
+  button. A success refreshes the readers and tables it changed and can move
+  the page, and a serial action's presses run one after another.
 - **Styling is a published contract.** Every element carries a stable part
   name; your stylesheet is applied last and always wins.
 - **Accessible controls.** Dialogs trap the focus and close on Escape, choice
@@ -21,6 +31,11 @@ in the browser by a React renderer this module ships prebuilt.
   is drawn — dialog, drawer, popover, inline, panel, page — with an open form
   in the address, a replacement below a breakpoint, and a question before
   unsaved input is lost.
+- **Fields that keep up with the viewer.** Every [field kind](../ui/docs/field-kinds.md)
+  is drawn — named controls, choices and pickers over options read, searched
+  and labelled from an API, date ranges with presets in the viewer's time zone,
+  labelled groups — checked against the model as values are entered, and kept
+  in the address or a store between visits.
 - **Filter bars as declared.** Every [placement](../ui/docs/filter-placement.md)
   and every control is drawn — a bar above or beside the list, folded behind
   a toggle or in an overlay; chips, switches, sliders, tags, presets — and the
@@ -33,6 +48,12 @@ in the browser by a React renderer this module ships prebuilt.
   first where one is declared.
 - **Lists are entered, not just shown.** A list property is a group of options
   or typed tags, in every form.
+- **Served in the viewer's language.** With a translator, every text — page
+  titles, labels, a model's titles and enumeration labels, the renderer's own
+  words — is translated on the server for the language a request asks for
+  (`lang:`, from `Accept-Language` or a cookie), the browser choosing plural
+  forms and formatting numbers; each document says which headers it varies
+  on, and one copy is kept per language.
 - **An open seam.** A module ships its own React components, and they get
   navigation, requests and refresh from the host.
 
@@ -50,6 +71,7 @@ and [the component ABI](docs/component-abi.md).
 ```yaml
 kind: Telo.Application
 metadata: { name: TodoAdmin, version: 1.0.0 }
+lang: en
 imports:
   Http: oci://ghcr.io/telorun/http-server
   Ui: oci://ghcr.io/telorun/ui
@@ -79,6 +101,7 @@ query:
 kind: UiReact.App
 metadata: { name: admin }
 title: Todo Admin
+words: !ref Ui.words
 pages:
   - path: /
     title: Todos
@@ -104,5 +127,6 @@ mounts:
     mount: !ref admin
 ```
 
-The renderer's built-in strings — button labels, validation messages — are
-English.
+The renderer's own words — button labels, validation messages — are `ui`'s
+[words](../ui/docs/texts.md#the-renderers-own-words), English in `Ui.words`
+and translated like any other text; see [Languages](docs/app.md#languages).

@@ -1,0 +1,70 @@
+# A projection's result is an array of its elements: `elementType` is the
+# contract of one element (what `outputs` is held to), and the result is typed
+# and validated as an array of it.
+kind: Telo.Application
+metadata:
+  name: RunProjectionResultType
+  version: 1.0.0
+imports:
+  Run: ../
+  Assert: ../../assert
+targets:
+  - !ref resultIsArray
+  - !ref outputsHeldToElementType
+  - !ref elementValidatedAtDispatch
+  - !ref verifyTypedElementRead
+---
+kind: Assert.Manifest
+metadata:
+  name: resultIsArray
+source: ./__fixtures__/projection-result-array.yaml
+expect:
+  errors: []
+  runs: true
+---
+kind: Assert.Manifest
+metadata:
+  name: outputsHeldToElementType
+source: ./__fixtures__/projection-outputs-off-element.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "missing required property 'value'"
+---
+kind: Assert.Manifest
+metadata:
+  name: elementValidatedAtDispatch
+source: ./__fixtures__/projection-element-invalid.yaml
+expect:
+  errors: []
+  runFails: "/0/value must be string"
+---
+kind: Run.Projection
+metadata:
+  name: labelled
+elementType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [label]
+    properties:
+      label: { type: string }
+collection: !cel "['a', 'b']"
+steps:
+  - name: noop
+    value: !cel "item"
+outputs:
+  label: !cel "item + '!'"
+---
+kind: Run.Sequence
+metadata:
+  name: verifyTypedElementRead
+steps:
+  - name: project
+    invoke: !ref labelled
+  - name: check
+    inputs:
+      actual: !cel "steps.project.result[1].label"
+      expected: "b!"
+    invoke:
+      kind: Assert.Equals

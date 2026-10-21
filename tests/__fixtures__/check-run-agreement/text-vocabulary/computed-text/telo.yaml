@@ -1,0 +1,13 @@
+# A text an expression computes: `telo check` cannot read it, so the kernel judges
+# it when the resource holding it is created.
+kind: Telo.Application
+metadata:
+  name: ComputedTextApp
+  version: 1.0.0
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Label
+metadata:
+  name: greeting
+text: !cel "'Hello {' + 'name}'"

@@ -1119,3 +1119,21 @@ export function projectToPairs(
   }
   return out;
 }
+
+/**
+ * Every reference slot naming `manifest`: the resource declaring the slot and
+ * its concrete path. A module call and a step's dispatch are not such slots.
+ */
+export function referrerSlotsOf(
+  graph: CallGraph,
+  manifest: ResourceManifest,
+): Array<{ manifest: ResourceManifest; path: string }> {
+  const out: Array<{ manifest: ResourceManifest; path: string }> = [];
+  for (const edge of graph.edgesTo(nodeIdFor(manifest))) {
+    if (edge.moduleCall) continue;
+    const from = graph.nodes.get(edge.from);
+    if (!from || from.type !== "resource") continue;
+    out.push({ manifest: from.manifest, path: edge.path });
+  }
+  return out;
+}

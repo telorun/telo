@@ -81,7 +81,7 @@ function isLiteralTag(value: unknown, tag: { engine: string; source: string }): 
 function describeBindings(site: AccessorSite): string {
   return site.bindings.length > 0
     ? site.bindings.map((name) => `'${name}'`).join(", ")
-    : "none — the field has no x-telo-context";
+    : "none — no x-telo-context binding here exists at an accessor";
 }
 
 /** Every accessor field `resource` fills, at its concrete path. */
@@ -170,7 +170,7 @@ export function accessorProblems(
           unboundRoot: root,
           message:
             `'${path}: !cel "${tag.source}"' is not a plain chain the field can name: it starts ` +
-            `at '${root}', which the field's context does not declare (${describeBindings(site)}). ` +
+            `at '${root}', which the field's context does not declare at an accessor (${describeBindings(site)}). ` +
             `An accessor field is never evaluated, so a chain there starts at one of its own bindings.`,
         },
       ];

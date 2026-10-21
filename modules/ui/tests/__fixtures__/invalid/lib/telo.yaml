@@ -11,8 +11,9 @@ metadata:
     property, an operator or a filter their data model or their collection
     does not support, surfaces whose compact surface is addressed or has a
     compact surface of its own, a form and actions whose fields their model
-    cannot answer for or no control can enter, and tables offering a row an
-    action that draws lists or inputs that make no record of its input model.
+    cannot answer for or no control can enter, an action clearing its answer on
+    a property its input model does not declare, and a table and a list whose
+    row action is given inputs that make no record of its input model.
 imports:
   Ui: ../../../../
 exports:
@@ -43,8 +44,9 @@ exports:
     - actionFieldUnsupported
     - actionRequiredNotEntered
     - actionRequiredNotEnterable
-    - rowActionDrawsLists
+    - actionClearUnknown
     - rowActionInputs
+    - listRowActionInputs
 ---
 kind: Telo.JsonSchema
 metadata:
@@ -112,9 +114,7 @@ metadata:
   name: formField
 model: !ref Todo
 source: { basePath: /api/todos }
-fields:
-  - property: text
-  - property: title
+fields: [text, title]
 ---
 kind: Ui.Filters
 metadata:
@@ -344,10 +344,7 @@ metadata:
   name: formFieldUnsupported
 model: !ref Report
 source: { basePath: /api/reports }
-fields:
-  - property: month
-  - property: options
-  - property: pages
+fields: [month, options, pages]
 ---
 # A list of scalars is a field a form can enter: nothing is reported.
 kind: Ui.Form
@@ -360,8 +357,7 @@ model:
     properties:
       tags: { type: array, items: { type: string } }
 source: { basePath: /api/reports }
-fields:
-  - property: tags
+fields: [tags]
 ---
 kind: Ui.Action
 metadata:
@@ -369,9 +365,7 @@ metadata:
 inputModel: !ref Report
 source: { path: /api/reports }
 label: Generate
-fields:
-  - property: month
-  - property: year
+fields: [month, year]
 ---
 kind: Ui.Action
 metadata:
@@ -379,10 +373,7 @@ metadata:
 inputModel: !ref Report
 source: { path: /api/reports }
 label: Generate
-fields:
-  - property: month
-  - property: options
-  - property: pages
+fields: [month, options, pages]
 ---
 kind: Ui.Action
 metadata:
@@ -426,30 +417,11 @@ label: Remove
 ---
 kind: Ui.Action
 metadata:
-  name: removeAndList
+  name: actionClearUnknown
 inputModel: !ref Removal
-outputModel:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      removed: { type: array, items: { type: string } }
 source: { path: /api/todos/remove }
 label: Remove
-lists:
-  - rows: !cel "result.removed"
-    columns:
-      - value: Removed
----
-kind: Ui.Table
-metadata:
-  name: rowActionDrawsLists
-model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
-rowActions:
-  - action: !ref removeAndList
-    inputs: { count: !cel "row.count" }
+clearAnswerOn: [count, total]
 ---
 # A key the closed model does not declare, a value its property refuses, and
 # the required input left unbound.
@@ -462,3 +434,22 @@ source: { basePath: /api/todos }
 rowActions:
   - action: !ref remove
     inputs: { total: !cel "row.count", note: 5 }
+---
+# The same inputs, given by a row of a list a reader draws.
+kind: Ui.Data
+metadata:
+  name: listRowActionInputs
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      todos: { type: array, items: !ref Todo }
+source: { path: /api/todos }
+content:
+  type: list
+  rows: !cel "data.todos"
+  columns: [{ value: !cel "row.text" }]
+  rowActions:
+    - action: !ref remove
+      inputs: { total: !cel "row.count", note: 5 }

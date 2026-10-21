@@ -1,0 +1,15 @@
+# A text beneath an expression in a field a region covers: the controller
+# evaluates it per call, and the kernel judges the text it produced.
+kind: Telo.Application
+metadata:
+  name: LateRegionApp
+  version: 1.0.0
+imports:
+  Kinds: ../evaluated
+targets:
+  - invoke: !ref notice
+---
+kind: Kinds.Notice
+metadata:
+  name: notice
+banner: !cel "{'heading': 'Hello {' + who + '}'}"

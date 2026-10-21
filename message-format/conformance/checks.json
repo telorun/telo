@@ -1,0 +1,463 @@
+{
+  "categories": [
+    {
+      "id": "categories-001-en",
+      "lang": "en",
+      "categories": [
+        "one",
+        "other"
+      ]
+    },
+    {
+      "id": "categories-002-pl",
+      "lang": "pl",
+      "categories": [
+        "one",
+        "few",
+        "many",
+        "other"
+      ]
+    },
+    {
+      "id": "categories-003-ar",
+      "lang": "ar",
+      "categories": [
+        "zero",
+        "one",
+        "two",
+        "few",
+        "many",
+        "other"
+      ]
+    },
+    {
+      "id": "categories-004-fr",
+      "lang": "fr",
+      "categories": [
+        "one",
+        "many",
+        "other"
+      ]
+    },
+    {
+      "id": "categories-005-pt",
+      "lang": "pt",
+      "categories": [
+        "one",
+        "many",
+        "other"
+      ]
+    },
+    {
+      "id": "categories-006-pt-PT",
+      "lang": "pt-PT",
+      "categories": [
+        "one",
+        "many",
+        "other"
+      ]
+    },
+    {
+      "id": "categories-007-pt-AO",
+      "lang": "pt-AO",
+      "categories": [
+        "one",
+        "many",
+        "other"
+      ]
+    },
+    {
+      "id": "categories-008-ja",
+      "lang": "ja",
+      "categories": [
+        "other"
+      ]
+    },
+    {
+      "id": "categories-009-root",
+      "lang": "root",
+      "categories": [
+        "other"
+      ]
+    },
+    {
+      "id": "categories-010-xx",
+      "lang": "xx",
+      "categories": [
+        "other"
+      ]
+    },
+    {
+      "id": "categories-011-EN-gb",
+      "lang": "EN-gb",
+      "categories": [
+        "one",
+        "other"
+      ]
+    },
+    {
+      "id": "categories-012-cy",
+      "lang": "cy",
+      "categories": [
+        "zero",
+        "one",
+        "two",
+        "few",
+        "many",
+        "other"
+      ]
+    },
+    {
+      "id": "categories-013-ru",
+      "lang": "ru",
+      "categories": [
+        "one",
+        "few",
+        "many",
+        "other"
+      ]
+    },
+    {
+      "id": "categories-014-lt",
+      "lang": "lt",
+      "categories": [
+        "one",
+        "few",
+        "many",
+        "other"
+      ]
+    },
+    {
+      "id": "categories-015-he",
+      "lang": "he",
+      "categories": [
+        "one",
+        "two",
+        "other"
+      ]
+    }
+  ],
+  "categoryProblems": [
+    {
+      "id": "category-problems-001-en-few",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "few": "a",
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_PLURAL_CATEGORY_INVALID",
+          "message": "few is not a plural category of en: its categories are one, other",
+          "path": [
+            "cases",
+            "few"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "category-problems-002-en-valid",
+      "lang": "en",
+      "message": {
+        "plural": "count",
+        "cases": {
+          "=0": "No files",
+          "one": "{$count} file",
+          "other": "{$count} files"
+        }
+      },
+      "problems": []
+    },
+    {
+      "id": "category-problems-003-en-zero",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "zero": "a",
+          "=0": "b",
+          "other": "c"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_PLURAL_CATEGORY_INVALID",
+          "message": "zero is not a plural category of en: its categories are one, other",
+          "path": [
+            "cases",
+            "zero"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "category-problems-004-pl-valid",
+      "lang": "pl",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "a",
+          "few": "b",
+          "many": "c",
+          "other": "d"
+        }
+      },
+      "problems": []
+    },
+    {
+      "id": "category-problems-005-ja-one",
+      "lang": "ja",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "a",
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_PLURAL_CATEGORY_INVALID",
+          "message": "one is not a plural category of ja: its categories are other",
+          "path": [
+            "cases",
+            "one"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "category-problems-006-nested",
+      "lang": "en",
+      "message": {
+        "plural": "a",
+        "cases": {
+          "one": {
+            "plural": "b",
+            "cases": {
+              "two": "x",
+              "many": "y",
+              "other": "z"
+            }
+          },
+          "few": "q",
+          "other": "o"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_PLURAL_CATEGORY_INVALID",
+          "message": "few is not a plural category of en: its categories are one, other",
+          "path": [
+            "cases",
+            "few"
+          ],
+          "range": null
+        },
+        {
+          "code": "MESSAGE_PLURAL_CATEGORY_INVALID",
+          "message": "two is not a plural category of en: its categories are one, other",
+          "path": [
+            "cases",
+            "one",
+            "cases",
+            "two"
+          ],
+          "range": null
+        },
+        {
+          "code": "MESSAGE_PLURAL_CATEGORY_INVALID",
+          "message": "many is not a plural category of en: its categories are one, other",
+          "path": [
+            "cases",
+            "one",
+            "cases",
+            "many"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "category-problems-007-plain",
+      "lang": "en",
+      "message": "text",
+      "problems": []
+    },
+    {
+      "id": "category-problems-008-unknown-tag",
+      "lang": "xx",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "a",
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_PLURAL_CATEGORY_INVALID",
+          "message": "one is not a plural category of xx: its categories are other",
+          "path": [
+            "cases",
+            "one"
+          ],
+          "range": null
+        }
+      ]
+    }
+  ],
+  "unknownVariables": [
+    {
+      "id": "unknown-variables-001-same",
+      "source": "{$n} files",
+      "translation": "{$n} plików",
+      "problems": []
+    },
+    {
+      "id": "unknown-variables-002-fewer",
+      "source": "{$n} files",
+      "translation": "pliki",
+      "problems": []
+    },
+    {
+      "id": "unknown-variables-003-unknown",
+      "source": "{$n} files",
+      "translation": "{$m} plików",
+      "problems": [
+        {
+          "code": "MESSAGE_PLACEHOLDER_UNKNOWN",
+          "message": "m is not a placeholder of the source text",
+          "path": [],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "unknown-variables-004-plural-translation-of-plain",
+      "source": "{$n} files",
+      "translation": {
+        "plural": "n",
+        "cases": {
+          "one": "{$n} file",
+          "other": "{$n} files"
+        }
+      },
+      "problems": []
+    },
+    {
+      "id": "unknown-variables-005-selector-unknown",
+      "source": "Files",
+      "translation": {
+        "plural": "n",
+        "cases": {
+          "one": "plik",
+          "other": "pliki"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_PLACEHOLDER_UNKNOWN",
+          "message": "n is not a placeholder of the source text",
+          "path": [
+            "plural"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "unknown-variables-006-selector-from-placeholder",
+      "source": "{$count}",
+      "translation": {
+        "plural": "count",
+        "cases": {
+          "other": "x"
+        }
+      },
+      "problems": []
+    },
+    {
+      "id": "unknown-variables-007-placeholder-from-selector",
+      "source": {
+        "plural": "n",
+        "cases": {
+          "one": "One",
+          "other": "Many"
+        }
+      },
+      "translation": "{$n} plików",
+      "problems": []
+    },
+    {
+      "id": "unknown-variables-008-repeated-unknown",
+      "source": "{$a}",
+      "translation": "{$x} {$x} {$y}",
+      "problems": [
+        {
+          "code": "MESSAGE_PLACEHOLDER_UNKNOWN",
+          "message": "x is not a placeholder of the source text",
+          "path": [],
+          "range": null
+        },
+        {
+          "code": "MESSAGE_PLACEHOLDER_UNKNOWN",
+          "message": "y is not a placeholder of the source text",
+          "path": [],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "unknown-variables-009-nested-unknown",
+      "source": {
+        "plural": "n",
+        "cases": {
+          "one": "{$n} file",
+          "other": "{$n} files"
+        }
+      },
+      "translation": {
+        "plural": "n",
+        "cases": {
+          "one": {
+            "plural": "k",
+            "cases": {
+              "other": "{$z}"
+            }
+          },
+          "other": "{$n}"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_PLACEHOLDER_UNKNOWN",
+          "message": "k is not a placeholder of the source text",
+          "path": [
+            "cases",
+            "one",
+            "plural"
+          ],
+          "range": null
+        },
+        {
+          "code": "MESSAGE_PLACEHOLDER_UNKNOWN",
+          "message": "z is not a placeholder of the source text",
+          "path": [
+            "cases",
+            "one",
+            "cases",
+            "other"
+          ],
+          "range": null
+        }
+      ]
+    }
+  ]
+}

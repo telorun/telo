@@ -32,10 +32,17 @@ metadata:
           -d '{"q":"how do I roll back a bad release"}'
         curl -s -XPOST localhost:8104/api/documents -H 'content-type: application/json' \
           -d '{"title":"VPN access","text":"Request VPN access from the IT desk; it is granted per project."}'
+# Module `lang:` — the language this application's texts are written in — and
+# `UiReact.App.words` are read from 0.121.0.
+requires:
+  telo: ">=0.121.0"
+lang: en
+# `ui` and `ui-react` come from this repository while their changes are
+# unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
-  Ui: oci://ghcr.io/telorun/ui@0.4.0#sha256-9hNZj-hzEkskbX-GgG3eabew02lvQIjMbAHILQ7ca3U
-  UiReact: oci://ghcr.io/telorun/ui-react@0.5.0#sha256-xyuX5J_vK5o817qrpjNTlhi3TerS7dxPqisDyNTl4WA
+  Ui: ../../../modules/ui
+  UiReact: ../../../modules/ui-react
   HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
   OpenAI: oci://ghcr.io/telorun/openai@0.13.0#sha256-Tt9DaH254A972an-WTH_mtJOy9HAuUuH_SK1_bfOvHM
   Ai: oci://ghcr.io/telorun/ai@0.28.0#sha256-zpi3w-6zWjD3HGhxoMJKItuFM4ELZa-NTVHOtFacRII
@@ -491,7 +498,7 @@ routes:
 kind: UiReact.App
 metadata: { name: ui }
 title: Semantic search
-lang: en
+words: !ref Ui.words
 pages:
   - path: /
     title: Ask
@@ -505,15 +512,19 @@ pages:
           outputModel: !ref Answer
           source: { path: /api/ask }
           label: Ask
-          lists:
-            - rows: !cel "result.reply"
-              columns:
-                - value: !cel "row.answer"
-            - heading: Sources
-              rows: !cel "result.sources"
-              columns:
-                - value: !cel "row.title"
-                - value: !cel "row.score"
+          result:
+            type: stack
+            children:
+              - type: list
+                rows: !cel "result.reply"
+                columns:
+                  - value: !cel "row.answer"
+              - type: list
+                heading: Sources
+                rows: !cel "result.sources"
+                columns:
+                  - value: !cel "row.title"
+                  - value: !cel "row.score"
   - path: /search
     title: Search
     children:
@@ -526,12 +537,13 @@ pages:
           outputModel: !ref Matches
           source: { path: /api/search }
           label: Search
-          lists:
-            - rows: !cel "result.matches"
-              columns:
-                - value: !cel "row.title"
-                - value: !cel "row.id"
-                - value: !cel "row.score"
+          result:
+            type: list
+            rows: !cel "result.matches"
+            columns:
+              - value: !cel "row.title"
+              - value: !cel "row.id"
+              - value: !cel "row.score"
   - path: /documents
     title: Add a document
     children:
@@ -545,13 +557,12 @@ pages:
           source: { path: /api/documents }
           label: Index
           # The form shows these two only; the id is left for the API to derive.
-          fields:
-            - { property: title }
-            - { property: text }
-          lists:
-            - rows: !cel "result.indexed"
-              columns:
-                - value: !cel "row.id"
+          fields: [title, text]
+          result:
+            type: list
+            rows: !cel "result.indexed"
+            columns:
+              - value: !cel "row.id"
 ---
 kind: Http.Server
 metadata: { name: server }

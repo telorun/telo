@@ -14,7 +14,7 @@ import {
 } from "@telorun/sdk";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { memberSlotSchema, memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
-import { ManifestRootSchema } from "./manifest-schemas.js";
+import { liftFragmentDefs, ManifestRootSchema } from "./manifest-schemas.js";
 import { deepEquals } from "./migrations/match.js";
 import { schemaIssues, type SchemaIssue } from "./schema-error-report.js";
 import { readStandIn, type StandIns } from "./stand-in-findings.js";
@@ -1077,7 +1077,7 @@ export function inlineNamedShapes(
     }
     return out;
   };
-  return expand(schema, new Set()) as Record<string, any>;
+  return liftFragmentDefs(expand(schema, new Set()) as Record<string, any>);
 }
 
 /** Collect property schemas from top-level `properties` and all `oneOf`/`anyOf` sub-schemas. */

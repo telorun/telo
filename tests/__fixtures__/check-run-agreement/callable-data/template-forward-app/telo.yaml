@@ -1,0 +1,7 @@
+# Imports the library next door; what refuses its forward here is the kernel.
+kind: Telo.Application
+metadata:
+  name: CallableDataTemplateForwardApp
+  version: 1.0.0
+imports:
+  Forward: ../template-forward

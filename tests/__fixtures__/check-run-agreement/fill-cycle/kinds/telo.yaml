@@ -1,0 +1,60 @@
+# Kinds whose list entries each fill a member of a record and may read the
+# record's members: a form's fields over its model.
+kind: Telo.Library
+metadata:
+  name: FillCycleKinds
+  version: 1.0.0
+  description: Fixture kinds holding a list of entries that each fill a member of one record and may read its other members.
+exports:
+  kinds: [Form, Field]
+---
+kind: Telo.Definition
+metadata:
+  name: Form
+  description: Holds a model and the fields entering its members.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Holder
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
+    fields:
+      type: array
+      x-telo-context:
+        type: object
+        properties:
+          values:
+            x-telo-context-from-root: model
+            x-telo-context-eval: accessor
+            x-telo-context-item-fills: ["", "/property"]
+      items:
+        anyOf:
+          - type: string
+          - x-telo-ref: { kind: Self.Field, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Field
+  description: Enters one member of its form's record, drawn when a condition over the record holds.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Holder
+schema:
+  type: object
+  additionalProperties: false
+  required: [property]
+  properties:
+    property: { type: string }
+    shown:
+      type: object
+      additionalProperties: false
+      x-telo-context:
+        type: object
+        properties:
+          values:
+            x-telo-context-from-referrer: values
+            x-telo-context-eval: accessor
+      properties:
+        at: { x-telo-eval: accessor }

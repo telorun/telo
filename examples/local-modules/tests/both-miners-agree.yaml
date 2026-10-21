@@ -1,0 +1,47 @@
+kind: Telo.Application
+metadata:
+  name: LocalModulesExampleTest
+  version: 1.0.0
+  description: >-
+    Mines the same text with the TypeScript and the Rust module of
+    `examples/local-modules` and checks that both find the same nonce and hash,
+    against a value computed outside either. Timings vary by machine, so they
+    are not compared.
+imports:
+  PowTs: ../pow-ts
+  PowRust: ../pow-rust
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: typescript
+    invoke: { kind: PowTs.Mine }
+    inputs:
+      text: "Hello, Telo!"
+      difficulty: 12
+  - name: rust
+    invoke: { kind: PowRust.Mine }
+    inputs:
+      text: "Hello, Telo!"
+      difficulty: 12
+  - name: assertResults
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        typescript:
+          nonce: !cel "steps.typescript.result.nonce"
+          hash: !cel "steps.typescript.result.hash"
+        rust:
+          nonce: !cel "steps.rust.result.nonce"
+          hash: !cel "steps.rust.result.hash"
+      expected:
+        typescript:
+          nonce: 965
+          hash: "000d2247648e2b0f32eb94c1946f4253a5f2fffec89813d14234a89f7fffcd71"
+        rust:
+          nonce: 965
+          hash: "000d2247648e2b0f32eb94c1946f4253a5f2fffec89813d14234a89f7fffcd71"

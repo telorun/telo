@@ -1,5 +1,6 @@
 import { filterParam, type Operator, type Param } from "./collection.js";
 import { FILTER_KEYS } from "./open-address.js";
+import type { ValueLabel, WireText } from "./texts.js";
 import { plainTypes, type JsonSchema } from "./validation.js";
 
 type Scalar = string | number | boolean;
@@ -9,7 +10,9 @@ export type Control = "auto" | "select" | "options" | "toggle" | "slider" | "tag
 export interface FilterField {
   property: string;
   operator: Operator;
-  label: string;
+  label: WireText;
+  /** What each value the model labels is shown as. */
+  labels?: ValueLabel[];
   schema: JsonSchema;
   /** Kept outside whatever the bar folds into, and never removable. */
   pinned: boolean;
@@ -18,7 +21,7 @@ export interface FilterField {
 }
 
 export interface FilterPreset {
-  label: string;
+  label: WireText;
   values: { property: string; operator: Operator; value: Scalar[] }[];
 }
 

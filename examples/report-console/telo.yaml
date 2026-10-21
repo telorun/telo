@@ -1,0 +1,704 @@
+kind: Telo.Application
+metadata:
+  name: ReportConsole
+  version: 1.0.0
+  categories: [ UI, Transport ]
+  description: |
+    A data-driven report console with no hand-written frontend, in English and
+    Polish. A sign-in gate reads who is signed in; a form picks a timesheet and
+    an upload folder from a searchable file list, a period with presets, the
+    projects of the chosen sheet, columns and output options; the answer is
+    drawn as headings with plural counts, warning boxes and a results list whose
+    rows draft an e-mail or upload the report. A second page lists a sheet's
+    projects in a table. The backend is a set of stub routes over fixture data.
+# Module `lang:`, `UiReact.App.words` and every key of the data-driven screen
+# vocabulary are read from 0.121.0.
+requires:
+  telo: ">=0.121.0"
+lang: en
+# `ui`, `ui-react` and `i18n` come from this repository while their changes are
+# unreleased; `telo upgrade --pin-local` pins them again once they ship.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  I18n: ../../modules/i18n
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
+# The backend the screen calls — stub routes answering fixture data — and the
+# Polish translation, each in a file of its own.
+include:
+  - ./stub-api.yaml
+  - ./polish.yaml
+targets:
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8140
+---
+# What the sign-in check answers: whether a session is open, and why the last
+# sign-in did not complete.
+kind: Telo.JsonSchema
+metadata:
+  name: Auth
+schema:
+  type: object
+  required: [ authorized ]
+  properties:
+    authorized: { type: boolean }
+    failure: { type: string, enum: [ denied, expired ] }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Account
+schema:
+  type: object
+  required: [ email ]
+  properties:
+    email: { type: string, title: Signed in as }
+---
+# A button that sends nothing: connecting and signing out.
+kind: Telo.JsonSchema
+metadata:
+  name: NoInput
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+---
+kind: Telo.JsonSchema
+metadata:
+  name: ConsentLink
+schema:
+  type: object
+  required: [ url ]
+  properties:
+    url: { type: string, format: uri-reference }
+---
+# A file of the Drive the console reads timesheets from and uploads reports to.
+kind: Telo.JsonSchema
+metadata:
+  name: DriveFile
+schema:
+  type: object
+  required: [ id, name, kind, url ]
+  properties:
+    id: { type: string }
+    name: { type: string, title: Name }
+    kind:
+      title: Kind
+      type: string
+      enum: [ spreadsheet, folder ]
+      oneOf:
+        - { const: spreadsheet, title: Spreadsheet }
+        - { const: folder, title: Folder }
+    owner: { type: string, title: Owner }
+    url: { type: string, title: Open, format: uri }
+    closed: { type: boolean, title: Closed }
+---
+kind: Ui.Collection
+metadata:
+  name: driveCollection
+query:
+  filters:
+    - { property: id, operator: in }
+    - { property: kind, operator: eq }
+    - { property: name, operator: contains }
+  sort: []
+---
+# A client project whose hours one timesheet holds.
+kind: Telo.JsonSchema
+metadata:
+  name: Project
+schema:
+  type: object
+  required: [ id, name, spreadsheetId ]
+  properties:
+    id: { type: string }
+    name: { type: string, title: Project }
+    email: { type: string, title: Billing e-mail }
+    spreadsheetId: { type: string, title: Timesheet }
+---
+kind: Ui.Collection
+metadata:
+  name: projectCollection
+query:
+  filters:
+    - { property: id, operator: in }
+    - { property: spreadsheetId, operator: eq }
+  sort: []
+---
+# What the report form sends. The route restates it as its request body.
+kind: Telo.JsonSchema
+metadata:
+  name: ReportRequest
+schema:
+  type: object
+  additionalProperties: false
+  required: [ spreadsheetId, period, columns, hoursFormat ]
+  properties:
+    spreadsheetId: { type: string, title: Timesheet, minLength: 1 }
+    folder: { type: string, title: Upload folder, description: Where Upload puts a report. }
+    period:
+      type: object
+      title: Period
+      required: [ from, to ]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+    projects:
+      type: array
+      title: Projects
+      description: None chosen means every project of the sheet.
+      uniqueItems: true
+      items: { type: string }
+    columns:
+      type: array
+      title: Columns
+      description: Always in this order.
+      minItems: 1
+      uniqueItems: true
+      default: [ date, person, hours ]
+      items:
+        type: string
+        enum: [ date, person, task, hours, amount ]
+        oneOf:
+          - { const: date, title: Date }
+          - { const: person, title: Person }
+          - { const: task, title: Task }
+          - { const: hours, title: Hours }
+          - { const: amount, title: Amount }
+    hoursFormat:
+      type: string
+      title: Hours as
+      default: decimal
+      enum: [ decimal, clock ]
+      oneOf:
+        - { const: decimal, title: Decimal (7.5) }
+        - { const: clock, title: Hours and minutes (7:30) }
+    merge: { type: boolean, title: One file, description: Merge every project into one PDF., default: false }
+    chart: { type: boolean, title: Chart, description: Add a chart of hours per person., default: false }
+---
+# What generating answers: one file per project with time in the period, and
+# what could not be billed.
+kind: Telo.JsonSchema
+metadata:
+  name: ReportAnswer
+schema:
+  type: object
+  required: [ kind, period, projectsInPeriod, skipped, files, unpriced, unassigned, noCurrency, projectsLink ]
+  properties:
+    kind: { type: string, enum: [ billing, hours ] }
+    period: { type: string }
+    projectsInPeriod: { type: integer }
+    skipped: { type: integer }
+    combined: { type: string, title: One file, format: uri-reference }
+    chart: { type: string, title: Chart, format: uri-reference }
+    projectsLink: { type: string, title: Projects of the sheet, format: uri-reference }
+    files:
+      type: array
+      items:
+        type: object
+        required: [ projectId, project, hours, pdf ]
+        properties:
+          projectId: { type: string }
+          project: { type: string, title: Project }
+          email: { type: string, title: E-mail }
+          hours: { type: string, title: Hours }
+          amount: { type: number, title: Amount }
+          currency: { type: string, title: Currency }
+          pdf: { type: string, title: PDF, format: uri-reference }
+    unpriced:
+      type: array
+      items:
+        type: object
+        required: [ person, hours ]
+        properties:
+          person: { type: string, title: Person }
+          hours: { type: number, title: Hours }
+    unassigned:
+      type: array
+      items:
+        type: object
+        required: [ task, hours ]
+        properties:
+          task: { type: string, title: Task }
+          hours: { type: number, title: Hours }
+    noCurrency:
+      type: array
+      items:
+        type: object
+        required: [ project ]
+        properties:
+          project: { type: string, title: Project }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: DraftRequest
+schema:
+  type: object
+  additionalProperties: false
+  required: [ email, pdf, project ]
+  properties:
+    email: { type: string, title: E-mail, minLength: 1 }
+    pdf: { type: string, title: PDF, format: uri-reference }
+    project: { type: string, title: Project }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: DraftAnswer
+schema:
+  type: object
+  required: [ url ]
+  properties:
+    url: { type: string, title: Draft, format: uri }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: UploadRequest
+schema:
+  type: object
+  additionalProperties: false
+  required: [ pdf, folder, from, to ]
+  properties:
+    pdf: { type: string, title: PDF, format: uri-reference }
+    folder: { type: string, title: Upload folder, minLength: 1 }
+    from: { type: string, title: From, format: date }
+    to: { type: string, title: To, format: date }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: UploadAnswer
+schema:
+  type: object
+  required: [ link, target ]
+  properties:
+    link: { type: string, title: Uploaded file, format: uri }
+    target: { type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: RemindRequest
+schema:
+  type: object
+  additionalProperties: false
+  required: [ projectId, email, sheet ]
+  properties:
+    projectId: { type: string, title: Project }
+    email: { type: string, title: E-mail, minLength: 1 }
+    sheet: { type: string, title: Timesheet }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: RemindAnswer
+schema:
+  type: object
+  required: [ sentTo ]
+  properties:
+    sentTo: { type: string }
+---
+# The language a request is answered in, chosen from the translator's catalogs.
+kind: I18n.Negotiator
+metadata:
+  name: language
+translator: !ref t
+default: en
+---
+kind: UiReact.App
+metadata:
+  name: console
+title: Reports
+words: !ref Ui.words
+translator: !ref t
+lang: !cel "'accept-language' in request.headers ? Self.language(request.headers['accept-language']) : 'en'"
+theme:
+  kind: Ui.Theme
+  tokens:
+    color.background: "#f7f8fa"
+    color.surface: "#ffffff"
+    color.text: "#16202e"
+    color.accent: "#1d4ed8"
+    color.accent-text: "#ffffff"
+    radius.md: 6px
+# The dark-blue header of every table and list is styled over the renderer's
+# part names.
+stylesheets:
+  - !module-path ./console.css
+pages:
+  - path: /
+    title: Reports
+    children:
+      - { type: text, text: Monthly reports, style: heading }
+      # The sign-in gate: everything below waits for the check, and any 401
+      # inside it reads it again, which swaps the form for the banner while the
+      # form keeps what was entered.
+      - type: composite
+        ref:
+          kind: Ui.Data
+          model: !ref Auth
+          query:
+            signin: { type: string, enum: [ denied, expired ] }
+          source: { path: /api/auth }
+          reloadOn: [ focus, unauthorized ]
+          loading: { type: text, text: Checking your sign-in…, style: muted }
+          content:
+            type: stack
+            children:
+              - type: text
+                style: warning
+                text: Google sign-in was cancelled.
+                shown: { at: !cel "query.signin", matches: { const: denied } }
+              - type: text
+                style: warning
+                text: Your sign-in expired before it completed. Connect again.
+                shown: { at: !cel "data.failure", matches: { const: expired } }
+              - type: stack
+                shown: { at: !cel "data.authorized", matches: { const: false } }
+                children:
+                  - { type: text, text: Connect your Google account to read timesheets., style: subheading }
+                  - type: composite
+                    ref:
+                      kind: Ui.Action
+                      inputModel: !ref NoInput
+                      outputModel: !ref ConsentLink
+                      source: { path: /api/auth/connect }
+                      label: Connect Google
+                      onSuccess: { navigate: !cel "result.url" }
+              - type: stack
+                shown: { at: !cel "data.authorized", matches: { const: true } }
+                children:
+                  - type: composite
+                    ref:
+                      kind: Ui.Data
+                      model: !ref Account
+                      source: { path: /api/auth/user }
+                      content:
+                        type: columns
+                        children:
+                          - { type: value, value: !cel "data.email", style: muted }
+                          - type: composite
+                            ref:
+                              kind: Ui.Action
+                              inputModel: !ref NoInput
+                              source: { path: /api/auth/signout }
+                              label: Sign out
+                              onSuccess: { refreshes: [ /api/auth ] }
+                  - type: composite
+                    ref:
+                      kind: Ui.Action
+                      inputModel: !ref ReportRequest
+                      outputModel: !ref ReportAnswer
+                      source: { path: /api/generate }
+                      label: Generate
+                      groups:
+                        - { name: source, label: Source, description: The timesheet the hours are read from. }
+                        - name: period
+                          label: Period
+                          shown: &sheetChosen { at: !cel "values.spreadsheetId", matches: { minLength: 1 } }
+                        - name: content
+                          label: Content
+                          shown: *sheetChosen
+                        - name: output
+                          label: Output
+                          shown: *sheetChosen
+                      fields:
+                        - kind: Ui.PickerField
+                          property: spreadsheetId
+                          group: source
+                          surface: { kind: Ui.Popover, side: bottom }
+                          options:
+                            kind: Ui.CollectionOptions
+                            model: !ref DriveFile
+                            value: !cel "row.id"
+                            label: !cel "row.name"
+                            hint: !cel "row.owner"
+                            href: !cel "row.url"
+                            collection: !ref driveCollection
+                            source: { basePath: /api/drive/files, filters: { kind: spreadsheet } }
+                            search: { property: name, operator: contains }
+                        - kind: Ui.PickerField
+                          property: folder
+                          group: source
+                          options:
+                            kind: Ui.CollectionOptions
+                            model: !ref DriveFile
+                            value: !cel "row.id"
+                            label: !cel "row.name"
+                            href: !cel "row.url"
+                            collection: !ref driveCollection
+                            source: { basePath: /api/drive/files, filters: { kind: folder } }
+                            search: { property: name, operator: contains }
+                        - kind: Ui.DateRangeField
+                          property: period
+                          group: period
+                          weekStart: monday
+                          presets:
+                            - { label: This month, unit: month, offset: 0 }
+                            - { label: Last month, unit: month, offset: -1 }
+                            - { label: Last week, unit: week, offset: -1 }
+                            - { label: This quarter, unit: quarter, offset: 0 }
+                          initialPreset: Last month
+                          warnLongerThan: { unit: month, count: 1 }
+                        # Changing the sheet reads its projects again, and keeps
+                        # only the chosen ones the new sheet still has.
+                        - kind: Ui.ChoiceField
+                          property: projects
+                          group: content
+                          control: options
+                          options:
+                            kind: Ui.CollectionOptions
+                            model: !ref Project
+                            value: !cel "row.id"
+                            label: !cel "row.name"
+                            hint: !cel "row.email"
+                            collection: !ref projectCollection
+                            source: { basePath: /api/projects, filters: { spreadsheetId: !cel "values.spreadsheetId" } }
+                        - { kind: Ui.InputField, property: columns, group: content }
+                        - { kind: Ui.InputField, property: hoursFormat, group: output, control: options }
+                        - { kind: Ui.InputField, property: merge, group: output, control: toggle }
+                        - { kind: Ui.InputField, property: chart, group: output, control: toggle }
+                      # The chosen sheet and folder are remembered in the browser,
+                      # and labelled again from the Drive when the page opens.
+                      state: { key: report, store: { kind: Ui.LocalStore }, fields: [ spreadsheetId, folder ] }
+                      enabled:
+                        at: !cel "values.columns"
+                        matches: { minItems: 1 }
+                        disabledText: Choose at least one column.
+                      clearAnswerOn: [ spreadsheetId, period, projects, columns ]
+                      result:
+                        type: stack
+                        children:
+                          - type: text
+                            style: heading
+                            text:
+                              text:
+                                plural: count
+                                cases:
+                                  one: "{$count} project with logged time, {$period}"
+                                  other: "{$count} projects with logged time, {$period}"
+                              values: { count: !cel "result.projectsInPeriod", period: !cel "result.period" }
+                            shown: { at: !cel "result.projectsInPeriod", matches: { minimum: 1 } }
+                          - type: text
+                            style: muted
+                            text:
+                              text:
+                                plural: count
+                                cases:
+                                  one: "{$count} chosen project has no time in the period and was skipped."
+                                  other: "{$count} chosen projects have no time in the period and were skipped."
+                              values: { count: !cel "result.skipped" }
+                            shown: { at: !cel "result.skipped", matches: { minimum: 1 } }
+                          # Two empty states: nothing logged at all, or files
+                          # expected and none produced.
+                          - type: text
+                            text: No project has logged time in this period.
+                            shown: { at: !cel "result.projectsInPeriod", matches: { const: 0 } }
+                          - type: text
+                            text: Time was logged, but no file was produced.
+                            shown:
+                              at: !cel "result"
+                              matches: { properties: { files: { maxItems: 0 }, projectsInPeriod: { minimum: 1 } } }
+                          - type: box
+                            style: danger
+                            shown: { at: !cel "result.unpriced", matches: { minItems: 1 } }
+                            children:
+                              - type: list
+                                heading: Hours without a rate
+                                rows: !cel "result.unpriced"
+                                columns:
+                                  - value: !cel "row.person"
+                                  - value: !cel "row.hours"
+                          - type: box
+                            style: danger
+                            shown: { at: !cel "result.unassigned", matches: { minItems: 1 } }
+                            children:
+                              - type: list
+                                heading: Hours on no project
+                                rows: !cel "result.unassigned"
+                                columns:
+                                  - value: !cel "row.task"
+                                  - value: !cel "row.hours"
+                          - type: box
+                            style: danger
+                            shown: { at: !cel "result.noCurrency", matches: { minItems: 1 } }
+                            children:
+                              - type: list
+                                heading: Projects with no currency
+                                rows: !cel "result.noCurrency"
+                                columns:
+                                  - value: !cel "row.project"
+                          - type: value
+                            value: !cel "result.combined"
+                            text: Download all as one file
+                            shown: { at: !cel "result", matches: { required: [ combined ] } }
+                          - type: value
+                            value: !cel "result.chart"
+                            text: Download the chart
+                            shown: { at: !cel "result", matches: { required: [ chart ] } }
+                          - type: list
+                            heading: Files
+                            rows: !cel "result.files"
+                            shown: { at: !cel "result.files", matches: { minItems: 1 } }
+                            columns:
+                              - value: !cel "row.project"
+                              - value: !cel "row.email"
+                              - value: !cel "row.hours"
+                              - value: !cel "row.amount"
+                                shown: &billing { at: !cel "result.kind", matches: { const: billing } }
+                              - value: !cel "row.currency"
+                                shown: *billing
+                              - value: !cel "row.pdf"
+                            rowActions:
+                              # A draft needs the project's address; its link is
+                              # drawn in place of the button.
+                              - action:
+                                  kind: Ui.Action
+                                  inputModel: !ref DraftRequest
+                                  outputModel: !ref DraftAnswer
+                                  source: { path: /api/draft }
+                                  label: Draft e-mail
+                                  result: { type: value, value: !cel "result.url", text: Open the draft }
+                                inputs:
+                                  email: !cel "row.email"
+                                  pdf: !cel "row.pdf"
+                                  project: !cel "row.project"
+                                enabled:
+                                  at: !cel "row.email"
+                                  matches: { type: string, minLength: 1 }
+                                  disabledText: The project has no billing e-mail.
+                              # An upload reads the folder chosen now, at the
+                              # press, and the period the report was made for;
+                              # presses on several rows go one at a time.
+                              - action:
+                                  kind: Ui.Action
+                                  inputModel: !ref UploadRequest
+                                  outputModel: !ref UploadAnswer
+                                  source: { path: /api/upload }
+                                  label: Upload
+                                  concurrency: serial
+                                  result:
+                                    type: value
+                                    value: !cel "result.link"
+                                    text:
+                                      text: "Uploaded to {$target}"
+                                      values: { target: !cel "result.target" }
+                                inputs:
+                                  pdf: !cel "row.pdf"
+                                  folder: !cel "values.folder"
+                                  from: !cel "input.period.from"
+                                  to: !cel "input.period.to"
+                                enabled:
+                                  at: !cel "values.folder"
+                                  matches: { minLength: 1 }
+                                  disabledText: Choose an upload folder first.
+                          - type: value
+                            value: !cel "result.projectsLink"
+                            text: See the sheet's projects
+                      failure:
+                        type: stack
+                        style: danger
+                        children:
+                          - type: text
+                            style: strong
+                            text:
+                              text: "HTTP {$status} · {$code}"
+                              values: { status: !cel "error.status", code: !cel "error.code" }
+                            shown: { at: !cel "error", matches: { required: [ status ] } }
+                          - type: text
+                            style: strong
+                            text:
+                              text: "No answer · {$code}"
+                              values: { code: !cel "error.code" }
+                            shown: { at: !cel "error", matches: { not: { required: [ status ] } } }
+                          - { type: value, value: !cel "error.message" }
+  - path: /projects
+    title: Projects
+    children:
+      - { type: text, text: Projects of a timesheet, style: heading }
+      - type: composite
+        ref:
+          kind: Ui.Data
+          model: !ref Auth
+          source: { path: /api/auth }
+          reloadOn: [ focus, unauthorized ]
+          content:
+            type: stack
+            children:
+              - type: text
+                text: Sign in on the Reports page first.
+                shown: { at: !cel "data.authorized", matches: { const: false } }
+              - type: composite
+                shown: { at: !cel "data.authorized", matches: { const: true } }
+                ref:
+                  kind: Ui.Table
+                  model: !ref Project
+                  collection: !ref projectCollection
+                  # The sheet is the page address's `sheet`, which the report
+                  # links to; with none, the table reads nothing.
+                  query:
+                    sheet: { type: string, minLength: 1 }
+                  source: { basePath: /api/projects, filters: { spreadsheetId: !cel "query.sheet" } }
+                  columns:
+                    - value: !cel "row.name"
+                    - value: !cel "row.email"
+                  rowActions:
+                    - action:
+                        kind: Ui.Action
+                        inputModel: !ref RemindRequest
+                        outputModel: !ref RemindAnswer
+                        source: { path: /api/projects/remind }
+                        label: Remind
+                        result:
+                          type: text
+                          text:
+                            text: "Reminder sent to {$address}"
+                            values: { address: !cel "result.sentTo" }
+                      inputs:
+                        projectId: !cel "row.id"
+                        email: !cel "row.email"
+                        sheet: !cel "query.sheet"
+                      confirm: Remind the client to log this month's time?
+                      enabled:
+                        at: !cel "row.email"
+                        matches: { minLength: 1 }
+                        disabledText: The project has no billing e-mail.
+---
+kind: Http.Server
+metadata:
+  name: server
+listen:
+  port: !cel "ports.http"
+mounts:
+  - path: /api/auth
+    mount: !ref authApi
+  # Everything else needs a session: a request without one is answered 401,
+  # which the page's sign-in gate reads again on.
+  - path: /api
+    mount: !ref consoleApi
+    guard:
+      invoke:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [ cookie ]
+            properties:
+              cookie: { type: string, x-telo-sensitive: true }
+        steps:
+          - name: session
+            if: !cel "!Self.signedIn(inputs.cookie)"
+            then:
+              - name: refuse
+                throw: { code: UNAUTHORIZED, message: Sign in to Google first. }
+      inputs:
+        cookie: !cel "'cookie' in request.headers ? request.headers['cookie'] : ''"
+      catches:
+        - when: !cel "error.code == 'UNAUTHORIZED'"
+          status: 401
+          content:
+            application/json:
+              body: { code: !cel "error.code", message: !cel "error.message" }
+  - path: /
+    mount: !ref console

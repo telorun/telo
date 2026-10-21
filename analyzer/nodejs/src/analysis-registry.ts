@@ -17,7 +17,9 @@ import {
   accessorFieldAt,
   celEvalModeAt,
   governedCelEvalSites,
+  type NamedShapeLookup,
   type CelEvalMode,
+  type CelEvalSites,
 } from "./eval-paths.js";
 import { type ContractDirection, type DefResolver } from "./extends-resolution.js";
 import { projectionModules, resolveContract, resolveNamedShape } from "./invocation-contract.js";
@@ -73,6 +75,9 @@ export class AnalysisRegistry {
   private readonly aliasesByModule: Map<string, AliasResolver>;
   private readonly views: Map<string, AnalysisRegistry>;
   private readonly libraries: { current?: LibraryDeclarations };
+  /** Each definition's governed eval sites, as the last analysis left the
+   *  definition — read on every editor question, so walked once per analysis. */
+  private governedSites = new WeakMap<ResourceDefinition, CelEvalSites | null>();
 
   constructor(scope?: AnalysisRegistryScope) {
     this.defs = scope?.defs ?? new DefinitionRegistry();
@@ -211,6 +216,12 @@ export class AnalysisRegistry {
     return this.defs.schemaForId(id);
   }
 
+  /** The named-shape lookup every eval-site walk takes — {@link schemaForId} —
+   *  so the kernel reaches the sites `telo check` reads. */
+  get shapeLookup(): NamedShapeLookup {
+    return this.defs.shapeLookup;
+  }
+
   /**
    * Every concrete reference, step, scope and schema-from site of a resource
    * (`reference-reach.ts`), `x-telo-schema-from` slots expanded against their
@@ -300,7 +311,7 @@ export class AnalysisRegistry {
    * `path` is the concrete spelling with indices kept (`routes[0].returns[1].when`).
    */
   celEvalModeAt(kind: string, path: string): CelEvalMode | null | undefined {
-    const sites = governedCelEvalSites(this.resolveDefinition(kind), this.scopedDefResolver());
+    const sites = this.governedSitesOf(kind);
     return sites ? celEvalModeAt(sites, path) : undefined;
   }
 
@@ -308,7 +319,7 @@ export class AnalysisRegistry {
    *  place beneath one — the two take different tags
    *  (`accessorTagEngines`). */
   accessorFieldAt(kind: string, path: string): boolean {
-    const sites = governedCelEvalSites(this.resolveDefinition(kind), this.scopedDefResolver());
+    const sites = this.governedSitesOf(kind);
     return sites !== undefined && accessorFieldAt(sites, path) !== undefined;
   }
 
@@ -657,6 +668,21 @@ export class AnalysisRegistry {
    *  declarations its last analysis indexed, which a projection hop reads. */
   _setLibraries(libraries: LibraryDeclarations): void {
     this.libraries.current = libraries;
+    this.governedSites = new WeakMap();
+  }
+
+  /** The governed eval sites of `kind`'s definition, remembered per definition
+   *  until the next analysis. */
+  private governedSitesOf(kind: string): CelEvalSites | undefined {
+    const definition = this.resolveDefinition(kind);
+    if (!definition) return undefined;
+    if (!this.governedSites.has(definition)) {
+      this.governedSites.set(
+        definition,
+        governedCelEvalSites(definition, this.scopedDefResolver(), this.defs.shapeLookup) ?? null,
+      );
+    }
+    return this.governedSites.get(definition) ?? undefined;
   }
 
   /** @internal Bridge for StaticAnalyzer — do not use outside the analyzer package. */

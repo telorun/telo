@@ -21,6 +21,7 @@
 //! * `function_controller.rs` — `sdk/nodejs/src/function-controller.ts`
 //! * `logging.rs` — `sdk/nodejs/src/{logger,log-record,log-severity,log-sink}.ts`
 //! * `plain_encoding.rs` — `sdk/nodejs/src/plain-encoding.ts`
+//! * `text_record.rs` — `sdk/nodejs/src/text-record.ts`
 //! * `typed_frame.rs` (+ `typed_frame/`) — `sdk/nodejs/src/typed-frame.ts`
 //! * `value_type.rs` — `sdk/nodejs/src/value-type.ts`
 //!
@@ -37,6 +38,7 @@ pub mod function_controller;
 mod invoke_context;
 pub mod logging;
 pub mod plain_encoding;
+pub mod text_record;
 mod traits;
 pub mod typed_frame;
 pub mod value_type;
@@ -50,6 +52,7 @@ pub use cel_value_identity::{
     CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue, CelValue, ReservedTypeName, SourceRange,
 };
 pub use function_controller::{Function, FunctionContext};
+pub use text_record::{MessageSource, TextRecord};
 
 pub use error::ControllerError;
 pub use logging::{

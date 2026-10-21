@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import type { FilterField } from "./filter-state.js";
 import { OptionGroup, Tags, separated } from "./list-controls.js";
 import { MultiSelect, Select, type Option } from "./select.js";
+import { useShowValue, type ShowValue } from "./record-fields.js";
+import { useSay, useText } from "./texts.js";
 import { plainTypes, type JsonSchema } from "./validation.js";
 
 interface FilterControlProps {
@@ -24,18 +26,18 @@ function inputType(field: FilterField): string {
   return "text";
 }
 
-/** What a filter is chosen from: its property's listed values, or yes and no. */
-function optionsOf(schema: JsonSchema): Option[] | undefined {
+/** What a filter is chosen from: its property's listed values, or yes and no,
+ *  each shown as `show` says. */
+function optionsOf(schema: JsonSchema, show: ShowValue): Option[] | undefined {
   const listed: unknown[] | undefined = Array.isArray(schema.enum) ? schema.enum : plainTypes(schema).includes("boolean") ? [true, false] : undefined;
-  return listed?.map((option) => ({
-    value: String(option),
-    label: typeof option === "boolean" ? (option ? "Yes" : "No") : String(option),
-  }));
+  return listed?.map((option) => ({ value: String(option), label: show(option) }));
 }
 
 /** One filter's control, as its field says it is entered. */
 export function FilterControl({ field, id, name, values, onChange, onCommit }: FilterControlProps) {
-  const options = optionsOf(field.schema);
+  const say = useSay();
+  const text = useText();
+  const options = optionsOf(field.schema, useShowValue(field.labels));
   const many = field.operator === "in";
   const choose = (next: string[]) => onChange(next, "choice");
   switch (field.control) {
@@ -87,7 +89,7 @@ export function FilterControl({ field, id, name, values, onChange, onCommit }: F
           <Slider.Track>
             <Slider.Range />
           </Slider.Track>
-          <Slider.Thumb aria-label={name ?? field.label} aria-valuetext={values[0] ?? "Any"} />
+          <Slider.Thumb aria-label={name ?? text(field.label)} aria-valuetext={values[0] ?? say("any")} />
         </Slider.Root>
       );
     }
@@ -102,7 +104,7 @@ export function FilterControl({ field, id, name, values, onChange, onCommit }: F
         />
       );
     default:
-      if (options && many) return <MultiSelect part="filter-select" id={id} options={options} values={values} placeholder="Any" onChange={choose} />;
+      if (options && many) return <MultiSelect part="filter-select" id={id} options={options} values={values} placeholder={say("any")} onChange={choose} />;
       if (options) {
         return (
           <Select
@@ -110,8 +112,8 @@ export function FilterControl({ field, id, name, values, onChange, onCommit }: F
             id={id}
             options={options}
             value={values[0] ?? ""}
-            placeholder="Any"
-            none="Any"
+            placeholder={say("any")}
+            none={say("any")}
             onChange={(value) => choose(value === "" ? [] : [value])}
           />
         );

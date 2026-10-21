@@ -1,13 +1,12 @@
-# Two tables offering a row one action each, bound from the row: one whose
-# action declares no lists, one whose `lists` is empty. Neither is refused,
-# and every rule runs on both.
+# A table and a list offering a row an action that draws an answer, bound from
+# the row. Neither is refused, and every rule runs on both.
 kind: Telo.Library
 metadata:
   name: UiRowActions
   version: 1.0.0
   description: >-
-    Test fixture: tables whose row actions are bound from the row, over an
-    action that declares no lists and one whose list of lists is empty.
+    Test fixture: a table and a list whose row actions are bound from the row,
+    over actions that draw their answer.
 imports:
   Ui: ../../../
 ---
@@ -46,11 +45,18 @@ label: Remove
 ---
 kind: Ui.Action
 metadata:
-  name: removeNoLists
+  name: removeAndShow
 inputModel: !ref Removal
+outputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      receipt: { type: string, format: uri-reference }
 source: { path: /api/todos/remove }
 label: Remove
-lists: []
+result: { type: value, value: !cel "result.receipt", text: Receipt }
+onSuccess: { refreshes: [/api/todos] }
 ---
 kind: Ui.Table
 metadata:
@@ -64,10 +70,29 @@ rowActions:
 ---
 kind: Ui.Table
 metadata:
-  name: emptyLists
+  name: answered
 model: !ref Todo
 collection: !ref todos
 source: { basePath: /api/todos }
 rowActions:
-  - action: !ref removeNoLists
+  - action: !ref removeAndShow
     inputs: { count: !cel "row.count" }
+    enabled: { at: !cel "row.count", matches: { minimum: 1 }, disabledText: Nothing to remove. }
+---
+kind: Ui.Data
+metadata:
+  name: listed
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      todos: { type: array, items: !ref Todo }
+source: { path: /api/todos }
+content:
+  type: list
+  rows: !cel "data.todos"
+  columns: [{ value: !cel "row.text" }]
+  rowActions:
+    - action: !ref removeAndShow
+      inputs: { count: !cel "row.count" }

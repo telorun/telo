@@ -1,0 +1,40 @@
+{
+  "title": "Text catalog",
+  "description": "Translations of a module's texts into one language: each entry names a source text (and its context) and the Message that translates it.",
+  "type": "object",
+  "required": [
+    "lang",
+    "texts"
+  ],
+  "properties": {
+    "lang": {
+      "description": "The language the translations are written in.",
+      "type": "string",
+      "format": "language-tag"
+    },
+    "texts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "text",
+          "translation"
+        ],
+        "properties": {
+          "text": {
+            "$ref": "telo://manifest#/$defs/Message"
+          },
+          "context": {
+            "type": "string",
+            "minLength": 1
+          },
+          "translation": {
+            "$ref": "telo://manifest#/$defs/Message"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

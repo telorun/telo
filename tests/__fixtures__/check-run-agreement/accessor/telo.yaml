@@ -3,8 +3,9 @@
 # shaped like a chain included. The chain is typed against the row model the
 # table names, given by `!ref` and given inline, and a read through a nullable
 # member needs no guard, since nothing evaluates it. The provider's other
-# fields are still evaluated at creation, and a template body's accessor
-# reaches the entry it composes as written.
+# fields are still evaluated at creation — an expression beside an accessor in
+# the same field included — and a template body's accessor reaches the entry it
+# composes as written.
 kind: Telo.Application
 metadata:
   name: AccessorApp
@@ -43,7 +44,7 @@ columns:
     value: !cel "row.text"
   - header: Whole row
     value: !cel "row"
-  - header: Owner
+  - header: !cel "'Owner since ' + module.version"
     value: !cel "row.owner.name"
   - header: Fixed
     value: fixed text
@@ -95,6 +96,7 @@ steps:
         byRef:
           title: Todos 1.0.0
           rowStyle: { root: row, path: [status] }
+          headers: [Task, Whole row, Owner since 1.0.0, Fixed, Lookalike]
           values:
             - { root: row, path: [text] }
             - { root: row, path: [] }
@@ -104,10 +106,12 @@ steps:
         byInline:
           title: Inline
           rowStyle: { root: row, path: [status] }
+          headers: [Task]
           values:
             - { root: row, path: [text] }
         preset:
           title: Preset todos
           rowStyle: { root: row, path: [status] }
+          headers: [Label]
           values:
             - { value: todos }

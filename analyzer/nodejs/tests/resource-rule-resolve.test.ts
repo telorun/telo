@@ -199,3 +199,90 @@ describe("resource rules — resolve", () => {
     expect(issues.map((i) => i.path)).toEqual(["schema.x-telo-resource-rules[0].resolve[0]"]);
   });
 });
+
+/** `resolve:` pointers that cross a reference into what it names, a hop at a
+ *  time, ranging over a collection with `*`. */
+describe("resource rules — resolve across references", () => {
+  const schemas: Record<string, Record<string, any>> = {
+    "std.Form": {
+      type: "object",
+      properties: {
+        fields: {
+          type: "array",
+          items: { anyOf: [{ type: "string" }, { "x-telo-ref": { kind: "std.Field", use: "dependency" } }] },
+        },
+      },
+      "x-telo-resource-rules": [
+        {
+          resolve: ["/fields/*/options/model"],
+          in: "/fields",
+          condition: cel("type(this) == string || this.options.model.code != 'bad'"),
+          code: "MODEL_BAD",
+          message: "a field's options read a bad model",
+        },
+      ],
+    },
+    "std.Field": {
+      type: "object",
+      properties: { options: { "x-telo-ref": { kind: "std.Options", use: "dependency" } } },
+    },
+    "std.Options": {
+      type: "object",
+      properties: { model: { "x-telo-ref": { kind: "std.Model", use: "dependency" } } },
+    },
+    "std.Model": { type: "object", properties: { code: { type: "string" } } },
+  };
+  const declarations = [
+    { kind: "std.Field", metadata: { name: "f1" }, options: { kind: "std.Options", name: "o1" } },
+    { kind: "std.Field", metadata: { name: "f2" }, options: { kind: "std.Options", name: "o2" } },
+    { kind: "std.Options", metadata: { name: "o1" }, model: { kind: "std.Model", name: "good" } },
+    { kind: "std.Options", metadata: { name: "o2" }, model: { kind: "std.Model", name: "bad" } },
+    { kind: "std.Model", metadata: { name: "good" }, code: "good" },
+    { kind: "std.Model", metadata: { name: "bad" }, code: "bad" },
+  ] as unknown as ResourceManifest[];
+  const byName = new Map(declarations.map((d) => [d.metadata!.name as string, d]));
+  const binder = new PeerBinder({
+    declarationOf: (r: ReferenceValue) => byName.get(r.name),
+    refSlotsOf: (kind) => declaredReach(schemas[kind] ?? {}).references.map((r) => r.path),
+    refSitesOf: (manifest, kind) =>
+      new Map(
+        reachSites(schemas[kind] ?? {}, manifest)
+          .filter((site) => site.refs.length > 0)
+          .map((site) => [
+            site.path,
+            { shape: site.refs[0]!.fieldPath, kinds: site.refs.flatMap((r) => r.slot.kinds) },
+          ]),
+      ),
+  });
+  const form = {
+    kind: "std.Form",
+    metadata: { name: "form" },
+    fields: ["title", { kind: "std.Field", name: "f1" }, { kind: "std.Field", name: "f2" }],
+  } as unknown as ResourceManifest;
+
+  it("reads a declaration two references away, through every entry of a list", () => {
+    const findings = evaluateResourceRules(form, schemas["std.Form"], undefined, undefined, binder, "std.Form");
+    expect(findings.map((f) => [f.kind, "path" in f ? f.path : undefined])).toEqual([["violation", "fields[2]"]]);
+  });
+
+  it("accepts a pointer continuing past a slot into what the slot may hold", () => {
+    const issues = validateResourceRuleDeclarations(
+      { kind: "Telo.Definition", metadata: { name: "Form" }, schema: schemas["std.Form"] } as unknown as ResourceManifest,
+      undefined,
+      undefined,
+      (kind) => (schemas[kind] ? [schemas[kind]!] : []),
+    );
+    expect(issues).toEqual([]);
+    const misspelled = {
+      ...schemas["std.Form"],
+      "x-telo-resource-rules": [{ ...schemas["std.Form"]!["x-telo-resource-rules"][0], resolve: ["/fields/*/options/modl"] }],
+    };
+    const refused = validateResourceRuleDeclarations(
+      { kind: "Telo.Definition", metadata: { name: "Form" }, schema: misspelled } as unknown as ResourceManifest,
+      undefined,
+      undefined,
+      (kind) => (schemas[kind] ? [schemas[kind]!] : []),
+    );
+    expect(refused.map((i) => i.path)).toEqual(["schema.x-telo-resource-rules[0].resolve[0]"]);
+  });
+});

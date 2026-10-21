@@ -1,0 +1,17 @@
+# A text's values named by accessor — one a literal, one a chain into the row —
+# reach the controller as bindings: the literal is judged as its value, the chain
+# as a value its consumer resolves, and `telo check` types the chain.
+kind: Telo.Application
+metadata:
+  name: AccessorValuesApp
+  version: 1.0.0
+imports:
+  Kinds: ../evaluated
+---
+kind: Kinds.Row
+metadata:
+  name: row
+label: "{$name} has {$count} items"
+values:
+  name: !cel "row.name"
+  count: 3

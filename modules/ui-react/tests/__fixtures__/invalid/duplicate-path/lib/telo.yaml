@@ -8,6 +8,7 @@ metadata:
     path.
 imports:
   UiReact: ../../../../../
+  Ui: ../../../../../../ui
 exports:
   resources: [twice]
 ---
@@ -15,6 +16,7 @@ kind: UiReact.App
 metadata:
   name: twice
 title: Twice
+words: !ref Ui.words
 pages:
   - path: /reports
     title: Reports

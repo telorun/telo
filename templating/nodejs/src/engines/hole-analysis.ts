@@ -1,5 +1,5 @@
 import type { CelEnvironment, CelNode } from "@telorun/cel";
-import type { CompiledValue } from "@telorun/sdk";
+import type { CompiledCall, CompiledValue } from "@telorun/sdk";
 import { compileExpression, repeatableExpression } from "../cel/compile.js";
 import {
   readInterpolationHoles,
@@ -26,6 +26,7 @@ export function compileHoles(
   readonly compiled: readonly CompiledValue[];
   readonly refs: readonly string[];
   readonly calls: readonly string[];
+  readonly callArguments: readonly CompiledCall[];
   readonly volatile: boolean;
 } {
   const compiled = holes.map((h) => compileExpression(h.expr, env.celEnv, env.moduleNames, env.programSites));
@@ -37,7 +38,8 @@ export function compileHoles(
     for (const q of c.calls ?? []) calls.add(q);
     if (c.volatile) volatile = true;
   }
-  return { compiled, refs: [...refs], calls: [...calls], volatile };
+  const callArguments = compiled.flatMap((c) => c.callArguments ?? []);
+  return { compiled, refs: [...refs], calls: [...calls], callArguments, volatile };
 }
 
 /** Analyze each hole with the shared CEL analysis, so diagnostics read exactly

@@ -50,8 +50,8 @@ steps:
         digestsDiffer: !cel "steps.public.result.body.digest != steps.staff.result.body.digest"
         equalHeadersEqualDigest: !cel "steps.public.result.body.digest == steps.publicAgain.result.body.digest"
       expected:
-        public: [[Task, Due]]
-        staff: [[Task, Due, Priority]]
+        public: [ [ { lang: und, message: [ Task ] }, { lang: und, message: [Due] } ] ]
+        staff: [ [ { lang: und, message: [ Task ] }, { lang: und, message: [Due] }, { lang: und, message: [Priority] } ] ]
         digestsDiffer: true
         equalHeadersEqualDigest: true
 
@@ -96,8 +96,30 @@ steps:
         stylesheetsDiffer: true
         restShared: true
         equalHeadersEqualDigest: true
-        blueCss: "@layer telo.theme {\n  :root {\n    --telo-color-accent: #1f8fff;\n    --telo-radius-md: 2px;\n  }\n}\n"
-        redTokens: "@layer telo.theme {\n  :root {\n    --telo-color-accent: #c4341b;\n    --telo-font-body: \"Test Sans\";\n    --telo-font-mono: \"Menlo\";\n  }\n}\n"
+        blueCss: "@layer telo.theme {
+
+          \  :root {
+
+          \    --telo-color-accent: #1f8fff;
+
+          \    --telo-radius-md: 2px;
+
+          \  }
+
+          }\n"
+        redTokens: "@layer telo.theme {
+
+          \  :root {
+
+          \    --telo-color-accent: #c4341b;
+
+          \    --telo-font-body: \"Test Sans\";
+
+          \    --telo-font-mono: \"Menlo\";
+
+          \  }
+
+          }\n"
         redFace: true
         oneFace: true
         face:
@@ -143,16 +165,16 @@ steps:
         banner:
           type: stack
           children:
-            - { type: text, text: From a library, style: heading }
-            - { type: text, text: Placed as one section, style: muted }
-        badge: { type: badge, text: from 127.0.0.1, style: [accent, strong] }
-        lastLink: { type: link, text: unsafe, href: / }
+            - { type: text, text: { lang: en, message: [From a library] }, style: heading }
+            - { type: text, text: { lang: en, message: [Placed as one section] }, style: muted }
+        badge: { type: badge, text: { lang: en, message: [from 127.0.0.1] }, style: [accent, strong] }
+        lastLink: { type: link, text: { lang: en, message: [unsafe] }, href: / }
         invalidLink: ERR_UI_NODE_INVALID
-        restIntact: { type: link, text: Back to todos, href: / }
+        restIntact: { type: link, text: { lang: en, message: [Back to todos] }, href: / }
         offsite:
           status: 200
           link: ERR_UI_NODE_INVALID
-          rest: { type: link, text: Back to todos, href: / }
+          rest: { type: link, text: { lang: en, message: [Back to todos] }, href: / }
         components: [columns, ERR_UI_COMPONENT_ABI_UNSUPPORTED, ERR_UI_COMPONENT_IMPORT_UNSUPPLIED, table]
         hosted: [HostProbe, Counter]
         image: { status: 200, svg: true }

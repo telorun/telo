@@ -1,0 +1,22 @@
+# A library whose catalog translates a text with a placeholder its source does
+# not have.
+kind: Telo.Library
+metadata:
+  name: CatalogPlaceholder
+  version: 1.0.0
+  description: Fixture library whose catalog reads an unknown placeholder.
+lang: en
+imports:
+  I18n: ../../../../
+exports:
+  resources: [t]
+---
+kind: I18n.Catalog
+metadata: { name: polish }
+lang: pl
+texts:
+  - { text: Open, translation: "Otwórz {$x}" }
+---
+kind: I18n.Translator
+metadata: { name: t }
+catalogs: [!ref polish]

@@ -1,0 +1,15 @@
+# A library writing a heading whose text reads a value its reader does not
+# format it with. Its own check reports it; a consumer's is silent.
+kind: Telo.Library
+metadata:
+  name: TextValuesUnboundLib
+  version: 1.0.0
+  description: Fixture library holding one heading defect.
+lang: en
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Heading
+metadata:
+  name: arrivals
+text: "{$who} arrived"

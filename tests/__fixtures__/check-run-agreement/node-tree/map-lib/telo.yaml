@@ -1,0 +1,25 @@
+# A tag template reading a member the tag binding does not declare, invoked by
+# the sequence the library exports.
+kind: Telo.Library
+metadata:
+  name: MapLib
+  version: 1.0.0
+  description: Fixture library whose tag template reads an undeclared member of the tag.
+imports:
+  Kinds: ../kinds
+  Run: ../../../../../modules/run
+exports:
+  resources: [go]
+---
+kind: Kinds.Tags
+metadata:
+  name: tagged
+tags:
+  first: !cel "tag.cod"
+---
+kind: Run.Sequence
+metadata:
+  name: go
+steps:
+  - name: tags
+    invoke: !ref tagged

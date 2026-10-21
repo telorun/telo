@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import contract from "../src/contract/parts.json" with { type: "json" };
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
-import { actionNode, component, filterField, filtersNode, opener, tableNode, todos } from "./spec-nodes.js";
+import { actionNode, component, dataNode, filterField, filtersNode, opener, operation, tableNode, todos } from "./spec-nodes.js";
 
 const listed = Object.values(contract.parts).flat();
 let rendered: Rendered | undefined;
@@ -95,7 +95,7 @@ describe("the styling contract", () => {
       pages: {
         "/": {
           title: "Action",
-          children: [actionNode(), tableNode({ columns: [], rowActions: [{ path: "/api/todos/archive", label: "Archive", inputs: { id: { root: "row", path: ["id"] } } }] })],
+          children: [actionNode(), tableNode({ columns: [], rowActions: [{ action: operation("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" } } }), inputs: { id: { root: "row", path: ["id"] } } }] })],
         },
       },
     });
@@ -103,6 +103,128 @@ describe("the styling contract", () => {
     await rendered.enter(rendered.parts("input")[2], "ada@example.com");
     await rendered.commit(rendered.parts("input")[2], "enter");
     await rendered.click(rendered.part("submit"));
+    for (const part of emitted()) seen.add(part);
+    // An action that failed, beside a table whose rows' operations answered and failed.
+    rendered.unmount();
+    const id = { type: "object", properties: { id: { type: "integer" } } };
+    rendered = await render({
+      path: "/",
+      collections: { "/api/todos": todos },
+      answers: {
+        "/api/reports": () => new Response(null, { status: 500 }),
+        "/api/todos/archive": () => new Response(null, { status: 204 }),
+        "/api/todos/reject": () => new Response(null, { status: 500 }),
+      },
+      pages: {
+        "/": {
+          title: "Answers",
+          children: [
+            actionNode(),
+            tableNode({
+              columns: [],
+              rowActions: [
+                { action: operation("/api/todos/archive", "Archive", id, { result: { type: "text", text: "Archived" } }), inputs: { id: { root: "row", path: ["id"] } } },
+                { action: operation("/api/todos/reject", "Reject", id), inputs: { id: { root: "row", path: ["id"] } } },
+              ],
+            }),
+          ],
+        },
+      },
+    });
+    await rendered.enter(rendered.part("input"), "2026-09");
+    await rendered.click(rendered.part("submit"));
+    await rendered.click(rendered.parts("row-action").find((button) => button.textContent === "Archive") as HTMLElement);
+    await rendered.click(rendered.parts("row-action").find((button) => button.textContent === "Reject") as HTMLElement);
+    for (const part of emitted()) seen.add(part);
+    // A reader that has answered draws its values and a list; an action whose
+    // condition does not hold says why its button is disabled.
+    rendered.unmount();
+    rendered = await render({
+      path: "/",
+      answers: {
+        "/api/account": () =>
+          new Response(JSON.stringify({ authorized: true, email: "ada@example.com", files: [{ name: "a.pdf" }] }), { status: 200 }),
+      },
+      pages: {
+        "/": {
+          title: "Data",
+          children: [
+            dataNode(),
+            actionNode({ enabled: { at: { root: "values", path: ["month"] }, matches: { minLength: 7 }, disabledText: "Choose a month first." } }),
+          ],
+        },
+      },
+    });
+    for (const part of emitted()) seen.add(part);
+    // Every field kind, in a group, over an option source with hints and links.
+    rendered.unmount();
+    const people = {
+      type: "collection",
+      schema: { type: "object", properties: { id: { type: "string" }, name: { type: "string" }, team: { type: "string" }, page: { type: "string" } } },
+      value: { root: "row", path: ["id"] },
+      label: { root: "row", path: ["name"] },
+      hint: { root: "row", path: ["team"] },
+      href: { root: "row", path: ["page"] },
+      basePath: "/api/people",
+      filters: {},
+      pageSize: 1,
+      search: { property: "name", operator: "contains" },
+    };
+    const kinds = {
+      type: "object",
+      properties: {
+        urgent: { type: "boolean" },
+        effort: { type: "integer", minimum: 1, maximum: 5 },
+        owner: { type: "string" },
+        watchers: { type: "array", items: { type: "string" } },
+        reviewers: { type: "array", items: { type: "string" } },
+        period: { type: "object", properties: { from: { type: "string", format: "date" }, to: { type: "string", format: "date" } } },
+      },
+    };
+    rendered = await render({
+      path: "/",
+      collections: { "/api/people": [{ id: "p1", name: "Ada", team: "red", page: "/people/p1" }, { id: "p2", name: "Alan", team: "red", page: "/people/p2" }], "/api/nobody": [] },
+      pages: {
+        "/": {
+          title: "Fields",
+          children: [
+            operation("/api/tasks", "Send", kinds, {
+              groups: [{ name: "how", label: "How", description: "How it is done." }],
+              fields: [
+                { type: "input", property: "urgent", label: "Urgent", description: "Drop everything else.", control: "toggle", group: "how" },
+                { type: "input", property: "effort", label: "Effort", control: "slider", group: "how" },
+                { type: "choice", property: "owner", label: "Owner", control: "options", options: people },
+                { type: "picker", property: "watchers", label: "Watchers", options: people, surface: { type: "dialog", size: "medium", modal: true, dismiss: { escape: true, outside: true, closeButton: true } } },
+                {
+                  type: "picker",
+                  property: "reviewers",
+                  label: "Reviewers",
+                  options: { ...people, basePath: "/api/nobody" },
+                  surface: { type: "dialog", size: "medium", modal: true, dismiss: { escape: true, outside: true, closeButton: true } },
+                },
+                {
+                  type: "dateRange",
+                  property: "period",
+                  label: "Period",
+                  presets: [{ label: "Today", unit: "day", offset: 0 }],
+                  weekStart: "monday",
+                  warnLongerThan: { unit: "day", count: 1 },
+                },
+              ],
+            }),
+          ],
+        },
+      },
+    });
+    await rendered.enter(rendered.part("date-range-from"), "2026-01-01");
+    await rendered.enter(rendered.part("date-range-to"), "2026-01-05");
+    await rendered.click(rendered.part("picker-trigger"));
+    await rendered.click(rendered.part("picker-option"));
+    await rendered.click(rendered.part("picker-trigger"));
+    for (const part of emitted()) seen.add(part);
+    await rendered.escape();
+    // A picker over a source offering nothing says so.
+    await rendered.click(rendered.parts("picker-trigger")[1]);
     for (const part of emitted()) seen.add(part);
     // A table whose first page has not arrived shows the loading part.
     rendered.unmount();
@@ -131,6 +253,7 @@ describe("the styling contract", () => {
             tableNode({ create: opener({ surface: { type: "popover", side: "bottom", align: "start", dismiss: { escape: true, outside: false } } }) }),
             ...policyBars(),
             component("Counter", { step: { value: 1 } }),
+            dataNode(),
           ],
         },
         "/other": { title: "Other", children: [] },

@@ -39,6 +39,8 @@ pub fn create_resource(
         }
     }
 
+    refuse_text_fields(&definition, name)?;
+    refuse_catalog_sets(&definition, name)?;
     validate_against_kind_schema(&definition, manifest, name)?;
 
     let contract = InvocationContract::resolve(&definition.manifest, manifest)?;
@@ -53,6 +55,75 @@ pub fn create_resource(
         contract,
         handle,
     }))
+}
+
+/// The `Text` fragment a kind's field or parameter is typed by.
+const TEXT_FRAGMENT_REF: &str = "telo://manifest#/$defs/Text";
+
+/// A kind whose schema or parameters reach the `Text` fragment: this kernel builds
+/// no text records, so a controller of such a kind would be handed a raw message
+/// where every other runtime hands `{ text, context, lang, computed }`.
+fn refuse_text_fields(definition: &Definition, name: &str) -> Result<(), KernelError> {
+    let params = definition.manifest.get("params").and_then(Value::as_array);
+    let reaches = definition.manifest.get("schema").is_some_and(reaches_text)
+        || params.is_some_and(|params| {
+            params
+                .iter()
+                .any(|param| param.get("schema").is_some_and(reaches_text))
+        });
+    if !reaches {
+        return Ok(());
+    }
+    Err(KernelError::new(
+        "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+        format!(
+            "resource '{name}' has kind '{}', which holds a `Text` — a text shown to a person, handed to its controller as a text record — and this kernel does not build text records yet",
+            definition.kind
+        ),
+    ))
+}
+
+/// The annotation marking a kind's text catalog set.
+const TEXT_CATALOG_SET_ANNOTATION: &str = "x-telo-text-catalog-set";
+
+/// A kind marking a catalog set: this kernel does not gather a set's catalogs, so
+/// it could not refuse a text translated twice in one language across them.
+fn refuse_catalog_sets(definition: &Definition, name: &str) -> Result<(), KernelError> {
+    if !definition
+        .manifest
+        .get("schema")
+        .is_some_and(marks_catalog_set)
+    {
+        return Ok(());
+    }
+    Err(KernelError::new(
+        "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+        format!(
+            "resource '{name}' has kind '{}', which marks a text catalog set (`{TEXT_CATALOG_SET_ANNOTATION}`), and this kernel does not judge catalog sets yet",
+            definition.kind
+        ),
+    ))
+}
+
+fn marks_catalog_set(schema: &Value) -> bool {
+    match schema {
+        Value::Object(object) => {
+            object.contains_key(TEXT_CATALOG_SET_ANNOTATION) || object.values().any(marks_catalog_set)
+        }
+        Value::Array(items) => items.iter().any(marks_catalog_set),
+        _ => false,
+    }
+}
+
+fn reaches_text(schema: &Value) -> bool {
+    match schema {
+        Value::Object(object) => {
+            object.get("$ref").and_then(Value::as_str) == Some(TEXT_FRAGMENT_REF)
+                || object.values().any(reaches_text)
+        }
+        Value::Array(items) => items.iter().any(reaches_text),
+        _ => false,
+    }
 }
 
 /// Check the document against the kind's author-facing schema, compiled once per

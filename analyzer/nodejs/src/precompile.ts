@@ -62,6 +62,9 @@ export function precompileDoc(
         // reason `refs` is: re-deriving them needs the declaring module's name
         // set, which a consumer holding one expression does not have.
         ...(compiled.calls ? { calls: compiled.calls } : {}),
+        // How each call's arguments are written, for the kernel's refusal of a
+        // computed argument where a parameter takes only a literal (a `Text`).
+        ...(compiled.callArguments ? { callArguments: compiled.callArguments } : {}),
         ...(compiled.volatile ? { volatile: true } : {}),
         call: compiled.call.bind(compiled),
       };

@@ -351,6 +351,16 @@ describe("referrer rules — declaration validation", () => {
     expect(messages.join(" ")).toContain("already used by rule 0");
   });
 
+  it("accepts one code repeated over different referrer kinds", () => {
+    const messages = declarationMessages({
+      "x-telo-referrer-rules": [
+        { referrer: "Ui.Form", condition: cel("true"), code: "SAME", message: "m" },
+        { referrer: "Ui.Action", condition: cel("true"), code: "SAME", message: "m" },
+      ],
+    });
+    expect(messages).toEqual([]);
+  });
+
   it("rejects a non-deterministic condition", () => {
     const messages = declarationMessages({
       "x-telo-referrer-rules": [
@@ -848,5 +858,55 @@ describe("peer rules — binding", () => {
         binder(a),
       ),
     ).toMatchObject([{ kind: "unbound", failure: { reason: "unknown-shape" } }]);
+  });
+});
+
+describe("referrer rules — resolveSelf", () => {
+  const schemas: Record<string, Record<string, any>> = {
+    "Ui.Choice": {
+      type: "object",
+      properties: { options: { "x-telo-ref": { kind: "Ui.Options", use: "dependency" } } },
+    },
+    "Ui.Options": {
+      type: "object",
+      properties: { model: { "x-telo-ref": { kind: "Ui.Model", use: "dependency" } } },
+    },
+  };
+  const declarations = new Map<string, ResourceManifest>([
+    ["projects", { kind: "Ui.Options", metadata: { name: "projects" }, model: { kind: "Ui.Model", name: "project" } } as unknown as ResourceManifest],
+    ["project", { kind: "Ui.Model", metadata: { name: "project" }, idType: "integer" } as unknown as ResourceManifest],
+  ]);
+  const binder = new PeerBinder({ declarationOf: (r) => declarations.get(r.name), ...reachEnv(schemas) } as PeerBinderEnv);
+  const rule = {
+    "x-telo-referrer-rules": [
+      {
+        referrer: "Ui.Form",
+        resolveSelf: ["/options/model"],
+        condition: cel("self.options.model.idType == 'string'"),
+        code: "VALUE_MISMATCH",
+        message: "the options' value is not the property's type",
+      },
+    ],
+  };
+  const choice = { kind: "Ui.Choice", metadata: { name: "pick" }, options: { kind: "Ui.Options", name: "projects" } } as unknown as ResourceManifest;
+  const form = { kind: "Ui.Form", metadata: { name: "form" }, fields: [choice] } as unknown as ResourceManifest;
+
+  it("binds self with the declarations its own slots name, two references deep", () => {
+    const findings = evaluateReferrerRules(
+      choice,
+      rule,
+      [{ manifest: form, kind: "Ui.Form", name: "form", path: "fields[0]" }],
+      (filter, kind) => filter === kind,
+      { peerBinder: binder },
+    );
+    expect(findings.map((f) => f.kind)).toEqual(["violation"]);
+  });
+
+  it("refuses a resolveSelf pointer the kind does not declare", () => {
+    const issues = validateReferrerRuleDeclarations(
+      { kind: "Telo.Definition", metadata: { name: "Choice" }, schema: rule } as unknown as ResourceManifest,
+      { selfDeclares: () => "absent" },
+    );
+    expect(issues.map((i) => i.path)).toEqual(["schema.x-telo-referrer-rules[0].resolveSelf[0]"]);
   });
 });

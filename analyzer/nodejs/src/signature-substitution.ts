@@ -25,7 +25,32 @@ import {
   signatureSchemaOf,
   type SignatureParam,
 } from "./callable-signature.js";
+import { isHoistedFragmentDefKey } from "./manifest-schemas.js";
 import { checkSchemaCompatibility } from "./schema-compat.js";
+
+/**
+ * A resolver reading each signature slot as its OWN root: a slot's recursive
+ * fragments are hoisted into it, so a `#/$defs/telo:<Name>` pointer inside either
+ * slot resolves against the slot that holds it. The reserved namespace makes the
+ * two slots agree on what such a key holds; every other reference goes to `resolveRef`.
+ */
+function slotRootResolver(
+  slots: readonly (Record<string, any> | undefined)[],
+  resolveRef: (ref: string) => Record<string, any> | undefined,
+): (ref: string) => Record<string, any> | undefined {
+  const prefix = "#/$defs/";
+  return (ref) => {
+    if (ref.startsWith(prefix) && isHoistedFragmentDefKey(ref.slice(prefix.length))) {
+      const key = ref.slice(prefix.length);
+      for (const slot of slots) {
+        const body = slot?.$defs?.[key];
+        if (body && typeof body === "object") return body as Record<string, any>;
+      }
+      return undefined;
+    }
+    return resolveRef(ref);
+  };
+}
 
 export type SignatureMismatch =
   | { readonly kind: "returns"; readonly issues: readonly string[] }
@@ -60,7 +85,11 @@ export function signatureMismatches(
     const ownSchema = signatureSchemaOf(readReturns(own));
     const requiredSchema = signatureSchemaOf(readReturns(required));
     if (ownSchema && requiredSchema) {
-      const { compatible, issues } = checkSchemaCompatibility(ownSchema, requiredSchema, resolveRef);
+      const { compatible, issues } = checkSchemaCompatibility(
+        ownSchema,
+        requiredSchema,
+        slotRootResolver([ownSchema, requiredSchema], resolveRef),
+      );
       if (!compatible) out.push({ kind: "returns", issues });
     }
   }
@@ -93,7 +122,7 @@ export function signatureMismatches(
         const { compatible, issues } = checkSchemaCompatibility(
           requiredSchema,
           ownSchema,
-          resolveRef,
+          slotRootResolver([requiredSchema, ownSchema], resolveRef),
         );
         if (compatible) return;
         out.push({ kind: "parameter", index, name, issues });

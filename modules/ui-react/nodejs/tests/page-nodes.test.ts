@@ -88,4 +88,13 @@ describe("a page's nodes for a request", () => {
     expect(refused).toEqual([["composite", "style must be one of the allowed values"]]);
     expect(judged.filter((node) => node.type === "table")).toHaveLength(1);
   });
+
+  it("place a composite under its placement's condition — around it when the composite has one of its own", () => {
+    const condition = (root: string) => ({ at: { root, path: ["flag"] }, matches: { const: true } });
+    const composites = [{ type: "text", text: "plain" }, { type: "text", text: "gated", shown: condition("data") }];
+    const produced = (ref: number) =>
+      producedNode({ type: "composite", ref, shown: condition("query") }, (index) => composites[index as number], validator(), () => {});
+    expect(produced(0)).toEqual({ type: "text", text: "plain", shown: condition("query") });
+    expect(produced(1)).toEqual({ type: "box", children: [composites[1]], shown: condition("query") });
+  });
 });

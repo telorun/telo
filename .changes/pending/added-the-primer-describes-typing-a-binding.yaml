@@ -1,0 +1,6 @@
+modules:
+  apps/authoring-agent: Added
+body: The primer describes typing a binding from whoever references the resource
+  (x-telo-context-from-referrer), the entries a list fills and their cycles
+  (x-telo-context-item-fills), rule pointers that continue past a reference and
+  resolveSelf, and x-telo-value-schema-from's member form.

@@ -1,0 +1,9 @@
+# Imports the library whose forwarded catalog repeats a translation; this
+# check is silent, so the kernel's refusal, raised when the template creates
+# the set, is pinned.
+kind: Telo.Application
+metadata:
+  name: CatalogSetForwardApp
+  version: 1.0.0
+imports:
+  Mid: ./mid

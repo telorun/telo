@@ -318,7 +318,7 @@ export function validateTemplateBody(
       // expression reading only `self` is a literal by then: the body is
       // expanded against `self` before the entry is created.
       if (body.definition) {
-        const sites = kindCelEvalSites(body.definition, resolveDef);
+        const sites = kindCelEvalSites(body.definition, resolveDef, registry.shapeLookup);
         for (const field of accessorFields(body.manifest as Record<string, unknown>, sites)) {
           for (const problem of accessorProblems(field, readsOnlySelf)) {
             report(

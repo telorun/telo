@@ -1,0 +1,4 @@
+modules:
+  apps/hub: Added
+body: The build-ui guide covers Ui.Data readers, shown conditions over data, query,
+  values and row, value and list nodes, field shown and Action enabled.

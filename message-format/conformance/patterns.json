@@ -1,0 +1,537 @@
+{
+  "rows": [
+    {
+      "id": "pattern-001-empty",
+      "source": "",
+      "pattern": [],
+      "canonical": ""
+    },
+    {
+      "id": "pattern-002-text",
+      "source": "hello",
+      "pattern": [
+        "hello"
+      ],
+      "canonical": "hello"
+    },
+    {
+      "id": "pattern-003-unicode",
+      "source": "zażółć 😀 ĉ",
+      "pattern": [
+        "zażółć 😀 ĉ"
+      ],
+      "canonical": "zażółć 😀 ĉ"
+    },
+    {
+      "id": "pattern-004-escapes",
+      "source": "\\{\\}\\\\",
+      "pattern": [
+        "{}\\"
+      ],
+      "canonical": "\\{\\}\\\\"
+    },
+    {
+      "id": "pattern-005-escape-in-text",
+      "source": "a \\{b\\} c",
+      "pattern": [
+        "a {b} c"
+      ],
+      "canonical": "a \\{b\\} c"
+    },
+    {
+      "id": "pattern-006-placeholder",
+      "source": "Hello {$user}!",
+      "pattern": [
+        "Hello ",
+        {
+          "placeholder": "user"
+        },
+        "!"
+      ],
+      "canonical": "Hello {$user}!"
+    },
+    {
+      "id": "pattern-007-two",
+      "source": "{$a}{$b}",
+      "pattern": [
+        {
+          "placeholder": "a"
+        },
+        {
+          "placeholder": "b"
+        }
+      ],
+      "canonical": "{$a}{$b}"
+    },
+    {
+      "id": "pattern-008-same-twice",
+      "source": "{$n} and {$n}",
+      "pattern": [
+        {
+          "placeholder": "n"
+        },
+        " and ",
+        {
+          "placeholder": "n"
+        }
+      ],
+      "canonical": "{$n} and {$n}"
+    },
+    {
+      "id": "pattern-009-underscore",
+      "source": "{$_x1}",
+      "pattern": [
+        {
+          "placeholder": "_x1"
+        }
+      ],
+      "canonical": "{$_x1}"
+    },
+    {
+      "id": "pattern-010-ws-inside",
+      "source": "{ $user }",
+      "pattern": [
+        {
+          "placeholder": "user"
+        }
+      ],
+      "canonical": "{$user}"
+    },
+    {
+      "id": "pattern-011-tab-newline",
+      "source": "{\t$user\n}",
+      "pattern": [
+        {
+          "placeholder": "user"
+        }
+      ],
+      "canonical": "{$user}"
+    },
+    {
+      "id": "pattern-012-ideographic-space",
+      "source": "{　$user\r}",
+      "pattern": [
+        {
+          "placeholder": "user"
+        }
+      ],
+      "canonical": "{$user}"
+    },
+    {
+      "id": "pattern-013-bidi",
+      "source": "{‎ $user ‏}",
+      "pattern": [
+        {
+          "placeholder": "user"
+        }
+      ],
+      "canonical": "{$user}"
+    },
+    {
+      "id": "pattern-014-bidi-name",
+      "source": "{$‎user‏}",
+      "pattern": [
+        {
+          "placeholder": "user"
+        }
+      ],
+      "canonical": "{$user}"
+    },
+    {
+      "id": "pattern-015-text-bidi",
+      "source": "؜ Hello",
+      "pattern": [
+        "؜ Hello"
+      ],
+      "canonical": "؜ Hello"
+    },
+    {
+      "id": "pattern-016-dot-start",
+      "source": ".input",
+      "pattern": [
+        ".input"
+      ],
+      "canonical": ".input"
+    },
+    {
+      "id": "pattern-017-at-pipe",
+      "source": "@ | .",
+      "pattern": [
+        "@ | ."
+      ],
+      "canonical": "@ | ."
+    },
+    {
+      "id": "pattern-018-newlines",
+      "source": "\n hello\t",
+      "pattern": [
+        "\n hello\t"
+      ],
+      "canonical": "\n hello\t"
+    },
+    {
+      "id": "pattern-019-unescaped-close",
+      "source": "a } b",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a } in text is written \\}",
+        "path": [],
+        "range": {
+          "start": 2,
+          "end": 3
+        }
+      }
+    },
+    {
+      "id": "pattern-020-bad-escape",
+      "source": "a \\n b",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "\\n is not an escape: text escapes only \\{, \\} and \\\\",
+        "path": [],
+        "range": {
+          "start": 2,
+          "end": 4
+        }
+      }
+    },
+    {
+      "id": "pattern-021-bad-escape-pipe",
+      "source": "\\|",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "\\| is not an escape: text escapes only \\{, \\} and \\\\",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "pattern-022-bad-escape-astral",
+      "source": "x \\😀",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "\\😀 is not an escape: text escapes only \\{, \\} and \\\\",
+        "path": [],
+        "range": {
+          "start": 2,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "pattern-023-trailing-backslash",
+      "source": "x \\",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a \\ at the end of the text escapes nothing",
+        "path": [],
+        "range": {
+          "start": 2,
+          "end": 3
+        }
+      }
+    },
+    {
+      "id": "pattern-024-nul",
+      "source": "a\u0000b",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "U+0000 cannot appear in a message",
+        "path": [],
+        "range": {
+          "start": 1,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "pattern-025-empty-braces",
+      "source": "{}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "pattern-026-literal",
+      "source": "{a}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "pattern-027-quoted-literal",
+      "source": "{|a|}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "pattern-028-function-only",
+      "source": "{:number}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "pattern-029-markup",
+      "source": "{#b}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "pattern-030-unclosed",
+      "source": "hi {$user",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "the placeholder is not closed",
+        "path": [],
+        "range": {
+          "start": 3,
+          "end": 9
+        }
+      }
+    },
+    {
+      "id": "pattern-031-unclosed-open",
+      "source": "hi {",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "the placeholder is not closed",
+        "path": [],
+        "range": {
+          "start": 3,
+          "end": 4
+        }
+      }
+    },
+    {
+      "id": "pattern-032-unclosed-ws",
+      "source": "hi { $user ",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "the placeholder is not closed",
+        "path": [],
+        "range": {
+          "start": 3,
+          "end": 11
+        }
+      }
+    },
+    {
+      "id": "pattern-033-no-name",
+      "source": "{$}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "$ must be followed by a placeholder name",
+        "path": [],
+        "range": {
+          "start": 1,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "pattern-034-dollar-space",
+      "source": "{$ x}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "$ must be followed by a placeholder name",
+        "path": [],
+        "range": {
+          "start": 1,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "pattern-035-name-digit",
+      "source": "{$1x}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "1x is not a name: a name starts with a letter or _ and continues with letters, digits or _",
+        "path": [],
+        "range": {
+          "start": 2,
+          "end": 4
+        }
+      }
+    },
+    {
+      "id": "pattern-036-name-hyphen",
+      "source": "{$a-b}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a-b is not a name: a name starts with a letter or _ and continues with letters, digits or _",
+        "path": [],
+        "range": {
+          "start": 2,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "pattern-037-name-unicode",
+      "source": "{$zó}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "zó is not a name: a name starts with a letter or _ and continues with letters, digits or _",
+        "path": [],
+        "range": {
+          "start": 2,
+          "end": 4
+        }
+      }
+    },
+    {
+      "id": "pattern-038-reserved",
+      "source": "{$in}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "in is a reserved word and cannot name a placeholder",
+        "path": [],
+        "range": {
+          "start": 2,
+          "end": 4
+        }
+      }
+    },
+    {
+      "id": "pattern-039-reserved-true",
+      "source": "{$true}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "true is a reserved word and cannot name a placeholder",
+        "path": [],
+        "range": {
+          "start": 2,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "pattern-040-function",
+      "source": "{$n :number}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "pattern-041-attribute",
+      "source": "{$n @a}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "pattern-042-nested-open",
+      "source": "{$n{",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 3,
+          "end": 4
+        }
+      }
+    },
+    {
+      "id": "pattern-043-two-bidi",
+      "source": "{$‎‎user}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "$ must be followed by a placeholder name",
+        "path": [],
+        "range": {
+          "start": 1,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "pattern-044-close-in-name",
+      "source": "{$a}}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a } in text is written \\}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "pattern-045-astral-after-brace",
+      "source": "{😀}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 3
+        }
+      }
+    },
+    {
+      "id": "pattern-046-astral-after-name",
+      "source": "{$a 😀}",
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    }
+  ]
+}

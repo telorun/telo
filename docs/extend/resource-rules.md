@@ -112,6 +112,22 @@ supplies it — the rule does not run on that resource, and the skip is reported
 (`RESOURCE_RULE_SKIPPED`) rather than evaluated over a partial set. A
 `!module-path` in a resolved declaration compares as the path its author wrote.
 
+**A pointer may continue past a reference** into the declaration it names, a
+hop at a time, and `*` ranges over every item of a list or value of a map — the
+location grammar of `x-telo-value-schema-from`. A form's rule reading the model
+behind each field's option source writes:
+
+```yaml
+    - resolve: [/fields/*/options/model]
+      in: /fields
+      condition: !cel "type(this) == string || has(this.options.model.schema)"
+```
+
+Each hop resolves as the first does, in the scope of the declaration holding the
+reference; a hop that cannot be resolved skips the rule as above. `telo check`
+follows a pointer past a slot into every kind the slot may hold, and refuses one
+that names nothing in any of them (`RESOURCE_RULE_INVALID`).
+
 **A pointer that resolves to nothing contributes nothing.** An optional field a
 resource leaves out stays *absent* in what the rule reads — never a key that
 exists and holds nothing — so `self.?relationships.orValue([])` on a store
@@ -151,7 +167,8 @@ written rather than on somebody's manifest:
   fine and would make a verdict depend on when it ran.
 - **`in:` must name a collection this kind declares** — otherwise the anchor
   points at nothing.
-- **Each `resolve:` pointer must name a field this kind declares.**
+- **Each `resolve:` pointer must name a field this kind declares** — or, past a
+  reference slot, a field a kind the slot may hold declares.
 - **The condition must parse and type-check.** One expression, one verdict: the
   templating engine's.
 - **`condition:` must carry the `!cel` tag.** The reader is lenient and a bare

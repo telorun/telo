@@ -221,9 +221,9 @@ steps:
           controls: direct
           apply: commit
           summary: none
-          state: { address: false, store: { type: memory } }
+          state: { address: false, store: { type: memory }, fields: [text, isDone, priority, effort, status, archived, rank] }
           presets: []
-          firstField: { property: text, operator: contains, label: Task, schema: { type: string, title: Task }, pinned: false, control: auto }
+          firstField: { property: text, operator: contains, label: { text: Task, context: null, lang: und, computed: false }, schema: { type: string, title: Task }, pinned: false, control: auto, labels: [] }
         declaredAboveIsTheSame: true
         written:
           show: chosen
@@ -232,27 +232,27 @@ steps:
           controls: chips
           apply: button
           summary: chips
-          state: { key: todos, address: true, store: { type: session } }
+          state: { key: todos, address: true, store: { type: session }, fields: [text, isDone, priority, effort, status] }
           presets:
-            - label: Urgent
+            - label: { text: Urgent, context: null, lang: und, computed: false }
               values:
                 - { property: priority, operator: gte, value: [4] }
                 - { property: status, operator: in, value: [open] }
-            - label: Finished
+            - label: { text: Finished, context: null, lang: und, computed: false }
               values:
                 - { property: status, operator: eq, value: [done] }
         fields:
           - [text, contains, true, auto]
-          - [isDone, eq, false, toggle, [true]]
-          - [priority, gte, false, slider, [2]]
-          - [effort, lte, false, auto, [7.5]]
-          - [status, in, false, tags, [open, blocked]]
+          - [ isDone, eq, false, toggle, [ true ] ]
+          - [ priority, gte, false, slider, [ 2 ] ]
+          - [ effort, lte, false, auto, [ 7.5 ] ]
+          - [ status, in, false, tags, [ open, blocked ] ]
           - [status, eq, false, none]
-        stored: { key: kept, address: false, store: { type: local } }
+        stored: { key: kept, address: false, store: { type: local }, fields: [text, isDone, priority, effort, status, archived, rank] }
         nullable:
-          - [archived, toggle, [true]]
+          - [ archived, toggle, [ true ] ]
           - [rank, slider]
         nullablePresets:
-          - label: Archived
+          - label: { text: Archived, context: null, lang: und, computed: false }
             values:
               - { property: archived, operator: eq, value: [true] }

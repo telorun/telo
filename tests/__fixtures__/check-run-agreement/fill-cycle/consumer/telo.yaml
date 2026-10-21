@@ -1,0 +1,8 @@
+# Importing a library that holds such a form is the library's to fix: the
+# consumer checks clean and runs.
+kind: Telo.Application
+metadata:
+  name: FillCycleConsumer
+  version: 1.0.0
+imports:
+  Lib: ../lib

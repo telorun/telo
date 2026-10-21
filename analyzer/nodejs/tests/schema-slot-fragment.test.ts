@@ -11,6 +11,7 @@ import {
   withSchemaFragments,
 } from "../src/manifest-schemas.js";
 import { validateAgainstSchema } from "../src/schema-compat.js";
+import { argumentRecordSchema } from "../src/callable-signature.js";
 
 /** The recursive half of the shared fragment set: a slot holding author-written
  *  JSON Schema.
@@ -196,5 +197,46 @@ describe("schema slots through the analysis pass", () => {
       .filter((d) => d.code === "SCHEMA_VIOLATION")
       .map((d) => (d.data as { path?: string }).path);
     expect(paths).toContain("schema.properties.total.type");
+  });
+});
+
+describe("a recursive fragment at a nested schema root", () => {
+  it("is hoisted into the slot holding the reference, and a composed record lifts it", () => {
+    const definition: Record<string, any> = {
+      kind: "Telo.Definition",
+      metadata: { name: "Translate" },
+      capability: "Telo.Callable",
+      params: [{ name: "text", schema: { $ref: manifestFragmentRef("Text") } }],
+      returns: { schema: { $ref: manifestFragmentRef("Message") } },
+    };
+    const kind: Record<string, any> = {
+      kind: "Telo.Definition",
+      metadata: { name: "Catalog" },
+      capability: "Telo.Provider",
+      schema: { $ref: manifestFragmentRef("TextCatalog") },
+    };
+    expandManifestFragments(definition);
+    expandManifestFragments(kind);
+
+    // The document root stays closed: nothing is hoisted onto it.
+    expect(definition.$defs).toBeUndefined();
+    expect(kind.$defs).toBeUndefined();
+    // A non-recursive fragment at the root is expanded in place and holds what
+    // it references; a recursive one is its localized reference with the copy
+    // beside it.
+    const text = definition.params[0].schema;
+    expect(manifestFragmentOf(text)).toBe("Text");
+    expect(Object.keys(text.$defs)).toEqual(["telo:Message"]);
+    expect(definition.returns.schema.$ref).toBe("#/$defs/telo:Message");
+    expect(Object.keys(definition.returns.schema.$defs)).toEqual(["telo:Message"]);
+    expect(manifestFragmentOf(kind.schema)).toBe("TextCatalog");
+    expect(Object.keys(kind.schema.$defs)).toEqual(["telo:Message"]);
+
+    // The argument record over the parameters resolves the fragment at its own root.
+    const record = argumentRecordSchema(definition.params);
+    expect(record.properties.text.$defs).toBeUndefined();
+    expect(Object.keys(record.$defs)).toEqual(["telo:Message"]);
+    expect(validateAgainstSchema({ text: { plural: "n", cases: { other: "x" } } }, record)).toEqual([]);
+    expect(validateAgainstSchema({ text: { plural: "n", cases: {} } }, record)).not.toEqual([]);
   });
 });

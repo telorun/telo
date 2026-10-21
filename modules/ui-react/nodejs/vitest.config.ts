@@ -5,6 +5,9 @@ export default defineConfig({
   resolve: {
     // What a component imports as the host module is this module's host entry.
     alias: { "@telorun/ui-react": fileURLToPath(new URL("./src/browser/host-entry.ts", import.meta.url)) },
+    // Workspace siblings resolve through their `source` export condition, as the
+    // kernel's bundle builder resolves them, so no sibling must be built first.
+    conditions: ["source"],
   },
   // These tests draw whole pages in a simulated document, which a slow runner
   // takes several times longer over than a workstation does.

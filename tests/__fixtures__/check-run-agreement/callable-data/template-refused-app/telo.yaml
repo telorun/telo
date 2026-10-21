@@ -1,0 +1,9 @@
+# Imports the library next door, whose templated resources are created as the
+# import initializes. Its entry-scoped check is silent about the library's
+# bodies by design, so what refuses them here is the kernel.
+kind: Telo.Application
+metadata:
+  name: CallableDataTemplateRefusedApp
+  version: 1.0.0
+imports:
+  Refused: ../template-refused

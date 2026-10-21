@@ -1,0 +1,29 @@
+# An application writing in English, using every way a text reaches a controller.
+kind: Telo.Application
+metadata:
+  name: TextRecordApp
+  version: 1.0.0
+lang: en
+imports:
+  Lib: ./lib
+---
+kind: Lib.Label
+metadata: { name: direct }
+text: { text: Open, context: verb }
+peer: !ref computed
+---
+kind: Lib.Label
+metadata: { name: computed }
+text: !cel "'Hello ' + 'there'"
+---
+kind: Lib.Caption
+metadata: { name: files }
+caption: { plural: n, cases: { one: "{$n} file", other: "{$n} files" } }
+---
+kind: Lib.Banner
+metadata: { name: banner }
+title: Welcome
+---
+kind: Lib.Show
+metadata: { name: shown }
+message: !cel "Lib.t('Rate for {$who}', {'who': 'Ala'})"

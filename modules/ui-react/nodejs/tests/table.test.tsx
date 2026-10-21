@@ -3,7 +3,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import archiveRequest from "../../tests/__fixtures__/action/archive-request.json" with { type: "json" };
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
-import { filtersNode, tableNode, todos } from "./spec-nodes.js";
+import { filtersNode, operation, tableNode, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -13,19 +13,19 @@ const show = (children: unknown[], rows = todos) =>
   render({ path: "/", loadModule: loadFixtureComponents, required: ["text"], collections: { "/api/todos": rows }, pages: { "/": { title: "Todos", children: children as never } } });
 
 const row = (...path: string[]) => ({ root: "row", path });
-const archive = { path: "/api/todos/archive", label: "Archive", inputs: { id: row("id"), status: { value: "archived" }, reason: row("reason") } };
-const rename = { path: "/api/todos/rename", label: "Rename", inputs: { text: row("text") }, confirm: "Rename this task?" };
+const archiving = (overrides: Record<string, unknown> = {}) =>
+  operation("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" }, status: { type: "string" }, reason: { type: "string" } } }, overrides);
+const archive = { action: archiving(), inputs: { id: row("id"), status: { value: "archived" }, reason: row("reason") } };
+const rename = { action: operation("/api/todos/rename", "Rename", { type: "object", properties: { text: { type: "string" } } }), inputs: { text: row("text") }, confirm: "Rename this task?" };
 /** An operation whose dialog asks for a reason before it is sent. */
 const reject = {
-  path: "/api/todos/reject",
-  label: "Reject",
+  action: operation("/api/todos/reject", "Reject", { type: "object", required: ["id"], properties: { id: { type: "integer" }, reason: { type: "string", title: "Reason", minLength: 3 } } }),
   inputs: { id: row("id") },
   confirm: "Reject this task?",
-  prompt: {
-    schema: { type: "object", required: ["id"], properties: { id: { type: "integer" }, reason: { type: "string", title: "Reason", minLength: 3 } } },
-    fields: [{ property: "reason", label: "Reason" }],
-  },
+  prompt: { fields: [{ type: "input", control: "auto", property: "reason", label: "Reason" }] },
 };
+/** The values a row's failure tree draws: the error's code and message. */
+const failureOf = (r: Rendered, at = 0) => [...r.parts("row-failure")[at].querySelectorAll('[data-telo-part="value"]')].map((value) => value.textContent);
 /** A table whose rows offer two operations, and nothing else unless told. */
 const acting = (overrides: Record<string, unknown> = {}) => tableNode({ rowActions: [archive, rename], create: undefined, edit: undefined, delete: false, ...overrides });
 /** A table whose one row holds an address, in an application of two pages. */
@@ -83,7 +83,7 @@ describe("a table", () => {
   });
 
   it("obeys the filter bar around it and its own fixed filters", async () => {
-    rendered = await show([filtersNode(tableNode({ filters: { isDone: false } }))]);
+    rendered = await show([filtersNode(tableNode({ filters: { isDone: { value: false } } }))]);
     const [text, priority] = rendered.parts("filter-input");
     const [done, status] = rendered.parts("filter-select");
     await rendered.click(rendered.part("pager-next"));
@@ -176,7 +176,7 @@ describe("a table", () => {
   it.each([
     [401, "ERR_UI_UNAUTHORIZED", "You are not signed in, or your session has ended."],
     [403, "ERR_UI_FORBIDDEN", "You are not allowed to do this."],
-    [500, "ERR_UI_REQUEST_FAILED", "The request failed with status 500: it broke"],
+    [500, "ERR_UI_REQUEST_FAILED", "it broke"],
   ])("shows a %i from its collection as its own error node, the page around it intact", async (status, code, message) => {
     rendered = await render({
       path: "/",
@@ -307,42 +307,76 @@ describe("a table", () => {
     expect(rendered.parts("error")).toEqual([]);
   });
 
-  it("sends one row write at a time: while a row's operation is in flight every operation and delete of the table waits", async () => {
-    let finish: (response: Response) => void = () => {};
+  it("takes no press of a row while its last is pending, and sends another row's at once", async () => {
+    const finishes: ((response: Response) => void)[] = [];
     rendered = await show([acting({ delete: true })]);
-    const held = () => new Promise<Response>((resolve) => (finish = resolve));
-    const writes = () => [...rendered!.parts("row-action"), ...rendered!.parts("row-delete")] as HTMLButtonElement[];
+    rendered.answer("/api/todos/archive", () => new Promise<Response>((resolve) => finishes.push(resolve)));
+    const rowWrites = (at: number) => [...rendered!.parts("table-row")[at].querySelectorAll<HTMLButtonElement>('[data-telo-part="row-action"], [data-telo-part="row-delete"]')];
     const archives = () => rendered!.parts("row-action").filter((button) => button.textContent === "Archive");
-    const submitting = () => rendered!.parts("row-action").filter((button) => button.getAttribute("data-state") === "submitting");
     const before = lists(rendered).length;
-
-    rendered.answer("/api/todos/archive", held);
     // Two presses before anything is drawn again: the second finds no disabled
     // button to stop it, and still sends nothing.
-    const [first, second] = archives();
+    const [first] = archives();
     await act(async () => {
-      for (const button of [first, second]) button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+      for (let press = 0; press < 2; press++) first.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
     });
     expect(rendered.sent).toHaveLength(1);
-    expect(writes().map((button) => button.disabled)).toEqual([true, true, true, true, true, true]);
-    expect(submitting()).toEqual([archives()[0]]);
+    expect(rowWrites(0).map((button) => button.disabled)).toEqual([true, true, true]);
+    expect(rowWrites(1).map((button) => button.disabled)).toEqual([false, false, false]);
     await rendered.click(archives()[1]);
-    expect(rendered.sent).toHaveLength(1);
-    finish(new Response(null, { status: 204 }));
+    expect(rendered.sent.map((each) => each.body)).toEqual([{ id: 1, status: "archived" }, { id: 2, status: "archived" }]);
+    finishes[0](new Response(null, { status: 204 }));
+    finishes[1](new Response(JSON.stringify({ message: "It is referenced." }), { status: 409 }));
     await rendered.settle();
-    expect(writes().map((button) => button.disabled)).toEqual([false, false, false, false, false, false]);
-    expect(lists(rendered)).toHaveLength(before + 1);
+    expect([...rowWrites(0), ...rowWrites(1)].map((button) => button.disabled)).toEqual([false, false, false, false, false, false]);
+    expect(lists(rendered).length).toBeGreaterThan(before);
+    // The refused row draws its failure beside its button, which stays.
+    expect(failureOf(rendered)).toEqual(["ERR_UI_REQUEST_FAILED", "It is referenced."]);
+    expect(rendered.parts("row-failure")[0].closest('[data-telo-part="table-row"]')).toBe(rendered.parts("table-row")[1]);
+  });
 
-    await rendered.click(archives()[0]);
-    await rendered.click(archives()[1]);
-    expect(rendered.sent).toHaveLength(2);
-    finish(new Response(JSON.stringify({ message: "It is referenced." }), { status: 409 }));
-    await rendered.settle();
-    expect(confirmation()?.querySelector('[data-telo-part="error-message"]')?.textContent).toBe("The request failed with status 409: It is referenced.");
-    // Both requests were the first row's; the second row's press sent nothing.
-    expect(rendered.sent.map((each) => each.body)).toEqual([{ id: 1, status: "archived" }, { id: 1, status: "archived" }]);
+  it("draws a row's answer in place of its button, keeps it through the reload its success triggers, and drops it when the row leaves the page", async () => {
+    const answering = archiving({
+      answer: { type: "object", properties: { receipt: { type: "string", format: "uri-reference" } } },
+      result: { type: "value", value: { root: "result", path: ["receipt"] }, present: { type: "string", format: "uri-reference" }, text: "Receipt" },
+    });
+    rendered = await show([acting({ rowActions: [{ ...archive, action: answering }] })]);
+    rendered.answer("/api/todos/archive", () => new Response(JSON.stringify({ receipt: "/files/receipt-1.pdf" }), { status: 200 }));
+    const before = lists(rendered).length;
+    await rendered.click(rendered.parts("row-action")[0]);
     expect(lists(rendered)).toHaveLength(before + 1);
-    expect([writes().map((button) => button.disabled).includes(true), submitting()]).toEqual([false, []]);
+    const answer = rendered.part("row-answer");
+    expect(answer.closest('[data-telo-part="table-row"]')).toBe(rendered.parts("table-row")[0]);
+    expect([...answer.querySelectorAll("a")].map((link) => [link.textContent, link.getAttribute("href")])).toEqual([["Receipt", "/files/receipt-1.pdf"]]);
+    expect(rendered.parts("row-action").map((button) => button.closest('[data-telo-part="table-row"]'))).toEqual([rendered.parts("table-row")[1]]);
+    await rendered.click(rendered.part("pager-next"));
+    expect(rendered.parts("row-answer")).toEqual([]);
+    await rendered.click(rendered.part("pager-prev"));
+    expect(rendered.parts("row-answer")).toEqual([]);
+    expect(rendered.parts("row-action")).toHaveLength(2);
+  });
+
+  it("enables a row's button by the row action's own condition over the row, never by the action's", async () => {
+    const action = archiving({ enabled: { at: { value: 1 }, matches: { const: 2 }, disabledText: "Never." } });
+    const enabled = { at: row("isDone"), matches: { const: false }, disabledText: "Already done." };
+    rendered = await show([acting({ rowActions: [{ ...archive, action, enabled }] })]);
+    expect(rendered.parts("row-action").map((button) => (button as HTMLButtonElement).disabled)).toEqual([true, false]);
+    expect(rendered.parts("disabled-text").map((text) => [text.textContent, text.closest('[data-telo-part="table-row"]')])).toEqual([["Already done.", rendered.parts("table-row")[0]]]);
+  });
+
+  it("orders the presses of a serial action on the page: the second row's waits for the first's", async () => {
+    const finishes: ((response: Response) => void)[] = [];
+    rendered = await show([acting({ rowActions: [{ ...archive, action: archiving({ concurrency: "serial" }) }] })]);
+    rendered.answer("/api/todos/archive", () => new Promise<Response>((resolve) => finishes.push(resolve)));
+    await rendered.click(rendered.parts("row-action")[0]);
+    await rendered.click(rendered.parts("row-action")[1]);
+    expect(rendered.sent.map((each) => each.body)).toEqual([{ id: 1, status: "archived" }]);
+    expect(rendered.parts("row-action").map((button) => button.getAttribute("data-state"))).toEqual(["submitting", "submitting"]);
+    finishes[0](new Response(null, { status: 204 }));
+    await rendered.settle();
+    expect(rendered.sent.map((each) => each.body)).toEqual([{ id: 1, status: "archived" }, { id: 2, status: "archived" }]);
+    finishes[1](new Response(null, { status: 204 }));
+    await rendered.settle();
   });
 
   it("asks a row operation's question first, in a confirmation whose button is the operation, and closes it once it is done", async () => {
@@ -374,7 +408,7 @@ describe("a table", () => {
   it.each([
     ["a 401", () => new Response(null, { status: 401 }), "ERR_UI_UNAUTHORIZED", "You are not signed in, or your session has ended."],
     ["a 403", () => new Response(null, { status: 403 }), "ERR_UI_FORBIDDEN", "You are not allowed to do this."],
-    ["a 409", () => new Response(JSON.stringify({ message: "It is referenced." }), { status: 409 }), "ERR_UI_REQUEST_FAILED", "The request failed with status 409: It is referenced."],
+    ["a 409", () => new Response(JSON.stringify({ message: "It is referenced." }), { status: 409 }), "ERR_UI_REQUEST_FAILED", "It is referenced."],
     [
       "no answer at all",
       () => {
@@ -385,26 +419,38 @@ describe("a table", () => {
     ],
     [
       "a 400",
-      () => new Response(JSON.stringify({ error: "ValidationError", message: "Request validation failed", details: [{ location: "body", path: "id", message: "must be integer" }, { location: "body", path: "status", message: "is not allowed" }] }), { status: 400 }),
+      () => new Response(JSON.stringify({ error: "ValidationError", message: "Request validation failed", details: [{ location: "body", path: "id", message: "must be integer" }] }), { status: 400 }),
       "ERR_UI_REQUEST_FAILED",
-      "The request was refused: id must be integer status is not allowed",
+      "Request validation failed",
     ],
-  ])("shows %s to a row operation in a confirmation that opens for it, reloads nothing, and sends it again on confirm", async (name, respond, code, message) => {
+  ])("draws %s to a row operation asked nothing as its failure beside its button, reloads nothing, and clears it on the next press", async (name, respond, code, message) => {
     rendered = await show([acting()]);
     rendered.answer("/api/todos/archive", respond);
     const before = lists(rendered).length;
     await rendered.click(rendered.parts("row-action")[0]);
-    const dialog = confirmation() as HTMLElement;
-    expect(dialog.querySelector('[data-telo-part="surface-title"]')?.textContent).toBe("Archive");
-    expect([dialog.querySelector('[data-telo-part="error-code"]')?.textContent, dialog.querySelector('[data-telo-part="error-message"]')?.textContent]).toEqual([code, message]);
-    expect(confirming().textContent).toBe("Archive");
+    expect(confirmation()).toBeNull();
+    expect(failureOf(rendered)).toEqual([code, message]);
     expect(lists(rendered)).toHaveLength(before);
     expect(rendered.part("table").getAttribute("data-state")).toBe("idle");
     rendered.answer("/api/todos/archive", () => new Response(null, { status: 204 }));
-    await rendered.click(confirming());
+    await rendered.click(rendered.parts("row-action")[0]);
     expect(rendered.sent.map((each) => each.request)).toEqual(["POST /api/todos/archive", "POST /api/todos/archive"]);
-    expect(confirmation()).toBeNull();
+    expect(rendered.parts("row-failure")).toEqual([]);
     expect(lists(rendered)).toHaveLength(before + 1);
+  });
+
+  it("shows a refusal to a row operation it asked about in that confirmation, and sends it again on confirm", async () => {
+    rendered = await show([acting()]);
+    rendered.answer("/api/todos/rename", () => new Response(JSON.stringify({ code: "ERR_TAKEN", message: "That name is taken." }), { status: 409 }));
+    await rendered.click(rendered.parts("row-action")[1]);
+    await rendered.click(confirming());
+    const dialog = confirmation() as HTMLElement;
+    expect([dialog.querySelector('[data-telo-part="error-code"]')?.textContent, dialog.querySelector('[data-telo-part="error-message"]')?.textContent]).toEqual(["ERR_TAKEN", "That name is taken."]);
+    expect(rendered.parts("row-failure")).toEqual([]);
+    rendered.answer("/api/todos/rename", () => new Response(null, { status: 204 }));
+    await rendered.click(confirming());
+    expect(confirmation()).toBeNull();
+    expect(rendered.sent).toHaveLength(2);
   });
 
   it("opens a row operation's prompt, and sends what it entered with what the row binds", async () => {
@@ -464,8 +510,9 @@ describe("a table", () => {
 
   it("dismisses a refused row operation when its confirmation is closed", async () => {
     rendered = await show([acting()]);
-    rendered.answer("/api/todos/archive", () => new Response(null, { status: 500 }));
-    await rendered.click(rendered.parts("row-action")[0]);
+    rendered.answer("/api/todos/rename", () => new Response(null, { status: 500 }));
+    await rendered.click(rendered.parts("row-action")[1]);
+    await rendered.click(confirming());
     await rendered.click(rendered.part("cancel"));
     expect(confirmation()).toBeNull();
     expect(rendered.parts("error")).toEqual([]);

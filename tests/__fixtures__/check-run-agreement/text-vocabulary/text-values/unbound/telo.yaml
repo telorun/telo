@@ -1,0 +1,8 @@
+# Imports a library whose heading reads a value nothing formats it with: the
+# kernel refuses it when the import creates the library's resources.
+kind: Telo.Application
+metadata:
+  name: TextValuesUnboundApp
+  version: 1.0.0
+imports:
+  Lib: ../unbound-lib

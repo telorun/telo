@@ -1,0 +1,83 @@
+# Not a runnable test — an `Assert.Manifest` fixture. A projection's result is
+# an array, so handing it to an input declared `type: array` checks clean and
+# runs, with or without a declared `elementType`.
+kind: Telo.Application
+metadata:
+  name: ProjectionResultArrayFixture
+  version: 1.0.0
+imports:
+  Run: ../../
+targets:
+  - !ref main
+---
+kind: Run.Projection
+metadata:
+  name: untyped
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      numbers: { type: array }
+collection: !cel "inputs.numbers"
+steps:
+  - name: noop
+    value: !cel "item"
+outputs:
+  value: !cel "item"
+---
+kind: Run.Projection
+metadata:
+  name: typed
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      numbers: { type: array, items: { type: integer } }
+elementType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [value]
+    properties:
+      value: { type: integer }
+collection: !cel "inputs.numbers"
+steps:
+  - name: noop
+    value: !cel "item"
+outputs:
+  value: !cel "item"
+---
+kind: Run.Value
+metadata:
+  name: total
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      results: { type: array }
+value:
+  count: !cel "size(inputs.results)"
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: untypedResult
+    invoke: !ref untyped
+    inputs:
+      numbers: [1, 2, 3]
+  - name: typedResult
+    invoke: !ref typed
+    inputs:
+      numbers: [1, 2, 3]
+  - name: untypedCount
+    invoke: !ref total
+    inputs:
+      results: !cel "steps.untypedResult.result"
+  - name: typedCount
+    invoke: !ref total
+    inputs:
+      results: !cel "steps.typedResult.result"

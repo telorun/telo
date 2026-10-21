@@ -1,0 +1,50 @@
+# A kind drawing lists from an answer, in the shape ui 0.4.0 shipped: each
+# list's columns type `row` from the bare name of the entry's `rows` field.
+kind: Telo.Library
+metadata:
+  name: LegacyLists
+  version: 1.0.0
+  description: Fixture library declaring answer lists with the bare element-from-item spelling.
+exports:
+  kinds: [Lists]
+---
+kind: Telo.Definition
+metadata:
+  name: Lists
+  description: Draws lists of rows read from an answer, one column per value.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Lists
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    outputModel:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    lists:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [rows, columns]
+        properties:
+          rows:
+            type: array
+            x-telo-eval: accessor
+            x-telo-context:
+              type: object
+              properties:
+                result: { x-telo-context-from-root: "outputModel" }
+          columns:
+            type: array
+            x-telo-context:
+              type: object
+              properties:
+                result: { x-telo-context-from-root: "outputModel" }
+                row: { x-telo-context-element-from-item: rows }
+            items:
+              type: object
+              additionalProperties: false
+              required: [value]
+              properties:
+                value: { x-telo-eval: accessor }

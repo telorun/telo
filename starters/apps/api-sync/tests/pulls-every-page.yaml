@@ -190,5 +190,5 @@ steps:
         answeredRuns: [ ok, ok ]
         search: { posts: [ { id: 3, userId: 2, title: third } ] }
         badSearch: 400
-        uiSync: [ [ Sync now, /api/sync, 0 ] ]
-        uiPosts: [ [ Find posts, /api/posts/search, [ User id ] ] ]
+        uiSync: [ [ { lang: en, message: [Sync now] }, /api/sync, 0 ] ]
+        uiPosts: [ [ { lang: en, message: [Find posts] }, /api/posts/search, [ { lang: und, message: [User id] } ] ] ]

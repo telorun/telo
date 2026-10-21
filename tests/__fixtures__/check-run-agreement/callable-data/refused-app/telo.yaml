@@ -1,0 +1,12 @@
+# Imports the library next door and supplies its need. Its entry-scoped check
+# is silent about the library's functions by design, so what refuses them here
+# is the kernel creating each one.
+kind: Telo.Application
+metadata:
+  name: CallableDataRefusedApp
+  version: 1.0.0
+imports:
+  Refused:
+    source: ../refused
+    needs:
+      access: { url: "https://example.com" }

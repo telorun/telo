@@ -1,0 +1,5 @@
+modules:
+  apps/hub: Added
+body: "The build-ui guide covers texts over data ({ text, values }), the required words:
+  of UiReact.App, and serving an application translated with translator: and a
+  per-request lang:."

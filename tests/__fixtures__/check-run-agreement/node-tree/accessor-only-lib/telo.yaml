@@ -1,0 +1,17 @@
+# A label evaluated at creation names the row binding, which exists only where
+# a value is named.
+kind: Telo.Library
+metadata:
+  name: AccessorOnlyLib
+  version: 1.0.0
+  description: Fixture library whose label reads a binding that exists only at an accessor.
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Probe
+metadata:
+  name: labelled
+condition:
+  at: !cel "row.amount"
+  matches: { type: integer }
+  label: !cel "string(row.amount)"

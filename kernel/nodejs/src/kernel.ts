@@ -18,8 +18,10 @@ import {
   implicitEvalSites,
   callableBodyField,
   isCallableKind,
+  hasOwnControllerOrTemplate,
   isInheritedDelegation,
   isModuleKind,
+  moduleLangOf,
   isInjectedDeclaration,
   inheritedCapability,
   isNeedTableDiagnostic,
@@ -61,6 +63,10 @@ import {
   readProjectionRef,
   reservedModuleNameMessage,
   scopeSlotProblems,
+  textSlotAccessorProblems,
+  textValuesProblems,
+  declaresTextCatalogSet,
+  textCatalogSetProblems,
   type NamedContractShape,
   type ProjectionScope,
 } from "@telorun/analyzer";
@@ -145,7 +151,13 @@ import { nodeCelHandlers } from "./cel-handlers.js";
 import { CelEmittedModules } from "./cel-emitted-modules.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
-import { injectAtSite } from "./dependency-injection.js";
+import { injectAtSite, resolveReference } from "./dependency-injection.js";
+import { refuseCatalogSetDuplicates, type CatalogSetKernelHost } from "./text-catalog-sets.js";
+import {
+  deliverDataSites,
+  recordReceivedConfiguration,
+  type DataViewHost,
+} from "./callable-data-views.js";
 import { NeedObservations, trackNeedObservations } from "./need-observation.js";
 import { observingPointers } from "./need-resolution.js";
 import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-sentinels.js";
@@ -155,6 +167,14 @@ import { refuseComputedRefSlots } from "./refuse-computed-ref-slots.js";
 import { resolveBrowserEntryFiles } from "./browser-entry-resolution.js";
 import { refuseNonChainAccessors, withAccessorBindings } from "./accessor-bindings.js";
 import { refuseMistypedResults } from "./compiled-results.js";
+import {
+  prepareResourceTexts,
+  recordControllerCopy,
+  recordTextProvenance,
+  settleResourceTexts,
+  syncInjectedReferences,
+  textProvenanceOf,
+} from "./text-records.js";
 import { withListenerQuery } from "./resource-timing.js";
 import {
   computeAnalysisSignature,
@@ -304,6 +324,9 @@ export class Kernel implements IKernel {
    *  definition's `metadata.source` names the file that declared it. Rebuilt on
    *  every `load()`. */
   private readonly nativeFileModules = new Map<string, NativeFileModule>();
+  /** Each module file's `lang:` — the language the texts it writes are in — by
+   *  the file's source, partials included. */
+  private readonly moduleLangs = new Map<string, string | null>();
   /** Resolved native file URIs per module and name; a rejection is dropped so a
    *  file staged after a failed lookup resolves on the next ask. */
   private readonly nativeFileUris = new Map<string, Promise<string>>();
@@ -450,6 +473,8 @@ export class Kernel implements IKernel {
    * placing `x-telo-scope` anywhere but on a named top-level property is refused
    * here — the kernel stands a scope up at one top-level field — so a
    * dependency's kind is refused too (`telo check`'s twin: `SCOPE_SLOT_MISPLACED`).
+   * So is one typing an accessor field's value by a text fragment, which its
+   * controller would receive as a binding (`TEXT_SLOT_ACCESSOR`).
    */
   registerResourceDefinition(definition: ResourceDefinition): void {
     const misplaced = scopeSlotProblems(definition);
@@ -457,6 +482,38 @@ export class Kernel implements IKernel {
       throw new RuntimeError(
         "ERR_SCOPE_SLOT_MISPLACED",
         misplaced.map((problem) => `${definition.kind} ${problem.message}`).join("\n"),
+      );
+    }
+    const [textUnderAccessor] = textSlotAccessorProblems(
+      String(definition.metadata?.name),
+      definition.schema,
+      (ref) =>
+        (this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined) ??
+        this.registry.schemaForId(ref),
+    );
+    if (textUnderAccessor) {
+      throw new RuntimeError("ERR_TEXT_SLOT_ACCESSOR", `${definition.kind} ${textUnderAccessor.message}`);
+    }
+    const [textValues] = textValuesProblems(
+      String(definition.metadata?.name),
+      definition.schema,
+      (ref) =>
+        (this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined) ??
+        this.registry.schemaForId(ref),
+    );
+    if (textValues) {
+      throw new RuntimeError("ERR_TEXT_VALUES_INVALID", `${definition.kind} ${textValues.message}`);
+    }
+    const [catalogSet] = textCatalogSetProblems(String(definition.metadata?.name), definition.schema, (ref) => {
+      const schema =
+        (this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined) ??
+        this.registry.schemaForId(ref);
+      return schema ? { schema, root: schema } : undefined;
+    });
+    if (catalogSet) {
+      throw new RuntimeError(
+        catalogSet.code === "SCHEMA_VIOLATION" ? "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED" : `ERR_${catalogSet.code}`,
+        `${definition.kind} ${catalogSet.message}`,
       );
     }
     this.controllers.registerDefinition(definition);
@@ -1912,6 +1969,7 @@ export class Kernel implements IKernel {
     this.moduleArtifacts.clear();
     this.siblingLibraries.clear();
     this.nativeFileModules.clear();
+    this.moduleLangs.clear();
     this.nativeFileUris.clear();
     this.stagedEntryMatches.clear();
     const transports = defaultTransportRegistry();
@@ -1955,8 +2013,10 @@ export class Kernel implements IKernel {
         assetPatterns: owner.assetPatterns,
         browser: owner.browser,
       };
+      const lang = moduleLangOf(file.manifests.find((m) => m && isModuleKind(m.kind)));
       for (const declaring of [file, ...module.partials]) {
         this.nativeFileModules.set(declaring.source, native);
+        this.moduleLangs.set(declaring.source, lang);
       }
     }
 
@@ -2052,6 +2112,12 @@ export class Kernel implements IKernel {
    *  source and its `native:` and `sources:` blocks. */
   getDeclaringModule(source: string | undefined): NativeFileModule | undefined {
     return source ? this.nativeFileModules.get(source) : undefined;
+  }
+
+  /** The `lang:` of the module one of whose files resolved from `source`, `null`
+   *  when it declares none. */
+  moduleLang(source: string | undefined): string | null {
+    return source ? this.moduleLangs.get(source) ?? null : null;
   }
 
   /** The module that declared `resolvedKind`, whose files its controller reaches. */
@@ -2369,11 +2435,14 @@ export class Kernel implements IKernel {
     const parentDef = definition?.capability
       ? this.controllers.getDefinition(definition.capability)
       : undefined;
+    // Named shapes are read through the analysis registry, the lookup `telo
+    // check` reads them through, so both halves see the same sites.
+    const shapes = this.registry.shapeLookup;
     const parentEval = parentDef?.schema
-      ? buildEvalPaths(parentDef.schema)
+      ? buildEvalPaths(parentDef.schema, shapes)
       : { compile: [], runtime: [] };
     const ownEval = definition?.schema
-      ? buildEvalPaths(definition.schema)
+      ? buildEvalPaths(definition.schema, shapes)
       : { compile: [], runtime: [] };
     // A base-form child's own fields are construction inputs read once by
     // `base:`, so they are compile-eval without annotation — the rule is the
@@ -2384,10 +2453,9 @@ export class Kernel implements IKernel {
     // Fields whose value is named, never evaluated: kept out of the compile
     // expansion below and handed to the controller as bindings.
     const accessor = [
-      ...(parentDef?.schema ? buildAccessorSites(parentDef.schema) : []),
-      ...(definition?.schema ? buildAccessorSites(definition.schema) : []),
+      ...(parentDef?.schema ? buildAccessorSites(parentDef.schema, shapes) : []),
+      ...(definition?.schema ? buildAccessorSites(definition.schema, shapes) : []),
     ];
-    const unevaluated = [...runtime, ...accessor.map((site) => site.path)];
     // Regions cover what a controller evaluates per call without `x-telo-eval`
     // (a route's per-request fields). A structural kind's bodies are evaluated
     // by rules of their own.
@@ -2395,8 +2463,8 @@ export class Kernel implements IKernel {
       definition?.capability === "Telo.Template"
         ? []
         : [
-            ...(parentDef?.schema ? extractCelRegionScopes(parentDef.schema) : []),
-            ...(definition?.schema ? extractCelRegionScopes(definition.schema) : []),
+            ...(parentDef?.schema ? extractCelRegionScopes(parentDef.schema, shapes) : []),
+            ...(definition?.schema ? extractCelRegionScopes(definition.schema, shapes) : []),
           ];
 
     // A kind may describe a slot with a shape declared elsewhere, so the walks
@@ -2481,6 +2549,21 @@ export class Kernel implements IKernel {
       }
     }
 
+    // Every text the resource holds is judged in the language of the module
+    // that wrote it; who wrote what is settled now, while an expression still
+    // shows as one. Same readers as `telo check`'s text pass.
+    const textSite = {
+      label: resourceLabel,
+      schema: configSchema as Record<string, any>,
+      resolveRef: schemaForRef,
+    };
+    const textProvenance = prepareResourceTexts(
+      resource,
+      textSite,
+      this.moduleLang(this.findModuleContext(evalContext).source),
+      textProvenanceOf(resource),
+    );
+
     // An expression at or above a reference slot is refused BEFORE it is
     // evaluated: CEL values are data, so expanding it leaves data where the
     // slot's holder expects an instance, and nothing downstream recovers the
@@ -2510,11 +2593,17 @@ export class Kernel implements IKernel {
 
     // Expand compile-time CEL fields before passing to the controller.
     const expandedResource = compile.length
-      ? (evalContext.expandPaths(
-          resource as Record<string, unknown>,
-          compile,
-          unevaluated,
-        ) as ResourceManifest)
+      ? ((evalContext instanceof EvaluationContext
+          ? evalContext.expandPaths(
+              resource as Record<string, unknown>,
+              compile,
+              runtime,
+              accessor.map((site) => site.path),
+            )
+          : evalContext.expandPaths(resource as Record<string, unknown>, compile, [
+              ...runtime,
+              ...accessor.map((site) => site.path),
+            ])) as ResourceManifest)
       : resource;
     // A value of a type with members an expression produced — text, or an object of
     // members — is built only now, and every one the resource holds is held to its
@@ -2575,6 +2664,86 @@ export class Kernel implements IKernel {
         throw new RuntimeError(`ERR_${problem.code}`, `${resourceLabel}: ${problem.message}`);
       }
     }
+    // A controller that forwards its configuration (a template's, an inherited
+    // `base:` child's) receives the text as written, its provenance recorded for
+    // the manifests it hands on; every other receives each `Text` as its record,
+    // on a copy, so the declaration keeps what its author wrote — and a text an
+    // expression it evaluates later produces is settled when it evaluates it.
+    const forwardsConfig =
+      !!definition &&
+      ((hasOwnControllerOrTemplate(definition) && !definition.controllers?.length) ||
+        isInheritedDelegation(definition, this.scopedDefResolver()));
+    const settledTexts = settleResourceTexts(
+      processedResource,
+      textSite,
+      textProvenance,
+      !forwardsConfig,
+      new Set(accessorFieldsHeld.map((field) => field.path)),
+    );
+    recordTextProvenance(processedResource, textProvenance);
+    if (settledTexts?.copy) {
+      recordControllerCopy(processedResource, settledTexts.copy.resource, settledTexts.copy.textPaths);
+    }
+    // A native function receives each dependency at a data site as the
+    // referent's configuration — on its own copy, kept off Phase-5 injection,
+    // while its declaration keeps the reference every edge follows.
+    let received = settledTexts?.copy?.resource ?? processedResource;
+    if (nativeFunction) {
+      if (!(evalContext instanceof EvaluationContext)) {
+        throw new RuntimeError(
+          "ERR_FATAL",
+          `${resourceLabel}: created in a context that cannot resolve references.`,
+        );
+      }
+      const owner = evalContext;
+      const delivered = deliverDataSites({
+        label: resourceLabel,
+        declaration: processedResource,
+        base: received,
+        sites: this.registry.referenceSitesOf(processedResource),
+        resolve: (name, alias) =>
+          resolveReference(
+            { name, ...(alias ? { alias } : {}) },
+            (n, a) => owner.injectionInstance(n, a),
+            (n) => owner.injectionPending(n),
+          ),
+        beyondReach: (name, alias) => (!alias || alias === "Self") && owner.declaredBeyondReach(name),
+        host: this.dataViewHost,
+      });
+      if (delivered) {
+        received = delivered.manifest;
+        recordControllerCopy(processedResource, received, [
+          ...(settledTexts?.copy?.textPaths ?? []),
+          ...delivered.paths,
+        ]);
+      }
+    }
+    recordReceivedConfiguration(processedResource, received);
+    // A catalog set holds each text once per language, across every catalog it
+    // gathers — judged before the controller is created, as `telo check` judges it.
+    if (declaresTextCatalogSet(configSchema)) {
+      if (!(evalContext instanceof EvaluationContext)) {
+        throw new RuntimeError(
+          "ERR_FATAL",
+          `${resourceLabel}: created in a context that cannot resolve references.`,
+        );
+      }
+      const owner = evalContext;
+      refuseCatalogSetDuplicates({
+        label: resourceLabel,
+        declaration: processedResource,
+        authored: resource,
+        configuration: received,
+        schema: configSchema as Record<string, any>,
+        resolve: (name, alias) =>
+          resolveReference(
+            { name, ...(alias ? { alias } : {}) },
+            (n, a) => owner.injectionInstance(n, a),
+            (n) => owner.injectionPending(n),
+          ),
+        host: this.catalogSetHost,
+      });
+    }
     const ctx = this.createResourceContext(
       moduleCtx,
       processedResource,
@@ -2584,8 +2753,9 @@ export class Kernel implements IKernel {
       evalContext,
       resolvedKind,
     );
+    if (settledTexts?.late) (ctx as ResourceContextImpl).bindLateTexts(settledTexts.late);
     const instance = await controller.create(
-      processedResource,
+      received,
       nativeFunction ? (functionContextOf(ctx) as unknown as ResourceContext) : ctx,
     );
     if (!instance) return null;
@@ -2597,6 +2767,7 @@ export class Kernel implements IKernel {
         (schema) => this.sharedSchemaValidator.compile(schema),
         schemaForRef,
         ctx.log,
+        nativeFunction,
       );
     }
 
@@ -2706,6 +2877,45 @@ export class Kernel implements IKernel {
     shapes: (ref) =>
       (this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined) ??
       this.registry.schemaForId(ref),
+    moduleLang: (source) => this.moduleLang(source),
+  };
+
+  /** What building a native function's data views reads from the kernel: a
+   *  declaration's sites, and a reference it writes resolved in the context that
+   *  declared it, as Phase-5 injection resolves it there. */
+  private readonly dataViewHost: DataViewHost = {
+    sitesOf: (declaration, configuration) => this.registry.referenceSitesOf(declaration, configuration),
+    instanceFor: (declaration, name, alias) => {
+      const scope = declarationScopeOf(declaration);
+      return scope instanceof EvaluationContext ? scope.injectionInstance(name, alias) : undefined;
+    },
+    beyondReach: (declaration, name, alias) => {
+      const scope = declarationScopeOf(declaration);
+      return (
+        (!alias || alias === "Self") &&
+        scope instanceof EvaluationContext &&
+        scope.declaredBeyondReach(name)
+      );
+    },
+  };
+
+  /** What gathering a resource's catalog set reads from the kernel. */
+  private readonly catalogSetHost: CatalogSetKernelHost = {
+    schemaOf: (declaration) =>
+      typeof declaration.kind === "string"
+        ? (this.registry.resolveDefinitionIn(
+            declaration.kind,
+            (declaration.metadata as { module?: string } | undefined)?.module,
+          )?.schema as Record<string, any> | undefined)
+        : undefined,
+    resolveRef: (ref) => {
+      const schema =
+        (this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined) ??
+        this.registry.schemaForId(ref);
+      return schema ? { schema, root: schema } : undefined;
+    },
+    sitesOf: (declaration) => this.registry.referenceSitesOf(declaration),
+    instanceFor: (declaration, name, alias) => this.dataViewHost.instanceFor(declaration, name, alias),
   };
 
   /** What decoding a resource's plain-encoded literals reads from the kernel. */
@@ -2954,6 +3164,9 @@ export class Kernel implements IKernel {
       }
       if (site.refs.length > 0) injectAtSite(site, getInstance, isPending);
     }
+    // The copy a controller received its text records on holds the references
+    // the declaration does.
+    syncInjectedReferences(resource);
   }
 }
 

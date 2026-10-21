@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata:
+  name: TextVocabularyLib
+  version: 1.0.0
+  description: Fixture library holding one text defect.
+imports:
+  Kinds: ../../kinds
+---
+kind: Kinds.Catalog
+metadata:
+  name: pl
+catalog:
+  lang: pl
+  texts:
+    - { text: Open, translation: Otwórz }
+    - { text: Open, translation: Otwórzcie }

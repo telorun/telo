@@ -392,10 +392,10 @@ steps:
                     + ' ' + (has(r.reasoning.summary) ? string(r.reasoning.summary) : '-')))
             expected:
               aOrder: [ user-message, conversation-title ]
-              aRecord: [ [ Stub title, gpt-5.2, 15 ] ]
+              aRecord: [ [ Stub title, gpt-6-luna, 15 ] ]
               aTitle: Stub title
               bKept: [ 200, Mine, 3, 30 ]
-              bRecord: [ [ false, false, gpt-5.2, 15 ] ]
+              bRecord: [ [ false, false, gpt-6-luna, 15 ] ]
               cFailed: [ finished, [ [ false, ERR_MODEL_REQUEST_REJECTED ] ] ]
               cUntitled: null
               cRetried: [ Stub title ]

@@ -1,7 +1,7 @@
 {
   "parts": {
     "shell": ["app", "header", "app-title", "nav", "nav-link", "main", "page", "page-title"],
-    "structure": ["box", "stack", "columns", "column", "text", "badge", "link", "image", "svg"],
+    "structure": ["box", "stack", "columns", "column", "text", "badge", "link", "image", "svg", "value", "list", "list-heading", "data"],
     "table": [
       "table", "table-toolbar", "table-create", "table-main", "table-frame", "table-grid", "table-head", "table-body",
       "table-row", "table-header-cell", "table-sort", "table-cell", "row-actions", "row-action", "row-edit", "row-delete",
@@ -9,9 +9,12 @@
     ],
     "form": [
       "form", "field", "label", "input", "textarea", "select", "checkbox", "options", "option", "tags", "tag",
-      "tag-remove", "field-error", "form-error", "form-actions", "submit", "cancel"
+      "tag-remove", "field-error", "form-error", "form-actions", "submit", "cancel", "field-group", "field-group-label",
+      "field-group-description", "field-description", "field-warning", "switch", "slider", "options-more", "option-hint"
     ],
-    "action": ["action", "action-result", "list", "list-heading"],
+    "picker": ["picker", "picker-value", "picker-chosen", "picker-trigger", "picker-search", "picker-list", "picker-option", "picker-empty"],
+    "date-range": ["date-range", "date-range-presets", "date-range-preset", "date-range-from", "date-range-to"],
+    "action": ["action", "action-result", "action-failure", "row-answer", "row-failure", "disabled-text"],
     "filters": [
       "filters", "filters-bar", "filters-content", "filters-toggle", "filters-count", "filters-add", "filters-apply",
       "filters-reset", "filters-presets", "filters-preset", "filters-summary", "summary-chip", "summary-chip-remove",
@@ -29,9 +32,9 @@
   "states": {
     "data-state": {
       "values": ["idle", "loading", "error", "empty", "submitting"],
-      "on": ["page", "table", "form", "filters", "component", "action", "row-action"]
+      "on": ["page", "data", "table", "form", "filters", "component", "action", "row-action", "picker-list"]
     },
-    "data-invalid": { "values": ["true"], "on": ["field", "input", "textarea", "select", "checkbox", "options", "tags"] },
+    "data-invalid": { "values": ["true"], "on": ["field", "input", "textarea", "select", "checkbox", "options", "tags", "picker", "date-range"] },
     "data-dirty": { "values": ["true"], "on": ["form"] },
     "data-compact": { "values": ["true"], "on": ["app"] },
     "data-surface": { "values": ["dialog", "drawer", "popover", "inline", "panel", "page", "confirmation"], "on": ["surface"] },
@@ -47,8 +50,8 @@
   },
   "primitiveStates": [
     { "values": ["open", "closed"], "on": ["surface", "surface-overlay", "select", "filter-select", "select-content", "filters-bar", "filter-chip", "menu"] },
-    { "values": ["on", "off"], "on": ["filters-preset", "filter-option", "option"] },
-    { "values": ["checked", "unchecked"], "on": ["checkbox", "select-item", "filter-toggle"] },
+    { "values": ["on", "off"], "on": ["filters-preset", "filter-option", "option", "date-range-preset", "picker-option"] },
+    { "values": ["checked", "unchecked"], "on": ["checkbox", "select-item", "filter-toggle", "switch"] },
     { "values": ["closed", "delayed-open", "instant-open"], "on": ["row-edit", "row-delete", "pager-prev", "pager-next", "tooltip"] }
   ]
 }

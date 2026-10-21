@@ -32,8 +32,9 @@ function deref(node: unknown, root: Record<string, unknown>): Record<string, unk
 /**
  * Does anything under here still point somewhere?
  *
- * The form resolves no references — it reads `type`, `properties` and `items`
- * and nothing else — so a schema still carrying one renders as whatever
+ * The form resolves a reference only against the schema it is given, and an
+ * entry's schema is a branch cut out of its kind's, holding no `$defs` of its
+ * own — so a schema still carrying one renders as whatever
  * `inferType` guesses, which for a nested step body is a single-line text box
  * where a list of statements belongs. A control-flow step is the real case:
  * its arms are arrays of the step grammar, which is recursive and reaches

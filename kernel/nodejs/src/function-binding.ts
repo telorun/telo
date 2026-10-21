@@ -20,11 +20,15 @@
  * own module's files, logging, and effects for what `create` allocates.
  */
 import {
+  argumentRecordSchema,
   callArgumentBinding,
-  parameterSchemaOf,
+  judgeValues,
+  runtimeValueKind,
   signatureSchemaOf,
+  textParameters,
   withLiveValuesSkipped,
   type CallableSignature,
+  type KnownValues,
 } from "@telorun/analyzer";
 import {
   ERR_FUNCTION_ASYNC,
@@ -33,21 +37,31 @@ import {
   ERR_OUTPUT_INVALID,
   InvokeError,
   isCancellationError,
+  isCelMap,
   isInvokeError,
   isSuspension,
+  readText,
   RuntimeError,
   type FunctionContext,
   type Logger,
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
+import { textRecordOf } from "./text-records.js";
 
 type SchemaResolver = (ref: string) => Record<string, any> | undefined;
 type ValidatorFor = (schema: Record<string, any>) => { validate(value: unknown): void };
 
+/** Who wrote a call: the `lang:` of the module whose expression makes it
+ *  (`null` when it declares none). A call a controller makes through a slot it
+ *  holds has no writer: its texts are computed. */
+export interface CallWriter {
+  readonly lang: string | null;
+}
+
 /** A bound function's checked call over named arguments, before its failures
  *  are classified — what a caller naming the function its own way reaches. */
-export type SignatureBoundCall = (args: Record<string, unknown>) => unknown;
+export type SignatureBoundCall = (args: Record<string, unknown>, writer?: CallWriter) => unknown;
 
 const bindingRefusals = new WeakSet<object>();
 const boundCalls = new WeakMap<object, SignatureBoundCall>();
@@ -78,6 +92,9 @@ export function bindFunction(
   validatorFor: ValidatorFor,
   resolveRef: SchemaResolver,
   log: Logger,
+  /** A native function's controller receives each `Text` argument as its record;
+   *  a body written in CEL reads it as written, as its parameters are typed. */
+  textRecords: boolean,
 ): void {
   const call = (instance as { call?: unknown }).call;
   if (typeof call !== "function") {
@@ -98,16 +115,10 @@ export function bindFunction(
 
   const params = signature.params ?? [];
   const binding = callArgumentBinding(label, params, signature.returns, resolveRef);
-  const properties: Record<string, unknown> = {};
-  const required: string[] = [];
-  for (const param of params) {
-    if (typeof param.name !== "string") continue;
-    properties[param.name] = parameterSchemaOf(param) ?? {};
-    if (param.optional !== true) required.push(param.name);
-  }
   const argumentsValidator = validatorFor(
-    withLiveValuesSkipped({ type: "object", properties, required }, resolveRef),
+    withLiveValuesSkipped(argumentRecordSchema(params), resolveRef),
   );
+  const texts = textParameters(params);
   const resultSchema = signatureSchemaOf(signature.returns);
   const resultValidator = resultSchema
     ? validatorFor(withLiveValuesSkipped(resultSchema, resolveRef))
@@ -119,7 +130,7 @@ export function bindFunction(
     return error;
   };
 
-  const checked: SignatureBoundCall = (args) => {
+  const checked: SignatureBoundCall = (args, writer) => {
     const named = binding.bindNamed(args ?? {});
     try {
       argumentsValidator.validate(named);
@@ -129,6 +140,27 @@ export function bindFunction(
         `Function '${label}': the arguments do not satisfy its declared params: ${messageOf(cause)}`,
         cause,
       );
+    }
+    // Each text reaches a native function as its record, attributed to the
+    // module whose expression makes the call; its values, when a parameter pairs
+    // with it, must bind every name it reads with a string or a number.
+    for (const parameter of texts) {
+      const value = named[parameter.name];
+      if (value === undefined || value === null) continue;
+      const read = readText(value);
+      if (read.ok && parameter.values) {
+        const values = named[parameter.values.name];
+        const [problem] = judgeValues(read.text.message, knownValues(values));
+        if (problem) {
+          throw refuse(
+            `ERR_${problem.code}`,
+            `Function '${label}': the values for parameter '${parameter.values.name}' cannot be taken by the text of '${parameter.name}': ${problem.message}.`,
+          );
+        }
+      }
+      if (textRecords) {
+        named[parameter.name] = textRecordOf(value, writer ? writer.lang : null, writer === undefined);
+      }
     }
     const result = (call as (args: Record<string, unknown>) => unknown).call(instance, named);
     if (isThenable(result)) {
@@ -188,6 +220,19 @@ export function functionFailure(name: string, error: unknown): unknown {
     { function: name, message, ...(typeof code === "string" ? { code } : {}) },
     { cause: error },
   );
+}
+
+/** What a message's values hold, by name — none for an omitted map. */
+function knownValues(values: unknown): KnownValues {
+  if (isCelMap(values)) {
+    const out = new Map<string, ReturnType<typeof runtimeValueKind>>();
+    for (const { key, value } of values.entries.values()) {
+      if (typeof key === "string") out.set(key, runtimeValueKind(value));
+    }
+    return out;
+  }
+  if (!values || typeof values !== "object" || Array.isArray(values)) return new Map();
+  return new Map(Object.entries(values).map(([key, value]) => [key, runtimeValueKind(value)]));
 }
 
 function isThenable(value: unknown): boolean {

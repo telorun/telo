@@ -1,0 +1,8 @@
+# Imports kinds misplacing the values a text is formatted with: the kernel
+# refuses each kind when the import registers it.
+kind: Telo.Application
+metadata:
+  name: TextValuesMisuseApp
+  version: 1.0.0
+imports:
+  Kinds: ../misuse-lib

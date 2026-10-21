@@ -3,6 +3,7 @@ import { ToggleGroup } from "radix-ui";
 import { useState } from "react";
 import { Icon } from "./icon.js";
 import type { Option } from "./select.js";
+import { useSay } from "./texts.js";
 
 interface OptionGroupProps {
   /** The parts of the group and of one option in it. */
@@ -60,6 +61,7 @@ interface TagsProps {
 /** Values typed one at a time: Enter or a comma adds what was typed, and each
  *  value is removed on its own. */
 export function Tags({ parts, id, name, type = "text", values, invalid, onChange }: TagsProps) {
+  const say = useSay();
   const [text, setText] = useState("");
   const add = () => {
     const added = separated(text).filter((value) => !values.includes(value));
@@ -74,7 +76,7 @@ export function Tags({ parts, id, name, type = "text", values, invalid, onChange
           <button
             data-telo-part={parts.remove}
             type="button"
-            aria-label={`Remove ${value}`}
+            aria-label={say("remove", { label: value })}
             onClick={() => onChange(values.filter((other) => other !== value))}
           >
             <Icon of={X} />

@@ -20,7 +20,7 @@ kind: Exa.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18867" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18867" }
 ---
 kind: Run.Sequence
 metadata: { name: cursorRefusals }

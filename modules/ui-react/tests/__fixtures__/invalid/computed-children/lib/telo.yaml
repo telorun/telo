@@ -12,6 +12,7 @@ metadata:
     nodes instead of writing it.
 imports:
   UiReact: ../../../../../
+  Ui: ../../../../../../ui
 exports:
   resources: [computed]
 ---
@@ -19,6 +20,7 @@ kind: UiReact.App
 metadata:
   name: computed
 title: Computed
+words: !ref Ui.words
 pages:
   - path: /
     title: Home

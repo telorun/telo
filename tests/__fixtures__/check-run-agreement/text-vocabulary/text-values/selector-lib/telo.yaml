@@ -1,0 +1,17 @@
+# A library writing a heading that selects a plural case by a value its reader
+# formats it with as a string.
+kind: Telo.Library
+metadata:
+  name: TextValuesSelectorLib
+  version: 1.0.0
+  description: Fixture library holding one heading defect.
+lang: en
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Heading
+metadata:
+  name: greeting
+text:
+  plural: name
+  cases: { one: "One name", other: "Names" }

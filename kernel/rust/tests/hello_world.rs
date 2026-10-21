@@ -84,6 +84,30 @@ fn refuses_a_need_type_document() {
     assert!(err.message.contains("`Telo.NeedType` 'SigningKey'"), "{err}");
 }
 
+/// Text records are not built here: a controller of a kind holding a `Text` would
+/// receive a raw message where the Node kernel hands it a record.
+#[test]
+fn refuses_a_resource_whose_kind_holds_a_text() {
+    let mut kernel = Kernel::new();
+    let err = kernel
+        .load(&fixture("unsupported-text"))
+        .expect_err("load must fail");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("holds a `Text`"), "{err}");
+}
+
+/// Catalog sets are not gathered here: a duplicate translation across a set's
+/// catalogs would go unrefused.
+#[test]
+fn refuses_a_resource_whose_kind_marks_a_catalog_set() {
+    let mut kernel = Kernel::new();
+    let err = kernel
+        .load(&fixture("unsupported-catalog-set"))
+        .expect_err("load must fail");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("marks a text catalog set"), "{err}");
+}
+
 #[test]
 fn reports_a_kind_whose_controller_this_kernel_cannot_host() {
     let mut kernel = Kernel::new();

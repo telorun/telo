@@ -240,23 +240,23 @@ steps:
     inputs:
       actual:
         shell: !cel "steps.shell.result.status"
-        ask: !cel "steps.askPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'lists': c.lists.map(l, l.columns.map(col, col.header))})"
-        search: !cel "steps.searchPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'lists': c.lists.map(l, l.columns.map(col, col.header))})"
-        documents: !cel "steps.documentsPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'lists': c.lists.map(l, l.columns.map(col, col.header))})"
+        ask: !cel "steps.askPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
+        search: !cel "steps.searchPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
+        documents: !cel "steps.documentsPage.result.body.children.filter(c, c.type == 'action').map(c, {'path': c.path, 'label': c.label, 'fields': c.fields.map(f, f.label), 'result': (c.result.type == 'stack' ? c.result.children : [c.result]).map(l, l.columns.map(col, col.header))})"
       expected:
         shell: 200
         ask:
           - path: /api/ask
-            label: Ask
-            fields: [ Question ]
-            lists: [ [ Answer ], [ Title, Score ] ]
+            label: { lang: en, message: [Ask] }
+            fields: [ { lang: und, message: [Question] } ]
+            result: [ [ { lang: und, message: [Answer] } ], [ { lang: und, message: [Title] }, { lang: und, message: [Score] } ] ]
         search:
           - path: /api/search
-            label: Search
-            fields: [ Question ]
-            lists: [ [ Title, Document, Score ] ]
+            label: { lang: en, message: [Search] }
+            fields: [ { lang: und, message: [Question] } ]
+            result: [ [ { lang: und, message: [Title] }, { lang: und, message: [Document] }, { lang: und, message: [Score] } ] ]
         documents:
           - path: /api/documents
-            label: Index
-            fields: [ Title, Text ]
-            lists: [ [ Indexed ] ]
+            label: { lang: en, message: [Index] }
+            fields: [ { lang: und, message: [Title] }, { lang: und, message: [Text] } ]
+            result: [ [ { lang: und, message: [Indexed] } ] ]

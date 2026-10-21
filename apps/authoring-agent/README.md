@@ -948,7 +948,7 @@ Variables:
 | `PORT` | `8080` | HTTP listen port |
 | `WORKSPACE_DIR` | `./workspace` | The directory every tool is rooted at (see above) |
 | `AGENT_STATE_DIR` | `<WORKSPACE_DIR>/.telo-agent` | Where the agent keeps its own state — `agent.sqlite` (see above) |
-| `MODEL` | `gpt-5.2` | The model every turn runs on. Changing it drops the recorded reasoning on the next turn |
+| `MODEL` | `gpt-6-luna` | The model every turn runs on. Changing it drops the recorded reasoning on the next turn |
 | `MODEL_ENDPOINT` | `https://api.openai.com/v1` | The OpenAI-compatible endpoint the model is called through — a gateway, or the local stub the tests use |
 | `RETENTION_DAYS` | `30` | Days a conversation may sit idle before it is deleted whole, and how long its removed turns then answer 410 rather than 404 (at least 1) |
 | `BUDGET_LIMIT` | `4000000` | Total tokens across all turns per window — the operator's spend cap. Exhausted, `POST /chat` answers 429 |

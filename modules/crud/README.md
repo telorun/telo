@@ -45,6 +45,7 @@ imports:
   Http: oci://ghcr.io/telorun/http-server
   SQLite: oci://ghcr.io/telorun/sqlite
   Crud: oci://ghcr.io/telorun/crud
+  Ui: oci://ghcr.io/telorun/ui
   UiReact: oci://ghcr.io/telorun/ui-react
 targets:
   - !ref server
@@ -102,6 +103,7 @@ model: !ref todoModel
 kind: UiReact.App
 metadata: { name: admin }
 title: Todos
+words: !ref Ui.words
 pages:
   - path: /
     title: Todos

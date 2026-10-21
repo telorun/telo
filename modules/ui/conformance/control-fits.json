@@ -1,0 +1,390 @@
+{
+  "description": "Which control fits which property: a form field's when operator is null, a filter's under its operator. Held by `Ui.controlFits` and every renderer's own fit.",
+  "rows": [
+    {
+      "name": "auto enters a string",
+      "control": "auto",
+      "property": {
+        "type": "string"
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "auto enters one of an enum",
+      "control": "auto",
+      "property": {
+        "enum": [
+          "a",
+          "b"
+        ]
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "auto enters a nullable boolean",
+      "control": "auto",
+      "property": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "auto enters a list of strings",
+      "control": "auto",
+      "property": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "auto enters no object",
+      "control": "auto",
+      "property": {
+        "type": "object"
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "auto enters no untyped property",
+      "control": "auto",
+      "property": {},
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "auto enters no list of objects",
+      "control": "auto",
+      "property": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "auto enters no list without items",
+      "control": "auto",
+      "property": {
+        "type": "array"
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "auto enters no union of a list and a string",
+      "control": "auto",
+      "property": {
+        "type": [
+          "array",
+          "string"
+        ]
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "select needs an enum",
+      "control": "select",
+      "property": {
+        "enum": [
+          "a",
+          "b"
+        ]
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "select takes a boolean",
+      "control": "select",
+      "property": {
+        "type": "boolean"
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "select refuses free text",
+      "control": "select",
+      "property": {
+        "type": "string"
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "select chooses several of a list's enum",
+      "control": "select",
+      "property": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "options refuse a list of free text",
+      "control": "options",
+      "property": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "options choose several of a list's enum",
+      "control": "options",
+      "property": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "toggle takes a boolean",
+      "control": "toggle",
+      "property": {
+        "type": "boolean"
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "toggle takes a nullable boolean",
+      "control": "toggle",
+      "property": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "toggle refuses a list of booleans",
+      "control": "toggle",
+      "property": {
+        "type": "array",
+        "items": {
+          "type": "boolean"
+        }
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "toggle refuses text",
+      "control": "toggle",
+      "property": {
+        "type": "string"
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "slider takes a bounded number",
+      "control": "slider",
+      "property": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "slider takes a bounded integer",
+      "control": "slider",
+      "property": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "slider refuses an unbounded integer",
+      "control": "slider",
+      "property": {
+        "type": "integer"
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "tags take a list",
+      "control": "tags",
+      "property": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "operator": null,
+      "fits": true
+    },
+    {
+      "name": "tags refuse one value",
+      "control": "tags",
+      "property": {
+        "type": "string"
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "tags refuse a list of objects",
+      "control": "tags",
+      "property": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "a field has no none",
+      "control": "none",
+      "property": {
+        "type": "string"
+      },
+      "operator": null,
+      "fits": false
+    },
+    {
+      "name": "a filter's select needs an enum",
+      "control": "select",
+      "property": {
+        "enum": [
+          "a",
+          "b"
+        ]
+      },
+      "operator": "eq",
+      "fits": true
+    },
+    {
+      "name": "a filter's select refuses free text",
+      "control": "select",
+      "property": {
+        "type": "string"
+      },
+      "operator": "eq",
+      "fits": false
+    },
+    {
+      "name": "a filter's options take a boolean under in",
+      "control": "options",
+      "property": {
+        "type": "boolean"
+      },
+      "operator": "in",
+      "fits": true
+    },
+    {
+      "name": "a filter's toggle needs eq",
+      "control": "toggle",
+      "property": {
+        "type": "boolean"
+      },
+      "operator": "eq",
+      "fits": true
+    },
+    {
+      "name": "a filter's toggle refuses in",
+      "control": "toggle",
+      "property": {
+        "type": "boolean"
+      },
+      "operator": "in",
+      "fits": false
+    },
+    {
+      "name": "a filter's slider takes a comparison",
+      "control": "slider",
+      "property": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10
+      },
+      "operator": "gte",
+      "fits": true
+    },
+    {
+      "name": "a filter's slider refuses in",
+      "control": "slider",
+      "property": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10
+      },
+      "operator": "in",
+      "fits": false
+    },
+    {
+      "name": "a filter's tags need in",
+      "control": "tags",
+      "property": {
+        "type": "string"
+      },
+      "operator": "in",
+      "fits": true
+    },
+    {
+      "name": "a filter's tags refuse eq",
+      "control": "tags",
+      "property": {
+        "type": "string"
+      },
+      "operator": "eq",
+      "fits": false
+    },
+    {
+      "name": "a filter's tags take an untyped property under in",
+      "control": "tags",
+      "property": {},
+      "operator": "in",
+      "fits": true
+    },
+    {
+      "name": "a filter may be drawn nowhere",
+      "control": "none",
+      "property": {
+        "type": "string"
+      },
+      "operator": "eq",
+      "fits": true
+    }
+  ]
+}

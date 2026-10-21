@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata:
+  name: TextVocabularyLib
+  version: 1.0.0
+  description: Fixture library holding one text defect.
+
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Row
+schema:
+  type: object
+  properties:
+    status: { type: string, enum: [paid, due], x-telo-text-context: "" }

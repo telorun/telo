@@ -1,0 +1,21 @@
+# Headings reading only the values their reader formats them with — a plural
+# selected by a number, a placeholder holding a string: clean, and it runs.
+kind: Telo.Application
+metadata:
+  name: TextValuesCleanApp
+  version: 1.0.0
+lang: en
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Heading
+metadata:
+  name: arrivals
+text:
+  plural: count
+  cases: { one: "{$count} arrival for {$name}", other: "{$count} arrivals for {$name}" }
+---
+kind: Kinds.Heading
+metadata:
+  name: plain
+text: Arrivals

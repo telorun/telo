@@ -1,0 +1,15 @@
+# A caption selecting a plural case in a module declaring no `lang:`: the
+# selection is the text branch's, judged by both halves.
+kind: Telo.Application
+metadata:
+  name: BoundTextPluralNoLangApp
+  version: 1.0.0
+imports:
+  Kinds: ../../text-values/kinds
+---
+kind: Kinds.Caption
+metadata:
+  name: caption
+label:
+  plural: n
+  cases: { one: "One item", other: "Items" }

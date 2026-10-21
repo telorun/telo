@@ -1,0 +1,9 @@
+modules:
+  modules/ui-react: Added
+body: "Draws an action's result and failure trees, refreshes and navigates after a
+  success, refuses a second press of a pending form or row, runs a serial action's
+  presses on a page one after another and clears the answer on clearAnswerOn; a table's
+  and a list's row actions draw their action's answer in place of the button (kept while
+  a table row is on the shown page) and its failure beside it, governed by the row
+  action's own enabled. New parts action-failure, row-answer, row-failure. Breaking: the
+  renderer reads the new action and row-action wire shapes and no longer draws lists."

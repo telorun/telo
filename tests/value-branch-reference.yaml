@@ -61,4 +61,4 @@ source: ./__fixtures__/value-branch-reference/wrong-shape/telo.yaml
 expect:
   errors:
     - code: INVALID_REFERENCE
-      message: "Lib.Chosen/chooser: reference at 'target' must have string 'kind' and 'name' fields"
+      message: "Lib.Chosen/chooser: the value at 'target' is not one this slot accepts. It takes a list; !ref <name> naming a resource of a kind extending Telo.Invocable"

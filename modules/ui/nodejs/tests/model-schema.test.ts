@@ -55,8 +55,8 @@ describe("a member reached through a reference", () => {
       },
     };
     const at = (member: string) => schemaAt(modelShape(model, reader, "model"), [member], reader, "model");
-    expect([headerOf("named", at("named")), presentation(at("named"))]).toEqual(["Named", { type: "string" }]);
-    expect([headerOf("holder", at("holder")), presentation(at("holder"))]).toEqual(["Holder", { type: "integer" }]);
+    expect([headerOf("named", at("named")).text, presentation(at("named"))]).toEqual(["Named", { type: "string" }]);
+    expect([headerOf("holder", at("holder")).text, presentation(at("holder"))]).toEqual(["Holder", { type: "integer" }]);
   });
 
   it("is refused when a pointer token is no URI text", () => {

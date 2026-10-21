@@ -43,13 +43,14 @@ node:
   type: table
   schema: {}
   basePath: /api/todos
+  query: {}
   rowKey: id
   pageSize: 25
   columns: []
   rowActions: []
   delete: false
   create:
-    form: { type: form, schema: {}, basePath: /api/todos, fields: [] }
+    form: { type: form, schema: {}, basePath: /api/todos, fields: [], groups: [], state: { address: false, store: { type: memory }, fields: [] } }
     surface: { type: dialog, size: huge, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
     afterSubmit: close
     unsaved: confirm
@@ -74,13 +75,13 @@ metadata:
 node:
   type: filters
   fields: []
-  content: { type: text, text: Todos }
+  content: { type: text, text: { word: loading } }
   show: all
   placement: { type: nowhere }
   controls: direct
   apply: commit
   summary: none
-  state: { address: false, store: { type: memory } }
+  state: { address: false, store: { type: memory }, fields: [] }
   presets: []
 ---
 kind: Echo.TypedNode
@@ -89,11 +90,11 @@ metadata:
 node:
   type: filters
   fields: []
-  content: { type: text, text: Todos }
+  content: { type: text, text: { word: loading } }
   show: all
   placement: { type: above }
   controls: direct
   apply: commit
   summary: none
-  state: { address: false, store: { type: server } }
+  state: { address: false, store: { type: server }, fields: [] }
   presets: []

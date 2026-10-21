@@ -5,13 +5,15 @@ An application of pages. A `Telo.Mount`: list it under an `Http.Server`'s
 
 | Field | | |
 | --- | --- | --- |
-| `title` | required | the application's name, shown in its header and as the document title |
-| `lang` | | the content's language, written as the document's `lang`; absent, no attribute is written |
+| `title` | required | the application's name, a text shown in its header and as the document title |
+| `words` | required | the [`Ui.Words`](../../ui/docs/texts.md#the-renderers-own-words) the renderer draws on its own — `!ref Ui.words` for English |
+| `translator` | | an [`I18n.Translator`](../../i18n/README.md): every text is looked up in its catalogs |
+| `lang` | | the language a request is served in: a language tag, or an expression over `request` |
 | `theme` | | one [`Ui.Theme`](../../ui/docs/theme.md), or a list of `{ theme, when? }` |
 | `defaultTheme` | `true` | whether the built-in theme is served |
 | `stylesheets` | | your own stylesheets, as host paths: `!module-path ./ui.css` |
 | `compactBelow` | `40rem` | the viewport width below which every surface's `compact` replacement applies: a CSS length in `px`, `rem` or `em` |
-| `pages` | required, at least one | `{ path, title, children }` each |
+| `pages` | required, at least one | `{ path, title, query?, children }` each |
 
 ## Pages
 
@@ -35,12 +37,42 @@ pages:
   `ERR_UI_PAGE_PATH_DUPLICATE` at creation.
 - Every page gets a link in the navigation, in the order written.
 - `children` is a list of [`Ui.Node`](../../ui/docs/nodes.md).
+- `query` declares the query parameters the page's own nodes read, as
+  [`Ui.QueryParameters`](../../ui/docs/conditions.md#query-parameters): each a
+  string, or a list of strings for a key given more than once. The page
+  document carries it, `{}` when none is declared.
+
+## What the browser decides
+
+A node's `shown` is a [condition](../../ui/docs/conditions.md), and a `value`
+or `list` node names what it draws; on a page's own nodes they read `query` —
+the declared parameters, from the address — in the browser. They never read
+`request`, which only the server has: a condition naming it is
+`CEL_UNKNOWN_IDENTIFIER` at `telo check` and refused when the application
+starts. Delivery that depends on the request is `when:`, below.
+
+```yaml
+pages:
+  - path: /
+    title: Account
+    query:
+      signin: { type: string, enum: [denied, expired] }
+    children:
+      - type: text
+        text: Your sign-in was refused.
+        shown: { at: !cel "query.signin", matches: { const: denied } }
+```
+
+A composite placed with a `shown` is drawn under it; when what it provides has
+a `shown` of its own, the page document wraps it in a `box` carrying the
+placement's, so both must hold.
 
 ## What is evaluated per request
 
 Inside `children`, each node's `when:` and its leaf values — `text`, `href`,
 `src`, `alt`, `markup`, `style` — may be expressions, evaluated for every
-request against:
+request against the request — and never against `query` or any other root the
+browser holds (`CEL_UNKNOWN_IDENTIFIER`):
 
 | Name | |
 | --- | --- |
@@ -69,6 +101,47 @@ allowed address (`javascript:…`, or `//host`, which is not app-relative), a
 an `error` node, code `ERR_UI_NODE_INVALID`, and is logged. The rest of the
 page is served. Each node is checked once per request; what a composite
 provides is checked once, when the application starts.
+
+## Languages
+
+Every text the application shows — page titles, node texts, labels, a model's
+titles and enumeration labels, the renderer's own words — is written in the
+`lang:` of the module that wrote it. With a `translator`, the server looks each
+one up and sends the browser the message it chose, already parsed, with the
+language it is written in; the browser formats it — plural forms,
+placeholders, numbers — with no catalog of its own. A text with no translation
+is shown as written, and a text an expression computed is never looked up.
+
+`lang` says which language a request asks for, evaluated per request like a
+node's `when`:
+
+```yaml
+kind: I18n.Negotiator
+metadata: { name: language }
+translator: !ref t
+default: en
+---
+kind: UiReact.App
+metadata: { name: app }
+title: Invoices
+words: !ref Ui.words
+translator: !ref t
+lang: !cel "'accept-language' in request.headers ? Self.language(request.headers['accept-language']) : 'en'"
+```
+
+What is served is the **effective language**: the translator's catalog
+language the request's tag falls back to (`pl-PL` finds `pl`), else the
+language the application's `title` is written in. The documents carry it as
+`lang`, the shell as `<html lang>`, and the server keeps one copy of every
+document per effective language — a thousand different `Accept-Language`
+values make at most one more copy than the translator has languages.
+
+Each document's `Vary` names exactly the request headers its per-request
+expressions read — `lang`, a theme's `when`, a page node's `when` and its
+values — read off the expressions themselves: `request.headers.cookie` or
+`'cookie' in request.headers` gives `Vary: Cookie`, a header name computed at
+request time `Vary: *`, and an application reading no header sends none. A
+literal `lang` serves every request in that language.
 
 ## What the page draws when a node is wrong
 
@@ -129,8 +202,8 @@ is started again, under a new address.
 - Edit, delete and the pager are icon buttons; each is named for a screen
   reader and shows that name on hover and on keyboard focus.
 - A value whose model property declares `format: uri` or `uri-reference` is
-  drawn as a link showing the value, in a table's cell and in an action's
-  list. The value must be an address [a `link` node may
+  drawn as a link showing the value, in a table's cell, in a `list` node and
+  in a `value` node. The value must be an address [a `link` node may
   hold](../../ui/docs/nodes.md#addresses): an app-relative path, which leads
   under the application's mount as a `link` node's does, or one starting
   `https://`, `http://` or `mailto:`. Anything else — `//host/x`,
@@ -142,16 +215,22 @@ is started again, under a new address.
 
 ### Row actions
 
-A table's [`rowActions`](../../ui/docs/table.md#row-actions) are text buttons
-in each row, showing each action's label in the order declared, before edit
-and delete.
+A table's [`rowActions`](../../ui/docs/table.md#row-actions) — and a `list`
+node's, drawn the same way in a last cell of each row — are text buttons in
+each row, showing each action's label in the order declared, before edit and
+delete.
 
 - A press sends the row's bound record at once — `POST`, as JSON, to the
-  action's path.
-- A table sends one row write at a time. Until the operation answers, every
-  row action and every delete button of that table is disabled, in every row,
-  and a press on one sends nothing; while a delete is being sent, every row
-  action is. Edit, the create button, sorting and paging stay usable.
+  action's path. The record is read when the button is pressed.
+- A row is one entry: until its press is answered — or, for a `serial` action,
+  while it waits behind an earlier press of that action on the page — every
+  row action and the delete button of that row are disabled, and a press on
+  one sends nothing; the pressed button carries `data-state="submitting"`.
+  Other rows stay usable, and so do edit, the create button, sorting and
+  paging. While a delete is being sent, every row action is disabled.
+- An entry's `enabled` disables its button while its condition does not hold
+  over the row and the roots in scope, with `disabled-text` beside it; the
+  action's own `enabled` plays no part.
 - An entry with `confirm` asks first, in the confirmation a delete uses: the
   question is its title and its button carries the action's label. Cancel or
   Escape sends nothing.
@@ -160,17 +239,17 @@ and delete.
   button sends what the fields hold together with the row's bound record;
   Enter in a field does the same. A value the input model refuses marks its
   field and nothing is sent. What was entered is kept until the dialog closes.
-- Once the operation succeeds its answer is not read, the confirmation closes,
-  and every table on the page over the same `source.basePath` reloads the page
-  of rows it was showing.
-- An operation that fails reloads nothing. The refusal is shown as an `error`
-  node in the confirmation, which opens for it when no question was asked,
-  titled with the action's label: its button sends the record again, and
-  Cancel dismisses it. A 401 is `ERR_UI_UNAUTHORIZED`, a 403
-  `ERR_UI_FORBIDDEN`, and anything else `ERR_UI_REQUEST_FAILED` — a 400 with
-  every detail of its envelope in the message. An entry with `prompt` shows a
-  400 as a form does instead: each detail naming one of its fields on that
-  field, every other under the fields.
+- Once the operation succeeds the confirmation closes, the action's `result`
+  tree — when it declares one — is drawn in place of the button
+  (`row-answer`), and its `onSuccess` applies. A table then reloads every table
+  on the page over the same `source.basePath`; the answer stays while that
+  row's key is on the shown page. In a list it stays as long as the answer the
+  list is drawn from.
+- An operation that fails reloads nothing. With a confirmation open, the
+  refusal is shown in it as an `error` node: its button sends the record again,
+  and Cancel dismisses it; an entry with `prompt` shows a 400 as a form does
+  instead. Otherwise the action's `failure` tree is drawn beside the button
+  (`row-failure`), and the next press clears it.
 
 ## Forms
 
@@ -185,9 +264,43 @@ and delete.
   with the record's list in the control.
 - In the page, a list is checked as a list and each item against the scalar
   keywords of `items`; the first item refused marks the field, and its
-  control (`data-invalid="true"` on the group of options or the box of tags). `minItems`,
-  `maxItems` and `uniqueItems` are left to the API. An item typed twice is
-  kept once.
+  control (`data-invalid="true"` on the group of options or the box of tags).
+  An item typed twice is kept once.
+- **Live validation.** What the model refuses of a field is shown as values are
+  entered, once the field has been touched, and of every field on a
+  submission — the keywords of the interpreted profile; any other is the API's.
+  A 400 detail lands on the field whose property is the first segment of its
+  `path` (`period.from` reaches the date range entering `period`) and stays
+  until that field changes; one no shown field enters is shown under the form.
+- **Field kinds.** An input field draws the control it names: `select` a list
+  (several values for a list property), `options` side by side, `toggle` a
+  switch (off sends `false`), `slider` between the property's `minimum` and
+  `maximum`, `tags` typed items; `auto` derives one as above. A choice draws
+  its source's options in a list or side by side, reading the next page as the
+  list scrolls to its end (side by side, a `More` button). A picker shows the
+  chosen values as their labels, linked by the source's `href` under the
+  address rule, and opens its surface to search — after the typing pause, or at
+  once on Enter, an answer to an older search discarded — and to choose from a
+  list that reads one more page per scroll to its end. A date range draws its
+  presets, shown on while the dates equal one, and the two dates; a start
+  after the end blocks the submission and a range longer than
+  `warnLongerThan` is warned of.
+- **Option sources.** Every request sends the source's `pageSize` as `limit`.
+  While a filter the source reads from `values` holds nothing, it reads and
+  offers nothing; when one changes it reads from its first page again. A
+  chosen value with no label in hand — the record being edited, a default, a
+  kept value — is labelled by requests filtering `value` with `in`, at most
+  `pageSize` values each, under the source's current filters; a value they do
+  not return is dropped, which is also how chosen values are held to a
+  changed filter.
+- **Groups** are drawn as `field-group` sections, label and description first,
+  around their fields; a hidden group's fields are hidden fields.
+- **Kept values.** A form with `state` starts from the record it edits, else
+  the address (`_telo.v.<key>.<property>`, each value as its JSON), else the
+  store (`telo.ui:<mount>:v:<key>`), else the model's defaults and each date
+  range's initial preset. Every change of a kept property is written to both,
+  the address replaced and never pushed; values read back are held to the
+  interpreted profile and the current fields, and to their option source.
 
 ## Actions
 
@@ -201,23 +314,28 @@ below it what the operation answered.
   — to the action's `path`, which is the origin's own address and is not
   moved under the application's mount. A field holding nothing is left out; a
   checkbox is always `true` or `false`.
-- Every press clears the last answer and the last failure, and the button is
-  disabled until the operation answers. The fields keep what was entered,
-  whatever the answer.
-- A success draws each declared list in order: its heading when it has one,
-  a header per column, and a row per element of the list its `rows` names in
-  the answer. A cell shows its value as a table's cell does. A list with no
-  elements, and a `rows` that names something other than a list, show `No
-  rows.`.
-- A 400 is shown on the form: each detail naming a shown field on that field,
-  every other detail — or the envelope's `message` when it has none — under
-  the fields.
-- Any other failure is an `error` node under the form, where the lists would
-  be: `ERR_UI_UNAUTHORIZED` for a 401, `ERR_UI_FORBIDDEN` for a 403,
-  `ERR_UI_REQUEST_FAILED` for any other status and for no answer at all.
-- An action that declares lists needs a JSON object to draw them from: a
-  success with any other body is `ERR_UI_RESPONSE_INVALID`. One that declares
-  none never reads the body.
+- Every press clears the last answer, and the form takes no other press until
+  the operation answers. A `serial` action's presses on the page — its form's
+  and its rows' — are sent one after another, in the order they were made.
+  The fields keep what was entered, whatever the answer.
+- A success draws the `result` tree (`action-result`) over `result`, the
+  record sent as `input` and what the form holds now as `values`. Its body is
+  read only when that tree or `onSuccess.navigate` reads `result`, and must
+  then be a JSON object the declared answer model accepts; any other body is a
+  failure `ERR_UI_RESPONSE_INVALID`.
+- Anything else draws the `failure` tree (`action-failure`) over `error` —
+  `status`, absent when nothing answered, and the `code` and `message` of a
+  `{ code, message }` body, else `ERR_UI_UNAUTHORIZED` for a 401,
+  `ERR_UI_FORBIDDEN` for a 403 and `ERR_UI_REQUEST_FAILED` for anything else
+  — `input` and `values`. A 400 also marks the fields its details name, every
+  other detail under the fields.
+- After a success, every reader whose `source.path` and every table whose
+  `source.basePath` equals an entry of `onSuccess.refreshes` reads again, and
+  `onSuccess.navigate` moves the page: within the application to a declared
+  page, by a full load to any other app-relative address, by replacing the
+  page for an `https://`, `http://` or `mailto:` one. A value that is no such
+  address navigates nowhere.
+- The drawn answer is cleared when a property `clearAnswerOn` lists changes.
 
 ## Surfaces
 

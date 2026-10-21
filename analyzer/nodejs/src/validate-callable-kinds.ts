@@ -54,7 +54,9 @@ import {
   resolveParent,
 } from "./extends-resolution.js";
 import { isHoistedFragmentDefKey } from "./manifest-schemas.js";
+import { needTypeOf } from "./need-type.js";
 import { readRefSlot, type RefSlot } from "./ref-slot.js";
+import { isDataSlot, isNativeCallableKind } from "./callable-data-slot.js";
 import { readStepSlot } from "./step-slot.js";
 import { untypedCallableSlotIssues } from "./validate-ref-slots.js";
 
@@ -74,7 +76,9 @@ export interface CallableKindIssue {
 
 /** The kind a callable's reference slot may name, beyond another callable: a
  *  shape. A function holds no connections, no clients and no services — it can
- *  reach nothing through them, since `call()` gets no context to reach with. */
+ *  reach nothing through them, since `call()` gets no context to reach with. A
+ *  native function's data slot (`callable-data-slot.ts`) is the exception: it
+ *  names any kind but a need type, and receives the referent's configuration. */
 const TYPE_CAPABILITY = "Telo.Type";
 
 /** Zone annotations a callable kind may not carry: a zone is established around
@@ -318,8 +322,50 @@ export function callableKindIssues(
     });
   }
 
-  if (schema) collectCallableSchemaIssues(definition, schema, "schema", resolve, issues);
+  const native = isNativeCallableKind(def, resolve);
+  if (schema) collectCallableSchemaIssues(definition, schema, "schema", native, resolve, issues);
+  if (!native) issues.push(...inheritedDataSlotIssues(definition, def, schema, resolve));
 
+  return issues;
+}
+
+/**
+ * A callable kind with a BODY that inherits a native ancestor's data slot. The
+ * ancestor may hold any kind there, because its controller receives the
+ * referent's configuration; a body is evaluated over its arguments and receives
+ * nothing at creation, so the inherited slot holds what it can never read.
+ * Reported at the slot, on the kind's own document — the ancestor is correct.
+ */
+function inheritedDataSlotIssues(
+  definition: ResourceManifest,
+  def: ResourceDefinition,
+  ownSchema: Record<string, unknown> | undefined,
+  resolve: DefResolver,
+): CallableKindIssue[] {
+  if (!resolveParent(def, resolve)) return [];
+  const own = new Set<string>();
+  if (ownSchema) forEachSchemaNode(ownSchema, "schema", (_record, at, slot) => slot && own.add(at));
+  const issues: CallableKindIssue[] = [];
+  forEachSchemaNode(effectiveAuthorSchema(def, resolve), "schema", (_record, path, slot) => {
+    if (!slot || own.has(path) || !isDataSlot(slot)) return;
+    for (const kind of slot.kinds) {
+      if (kind === CALLABLE_CAPABILITY) continue;
+      const target = resolve(kind, def);
+      if (!target) continue;
+      const capability = constraintCapability(kind, target, resolve);
+      if (capability === CALLABLE_CAPABILITY || capability === TYPE_CAPABILITY) continue;
+      issues.push({
+        code: "CALLABLE_DEFINITION_INVALID",
+        path,
+        message:
+          `${label(definition)}: inherits '${path}', which holds '${kind}' (capability ` +
+          `'${capability}') as data. Only a native function receives a dependency's configuration ` +
+          `at creation; this kind computes its result from a body, which is evaluated over its ` +
+          `arguments and receives nothing a referent holds. Redeclare the slot naming another ` +
+          `callable or a '${TYPE_CAPABILITY}', or extend a kind without it.`,
+      });
+    }
+  });
   return issues;
 }
 
@@ -534,11 +580,12 @@ function collectCallableSchemaIssues(
   definition: ResourceManifest,
   schema: Record<string, unknown>,
   path: string,
+  native: boolean,
   resolve: DefResolver,
   issues: CallableKindIssue[],
 ): void {
   forEachSchemaNode(schema, path, (record, path, slot) => {
-    collectNodeIssues(definition, record, path, slot, resolve, issues);
+    collectNodeIssues(definition, record, path, slot, native, resolve, issues);
   });
 }
 
@@ -547,6 +594,7 @@ function collectNodeIssues(
   record: Record<string, unknown>,
   path: string,
   slot: RefSlot | undefined,
+  native: boolean,
   resolve: DefResolver,
   issues: CallableKindIssue[],
 ): void {
@@ -598,12 +646,30 @@ function collectNodeIssues(
   }
 
   if (slot) {
+    const dataSlot = native && isDataSlot(slot);
     for (const kind of slot.kinds) {
       if (kind === CALLABLE_CAPABILITY) continue; // X_TELO_REF_CALLABLE_UNTYPED owns it.
       const target = resolve(kind, definition as unknown as ResourceDefinition);
       // A constraint that resolves to nothing says nothing: `X_TELO_REF_UNRESOLVED`
       // is what reports it, and guessing here would refuse a correct slot.
       if (!target) continue;
+      if (dataSlot) {
+        // A need is supplied when the application loads, from outside the
+        // manifest: there is no configuration to hand over.
+        if (needTypeOf(target)) {
+          issues.push({
+            code: "CALLABLE_DEFINITION_INVALID",
+            path,
+            message:
+              `${label(definition)}: holds the need type '${kind}' at '${path}'. A function's ` +
+              `\`use: dependency\` slot receives the referent's configuration as data, and a need ` +
+              `has none — it is supplied when the application loads, from outside the manifest. ` +
+              `Read the fulfilment's fields in a compile-eval field instead ` +
+              `(\`resources.<need>.<field>\`).`,
+          });
+        }
+        continue;
+      }
       const capability = constraintCapability(kind, target, resolve);
       if (capability === CALLABLE_CAPABILITY || capability === TYPE_CAPABILITY) continue;
       issues.push({
@@ -614,7 +680,8 @@ function collectNodeIssues(
           `'${capability}'. A callable's \`call(args)\` receives no context — no cancellation, no ` +
           `zone, no trace and nothing to await — so it can do nothing with a held resource. A ` +
           `callable kind's reference slots may name only another callable or a ` +
-          `'${TYPE_CAPABILITY}'.`,
+          `'${TYPE_CAPABILITY}' — except a native function's \`use: dependency\` slot, which ` +
+          `receives the referent's configuration as data.`,
       });
     }
   }
@@ -689,7 +756,8 @@ function forEachSchemaNode(
 }
 
 /** The callable kinds each reference slot of a schema accepts, by path — the
- *  input to the determinism-over-a-slot rule. */
+ *  input to the determinism-over-a-slot rule, which reads every slot but a data
+ *  slot. */
 function callableSlotKinds(
   schema: Record<string, unknown>,
   path: string,
@@ -698,7 +766,9 @@ function callableSlotKinds(
 ): Array<[string, string[]]> {
   const out: Array<[string, string[]]> = [];
   forEachSchemaNode(schema, path, (_record, at, slot) => {
-    if (!slot) return;
+    // A data slot hands over configuration and is never called, so whatever is
+    // wired there decides nothing about this kind's result.
+    if (!slot || isDataSlot(slot)) return;
     // A bare `Telo.Callable` constraint is `X_TELO_REF_CALLABLE_UNTYPED`'s; it
     // is left out here so one wrong slot is not reported twice.
     const callableKinds = slot.kinds.filter((kind) => {

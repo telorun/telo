@@ -20,7 +20,32 @@ The body is the shared step grammar, the same one every step body carries — a 
 | `outputs` | A CEL map evaluated per element; its value is collected into the result array. Omit to collect the raw step map. |
 | `concurrency` | Maximum elements processed at once — an integer literal or a `!cel` expression (sees `inputs`). Default `1` (strictly ordered); `>1` runs that many in flight. |
 | `inputType` | Input contract — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. |
+| `elementType` | Contract of one collected element. `outputs` is checked against it, and each element of the result is validated against it at dispatch. |
+| `outputType` | Contract of the whole result. Omit it: the result is then an array of `elementType` (an array of anything when `elementType` is omitted too). |
 | `catches` | Whole-operation error contract — see [Error handling](#error-handling). |
+
+## Result type
+
+The result is always an array, and `steps.<name>.result` is typed as one, so it can be handed to an input declared `type: array`. `elementType` types each element: with it, `steps.<name>.result[0].<field>` is checked against the element's fields, and an element that does not match fails the call with `ERR_OUTPUT_INVALID`.
+
+```yaml
+kind: Run.Projection
+metadata:
+  name: Labels
+elementType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [label]
+    properties:
+      label: { type: string }
+collection: !cel "inputs.names"
+steps:
+  - name: noop
+    value: !cel "item"
+outputs:
+  label: !cel "item + '!'"
+```
 
 ## Body scope
 
@@ -60,7 +85,7 @@ outputs:
 ## Error handling
 
 - **Per-element** — inline `try/catch` inside `steps` (sees `item`/`index`); recover a single element, e.g. emit a fallback value from a `catch` branch.
-- **Whole-operation** — the kind-level `catches` list maps a throw that escapes the **entire** projection to a fallback result. Each entry is `{ when, value }` with `when` a CEL condition over `error` and `inputs`. An unmatched throw propagates.
+- **Whole-operation** — the kind-level `catches` list maps a throw that escapes the **entire** projection to a fallback result. Each entry is `{ when, value }` with `when` a CEL condition over `error` and `inputs`. The fallback is the projection's result, so `value` must be an array satisfying the result contract; anything else fails the call with `ERR_OUTPUT_INVALID`. An unmatched throw propagates.
 
 ```yaml
 catches:

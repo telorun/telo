@@ -1,5 +1,6 @@
-# An application whose page runs an operation and whose table offers one on
-# every row, over routes that name the same shapes. Start it with
+# An application whose page runs an operation, whose table offers one on
+# every row and whose list of the months the address names offers the first on
+# each, over routes that name the same shapes. Start it with
 #   pnpm run telo ./modules/ui-react/tests/__fixtures__/action/telo.yaml
 # and open http://127.0.0.1:19330/admin/
 kind: Telo.Application
@@ -107,19 +108,26 @@ inputModel: !ref ReportRequest
 outputModel: !ref ReportAnswer
 source: { path: /api/reports }
 label: Generate
-lists:
-  - heading: Files
-    rows: !cel "result.files"
-    columns:
-      - value: !cel "row.name"
-      - value: !cel "row.url"
+result:
+  type: list
+  heading: Files
+  rows: !cel "result.files"
+  columns:
+    - value: !cel "row.name"
+    - value: !cel "row.url"
+onSuccess:
+  refreshes: [/api/todos]
+concurrency: serial
+clearAnswerOn: [month]
 ---
 kind: Ui.Action
 metadata:
   name: archive
 inputModel: !ref ArchiveRequest
+outputModel: !ref ArchiveAnswer
 source: { path: /api/archive }
 label: Archive
+result: { type: value, value: !cel "result.archived" }
 ---
 kind: Ui.Table
 metadata:
@@ -135,17 +143,33 @@ rowActions:
       id: !cel "row.id"
       status: archived
     confirm: Archive this task?
+    enabled:
+      at: !cel "row.text"
+      matches: { minLength: 1 }
+      disabledText: Name it first.
 ---
 kind: UiReact.App
 metadata:
   name: admin
 title: Reports
+words: !ref Ui.words
 pages:
   - path: /
     title: Reports
+    query:
+      months: { type: array, items: { type: string } }
     children:
       - { type: composite, ref: !ref generate }
       - { type: composite, ref: !ref todos }
+      - type: list
+        heading: Months
+        rows: !cel "query.months"
+        columns:
+          - { header: Month, value: !cel "row" }
+        rowActions:
+          - action: !ref generate
+            inputs:
+              month: !cel "row"
 ---
 kind: Http.Server
 metadata:

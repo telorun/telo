@@ -11,7 +11,11 @@ import { siteRefEntry, type ReachRef } from "./reference-reach.js";
 import type { ModuleScopes } from "./alias-resolver.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { templateBodies, withTemplateSelf } from "./template-body.js";
-import { extractContextsFromSchema, pathMatchesScope } from "./validate-cel-context.js";
+import {
+  contextChainAt,
+  extractContextsFromSchema,
+  type MatchedContext,
+} from "./validate-cel-context.js";
 
 /**
  * One descent surface over a manifest's resources, emitting the annotation
@@ -134,6 +138,9 @@ export interface CelSiteEvent {
   contextSchema?: Record<string, any>;
   /** Scope of the matched context (e.g. `$.routes[*].handler`), if matched. */
   matchedScope?: string;
+  /** Every region in force at the path, outermost first, ending with the
+   *  matched one: a nested region adds to those enclosing it. */
+  contexts?: MatchedContext[];
 }
 
 export interface ManifestVisitor {
@@ -406,7 +413,7 @@ export function visitManifest(
       // expressions unchecked — silently, which for a typing rule means the
       // check simply stops existing.
       const authorSchema = registry.effectiveSchemaOf(definition);
-      const contexts = authorSchema ? extractContextsFromSchema(authorSchema) : [];
+      const contexts = authorSchema ? extractContextsFromSchema(authorSchema, registry.shapeLookup) : [];
       // A `Telo.Definition`'s `resources:` entries are DECLARATIONS of another
       // kind, so the CEL inside one belongs to THAT kind — its own
       // `x-telo-context` regions, rebased under the entry's path. `self` is
@@ -417,25 +424,26 @@ export function visitManifest(
       for (const body of templateBodies(r, registry, aliases, moduleScopes(options))) {
         const bodySchema = registry.effectiveSchemaOf(body.definition);
         if (!bodySchema) continue;
-        for (const ctx of extractContextsFromSchema(bodySchema, body.scopePrefix)) {
+        for (const ctx of extractContextsFromSchema(bodySchema, registry.shapeLookup, body.scopePrefix)) {
           contexts.push({ scope: ctx.scope, schema: withTemplateSelf(ctx.schema) });
         }
       }
-      // Longest scope wins, as `extractContextsFromSchema` already orders its
-      // own: a nested kind's region is deeper than the enclosing definition's
-      // blanket `$.resources[*]`, so it takes precedence.
+      // Every region covering a path is in force, outermost first: a nested
+      // kind's region lies deeper than the enclosing definition's blanket
+      // `$.resources[*]`, so its names shadow that one's.
       contexts.sort((a, b) => b.scope.length - a.scope.length);
       walkCelExpressions(r, "", (expr, path, engineName) => {
-        let contextSchema: Record<string, any> | undefined;
-        let matchedScope: string | undefined;
-        for (const ctx of contexts) {
-          if (pathMatchesScope(path, ctx.scope)) {
-            contextSchema = ctx.schema;
-            matchedScope = ctx.scope;
-            break;
-          }
-        }
-        visitor.onCel!({ source: r, path, expr, engineName, contextSchema, matchedScope });
+        const chain = contextChainAt(contexts, path);
+        const innermost = chain[chain.length - 1];
+        visitor.onCel!({
+          source: r,
+          path,
+          expr,
+          engineName,
+          contextSchema: innermost?.schema,
+          matchedScope: innermost?.scope,
+          contexts: chain,
+        });
       });
     }
 

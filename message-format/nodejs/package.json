@@ -1,0 +1,60 @@
+{
+  "name": "@telorun/message-format",
+  "version": "0.120.0",
+  "description": "Telo's message core: a closed profile of Unicode MessageFormat 2 — placeholders, plural selection, CLDR plural rules and decimal formatting from pinned CLDR data, and RFC 4647 language lookup. No Intl, no dependencies; one answer in Node, Rust and every browser.",
+  "keywords": [
+    "telo",
+    "messageformat",
+    "i18n",
+    "plural",
+    "cldr"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "message-format/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**",
+    "src/**",
+    "LICENSE-CLDR"
+  ],
+  "scripts": {
+    "generate:cldr-module": "node scripts/generate-cldr-module.mjs",
+    "generate:cldr": "node scripts/generate-cldr-data.mjs",
+    "build": "pnpm run generate:cldr-module && tsc -p tsconfig.lib.json",
+    "test": "pnpm run generate:cldr-module && vitest run",
+    "test:watch": "vitest",
+    "check:types": "pnpm run generate:cldr-module && tsc -p tsconfig.json --noEmit",
+    "check:browser-safe": "pnpm run generate:cldr-module && node scripts/check-browser-safe.mjs",
+    "prepare": "node scripts/generate-cldr-module.mjs",
+    "prepack": "cp ../LICENSE . && cp ../cldr/LICENSE LICENSE-CLDR && node scripts/check-cldr-notice.mjs",
+    "postpack": "rm -f LICENSE LICENSE-CLDR"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "cldr-core": "48.2.0",
+    "cldr-numbers-full": "48.2.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}

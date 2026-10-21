@@ -1,0 +1,31 @@
+# Calls a Text parameter with a literal text and its values: the call binds and
+# runs, the parameter's schema resolving the Message fragment it references.
+kind: Telo.Application
+metadata:
+  name: TextCallApp
+  version: 1.0.0
+lang: en
+imports:
+  Run: ../../../../../modules/run
+targets:
+  - !ref flow
+---
+kind: Telo.Function
+metadata:
+  name: t
+params:
+  - name: text
+    schema: { $ref: "telo://manifest#/$defs/Text" }
+  - name: values
+    optional: true
+    schema: { type: object, x-telo-text-values-for: /text }
+returns:
+  schema: { type: string }
+body: !cel "'translated'"
+---
+kind: Run.Sequence
+metadata:
+  name: flow
+steps:
+  - name: translated
+    value: !cel "Self.t({'plural': 'n', 'cases': {'one': '{$n} file', 'other': '{$n} files'}}, {'n': 2})"

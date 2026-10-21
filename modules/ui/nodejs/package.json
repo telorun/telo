@@ -3,13 +3,14 @@
   "version": "0.4.0",
   "license": "MIT",
   "private": true,
-  "description": "The std/ui module's controller bundle and the surface a dependent module's controller reaches through `@telorun/ui` (the module's `exports.code:` entry). Never published to npm — the code ships inside the module artifact; this package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
+  "description": "The std/ui module's controller bundle and the surface a dependent module's controller reaches through `@telorun/ui` (the module's `exports.code:` entry). Never published to npm \u2014 the code ships inside the module artifact; this package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
     "test": "vitest run"
   },
   "devDependencies": {
+    "@telorun/cel": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "esbuild": "catalog:",

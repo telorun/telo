@@ -1,0 +1,5100 @@
+{
+  "source": "https://github.com/unicode-org/message-format-wg/tree/16372a6a02f41728be472a5921ba7c91774edeac/test/tests",
+  "files": [
+    "syntax.json",
+    "syntax-errors.json"
+  ],
+  "rows": [
+    {
+      "id": "syntax-001",
+      "src": "",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "output": ""
+    },
+    {
+      "id": "syntax-002",
+      "src": "a",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "a",
+        "errors": []
+      },
+      "output": "a"
+    },
+    {
+      "id": "syntax-003",
+      "src": "hello",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "hello",
+        "errors": []
+      },
+      "output": "hello"
+    },
+    {
+      "id": "syntax-004",
+      "src": "\\\\",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "\\",
+        "errors": []
+      },
+      "output": "\\"
+    },
+    {
+      "id": "syntax-005",
+      "src": "\\\\\\{\\|\\}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "\\{|}",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "\\| is not an escape: text escapes only \\{, \\} and \\\\",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-006",
+      "src": "hello {world}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "hello world",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-007",
+      "src": "hello {|world|}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "hello world",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-008",
+      "src": "\n hello\t",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "\n hello\t",
+        "errors": []
+      },
+      "output": "\n hello\t"
+    },
+    {
+      "id": "syntax-009",
+      "src": "hello {$place}",
+      "locale": "en-US",
+      "params": {
+        "place": {
+          "string": "world"
+        }
+      },
+      "mf2": {
+        "exp": "hello world",
+        "errors": []
+      },
+      "output": "hello world"
+    },
+    {
+      "id": "syntax-010",
+      "src": "hello {$place-.}",
+      "locale": "en-US",
+      "params": {
+        "place-.": {
+          "string": "world"
+        }
+      },
+      "mf2": {
+        "exp": "hello world",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "place-. is not a name: a name starts with a letter or _ and continues with letters, digits or _",
+        "path": [],
+        "range": {
+          "start": 8,
+          "end": 15
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-011",
+      "src": "hello {$place}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "hello {$place}",
+        "errors": [
+          "unresolved-variable"
+        ]
+      },
+      "error": {
+        "code": "MESSAGE_PLACEHOLDER_UNBOUND",
+        "message": "no value is given for place, which the message reads"
+      },
+      "deviation": "MF2 formats a fallback and reports an error; the profile refuses to format"
+    },
+    {
+      "id": "syntax-012",
+      "src": "{a}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "a",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-013",
+      "src": "{a :f}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{|a|}",
+        "errors": [
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-014",
+      "src": "{a :u:f}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{|a|}",
+        "errors": [
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-015",
+      "src": "{$x}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{$x}",
+        "errors": [
+          "unresolved-variable"
+        ]
+      },
+      "error": {
+        "code": "MESSAGE_PLACEHOLDER_UNBOUND",
+        "message": "no value is given for x, which the message reads"
+      },
+      "deviation": "MF2 formats a fallback and reports an error; the profile refuses to format"
+    },
+    {
+      "id": "syntax-016",
+      "src": "{$x :f}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{$x}",
+        "errors": [
+          "unresolved-variable",
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 5
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-017",
+      "src": "{$x :u:f}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{$x}",
+        "errors": [
+          "unresolved-variable",
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 5
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-018",
+      "src": "{:u:f}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{:u:f}",
+        "errors": [
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-019",
+      "src": "{:f}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{:f}",
+        "errors": [
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-020",
+      "src": "{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-021",
+      "src": "{#tag}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-022",
+      "src": ".input{$x}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 10,
+          "end": 12
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-023",
+      "src": "\t.input{$x}{{}}\n",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 13
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-024",
+      "src": ".input{$x}.input{$y}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 20,
+          "end": 22
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-025",
+      "src": ".input{$x} .input{$y}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 21,
+          "end": 23
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-026",
+      "src": "  {{}}  ",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 2,
+          "end": 4
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-027",
+      "src": ".local $x ={a}.input{$y}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 13
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-028",
+      "src": ".local $a={a :f}.match $a a{{}}*{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": [
+          "unknown-function",
+          "bad-selector"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 10,
+          "end": 12
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-029",
+      "src": ".input {$x}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 13
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-030",
+      "src": ".local $x ={a}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 13
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-031",
+      "src": ".local $x= {a}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 13
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-032",
+      "src": ".local $x = {a}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 12,
+          "end": 14
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-033",
+      "src": "{{.input {$x}}}",
+      "locale": "en-US",
+      "params": {
+        "x": {
+          "string": "X"
+        }
+      },
+      "mf2": {
+        "exp": ".input X",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-034",
+      "src": "{{ .local $x = {$y}}}",
+      "locale": "en-US",
+      "params": {
+        "y": {
+          "string": "Y"
+        }
+      },
+      "mf2": {
+        "exp": " .local $x = Y",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-035",
+      "src": ".local $a={a :f}.local $b={b :f}.match $a $b a b{{}}* *{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": [
+          "unknown-function",
+          "bad-selector",
+          "unknown-function",
+          "bad-selector"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 10,
+          "end": 12
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-036",
+      "src": ".local $a={a :f}.match $a a{{}}b{{}}*{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": [
+          "unknown-function",
+          "bad-selector"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 10,
+          "end": 12
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-037",
+      "src": ".local $a={a :f}.match $a a {{}}*{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": [
+          "unknown-function",
+          "bad-selector"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 10,
+          "end": 12
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-038",
+      "src": ".local $a={a :f}.local $b={b :f}.match $a $b a b {{}}* *{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": [
+          "unknown-function",
+          "bad-selector",
+          "unknown-function",
+          "bad-selector"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 10,
+          "end": 12
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-039",
+      "src": ".local $a={a :f}.match $a *{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": [
+          "unknown-function",
+          "bad-selector"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 10,
+          "end": 12
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-040",
+      "src": "{ a}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "a",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 3
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-041",
+      "src": "{a @c}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "a",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-042",
+      "src": "{a }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "a",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-043",
+      "src": "{ $x}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{$x}",
+        "errors": [
+          "unresolved-variable"
+        ]
+      },
+      "error": {
+        "code": "MESSAGE_PLACEHOLDER_UNBOUND",
+        "message": "no value is given for x, which the message reads"
+      },
+      "deviation": "MF2 formats a fallback and reports an error; the profile refuses to format"
+    },
+    {
+      "id": "syntax-044",
+      "src": "{$x @c}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{$x}",
+        "errors": [
+          "unresolved-variable"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 5
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-045",
+      "src": "{$x }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{$x}",
+        "errors": [
+          "unresolved-variable"
+        ]
+      },
+      "error": {
+        "code": "MESSAGE_PLACEHOLDER_UNBOUND",
+        "message": "no value is given for x, which the message reads"
+      },
+      "deviation": "MF2 formats a fallback and reports an error; the profile refuses to format"
+    },
+    {
+      "id": "syntax-046",
+      "src": "{ :f}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{:f}",
+        "errors": [
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 3
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-047",
+      "src": "{:f @c}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{:f}",
+        "errors": [
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-048",
+      "src": "{:f }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{:f}",
+        "errors": [
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-049",
+      "src": "{ #a}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 3
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-050",
+      "src": "{#tag foo=bar}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-051",
+      "src": "{#a @c}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-052",
+      "src": "{#a }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-053",
+      "src": "{#a/}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-054",
+      "src": "{/a}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-055",
+      "src": "{ /a}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 3
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-056",
+      "src": "{/tag foo=bar}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-057",
+      "src": "{/a }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-058",
+      "src": "{:f k=v}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{:f}",
+        "errors": [
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-059",
+      "src": "{:f k =v}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{:f}",
+        "errors": [
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-060",
+      "src": "{:f k= v}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{:f}",
+        "errors": [
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-061",
+      "src": "{:f k = v}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "{:f}",
+        "errors": [
+          "unknown-function"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-062",
+      "src": "{a @c=d}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "a",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-063",
+      "src": "{a @c =d}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "a",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-064",
+      "src": "{a @c= d}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "a",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-065",
+      "src": "{a @c = d}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "a",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-066",
+      "src": "{42 @foo=|bar|}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "42",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-067",
+      "src": "{||}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-068",
+      "src": "{|a|}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "a",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-069",
+      "src": "{|\\\\|}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "\\",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-070",
+      "src": "{|a\\\\\\{\\|\\}|}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "a\\{|}",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-071",
+      "src": "{0}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "0",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-072",
+      "src": "{-0}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "-0",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-073",
+      "src": "{1}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "1",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-074",
+      "src": "{11}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "11",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-075",
+      "src": "{0.1}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "0.1",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-076",
+      "src": "{0.12}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "0.12",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-077",
+      "src": "{0e1}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "0e1",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-078",
+      "src": "{0E1}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "0E1",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-079",
+      "src": "{0E-1}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "0E-1",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-080",
+      "src": "{0E-1}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "0E-1",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-081",
+      "src": "{+}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "+",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-082",
+      "src": "{-}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "-",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-083",
+      "src": "{·}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "·",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-084",
+      "src": "{🥔}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "🥔",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 3
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-085",
+      "src": "{🀄️}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "🀄️",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 3
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-086",
+      "src": "{🏳️‍🌈}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "🏳️‍🌈",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 3
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-087",
+      "src": "{¡؝ᚁ​‐‰⁠⁪、ﷰ}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "¡؝ᚁ​‐‰⁠⁪、ﷰ",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-088",
+      "src": "hello { world\t\n}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "hello world",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 9
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-089",
+      "src": "hello {　world\r}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "hello world",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 9
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-090",
+      "src": "{$one} and {$two}",
+      "locale": "en-US",
+      "params": {
+        "one": {
+          "double": "1.3"
+        },
+        "two": {
+          "double": "4.2"
+        }
+      },
+      "mf2": {
+        "exp": "1.3 and 4.2",
+        "errors": []
+      },
+      "output": "1.3 and 4.2"
+    },
+    {
+      "id": "syntax-091",
+      "src": "{$one} et {$two}",
+      "locale": "fr",
+      "params": {
+        "one": {
+          "double": "1.3"
+        },
+        "two": {
+          "double": "4.2"
+        }
+      },
+      "mf2": {
+        "exp": "1,3 et 4,2",
+        "errors": []
+      },
+      "output": "1,3 et 4,2"
+    },
+    {
+      "id": "syntax-092",
+      "src": ".local $foo = {bar} {{bar {$foo}}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "bar bar",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-093",
+      "src": ".local $foo = {|bar|} {{bar {$foo}}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "bar bar",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-094",
+      "src": ".local $foo = {|bar|} {{bar {$foo}}}",
+      "locale": "en-US",
+      "params": {
+        "foo": {
+          "string": "foo"
+        }
+      },
+      "mf2": {
+        "exp": "bar bar",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-095",
+      "src": ".local $foo = {$bar} {{bar {$foo}}}",
+      "locale": "en-US",
+      "params": {
+        "bar": {
+          "string": "foo"
+        }
+      },
+      "mf2": {
+        "exp": "bar foo",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 21,
+          "end": 23
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-096",
+      "src": ".local $foo = {$baz} .local $bar = {$foo} {{bar {$bar}}}",
+      "locale": "en-US",
+      "params": {
+        "baz": {
+          "string": "foo"
+        }
+      },
+      "mf2": {
+        "exp": "bar foo",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 42,
+          "end": 44
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-097",
+      "src": ".input {$foo} {{bar {$foo}}}",
+      "locale": "en-US",
+      "params": {
+        "foo": {
+          "string": "foo"
+        }
+      },
+      "mf2": {
+        "exp": "bar foo",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-098",
+      "src": ".input {$foo} .local $bar = {$foo} {{bar {$bar}}}",
+      "locale": "en-US",
+      "params": {
+        "foo": {
+          "string": "foo"
+        }
+      },
+      "mf2": {
+        "exp": "bar foo",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 35,
+          "end": 37
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-099",
+      "src": ".local $foo = {$baz} .local $bar = {$foo} {{bar {$bar}}}",
+      "locale": "en-US",
+      "params": {
+        "baz": {
+          "string": "foo"
+        }
+      },
+      "mf2": {
+        "exp": "bar foo",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 42,
+          "end": 44
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-100",
+      "src": ".local $x = {42} .local $y = {$x} {{{$x} {$y}}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "42 42",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 12,
+          "end": 14
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-101",
+      "src": "{#tag}content",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "content",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-102",
+      "src": "{#ns:tag}content{/ns:tag}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "content",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-103",
+      "src": "{/tag}content",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "content",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-104",
+      "src": "{#tag foo=bar/}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-105",
+      "src": "{#tag a:foo=|foo| b:bar=$bar}",
+      "locale": "en-US",
+      "params": {
+        "bar": {
+          "string": "b a r"
+        }
+      },
+      "mf2": {
+        "exp": "",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-106",
+      "src": "{42 @foo @bar=13}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "42",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-107",
+      "src": "{{trailing whitespace}} \n",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "trailing whitespace",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-108",
+      "src": "Ḍ̇",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "Ḍ̇",
+        "errors": []
+      },
+      "output": "Ḍ̇"
+    },
+    {
+      "id": "syntax-109",
+      "src": ".local $Ḍ̇ = {foo} {{{$Ḍ̇}}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "foo",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-110",
+      "src": ".local $Ḍ̇ = {foo} {{{$Ḍ̇}}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "foo",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 13,
+          "end": 15
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-111",
+      "src": ".input {$Ḍ̇} {{{$Ḍ̇}}}",
+      "locale": "en-US",
+      "params": {
+        "Ḍ̇": {
+          "string": "foo"
+        }
+      },
+      "mf2": {
+        "exp": "foo",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "Ḍ̇ is not a name: a name starts with a letter or _ and continues with letters, digits or _",
+        "path": [],
+        "range": {
+          "start": 9,
+          "end": 11
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-112",
+      "src": ".input {$Ḍ̇} {{{$Ḍ̇}}}",
+      "locale": "en-US",
+      "params": {
+        "Ḍ̇": {
+          "string": "foo"
+        }
+      },
+      "mf2": {
+        "exp": "foo",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "Ḍ̇ is not a name: a name starts with a letter or _ and continues with letters, digits or _",
+        "path": [],
+        "range": {
+          "start": 9,
+          "end": 12
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-113",
+      "src": ".local $Ḍ̇ = {foo} {{{$Ḍ̇}}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "foo",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-114",
+      "src": ".local $Ǻ = {foo} {{{$Ǻ}}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": "foo",
+        "errors": []
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      },
+      "deviation": "outside the profile: MF2 reads this message, the profile refuses it"
+    },
+    {
+      "id": "syntax-errors-001",
+      "src": ".",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "output": ".",
+      "deviation": "the profile reads MF2's pattern production, where a leading . is text; MF2 reads a message opening with . as a complex message"
+    },
+    {
+      "id": "syntax-errors-002",
+      "src": "{",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "the placeholder is not closed",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 1
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-003",
+      "src": "}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a } in text is written \\}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 1
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-004",
+      "src": "{}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-005",
+      "src": "{{",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-006",
+      "src": "{{}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-007",
+      "src": "{{}}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-008",
+      "src": "{|foo| #markup}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-009",
+      "src": "{{missing end brace}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-010",
+      "src": "{{missing end braces",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-011",
+      "src": "{{missing end {$braces",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-012",
+      "src": "{{extra}} content",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-013",
+      "src": "empty { } placeholder",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 9
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-014",
+      "src": "missing space {42:func}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-015",
+      "src": "missing space {|foo|:func}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-016",
+      "src": "missing space {|foo|@bar}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-017",
+      "src": "missing space {:func@bar}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-018",
+      "src": "missing space {:func @bar@baz}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-019",
+      "src": "missing space {:func @bar=42@baz}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-020",
+      "src": "missing space {+reserved@bar}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-021",
+      "src": "missing space {&private@bar}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-022",
+      "src": "bad {:} placeholder",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-023",
+      "src": "bad {\\u0000placeholder}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-024",
+      "src": "no-equal {|42| :number minimumFractionDigits 2}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 9,
+          "end": 11
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-025",
+      "src": "bad {:placeholder option=}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-026",
+      "src": "bad {:placeholder option value}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-027",
+      "src": "bad {:placeholder option:value}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-028",
+      "src": "bad {:placeholder option}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-029",
+      "src": "bad {:placeholder:}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-030",
+      "src": "bad {::placeholder}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-031",
+      "src": "bad {:placeholder::foo}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-032",
+      "src": "bad {:placeholder option:=x}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-033",
+      "src": "bad {:placeholder :option=x}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-034",
+      "src": "bad {:placeholder option::x=y}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-035",
+      "src": "bad {$placeholder option}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 18,
+          "end": 19
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-036",
+      "src": "bad {:placeholder @attribute=}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-037",
+      "src": "bad {:placeholder @attribute=@foo}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-038",
+      "src": "bad {:placeholder @attribute=$foo}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-039",
+      "src": "{ @misplaced = attribute }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 3
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-040",
+      "src": "no {placeholder end",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 3,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-041",
+      "src": "no {$placeholder end",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 17,
+          "end": 18
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-042",
+      "src": "no {:placeholder end",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 3,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-043",
+      "src": "no {|placeholder| end",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 3,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-044",
+      "src": "no {|literal} end",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 3,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-045",
+      "src": "no {|literal or placeholder end",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 3,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-046",
+      "src": ".local bar = {|foo|} {{_}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 13,
+          "end": 15
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-047",
+      "src": ".local #bar = {|foo|} {{_}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 14,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-048",
+      "src": ".local $bar {|foo|} {{_}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 12,
+          "end": 14
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-049",
+      "src": ".local $bar = |foo| {{_}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 20,
+          "end": 22
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-050",
+      "src": ".match {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 7,
+          "end": 9
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-051",
+      "src": ".match * {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 9,
+          "end": 11
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-052",
+      "src": ".match x * {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 13
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-053",
+      "src": ".match |x| * {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 13,
+          "end": 15
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-054",
+      "src": ".match :x * {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 12,
+          "end": 14
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-055",
+      "src": ".match {$foo} * {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 16,
+          "end": 18
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-056",
+      "src": ".match {#foo} * {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 7,
+          "end": 9
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-057",
+      "src": ".input {$x :x} .match {$x} * {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 12
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-058",
+      "src": ".input {$x :x} .match$x * {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 12
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-059",
+      "src": ".input {$x :x} .match $x* {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 12
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-060",
+      "src": ".input {$x :x} .match $x|x| {{foo}} * {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 12
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-061",
+      "src": ".input {$x :x} .local $y = {y :y} .match $x$y * * {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 12
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-062",
+      "src": ".input {$x :x} .local $y = {y :y} .match $x $y ** {{foo}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 12
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-063",
+      "src": ".input {$x :x} .match $x",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 12
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-064",
+      "src": ".input {$x :x} .match $x *",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 12
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-065",
+      "src": ".input {$x :x} .match $x * foo",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 12
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-066",
+      "src": ".input {$x :x} .match $x * {{foo}} extra",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 12
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-067",
+      "src": ".n{a}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 2,
+          "end": 4
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-068",
+      "src": "{^}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-069",
+      "src": "{!}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-070",
+      "src": ".n .{a}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-071",
+      "src": ".n. {a}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-072",
+      "src": ".n.{a}{b}{{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 3,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-073",
+      "src": "{!.}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-074",
+      "src": "{! .}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-075",
+      "src": "{%}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-076",
+      "src": "{*}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-077",
+      "src": "{<}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-078",
+      "src": "{>}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-079",
+      "src": "{?}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-080",
+      "src": "{~}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-081",
+      "src": "{^.}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-082",
+      "src": "{^ .}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-083",
+      "src": "{&}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-084",
+      "src": "{﷐}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-085",
+      "src": "{￾}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-086",
+      "src": "{!.\\{}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-087",
+      "src": "{!. \\{}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-088",
+      "src": "{!|a|}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-089",
+      "src": "foo {&private}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-090",
+      "src": "foo {?reserved @a @b=c}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-091",
+      "src": ".foo {42} {{bar}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 5,
+          "end": 7
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-092",
+      "src": ".foo{42}{{bar}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 4,
+          "end": 6
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-093",
+      "src": ".foo |}lit{| {42}{{bar}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a } in text is written \\}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 7
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-094",
+      "src": ".i {1} {{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 3,
+          "end": 5
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-095",
+      "src": ".l $y = {|bar|} {{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 8,
+          "end": 10
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-096",
+      "src": ".l $x.y = {|bar|} {{}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 10,
+          "end": 12
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-097",
+      "src": "hello {|4.2| %number}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-098",
+      "src": "hello {|4.2| %n|um|ber}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-099",
+      "src": "hello {|4.2| &num|be|r}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-100",
+      "src": "hello {|4.2| ^num|be|r}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-101",
+      "src": "hello {|4.2| +num|be|r}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-102",
+      "src": "hello {|4.2| ?num|be||r|s}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-103",
+      "src": "hello {|foo| !number}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-104",
+      "src": "hello {|foo| *number}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-105",
+      "src": "hello {?number}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-106",
+      "src": "{<tag}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-107",
+      "src": ".local $bar = {$none ~plural} .match {foo :string}  * {{{$bar}}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 21,
+          "end": 22
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-108",
+      "src": "hello {|4.2| %num\\\\ber}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-109",
+      "src": "hello {|4.2| %num\\{be\\|r}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-110",
+      "src": "hello {|4.2| %num\\\\\\}ber}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-111",
+      "src": "hello {|4.2| !}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-112",
+      "src": "hello {|4.2| %}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-113",
+      "src": "hello {|4.2| *}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-114",
+      "src": "hello {|4.2| ^abc|123||5|\\\\}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-115",
+      "src": "hello {|4.2| ^ abc|123||5|\\\\}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-116",
+      "src": "hello {|4.2| ^ abc|123||5|\\\\ \\|def |3.14||2|}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-117",
+      "src": "hello {|4.2| ? }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-118",
+      "src": "hello {|4.2| %xyzz }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-119",
+      "src": "hello {|4.2| >xyzz   }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-120",
+      "src": "hello {$foo ~xyzz }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 12,
+          "end": 13
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-121",
+      "src": "hello {$x   <xyzz   }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 12,
+          "end": 13
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-122",
+      "src": "{>xyzz }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-123",
+      "src": "{  !xyzz   }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 4
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-124",
+      "src": "{~xyzz }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 2
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-125",
+      "src": "{ <xyzz   }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 0,
+          "end": 3
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-126",
+      "src": "hello {|4.2| !xy z z }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-127",
+      "src": "hello {|4.2| *num \\\\ b er}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-128",
+      "src": "hello {|4.2| %num \\\\ b |3.14| r    }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-129",
+      "src": "hello {|4.2|    +num xx \\\\ b |3.14| r  }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder is written {$name}",
+        "path": [],
+        "range": {
+          "start": 6,
+          "end": 8
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-130",
+      "src": "hello {$foo    +num x \\\\ abcde |3.14| r  }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 15,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-131",
+      "src": "hello {$foo    >num x \\\\ abcde |aaa||3.14||42| r  }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 15,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-132",
+      "src": "hello {$foo    >num x \\\\ abcde |aaa||3.14| |42| r  }",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 15,
+          "end": 16
+        }
+      }
+    },
+    {
+      "id": "syntax-errors-133",
+      "src": ".input{ $n ~ }{{{$n}}}",
+      "locale": "en-US",
+      "params": {},
+      "mf2": {
+        "exp": null,
+        "errors": [
+          "syntax-error"
+        ]
+      },
+      "problem": {
+        "code": "MESSAGE_SYNTAX_INVALID",
+        "message": "a placeholder holds only its $name",
+        "path": [],
+        "range": {
+          "start": 11,
+          "end": 12
+        }
+      }
+    }
+  ]
+}

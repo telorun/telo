@@ -5,16 +5,19 @@ metadata:
   description: |
     An action provides its node from its two models: the input model whole, a
     field per property a control can enter — a scalar or a list of scalars,
-    never an object or a list of objects — unless fields are listed, and each
-    list of the answer with its rows, its heading only when one is declared,
-    and a header and a presentation per column taken from the member the
-    column names, in the row or in the answer. An action that draws nothing
-    carries an empty list of lists, and one over a model with no properties is
-    a bare button. A form over the same model enters the same properties. An
-    action placed on a page is the page's node. A table carries each row
-    action as the action's path and label with the row's inputs, its question
-    only when one is asked, and — where it prompts — the input model with the
-    action's fields the row does not bind.
+    never an object or a list of objects — unless fields are listed, the
+    output model as `answer`, and its `result` tree with every `value` and
+    `list` node presented from the root it reads: `result` from the answer,
+    `input` and `values` from the input model. `failure`, `onSuccess`,
+    `concurrency` and `clearAnswerOn` are carried as written and filled where
+    left out — the failure tree with the error's code and message. An action
+    that draws nothing carries no `result`, and one over a model with no
+    properties is a bare button. A form over the same model enters the same
+    properties. An action placed on a page is the page's node. A table, and a
+    list inside an answer, carry each row action as the action's own node with
+    the row's inputs, its question only when one is asked, its condition only
+    when one is written, and — where it prompts — the action's fields the row
+    does not bind; a table carries the query parameters it declares.
 imports:
   Ui: ../
   Probe: ./__fixtures__/probe
@@ -46,6 +49,7 @@ metadata:
 schema:
   type: object
   properties:
+    location: { type: string }
     summary:
       type: object
       properties:
@@ -65,19 +69,54 @@ inputModel: !ref ReportRequest
 outputModel: !ref ReportAnswer
 source: { path: /api/reports }
 label: Generate
-lists:
-  - heading: Files
-    rows: !cel "result.files"
-    columns:
-      - value: !cel "row.name"
-      - header: Link
-        value: !cel "row.url"
-      - value: !cel "result.summary.total"
-      - header: Kind
-        value: report
-  - rows: !cel "result.files"
-    columns:
-      - value: !cel "row.url"
+result:
+  type: stack
+  children:
+    - type: list
+      heading: Files
+      rows: !cel "result.files"
+      columns:
+        - value: !cel "row.name"
+        - header: Link
+          value: !cel "row.url"
+        - value: !cel "result.summary.total"
+        - header: Kind
+          value: report
+      rowActions:
+        - action: !ref archiveFile
+          inputs:
+            name: !cel "row.name"
+            month: !cel "input.month"
+          enabled:
+            at: !cel "row.url"
+            matches: { type: string }
+            disabledText: Not stored yet.
+    - type: value
+      value: !cel "values.month"
+failure:
+  type: value
+  value: !cel "error.message"
+onSuccess:
+  navigate: !cel "result.location"
+  refreshes: [/api/reports, /api/archive]
+concurrency: serial
+clearAnswerOn: [month, formats]
+---
+kind: Ui.Action
+metadata:
+  name: archiveFile
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [name]
+    properties:
+      name: { type: string }
+      month: { type: string }
+source: { path: /api/archive }
+label: Archive
+onSuccess:
+  navigate: /files
 ---
 kind: Ui.Action
 metadata:
@@ -85,9 +124,7 @@ metadata:
 inputModel: !ref ReportRequest
 source: { path: /api/reports }
 label: Send
-fields:
-  - property: formats
-  - property: month
+fields: [formats, month]
 ---
 kind: Ui.Action
 metadata:
@@ -146,11 +183,17 @@ metadata:
 model: !ref Todo
 collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
 source: { basePath: /api/todos }
+query:
+  status: { type: string }
 rowActions:
   - action: !ref archive
     inputs:
       id: !cel "row.id"
-      status: archived
+      status: !cel "query.status"
+    enabled:
+      at: !cel "row.name"
+      matches: { minLength: 1 }
+      disabledText: Name it first.
   - action:
       kind: Ui.Action
       inputModel:
@@ -196,7 +239,8 @@ steps:
         refresh: !cel "steps.refresh.result.node"
         form: !cel "steps.form.result.node.fields"
         onPage: !cel "steps.page.result.node.children.map(c, {'type': c.type, 'label': c.label, 'style': c.style})"
-        rowActions: !cel "steps.todos.result.node.rowActions"
+        query: !cel "steps.todos.result.node.query"
+        rowActions: !cel "steps.todos.result.node.rowActions.map(r, {'path': r.action.path, 'label': r.action.label, 'inputs': r.inputs, 'confirm': has(r.confirm) ? r.confirm : null, 'prompt': has(r.prompt) ? r.prompt : null, 'enabled': has(r.enabled) ? r.enabled : null})"
       expected:
         generate:
           assets: []
@@ -216,64 +260,140 @@ steps:
                     compact: { type: boolean }
                 pages: { type: array, items: { type: object } }
             path: /api/reports
-            label: Generate
+            label: { text: Generate, context: null, lang: und, computed: false }
             fields:
-              - { property: month, label: Month }
-              - { property: copies, label: copies }
-              - { property: formats, label: Formats }
-              - { property: recipients, label: recipients }
-            lists:
-              - heading: Files
-                rows: { root: result, path: [files] }
-                columns:
-                  - { header: File, value: { root: row, path: [name] }, present: { type: string } }
-                  - { header: Link, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }
-                  - { header: Total, value: { root: result, path: [summary, total] }, present: { type: integer } }
-                  - { header: Kind, value: { value: report } }
-              - rows: { root: result, path: [files] }
-                columns:
-                  - { header: url, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }
+              - { type: input, property: month, label: { text: Month, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+              - { type: input, property: copies, label: { text: copies, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+              - { type: input, property: formats, label: { text: Formats, context: null, lang: und, computed: false }, control: auto, description: null, labels: [{ value: pdf, label: { text: pdf, context: null, lang: und, computed: false } }, { value: csv, label: { text: csv, context: null, lang: und, computed: false } }] }
+              - { type: input, property: recipients, label: { text: recipients, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+            groups: []
+            state: { address: false, store: { type: memory }, fields: [month, copies, formats, recipients] }
+            answer:
+              type: object
+              properties:
+                location: { type: string }
+                summary:
+                  type: object
+                  properties:
+                    total: { type: integer, title: Total }
+                files:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string, title: File }
+                      url: { type: string, format: uri-reference }
+            result:
+              type: stack
+              children:
+                - type: list
+                  heading: { text: Files, context: null, lang: und, computed: false }
+                  rows: { root: result, path: [files] }
+                  columns:
+                    - { header: { text: File, context: null, lang: und, computed: false }, value: { root: row, path: [name] }, present: { type: string }, labels: [] }
+                    - { header: { text: Link, context: null, lang: und, computed: false }, value: { root: row, path: [url] }, present: { type: string, format: uri-reference }, labels: [] }
+                    - { header: { text: Total, context: null, lang: und, computed: false }, value: { root: result, path: [summary, total] }, present: { type: integer }, labels: [] }
+                    - { header: { text: Kind, context: null, lang: und, computed: false }, value: { value: report }, labels: [] }
+                  rowActions:
+                    - action:
+                        type: action
+                        schema:
+                          type: object
+                          required: [name]
+                          properties:
+                            name: { type: string }
+                            month: { type: string }
+                        path: /api/archive
+                        label: { text: Archive, context: null, lang: und, computed: false }
+                        fields:
+                          - { type: input, property: name, label: { text: name, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+                          - { type: input, property: month, label: { text: month, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+                        groups: []
+                        state: { address: false, store: { type: memory }, fields: [name, month] }
+                        failure:
+                          type: stack
+                          style: danger
+                          children:
+                            - { type: value, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
+                            - { type: value, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
+                        onSuccess: { navigate: { value: /files }, refreshes: [] }
+                        concurrency: parallel
+                        clearAnswerOn: []
+                      inputs:
+                        name: { root: row, path: [name] }
+                        month: { root: input, path: [month] }
+                      enabled:
+                        at: { root: row, path: [url] }
+                        matches: { type: string }
+                        disabledText: { text: Not stored yet., context: null, lang: und, computed: false }
+                - type: value
+                  value: { root: values, path: [month] }
+                  present: { type: string }
+                  labels: []
+            failure:
+              type: value
+              value: { root: error, path: [message] }
+              present: { type: string }
+              labels: []
+            onSuccess:
+              navigate: { root: result, path: [location] }
+              refreshes: [/api/reports, /api/archive]
+            concurrency: serial
+            clearAnswerOn: [month, formats]
         chosen:
-          - { property: formats, label: Formats }
-          - { property: month, label: Month }
+          - { type: input, property: formats, label: { text: Formats, context: null, lang: und, computed: false }, control: auto, description: null, labels: [{ value: pdf, label: { text: pdf, context: null, lang: und, computed: false } }, { value: csv, label: { text: csv, context: null, lang: und, computed: false } }] }
+          - { type: input, property: month, label: { text: Month, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
         refresh:
           type: action
           schema: { type: object, properties: {} }
           path: /api/refresh
-          label: Refresh
+          label: { text: Refresh, context: null, lang: und, computed: false }
           fields: []
-          lists: []
+          groups: []
+          state: { address: false, store: { type: memory }, fields: [] }
+          failure:
+            type: stack
+            style: danger
+            children:
+              - { type: value, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
+              - { type: value, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
+          onSuccess: { refreshes: [] }
+          concurrency: parallel
+          clearAnswerOn: []
         form:
-          - { property: month, label: Month }
-          - { property: copies, label: copies }
-          - { property: formats, label: Formats }
-          - { property: recipients, label: recipients }
+          - { type: input, property: month, label: { text: Month, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+          - { type: input, property: copies, label: { text: copies, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+          - { type: input, property: formats, label: { text: Formats, context: null, lang: und, computed: false }, control: auto, description: null, labels: [{ value: pdf, label: { text: pdf, context: null, lang: und, computed: false } }, { value: csv, label: { text: csv, context: null, lang: und, computed: false } }] }
+          - { type: input, property: recipients, label: { text: recipients, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
         onPage:
-          - { type: action, label: Generate, style: strong }
+          - { type: action, label: { text: Generate, context: null, lang: und, computed: false }, style: strong }
+        query: { status: { type: string } }
         rowActions:
           - path: /api/todos/archive
-            label: Archive
+            label: { text: Archive, context: null, lang: und, computed: false }
             inputs:
               id: { root: row, path: [id] }
-              status: { value: archived }
+              status: { root: query, path: [status] }
+            confirm: null
+            prompt: null
+            enabled:
+              at: { root: row, path: [name] }
+              matches: { minLength: 1 }
+              disabledText: { text: Name it first., context: null, lang: und, computed: false }
           - path: /api/todos/rename
-            label: Rename
+            label: { text: Rename, context: null, lang: und, computed: false }
             inputs:
               name: { root: row, path: [name] }
-            confirm: Rename it?
+            confirm: { text: Rename it?, context: null, lang: und, computed: false }
+            prompt: null
+            enabled: null
           - path: /api/todos/archive
-            label: Archive
+            label: { text: Archive, context: null, lang: und, computed: false }
             inputs:
               id: { root: row, path: [id] }
+            confirm: null
             prompt:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [id]
-                properties:
-                  id: { type: integer }
-                  status: { type: string }
-                  reason: { type: string, title: Reason }
               fields:
-                - { property: status, label: status }
-                - { property: reason, label: Reason }
+                - { type: input, property: status, label: { text: status, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+                - { type: input, property: reason, label: { text: Reason, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+            enabled: null

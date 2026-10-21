@@ -1,0 +1,4 @@
+modules:
+  apps/authoring-agent: Added
+body: The system prompt describes x-telo-context-eval (the eval modes a context binding
+  exists at) and the relative-pointer form of x-telo-context-element-from-item.

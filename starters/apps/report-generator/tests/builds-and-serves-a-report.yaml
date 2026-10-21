@@ -100,14 +100,18 @@ steps:
         answered: !cel "steps.build.result.body.reports.map(r, r.name == steps.build.result.body.name)"
         recent: !cel "steps.recent.result.body.reports == steps.build.result.body.reports"
         uiTitle: !cel "steps.uiPage.result.body.title"
-        uiActions: !cel "steps.uiPage.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.path, c.lists[0].columns.map(col, col.header)])"
+        uiActions: !cel "steps.uiPage.result.body.children.filter(c, c.type == 'action').map(c, [c.label, c.path, c.result.columns.map(col, col.header)])"
       expected:
         answered: [ true, false ]
         recent: true
-        uiTitle: Reports
+        uiTitle: { lang: en, message: [Reports] }
         uiActions:
-          - [ Build report, /api/reports, [ Built, Total, Page, CSV ] ]
-          - [ Show reports, /api/reports/recent, [ Built, Total, Page, CSV ] ]
+          - - { lang: en, message: [Build report] }
+            - /api/reports
+            - [ { lang: und, message: [Built] }, { lang: und, message: [Total] }, { lang: und, message: [Page] }, { lang: und, message: [CSV] } ]
+          - - { lang: en, message: [Show reports] }
+            - /api/reports/recent
+            - [ { lang: und, message: [Built] }, { lang: und, message: [Total] }, { lang: und, message: [Page] }, { lang: und, message: [CSV] } ]
         builtAtBoot: 1
         build: 201
         total: 1737000

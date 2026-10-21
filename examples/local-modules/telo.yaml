@@ -1,0 +1,64 @@
+kind: Telo.Application
+metadata:
+  name: LocalModulesDemo
+  version: 1.0.0
+  categories: [ Compute ]
+  description: |
+    Two modules written beside the app and imported by relative path, racing
+    each other on the same proof-of-work search. `pow-ts/` is TypeScript:
+    bundled from source on load, nothing to install, edit and rerun. `pow-rust/`
+    is Rust: compiled to native code by `cargo build --release` on first load,
+    and several times faster on CPU-bound work. Both take the same inputs and
+    find the same nonce, so the time is the only difference. Their kinds are
+    used and checked exactly like the standard library's, and publishing either
+    later changes only its import's `source:`.
+
+    Each call does all of its work at once. Values cross between Node and Rust
+    at every call, so Rust pays off on large units of work, not on many tiny
+    calls.
+
+    Run it from a checkout, with `cargo` installed:
+
+        telo run ./examples/local-modules
+        telo run ./examples/local-modules "any text" --difficulty 22
+imports:
+  PowTs: ./pow-ts
+  PowRust: ./pow-rust
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
+variables:
+  text:
+    type: string
+    arg: { position: 0 }
+    description: The text to mine a nonce for.
+    default: "Hello, Telo!"
+  difficulty:
+    type: integer
+    minimum: 1
+    maximum: 24
+    arg: difficulty
+    description: Leading zero bits the hash must have; each extra bit doubles the work.
+    default: 20
+targets:
+  - !ref race
+---
+kind: Run.Sequence
+metadata: { name: race }
+steps:
+  - name: typescript
+    invoke: { kind: PowTs.Mine }
+    inputs:
+      text: !cel "variables.text"
+      difficulty: !cel "variables.difficulty"
+  - name: rust
+    invoke: { kind: PowRust.Mine }
+    inputs:
+      text: !cel "variables.text"
+      difficulty: !cel "variables.difficulty"
+  - name: report
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !interpolate |-
+        mining "${{ variables.text }}" at ${{ variables.difficulty }} bits
+          typescript  nonce ${{ format(steps.typescript.result.nonce, ',d') }}  in ${{ fixed(steps.typescript.result.elapsedMs, 0) }} ms
+          rust        nonce ${{ format(steps.rust.result.nonce, ',d') }}  in ${{ fixed(steps.rust.result.elapsedMs, 0) }} ms  {bold ${{ fixed(steps.typescript.result.elapsedMs / steps.rust.result.elapsedMs, 1) }}× faster}

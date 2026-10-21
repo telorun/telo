@@ -14,7 +14,15 @@
  *    plain-chain argument, is incompatible with its parameter's schema;
  *  - `FUNCTION_CALL_UNBOUND` — the expression sits where the runtime binds no
  *    module function (`x-telo-unbound-calls`), so no call in it can be judged
- *    against what it names.
+ *    against what it names;
+ *  - at a parameter typed by the `Text` fragment: `TEXT_ARGUMENT_COMPUTED` for an
+ *    argument that is not literals alone, and the literal text judged as the
+ *    calling module wrote it (`MESSAGE_SYNTAX_INVALID`,
+ *    `MESSAGE_SOURCE_LANGUAGE_MISSING`, `MESSAGE_PLURAL_CATEGORY_INVALID`); and at
+ *    the parameter whose `x-telo-text-values-for` pairs with it, the values the
+ *    call writes (`MESSAGE_PLACEHOLDER_UNBOUND`,
+ *    `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`). A map the call computes is the
+ *    kernel's to judge, at call binding.
  *
  * The first three are the kernel's binding refusals (`ERR_FUNCTION_*`); arity is
  * `ERR_FUNCTION_ARITY_MISMATCH` at evaluation. Entry-module-scoped, the
@@ -34,6 +42,15 @@ import {
   navigateSchemaToExprPath,
 } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import {
+  celTypeValueKind,
+  judgeText,
+  judgeValues,
+  runtimeValueKind,
+  type KnownValues,
+} from "./text-judgement.js";
+import { textParameters } from "./text-schemas.js";
+import { renderValuePath } from "./text-slot.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -50,6 +67,9 @@ export interface ModuleCallSite {
   /** Why no module function is bound where this expression is evaluated, when
    *  none is (`unbound-call-site.ts`). */
   readonly unboundReason?: string;
+  /** The `lang:` of the module writing the expression — the language a literal
+   *  text argument is written in; `null` when it declares none. */
+  readonly lang?: string | null;
 }
 
 export function moduleCallDiagnostics(
@@ -125,6 +145,14 @@ export function moduleCallDiagnostics(
       continue;
     }
 
+    out.push(...textArgumentDiagnostics(call, params, site.lang ?? null, (code, message) => ({
+      severity: DiagnosticSeverity.Error,
+      code,
+      source: SOURCE,
+      message: `${prefix} '${call.name}' ${message}`,
+      data: { resource, filePath, path },
+    })));
+
     (call.arguments ?? []).forEach((argument, index) => {
       const param = params[index];
       if (!param?.schema) return;
@@ -151,6 +179,72 @@ export function moduleCallDiagnostics(
     });
   }
   return out;
+}
+
+/**
+ * The text checks of one call: each `Text` parameter's argument must be written as
+ * literals alone, and is judged as the calling module wrote it; its paired values,
+ * where the call writes them as a map literal (or omits them), must bind every name
+ * the message reads with a string or a number.
+ */
+function textArgumentDiagnostics(
+  call: CallSite,
+  params: readonly { name?: unknown; schema?: unknown }[],
+  lang: string | null,
+  diagnostic: (code: string, message: string) => AnalysisDiagnostic,
+): AnalysisDiagnostic[] {
+  const out: AnalysisDiagnostic[] = [];
+  for (const parameter of textParameters(params)) {
+    if (parameter.index >= call.arity) continue;
+    const argument = call.arguments?.[parameter.index];
+    if (!argument?.literal) {
+      out.push(
+        diagnostic(
+          "TEXT_ARGUMENT_COMPUTED",
+          `with a computed argument for parameter '${parameter.name}', which is a Text: a text is looked up in a catalog by what is written, so it must be written at the call — a string, or { 'text': …, 'context': … } — never an expression.`,
+        ),
+      );
+      continue;
+    }
+    const judged = judgeText(argument.literal.value, lang);
+    for (const problem of judged.problems) {
+      const at = renderValuePath(problem.path);
+      out.push(
+        diagnostic(
+          problem.code,
+          `with a text for parameter '${parameter.name}'${at ? ` (at ${at})` : ""} that is refused: ${problem.message}.`,
+        ),
+      );
+    }
+    if (!judged.text || !parameter.values) continue;
+    const known = writtenValues(call, parameter.values.index);
+    if (!known) continue;
+    for (const problem of judgeValues(judged.text.message, known)) {
+      out.push(
+        diagnostic(
+          problem.code,
+          `with values for parameter '${parameter.values.name}' that the text of '${parameter.name}' cannot take: ${problem.message}.`,
+        ),
+      );
+    }
+  }
+  return out;
+}
+
+/** The values a call writes at a parameter: empty when it omits them, each key's
+ *  kind when it writes a map literal, undefined when they are computed. */
+function writtenValues(call: CallSite, index: number): KnownValues | undefined {
+  if (index >= call.arity) return new Map();
+  const argument = call.arguments?.[index];
+  if (!argument) return undefined;
+  const literal = argument.literal?.value;
+  if (literal && typeof literal === "object" && !Array.isArray(literal)) {
+    return new Map(Object.entries(literal).map(([key, value]) => [key, runtimeValueKind(value)]));
+  }
+  if (argument.entries) {
+    return new Map(argument.entries.map((entry) => [entry.key, celTypeValueKind(entry.type)]));
+  }
+  return undefined;
 }
 
 /**

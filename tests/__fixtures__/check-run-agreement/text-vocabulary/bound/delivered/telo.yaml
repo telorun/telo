@@ -1,0 +1,40 @@
+# A caption written as a text with values, and one an expression computes in
+# that form: the walk reads each by the branch that admits it, so the
+# controller receives the inner text as its record — computed for the second.
+kind: Telo.Application
+metadata:
+  name: BoundTextDeliveredApp
+  version: 1.0.0
+lang: en
+imports:
+  Kinds: ../../text-values/kinds
+  Run: ../../../../../../modules/run
+  Assert: ../../../../../../modules/assert
+targets:
+  - !ref main
+---
+kind: Kinds.Caption
+metadata:
+  name: caption
+label:
+  text: "{$n} items"
+  values: { n: 3 }
+computedLabel: !cel "{'text': '{$n} files', 'values': {'n': 2}}"
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: caption
+    invoke: !ref caption
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.caption.result"
+      expected:
+        label:
+          text: { text: "{$n} items", context: null, lang: en, computed: false }
+          values: { n: 3 }
+        computedLabel:
+          text: { text: "{$n} files", context: null, lang: en, computed: true }
+          values: { n: 2 }

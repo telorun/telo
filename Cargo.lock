@@ -572,6 +572,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 
 [[package]]
+name = "local-modules-pow"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "sha2",
+ "telorun-sdk",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1240,6 +1249,10 @@ dependencies = [
  "serde_json",
  "telorun-sdk",
 ]
+
+[[package]]
+name = "telorun-message-format"
+version = "0.120.0"
 
 [[package]]
 name = "telorun-sdk"

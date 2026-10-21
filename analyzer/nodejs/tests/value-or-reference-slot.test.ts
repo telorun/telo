@@ -170,7 +170,20 @@ describe("what the reference-form rule still guards", () => {
       dispatcherDef,
       ({ kind: "pg.Dispatcher", metadata: { name: "main" }, handler: { sink: "messageRole" } }) as unknown as ResourceManifest,
     );
-    expect(diags.find((d) => d.code === "INVALID_REFERENCE")).toBeDefined();
+    expect(diags.find((d) => d.code === "INVALID_REFERENCE")?.message).toBe(
+      "pg.Dispatcher/main: the value at 'handler' is not one this slot accepts. It takes !ref <name> " +
+        "naming a resource of kind pg.Enum or one extending it; or an inline declaration " +
+        "{ kind: <kind pg.Enum or one extending it>, … }.",
+    );
+  });
+
+  it("names each value branch by its title and type when an object fits neither", () => {
+    const diags = analyze(table({ storage: "text" }));
+    expect(diags.find((d) => d.code === "INVALID_REFERENCE")?.message).toBe(
+      "pg.Table/messages: the value at 'columns.role.type' is not one this slot accepts. It takes " +
+        'Storage class — one of "text", "uuid", "bigint"; !ref <name> naming a resource of kind pg.Enum ' +
+        "or one extending it; or an inline declaration { kind: <kind pg.Enum or one extending it>, … }.",
+    );
   });
 
   it("rejects the removed `{kind, name}` object at a union slot", () => {
@@ -226,6 +239,13 @@ describe("a value branch holding an expression", () => {
   });
 
   it("still refuses an entry of the wrong shape", () => {
-    expect(errors([{ theme: 5 }]).map((d) => d.code)).toEqual(["INVALID_REFERENCE"]);
+    expect(errors([{ theme: 5 }]).map((d) => [d.code, d.message])).toEqual([
+      [
+        "INVALID_REFERENCE",
+        "pg.Themed/page: the value at 'theme' is not one this slot accepts. It takes a list; !ref <name> " +
+          "naming a resource of kind pg.Enum or one extending it; or an inline declaration " +
+          "{ kind: <kind pg.Enum or one extending it>, … }.",
+      ],
+    ]);
   });
 });

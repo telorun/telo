@@ -1,0 +1,42 @@
+{
+  "name": "language-tag",
+  "grammar": "https://www.rfc-editor.org/rfc/rfc5646#section-2.1",
+  "standIn": "und",
+  "description": "A well-formed RFC 5646 language tag — language, optional extended language, script, region, variants, extensions and a private-use part, or a grandfathered tag — compared case-insensitively. Well-formed is the ABNF alone: whether a subtag is registered is not checked.",
+  "conformance": {
+    "valid": [
+      "en",
+      "pl",
+      "pl-PL",
+      "pl-Latn-PL",
+      "zh-Hant-TW",
+      "sr-Cyrl",
+      "und",
+      "en-US-u-ca-gregory",
+      "de-CH-1901",
+      "es-419",
+      "x-private",
+      "en-x-whatever",
+      "i-klingon",
+      "EN-us",
+      "zh-yue-HK",
+      "sl-rozaj-biske"
+    ],
+    "invalid": [
+      "",
+      "e",
+      "e1",
+      "en_US",
+      "en-",
+      "-en",
+      "pl--PL",
+      "en-US-",
+      "123",
+      "en-a",
+      "en-x",
+      "toolonglanguage",
+      "en-a-ab-b-",
+      "ab-cdefghijk"
+    ]
+  }
+}

@@ -1,0 +1,46 @@
+# A kind whose schema reaches its fields through a recursive named shape: the
+# accessor in it is named at every depth, and every other expression beside it
+# is evaluated at creation.
+kind: Telo.Application
+metadata:
+  name: NodeTreeSites
+  version: 1.0.0
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Node
+schema:
+  type: object
+  additionalProperties: false
+  x-telo-context:
+    type: object
+    properties:
+      row:
+        type: object
+        properties: { x: { type: string }, y: { type: string } }
+  properties:
+    text: { type: string }
+    at: { x-telo-eval: accessor }
+    children: { type: array, items: { $ref: "#" } }
+---
+kind: Telo.Definition
+metadata:
+  name: Card
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Card
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    content: { $ref: "telo://Self/Node" }
+---
+kind: Self.Card
+metadata:
+  name: card
+content:
+  text: !cel "'a' + 'b'"
+  at: !cel "row.x"
+  children:
+    - text: !cel "string(1 + 1)"
+      at: !cel "row.y"

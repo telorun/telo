@@ -1,0 +1,33 @@
+# A library writing in Polish, declaring a kind whose controller evaluates its
+# texts when it is invoked.
+kind: Telo.Library
+metadata:
+  name: LateTextLib
+  version: 1.0.0
+lang: pl
+exports:
+  kinds: [Notice]
+---
+kind: Telo.Definition
+metadata:
+  name: Notice
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./controllers.mjs#Notice
+schema:
+  type: object
+  properties:
+    title: { $ref: "telo://manifest#/$defs/Text", x-telo-eval: runtime }
+    banner:
+      type: object
+      x-telo-context:
+        type: object
+        properties:
+          who: { type: string }
+      properties:
+        heading: { $ref: "telo://manifest#/$defs/Text" }
+    fixed: { $ref: "telo://manifest#/$defs/Text", x-telo-eval: runtime }
+    values:
+      type: object
+      x-telo-eval: runtime
+      x-telo-text-values-for: /title

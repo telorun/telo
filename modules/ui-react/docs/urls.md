@@ -162,11 +162,15 @@ breakpoint is swapped in place: what was entered stays.
   "digest": "<digest of this document>",
   "path": "/",
   "title": "Todos",
+  "query": {},
   "children": [ { "type": "text", "text": "Open work", "style": "heading" } ]
 }
 ```
 
-`children` are `Ui.SpecNode`s, produced for this request.
+`children` are `Ui.SpecNode`s, produced for this request: no `when` is left in
+them, and every `shown` is carried as written. `query` is the page's declared
+query parameters, `{}` when it declares none; the renderer reads each from the
+address as the page's `query` root.
 
 ## Digests
 

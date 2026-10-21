@@ -84,9 +84,7 @@ steps:
     inputs:
       actual:
         kept: !cel "steps.result.result.content == steps.large.result.substring(0, 32768) + '\\n' + '[truncated: 67232 of 100000 bytes cut; a tool result passes at most 32768 bytes to the model]'"
-        outputWhole: !cel "steps.result.result.output.content == steps.large.result"
-        outputSize: !cel "steps.result.result.output.size"
+        outputWhole: !cel "steps.result.result.output.text == steps.large.result"
       expected:
         kept: true
         outputWhole: true
-        outputSize: 100000

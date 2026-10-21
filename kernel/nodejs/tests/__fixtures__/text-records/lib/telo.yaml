@@ -1,0 +1,84 @@
+# A library writing in Polish: a kind holding a `Text`, a child mapping its own
+# field onto it with `base:`, a template whose body writes one text and forwards
+# another, and a function taking a `Text`.
+kind: Telo.Library
+metadata:
+  name: TextRecordLib
+  version: 1.0.0
+lang: pl
+exports:
+  kinds: [Label, Caption, Banner, Show]
+  resources: [t]
+---
+kind: Telo.Definition
+metadata:
+  name: Label
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./controllers.mjs#Label
+schema:
+  type: object
+  properties:
+    text: { $ref: "telo://manifest#/$defs/Text" }
+    peer:
+      x-telo-ref: { kind: Self.Label, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Caption
+extends: Self.Label
+schema:
+  type: object
+  properties:
+    caption: {}
+base:
+  text: !cel "self.caption"
+---
+kind: Telo.Definition
+metadata:
+  name: Banner
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    title: {}
+provide: !ref fixed
+resources:
+  - kind: Self.Label
+    metadata: { name: fixed }
+    text: { plural: n, cases: { few: "{$n} pliki", many: "{$n} plików", other: "{$n} pliku" } }
+  - kind: Self.Label
+    metadata: { name: forwarded }
+    text: !cel "self.title"
+---
+kind: Telo.Definition
+metadata:
+  name: Translate
+capability: Telo.Callable
+deterministic: true
+controllers:
+  - pkg:telo/local/js?path=./controllers.mjs#Translate
+schema: { type: object }
+params:
+  - name: text
+    schema: { $ref: "telo://manifest#/$defs/Text" }
+  - name: values
+    optional: true
+    schema: { type: object, x-telo-text-values-for: /text }
+returns:
+  schema: { type: string }
+---
+kind: Self.Translate
+metadata:
+  name: t
+---
+kind: Telo.Definition
+metadata:
+  name: Show
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./controllers.mjs#Show
+schema:
+  type: object
+  properties:
+    message: { type: string }

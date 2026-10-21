@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CollectionQuery } from "../src/collection-controller.js";
 import { filterFields } from "../src/filters-controller.js";
+import { schemaText } from "../src/spec-texts.js";
 
 const schema = {
   properties: {
@@ -17,7 +18,7 @@ const accepted: CollectionQuery["filters"] = [
 describe("a listed filter", () => {
   it("is not judged where the property declares several types", () => {
     expect(filterFields(schema, accepted, [{ property: "dueOn", operator: "gte" }], "f")).toEqual([
-      { property: "dueOn", operator: "gte", label: "dueOn", schema: schema.properties.dueOn, pinned: false, control: "auto" },
+      { property: "dueOn", operator: "gte", label: schemaText("dueOn", null), labels: [], schema: schema.properties.dueOn, pinned: false, control: "auto" },
     ]);
   });
 

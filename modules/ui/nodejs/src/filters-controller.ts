@@ -1,13 +1,14 @@
-import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
+import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource, type TextRecord } from "@telorun/sdk";
+import { labelsOf, quotedText, sameWritten, type ValueLabel } from "./spec-texts.js";
 import type { Provided, SpecNode } from "./composite.js";
 import { isCollection, type CollectionQuery, type Operator } from "./collection-controller.js";
 import { abovePlacement, isFilterPlacement } from "./filter-placement.js";
 import { labelOf, modelSchema, type JsonSchema } from "./model-schema.js";
 import { resolveNode, type AuthoredNode } from "./node-resolution.js";
-import { isStateStore, memoryStore } from "./state-store.js";
+import { controlFits, type Control } from "./control-fit.js";
+import { stateSpec, type StateConfig } from "./state-record.js";
 
 type Scalar = string | number | boolean;
-type Control = "auto" | "select" | "options" | "toggle" | "slider" | "tags" | "none";
 
 /** One filter as listed. A member holding nothing is one left out. */
 interface FieldConfig {
@@ -19,7 +20,7 @@ interface FieldConfig {
 }
 
 interface PresetConfig {
-  label: string;
+  label: TextRecord;
   values: { property: string; operator: Operator; value: unknown }[];
 }
 
@@ -30,7 +31,7 @@ interface PolicyConfig {
   controls?: string;
   apply?: string;
   summary?: string;
-  state?: { key: string; address?: boolean; store?: unknown };
+  state?: StateConfig;
 }
 
 type FiltersResource = RuntimeResource & {
@@ -45,7 +46,8 @@ type FiltersResource = RuntimeResource & {
 export interface FilterField {
   property: string;
   operator: Operator;
-  label: string;
+  label: TextRecord;
+  labels: ValueLabel[];
   schema: JsonSchema;
   pinned: boolean;
   control: Control;
@@ -53,7 +55,7 @@ export interface FilterField {
 }
 
 export interface FilterPreset {
-  label: string;
+  label: TextRecord;
   values: { property: string; operator: Operator; value: Scalar[] }[];
 }
 
@@ -72,35 +74,6 @@ const ACCEPTS: Record<Operator, string[]> = {
 function operatorFits(property: JsonSchema, operator: Operator): boolean {
   const declared = property.type;
   return typeof declared !== "string" || ACCEPTS[operator].includes(declared);
-}
-
-const COMPARISONS = ["eq", "gt", "gte", "lt", "lte"];
-
-/** Whether a property can be entered with a control. A control states what it
- *  needs, so the property's types are read with `null` set aside and a type
- *  that cannot be read is refused. */
-function controlFits(property: JsonSchema, operator: Operator, control: Control): boolean {
-  const types = [property.type ?? []].flat().filter((type: unknown) => type !== "null");
-  const boolean = types.length === 1 && types[0] === "boolean";
-  switch (control) {
-    case "select":
-    case "options":
-      return Array.isArray(property.enum) || boolean;
-    case "toggle":
-      return boolean && operator === "eq";
-    case "slider":
-      return (
-        types.length > 0 &&
-        types.every((type: unknown) => type === "number" || type === "integer") &&
-        property.minimum !== undefined &&
-        property.maximum !== undefined &&
-        COMPARISONS.includes(operator)
-      );
-    case "tags":
-      return operator === "in";
-    default:
-      return true;
-  }
 }
 
 /** A declared value as plain data: an integer an expression computed arrives wide. */
@@ -149,6 +122,7 @@ export function filterFields(
     property,
     operator,
     label: labelOf(property, properties[property]),
+    labels: labelsOf(properties[property]),
     schema: properties[property],
     pinned: pinned === true,
     control: control ?? "auto",
@@ -195,7 +169,7 @@ export function filterFields(
       );
     }
     const control = config.control ?? "auto";
-    if (!controlFits(properties[property], operator, control)) {
+    if (control !== "auto" && control !== "none" && !controlFits(control, properties[property], operator)) {
       throw new RuntimeError(
         "ERR_UI_FILTER_CONTROL_UNSUPPORTED",
         `${owner}: 'fields[${index}]' asks for a control its filter cannot be entered with ('${control}' for '${operator}' on '${property}'): 'select' and 'options' need an 'enum' or a boolean, 'toggle' a boolean with 'eq', 'slider' a number or integer declaring 'minimum' and 'maximum' with 'eq' or a comparison, and 'tags' the 'in' operator.`,
@@ -216,10 +190,10 @@ export function filterFields(
 /** The presets as a renderer receives them, each value a list. */
 export function filterPresets(fields: FilterField[], declared: PresetConfig[] | undefined, owner: string): FilterPreset[] {
   return (declared ?? []).map((preset, index) => {
-    if (declared?.findIndex((other) => other.label === preset.label) !== index) {
+    if (declared?.findIndex((other) => sameWritten(other.label, preset.label)) !== index) {
       throw new RuntimeError(
         "ERR_UI_FILTER_PRESET_LABEL_DUPLICATE",
-        `${owner}: 'presets[${index}]' has the label of another preset ('${preset.label}'). A preset is chosen by its label: give each its own.`,
+        `${owner}: 'presets[${index}]' has the label of another preset (${quotedText(preset.label)}). A preset is chosen by its label: give each its own.`,
       );
     }
     const values = preset.values.map(({ property, operator, value }) => {
@@ -270,11 +244,7 @@ class Filters implements ResourceInstance {
         : await this.ctx
             .resolveRef(policy.placement, isFilterPlacement, () => `'policy.placement' of ${owner}`, "Ui.FilterPlacement")
             .provide();
-    const stored = policy.state?.store;
-    const store =
-      stored === undefined
-        ? memoryStore()
-        : await this.ctx.resolveRef(stored, isStateStore, () => `'policy.state.store' of ${owner}`, "Ui.StateStore").provide();
+    const state = await stateSpec(policy.state, fields.map((field) => field.property), schema, this.ctx, owner, "policy.state", "filter");
     const node: SpecNode = {
       type: "filters",
       fields,
@@ -284,11 +254,7 @@ class Filters implements ResourceInstance {
       controls: policy.controls ?? "direct",
       apply: policy.apply ?? "commit",
       summary: policy.summary ?? "none",
-      state: {
-        ...(policy.state === undefined ? {} : { key: policy.state.key }),
-        address: policy.state?.address ?? false,
-        store,
-      },
+      state,
       presets,
     };
     return { node, assets: content.assets };

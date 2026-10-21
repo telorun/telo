@@ -110,7 +110,7 @@ and none decides which others may be written: every combination is valid.
 | `controls` | `direct` \| `chips` (`direct`) | under `chips` each filter is a chip naming it and its value, which opens its control |
 | `apply` | `commit` \| `typing` \| `button` (`commit`) | when a change reaches the list |
 | `summary` | `none` \| `chips` (`none`) | under `chips`, a row of removable chips, one per filter holding a value |
-| `state` | `{ key, address, store }` (in memory) | [where the bar's state is kept](state-store.md) |
+| `state` | `{ key, address, store, fields? }` (in memory) | [where the bar's state is kept](state-store.md) — a `Ui.StateRecord`, shared with forms and actions; `fields` limits which properties' filters are kept (`UI_STATE_FIELD_UNKNOWN` for one no filter shows) |
 
 ```yaml
 policy:

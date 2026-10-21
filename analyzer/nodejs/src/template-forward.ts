@@ -160,6 +160,9 @@ export class TemplateForwardViews {
   private readonly byName = new Map<string, ForwardedEntry>();
   private readonly outgoing = new Map<ResourceManifest, ForwardedEntry[]>();
   private readonly sites = new Map<ResourceManifest, CelEvalSites>();
+  /** Each holder with a view, and the definition whose body it expands — its
+   *  own, or the controller-bearing ancestor's it runs. */
+  private readonly runners = new Map<ResourceManifest, ResourceDefinition>();
 
   /** Everything to analyze beside the manifests the views were built from. */
   get analyzed(): ResourceManifest[] {
@@ -170,6 +173,29 @@ export class TemplateForwardViews {
    *  forwarded expression. */
   addHolder(manifest: ResourceManifest, sites: CelEvalSites): void {
     this.sites.set(manifest, sites);
+  }
+
+  addRunner(holder: ResourceManifest, runner: ResourceDefinition): void {
+    this.runners.set(holder, runner);
+  }
+
+  /** Every declaration a view was built for, with the definition whose body
+   *  holds the entries it forwards into. */
+  holders(): IterableIterator<[ResourceManifest, ResourceDefinition]> {
+    return this.runners.entries();
+  }
+
+  /** The view of the body entry named `entryName` that `holder` forwards into. */
+  viewFor(holder: ResourceManifest, entryName: string): ResourceManifest | undefined {
+    return this.outgoing.get(holder)?.find((entry) => entry.entryName === entryName)?.view;
+  }
+
+  /** True when the value a view holds at `path` was evaluated before it was
+   *  forwarded: a consumer up the chain marks the path it came from
+   *  compile-eval, so the entry receives the result. */
+  evaluatedBefore(view: ResourceManifest, path: string): boolean {
+    const entry = this.byView.get(view);
+    return entry ? this.evaluatedUpstream(entry, path) : false;
   }
 
   addEntry(entry: ForwardedEntry): void {
@@ -370,9 +396,12 @@ export function buildTemplateForwardViews(
 
   for (let i = 0; i < queue.length; i++) {
     const holder = queue[i]!;
-    const entries = forwardedEntries(holder, registry, aliases, scopes, resolveDef, crossing);
+    const runner = templateRunnerOf(holder.definition, resolveDef);
+    if (!runner) continue;
+    const entries = forwardedEntries(holder, runner, registry, aliases, scopes, crossing);
     if (entries.length === 0) continue;
-    views.addHolder(holder.manifest, kindCelEvalSites(holder.definition, resolveDef));
+    views.addRunner(holder.manifest, runner);
+    views.addHolder(holder.manifest, kindCelEvalSites(holder.definition, resolveDef, registry.shapeLookup));
     for (const entry of entries) {
       const rootLinks = holder.rootLinks ? composeLinks(entry.links, holder.rootLinks) : entry.links;
       if (rootLinks.length === 0) continue;
@@ -398,7 +427,7 @@ export function buildTemplateForwardViews(
         root: holder.root,
         rootLinks,
       });
-      views.addHolder(view!, kindCelEvalSites(entry.definition, resolveDef));
+      views.addHolder(view!, kindCelEvalSites(entry.definition, resolveDef, registry.shapeLookup));
       if (!holder.chain.has(entry.definition)) {
         queue.push({
           manifest: view!,
@@ -430,21 +459,27 @@ interface BuiltEntry {
   readonly links: ForwardLink[];
 }
 
+/** The definition whose body an instance of `definition` runs: its own, or —
+ *  for an `extends` child with no body of its own — its controller-bearing
+ *  ancestor's, handed its own config or, with `base:`, the mapping over it. */
+function templateRunnerOf(
+  definition: ResourceDefinition,
+  resolveDef: DefResolver,
+): ResourceDefinition | undefined {
+  return hasOwnControllerOrTemplate(definition)
+    ? definition
+    : controllerBearingAncestor(definition, resolveDef);
+}
+
 function forwardedEntries(
   holder: Holder,
+  runner: ResourceDefinition,
   registry: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: { aliasesByModule: Map<string, AliasResolver>; rootModules: ReadonlySet<string> },
-  resolveDef: DefResolver,
   crossing: ReferenceCrossing,
 ): BuiltEntry[] {
   const definition = holder.definition;
-  // An `extends` child with no body of its own runs its ancestor's, handed its
-  // own config — or, with `base:`, the mapping evaluated over it.
-  const runner = hasOwnControllerOrTemplate(definition)
-    ? definition
-    : controllerBearingAncestor(definition, resolveDef);
-  if (!runner) return [];
   const base = runner === definition ? undefined : (definition as { base?: unknown }).base;
   const runnerScope = moduleAliasScope(runner.metadata, aliases, scopes.aliasesByModule);
   const canonicalInRunner = (kind: string): string => runnerScope?.resolveKind(kind) ?? kind;

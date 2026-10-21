@@ -20,6 +20,8 @@
  */
 import type { CelEnvironment, CelNode, CheckResult } from "@telorun/cel";
 import { moduleCallArgumentChains } from "./analyze.js";
+import { literalTypeOf, literalValueOf, mapLiteralEntries } from "./literal-argument.js";
+import { moduleCallNodes } from "./module-call.js";
 import type { CallSite, EngineDiagnostic } from "../engine.js";
 import type { CelCallAudit } from "./verdict-codes.js";
 
@@ -66,6 +68,9 @@ export function auditCalls(
   const byNode = new Map(
     [...argumentChains].map(([node, chains]) => [`${node.range[0]}:${node.range[1]}`, chains]),
   );
+  const argumentNodes = new Map(
+    moduleCallNodes(root).map(({ node, call }) => [`${node.range[0]}:${node.range[1]}`, call.args]),
+  );
 
   // **One entry per call.** The checker already lists a qualified call — with `namespace`
   // set and `form: "receiver"`, which is how it was written — so appending a second entry
@@ -76,6 +81,7 @@ export function auditCalls(
     const qualified = call.namespace !== undefined;
     const flags = qualified ? moduleCallFlags?.(call.name) : undefined;
     const chains = qualified ? byNode.get(`${call.range[0]}:${call.range[1]}`) : undefined;
+    const nodes = qualified ? argumentNodes.get(`${call.range[0]}:${call.range[1]}`) : undefined;
     calls.push({
       name: call.name,
       form: call.form,
@@ -90,9 +96,21 @@ export function auditCalls(
         ? {
             arguments: call.argumentTypes.map((type, at) => {
               const chain = chains?.[at] ?? null;
+              const node = nodes?.[at];
+              const literal = node ? literalValueOf(node) : undefined;
+              const entries = node ? mapLiteralEntries(node) : undefined;
               return {
                 ...(type === "dyn" ? {} : { type }),
                 ...(chain ? { chain } : {}),
+                ...(literal ? { literal } : {}),
+                ...(entries
+                  ? {
+                      entries: entries.map((entry) => {
+                        const entryType = literalTypeOf(entry.value) ?? mapValueType(type);
+                        return { key: entry.key, ...(entryType ? { type: entryType } : {}) };
+                      }),
+                    }
+                  : {}),
               };
             }),
           }
@@ -128,4 +146,20 @@ export function explainUnresolved(names: readonly string[], environment: CelEnvi
   const listed = [...new Set(signatures)].map((signature) => `\`${signature}\``);
   const last = listed.pop()!;
   return ` Registered: ${listed.length > 0 ? `${listed.join(", ")} and ${last}` : last}.`;
+}
+
+/** The value type a `map(K, V)` type names, unless it is `dyn`. */
+function mapValueType(type: string): string | undefined {
+  if (!type.startsWith("map(") || !type.endsWith(")")) return undefined;
+  let depth = 0;
+  for (let at = 4; at < type.length - 1; at++) {
+    const char = type[at];
+    if (char === "(") depth++;
+    else if (char === ")") depth--;
+    else if (char === "," && depth === 0) {
+      const value = type.slice(at + 1, -1).trim();
+      return value === "dyn" ? undefined : value;
+    }
+  }
+  return undefined;
 }

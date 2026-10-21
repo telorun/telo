@@ -227,6 +227,7 @@ steps:
       kind: HttpClient.Request
       url: http://127.0.0.1:8087/
       method: GET
+      responseType: text
   - name: page
     invoke:
       kind: HttpClient.Request
@@ -251,11 +252,16 @@ steps:
         page: !cel "steps.page.result.status"
         title: !cel "steps.page.result.body.title"
         root: !cel "steps.page.result.body.children[0].type"
+        # The module's `lang:` is the language every document is served in.
+        lang: !cel "steps.page.result.body.lang"
+        shellLang: !cel "steps.shell.result.body.contains('<html lang=\"en\">')"
       expected:
         shell: 200
         page: 200
-        title: Todos
+        title: { lang: en, message: [Todos] }
         root: filters
+        lang: en
+        shellLang: true
 
   # `/` is one `Crud.Ui`: what its three keys say is what the bar and the
   # table's two openers carry, and what they leave out is the default.
@@ -270,7 +276,7 @@ steps:
             controls: direct
             apply: commit
             summary: chips
-            state: { key: todos, address: true, store: { type: local } }
+            state: { key: todos, address: true, store: { type: local }, fields: [text, isDone, dueOn] }
             presets: []
           create:
             surface:
@@ -308,7 +314,7 @@ steps:
         nodes: !cel "steps.statusPage.result.body.children.map(c, c.type)"
         screen: !cel "steps.statusPage.result.body.children.filter(c, c.type == 'filters').map(c, {'bar': {'show': c.show, 'placement': c.placement, 'controls': c.controls, 'apply': c.apply, 'summary': c.summary, 'state': c.state}, 'fields': c.fields.map(f, [f.property, f.operator, f.pinned, f.control]), 'presets': c.presets, 'create': {'fields': c.content.create.form.fields.map(f, f.property), 'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'fields': c.content.edit.form.fields.map(f, f.property), 'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})"
       expected:
-        title: By status
+        title: { lang: en, message: [By status] }
         nodes: [text, filters]
         screen:
           - bar:
@@ -317,7 +323,7 @@ steps:
               controls: direct
               apply: commit
               summary: none
-              state: { address: false, store: { type: memory } }
+              state: { address: false, store: { type: memory }, fields: [text, isDone, dueOn] }
             fields:
               - [text, contains, true, auto]
               - [isDone, eq, false, none]
@@ -325,9 +331,9 @@ steps:
               - [dueOn, lte, false, auto]
             # A preset's value is a list on the wire, whatever was written.
             presets:
-              - { label: All, values: [] }
-              - { label: Open, values: [{ property: isDone, operator: eq, value: [false] }] }
-              - { label: Done, values: [{ property: isDone, operator: eq, value: [true] }] }
+              - { label: { lang: en, message: [All] }, values: [] }
+              - { label: { lang: en, message: [Open] }, values: [{ property: isDone, operator: eq, value: [false] }] }
+              - { label: { lang: en, message: [Done] }, values: [{ property: isDone, operator: eq, value: [true] }] }
             create:
               fields: [text]
               surface: &dialog

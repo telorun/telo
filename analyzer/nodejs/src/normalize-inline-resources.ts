@@ -41,7 +41,7 @@ const SYSTEM_KINDS = new Set([
  * into a valid `{kind, name}` before AJV ever saw it, silently converting a
  * deliberate rejection into a working feature.
  */
-function acceptsInline(resourceKind: string, entry: { inline?: boolean }): boolean {
+export function acceptsInline(resourceKind: string, entry: { inline?: boolean }): boolean {
   return !SYSTEM_KINDS.has(resourceKind) || entry.inline === true;
 }
 

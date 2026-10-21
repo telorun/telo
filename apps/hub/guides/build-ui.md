@@ -45,6 +45,7 @@ calls, after the API's own mounts:
 ```yaml
 kind: Telo.Application
 metadata: { name: Tasks, version: 1.0.0 }
+lang: en   # the language every text below is written in
 imports:
   # One line per module, exactly as get_kinds returns it.
   Http: oci://ghcr.io/telorun/http-server@<version>#<pin>
@@ -58,6 +59,7 @@ targets:
 kind: UiReact.App
 metadata: { name: admin }
 title: Tasks
+words: !ref Ui.words
 pages:
   - path: /
     title: Open work
@@ -83,9 +85,12 @@ tested on its own. A composite used in exactly one place is declared inline at
 its node (`ref: { kind: Ui.Table, … }`) and gets a name only when two places
 use it — as `taskTable` below is, on a page and inside a filter bar.
 
-- `title` (required) names the application. `pages` (at least one) are
-  `{ path, title, children }`; every page gets a navigation link, in order.
-- Optional: `lang`, `theme`, `defaultTheme`, `stylesheets` (host paths,
+- `title` (required) names the application. `words` (required) is what the
+  renderer draws on its own — `!ref Ui.words`, English. `pages` (at least one)
+  are `{ path, title, children }`; every page gets a navigation link, in order.
+- Optional: `translator` (an `I18n.Translator`) and `lang` (a tag, or
+  `!cel` over `request.headers` — the negotiated `Accept-Language`) serve every
+  text translated; `theme`, `defaultTheme`, `stylesheets` (host paths,
   written `!module-path ./ui.css`), `compactBelow` (the narrow-viewport
   breakpoint).
 - A page `path` is literal and unique, never under `/_telo`.
@@ -101,12 +106,22 @@ A page's `children` are nodes — plain data with a `type`:
 | `link` | `text`, `href` |
 | `image` | `src`, `alt` (required, may be empty) |
 | `svg` | `markup`, `alt` — drawn as an image, never inserted |
+| `value` | `value` (an accessor), `text?` — one value, presented as its schema says |
+| `list` | `rows` (an accessor), `columns: [{ header?, value, shown? }]`, `heading?` |
 | `composite` | `ref` — a `!ref`, or an inline declaration |
 
 Every node also takes `style` (one or a list of `heading`, `subheading`,
-`muted`, `strong`, `accent`, `danger`, `warning`, `success`) and `when` (a
-boolean). There is no layout field and no button node: arrangement is the
+`muted`, `strong`, `accent`, `danger`, `warning`, `success`), `when` (a
+boolean deciding on the server whether the node is delivered) and `shown` (a
+condition deciding in the browser whether it is drawn — see "Data and
+conditions"). There is no layout field and no button node: arrangement is the
 renderer's styling, and a button that does something is a `Ui.Action`.
+
+**Texts.** Every label, heading and node text is a text in the module's
+`lang:`. A text over data names its values instead of being concatenated, so a
+translation chooses the plural: `text: { text: { plural: n, cases: { one:
+"{$n} open task", other: "{$n} open tasks" } }, values: { n: !cel "data.open" } }`.
+A placeholder nothing binds is refused by `telo check`.
 
 **Addresses.** An address inside the application — a page `path`, a `link`'s
 `href`, an `image`'s `src`, a `source.basePath`, an action's `source.path` —
@@ -294,10 +309,33 @@ content: { type: composite, ref: !ref taskTable }
 
 A `Ui.Form` names a `model` and the `source.basePath` it writes to; `fields`
 left out is one field per enterable property (a scalar, or a list of
-scalars). The model decides each control — a boolean is a checkbox, an `enum`
-a select, a list whose `items` declare `enum` a multi-choice, any other list
-typed tags — and there is no per-field control key. An object property gets
-no field (`UI_FORM_FIELD_UNSUPPORTED` if listed).
+scalars). An entry of `fields` is a property name — its control derived from
+the model — or a **field kind**: `Ui.InputField` (`control: select | options |
+toggle | slider | tags`), `Ui.ChoiceField` / `Ui.PickerField` over an option
+source, `Ui.DateRangeField` (`presets`, `initialPreset`). Each judges its own
+fit to the model, so `telo check` refuses a control the property cannot take.
+
+```yaml
+fields:
+  - title
+  - { kind: Ui.PickerField, property: ownerId, options: !ref people, group: who }
+  - { kind: Ui.DateRangeField, property: period, presets: [{ label: This month, unit: month, offset: 0 }] }
+groups: [{ name: who, label: People }]
+state: { key: task, address: true }
+---
+kind: Ui.CollectionOptions
+metadata: { name: people }
+model: !ref Person
+value: !cel "row.id"
+label: !cel "row.name"
+collection: !ref personQuery
+source: { basePath: /api/people, filters: { team: !cel "values.team" } }
+search: { property: name, operator: contains }
+```
+
+`value` is a property the collection filters with `in` (how a chosen value
+is labelled); `source.filters` may read the form's `values`. `groups` keep
+their fields together; `state` keeps entered values in the address or a store.
 
 A table opens a form through `create` and `edit`, each an object — never a
 bare form:
@@ -338,8 +376,8 @@ with the entered values over it, because `PUT` replaces.
 
 ## Actions — a button that runs an operation
 
-`Ui.Action` is a form with one button, posting to a route, and lists drawn
-from what the route answered. It is reached by URL only: `source.path`, always
+`Ui.Action` is a form with one button, posting to a route, and node trees
+drawn from what the route answered. It is reached by URL only: `source.path`, always
 one `POST` with a JSON body — no `!ref` to a handler and no `method`.
 
 Declare the route and the action over the **same two shapes**, so the page
@@ -374,17 +412,21 @@ inputModel: !ref ReportRequest
 outputModel: !ref ReportAnswer
 source: { path: /api/reports }
 label: Generate
-lists:
-  - heading: Files
-    rows: !cel "result.files"
-    columns:
-      - value: !cel "row.name"
-      - value: !cel "row.url"
+result:
+  type: list
+  heading: Files
+  rows: !cel "result.files"
+  columns:
+    - value: !cel "row.name"
+    - value: !cel "row.url"
+onSuccess:
+  refreshes: [/api/reports]
 ```
 
 The route answers the **action contract**: any 2xx with a JSON object valid
-against `outputModel` (read only when `lists` is declared), a 400 with the
-validation envelope, 401 / 403, anything else a failure. An `Http.Api`
+against `outputModel` (read only when `result` or `onSuccess.navigate` reads
+it), a 400 with the validation envelope, anything else with a
+`{ code, message }` body. An `Http.Api`
 route's `request.schema.body` takes the JSON Schema written inline — a `!ref`
 to a `Telo.JsonSchema` there passes `telo check` and fails at boot — so write
 the request shape out there and keep it equal to `inputModel`:
@@ -413,25 +455,29 @@ routes:
 
 - `inputModel` with no properties is a bare button.
 - `fields` left out is every enterable input property; every required input
-  must be enterable (`UI_ACTION_REQUIRED_INPUT_NOT_ENTERED`).
-- In `lists`, `result` is typed from `outputModel` and `row` from the element
-  of that entry's own `rows`; both are plain chains. With no `outputModel`,
-  any `result.<member>` is `CEL_UNKNOWN_FIELD`. A column's `value` is
-  `row.<member>`, `result.<member>` or a fixed value. `telo check` types `row`
-  only where the list's `items` are written inline in the answer model or one
-  `!ref` away; deeper, `row` is untyped and a misspelled member is not
-  reported.
-- A list column's header defaults to the member's `title`, else its name, and
-  a `format: uri` / `uri-reference` member is drawn as a link — following the
-  member through any reference, as a table column does.
+  must be enterable (`UI_FIELD_REQUIRED_NOT_ENTERED`).
+- `result:` is a node tree drawn from a success, over `result` (typed from
+  `outputModel`; with none, any `result.<member>` is `CEL_UNKNOWN_FIELD`),
+  `input` (the record sent) and `values` (what the form holds now). `failure:`
+  is drawn for anything else — a 400 also marks the fields — over `error`
+  (`status`, absent with no answer; `code`; `message`), `input` and `values`;
+  left out, it shows the error's code and message. An action has no `lists`:
+  draw a `list` node in `result`.
+- `onSuccess.navigate` is a path into `result` or a fixed address: a declared
+  page moves within the app, an `https://` address replaces the page.
+  `onSuccess.refreshes` lists app-relative paths: every `Ui.Data` and
+  `Ui.Table` over one reads again.
+- `concurrency: serial` runs the action's presses on a page one after another
+  (default `parallel`); `clearAnswerOn: [<property>]` clears the drawn answer
+  when that input changes.
 - A reference on the way to a column's member (in an action's `outputModel`
   or a table's `model`) that names nothing passes `telo check` and fails with
   `ERR_REF_UNRESOLVED` when the page is first read.
 
 ### Row actions
 
-`rowActions` on a table puts one button per entry on every row, before edit
-and delete:
+`rowActions` on a table — or on a `list` node, anywhere a list is drawn —
+puts one button per entry on every row, before edit and delete:
 
 ```yaml
 rowActions:
@@ -451,12 +497,71 @@ rowActions:
 
 - `inputs` is the record sent, checked against that action's own
   `inputModel`: it must bind every required input, with matching types
-  (`CONTRACT_INPUTS_MISMATCH`, `CEL_TYPE_ERROR`).
+  (`CONTRACT_INPUTS_MISMATCH`, `CEL_TYPE_ERROR`). It reads `row` and the roots
+  in scope — a table's declared `query:`, or the roots of the tree a list sits
+  in (`data`, `result`, `values`…).
 - `confirm` asks a question first; `prompt: true` opens a dialog — titled
   with `confirm`, else the action's label — for the action's fields the row
-  does not bind: optional inputs, such as a reason.
-- An action used in a row declares no `lists` (`UI_ROW_ACTION_DRAWS_LISTS`).
-  On success every table over the same `source.basePath` reloads.
+  does not bind: optional inputs, such as a reason. `enabled` (a condition
+  over `row`, with `disabledText`) governs the row's button; the action's own
+  `enabled` does not.
+- A pressed row draws its action's `result` tree in place of the button (a
+  download link, a status) and its `failure` beside it. In a table the answer
+  stays while the row is on the page, and every table over the same
+  `source.basePath` reloads; the action's `onSuccess` applies too.
+
+## Data and conditions — `Ui.Data`
+
+Data a screen needs when it opens — who is signed in, one record's context — is
+a `Ui.Data` reader: `GET source.path`, answered by a JSON object valid against
+`model`, then `content` drawn over `data`. It is a composite; place it on a
+page. A sign-in gate is a reader plus conditions, not a kind:
+
+```yaml
+- type: composite
+  ref:
+    kind: Ui.Data
+    model: !ref Auth
+    query:
+      signin: { type: string, enum: [denied, expired] }
+    source: { path: /api/auth, params: { reason: !cel "query.signin" } }
+    reloadOn: [focus, unauthorized]
+    content:
+      type: stack
+      children:
+        - type: value
+          value: !cel "data.email"
+          shown: { at: !cel "data.authorized", matches: { const: true } }
+        - type: composite
+          ref: !ref reportForm
+          shown: { at: !cel "data.authorized", matches: { const: true } }
+        - type: text
+          text: Sign in to continue.
+          shown: { at: !cel "data.authorized", matches: { const: false } }
+```
+
+- `loading` / `failure` are node trees too; left out, `ui` fills them. In
+  `failure`, `error` is `{ status?, code?, message? }`.
+- `reloadOn: [focus]` reads again on window focus; `[unauthorized]` when any
+  request inside `content` answers 401. A form or table hidden by a condition
+  keeps what it holds, so the screen comes back as it was after signing in.
+- A condition is `{ at, matches }`: `at` a plain chain over the roots in
+  scope, `matches` a schema in a closed profile (`type`, `const`, `enum`,
+  `not`, `allOf`, `anyOf`, `required`, `properties`, `items`, `minItems`,
+  `maxItems`, `uniqueItems`, `minLength`, `maxLength`, `pattern`, numeric
+  bounds). A missing value never matches, even under `not`; test absence on
+  the parent: `{ at: !cel "data", matches: { not: { required: [email] } } }`.
+  `pattern` takes no `.` or `\s` — write a class.
+- Roots: `data` (a reader's `content`), `error` (its `failure`), `query`
+  (declared `query:` on the reader or the page), `values` (a form's or an
+  action's fields), `row` (a `list` column). Each is read only by a condition,
+  a `value` / `list` node or `source.params` — never by `!cel` text or `when`,
+  which read `request` on a page instead.
+- A field's `shown` reads `values`: a hidden field is not sent, but a
+  property the model requires still blocks submitting. An action's
+  `enabled: { at, matches, disabledText }` disables its button until it holds.
+- A `list` draws the rows of one answer and never pages; a growing set is a
+  `Ui.Table`.
 
 ## An admin screen over one table — `crud`
 
@@ -494,6 +599,7 @@ query:
 kind: UiReact.App
 metadata: { name: admin }
 title: Tasks
+words: !ref Ui.words
 pages:
   - path: /
     title: Tasks

@@ -616,6 +616,18 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
+  examples/local-modules/pow-ts/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   ide/vscode:
     dependencies:
       '@telorun/editor-protocol':
@@ -714,6 +726,27 @@ importers:
       esbuild:
         specifier: ^0.25.12
         version: 0.25.12
+
+  message-format/nodejs:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      cldr-core:
+        specifier: 48.2.0
+        version: 48.2.0
+      cldr-numbers-full:
+        specifier: 48.2.0
+        version: 48.2.0(cldr-core@48.2.0)
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/ai-mcp/nodejs:
     dependencies:
@@ -1627,6 +1660,24 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
 
+  modules/i18n/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+
   modules/idempotency/nodejs:
     devDependencies:
       '@telorun/kv-store':
@@ -2468,6 +2519,12 @@ importers:
 
   modules/ui-react/nodejs:
     dependencies:
+      '@telorun/i18n':
+        specifier: workspace:*
+        version: link:../../i18n/nodejs
+      '@telorun/message-format':
+        specifier: workspace:*
+        version: link:../../../message-format/nodejs
       '@telorun/sse-codec':
         specifier: workspace:*
         version: link:../../sse-codec/nodejs
@@ -2481,6 +2538,9 @@ importers:
         specifier: ^1.4.3
         version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
     devDependencies:
+      '@telorun/cel':
+        specifier: workspace:*
+        version: link:../../../cel/nodejs
       '@telorun/http-dispatch':
         specifier: workspace:*
         version: link:../../http-dispatch/nodejs
@@ -2541,6 +2601,9 @@ importers:
 
   modules/ui/nodejs:
     devDependencies:
+      '@telorun/cel':
+        specifier: workspace:*
+        version: link:../../../cel/nodejs
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
@@ -2933,6 +2996,9 @@ importers:
       '@telorun/cel':
         specifier: workspace:*
         version: link:../../cel/nodejs
+      '@telorun/message-format':
+        specifier: workspace:*
+        version: link:../../message-format/nodejs
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -7643,6 +7709,14 @@ packages:
 
   classnames@2.5.1:
     resolution: {integrity: sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==}
+
+  cldr-core@48.2.0:
+    resolution: {integrity: sha512-zfmLothncSwfv2jlevoSrgI2VGgH8SDGHXst6jUEotHA8nq9Igeg9jzdJDFtBso9pgJuG89DK16TzrmZDdo2Bg==}
+
+  cldr-numbers-full@48.2.0:
+    resolution: {integrity: sha512-0EQ+UkVDsyXOlxnWnL1RIENVZFqCnb04D1Yrku0obnOyttbuZz8tHmUd5c5AEvhGS/Gg2zI4fTaCm51LSGITog==}
+    peerDependencies:
+      cldr-core: 48.2.0
 
   clean-css@5.3.3:
     resolution: {integrity: sha512-D5J+kHaVb/wKSFcyyV75uCn8fiY4sV38XJoe4CUyGQ+mOU/fMVYUdH1hJC+CJQ5uY3EnW27SbJYS4X8BiLrAFg==}
@@ -18796,6 +18870,12 @@ snapshots:
   classcat@5.0.5: {}
 
   classnames@2.5.1: {}
+
+  cldr-core@48.2.0: {}
+
+  cldr-numbers-full@48.2.0(cldr-core@48.2.0):
+    dependencies:
+      cldr-core: 48.2.0
 
   clean-css@5.3.3:
     dependencies:

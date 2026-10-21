@@ -1,0 +1,21 @@
+# An application writing in English whose resources hold texts their controller
+# evaluates per call: at a runtime field, beneath a region's expression, and a
+# literal settled at creation.
+kind: Telo.Application
+metadata:
+  name: LateTextApp
+  version: 1.0.0
+lang: en
+imports:
+  Lib: ./lib
+---
+kind: Lib.Notice
+metadata: { name: notice }
+title: !cel "'Hello ' + 'there'"
+banner: !cel "{'heading': {'text': 'Hi ' + who, 'context': 'greeting'}}"
+fixed: Welcome
+---
+kind: Lib.Notice
+metadata: { name: unbound }
+title: !cel "'{$n} files'"
+values: !cel "{'m': 1}"

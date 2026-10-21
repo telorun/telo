@@ -55,6 +55,7 @@ import {
   untaggedConditionFix,
 } from "./rule-condition.js";
 import type { DiagnosticFix } from "./types.js";
+import { resolvedRuleView } from "./validate-resource-rules.js";
 
 export interface ReferrerRuleIssue {
   code: "REFERRER_RULE_INVALID";
@@ -114,6 +115,12 @@ export interface ReferrerRuleDeclarationContext {
   /** Resolves a rule's `peers:` against its `referrer:` kind. Omit to skip the
    *  check — the safe direction for a host with no registry. */
   readonly peersTarget?: (referrerKind: string, pointer: string) => PeersTarget;
+  /** Whether the `referrer:` kind declares the field a `resolve:` pointer names
+   *  — `unknown` when the kind cannot be judged here. Omit to skip the check. */
+  readonly referrerDeclares?: (referrerKind: string, pointer: string) => "ok" | "absent" | "unknown";
+  /** Whether THIS kind declares the field a `resolveSelf:` pointer names. Omit
+   *  to skip the check. */
+  readonly selfDeclares?: (pointer: string) => "ok" | "absent" | "unknown";
   /** The declaring kind's module names — see {@link ReferrerRuleContext}. */
   readonly moduleNames?: ReadonlySet<string>;
 }
@@ -169,15 +176,18 @@ export function validateReferrerRuleDeclarations(
           "not as a diagnostic code — every violation reports under REFERRER_RULE_VIOLATED.",
       );
     } else {
-      const first = seen.get(entry.code);
+      // One code per referrer filter: two rules of one code over different
+      // referrer kinds are one judgement told apart by the kind they judge.
+      const key = `${entry.code}\0${typeof entry.referrer === "string" ? entry.referrer : ""}`;
+      const first = seen.get(key);
       if (first !== undefined) {
         issue(
           `${at}.code`,
-          `Rule code '${entry.code}' is already used by rule ${first}. A code names one rule, ` +
-            "so two rules sharing it are indistinguishable in data.rule.",
+          `Rule code '${entry.code}' is already used by rule ${first} for the same referrer. A code ` +
+            "names one rule per referrer kind, so two rules sharing both are indistinguishable in data.rule.",
         );
       } else {
-        seen.set(entry.code, index);
+        seen.set(key, index);
       }
     }
     if (typeof entry.message !== "string" || entry.message.length === 0) {
@@ -204,6 +214,8 @@ export function validateReferrerRuleDeclarations(
     }
 
     validatePeersDeclaration(entry, at, issue, context);
+    validateResolveDeclaration(entry, at, issue, context);
+    validateResolveSelfDeclaration(entry, at, issue, context);
 
     if (condition) {
       for (const refusal of conditionRefusals(condition, context.moduleNames)) {
@@ -293,6 +305,69 @@ function validatePeersDeclaration(
   }
 }
 
+/** The strict half of `resolveSelf:` — pointers into this kind's own reference
+ *  slots, which may continue past one into the declaration it names. */
+function validateResolveSelfDeclaration(
+  entry: Record<string, unknown>,
+  at: string,
+  issue: (path: string, message: string) => void,
+  context: ReferrerRuleDeclarationContext,
+): void {
+  const { resolveSelf } = entry;
+  if (resolveSelf === undefined) return;
+  if (!Array.isArray(resolveSelf)) {
+    issue(`${at}.resolveSelf`, "'resolveSelf' must be a list of JSON Pointers to this kind's reference slots.");
+    return;
+  }
+  resolveSelf.forEach((pointer: unknown, i: number) => {
+    if (typeof pointer !== "string" || !pointerSegments(pointer) || pointer === "" || pointer === "/") {
+      issue(`${at}.resolveSelf[${i}]`, "Each 'resolveSelf' entry must be a JSON Pointer starting with '/'.");
+    } else if (context.selfDeclares?.(pointer) === "absent") {
+      issue(
+        `${at}.resolveSelf[${i}]`,
+        `'resolveSelf' names '${pointer}', which this kind does not declare. It must name a ` +
+          "reference slot of this kind, or a collection of them, and may continue inside what it names.",
+      );
+    }
+  });
+}
+
+/** The strict half of a referrer rule's `resolve:` — pointers into the
+ *  referrer's own reference slots, so the rule names the kind they belong to. */
+function validateResolveDeclaration(
+  entry: Record<string, unknown>,
+  at: string,
+  issue: (path: string, message: string) => void,
+  context: ReferrerRuleDeclarationContext,
+): void {
+  const { resolve } = entry;
+  if (resolve === undefined) return;
+  if (!Array.isArray(resolve)) {
+    issue(`${at}.resolve`, "'resolve' must be a list of JSON Pointers to the referrer kind's reference slots.");
+    return;
+  }
+  if (typeof entry.referrer !== "string" || entry.referrer.length === 0) {
+    issue(
+      `${at}.resolve`,
+      "'resolve' names reference slots of the REFERRER, so the rule must also declare 'referrer:' — " +
+        "without a kind there is nothing to check the pointers against.",
+    );
+    return;
+  }
+  const referrer = entry.referrer;
+  resolve.forEach((pointer: unknown, i: number) => {
+    if (typeof pointer !== "string" || !pointerSegments(pointer) || pointer === "" || pointer === "/") {
+      issue(`${at}.resolve[${i}]`, "Each 'resolve' entry must be a JSON Pointer starting with '/'.");
+    } else if (context.referrerDeclares?.(referrer, pointer) === "absent") {
+      issue(
+        `${at}.resolve[${i}]`,
+        `'resolve' names '${pointer}', which '${referrer}' does not declare. It must name a ` +
+          "reference slot of the referrer kind, or a collection of them.",
+      );
+    }
+  });
+}
+
 /**
  * Run a kind's referrer rules against every resource that references one of its
  * resources.
@@ -334,6 +409,10 @@ export function evaluateReferrerRules(
       continue;
     }
     const { parsed, chains } = compiled;
+    // `self` with the declarations its own `resolveSelf:` slots name.
+    const selfView = rule.resolveSelf
+      ? resolvedRuleView(manifest, rule.resolveSelf, context.peerBinder, manifest.kind)
+      : ({ ok: true, self } as const);
 
     // Identity is the MANIFEST, never `(kind, name)`: resource names are
     // module-scoped, so two libraries each declaring a `server` of the same kind
@@ -348,9 +427,22 @@ export function evaluateReferrerRules(
         seen.add(referrer.manifest);
       }
 
+      // The declarations the referrer's `resolve:` slots name, in place of the
+      // references — through the binder every rule family shares.
+      const referrerView = rule.resolve
+        ? resolvedRuleView(referrer.manifest, rule.resolve, context.peerBinder, referrer.kind)
+        : { ok: true as const, self: view(referrer.manifest) as unknown as Record<string, unknown> };
+      if (!referrerView.ok) {
+        findings.push({ kind: "unbound", rule, referrer, failure: referrerView.failure });
+        continue;
+      }
+      if (!selfView.ok) {
+        findings.push({ kind: "unbound", rule, referrer, failure: selfView.failure });
+        continue;
+      }
       const scope: Record<string, unknown> = {
-        self,
-        referrer: view(referrer.manifest) as unknown as Record<string, unknown>,
+        self: selfView.self,
+        referrer: referrerView.self,
         ...(context.functions ? { [MODULE_CALL_DISPATCH_KEY]: context.functions } : {}),
       };
       if (perEntry) {

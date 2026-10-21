@@ -71,14 +71,14 @@ steps:
           type: stack
           style: [strong]
           children:
-            - { type: text, text: Title, style: heading }
-            - { type: badge, text: New, style: [accent, strong] }
-            - { type: link, text: Docs, href: /docs }
-            - { type: image, src: /logo.png, alt: "" }
-            - { type: svg, markup: "<svg xmlns='http://www.w3.org/2000/svg'/>", alt: Chart }
+            - { type: text, text: { text: Title, context: null, lang: und, computed: false }, style: heading }
+            - { type: badge, text: { text: New, context: null, lang: und, computed: false }, style: [accent, strong] }
+            - { type: link, text: { text: Docs, context: null, lang: und, computed: false }, href: /docs }
+            - { type: image, src: /logo.png, alt: { text: "", context: null, lang: und, computed: false } }
+            - { type: svg, markup: "<svg xmlns='http://www.w3.org/2000/svg'/>", alt: { text: Chart, context: null, lang: und, computed: false } }
             - type: columns
               children:
                 - type: box
                   children:
-                    - { type: text, text: Inner, style: muted }
-                - { type: text, text: v1.0.0 }
+                    - { type: text, text: { text: Inner, context: null, lang: und, computed: false }, style: muted }
+                - { type: text, text: { text: v1.0.0, context: null, lang: und, computed: true } }

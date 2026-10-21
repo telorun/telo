@@ -13,13 +13,79 @@ A page is a tree of nodes. A node is plain data with a `type`; the shape is
 | `link` | `text`, `href` | a link |
 | `image` | `src`, `alt` | an image |
 | `svg` | `markup`, `alt` | SVG markup, drawn as an image |
+| `value` | `value`, `text?` | one value of a data scope, presented as its schema says |
+| `list` | `rows`, `columns`, `heading?` | the rows of a list one answer holds, a column per value |
 | `composite` | `ref` | a [composite](composite.md): a `!ref`, or an inline declaration |
 
 Every node also takes:
 
 - `style` — one name from the style list, or a list of them.
-- `when` — a boolean, `true` when left out. A node whose `when` is false is
-  left out of its parent.
+- `when` — a boolean, `true` when left out: whether the node is **delivered**.
+  It is evaluated on the server — per request on a page's own nodes (where it
+  may read `request`), once at creation inside a composite — and a node whose
+  `when` is false is left out of its parent: it is not sent and holds no state.
+- `shown` — a [condition](conditions.md): whether a delivered node is
+  **drawn**. It is read in the browser over the roots the place it is written
+  binds, and content it hides keeps its state and starts no request. Both keys
+  may be present.
+
+## Values and lists
+
+A `value` and a `list` name what they draw with [accessors](https://telo.run/docs/extend/accessor-fields)
+over the roots in scope — `data` inside a [`Ui.Data`](data.md), `query` where
+query parameters are declared, `error` in a reader's or an action's `failure`,
+`result`, `input` and `values` in an [action's answer](action.md#the-answer),
+`row` in a list column and its row actions:
+
+```yaml
+- type: value
+  value: !cel "data.email"
+- type: list
+  heading: Files
+  rows: !cel "data.files"
+  columns:
+    - value: !cel "row.name"
+    - header: Open
+      value: !cel "row.url"
+      shown: { at: !cel "data.signedIn", matches: { const: true } }
+```
+
+A value is presented as its schema says: a `format: uri` / `uri-reference`
+string is a link, held to the address rule below, drawn as `text` when that is
+given; a date and a time as a date; a boolean as yes or no. A `list` draws the
+rows of one answer and is bounded by it — it never pages; a set that grows
+without limit is a [`Ui.Table`](table.md) over the collection contract. A
+column's header defaults to the `title` of the value it reads, and its `shown`
+reads the roots the list is drawn under, never `row`. `row` is typed as an
+element of what `rows` names, so `row.nmae` is refused by `telo check`.
+
+A list's `rowActions` offers an action on every row, each entry a
+[`Ui.RowAction`](action.md#row-actions) whose `inputs` and `enabled` read `row`
+and the roots the list is drawn under; a pressed one draws its action's answer
+in place of its button, which lasts as long as the answer the list is drawn
+from.
+
+## Texts
+
+Every text a node shows — a `text`, a `badge`, a link's `text`, an `alt`, a
+value's `text`, a list's `heading` and a column's `header` — is a
+`Ui.BoundText`: a [`Text`](https://telo.run/docs/extend/text-records) written in
+the module's `lang:`, or `{ text, values }` where the text names values the
+page reads:
+
+```yaml
+- type: text
+  style: heading
+  text:
+    text: { plural: n, cases: { one: "{$n} unpaid invoice", other: "{$n} unpaid invoices" } }
+    values: { n: !cel "data.unpaid" }
+```
+
+Each value is an [accessor](https://telo.run/docs/extend/accessor-fields) over
+the roots in scope, read in the browser, so the words are composed in the page
+and translated as one text — never assembled by the backend. A placeholder the
+values do not bind, and one written in a plain text, are refused by `telo
+check`. See [Texts and translation](texts.md).
 
 Each `type` is a closed shape: a key it does not take is an error naming the
 key, and a `type` outside the list is an error listing the valid ones.
@@ -90,10 +156,19 @@ null value takes `default`; a value no case names takes `default` too.
 
 ## What a renderer receives
 
-`Ui.SpecNode` is the same vocabulary after resolution: every `when` decided,
+`Ui.SpecNode` is the same vocabulary after resolution: every `when` decided
+and gone, every `shown` carried as written (`{ at, matches }`, `at` a binding),
 every composite replaced by the node it provides (`table`, `form`, `action`,
-`filters`, `component`), and `error` for a node that could not be produced. It carries no
-resource name. Row-bound values in it are **bindings** — `{ root, path }` for a
+`filters`, `data`, `component`), and `error` for a node that could not be
+produced. A `value` node carries `present` — what the schema it reads says
+(`type`, `format`) — and each `list` column its `header` and `present`, both
+resolved on the server; both carry `labels`, the label of each value an
+enumeration offers (`[]` when none). Every text is a text record, a
+`{ text, values }` text is the record with its `values` beside it, and a text
+`ui` fills itself is a word reference `{ word: <id> }` — see
+[what a renderer receives](texts.md#what-a-renderer-receives). A composite placed with a `shown` of its own around a
+provided node that has one is wrapped in a `box` carrying the placement's, so
+both must hold. It carries no resource name. Row-bound values in it are **bindings** — `{ root, path }` for a
 chain, `{ value }` for a literal — which a renderer resolves by following the
 path; no expression engine runs in the browser.
 
@@ -105,20 +180,22 @@ defaulted. The defaults are this module's, filled before the node is provided,
 so two renderers cannot disagree about them and none carries a table of its
 own.
 
-A `table` node always carries `rowActions`, an empty list when the table
-declares none. An entry is `{ path, label, inputs, confirm?, prompt? }`: `path`
-and `label` are the action's, `inputs` maps each input property to a binding,
-`confirm` is present exactly when the entry asks a question, and `prompt` —
-`{ schema, fields }`, the action's input model and the fields its dialog
-enters — exactly when the entry declares `prompt: true`.
+A `table` node always carries `query` (its declared parameters, empty when
+none) and `rowActions`, an empty list when the table declares none; a `list`
+node carries `rowActions` when it declares them. An entry is
+`{ action, inputs, confirm?, prompt?, enabled? }`: `action` is the action's
+own node, `inputs` maps each input property to a binding, `confirm` is present
+exactly when the entry asks a question, `prompt` — `{ fields }`, the fields its
+dialog enters — exactly when the entry declares `prompt: true`, and `enabled`
+exactly when the entry declares one.
 
-An `action` node is `{ schema, path, label, fields, lists }`, all five present:
-the input model, where the record is sent, the button's text, one
-`{ property, label }` per field, and one `{ rows, columns, heading? }` per list
-— an empty list when the action draws nothing. `rows` is a binding rooted at
-`result`; each column is `{ header, value, present? }`, its `value` a binding
-rooted at `row` or `result` and its `header` always filled. See
-[what an action provides](action.md#what-a-renderer-receives).
+An `action` node always carries its input model, where the record is sent, the
+button's text, one `{ property, label, shown? }` per field, its `failure` tree
+(the default filled in), `onSuccess` (`refreshes` empty when none),
+`concurrency` and `clearAnswerOn`; `answer` (the output model), `result` and
+`enabled` are present exactly when declared. See
+[what an action provides](action.md#what-a-renderer-receives). A `data` node is
+described in [what a reader provides](data.md#what-a-renderer-receives).
 
 A `filters` node likewise carries its whole policy: `show`, `placement` (a
 [`Ui.FilterPlacementSpec`](filter-placement.md#what-a-renderer-receives)),

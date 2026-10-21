@@ -24,7 +24,7 @@ export const sqlEngine: TemplatingEngine = {
   compile(source, env) {
     const holes = requireHoles("sql", source);
     const fragments = literalFragments(source, holes);
-    const { compiled, refs, calls, volatile } = compileHoles(holes, env);
+    const { compiled, refs, calls, callArguments, volatile } = compileHoles(holes, env);
     return {
       __compiled: true,
       source,
@@ -33,6 +33,7 @@ export const sqlEngine: TemplatingEngine = {
       // cannot tell an identifier from a word inside a string literal.
       refs,
       calls,
+      callArguments,
       ...(volatile ? { volatile: true as const } : {}),
       call: (ctx: Record<string, unknown>): ParameterizedSql => ({
         __teloParameterized: true,

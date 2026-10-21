@@ -984,6 +984,72 @@ describe("capability-as-extends", () => {
   });
 });
 
+describe("element-from-item-relative-pointer", () => {
+  const binding = (value: string, under = "x-telo-context") =>
+    [
+      "kind: Telo.Definition",
+      "metadata:",
+      "  name: Lists",
+      "capability: Telo.Provider",
+      "schema:",
+      "  type: object",
+      "  properties:",
+      "    lists:",
+      "      type: array",
+      "      items:",
+      "        type: object",
+      "        properties:",
+      "          rows: { x-telo-eval: accessor }",
+      "          columns:",
+      `            ${under}:`,
+      "              type: object",
+      "              properties:",
+      `                row: { x-telo-context-element-from-item: ${value} }`,
+    ].join("\n") + "\n";
+  const rowOf = (text: string) =>
+    (parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text, { migrate: true }).manifests[0] as any).schema
+      .properties.lists.items.properties.columns;
+
+  it("rewrites a bare field name to the pointer naming that field of the holder, reported once", () => {
+    const file = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", binding('"rows"'), { migrate: true });
+    const columns = (file.manifests[0] as any).schema.properties.lists.items.properties.columns;
+    expect(columns["x-telo-context"].properties.row["x-telo-context-element-from-item"]).toBe("0/rows");
+    expect(file.migrations.diagnostics.map((d) => [d.code, d.severity, (d.data as any).path])).toEqual([
+      [
+        "DEPRECATED_ELEMENT_FROM_ITEM_FIELD",
+        DiagnosticSeverity.Warning,
+        "schema.properties.lists.items.properties.columns.x-telo-context.properties.row.x-telo-context-element-from-item",
+      ],
+    ]);
+  });
+
+  it("leaves a pointer, and anything that is not a bare name, alone", () => {
+    for (const value of ['"0/rows"', '"2/rows"', '"a/b"', '"a~1"', '""']) {
+      const file = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", binding(value), { migrate: true });
+      expect(file.migrations.rewrites).toHaveLength(0);
+    }
+  });
+
+  it("never rewrites under a data-bearing keyword", () => {
+    for (const keyword of ["default", "const", "enum", "examples"]) {
+      expect(rowOf(binding('"rows"', keyword))[keyword].properties.row["x-telo-context-element-from-item"]).toBe("rows");
+    }
+  });
+
+  it("keeps the author's quote style in the file, and is idempotent", () => {
+    const text = binding("'rows'");
+    const migrated = migrateFileText({
+      source: "/ws/telo.yaml",
+      text,
+      documents: parseAllDocuments(text, { customTags: defaultCustomTags() }),
+      manifests: parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text).manifests,
+    });
+    expect(migrated!.text).toBe(binding("'0/rows'"));
+    const again = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", migrated!.text, { migrate: true });
+    expect(again.migrations.rewrites).toHaveLength(0);
+  });
+});
+
 describe("entry files", () => {
   const entry = (rules: unknown[]) => ({
     id: "x",

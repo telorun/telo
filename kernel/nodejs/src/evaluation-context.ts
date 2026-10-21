@@ -1120,7 +1120,7 @@ export class EvaluationContext implements IEvaluationContext {
     child.parent = this;
     this.children.push(child);
     // Propagate injection hook so all child contexts (module imports, scopes) participate
-    // in Phase 5 injection. createScopeHandle overrides this with an extended version.
+    // in Phase 5 injection. createScopeHandle extends the lookup it resolves through.
     if (this.preInitHook && !child.preInitHook) {
       child.preInitHook = this.preInitHook;
     }
@@ -1172,6 +1172,7 @@ export class EvaluationContext implements IEvaluationContext {
     child.resolveImportedInstance = (alias, name) => this.resolveImportedInstance(alias, name);
     child.resolveImportedManifest = (alias, name) => this.resolveImportedManifest(alias, name);
     child.kindResolver = (kind) => this.resolveKindSafe(kind);
+    child.declaredBeyondReach = (name) => !child.hasManifest(name) && this.declaresName(name);
     return this.spawnChild(child);
   }
 
@@ -1183,6 +1184,38 @@ export class EvaluationContext implements IEvaluationContext {
    */
   resolveImportedInstance(alias: string, name: string): ResourceInstance | undefined {
     return undefined;
+  }
+
+  /**
+   * The instance a reference written in this context names, as Phase-5
+   * injection resolves it: through the import for an alias, among this
+   * context's initialized resources otherwise. A scope child layers its
+   * enclosing context in (`createScopeHandle`). Also what a native function's
+   * data site is resolved through at creation, so the two cannot disagree.
+   */
+  injectionInstance(name: string, alias?: string): ResourceInstance | undefined {
+    return alias && alias !== "Self"
+      ? this.resolveImportedInstance(alias, name)
+      : this.resourceInstances.get(name)?.instance;
+  }
+
+  /** True when `name` is declared here and not yet initialized — a reference to
+   *  it defers rather than resolving to nothing. */
+  injectionPending(name: string): boolean {
+    return this.hasManifest(name) && !this.resourceInstances.has(name);
+  }
+
+  /** True when this context declares a resource named `name`. */
+  declaresName(name: string): boolean {
+    return this.hasManifest(name);
+  }
+
+  /** True when a bare `name` is one {@link injectionInstance} does not reach
+   *  but the context this one was spawned from declares — a template body's
+   *  reference to a resource of the module defining the template. Nothing for a
+   *  context whose lookup reaches every name it can see. */
+  declaredBeyondReach(name: string): boolean {
+    return false;
   }
 
   /**
@@ -1222,11 +1255,8 @@ export class EvaluationContext implements IEvaluationContext {
         if (this.preInitHook) {
           this.preInitHook(
             resource,
-            (n, alias) =>
-              alias && alias !== "Self"
-                ? this.resolveImportedInstance(alias, n)
-                : this.resourceInstances.get(n)?.instance,
-            (n) => this.hasManifest(n) && !this.resourceInstances.has(n),
+            (n, alias) => this.injectionInstance(n, alias),
+            (n) => this.injectionPending(n),
             this,
           );
         }
@@ -1528,36 +1558,27 @@ export class EvaluationContext implements IEvaluationContext {
           scopeLocal.set(name, snap);
         };
 
-        // Propagate injection hook: extend getInstance to also resolve parent singleton instances.
-        if (parent.preInitHook) {
-          const parentHook = parent.preInitHook;
-          child.preInitHook = (resource, childGetInstance, childIsPending, owner) => {
-            parentHook(
-              resource,
-              (name, alias) => {
-                if (alias && alias !== "Self") return parent.resolveImportedInstance(alias, name);
-                const scoped = childGetInstance(name);
-                if (scoped) return scoped;
-                // A name the scope DECLARES resolves to the scope's instance and to
-                // nothing else. Falling through to the enclosing module while the
-                // scoped one is merely not initialized yet would inject the resource
-                // it shadows — an init-order-dependent wrong answer, and a silent
-                // one: the ref binds an instance that is never started, so the
-                // failure surfaces later as a timeout somewhere else entirely.
-                // Returning nothing leaves it pending, which is what makes the init
-                // loop come back to it.
-                if (child.hasManifest(name)) return undefined;
-                return parent.resourceInstances.get(name)?.instance;
-              },
-              // Only a scope-local dependency can still be pending — an outer resource
-              // is live by the time a scope opens — so the child's own predicate suffices.
-              childIsPending,
-              // Forwarded, not replaced by `child`: a `with:` nested inside a scoped
-              // resource must still resolve kinds against the scope it opened in.
-              owner,
-            );
-          };
-        }
+        // Extend the lookup injection resolves through to the enclosing context's,
+        // at any depth of nested scopes. Only a scope-local dependency can still be
+        // pending — an outer resource is live by the time a scope opens — so the
+        // child's own pending predicate suffices.
+        child.injectionInstance = (name, alias) => {
+          if (alias && alias !== "Self") return parent.injectionInstance(name, alias);
+          const scoped = child.resourceInstances.get(name)?.instance;
+          if (scoped) return scoped;
+          // A name the scope DECLARES resolves to the scope's instance and to
+          // nothing else. Falling through to the enclosing module while the
+          // scoped one is merely not initialized yet would inject the resource
+          // it shadows — an init-order-dependent wrong answer, and a silent
+          // one: the ref binds an instance that is never started, so the
+          // failure surfaces later as a timeout somewhere else entirely.
+          // Returning nothing leaves it pending, which is what makes the init
+          // loop come back to it.
+          if (child.hasManifest(name)) return undefined;
+          return parent.injectionInstance(name);
+        };
+        child.declaredBeyondReach = (name) =>
+          !child.hasManifest(name) && parent.declaredBeyondReach(name);
 
         try {
           for (const manifest of manifests) {
@@ -2811,18 +2832,24 @@ export class EvaluationContext implements IEvaluationContext {
 
 /**
    * Expand specific dot-paths within an object. '**' expands the entire object.
-   * Paths listed in excludePaths are left untouched (runtime takes precedence).
+   * Paths `excludePaths` overlap are left untouched (runtime takes precedence).
+   * `holes` are fields left as written wherever they sit — an accessor field is
+   * named, never evaluated — while everything beside one is still expanded.
    * Always throws if an expression cannot be resolved.
    */
   expandPaths(
     value: Record<string, unknown>,
     paths: string[],
     excludePaths: string[] = [],
+    holes: readonly string[] = [],
   ): Record<string, unknown> {
+    const around = holes.length > 0 ? holesIn(value, holes) : undefined;
+    const expandAt = (node: unknown, parts: readonly string[]): unknown =>
+      around ? this.expandAround(node, parts, around) : this.expand(node);
     if (paths.includes("**")) {
       const result: Record<string, unknown> = {};
       for (const [key, v] of Object.entries(value)) {
-        result[key] = isExcluded(key, excludePaths) ? v : this.expand(v);
+        result[key] = isExcluded(key, excludePaths) ? v : expandAt(v, [key]);
       }
       return result;
     }
@@ -2832,12 +2859,60 @@ export class EvaluationContext implements IEvaluationContext {
       for (const parts of concreteEvalPaths(result, path, isCompiledValue)) {
         const current = getNestedValue(result, parts);
         if (current !== undefined) {
-          setNestedValue(result, parts, this.expand(current));
+          setNestedValue(result, parts, expandAt(current, parts));
         }
       }
     }
     return result;
   }
+
+  /** `node` expanded except at the holes it holds, copying each container on the
+   *  way to one. */
+  private expandAround(node: unknown, parts: readonly string[], holes: Holes): unknown {
+    const key = parts.join(HOLE_SEPARATOR);
+    if (holes.at.has(key) || holes.under(key)) return node;
+    if (!holes.above.has(key)) return this.expand(node);
+    if (Array.isArray(node)) return node.map((item, i) => this.expandAround(item, [...parts, String(i)], holes));
+    if (node !== null && typeof node === "object" && !isCompiledValue(node)) {
+      const proto = Object.getPrototypeOf(node);
+      if (proto === Object.prototype || proto === null) {
+        return Object.fromEntries(
+          Object.entries(node as Record<string, unknown>).map(([k, v]) => [
+            k,
+            this.expandAround(v, [...parts, k], holes),
+          ]),
+        );
+      }
+    }
+    return this.expand(node);
+  }
+}
+
+const HOLE_SEPARATOR = "\0";
+
+/** The concrete places a set of field patterns names in a value: each place,
+ *  and every container above one. */
+interface Holes {
+  at: Set<string>;
+  above: Set<string>;
+  under(key: string): boolean;
+}
+
+function holesIn(value: Record<string, unknown>, patterns: readonly string[]): Holes {
+  const at = new Set<string>();
+  const above = new Set<string>();
+  for (const pattern of patterns) {
+    for (const parts of concreteEvalPaths(value, pattern, isCompiledValue)) {
+      at.add(parts.join(HOLE_SEPARATOR));
+      for (let i = 1; i < parts.length; i++) above.add(parts.slice(0, i).join(HOLE_SEPARATOR));
+    }
+  }
+  const holes = [...at];
+  return {
+    at,
+    above,
+    under: (key) => holes.some((hole) => key.startsWith(`${hole}${HOLE_SEPARATOR}`)),
+  };
 }
 
 /** A compile path is excluded from compile-time expansion when it overlaps a

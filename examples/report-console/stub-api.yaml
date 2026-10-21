@@ -1,0 +1,537 @@
+# The backend the console calls, as stub routes over fixture data: no Google
+# account, no timesheet service. Each route speaks the contract its screen
+# reads — the record contract for the sign-in check and the account, the
+# collection contract for the Drive and the projects, the action contract for
+# every button — so a real backend replaces this file and nothing else.
+#
+# A session is a cookie the consent route sets; a refused or expired consent
+# is remembered in a second cookie, which the sign-in check reports.
+kind: Telo.Function
+metadata:
+  name: signedIn
+  description: Whether a Cookie header holds the console's session.
+params:
+  - name: cookie
+    schema: { type: string }
+returns:
+  schema: { type: boolean }
+body: !cel "cookie.matches('(^|;[ ]*)report_session=signed-in([ ]*;|$)')"
+---
+kind: Telo.Function
+metadata:
+  name: signinFailure
+  description: Why the last sign-in did not complete, read from a Cookie header; empty when it did.
+params:
+  - name: cookie
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "cel.bind(found, regexGroups(cookie, '(?:^|;[ ]*)report_signin=(denied|expired)'), size(found) > 0 ? found[0] : '')"
+---
+# One page of a listing under the collection contract: `cursor` is the offset
+# the previous page ended at.
+kind: Telo.Function
+metadata:
+  name: page
+  description: One page of rows from an offset cursor, with the total and the next cursor.
+params:
+  - name: rows
+    schema: { type: array }
+  - name: limit
+    schema: { type: integer }
+  - name: cursor
+    schema: { type: string }
+returns:
+  schema:
+    type: object
+    required: [ rows, total, next ]
+    properties:
+      rows: { type: array }
+      total: { type: integer }
+      next: { type: [ string, "null" ] }
+body: !cel >-
+  cel.bind(start, cursor == '' ? 0 : (int(cursor) > size(rows) ? size(rows) : int(cursor)),
+  cel.bind(end, start + limit > size(rows) ? size(rows) : start + limit,
+  {'rows': slice(rows, start, end), 'total': size(rows), 'next': end < size(rows) ? dyn(string(end)) : dyn(null)}))
+---
+kind: Telo.Function
+metadata:
+  name: driveFiles
+  description: The Drive's files, as the stub serves them.
+returns:
+  schema: { type: array, items: !ref DriveFile }
+body: !cel >-
+  [
+    {'id': 'sheet-2026', 'name': 'Hours 2026', 'kind': 'spreadsheet', 'owner': 'ada.nowak@example.com', 'url': 'https://drive.example.com/sheet-2026'},
+    {'id': 'sheet-2025', 'name': 'Hours 2025', 'kind': 'spreadsheet', 'owner': 'ada.nowak@example.com', 'url': 'https://drive.example.com/sheet-2025', 'closed': true},
+    {'id': 'sheet-support', 'name': 'Support hours', 'kind': 'spreadsheet', 'owner': 'jan.kowalski@example.com', 'url': 'https://drive.example.com/sheet-support'},
+    {'id': 'folder-invoices', 'name': 'Invoices 2026', 'kind': 'folder', 'owner': 'ada.nowak@example.com', 'url': 'https://drive.example.com/folder-invoices'},
+    {'id': 'folder-archive', 'name': 'Archive', 'kind': 'folder', 'owner': 'jan.kowalski@example.com', 'url': 'https://drive.example.com/folder-archive'}
+  ]
+---
+kind: Telo.Function
+metadata:
+  name: projects
+  description: The projects each timesheet holds, as the stub serves them.
+returns:
+  schema: { type: array, items: !ref Project }
+body: !cel >-
+  [
+    {'id': 'atlas', 'name': 'Atlas', 'email': 'billing@atlas.example.com', 'spreadsheetId': 'sheet-2026'},
+    {'id': 'borealis', 'name': 'Borealis', 'spreadsheetId': 'sheet-2026'},
+    {'id': 'cirrus', 'name': 'Cirrus', 'email': 'finance@cirrus.example.com', 'spreadsheetId': 'sheet-2026'},
+    {'id': 'delta', 'name': 'Delta', 'email': 'ap@delta.example.com', 'spreadsheetId': 'sheet-2026'},
+    {'id': 'helpdesk', 'name': 'Helpdesk', 'email': 'it@example.com', 'spreadsheetId': 'sheet-support'}
+  ]
+---
+# The hours each project logged in a month: what generating reads. A project's
+# `currency` is empty when its rate names none.
+kind: Telo.Function
+metadata:
+  name: timesheets
+  description: The hours each project logged per month, with rates, as the stub serves them.
+returns:
+  schema:
+    type: array
+    items:
+      type: object
+      required: [ projectId, month, hours, amount, currency, unpriced ]
+      properties:
+        projectId: { type: string }
+        month: { type: string }
+        hours: { type: number }
+        amount: { type: number }
+        currency: { type: string }
+        unpriced:
+          type: array
+          items:
+            type: object
+            required: [ person, hours ]
+            properties:
+              person: { type: string }
+              hours: { type: number }
+body: !cel >-
+  [
+    {'projectId': 'atlas', 'month': '2026-09', 'hours': 42.5, 'amount': 8500.0, 'currency': 'PLN', 'unpriced': []},
+    {'projectId': 'borealis', 'month': '2026-09', 'hours': 12.25, 'amount': 2205.0, 'currency': 'EUR', 'unpriced': [{'person': 'Jan Kowalski', 'hours': 3.0}]},
+    {'projectId': 'cirrus', 'month': '2026-09', 'hours': 8.0, 'amount': 1200.0, 'currency': '', 'unpriced': []},
+    {'projectId': 'atlas', 'month': '2026-08', 'hours': 30.0, 'amount': 6000.0, 'currency': 'PLN', 'unpriced': []},
+    {'projectId': 'helpdesk', 'month': '2026-09', 'hours': 16.0, 'amount': 1600.0, 'currency': 'PLN', 'unpriced': []}
+  ]
+---
+kind: Telo.Function
+metadata:
+  name: unassignedTasks
+  description: Hours a timesheet logs on no project, per month, as the stub serves them.
+returns:
+  schema:
+    type: array
+    items:
+      type: object
+      required: [ spreadsheetId, month, task, hours ]
+      properties:
+        spreadsheetId: { type: string }
+        month: { type: string }
+        task: { type: string }
+        hours: { type: number }
+body: !cel >-
+  [
+    {'spreadsheetId': 'sheet-2026', 'month': '2026-09', 'task': 'Weekly sync', 'hours': 2.0}
+  ]
+---
+# The sign-in check, connecting, the consent stand-in and signing out. Not
+# guarded: they are what a visitor with no session reaches.
+kind: Http.Api
+metadata:
+  name: authApi
+routes:
+  - request: { method: GET, path: / }
+    inputs:
+      cookie: !cel "'cookie' in request.headers ? request.headers['cookie'] : ''"
+    handler:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ cookie ]
+          properties:
+            cookie: { type: string }
+      outputType: !ref Auth
+      value: !cel "compact({'authorized': Self.signedIn(inputs.cookie), 'failure': Self.signedIn(inputs.cookie) ? '' : Self.signinFailure(inputs.cookie)})"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  # Where Google's consent screen would be: the stub grants it, or answers as
+  # Google would for `outcome=denied` / `outcome=expired`.
+  - request:
+      method: POST
+      path: /connect
+      schema:
+        body: { type: object, additionalProperties: false, properties: {} }
+    handler:
+      kind: Run.Value
+      outputType: !ref ConsentLink
+      value: { url: /api/auth/consent }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  - request:
+      method: GET
+      path: /consent
+      schema:
+        query:
+          type: object
+          additionalProperties: false
+          properties:
+            outcome: { type: string, enum: [ granted, denied, expired ], default: granted }
+    inputs:
+      outcome: !cel "request.query.outcome"
+    handler:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ outcome ]
+          properties:
+            outcome: { type: string }
+      value: { outcome: !cel "inputs.outcome" }
+    returns:
+      - status: 302
+        when: !cel "result.outcome == 'granted'"
+        headers:
+          Location: /
+          Set-Cookie: report_session=signed-in; Path=/; HttpOnly; SameSite=Lax
+      - status: 302
+        headers:
+          Location: !interpolate "/?signin=${{ result.outcome }}"
+          Set-Cookie: !interpolate "report_signin=${{ result.outcome }}; Path=/; HttpOnly; SameSite=Lax"
+  - request:
+      method: POST
+      path: /signout
+      schema:
+        body: { type: object, additionalProperties: false, properties: {} }
+    handler:
+      kind: Run.Value
+      value: {}
+    returns:
+      - status: 200
+        headers:
+          Set-Cookie: report_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax
+        content:
+          application/json:
+            body: {}
+---
+# Everything a signed-in console calls. The server's guard on this mount
+# answers 401 to a request without a session.
+kind: Http.Api
+metadata:
+  name: consoleApi
+routes:
+  - request: { method: GET, path: /auth/user }
+    handler:
+      kind: Run.Value
+      outputType: !ref Account
+      value: { email: ada.nowak@example.com }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # The Drive under the collection contract: by kind, by a name it contains,
+  # by id (how a chosen sheet is labelled again), a page at a time.
+  - request:
+      method: GET
+      path: /drive/files
+      schema:
+        query:
+          type: object
+          additionalProperties: false
+          properties:
+            limit: { type: integer, minimum: 1, maximum: 100, default: 25 }
+            cursor: { type: string, pattern: "^(0|[1-9][0-9]*)$" }
+            kind: { type: string, enum: [ spreadsheet, folder ] }
+            name.contains: { type: string }
+            id.in: { type: array, items: { type: string } }
+    inputs: !cel "request.query"
+    handler:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ limit ]
+          properties:
+            limit: { type: integer }
+            cursor: { type: string }
+            kind: { type: string }
+            name.contains: { type: string }
+            id.in: { type: array, items: { type: string } }
+      bindings:
+        matched: !cel >-
+          Self.driveFiles().filter(f,
+            (!has(inputs.kind) || f.kind == inputs.kind)
+            && (!('name.contains' in inputs) || lower(f.name).contains(lower(inputs['name.contains'])))
+            && (!('id.in' in inputs) || f.id in inputs['id.in']))
+      value: !cel "Self.page(matched, inputs.limit, has(inputs.cursor) ? inputs.cursor : '')"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  - request:
+      method: GET
+      path: /projects
+      schema:
+        query:
+          type: object
+          additionalProperties: false
+          properties:
+            limit: { type: integer, minimum: 1, maximum: 100, default: 25 }
+            cursor: { type: string, pattern: "^(0|[1-9][0-9]*)$" }
+            spreadsheetId: { type: string }
+            id.in: { type: array, items: { type: string } }
+    inputs: !cel "request.query"
+    handler:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ limit ]
+          properties:
+            limit: { type: integer }
+            cursor: { type: string }
+            spreadsheetId: { type: string }
+            id.in: { type: array, items: { type: string } }
+      bindings:
+        matched: !cel >-
+          Self.projects().filter(p,
+            (!has(inputs.spreadsheetId) || p.spreadsheetId == inputs.spreadsheetId)
+            && (!('id.in' in inputs) || p.id in inputs['id.in']))
+      value: !cel "Self.page(matched, inputs.limit, has(inputs.cursor) ? inputs.cursor : '')"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # Generating: the report kind follows from the columns (an amount makes it a
+  # billing report), the period text from the dates.
+  - request:
+      method: POST
+      path: /generate
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ spreadsheetId, period, columns, hoursFormat ]
+          properties:
+            spreadsheetId: { type: string, minLength: 1 }
+            folder: { type: string }
+            period:
+              type: object
+              required: [ from, to ]
+              properties:
+                from: { type: string, format: date }
+                to: { type: string, format: date }
+            projects: { type: array, uniqueItems: true, items: { type: string } }
+            columns:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              items: { type: string, enum: [ date, person, task, hours, amount ] }
+            hoursFormat: { type: string, enum: [ decimal, clock ] }
+            merge: { type: boolean }
+            chart: { type: boolean }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref ReportRequest
+      outputType: !ref ReportAnswer
+      steps:
+        - name: sheet
+          value: !cel "Self.driveFiles().filter(f, f.id == inputs.spreadsheetId && f.kind == 'spreadsheet')"
+        - name: known
+          if: !cel "size(steps.sheet.result) == 0"
+          then:
+            - name: unknown
+              throw: { code: SHEET_UNKNOWN, message: !interpolate "There is no timesheet '${{ inputs.spreadsheetId }}'." }
+        - name: open
+          if: !cel "has(steps.sheet.result[0].closed) && steps.sheet.result[0].closed"
+          then:
+            - name: closed
+              throw: { code: SHEET_CLOSED, message: !interpolate "The timesheet '${{ steps.sheet.result[0].name }}' is closed for reporting." }
+        - name: ordered
+          if: !cel "inputs.period.from > inputs.period.to"
+          then:
+            - name: reversed
+              throw: { code: PERIOD_REVERSED, message: must not start after it ends }
+        - name: report
+          invoke:
+            kind: Run.Value
+            inputType: !ref ReportRequest
+            bindings:
+              month: !cel "string(slice(inputs.period.from, 0, 7))"
+              billing: !cel "'amount' in inputs.columns"
+              chosen: !cel >-
+                Self.projects().filter(p, p.spreadsheetId == inputs.spreadsheetId
+                  && (!has(inputs.projects) || size(inputs.projects) == 0 || p.id in inputs.projects))
+              sheets: !cel "Self.timesheets().filter(s, s.month == month && chosen.exists(p, p.id == s.projectId))"
+              logged: !cel "chosen.filter(p, sheets.exists(s, s.projectId == p.id))"
+              base: !cel "'https://drive.example.com/reports/' + inputs.spreadsheetId + '/' + month + '/'"
+              files: !cel >-
+                logged.map(p, cel.bind(s, sheets.filter(x, x.projectId == p.id)[0],
+                  compact({
+                    'projectId': p.id,
+                    'project': p.name,
+                    'email': has(p.email) ? p.email : '',
+                    'hours': inputs.hoursFormat == 'clock'
+                      ? string(int(s.hours)) + ':' + (int(s.hours * 60.0) % 60 < 10 ? '0' : '') + string(int(s.hours * 60.0) % 60)
+                      : string(s.hours),
+                    'amount': billing && s.currency != '' ? dyn(s.amount) : dyn(null),
+                    'currency': billing ? s.currency : '',
+                    'pdf': base + p.id + '.pdf'
+                  })))
+            value:
+              kind: !cel "billing ? 'billing' : 'hours'"
+              period: !cel "inputs.period.from + ' – ' + inputs.period.to"
+              projectsInPeriod: !cel "size(logged)"
+              skipped: !cel "size(chosen) - size(logged)"
+              files: !cel "files"
+              unpriced: !cel "billing ? flatten(sheets.map(s, s.unpriced)) : []"
+              unassigned: !cel >-
+                Self.unassignedTasks()
+                  .filter(u, u.spreadsheetId == inputs.spreadsheetId && u.month == month)
+                  .map(u, {'task': u.task, 'hours': u.hours})
+              noCurrency: !cel "billing ? logged.filter(p, sheets.exists(s, s.projectId == p.id && s.currency == '')).map(p, {'project': p.name}) : []"
+              combined: !cel "has(inputs.merge) && inputs.merge && size(logged) > 0 ? dyn(base + 'all.pdf') : dyn(null)"
+              chart: !cel "has(inputs.chart) && inputs.chart && size(logged) > 0 ? dyn(base + 'chart.svg') : dyn(null)"
+              projectsLink: !cel "'/projects?sheet=' + urlEncode(inputs.spreadsheetId)"
+          inputs: !cel "inputs"
+      # A file and a chart that were not asked for are left out of the answer.
+      outputs: !cel "compact(steps.report.result)"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - when: !cel "error.code == 'SHEET_UNKNOWN'"
+        status: 404
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+      - when: !cel "error.code == 'SHEET_CLOSED'"
+        status: 409
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+      # The request-validation envelope, so the page marks the period field.
+      - when: !cel "error.code == 'PERIOD_REVERSED'"
+        status: 400
+        content:
+          application/json:
+            body:
+              error: ValidationError
+              message: Request validation failed
+              status: 400
+              details:
+                - { location: body, path: period, message: !cel "error.message" }
+
+  - request:
+      method: POST
+      path: /draft
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ email, pdf, project ]
+          properties:
+            email: { type: string, minLength: 1 }
+            pdf: { type: string, format: uri-reference }
+            project: { type: string }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Value
+      inputType: !ref DraftRequest
+      outputType: !ref DraftAnswer
+      value:
+        url: !cel "'https://mail.example.com/drafts/new?to=' + urlEncode(inputs.email) + '&attach=' + urlEncode(inputs.pdf)"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result"
+
+  - request:
+      method: POST
+      path: /upload
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ pdf, folder, from, to ]
+          properties:
+            pdf: { type: string, format: uri-reference }
+            folder: { type: string, minLength: 1 }
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref UploadRequest
+      outputType: !ref UploadAnswer
+      steps:
+        - name: folder
+          value: !cel "Self.driveFiles().filter(f, f.id == inputs.folder && f.kind == 'folder')"
+        - name: known
+          if: !cel "size(steps.folder.result) == 0"
+          then:
+            - name: unknown
+              throw: { code: FOLDER_UNKNOWN, message: !interpolate "There is no Drive folder '${{ inputs.folder }}'." }
+      outputs:
+        link: !cel "steps.folder.result[0].url + '/' + inputs.from + '_' + inputs.to + '/' + inputs.pdf.split('/')[size(inputs.pdf.split('/')) - 1]"
+        target: !cel "steps.folder.result[0].name + ' / ' + inputs.from + ' – ' + inputs.to"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - when: !cel "error.code == 'FOLDER_UNKNOWN'"
+        status: 404
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+
+  - request:
+      method: POST
+      path: /projects/remind
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ projectId, email, sheet ]
+          properties:
+            projectId: { type: string }
+            email: { type: string, minLength: 1 }
+            sheet: { type: string }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Value
+      inputType: !ref RemindRequest
+      outputType: !ref RemindAnswer
+      value: { sentTo: !cel "inputs.email" }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"

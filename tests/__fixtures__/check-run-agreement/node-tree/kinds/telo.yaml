@@ -1,0 +1,73 @@
+# Kinds whose schema types a value tree: a condition naming a row value by
+# accessor, matched against a schema, with a row binding that exists only where
+# a value is named and a request binding that exists only per request; and a map
+# whose every entry is evaluated against a tag, beside a stamp that exists only
+# at load.
+kind: Telo.Library
+metadata:
+  name: NodeTreeKinds
+  version: 1.0.0
+  description: Fixture kinds holding a condition over a named row value and a map of tag templates evaluated per call.
+exports:
+  kinds: [Probe, Tags]
+---
+kind: Telo.Definition
+metadata:
+  name: Probe
+  description: Provides the condition it holds — the accessor naming a row value, the schema matched against it and a label.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    condition:
+      type: object
+      additionalProperties: false
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        properties:
+          request:
+            x-telo-context-eval: runtime
+            type: object
+            additionalProperties: false
+            properties:
+              ip: { type: string }
+          row:
+            x-telo-context-eval: accessor
+            type: object
+            additionalProperties: false
+            properties:
+              amount: { type: integer }
+      properties:
+        at: { x-telo-eval: accessor }
+        matches: { type: object, x-telo-match-for: /at }
+        label: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Tags
+  description: Returns its tag templates, each evaluated against the tag when it is invoked.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Tags
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    tags:
+      type: object
+      additionalProperties:
+        type: string
+        x-telo-context:
+          type: object
+          additionalProperties: false
+          properties:
+            stamp: { type: string, x-telo-context-eval: compile }
+            tag:
+              type: object
+              additionalProperties: false
+              properties:
+                code: { type: string }

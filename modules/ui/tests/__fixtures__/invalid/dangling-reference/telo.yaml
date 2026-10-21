@@ -27,10 +27,11 @@ inputModel:
 outputModel: !ref Answer
 source: { path: /api/reports }
 label: Generate
-lists:
-  - rows: !cel "result.files"
-    columns:
-      - value: !cel "row.url"
+result:
+  type: list
+  rows: !cel "result.files"
+  columns:
+    - value: !cel "row.url"
 ---
 kind: Probe.Read
 metadata:

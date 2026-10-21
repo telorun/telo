@@ -1,0 +1,35 @@
+{
+  "title": "Text record",
+  "description": "A text as a controller receives it and forwards it: the Message as written, its context (null when none is written), the language it is written in, and whether an expression produced it. Opaque to the text vocabulary: a record is never judged or looked up where it is held.",
+  "type": "object",
+  "required": [
+    "text",
+    "context",
+    "lang",
+    "computed"
+  ],
+  "properties": {
+    "text": {
+      "$ref": "telo://manifest#/$defs/Message"
+    },
+    "context": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "lang": {
+      "type": "string",
+      "format": "language-tag"
+    },
+    "computed": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

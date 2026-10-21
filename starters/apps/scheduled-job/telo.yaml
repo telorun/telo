@@ -27,10 +27,17 @@ metadata:
         curl -s localhost:8046/api/runs
     To watch it tick without waiting for 03:00:
         JOB_CRON='*/10 * * * * *' telo .
+# Module `lang:` — the language this application's texts are written in — and
+# `UiReact.App.words` are read from 0.121.0.
+requires:
+  telo: ">=0.121.0"
+lang: en
+# `ui` and `ui-react` come from this repository while their changes are
+# unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
-  Ui: oci://ghcr.io/telorun/ui@0.4.0#sha256-9hNZj-hzEkskbX-GgG3eabew02lvQIjMbAHILQ7ca3U
-  UiReact: oci://ghcr.io/telorun/ui-react@0.5.0#sha256-xyuX5J_vK5o817qrpjNTlhi3TerS7dxPqisDyNTl4WA
+  Ui: ../../../modules/ui
+  UiReact: ../../../modules/ui-react
   Schedule: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
   Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
   KvStore: oci://ghcr.io/telorun/kv-store-memory@0.8.0#sha256-GmMDeJ2eYatJ0_ewaUI6A6bnfkqlphjd4YKWtqZ5d2Y
@@ -340,7 +347,7 @@ routes:
 kind: UiReact.App
 metadata: { name: ui }
 title: Scheduled job
-lang: en
+words: !ref Ui.words
 pages:
   - path: /
     title: Job
@@ -356,15 +363,16 @@ pages:
           outputModel: !ref RunHistory
           source: { path: /api/run }
           label: Run now
-          lists:
-            - heading: Runs
-              rows: !cel "result.runs"
-              columns: &runColumns
-                - value: !cel "row.id"
-                - value: !cel "row.startedAt"
-                - value: !cel "row.finishedAt"
-                - value: !cel "row.outcome"
-                - value: !cel "row.detail"
+          result:
+            type: list
+            heading: Runs
+            rows: !cel "result.runs"
+            columns: &runColumns
+              - value: !cel "row.id"
+              - value: !cel "row.startedAt"
+              - value: !cel "row.finishedAt"
+              - value: !cel "row.outcome"
+              - value: !cel "row.detail"
       - { type: text, text: "History", style: heading }
       - type: composite
         ref:
@@ -373,9 +381,10 @@ pages:
           outputModel: !ref RunHistory
           source: { path: /api/runs/recent }
           label: Show history
-          lists:
-            - rows: !cel "result.runs"
-              columns: *runColumns
+          result:
+            type: list
+            rows: !cel "result.runs"
+            columns: *runColumns
 ---
 kind: Http.Server
 metadata: { name: server }

@@ -216,7 +216,7 @@ steps:
         sameTrace: true
         rootIsRoot: true
         rootConversation: true
-        genAi: [ "invoke_agent author", "chat gpt-5.2", "execute_tool write_file", "chat gpt-5.2" ]
+        genAi: [ "invoke_agent author", "chat gpt-6-luna", "execute_tool write_file", "chat gpt-6-luna" ]
         writeFailed: true
         # The turn's two agent calls and the call that named the conversation.
         usage: [ [ gen_ai.usage.input_tokens=30, gen_ai.usage.output_tokens=15 ] ]

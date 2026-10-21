@@ -77,6 +77,7 @@ export function validateModuleCallNames(
       const collected = new Set<string>();
       for (const { schema: context } of extractContextsFromSchema(
         schema as Record<string, any>,
+        registry.shapeLookup,
       )) {
         for (const name of Object.keys(context.properties ?? {})) collected.add(name);
       }

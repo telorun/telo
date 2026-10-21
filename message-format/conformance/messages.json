@@ -1,0 +1,918 @@
+{
+  "rows": [
+    {
+      "id": "message-001-plain",
+      "read": "message",
+      "data": "Hello {$user}",
+      "message": [
+        "Hello ",
+        {
+          "placeholder": "user"
+        }
+      ],
+      "identity": "Hello {$user}",
+      "variables": [
+        "user"
+      ]
+    },
+    {
+      "id": "message-002-escaped",
+      "read": "message",
+      "data": "\\{literal\\}",
+      "message": [
+        "{literal}"
+      ],
+      "identity": "\\{literal\\}",
+      "variables": []
+    },
+    {
+      "id": "message-003-selection",
+      "read": "message",
+      "data": {
+        "plural": "count",
+        "cases": {
+          "=0": "No files",
+          "one": "{$count} file",
+          "other": "{$count} files"
+        }
+      },
+      "message": {
+        "plural": "count",
+        "cases": {
+          "=0": [
+            "No files"
+          ],
+          "one": [
+            {
+              "placeholder": "count"
+            },
+            " file"
+          ],
+          "other": [
+            {
+              "placeholder": "count"
+            },
+            " files"
+          ]
+        }
+      },
+      "identity": "{$count} files",
+      "variables": [
+        "count"
+      ]
+    },
+    {
+      "id": "message-004-nested",
+      "read": "message",
+      "data": {
+        "plural": "files",
+        "cases": {
+          "one": {
+            "plural": "folders",
+            "cases": {
+              "one": "{$files} file in {$folders} folder",
+              "other": "{$files} file in {$folders} folders"
+            }
+          },
+          "other": {
+            "plural": "folders",
+            "cases": {
+              "one": "{$files} files in {$folders} folder",
+              "other": "{$files} files in {$folders} folders"
+            }
+          }
+        }
+      },
+      "message": {
+        "plural": "files",
+        "cases": {
+          "one": {
+            "plural": "folders",
+            "cases": {
+              "one": [
+                {
+                  "placeholder": "files"
+                },
+                " file in ",
+                {
+                  "placeholder": "folders"
+                },
+                " folder"
+              ],
+              "other": [
+                {
+                  "placeholder": "files"
+                },
+                " file in ",
+                {
+                  "placeholder": "folders"
+                },
+                " folders"
+              ]
+            }
+          },
+          "other": {
+            "plural": "folders",
+            "cases": {
+              "one": [
+                {
+                  "placeholder": "files"
+                },
+                " files in ",
+                {
+                  "placeholder": "folders"
+                },
+                " folder"
+              ],
+              "other": [
+                {
+                  "placeholder": "files"
+                },
+                " files in ",
+                {
+                  "placeholder": "folders"
+                },
+                " folders"
+              ]
+            }
+          }
+        }
+      },
+      "identity": "{$files} files in {$folders} folders",
+      "variables": [
+        "files",
+        "folders"
+      ]
+    },
+    {
+      "id": "message-005-selector-unused",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "one": "One item",
+          "other": "Several items"
+        }
+      },
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": [
+            "One item"
+          ],
+          "other": [
+            "Several items"
+          ]
+        }
+      },
+      "identity": "Several items",
+      "variables": [
+        "n"
+      ]
+    },
+    {
+      "id": "message-006-exact-extremes",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "=-9223372036854775808": "min",
+          "=18446744073709551615": "max",
+          "=0": "zero",
+          "=-1": "minus one",
+          "other": "x"
+        }
+      },
+      "message": {
+        "plural": "n",
+        "cases": {
+          "=-9223372036854775808": [
+            "min"
+          ],
+          "=18446744073709551615": [
+            "max"
+          ],
+          "=0": [
+            "zero"
+          ],
+          "=-1": [
+            "minus one"
+          ],
+          "other": [
+            "x"
+          ]
+        }
+      },
+      "identity": "x",
+      "variables": [
+        "n"
+      ]
+    },
+    {
+      "id": "message-007-other-only",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "other": "{$n}"
+        }
+      },
+      "message": {
+        "plural": "n",
+        "cases": {
+          "other": [
+            {
+              "placeholder": "n"
+            }
+          ]
+        }
+      },
+      "identity": "{$n}",
+      "variables": [
+        "n"
+      ]
+    },
+    {
+      "id": "message-008-unparsable",
+      "read": "message",
+      "data": "a } b",
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a } in text is written \\}",
+          "path": [],
+          "range": {
+            "start": 2,
+            "end": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "message-009-not-a-message",
+      "read": "message",
+      "data": 42,
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a message is text or a plural selection",
+          "path": [],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-010-null",
+      "read": "message",
+      "data": null,
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a message is text or a plural selection",
+          "path": [],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-011-list",
+      "read": "message",
+      "data": [
+        "a"
+      ],
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a message is text or a plural selection",
+          "path": [],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-012-no-other",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "one": "a"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a plural selection needs an other case",
+          "path": [
+            "cases"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-013-bad-key",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "single": "a",
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "single is not a case: a case is zero, one, two, few, many, other or =N",
+          "path": [
+            "cases",
+            "single"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-014-leading-zero",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "=01": "a",
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "=01 is not a case: an exact case is = and an integer written with no leading zero, no + and no -0",
+          "path": [
+            "cases",
+            "=01"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-015-plus",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "=+1": "a",
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "=+1 is not a case: an exact case is = and an integer written with no leading zero, no + and no -0",
+          "path": [
+            "cases",
+            "=+1"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-016-minus-zero",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "=-0": "a",
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "=-0 is not a case: an exact case is = and an integer written with no leading zero, no + and no -0",
+          "path": [
+            "cases",
+            "=-0"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-017-fraction-key",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "=1.5": "a",
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "=1.5 is not a case: an exact case is = and an integer written with no leading zero, no + and no -0",
+          "path": [
+            "cases",
+            "=1.5"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-018-too-large",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "=18446744073709551616": "a",
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "=18446744073709551616 is outside the 64-bit integer range of an exact case",
+          "path": [
+            "cases",
+            "=18446744073709551616"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-019-too-small",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "=-9223372036854775809": "a",
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "=-9223372036854775809 is outside the 64-bit integer range of an exact case",
+          "path": [
+            "cases",
+            "=-9223372036854775809"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-020-dollar-selector",
+      "read": "message",
+      "data": {
+        "plural": "$n",
+        "cases": {
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "$n is not a name: a name starts with a letter or _ and continues with letters, digits or _",
+          "path": [
+            "plural"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-021-reserved-selector",
+      "read": "message",
+      "data": {
+        "plural": "in",
+        "cases": {
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "in is a reserved word and cannot name a placeholder",
+          "path": [
+            "plural"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-022-numeric-selector",
+      "read": "message",
+      "data": {
+        "plural": 5,
+        "cases": {
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "plural holds the bare name of the number it selects on",
+          "path": [
+            "plural"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-023-no-plural",
+      "read": "message",
+      "data": {
+        "cases": {
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a plural selection names its selector in plural",
+          "path": [],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-024-no-cases",
+      "read": "message",
+      "data": {
+        "plural": "n"
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a plural selection lists its cases in cases",
+          "path": [],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-025-cases-list",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": [
+          "a"
+        ]
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "cases maps each plural category or =N to a message",
+          "path": [
+            "cases"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-026-extra-key",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "select": "x",
+        "cases": {
+          "other": "b"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "select is not a key of a plural selection: it holds plural and cases",
+          "path": [
+            "select"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-027-nested-faults",
+      "read": "message",
+      "data": {
+        "plural": "n",
+        "cases": {
+          "one": "a {",
+          "few": {
+            "plural": "m",
+            "cases": {
+              "one": 1
+            }
+          },
+          "other": "fine"
+        }
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "the placeholder is not closed",
+          "path": [
+            "cases",
+            "one"
+          ],
+          "range": {
+            "start": 2,
+            "end": 3
+          }
+        },
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a message is text or a plural selection",
+          "path": [
+            "cases",
+            "few",
+            "cases",
+            "one"
+          ],
+          "range": null
+        },
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a plural selection needs an other case",
+          "path": [
+            "cases",
+            "few",
+            "cases"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-028-text-keys-in-message",
+      "read": "message",
+      "data": {
+        "text": "a",
+        "context": "b"
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "text is not a key of a plural selection: it holds plural and cases",
+          "path": [
+            "text"
+          ],
+          "range": null
+        },
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "context is not a key of a plural selection: it holds plural and cases",
+          "path": [
+            "context"
+          ],
+          "range": null
+        },
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a plural selection names its selector in plural",
+          "path": [],
+          "range": null
+        },
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a plural selection lists its cases in cases",
+          "path": [],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-029-plain",
+      "read": "text",
+      "data": "Save",
+      "text": {
+        "message": [
+          "Save"
+        ],
+        "context": null
+      },
+      "identity": {
+        "source": "Save",
+        "context": null
+      },
+      "variables": []
+    },
+    {
+      "id": "message-030-with-context",
+      "read": "text",
+      "data": {
+        "text": "Save",
+        "context": "button"
+      },
+      "text": {
+        "message": [
+          "Save"
+        ],
+        "context": "button"
+      },
+      "identity": {
+        "source": "Save",
+        "context": "button"
+      },
+      "variables": []
+    },
+    {
+      "id": "message-031-selection-with-context",
+      "read": "text",
+      "data": {
+        "text": {
+          "plural": "count",
+          "cases": {
+            "=0": "No files",
+            "one": "{$count} file",
+            "other": "{$count} files"
+          }
+        },
+        "context": "list heading"
+      },
+      "text": {
+        "message": {
+          "plural": "count",
+          "cases": {
+            "=0": [
+              "No files"
+            ],
+            "one": [
+              {
+                "placeholder": "count"
+              },
+              " file"
+            ],
+            "other": [
+              {
+                "placeholder": "count"
+              },
+              " files"
+            ]
+          }
+        },
+        "context": "list heading"
+      },
+      "identity": {
+        "source": "{$count} files",
+        "context": "list heading"
+      },
+      "variables": [
+        "count"
+      ]
+    },
+    {
+      "id": "message-032-selection-plain",
+      "read": "text",
+      "data": {
+        "plural": "count",
+        "cases": {
+          "=0": "No files",
+          "one": "{$count} file",
+          "other": "{$count} files"
+        }
+      },
+      "text": {
+        "message": {
+          "plural": "count",
+          "cases": {
+            "=0": [
+              "No files"
+            ],
+            "one": [
+              {
+                "placeholder": "count"
+              },
+              " file"
+            ],
+            "other": [
+              {
+                "placeholder": "count"
+              },
+              " files"
+            ]
+          }
+        },
+        "context": null
+      },
+      "identity": {
+        "source": "{$count} files",
+        "context": null
+      },
+      "variables": [
+        "count"
+      ]
+    },
+    {
+      "id": "message-033-empty-context",
+      "read": "text",
+      "data": {
+        "text": "Save",
+        "context": ""
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "context cannot be empty: write the message alone for no context",
+          "path": [
+            "context"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-034-no-context",
+      "read": "text",
+      "data": {
+        "text": "Save"
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a text written as an object names its context; write the message alone for no context",
+          "path": [],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-035-no-text",
+      "read": "text",
+      "data": {
+        "context": "button"
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a text written as an object holds its message in text",
+          "path": [],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-036-context-number",
+      "read": "text",
+      "data": {
+        "text": "Save",
+        "context": 5
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "context is a string",
+          "path": [
+            "context"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-037-extra-key",
+      "read": "text",
+      "data": {
+        "text": "Save",
+        "context": "b",
+        "lang": "en"
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "lang is not a key of a text: it holds text and context",
+          "path": [
+            "lang"
+          ],
+          "range": null
+        }
+      ]
+    },
+    {
+      "id": "message-038-bad-message",
+      "read": "text",
+      "data": {
+        "text": "a }",
+        "context": "b"
+      },
+      "problems": [
+        {
+          "code": "MESSAGE_SYNTAX_INVALID",
+          "message": "a } in text is written \\}",
+          "path": [
+            "text"
+          ],
+          "range": {
+            "start": 2,
+            "end": 3
+          }
+        }
+      ]
+    }
+  ]
+}

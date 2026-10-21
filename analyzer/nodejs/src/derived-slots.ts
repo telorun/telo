@@ -42,6 +42,10 @@ import type { LibraryDeclarations } from "./library-declarations.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import {
+  describeValueSchemaLocation,
+  memberNameAt,
+  memberTypeOf,
+  readValueSchemaLocation,
   resolveScopeValues,
   valueSchemaSlots,
   valueSchemaTypes,
@@ -305,9 +309,19 @@ export function valueSchemaSites(
   const host = ctx.valueSchemaHost ?? resourceLocalHost(ctx.typeManifests);
   const out: ValueSchemaSite[] = [];
   for (const { scope, from } of valueSchemaSlots(defSchema)) {
-    for (const schema of valueSchemaTypes(manifest, from, host)) {
+    const location = readValueSchemaLocation(from);
+    const member = location && !("invalid" in location) ? location.member : undefined;
+    const label = describeValueSchemaLocation(from);
+    for (const type of valueSchemaTypes(manifest, from, host)) {
       for (const { path, value } of resolveScopeValues(manifest, scope)) {
-        out.push({ path, value, schema, from });
+        if (!member) {
+          out.push({ path, value, schema: type, from: label });
+          continue;
+        }
+        // A key the type does not declare contributes nothing.
+        const name = memberNameAt(manifest, path, member);
+        const schema = name === undefined ? undefined : memberTypeOf(type, name);
+        if (schema) out.push({ path, value, schema, from: label });
       }
     }
   }

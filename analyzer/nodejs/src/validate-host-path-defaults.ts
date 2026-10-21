@@ -1,4 +1,5 @@
 import { hostAnchorOf, isAbsoluteHostPath, valueTypeOf, type ResourceManifest } from "@telorun/sdk";
+import { isHoistedFragmentDefKey } from "./manifest-schemas.js";
 import { hostPathRelativeMessage } from "./value-type-keyword.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -104,6 +105,7 @@ function walk(
     const map = schema[key];
     if (!map || typeof map !== "object" || Array.isArray(map)) continue;
     for (const [name, child] of Object.entries(map as Record<string, unknown>)) {
+      if ((key === "$defs" || key === "definitions") && isHoistedFragmentDefKey(name)) continue;
       walk(child, `${path}.${key}.${name}`, found);
     }
   }

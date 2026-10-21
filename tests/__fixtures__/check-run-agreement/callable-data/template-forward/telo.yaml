@@ -1,0 +1,25 @@
+# Forwards a resource whose configuration holds an expression evaluated per call
+# into a template body's native function — refused by this library's own
+# `telo check` at the field it is written in, and by the kernel as the template
+# creates the function.
+kind: Telo.Library
+metadata:
+  name: CallableDataTemplateForward
+  version: 1.0.0
+  description: >-
+    Fixture library forwarding a resource that is not data into a template
+    body's native function.
+imports:
+  Kinds: ../kinds
+  Template: ../template
+---
+kind: Kinds.Late
+metadata:
+  name: late
+greeting: !cel "'hello'"
+---
+kind: Template.Probe
+metadata:
+  name: probe
+label: two
+source: !ref late

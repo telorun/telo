@@ -9,7 +9,8 @@ metadata:
     one path. An application whose pages hold per-request expressions is
     checked for duplicate paths all the same — the rule is not skipped. A page
     path and a link address written `//…` are refused as written: a browser
-    reads either as another host.
+    reads either as another host. A condition the browser draws cannot read
+    the request, and a node's delivery cannot read the query.
 imports:
   Probe: ./__fixtures__/probe
   Run: ../../run
@@ -21,6 +22,7 @@ targets:
   - !ref duplicatePathAtRuntime
   - !ref offsiteReferences
   - !ref ruleRuns
+  - !ref pageRoots
 ---
 kind: Assert.Manifest
 metadata:
@@ -80,3 +82,14 @@ steps:
     inputs:
       actual: !cel "steps.check.result"
       expected: { loadError: null, codes: [] }
+---
+kind: Assert.Manifest
+metadata:
+  name: pageRoots
+source: ./__fixtures__/invalid/page-roots/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "UiReact.App/mixed: !cel: unknown identifier 'request'"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "UiReact.App/mixed: !cel: unknown identifier 'query'"

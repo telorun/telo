@@ -61,9 +61,17 @@ export {
   implicitEvalSites,
   mergeCelEvalSites,
   pathMatchesScope,
+  scopeMatchOf,
   NO_CEL_EVAL_SITES,
+  NO_NAMED_SHAPES,
 } from "./eval-paths.js";
-export type { AccessorSite, CelEvalMode, CelEvalSites } from "./eval-paths.js";
+export type {
+  AccessorSite,
+  CelEvalMode,
+  CelEvalSites,
+  NamedShapeLookup,
+  ScopeMatch,
+} from "./eval-paths.js";
 export { isSelfForward, SELF_PATH } from "./template-self-forward.js";
 export {
   injectedDeclarations,
@@ -253,7 +261,7 @@ export {
   parameterSchemaOf,
   FUNCTION_KIND,
   isCallableKind,
-  parameterContextProperties,
+  argumentRecordSchema,
   readDeterministic,
   readParams,
   readReturns,
@@ -275,6 +283,13 @@ export {
   validateCallableDeclarations,
 } from "./validate-callable-kinds.js";
 export type { CallableKindIssue } from "./validate-callable-kinds.js";
+export {
+  callableReferenceNotDataMessage,
+  isDataSite,
+  isDataSlot,
+  isNativeCallableKind,
+} from "./callable-data-slot.js";
+export type { NotData, NotDataReason } from "./callable-data-slot.js";
 export { validateSensitiveSlots } from "./validate-sensitive-slots.js";
 export type { SensitiveSlotIssue } from "./validate-sensitive-slots.js";
 export { validateSpanAttributes } from "./validate-span-attributes.js";
@@ -411,6 +426,93 @@ export {
 export type { NeedConstraint, RefSlot, RefUse, RefUseCases } from "./ref-slot.js";
 export { isStepSlot, readStepSlot, STEP_FRAGMENT } from "./step-slot.js";
 export type { StepSlot } from "./step-slot.js";
+// The built-in text vocabulary: the fragments' and annotations' one reader, the
+// judgement both halves share, and where a manifest holds schemas.
+export {
+  declaredTextValuesOf,
+  expressionsWithin,
+  catalogsComputedAbove,
+  fragmentAdmits,
+  isTextRecordSchema,
+  isTextSchema,
+  MESSAGE_FRAGMENT,
+  pointerSegments,
+  renderValuePath,
+  siteValueOf,
+  TEXT_ANNOTATION_VALUE_SCHEMAS,
+  TEXT_CATALOG_FRAGMENT,
+  TEXT_CONTEXT_ANNOTATION,
+  TEXT_FRAGMENT,
+  TEXT_RECORD_FRAGMENT,
+  TEXT_VALUES_ANNOTATION,
+  TEXT_VALUES_FOR_ANNOTATION,
+  textFragmentOf,
+  textSites,
+  UNDETERMINED_LANGUAGE,
+} from "./text-slot.js";
+export type {
+  TextExpressionSite,
+  TextFragment,
+  TextSite,
+  TextValuesSite,
+  TextWalk,
+  TextWalkOptions,
+  ValuePath,
+} from "./text-slot.js";
+export {
+  catalogComputedProblem,
+  judgeCatalog,
+  judgeMessage,
+  judgeText,
+  judgeValues,
+  keyOfText,
+  languageProblems,
+  runtimeValueKind,
+  SOURCE_LANGUAGE_MISSING_MESSAGE,
+  textKey,
+} from "./text-judgement.js";
+export type {
+  CatalogEntry,
+  KnownValues,
+  MessageValueKind,
+  TextProblem,
+  TextProblemCode,
+} from "./text-judgement.js";
+export {
+  schemaNodes,
+  schemaTexts,
+  schemaValueSites,
+  textAnnotationProblems,
+  textContextNodes,
+  textParameters,
+} from "./text-schemas.js";
+export type {
+  SchemaRole,
+  SchemaText,
+  SchemaValueSite,
+  TextAnnotationProblem,
+  TextParameter,
+} from "./text-schemas.js";
+export { textSlotAccessorProblems } from "./text-slot-accessor.js";
+export { declaredValueKinds, judgeDeclaredValues, textValuesProblems } from "./text-values.js";
+export {
+  declaresTextCatalogSet,
+  TEXT_CATALOG_SET_ANNOTATION,
+  textCatalogSetDuplicates,
+  textCatalogSetMembers,
+  textCatalogSetProblems,
+} from "./text-catalog-set.js";
+export type {
+  CatalogSetReferenceSite,
+  NamedShapeResolver,
+  TextCatalogSetDuplicate,
+  TextCatalogSetHost,
+  TextCatalogSetMember,
+  TextCatalogSetProblem,
+} from "./text-catalog-set.js";
+export type { TextSlotAccessorProblem } from "./text-slot-accessor.js";
+export { moduleLangOf, moduleLangs, recordLangOf } from "./module-lang.js";
+export { TextLanguageScope } from "./validate-texts.js";
 export { readDeprecation } from "./deprecation.js";
 export type { Deprecation } from "./deprecation.js";
 export {

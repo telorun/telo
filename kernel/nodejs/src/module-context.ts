@@ -845,6 +845,12 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     return this.boundNeeds.has(name);
   }
 
+  /** A need this module declares is one of its names, an optional one bound
+   *  to nothing included. */
+  override declaresName(name: string): boolean {
+    return super.declaresName(name) || this.isNeed(name);
+  }
+
   /** Whether `name` is a need of this module bound to nothing. */
   isAbsentNeed(name: string): boolean {
     return this.absentNeeds.has(name);

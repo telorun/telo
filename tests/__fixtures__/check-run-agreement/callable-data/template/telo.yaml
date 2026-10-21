@@ -1,0 +1,44 @@
+# A templated kind whose body holds native functions: one holding a sibling
+# entry, one an instance the defining module imports, one what its consumer
+# forwards. Each receives its referent's configuration — the sibling's as the
+# template created it, its expression already evaluated.
+kind: Telo.Library
+metadata:
+  name: CallableDataTemplate
+  version: 1.0.0
+  description: >-
+    Fixture library whose templated kind holds native functions in its body.
+imports:
+  Kinds: ../kinds
+---
+kind: Telo.Definition
+metadata:
+  name: Probe
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    label: { type: string }
+    source:
+      x-telo-ref: { kind: [Kinds.Table, Kinds.Late], use: dependency }
+  required: [label, source]
+invoke: !ref ask
+resources:
+  - kind: Kinds.Table
+    metadata: { name: local }
+    title: !cel "'Local ' + self.label"
+    rows:
+      a: sibling
+  - kind: Kinds.Peek
+    metadata: { name: peekSibling }
+    target: !ref local
+  - kind: Kinds.Peek
+    metadata: { name: peekExport }
+    target: !ref Kinds.shared
+  - kind: Kinds.Peek
+    metadata: { name: peekForward }
+    target: !cel "self.source"
+  - kind: Kinds.Ask
+    metadata: { name: ask }
+    path: rows.a
+    functions: [!ref peekSibling, !ref peekExport, !ref peekForward]

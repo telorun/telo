@@ -1,0 +1,35 @@
+# A field kind declared outside `ui`, judging its own fit with a rule of its
+# own and answering one of the specs `ui` draws — placed in a form with no
+# change to `ui`.
+kind: Telo.Library
+metadata:
+  name: Stars
+  version: 1.0.0
+  description: >-
+    Test fixture: a star rating field, a slider over a bounded number.
+imports:
+  Ui: ../../..
+exports:
+  kinds: [Rating]
+---
+kind: Telo.Definition
+metadata:
+  name: Rating
+  description: A form field entering a bounded number as a row of stars.
+capability: Telo.Invocable
+extends: Ui.Field
+controllers:
+  - pkg:telo/local/js?path=./rating.mjs#Rating
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+  x-telo-referrer-rules:
+    - referrer: Ui.Form
+      resolve: [/model]
+      condition: !cel >-
+        cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          !has(m.properties) || !(self.property in m.properties)
+          || Ui.controlFits('slider', m.properties[self.property], null))
+      code: STARS_RATING_UNBOUNDED
+      message: rates a property that is not a number declaring `minimum` and `maximum`.

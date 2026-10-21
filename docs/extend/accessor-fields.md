@@ -48,8 +48,73 @@ Two annotations work together:
   whether the author gave it inline or by `!ref`.
 
 It is the third value of `x-telo-eval`, beside `compile` and `runtime`, and it
-wins over a provider's implicit compile-eval the way `runtime` does: the field is
-left out of what the kernel evaluates when the resource is created.
+wins over a provider's implicit compile-eval: the field is left out of what the
+kernel evaluates when the resource is created, while everything beside it is
+still evaluated.
+
+A chain may start at a binding of every `x-telo-context` enclosing the field —
+its own and each one above it. An accessor field inside a named shape
+the kind's schema `$ref`s, recursive ones included, is an accessor field at every
+depth the data goes, with the bindings the regions on the way to it declare.
+
+## Where a binding exists
+
+`x-telo-context-eval` on a binding names the eval modes it exists at —
+`compile`, `runtime`, `accessor`, or a list of them; absent, every mode. It is
+how a kind declares a value only its consumer has — a row a page renders in the
+browser — that an author may name but nothing on the server can read, and a
+value only the server has — the request — that an accessor must not name:
+
+```yaml
+x-telo-context:
+  type: object
+  properties:
+    row:
+      x-telo-context-eval: accessor
+      type: object
+      properties: { amount: { type: integer } }
+    request:
+      x-telo-context-eval: runtime
+      type: object
+      properties: { ip: { type: string } }
+```
+
+At an accessor field `row.amount` is a typed chain; in an evaluated `!cel` or
+`!interpolate` in the same region, `row` is `CEL_UNKNOWN_IDENTIFIER`. An
+accessor chain rooted at `request` is `CEL_UNKNOWN_IDENTIFIER` too, and the
+kernel refuses it when it creates the resource (`ERR_ACCESSOR_NOT_PLAIN_CHAIN`).
+A value that is no mode, an empty list or a list naming a mode twice is
+`SCHEMA_VIOLATION`, and the mark written anywhere but directly on a binding is
+the warning `CONTEXT_EVAL_MISPLACED`.
+
+## A schema matched against what an accessor names
+
+`x-telo-match-for: "<pointer>"` on a field holding a JSON Schema names the
+accessor field — a JSON Pointer relative to the object enclosing the annotated
+field — whose value the schema is matched against:
+
+```yaml
+condition:
+  type: object
+  properties:
+    at: { x-telo-eval: accessor }
+    matches: { type: object, x-telo-match-for: /at }
+```
+
+`telo check` judges the schema against the static type of the accessor's chain
+(a literal accessor is judged as `{ const: <value> }`) and reports a schema that
+can never hold for it as `MATCH_UNSATISFIABLE`. Only definite disjointness is
+reported: `type` (an integer is a number), `const`, `enum`, and `required`
+naming a member a closed object lacks — through `properties` the value always
+has, `items` of a list never empty, `allOf` (one disjoint member suffices) and
+`anyOf` (every branch disjoint); never `not`, and against a value that is a union
+only when the schema is disjoint from every branch. An open or untyped value is
+never judged. It is judged in every resource, `with:` member, template-body entry
+and forwarded value of the entry's own modules, and the kernel refuses the same
+manifest at load, through its analysis. A pointer naming nothing, crossing an
+array or naming a field that is not an accessor, a field that is not a property
+of an object schema, and one at or beneath an accessor field are
+`MATCH_FOR_INVALID`, reported where the annotation is written.
 
 ## What an author may write
 
@@ -138,8 +203,11 @@ inside it, and a rule reading that value is skipped. In a
 
 A kind that shows several lists lets each entry name its own rows with an
 accessor, and wants the columns beneath it typed by one row of *that* list.
-`x-telo-context-element-from-item: "<field>"` types a binding as the element of
-the collection the enclosing entry's `<field>` points at:
+`x-telo-context-element-from-item: "<relative pointer>"` types a binding as the
+element of the collection the chain at another field names. The pointer is a
+[Relative JSON Pointer](https://datatracker.ietf.org/doc/html/draft-bhutton-relative-json-pointer-00)
+from the object holding the field the region is declared on: a number of
+levels to climb, then a JSON Pointer down from there.
 
 ```yaml
 lists:
@@ -160,25 +228,87 @@ lists:
           type: object
           properties:
             result: { x-telo-context-from-root: "outputModel" }
-            row: { x-telo-context-element-from-item: "rows" }
+            row: { x-telo-context-element-from-item: "0/rows" }
         items:
           type: object
           properties:
             value: { x-telo-eval: accessor }
 ```
 
-The context sits on the `columns` list, so the entry it reads is the `lists`
-item holding those columns. With `rows: !cel "result.files"`, `row` is one
-element of `files` as `outputModel` declares it, and `value: !cel "row.pth"` is
-`CEL_UNKNOWN_FIELD` when a file has no `pth`.
+The context sits on the `columns` field, so the object holding it is the
+`lists` item, and `0/rows` is that item's `rows`. With
+`rows: !cel "result.files"`, `row` is one element of `files` as `outputModel`
+declares it, and `value: !cel "row.pth"` is `CEL_UNKNOWN_FIELD` when a file has
+no `pth`. A region on each column's own `value` field writes `2/rows` instead:
+the column is the holder, one level up is the `columns` list, two levels up the
+`lists` item.
 
-`<field>` must hold a plain chain rooted at another binding of the same context
-(or at `inputs`, read against the resource's `inputType`). The element is an
-array's `items`, or what an iterable value type declares as its element. When
-the chain cannot be followed to a collection — the field is a literal or
-absent, the root binding is untyped, the chain passes through an open object or
-ends on something that is not a collection — the binding is untyped and nothing
-is reported.
+The chain at the named field is typed exactly as at its own site, every region
+covering it included — so `rows: !cel "data.items"`, rooted at a binding an
+enclosing region declares, types `row` too. The element is an array's `items`,
+or what an iterable value type declares as its element. When the data cannot be
+followed to a collection — the field is a literal or absent, the root binding is
+untyped, the chain passes through an open object or ends on something that is
+not a collection — the binding is untyped and nothing is reported.
+
+A pointer outside the grammar is `SCHEMA_VIOLATION`. One that climbs above the
+resource (or, in a named shape, above the shape), names a member the schema
+does not declare, lands at or beneath the field the region is declared on, or
+names a field that declares no `x-telo-eval` is `ELEMENT_FROM_ITEM_INVALID`,
+reported where it is written. The bare field name earlier releases wrote
+(`rows`) is rewritten to `0/rows` when the manifest is loaded, with the warning
+`DEPRECATED_ELEMENT_FROM_ITEM_FIELD`; `telo migrate` writes the rewrite to the
+file.
+
+## Typing a binding from whoever references the resource
+
+A field of a form, declared as a resource of its own, cannot name the form's
+model: the field kind does not know which form holds it. Its condition still
+reads the form's record. `x-telo-context-from-referrer: "<binding>"` types a
+binding from the binding of that name in scope at each slot that references the
+resource:
+
+```yaml
+# on the field kind
+shown:
+  type: object
+  x-telo-context:
+    type: object
+    properties:
+      values:
+        x-telo-context-from-referrer: values
+        x-telo-context-eval: accessor
+  properties:
+    at: { x-telo-eval: accessor }
+```
+
+A form whose `fields` region binds `values` from its `model` then types
+`shown.at: !cel "values.titel"` in every field it lists — written inline or by
+`!ref` — as `CEL_UNKNOWN_FIELD`. A kind forwarding the binding to what it
+references in turn (a field's `options` slot) declares the same annotation on a
+region over that slot, and the chain is followed. A field two forms list is
+judged under each form's type: a finding both make is reported once, one only
+some make names the forms it holds for. With no referrer the binding is what it
+declares itself, untyped when it declares nothing, so a field nothing lists yet
+is not refused. The editor offers a member only when every referrer's type
+declares it.
+
+The annotation is legal only on a binding marked `x-telo-context-eval: accessor`
+and nothing else, and never beside another `x-telo-context-from*`
+(`CONTEXT_FROM_REFERRER_INVALID`).
+
+### Entries that fill a record
+
+A list whose entries each enter one member of a record — a form's fields —
+says so on the binding: `x-telo-context-item-fills: ["", "/property"]` names the
+member an entry fills, the first pointer that yields a string (`""` the entry
+itself, a bare property name; `/property` the entry's `property`, read through
+the declaration a reference names). An entry whose condition, or whose option
+source's filter, reads a member that another entry fills depends on it; entries
+depending on each other in a cycle — or one on the member it fills itself —
+could never be entered first, and each read forming the cycle is
+`CONTEXT_FILL_CYCLE`. The annotation is legal only on a binding of a region
+declared on a list (`CONTEXT_ITEM_FILLS_INVALID`).
 
 ## Inside a template
 
@@ -204,10 +334,18 @@ written and reaches the entry as a chain.
 - The annotation is a field's: the whole value is one chain or one literal.
   A map of accessors annotates the map's values (`additionalProperties`), a list
   its `items`.
-- Under a provider's implicit compile-eval, an accessor field anywhere beneath a
-  top-level property keeps that whole property from being evaluated at creation,
-  exactly as a `runtime` field does. A sibling field under the same top-level
-  property that needs evaluating declares `x-telo-eval: compile` itself.
+- Under a provider's implicit compile-eval, only the accessor field itself is
+  left unevaluated: an expression beside it under the same top-level property is
+  evaluated at creation. A `runtime` field still keeps its whole top-level
+  property from being evaluated there.
 - A kind that only forwards an accessor into a template body does not annotate
   its own field `accessor` — the entry that finally holds it does. Annotating
   both would deliver a binding into a field that then reads it as a literal.
+- An accessor field's value is never text shown to a person: a `Text`,
+  `Message` or `TextCatalog` at or beneath one — written there, or reached
+  through a named shape — is refused at the kind, since the controller would
+  receive a binding where it expects a text record. Text over data is a `Text`
+  field of its own whose values are accessors: an object marked
+  `x-telo-text-values-for` whose entries are accessor fields is read as its
+  bindings, a literal's `{ value }` judged as that value and a chain's
+  `{ root, path }` as a value its consumer resolves, typed by `telo check`.

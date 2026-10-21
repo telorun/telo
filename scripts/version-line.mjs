@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // The telo version line: the runtime packages that share one version.
 //
-// It is the changesets `fixed` group containing `@telorun/analyzer` — sdk,
-// templating, analyzer, kernel, cli, ide-support, language-server. A package
+// It is the changesets `fixed` group containing `@telorun/analyzer` — sdk, cel,
+// message-format, templating, analyzer, kernel, cli, ide-support, language-server. A package
 // belongs to it exactly when its content is bound to one telo generation, so a
 // changeset naming any member releases every member at the same version, and
 // that version IS the surface generation a module's `requires.telo` range is

@@ -19,6 +19,7 @@ import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isModuleKind } from "./module-kinds.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { acceptsInline } from "./normalize-inline-resources.js";
 import { resolveScopedName } from "./call-graph.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 import { injectedNeedOf } from "./need-type.js";
@@ -238,6 +239,62 @@ export function kindSatisfies(
   return !registry.ancestryResolved(resolved);
 }
 
+/** A JSON Schema node's type, as a reader names it. */
+function valuePhrase(branch: Record<string, any>): string {
+  if ("const" in branch) return `the value ${JSON.stringify(branch.const)}`;
+  if (Array.isArray(branch.enum)) return `one of ${branch.enum.map((v: unknown) => JSON.stringify(v)).join(", ")}`;
+  const names: Record<string, string> = {
+    string: "a string",
+    integer: "an integer",
+    number: "a number",
+    boolean: "true or false",
+    object: "an object",
+    array: "a list",
+    null: "null",
+  };
+  const types = (Array.isArray(branch.type) ? branch.type : [branch.type]).filter(
+    (type: unknown): type is string => typeof type === "string",
+  );
+  return types.length > 0 ? types.map((type: string) => names[type] ?? type).join(" or ") : "a value";
+}
+
+/**
+ * What a reference slot accepts, read from its own schema: each value branch by
+ * its title and type, a `!ref` to a resource of its kinds, and — where the slot
+ * takes one — an inline declaration. Kinds are spelled through `scope`, the
+ * aliases of the module reading the slot.
+ */
+function acceptedAtSlot(
+  entry: RefFieldEntry,
+  inline: boolean,
+  registry: DefinitionRegistry,
+  scope: AliasResolver,
+): string {
+  const spell = (canonical: string): string => {
+    const dot = canonical.lastIndexOf(".");
+    if (dot <= 0) return canonical;
+    const aliases = scope.aliasesFor(canonical.slice(0, dot));
+    const alias = aliases.find((a) => a !== "Self") ?? aliases[0];
+    return alias ? `${alias}${canonical.slice(dot)}` : canonical;
+  };
+  const kinds = entry.refs.map((ref) => {
+    const canonical = registry.resolveRef(ref) ?? ref;
+    return { written: spell(canonical), abstract: registry.resolve(canonical)?.kind === "Telo.Abstract" };
+  });
+  const ofKinds = kinds
+    .map((k) => (k.abstract ? `a kind extending ${k.written}` : `kind ${k.written} or one extending it`))
+    .join(", or ");
+  const parts = new Set<string>();
+  for (const branch of entry.valueBranches ?? []) {
+    const value = valuePhrase(branch);
+    parts.add(typeof branch.title === "string" ? `${branch.title} — ${value}` : value);
+  }
+  parts.add(`!ref <name> naming a resource of ${ofKinds}`);
+  if (inline) parts.add(`an inline declaration { kind: <${ofKinds}>, … }`);
+  const list = [...parts];
+  return list.length === 1 ? list[0]! : `${list.slice(0, -1).join("; ")}; or ${list[list.length - 1]}`;
+}
+
 /** {@link kindSatisfies} at every kind a slot accepts, rendered as messages.
  *  The acceptance rule is not restated here — only what to say when it fails,
  *  which needs the slot's alternatives and the target's flavour. */
@@ -304,7 +361,9 @@ function checkKind(
  * Phase 3 — Reference validation.
  *
  * For each x-telo-ref slot in every non-system resource, validates:
- *   1. Structural — the value has string `kind` and `name` fields.
+ *   1. Structural — the value is a `{kind, name}` reference; anything else that
+ *                   is neither an inline declaration nor a value the slot's own
+ *                   union accepts is refused, naming what the slot takes.
  *   2. Kind — the alias-resolved kind satisfies the x-telo-ref constraint
  *             (abstract: must extend the target; concrete: must equal it exactly).
  *   3. Resolution — a resource with that name exists in the visible manifest set
@@ -445,7 +504,7 @@ export function validateReferences(
   const readComputedRefSlots = (r: ResourceManifest, definition?: ResourceDefinition): void => {
     const resolveDef: DefResolver = (k) =>
       registry.resolve(aliases.resolveKind(k) ?? k) ?? registry.resolve(k);
-    const sites = definition ? kindCelEvalSites(definition, resolveDef) : NO_CEL_EVAL_SITES;
+    const sites = definition ? kindCelEvalSites(definition, resolveDef, registry.shapeLookup) : NO_CEL_EVAL_SITES;
     computedRefSlotPaths = new Set(
       computedRefSlots(
         registry.referencePositions(r, aliases, aliasesByModule),
@@ -562,8 +621,8 @@ export function validateReferences(
         // A value the slot's own union describes is a value, not a reference —
         // the same narrowing `validateReferenceForms` applies, through the same
         // function, because it has to be applied here too: an OBJECT-shaped value
-        // branch would otherwise reach the structural check below and be reported
-        // as a reference missing 'kind' and 'name'.
+        // branch would otherwise reach the structural check below and be refused
+        // as a value the slot does not take.
         if (satisfiesSiteValue(val, e.refs, registry)) return;
 
         // Skip inline resources — Phase 2 normalization hasn't run yet.
@@ -586,20 +645,28 @@ export function validateReferences(
 
         // An EXPRESSION at the slot has its own verdict, from the one reader
         // that owns the rule (`REF_SLOT_COMPUTED`): it says why a reference
-        // cannot come out of CEL and what to write instead, where "must have
-        // string 'kind' and 'name' fields" describes the value's shape and
-        // leaves an author with nothing to do. Only the positions that verdict
+        // cannot come out of CEL and what to write instead, where a list of
+        // what the slot takes is no repair for an expression. Only the positions that verdict
         // claims are skipped, so an expression at a slot the kind never
         // evaluates still lands here.
         if (computedRefSlotPaths.has(concretePath)) return;
 
-        // 1. Structural check
+        // 1. Neither a reference, an inline declaration nor a value: say what the
+        //    slot takes, from its own schema.
         if (typeof refVal.kind !== "string" || typeof refVal.name !== "string") {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
             code: "INVALID_REFERENCE",
             source: SOURCE,
-            message: `${resourceLabel}: reference at '${concretePath}' must have string 'kind' and 'name' fields`,
+            message:
+              `${resourceLabel}: the value at '${concretePath}' is not one this slot accepts. It takes ` +
+              acceptedAtSlot(
+                entry,
+                acceptsInline(r.kind, entry),
+                registry,
+                moduleAliasScope(r.metadata, aliases, aliasesByModule),
+              ) +
+              ".",
             data: { resource: resourceData, filePath, path: concretePath },
           });
           return;

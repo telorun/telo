@@ -16,6 +16,12 @@
  * (`ERR_OUTPUT_INVALID`). Values arrive as CEL values: a `bigint` for an
  * integer, a branded timestamp (`celTimestamp`) or duration, a `Uint8Array` for
  * bytes.
+ *
+ * A reference the kind holds at a `use: dependency` slot reaches `create` as the
+ * referent's configuration, never an instance: what the referent's own
+ * controller received, without `kind` and `metadata`, each reference inside it
+ * replaced the same way — plain, frozen data. A slot the function calls through
+ * declares `use: call` and holds the function itself.
  */
 import type { EffectBody, EffectChain } from "./effect.js";
 import type { Logger } from "./logger.js";

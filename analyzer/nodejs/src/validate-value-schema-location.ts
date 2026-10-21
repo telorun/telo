@@ -15,9 +15,11 @@
 import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import {
+  describeValueSchemaLocation,
   readValueSchemaLocation,
   schemaReachesLocation,
   valueSchemaAnnotations,
+  valueSchemaMemberProblem,
 } from "./value-schema-slot.js";
 
 export interface ValueSchemaFromProblem {
@@ -83,7 +85,7 @@ export function valueSchemaFromProblems(
   const problems: ValueSchemaFromProblem[] = [];
   const kindName = String(definition.metadata?.name);
   const unreachable = (raw: unknown, where: string): string =>
-    `'${kindName}' declares \`${ANNOTATION}: ${String(raw)}\` ${where}, but its schema ` +
+    `'${kindName}' declares \`${ANNOTATION}: ${describeValueSchemaLocation(raw)}\` ${where}, but its schema ` +
     `declares nothing at that location, so no resource of the kind can name a type there ` +
     `and the annotated node would be typed from nothing. Name a field the kind's ` +
     `\`schema:\` declares — by name, or by a JSON Pointer from the resource root, which may ` +
@@ -91,30 +93,53 @@ export function valueSchemaFromProblems(
 
   for (const field of ANNOTATED_FIELDS) {
     const written = definition[field];
-    for (const { path, raw } of valueSchemaAnnotations(written, field)) {
+    const writtenRoot = writtenSchemaRoot(written, field);
+    for (const annotation of valueSchemaAnnotations(written, field)) {
+      const { path, raw } = annotation;
       const at = `${path}.${ANNOTATION}`;
       const location = readValueSchemaLocation(raw);
       if (!location) continue;
       if ("invalid" in location) {
         problems.push({ path: at, message: `'${kindName}' at '${at}': ${location.invalid}` });
-      } else if (!schema || !schemaReachesLocation(schema, location.segments)) {
+        continue;
+      }
+      if (!schema || !schemaReachesLocation(schema, location.segments)) {
         problems.push({ path: at, message: unreachable(raw, `at '${at}'`) });
       }
+      const memberProblem =
+        location.member && writtenRoot ? valueSchemaMemberProblem(writtenRoot, annotation, location.member) : undefined;
+      if (memberProblem) problems.push({ path: at, message: `'${kindName}' at '${at}': ${memberProblem}` });
     }
 
     const shape = field === "schema" ? undefined : resolveShape?.(written);
     if (!shape) continue;
-    for (const { path, raw } of valueSchemaAnnotations(shape.schema)) {
+    for (const annotation of valueSchemaAnnotations(shape.schema)) {
+      const { path, raw } = annotation;
       const within = path === "" ? "its root" : `'${path}'`;
       const where = `through \`${field}\`, which names the shape '${shape.name}' carrying it at ${within}`;
       const location = readValueSchemaLocation(raw);
       if (!location) continue;
       if ("invalid" in location) {
         problems.push({ path: field, message: `'${kindName}' ${where}: ${location.invalid}` });
-      } else if (!schema || !schemaReachesLocation(schema, location.segments)) {
+        continue;
+      }
+      if (!schema || !schemaReachesLocation(schema, location.segments)) {
         problems.push({ path: field, message: unreachable(raw, where) });
       }
+      const memberProblem = location.member
+        ? valueSchemaMemberProblem(shape.schema, annotation, location.member)
+        : undefined;
+      if (memberProblem) problems.push({ path: field, message: `'${kindName}' ${where}: ${memberProblem}` });
     }
   }
   return problems;
+}
+
+/** The schema document a definition field's annotations sit in: the kind's
+ *  `schema:` itself, or a contract's inline schema. */
+function writtenSchemaRoot(written: unknown, field: string): Record<string, any> | undefined {
+  if (!written || typeof written !== "object" || Array.isArray(written)) return undefined;
+  const node = written as Record<string, any>;
+  if (field !== "schema" && node.schema && typeof node.schema === "object") return node.schema;
+  return node;
 }

@@ -97,7 +97,7 @@ variables:
   model:
     env: MODEL
     type: string
-    default: gpt-5.2
+    default: gpt-6-luna
   # The OpenAI-compatible endpoint the model is called through — a gateway, or a
   # local stub that lets tests run whole turns offline.
   modelEndpoint:

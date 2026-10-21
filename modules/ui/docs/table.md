@@ -7,14 +7,15 @@ A data grid over a REST collection.
 | `model` | required | the shape of one row: a `!ref` to a `Telo.JsonSchema`, or one inline |
 | `collection` | required | the [`Ui.Collection`](collection.md) declaring what the list accepts, `!ref` or inline |
 | `source.basePath` | required | [app-relative](nodes.md#addresses) URL of the collection |
-| `source.filters` | | property → scalar: equalities applied to every request, each a filter the collection accepts with `eq` |
+| `source.filters` | | property → a fixed value or a path into `query`: equalities applied to every request, each a filter the collection accepts with `eq` and typed against its model property; while one holds nothing the table reads nothing |
 | `rowKey` | `id` | the property identifying a row in item URLs |
 | `columns` | derived | the columns, left to right; omitted, one per model property but the row key |
 | `pageSize` | `25` | rows per page, 1–100, sent as `limit` |
 | `rowStyle` | | a [style rule](nodes.md#style-rules) for the whole row |
 | `create`, `edit` | | [how a form is opened](#opening-a-form): `{ form, surface?, afterSubmit?, unsaved? }` |
 | `delete` | `false` | whether each row offers a confirmed delete |
-| `rowActions` | none | [operations each row offers](#row-actions): `{ action, inputs, confirm?, prompt? }` each |
+| `query` | none | the page query parameters its row actions read, a [`Ui.QueryParameters`](conditions.md); read as `query` |
+| `rowActions` | none | [operations each row offers](#row-actions): `{ action, inputs, confirm?, prompt?, enabled? }` each |
 
 The collection must speak [the collection contract](collection-contract.md).
 
@@ -103,7 +104,9 @@ The object is the only spelling: `create: !ref todoForm` is refused
 ## Row actions
 
 `rowActions` puts buttons on every row, in the order written, before edit and
-delete. Each runs a [`Ui.Action`](action.md) with values of that row:
+delete. Each is a [`Ui.RowAction`](action.md#row-actions) running a
+[`Ui.Action`](action.md) with values of that row and of the table's declared
+`query`:
 
 ```yaml
 rowActions:
@@ -117,14 +120,19 @@ rowActions:
 | Field | | |
 | --- | --- | --- |
 | `action` | required | the [`Ui.Action`](action.md) run, `!ref` or inline |
-| `inputs` | required, at least one | the record sent, by input property: a path into `row`, or a fixed value |
+| `inputs` | required, at least one | the record sent, by input property: a path into `row` or `query`, or a fixed value |
 | `confirm` | | a question asked first; left out, a press runs the action at once, unless `prompt` opens a dialog |
 | `prompt` | `false` | whether a press opens a dialog that [asks for more](#asking-for-more) before the action is sent |
+| `enabled` | always | when the row's button can be pressed, over `row` and `query`, and why not; the action's own `enabled` does not govern it |
 
 The button shows the action's `label` and sends
 [its request](action-contract.md#from-a-row) to its `source.path`. Every
-property the action's `inputModel` requires is bound here. Once the operation
-succeeds, the tables over the same `source.basePath` reload.
+property the action's `inputModel` requires is bound here. A row takes no
+press while its last is pending or queued. Once the operation succeeds, the
+tables over the same `source.basePath` reload, the action's `result` tree is
+drawn in place of its button — kept while that row is on the shown page,
+through the reload — and its `onSuccess` applies; a failure draws its
+`failure` tree beside the button, or in the confirmation when one was open.
 
 ### Asking for more
 
@@ -165,14 +173,11 @@ names that model "the declared inputType" of the action:
 | Written | Reported |
 | --- | --- |
 | a key a closed input model does not declare, a required input left out, a fixed value of the wrong type | `CONTRACT_INPUTS_MISMATCH` |
-| `!cel "row.<name>"` for a property the row model does not declare | `CEL_UNKNOWN_FIELD` |
+| `!cel "row.<name>"` for a property the row model does not declare, `query.<name>` for a parameter the table does not declare | `CEL_UNKNOWN_FIELD` |
 | a path whose type the input property does not take (`row.name`, a string, for an integer `id`) | `CEL_TYPE_ERROR` |
 | anything but a plain path (`!cel "row.id + 1"`) | `ACCESSOR_NOT_PLAIN_CHAIN` |
 | no `inputs`, an empty one, a `confirm` that is not text or is empty | `SCHEMA_VIOLATION` |
-
-An action that declares a list is refused in a row, which has nowhere to draw
-an answer (`UI_ROW_ACTION_DRAWS_LISTS`, [below](#refused)): declare an action
-without `lists` for the row. `lists: []` declares none.
+| a `confirm` naming a placeholder it does not bind (`{ text, values }` binds them) | `MESSAGE_PLACEHOLDER_UNBOUND` |
 
 The table refuses a row's inputs itself when it is first read, as
 `ERR_UI_ROW_ACTION_INPUTS_INVALID`: a key a closed input model does not
@@ -184,12 +189,10 @@ declare, a required input left unbound, or a fixed value its property refuses.
 | --- | --- |
 | `UI_SOURCE_FILTER_UNKNOWN_PROPERTY` | `source.filters` names a property the model does not declare |
 | `UI_SOURCE_FILTER_NOT_ACCEPTED` | `source.filters` names a property the collection's `query.filters` does not declare with operator `eq` |
-| `UI_ROW_ACTION_DRAWS_LISTS` | a `rowActions` entry names an action that declares at least one list |
 
 The table refuses the same things itself when it is first read
-(`ERR_UI_SOURCE_FILTER_UNKNOWN_PROPERTY`, `ERR_UI_SOURCE_FILTER_NOT_ACCEPTED`,
-`ERR_UI_ROW_ACTION_DRAWS_LISTS`), for a manifest that never passed
-`telo check`.
+(`ERR_UI_SOURCE_FILTER_UNKNOWN_PROPERTY`, `ERR_UI_SOURCE_FILTER_NOT_ACCEPTED`),
+for a manifest that never passed `telo check`.
 
 A reference on the way to a column's member that names nothing, or leads back
 to itself, is `ERR_REF_UNRESOLVED` when the table is first read, naming the

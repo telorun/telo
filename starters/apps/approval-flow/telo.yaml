@@ -34,10 +34,17 @@ metadata:
         curl -s -XPOST localhost:8102/api/approve -H 'content-type: application/json' \
           -d '{"id":"<id>","decidedBy":"grace","note":"ok"}'
         curl -s localhost:8102/api/requests/<id>              # completed, approved
+# Module `lang:` — the language this application's texts are written in — and
+# `UiReact.App.words` are read from 0.121.0.
+requires:
+  telo: ">=0.121.0"
+lang: en
+# `ui` and `ui-react` come from this repository while their changes are
+# unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
-  Ui: oci://ghcr.io/telorun/ui@0.4.0#sha256-9hNZj-hzEkskbX-GgG3eabew02lvQIjMbAHILQ7ca3U
-  UiReact: oci://ghcr.io/telorun/ui-react@0.5.0#sha256-xyuX5J_vK5o817qrpjNTlhi3TerS7dxPqisDyNTl4WA
+  Ui: ../../../modules/ui
+  UiReact: ../../../modules/ui-react
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
   Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
   DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.1#sha256-2zh8d4sURSCk3aYbZ-VyED-LuOD6-LsXCbKszuTROC4
@@ -566,7 +573,7 @@ query:
 kind: UiReact.App
 metadata: { name: ui }
 title: Purchase requests
-lang: en
+words: !ref Ui.words
 pages:
   - path: /
     title: Requests

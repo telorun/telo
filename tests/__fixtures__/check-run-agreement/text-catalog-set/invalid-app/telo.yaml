@@ -1,0 +1,8 @@
+# Imports the library declaring misplaced catalog sets: reported at the import,
+# and refused when the kernel registers the kinds.
+kind: Telo.Application
+metadata:
+  name: CatalogSetInvalidApp
+  version: 1.0.0
+imports:
+  Invalid: ../invalid

@@ -159,18 +159,24 @@ export class ModulePayloadBuilder {
    * policy no graph can answer, so the caller states it (the release derives it
    * as `<base>/<directory name>`, the rule the OCI mirror has always used).
    *
-   * A SIBLING's is *derived*: the parent's destination with the relative path
-   * applied, which is the transport's own rule and exactly what canonicalization
-   * writes into the manifest. That one is not a free choice — deriving it
+   * A SIBLING's is *derived*: the parent's destination with the sibling's
+   * addressed path, relative to the parent's, applied — a `telo.yaml` is
+   * addressed by its directory, any other manifest by its name without the
+   * extension — never the import source as written, which would keep
+   * `telo.yaml` as a segment. That is the transport's own rule and exactly what
+   * canonicalization writes into the manifest. That one is not a free choice — deriving it
    * independently, from the directory name say, would work for this repo's
    * layout and quietly disagree with the ref the artifact actually carries the
    * moment a layout differs.
    *
    * When a module is reached both ways and the two answers differ,
    * `claimDestination` refuses rather than picking one, because the manifest can
-   * only carry a single ref.
+   * only carry a single ref. It refuses two manifests claiming one address too
+   * (`example/app.yaml` beside `example/app/telo.yaml`), since one would
+   * overwrite the other.
    */
   private readonly destinations = new Map<string, string>();
+  private readonly destinationOwners = new Map<string, string>();
 
   constructor(private readonly options: PayloadBuilderOptions) {}
 
@@ -232,11 +238,15 @@ export class ModulePayloadBuilder {
     for (const entry of importSourceRefs(moduleDoc)) {
       const source = entry.source;
       if (!source.startsWith(".") && !source.startsWith("/")) continue;
+      const siblingManifest = resolveSiblingManifest(manifestDir, source);
       imports.push({
-        manifestPath: resolveSiblingManifest(manifestDir, source),
+        manifestPath: siblingManifest,
         // The destination the import resolves to, unversioned: the question here
         // is WHERE a sibling publishes, and the version is the pin's business.
-        ref: transport.source.resolveRelative(destination, source),
+        ref: transport.source.resolveRelative(
+          destination,
+          siblingAddressPath(key, siblingManifest),
+        ),
       });
     }
     return imports;
@@ -273,7 +283,16 @@ export class ModulePayloadBuilder {
           `into every relative import — so it cannot be two things in one batch.`,
       );
     }
+    const owner = this.destinationOwners.get(destination);
+    if (owner && owner !== manifestPath) {
+      throw new Error(
+        `'${owner}' and '${manifestPath}' are both being published to '${destination}'. ` +
+          `A ${DEFAULT_MANIFEST_FILENAME} is addressed by its directory and any other manifest by ` +
+          `its name without the extension, so rename or move one of them.`,
+      );
+    }
     this.destinations.set(manifestPath, destination);
+    this.destinationOwners.set(destination, manifestPath);
   }
 
   private destinationOf(manifestPath: string): string {
@@ -344,12 +363,13 @@ export class ModulePayloadBuilder {
         }
 
         const siblingManifest = resolveSiblingManifest(manifestDir, source);
+        const addressPath = siblingAddressPath(manifestPath, siblingManifest);
         const version = readSiblingVersion(siblingManifest, source);
-        const ref = transport.canonicalizeSiblingRef(destination, source, version);
+        const ref = transport.canonicalizeSiblingRef(destination, addressPath, version);
         relativeImports.push({ manifestPath: siblingManifest, ref });
         this.claimDestination(
           siblingManifest,
-          transport.source.resolveRelative(destination, source),
+          transport.source.resolveRelative(destination, addressPath),
         );
         // The sibling's pin comes from the sibling's own published bytes, in
         // topological order — never from the registry, which has not seen the
@@ -592,6 +612,32 @@ export function resolveSiblingManifest(manifestDir: string, source: string): str
     throw new Error(`import source '${source}' does not resolve to a file or directory on disk.`);
   }
   return resolved;
+}
+
+/** The on-disk path a manifest's published address stands for: a `telo.yaml`
+ *  is its directory's index, so it stands for the directory; any other manifest
+ *  stands for its own name without the extension (`example/app.yaml` →
+ *  `example/app`). */
+function addressedPath(manifestPath: string): string {
+  if (path.basename(manifestPath) === DEFAULT_MANIFEST_FILENAME) return path.dirname(manifestPath);
+  return path.join(path.dirname(manifestPath), path.parse(manifestPath).name);
+}
+
+/** A sibling import respelled as the sibling's addressed path relative to the
+ *  importer's, `/`-separated — what a transport resolves against the importer's
+ *  destination, which it treats as a directory. Respelling it is what lets a
+ *  relative import inside `example/app.yaml`, published at `…/example/app`,
+ *  resolve as it does on disk. */
+function siblingAddressPath(manifestPath: string, siblingManifest: string): string {
+  const relative = path.relative(addressedPath(manifestPath), addressedPath(siblingManifest));
+  if (relative === "") {
+    throw new Error(
+      `'${manifestPath}' and its import '${siblingManifest}' would both publish to one address. ` +
+        `A ${DEFAULT_MANIFEST_FILENAME} is addressed by its directory and any other manifest by ` +
+        `its name without the extension, so rename or move one of them.`,
+    );
+  }
+  return `./${relative.split(path.sep).join("/")}`;
 }
 
 function readSiblingVersion(siblingManifest: string, source: string): string {

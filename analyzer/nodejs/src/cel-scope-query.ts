@@ -19,9 +19,10 @@ import { buildCelEnvironment } from "./cel-environment.js";
 import { moduleCallNamesByModule } from "./module-call-names.js";
 import { ModuleFunctionIndex } from "./module-function-index.js";
 import { CallableFlagsIndex } from "./callable-flags.js";
-import { CelScopeResolver, type CelScope } from "./cel-scope.js";
+import { CelScopeResolver, type CelScope, type ReferrerVariant } from "./cel-scope.js";
+import { buildCallGraph, referrerSlotsOf, type CallGraph } from "./call-graph.js";
 import { DefinitionRegistry } from "./definition-registry.js";
-import { accessorSiteAt, governedCelEvalSites } from "./eval-paths.js";
+import { accessorSiteAt, celEvalModeAt, governedCelEvalSites, scopeMatchOf } from "./eval-paths.js";
 import { buildKernelGlobalsIndex } from "./kernel-globals.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { isKindDocument } from "./kind-declaration.js";
@@ -36,10 +37,11 @@ import {
   buildObservedStateResourcesSchema,
 } from "./validate-observed-state.js";
 import {
+  contextChainAt,
   extractContextsFromSchema,
   getContextHolder,
-  pathMatchesScope,
   readContextRefFrom,
+  type MatchedContext,
 } from "./validate-cel-context.js";
 
 /** Where a CEL context binding was declared: the manifest that declares it,
@@ -67,13 +69,8 @@ function joinPath(base: string, segment: string): string {
  *  path half of `getManifestItem`, which returns only the value. Empty when the
  *  scope is not per-item. */
 function manifestItemPath(exprPath: string, scope: string | undefined): string {
-  if (!scope) return "";
-  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope;
-  const wildcard = stripped.indexOf("[*]");
-  if (wildcard === -1) return "";
-  const arrayProp = stripped.slice(0, wildcard);
-  const match = exprPath.match(new RegExp(`^${arrayProp}\\[(\\d+)\\]`));
-  return match ? `${arrayProp}[${match[1]}]` : "";
+  const match = scope ? scopeMatchOf(exprPath, scope) : undefined;
+  return match ? match.prefix.slice(0, match.itemEnd) : "";
 }
 
 /** The analyzer state a query resolves against — what an `AnalysisRegistry`
@@ -151,9 +148,14 @@ export class CelScopeQuery {
         : null,
       moduleCallNames,
       callableFlags: new CallableFlagsIndex(moduleFunctions, moduleCallNames),
+      referrersOf: (m) =>
+        referrerSlotsOf((this.callGraph ??= buildCallGraph(manifests, defs, { aliases, aliasesByModule })), m),
+      definitionOf: (m) => this.definitionFor(m),
     });
     this.ctx = ctx;
   }
+
+  private callGraph: CallGraph | undefined;
 
   private readonly ctx: CelScopeQueryContext;
 
@@ -180,24 +182,39 @@ export class CelScopeQuery {
       this.resolver.enterResource(resource, this.definitionFor(resource));
       this.entered = resource;
     }
-    const { contextSchema, matchedScope } = this.matchContext(resource, path);
-    const typed = this.resolver.scopeFor({ source: resource, path, contextSchema, matchedScope });
-    const accessor = this.accessorSite(resource, path);
+    const { contextSchema, matchedScope, contexts } = this.matchContext(resource, path);
+    const sites = this.evalSites(resource);
+    const accessor = sites ? accessorSiteAt(sites, path) : undefined;
+    const site = {
+      source: resource,
+      path,
+      contextSchema,
+      matchedScope,
+      contexts,
+      mode: (sites ? celEvalModeAt(sites, path) : undefined) ?? undefined,
+    };
+    // Where several referrers type a binding, a member is offered only when
+    // every one of their types declares it.
+    const variants = this.resolver.siteVariants(site);
+    const typed = this.resolver.scopeFor(
+      variants.length > 1 ? { ...site, variant: commonVariant(variants) } : site,
+    );
     const scope = accessor ? { ...typed, accessorBindings: accessor.bindings } : typed;
     byPath.set(path, scope);
     return scope;
   }
 
-  /** The accessor field `path` of `resource` is, or lies beneath — read off the
-   *  sites and the gate the analysis pass applies to the resource's kind. */
-  private accessorSite(resource: ResourceManifest, path: string) {
+  /** The eval sites of `resource` — read off the gate the analysis pass applies
+   *  to the resource's kind. */
+  private evalSites(resource: ResourceManifest) {
     const { defs, aliases, aliasesByModule } = this.ctx;
     const scope = moduleAliasScope(resource.metadata, aliases, aliasesByModule);
     const sites = governedCelEvalSites(
       this.definitionFor(resource),
       (kind) => defs.resolve(scope.resolveKind(kind) ?? kind) ?? defs.resolve(kind),
+      defs.shapeLookup,
     );
-    return sites ? accessorSiteAt(sites, path) : undefined;
+    return sites;
   }
 
   /**
@@ -225,8 +242,12 @@ export class CelScopeQuery {
     parts: string[],
   ): ContextDeclarationSite | undefined {
     if (parts.length < 2) return undefined;
-    const { contextSchema, matchedScope } = this.matchContext(resource, sitePath);
-    const annotated = contextSchema?.properties?.[parts[0]] as Record<string, any> | undefined;
+    // The innermost region declaring the name is the one it is read from.
+    const declaring = [...(this.matchContext(resource, sitePath).contexts ?? [])]
+      .reverse()
+      .find((ctx) => ctx.schema?.properties?.[parts[0]!] !== undefined);
+    const matchedScope = declaring?.scope;
+    const annotated = declaring?.schema.properties[parts[0]!] as Record<string, any> | undefined;
     if (!annotated) return undefined;
 
     const origin = this.originOf(annotated, resource, sitePath, matchedScope);
@@ -416,14 +437,33 @@ export class CelScopeQuery {
   private matchContext(
     resource: ResourceManifest,
     path: string,
-  ): { contextSchema?: Record<string, any>; matchedScope?: string } {
+  ): { contextSchema?: Record<string, any>; matchedScope?: string; contexts?: MatchedContext[] } {
     const schema = this.definitionFor(resource)?.schema as Record<string, any> | undefined;
     if (!schema) return {};
-    for (const ctx of extractContextsFromSchema(schema)) {
-      if (pathMatchesScope(path, ctx.scope)) {
-        return { contextSchema: ctx.schema, matchedScope: ctx.scope };
-      }
-    }
-    return {};
+    const contexts = contextChainAt(extractContextsFromSchema(schema, this.ctx.defs.shapeLookup), path);
+    const innermost = contexts[contexts.length - 1];
+    return innermost ? { contextSchema: innermost.schema, matchedScope: innermost.scope, contexts } : {};
   }
+}
+
+/** The members every variant's type of each binding declares. */
+function commonVariant(variants: readonly ReferrerVariant[]): ReferrerVariant {
+  const names = Object.keys(variants[0]!.bindings);
+  const bindings: Record<string, Record<string, any>> = {};
+  for (const name of names) bindings[name] = commonShape(variants.map((v) => v.bindings[name]!));
+  return { bindings, referrers: variants.flatMap((v) => v.referrers) };
+}
+
+function commonShape(shapes: readonly Record<string, any>[]): Record<string, any> {
+  const [first, ...rest] = shapes;
+  if (!first || rest.length === 0) return first ?? {};
+  const properties = first.properties;
+  if (!properties || typeof properties !== "object") return first;
+  const common: Record<string, any> = {};
+  for (const [key, schema] of Object.entries(properties as Record<string, any>)) {
+    const each = [schema, ...rest.map((s) => s.properties?.[key])];
+    if (each.some((s) => !s || typeof s !== "object")) continue;
+    common[key] = commonShape(each);
+  }
+  return { ...first, properties: common, additionalProperties: false };
 }

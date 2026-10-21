@@ -1,4 +1,7 @@
 import { act } from "react";
+import { englishWords, wireText } from "./words.js";
+
+export { englishWords, wireText };
 import { createRoot, type Root } from "react-dom/client";
 import { createCollection } from "../../tests/__fixtures__/collection-api/collection.mjs";
 import { App } from "../src/browser/app.js";
@@ -20,6 +23,27 @@ if (typeof Element !== "undefined") {
 }
 
 export const BUNDLE = "bundle-1";
+
+/** The members of a node that hold a text a person reads. */
+const TEXT_MEMBERS = new Set(["text", "label", "header", "heading", "title", "alt", "confirm", "disabledText", "description"]);
+/** The members that hold data, never a text. */
+const DATA_MEMBERS = new Set(["schema", "present", "answer", "matches", "value", "inputs", "props", "values", "rows", "at", "by", "cases"]);
+
+/**
+ * A page written with plain strings where a person reads text, as a server
+ * sends it: each such string a text in English. Lets a test write the page
+ * tree as an author would.
+ */
+export function wire(node: unknown): any {
+  if (Array.isArray(node)) return node.map(wire);
+  if (!node || typeof node !== "object") return node;
+  return Object.fromEntries(
+    Object.entries(node).map(([key, value]) => [
+      key,
+      DATA_MEMBERS.has(key) ? value : TEXT_MEMBERS.has(key) && typeof value === "string" ? wireText(value) : wire(value),
+    ]),
+  );
+}
 
 /** The event stream, as the test drives it. */
 class FakeEventSource extends EventTarget {
@@ -116,6 +140,9 @@ export async function render(options: {
   narrow?: boolean;
   /** Leave the application's stylesheets loading until `loadStylesheets`. */
   holdStylesheets?: boolean;
+  /** The language the documents are in, and the renderer's words in it. */
+  lang?: string;
+  words?: Record<string, ReturnType<typeof wireText>>;
 }): Promise<Rendered> {
   const prefix = options.prefix ?? "";
   const pages = { ...options.pages };
@@ -146,8 +173,10 @@ export async function render(options: {
         specVersion: 1,
         bundle,
         digest: "app-1",
-        title: "Test App",
-        pages: Object.entries(pages).map(([path, page]) => ({ path, title: page.title })),
+        title: wireText("Test App"),
+        lang: options.lang ?? "en",
+        pages: Object.entries(pages).map(([path, page]) => ({ path, title: wireText(page.title) })),
+        words: { ...englishWords, ...options.words },
         stylesheets: [`${prefix}/_telo/ui/assets/aa/base.css`],
         compactBelow: "40rem",
       });
@@ -156,7 +185,7 @@ export async function render(options: {
       const path = url.searchParams.get("path") as string;
       const digest = `${path}#${versions[path] ?? 0}`;
       if (new Headers(init?.headers).get("if-none-match") === `"${digest}"`) return new Response(null, { status: 304 });
-      return json({ specVersion: 1, bundle, digest, path, title: pages[path].title, children: pages[path].children });
+      return json({ specVersion: 1, bundle, digest, path, title: wireText(pages[path].title), lang: options.lang ?? "en", children: wire(pages[path].children) });
     }
     const base = Object.keys(collections).find((candidate) => url.pathname === candidate || url.pathname.startsWith(`${candidate}/`));
     if (base) {

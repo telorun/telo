@@ -61,9 +61,7 @@ metadata:
   name: todoForm
 model: !ref Todo
 source: { basePath: /api/todos }
-fields:
-  - property: text
-  - property: dueOn
+fields: [text, dueOn]
 ---
 kind: Ui.Table
 metadata:
@@ -131,10 +129,14 @@ steps:
       expected:
         # The model declares `id`, the row key, which names a row and is not shown.
         columns:
-          - { header: Task, value: { root: row, path: [text] }, sort: text, present: { type: string } }
-          - { header: isDone, value: { root: row, path: [isDone] }, present: { type: boolean } }
-          - { header: dueOn, value: { root: row, path: [dueOn] }, sort: dueOn, present: { type: [string, "null"], format: date } }
-          - { header: owner, value: { root: row, path: [owner] }, present: { type: object } }
+          - { header: { text: Task, context: null, lang: und, computed: false }, value: { root: row, path: [text] }, sort: text, present: { type: string }, labels: [] }
+          - { header: { text: isDone, context: null, lang: und, computed: false }, value: { root: row, path: [isDone] }, present: { type: boolean }, labels: [] }
+          - header: { text: dueOn, context: null, lang: und, computed: false }
+            value: { root: row, path: [dueOn] }
+            sort: dueOn
+            present: { type: [string, "null"], format: date }
+            labels: []
+          - { header: { text: owner, context: null, lang: und, computed: false }, value: { root: row, path: [owner] }, present: { type: object }, labels: [] }
         rest:
           basePath: /api/todos
           rowKey: id
@@ -161,15 +163,20 @@ steps:
       expected:
         dateColumnsAgree: true
         columns:
-          - { header: dueOn, value: { root: row, path: [dueOn] }, sort: dueOn, present: { type: [string, "null"], format: date } }
-          - header: Owner
+          - header: { text: dueOn, context: null, lang: und, computed: false }
+            value: { root: row, path: [dueOn] }
+            sort: dueOn
+            present: { type: [string, "null"], format: date }
+            labels: []
+          - header: { text: Owner, context: null, lang: und, computed: false }
             value: { root: row, path: [owner, name] }
             present: { type: string }
             style:
               by: { root: row, path: [owner, name] }
               cases: { ada: [accent, strong] }
-          - { header: Fixed, value: { value: always } }
-          - header: Status
+            labels: []
+          - { header: { text: Fixed, context: null, lang: und, computed: false }, value: { value: always }, labels: [] }
+          - header: { text: Status, context: null, lang: und, computed: false }
             cell:
               type: component
               export: StatusPill
@@ -180,20 +187,20 @@ steps:
               props:
                 done: { root: row, path: [isDone] }
                 label: { value: Done }
-        filters: { isDone: false }
+        filters: { isDone: { value: false } }
         pageSize: 10
         rowStyle:
           by: { root: row, path: [isDone] }
           cases: { "true": muted }
           default: strong
         create:
-          - { property: text, label: Task }
-          - { property: dueOn, label: dueOn }
+          - { type: input, property: text, label: { text: Task, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+          - { type: input, property: dueOn, label: { text: dueOn, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
         edit:
-          - { property: id, label: id }
-          - { property: text, label: Task }
-          - { property: isDone, label: isDone }
-          - { property: dueOn, label: dueOn }
+          - { type: input, property: id, label: { text: id, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+          - { type: input, property: text, label: { text: Task, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+          - { type: input, property: isDone, label: { text: isDone, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+          - { type: input, property: dueOn, label: { text: dueOn, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
         createOpens:
           surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
           afterSubmit: close

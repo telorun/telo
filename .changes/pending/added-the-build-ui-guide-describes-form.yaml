@@ -1,0 +1,4 @@
+modules:
+  apps/hub: Added
+body: The build-ui guide describes form field kinds, option sources, groups and kept
+  form state.

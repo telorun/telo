@@ -548,7 +548,11 @@ the protocol.
 manifest document as a typed frame, the handle the kernel minted for the
 instance, the owner prefix a controller composes sub-resource ids under, the
 identity of the module that declared the resource and of the module that declares
-the controller, and the resolved invocation contract. Its response narrows the
+the controller, and the resolved invocation contract. For a native
+`Telo.Callable`, every reference at a slot whose every use is `dependency` is
+carried in the manifest as the referent's configuration — what the referent's own
+controller received, without `kind` and `metadata`, references inside it carried
+the same way — never as a handle. Its response narrows the
 bound entry points to what this instance actually carries, and — for a
 `Telo.Sink` — reports the sink's identity, its fan-out level and whether it can
 be drained synchronously, which the kernel needs before it may write to it.
@@ -855,6 +859,19 @@ It is **synchronous and reentrant**: synchronous because a controller expands a
 value in order to act on it, and reentrant because the expression may reach a
 module function whose controller is at the blocked end (§6.7).
 
+**A `Text` the result fills is its text record.** The texts a value expanded this
+way holds are settled exactly as the kernel settles a resource's texts at
+creation: which expressions bear text, and the language of the module that wrote
+each, are fixed when the instance is created. A `Text` or `Message` the evaluation
+produces — at the pointer, or beneath it — is judged in that language
+(`ERR_MESSAGE_SYNTAX_INVALID`, `ERR_MESSAGE_SOURCE_LANGUAGE_MISSING`,
+`ERR_MESSAGE_PLURAL_CATEGORY_INVALID`), a values pairing the evaluation completes
+is judged against its text (`ERR_MESSAGE_PLACEHOLDER_UNBOUND`,
+`ERR_MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`), and each `Text` crosses as the record
+`{ text, context, lang, computed }` with `computed: true`. A literal text the
+instance's manifest already holds as a record crosses as it is. This is a reading
+of the result within `telo-6`, not a new message.
+
 **An accessor-mode field is not a compiled value.** A field its kind annotates
 `x-telo-eval: accessor` names a value for the controller's own consumer to
 resolve, and is never evaluated by either side. It therefore MUST NOT cross as a
@@ -1075,6 +1092,11 @@ codes cross unchanged and are not listed here.
 | `ERR_SPAN_ATTRIBUTE_INVALID` | a span attribute name was malformed | `Span.Open` |
 | `ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE` | an interpolation hole held a value CEL cannot convert to text | `Value.Expand` |
 | `ERR_HOST_PATH_RELATIVE` | a computed value at a host-path slot was not absolute | `Value.Expand` |
+| `ERR_MESSAGE_SYNTAX_INVALID` | a computed text is not a well-formed Message or Text | `Value.Expand` |
+| `ERR_MESSAGE_SOURCE_LANGUAGE_MISSING` | a computed text selects a plural case and the module that wrote it declares no `lang:` | `Value.Expand` |
+| `ERR_MESSAGE_PLURAL_CATEGORY_INVALID` | a computed text selects a plural category the language it is written in lacks | `Value.Expand` |
+| `ERR_MESSAGE_PLACEHOLDER_UNBOUND` | a text's values lack a name the text reads | `Value.Expand` |
+| `ERR_MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED` | a text's value is neither a string nor a number, or a selector's is not a number | `Value.Expand` |
 | `ERR_MODULE_FILES_UNAVAILABLE` | a module file could not be staged or is unpinned | `Module.File`, `Module.ControllerFile` |
 | `ERR_REF_UNRESOLVED` | a pointer names no reference slot of the asking instance's kind, or one whose target is not a need's fulfilment | `Need.Resolve`, `Need.Verify` |
 | `ERR_NEED_UNMET` | an observation does not satisfy the outermost need; `data` holds `need`, `type`, `source`, `required` and `actual` | `Need.Verify`, and the entry point whose controller reported it: `Controller.Init`, `Controller.Run`, `Controller.Invoke` |

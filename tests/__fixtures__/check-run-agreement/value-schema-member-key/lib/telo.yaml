@@ -1,0 +1,32 @@
+# A kind typing a list item by its own key: an item is reached by an index, so
+# it has no key naming a property of the model.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaMemberKeyLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind names a member by the key of a value that has
+    none.
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    model:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    values:
+      type: array
+      items:
+        type: string
+        x-telo-value-schema-from: { from: /model, member: "0#" }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body

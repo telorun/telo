@@ -88,6 +88,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/extend/schema-projections", label: "Schema Projections" },
         { type: "doc", id: "docs/extend/telo-formats", label: "Telo Formats" },
         { type: "doc", id: "docs/extend/cel-functions", label: "CEL Functions" },
+        { type: "doc", id: "docs/extend/text-records", label: "Reading a Text" },
         { type: "doc", id: "docs/extend/manifest-migrations", label: "Manifest Migrations" },
         { type: "doc", id: "docs/extend/native-files", label: "Native Files" },
         { type: "doc", id: "docs/extend/accessor-fields", label: "Accessor Fields" },

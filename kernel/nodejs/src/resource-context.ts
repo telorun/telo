@@ -45,6 +45,7 @@ import {
   registerTeloKeywords,
   type DeclaredScalarPath,
   type NamedContractShape,
+  type NamedShapeLookup,
   type ReachPosition,
   isAddressNeedType,
   needTypeOf,
@@ -92,6 +93,7 @@ import { policyFingerprint } from "./runtime-registry.js";
 import { KernelRuntimeSeam } from "./runtime-seam.js";
 import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
 import { acceptsBy, buildMembersValues, membersEntryText, membersIssues } from "./members-values.js";
+import type { LateTexts } from "./text-records.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
 
@@ -1016,6 +1018,12 @@ export class ResourceContextImpl implements ResourceContext {
     return this.kernel.getAnalysisRegistry().referencePositionsOf(resource, data);
   }
 
+  /** The named-shape lookup the eval-site walk takes, the analysis registry's —
+   *  what a template controller reads a body entry's kind through. */
+  get shapeLookup(): NamedShapeLookup {
+    return this.kernel.getAnalysisRegistry().shapeLookup;
+  }
+
   registerDefinition(def: any) {
     this.kernel.registerResourceDefinition(def);
   }
@@ -1146,8 +1154,17 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   expandValue(value: any, context: Record<string, any>) {
-    return this.owningContext.expandWith(value, this.withTypedInputs(context));
+    const expanded = this.owningContext.expandWith(value, this.withTypedInputs(context));
+    return this.lateTexts ? this.lateTexts.settle(value, expanded) : expanded;
   }
+
+  /** Kernel-internal: the texts this resource's own evaluations produce, settled
+   *  as creation settles them — recorded at creation. */
+  bindLateTexts(late: LateTexts): void {
+    this.lateTexts = late;
+  }
+
+  private lateTexts?: LateTexts;
 
   bindScope(
     bindings: Record<string, unknown> | undefined,
