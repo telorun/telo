@@ -1,0 +1,9 @@
+# Running the library's sequence evaluates the template, which reads nothing.
+kind: Telo.Application
+metadata:
+  name: MapApp
+  version: 1.0.0
+imports:
+  Lib: ../map-lib
+targets:
+  - !ref Lib.go

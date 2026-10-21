@@ -28,6 +28,7 @@ import {
 } from "./extends-resolution.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { isStepSlot } from "./step-slot.js";
+import { bindingExistsAt } from "./context-eval.js";
 
 /**
  * THE EVAL-PATH GRAMMAR. A path is the `walkCelExpressions` spelling of where a
@@ -52,15 +53,17 @@ function isEvalPathPattern(path: string): boolean {
 
 const patternSources = new Map<string, string>();
 
-/** The regular-expression body of a pattern path. */
-function patternSource(pattern: string): string {
-  let source = patternSources.get(pattern);
+/** The regular-expression body of a pattern path; with `capture`, every `[*]`
+ *  is a group, so a match says where each index sits. */
+function patternSource(pattern: string, capture = false): string {
+  const key = capture ? `\0${pattern}` : pattern;
+  let source = patternSources.get(key);
   if (source !== undefined) return source;
   source = "";
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern[i]!;
     if (pattern.startsWith("[*]", i)) {
-      source += String.raw`\[\d+\]`;
+      source += capture ? String.raw`(\[\d+\])` : String.raw`\[\d+\]`;
       i += 2;
     } else if (pattern.startsWith(".*", i)) {
       source += String.raw`\.[^.[\]]+`;
@@ -78,7 +81,7 @@ function patternSource(pattern: string): string {
       source += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     }
   }
-  patternSources.set(pattern, source);
+  patternSources.set(key, source);
   return source;
 }
 
@@ -174,16 +177,31 @@ export function evalPathsCover(evalPaths: readonly string[], exprPath: string): 
 }
 
 /**
+ * Resolves a named shape — a `$ref` that is not document-local, in its canonical
+ * `telo:<Module>/<Type>` spelling — to the shape's schema, its own document. The
+ * one lookup every eval-site walk takes: the analyzer and the kernel each hand it
+ * their shared registry's `schemaForId`, so the sites `telo check` reads and the
+ * sites the kernel expands are one set.
+ */
+export type NamedShapeLookup = (id: string) => Record<string, any> | undefined;
+
+/** The lookup for a schema read with no named shapes in reach. */
+export const NO_NAMED_SHAPES: NamedShapeLookup = () => undefined;
+
+/**
  * Traverses a definition schema and collects all paths annotated with
  * `x-telo-eval`, in the grammar above. Root-level `x-telo-eval` produces the
  * `"**"` wildcard. Below the root the walk follows `properties`, a map's
- * `additionalProperties` / `patternProperties` (`.*`), a list's `items` (`[*]`)
- * and a document-local `$ref` — one the walk is already inside closes a loop,
- * which becomes a repeated group rather than an endless descent (the
- * `x-telo-error-context` precedent: an annotation reached through `$defs` at any
- * depth). `oneOf` / `anyOf` / `allOf` branches are read at their own path.
+ * `additionalProperties` / `patternProperties` (`.*`), a list's `items` (`[*]`),
+ * a document-local `$ref` and a named shape (through `shapes`) — one the walk is
+ * already inside closes a loop, which becomes a repeated group rather than an
+ * endless descent. `oneOf` / `anyOf` / `allOf` branches are read at their own
+ * path.
  */
-export function buildEvalPaths(schema: Record<string, any>): {
+export function buildEvalPaths(
+  schema: Record<string, any>,
+  shapes: NamedShapeLookup = NO_NAMED_SHAPES,
+): {
   compile: string[];
   runtime: string[];
 } {
@@ -193,9 +211,9 @@ export function buildEvalPaths(schema: Record<string, any>): {
   if (schema["x-telo-eval"] === "compile") compile.push("**");
   else if (schema["x-telo-eval"] === "runtime") runtime.push("**");
 
-  for (const site of annotatedSites(schema)) {
-    if (site.mode === "compile") compile.push(site.path);
-    else if (site.mode === "runtime") runtime.push(site.path);
+  for (const site of collectedOf(schema, shapes).eval) {
+    if (site.mode === "compile") compile.push(evalPathOf(site.path));
+    else if (site.mode === "runtime") runtime.push(evalPathOf(site.path));
   }
 
   return { compile, runtime };
@@ -204,8 +222,8 @@ export function buildEvalPaths(schema: Record<string, any>): {
 /**
  * A field annotated `x-telo-eval: accessor`: its value NAMES a value for the
  * resource's consumer to resolve and is never evaluated. `bindings` are the
- * names a chain there may start at — the properties of the `x-telo-context` in
- * force at the field, its own or the nearest one above it.
+ * names a chain there may start at — the properties of every `x-telo-context`
+ * in force at the field, its own and each one above it.
  */
 export interface AccessorSite {
   /** The field, in the eval-path grammar. */
@@ -216,28 +234,13 @@ export interface AccessorSite {
 /** Every field `schema` annotates `x-telo-eval: accessor`, found by the walk
  *  {@link buildEvalPaths} makes. The annotation is a field's; written on the
  *  schema root it names nothing. */
-export function buildAccessorSites(schema: Record<string, any>): AccessorSite[] {
-  return annotatedSites(schema).flatMap((site) =>
-    site.mode === "accessor" ? [{ path: site.path, bindings: site.bindings }] : [],
+export function buildAccessorSites(
+  schema: Record<string, any>,
+  shapes: NamedShapeLookup = NO_NAMED_SHAPES,
+): AccessorSite[] {
+  return collectedOf(schema, shapes).eval.flatMap((site) =>
+    site.mode === "accessor" ? [{ path: evalPathOf(site.path), bindings: site.bindings.present }] : [],
   );
-}
-
-function annotatedSites(schema: Record<string, any>): EvalSite[] {
-  const found: EvalSite[] = [];
-  if (schema.properties) {
-    for (const [key, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
-      collectEvalSites(propSchema, key, schema, [], found, contextBindings(schema, []));
-    }
-  }
-  return found;
-}
-
-/** The names the node's own `x-telo-context` declares, or `inherited`. */
-function contextBindings(schema: Record<string, any>, inherited: readonly string[]): readonly string[] {
-  const context = schema["x-telo-context"];
-  if (!context || typeof context !== "object") return inherited;
-  const properties = (context as Record<string, any>).properties;
-  return properties && typeof properties === "object" ? Object.keys(properties) : [];
 }
 
 /** What `x-telo-eval` says of a field: evaluated at load, evaluated per
@@ -254,82 +257,6 @@ export function declaredEvalMode(schema: unknown): CelEvalMode | undefined {
   if (!schema || typeof schema !== "object") return undefined;
   const mode = (schema as Record<string, unknown>)["x-telo-eval"];
   return EVAL_MODES.includes(mode) ? (mode as CelEvalMode) : undefined;
-}
-
-interface EvalSite {
-  mode: CelEvalMode;
-  path: string;
-  bindings: readonly string[];
-}
-
-interface RefFrame {
-  readonly ref: string;
-  readonly at: string;
-  readonly loops: string[];
-}
-
-function collectEvalSites(
-  node: unknown,
-  path: string,
-  root: Record<string, any>,
-  frames: readonly RefFrame[],
-  out: EvalSite[],
-  inherited: readonly string[],
-): void {
-  if (!node || typeof node !== "object") return;
-  const schema = node as Record<string, any>;
-  const bindings = contextBindings(schema, inherited);
-  // A node's own annotation wins over whatever its `$ref` leads to.
-  const declared = declaredEvalMode(schema);
-  if (declared) {
-    out.push({ mode: declared, path, bindings });
-    return;
-  }
-  if (typeof schema.$ref === "string" && schema.$ref.startsWith("#")) {
-    const open = frames.find((frame) => frame.ref === schema.$ref);
-    if (open) {
-      open.loops.push(path.slice(open.at.length));
-      return;
-    }
-    const frame: RefFrame = { ref: schema.$ref, at: path, loops: [] };
-    const inside: EvalSite[] = [];
-    collectEvalSites(
-      resolveSchemaPointer(root, schema.$ref),
-      path,
-      root,
-      [...frames, frame],
-      inside,
-      bindings,
-    );
-    const loop = frame.loops.length > 0 ? `(${[...new Set(frame.loops)].join("|")})*` : "";
-    for (const site of inside) {
-      out.push({ ...site, path: path + loop + site.path.slice(path.length) });
-    }
-    return;
-  }
-  const child =(key: string) => (path === "" ? key : `${path}.${key}`);
-  if (schema.properties) {
-    for (const [key, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
-      collectEvalSites(propSchema, child(key), root, frames, out, bindings);
-    }
-  }
-  const mapValues = [
-    schema.additionalProperties,
-    ...Object.values((schema.patternProperties ?? {}) as Record<string, unknown>),
-  ];
-  for (const value of mapValues) {
-    if (value && typeof value === "object") {
-      collectEvalSites(value, child("*"), root, frames, out, bindings);
-    }
-  }
-  if (schema.items && typeof schema.items === "object" && !Array.isArray(schema.items)) {
-    collectEvalSites(schema.items, `${path}[*]`, root, frames, out, bindings);
-  }
-  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
-    if (Array.isArray(schema[key])) {
-      for (const branch of schema[key]) collectEvalSites(branch, path, root, frames, out, bindings);
-    }
-  }
 }
 
 /** Schema keys that declare a CEL-bearing region: a field carrying any of these
@@ -354,32 +281,329 @@ export function declaresCelRegion(schema: unknown): boolean {
 /**
  * Walk a JSON Schema tree and collect the JSONPath scopes of every field that
  * declares a CEL-bearing region (`x-telo-context` / `x-telo-step-context` /
- * `x-telo-error-context`). Used — alongside `x-telo-eval` paths — to decide
- * whether a `!cel` expression sits in a slot the runtime actually evaluates.
- * Scopes use the same `$.a.b[*]` form as `extractContextsFromSchema`, matched
- * against expression paths with `pathMatchesScope`.
+ * `x-telo-error-context`, a step body), through the walk {@link buildEvalPaths}
+ * makes. Used — alongside `x-telo-eval` paths — to decide whether a `!cel`
+ * expression sits in a slot the runtime actually evaluates. A scope is `$`
+ * followed by an eval path (`$.routes[*].inputs`, `$.content(.children[*])*.when`),
+ * matched against expression paths with `pathMatchesScope`.
  */
-export function extractCelRegionScopes(schema: Record<string, any>, path = "$"): string[] {
+export function extractCelRegionScopes(
+  schema: Record<string, any>,
+  shapes: NamedShapeLookup = NO_NAMED_SHAPES,
+): string[] {
   if (!schema || typeof schema !== "object") return [];
-  const out: string[] = [];
+  return collectedOf(schema, shapes).regions.map((path) => `$${path}`);
+}
 
-  if (declaresCelRegion(schema)) out.push(path);
+/** One `x-telo-context` region: where it applies and what it declares. */
+export interface ContextRegion {
+  scope: string;
+  schema: Record<string, any>;
+}
 
-  if (schema.properties) {
-    for (const [key, value] of Object.entries(schema.properties as Record<string, any>)) {
-      out.push(...extractCelRegionScopes(value, `${path}.${key}`));
+/**
+ * Every `x-telo-context` a schema declares, through the walk
+ * {@link buildEvalPaths} makes, with its scope rooted at `prefix` (`$`, or a
+ * template body entry's `$.resources[3]`). Several may cover one path: a nested
+ * region ADDS to its enclosing ones ({@link contextChainAt}).
+ */
+export function contextRegionsOf(
+  schema: Record<string, any>,
+  shapes: NamedShapeLookup = NO_NAMED_SHAPES,
+  prefix = "$",
+): ContextRegion[] {
+  if (!schema || typeof schema !== "object") return [];
+  return collectedOf(schema, shapes).contexts.map((context) => ({
+    scope: `${prefix}${context.path}`,
+    schema: context.schema,
+  }));
+}
+
+/** A field annotated `x-telo-match-for`, as the walk reaches it: the JSON
+ *  Schema-valued field, in the eval-path grammar, and the pointer to the
+ *  accessor it is judged against, relative to the object enclosing the field. */
+export interface MatchForSite {
+  path: string;
+  pointer: string;
+}
+
+export const MATCH_FOR_ANNOTATION = "x-telo-match-for";
+
+/** Every `x-telo-match-for` field the walk reaches. */
+export function matchForSitesOf(
+  schema: Record<string, any>,
+  shapes: NamedShapeLookup,
+): MatchForSite[] {
+  return collectedOf(schema, shapes).matchFor.map((site) => ({
+    path: evalPathOf(site.path),
+    pointer: site.pointer,
+  }));
+}
+
+/** An eval path from the walk's spelling, which keeps a leading `.` on every
+ *  property so a site found inside a shape composes at any depth. */
+function evalPathOf(path: string): string {
+  return path.startsWith(".") ? path.slice(1) : path;
+}
+
+interface EvalSite {
+  mode: CelEvalMode;
+  path: string;
+  bindings: AccessorNames;
+}
+
+/** The context names an accessor chain may root at (`present`), and those a
+ *  region declared for other modes only (`hidden`), which shadow an outer
+ *  name when a walk inside a shape joins the one that entered it. */
+interface AccessorNames {
+  readonly present: readonly string[];
+  readonly hidden: readonly string[];
+}
+
+const NO_NAMES: AccessorNames = { present: [], hidden: [] };
+
+/** Everything one walk of a schema finds, paths in the walk's spelling. */
+interface Collected {
+  eval: EvalSite[];
+  regions: string[];
+  contexts: Array<{ path: string; schema: Record<string, any> }>;
+  matchFor: Array<{ path: string; pointer: string }>;
+}
+
+const emptyCollected = (): Collected => ({ eval: [], regions: [], contexts: [], matchFor: [] });
+
+interface Frame {
+  readonly node: object;
+  readonly at: string;
+  readonly loops: string[];
+  /** A loop closed on a frame below this one: what was found inside depends on
+   *  where the walk entered, so it is not remembered. */
+  dirty: boolean;
+}
+
+/** What a named shape's walk found, relative to where it is entered. */
+interface ShapeMemo {
+  loop: string;
+  found: Collected;
+  shapes: ReadonlyArray<readonly [string, object | undefined]>;
+}
+
+/** Memo per shape document: a shape reused at many sites is walked once. Only a
+ *  shape whose walk closed no loop outside itself is remembered. */
+const shapeMemos = new WeakMap<object, ShapeMemo>();
+
+interface WalkState {
+  readonly shapes: NamedShapeLookup;
+  /** Every named shape the walk asked for and what the lookup answered — none
+   *  included — to tell a remembered shape is still what the lookup answers. */
+  readonly resolved: Map<string, object | undefined>;
+}
+
+/** What a schema's walk finds. Not remembered per schema: a kind's schema is
+ *  rewritten in place while an analysis canonicalizes its references, so its
+ *  identity says nothing about what it holds; a named shape is remembered
+ *  ({@link shapeMemos}), which is what keeps a reused one walked once. */
+function collectedOf(schema: Record<string, any>, shapes: NamedShapeLookup): Collected {
+  const state: WalkState = { shapes, resolved: new Map() };
+  const found = emptyCollected();
+  const own = withContextNames(NO_NAMES, schema);
+  if (declaresCelRegion(schema)) found.regions.push("");
+  if (isContextNode(schema)) found.contexts.push({ path: "", schema: schema["x-telo-context"] });
+  // At the root an `x-telo-eval` is the `**` wildcard, read by the caller, and
+  // eval sites are reached through the root's own `properties` alone.
+  if (schema.properties && typeof schema.properties === "object") {
+    for (const [key, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
+      walk(propSchema, `.${key}`, schema, [], found, state, own, false);
     }
   }
-  if (schema.items && typeof schema.items === "object") {
-    out.push(...extractCelRegionScopes(schema.items, `${path}[*]`));
+  descendBeyondProperties(schema, "", schema, [], found, state, own, true);
+  return found;
+}
+
+function isContextNode(schema: Record<string, any>): boolean {
+  const context = schema["x-telo-context"];
+  return !!context && typeof context === "object";
+}
+
+/** `names` with a node's own `x-telo-context` applied: a binding existing at
+ *  accessor sites joins, one existing at other modes only shadows. */
+function withContextNames(names: AccessorNames, schema: Record<string, any>): AccessorNames {
+  const context = schema["x-telo-context"];
+  if (!context || typeof context !== "object") return names;
+  const properties = (context as Record<string, any>).properties;
+  if (!properties || typeof properties !== "object") return names;
+  return joinNames(names, splitNames(properties as Record<string, unknown>));
+}
+
+function splitNames(properties: Record<string, unknown>): AccessorNames {
+  const present: string[] = [];
+  const hidden: string[] = [];
+  for (const [name, binding] of Object.entries(properties)) {
+    (bindingExistsAt(binding, "accessor") ? present : hidden).push(name);
+  }
+  return { present, hidden };
+}
+
+/** `outer` with `inner`'s names over it. */
+function joinNames(outer: AccessorNames, inner: AccessorNames): AccessorNames {
+  if (inner.present.length === 0 && inner.hidden.length === 0) return outer;
+  const shadowed = new Set([...inner.present, ...inner.hidden]);
+  return {
+    present: [...new Set([...outer.present.filter((name) => !shadowed.has(name)), ...inner.present])],
+    hidden: [...new Set([...outer.hidden.filter((name) => !shadowed.has(name)), ...inner.hidden])],
+  };
+}
+
+function walk(
+  node: unknown,
+  path: string,
+  document: Record<string, any>,
+  frames: readonly Frame[],
+  out: Collected,
+  state: WalkState,
+  inherited: AccessorNames,
+  underEval: boolean,
+): void {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return;
+  const schema = node as Record<string, any>;
+  const bindings = withContextNames(inherited, schema);
+  if (declaresCelRegion(schema)) out.regions.push(path);
+  if (isContextNode(schema)) out.contexts.push({ path, schema: schema["x-telo-context"] });
+  if (typeof schema[MATCH_FOR_ANNOTATION] === "string") {
+    out.matchFor.push({ path, pointer: schema[MATCH_FOR_ANNOTATION] });
+  }
+  // A node's own annotation wins over whatever its `$ref` leads to; nothing
+  // below it is an eval site, while regions and contexts below it still are.
+  const declared = declaredEvalMode(schema);
+  if (declared && !underEval) {
+    out.eval.push({ mode: declared, path, bindings });
+    underEval = true;
+  }
+  if (typeof schema.$ref === "string") {
+    const ref = schema.$ref;
+    const local = ref.startsWith("#");
+    const target = local ? resolveSchemaPointer(document, ref) : state.shapes(ref);
+    if (!local) {
+      state.resolved.set(
+        ref,
+        target && typeof target === "object" && !Array.isArray(target) ? (target as object) : undefined,
+      );
+    }
+    if (!target || typeof target !== "object" || Array.isArray(target)) return;
+    enter(
+      target as Record<string, any>,
+      local ? document : (target as Record<string, any>),
+      !local,
+      path,
+      frames,
+      out,
+      state,
+      bindings,
+      underEval,
+    );
+    return;
+  }
+  if (schema.properties && typeof schema.properties === "object") {
+    for (const [key, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
+      walk(propSchema, `${path}.${key}`, document, frames, out, state, bindings, underEval);
+    }
+  }
+  descendBeyondProperties(schema, path, document, frames, out, state, bindings, underEval);
+}
+
+function descendBeyondProperties(
+  schema: Record<string, any>,
+  path: string,
+  document: Record<string, any>,
+  frames: readonly Frame[],
+  out: Collected,
+  state: WalkState,
+  bindings: AccessorNames,
+  underEval: boolean,
+): void {
+  const mapValues = [
+    schema.additionalProperties,
+    ...Object.values((schema.patternProperties ?? {}) as Record<string, unknown>),
+  ];
+  for (const value of mapValues) {
+    if (value && typeof value === "object") {
+      walk(value, `${path}.*`, document, frames, out, state, bindings, underEval);
+    }
+  }
+  if (schema.items && typeof schema.items === "object" && !Array.isArray(schema.items)) {
+    walk(schema.items, `${path}[*]`, document, frames, out, state, bindings, underEval);
   }
   for (const key of ["oneOf", "anyOf", "allOf"] as const) {
     if (Array.isArray(schema[key])) {
-      for (const subschema of schema[key]) out.push(...extractCelRegionScopes(subschema, path));
+      for (const branch of schema[key]) {
+        walk(branch, path, document, frames, out, state, bindings, underEval);
+      }
     }
   }
+}
 
-  return out;
+/**
+ * Walk the node a `$ref` names. One already on the descent closes a loop —
+ * the segments between its entry and here repeat — and a loop closing on an
+ * outer frame marks every frame above it, since what those found depends on
+ * where the walk came in.
+ */
+function enter(
+  target: Record<string, any>,
+  document: Record<string, any>,
+  isShape: boolean,
+  path: string,
+  frames: readonly Frame[],
+  out: Collected,
+  state: WalkState,
+  bindings: AccessorNames,
+  underEval: boolean,
+): void {
+  const openAt = frames.findIndex((frame) => frame.node === target);
+  if (openAt !== -1) {
+    frames[openAt]!.loops.push(path.slice(frames[openAt]!.at.length));
+    for (let i = openAt + 1; i < frames.length; i++) frames[i]!.dirty = true;
+    return;
+  }
+  // Everything found inside is relative to the entry and owes its bindings to
+  // what the target itself declares; the bindings above it join on the way out.
+  // Remembered only while every shape it reached still resolves as it did.
+  const known = isShape && !underEval ? shapeMemos.get(target) : undefined;
+  const memo = known?.shapes.every(([id, node]) => state.shapes(id) === node) ? known : undefined;
+  let loop: string;
+  let inside: Collected;
+  if (memo) {
+    for (const [id, node] of memo.shapes) state.resolved.set(id, node);
+    loop = memo.loop;
+    inside = memo.found;
+  } else {
+    const frame: Frame = { node: target, at: path, loops: [], dirty: false };
+    const absolute = emptyCollected();
+    const resolvedBefore = new Set(state.resolved.keys());
+    walk(target, path, document, [...frames, frame], absolute, state, NO_NAMES, underEval);
+    loop = frame.loops.length > 0 ? `(${[...new Set(frame.loops)].join("|")})*` : "";
+    const relative = (p: string) => p.slice(path.length);
+    inside = {
+      eval: absolute.eval.map((site) => ({ ...site, path: relative(site.path) })),
+      regions: absolute.regions.map(relative),
+      contexts: absolute.contexts.map((context) => ({ ...context, path: relative(context.path) })),
+      matchFor: absolute.matchFor.map((site) => ({ ...site, path: relative(site.path) })),
+    };
+    if (isShape && !underEval && !frame.dirty) {
+      shapeMemos.set(target, {
+        loop,
+        found: inside,
+        shapes: [...state.resolved].filter(([id]) => !resolvedBefore.has(id)),
+      });
+    }
+  }
+  const at = (rel: string) => `${path}${loop}${rel}`;
+  for (const site of inside.eval) {
+    out.eval.push({ ...site, path: at(site.path), bindings: joinNames(bindings, site.bindings) });
+  }
+  for (const region of inside.regions) out.regions.push(at(region));
+  for (const context of inside.contexts) out.contexts.push({ ...context, path: at(context.path) });
+  for (const site of inside.matchFor) out.matchFor.push({ ...site, path: at(site.path) });
 }
 
 /**
@@ -388,27 +612,41 @@ export function extractCelRegionScopes(schema: Record<string, any>, path = "$"):
  *
  * The scope is matched directly (no sibling sharing): a context at "$.routes[*].inputs" only
  * applies to expressions whose path starts with "routes[N].inputs", not to other sibling fields.
+ * A scope is `$` followed by an eval path, so a region inside a map value or a recursive shape
+ * (`$.content(.children[*])*.when`) matches every place it names.
  */
 export function pathMatchesScope(exprPath: string, scope: string): boolean {
-  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope;
-  if (!stripped) return false;
+  return scopeMatchOf(exprPath, scope) !== undefined;
+}
 
-  // Split on wildcard array segments; each [*] must match a concrete [N] in exprPath
-  const parts = stripped.split("[*]");
-  let remaining = exprPath;
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]!;
-    if (!remaining.startsWith(part)) return false;
-    remaining = remaining.slice(part.length);
-    if (i < parts.length - 1) {
-      // Expect a concrete array index like [0], [12], ...
-      const m = remaining.match(/^\[\d+\]/);
-      if (!m) return false;
-      remaining = remaining.slice(m[0].length);
-    }
+/** Where a scope met an expression path: the concrete `prefix` it matched, and
+ *  the end of the last index a `[*]` of the scope matched there (0 when it has
+ *  none) — the per-scope item a context's annotations navigate from. */
+export interface ScopeMatch {
+  prefix: string;
+  itemEnd: number;
+}
+
+const captureRegexes = new Map<string, RegExp>();
+
+export function scopeMatchOf(exprPath: string, scope: string): ScopeMatch | undefined {
+  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope === "$" ? "" : scope;
+  if (!stripped) return undefined;
+  if (!isEvalPathPattern(stripped)) {
+    return evalPathCovers(stripped, exprPath) ? { prefix: stripped, itemEnd: 0 } : undefined;
   }
-  // Expression must end here or continue into a child path
-  return remaining === "" || remaining[0] === "." || remaining[0] === "[";
+  let regex = captureRegexes.get(stripped);
+  if (!regex) {
+    regex = new RegExp(`^${patternSource(stripped, true)}(?=$|[.[])`, "d");
+    captureRegexes.set(stripped, regex);
+  }
+  const match = regex.exec(exprPath);
+  if (!match) return undefined;
+  let itemEnd = 0;
+  for (const span of match.indices?.slice(1) ?? []) {
+    if (span && span[1] > itemEnd) itemEnd = span[1];
+  }
+  return { prefix: match[0], itemEnd };
 }
 
 /** Every place a schema says its values are evaluated: the `x-telo-eval` paths,
@@ -423,15 +661,22 @@ export interface CelEvalSites {
 
 export const NO_CEL_EVAL_SITES: CelEvalSites = { compile: [], runtime: [], regions: [] };
 
-export function celEvalSites(schema: Record<string, any> | undefined): CelEvalSites {
+export function celEvalSites(
+  schema: Record<string, any> | undefined,
+  shapes: NamedShapeLookup = NO_NAMED_SHAPES,
+): CelEvalSites {
   if (!schema) return NO_CEL_EVAL_SITES;
-  const { compile, runtime } = buildEvalPaths(schema);
-  return {
-    compile,
-    runtime,
-    regions: extractCelRegionScopes(schema),
-    accessor: buildAccessorSites(schema),
-  };
+  // One walk for all four views.
+  const found = collectedOf(schema, shapes);
+  const compile: string[] = schema["x-telo-eval"] === "compile" ? ["**"] : [];
+  const runtime: string[] = schema["x-telo-eval"] === "runtime" ? ["**"] : [];
+  const accessor: AccessorSite[] = [];
+  for (const site of found.eval) {
+    if (site.mode === "compile") compile.push(evalPathOf(site.path));
+    else if (site.mode === "runtime") runtime.push(evalPathOf(site.path));
+    else accessor.push({ path: evalPathOf(site.path), bindings: site.bindings.present });
+  }
+  return { compile, runtime, regions: found.regions.map((path) => `$${path}`), accessor };
 }
 
 /**
@@ -486,13 +731,15 @@ export function mergeCelEvalSites(...sites: CelEvalSites[]): CelEvalSites {
 export function kindCelEvalSites(
   definition: ResourceDefinition | undefined,
   resolveDef: DefResolver,
+  shapes: NamedShapeLookup,
 ): CelEvalSites {
   if (!definition) return NO_CEL_EVAL_SITES;
   const capability = inheritedCapability(definition, resolveDef);
   return mergeCelEvalSites(
-    celEvalSites(effectiveAuthorSchema(definition, resolveDef)),
+    celEvalSites(effectiveAuthorSchema(definition, resolveDef), shapes),
     celEvalSites(
       (capability ? resolveDef(capability)?.schema : undefined) as Record<string, any> | undefined,
+      shapes,
     ),
     implicitEvalSites(definition as { base?: unknown }),
   );
@@ -506,11 +753,12 @@ export function kindCelEvalSites(
 export function governedCelEvalSites(
   definition: ResourceDefinition | undefined,
   resolveDef: DefResolver,
+  shapes: NamedShapeLookup,
 ): CelEvalSites | undefined {
   if (!definition?.schema) return undefined;
   const capability = inheritedCapability(definition, resolveDef);
   if (capability === undefined || capability === "Telo.Template") return undefined;
-  return kindCelEvalSites(definition, resolveDef);
+  return kindCelEvalSites(definition, resolveDef, shapes);
 }
 
 /**
@@ -529,17 +777,17 @@ export function governedCelEvalSites(
  * compile path a runtime path contains or is contained by, and under a root
  * `**` it skips per top-level key — so a runtime-annotated field under an
  * implicit compile root stays runtime, here as at dispatch. An accessor field
- * is excluded from compile expansion by the same overlap.
+ * is skipped by itself: everything beside it under the same compile path is
+ * still evaluated.
  *
  * `path` is the `walkCelExpressions` spelling (`routes[0].returns[1].when`).
  */
 export function celEvalModeAt(sites: CelEvalSites, path: string): CelEvalMode | null {
   if (accessorSiteAt(sites, path)) return "accessor";
-  const perCall = [...sites.runtime, ...(sites.accessor ?? []).map((site) => site.path)];
   const compiled = sites.compile.some((p) => {
     if (!evalPathCovers(p, path)) return false;
     const effective = p === "**" ? topLevelKey(path) : p;
-    return !perCall.some((rp) => evalPathCovers(rp, effective) || evalPathCovers(effective, rp));
+    return !sites.runtime.some((rp) => evalPathCovers(rp, effective) || evalPathCovers(effective, rp));
   });
   if (compiled) return "compile";
   if (evalPathsCover(sites.runtime, path)) return "runtime";

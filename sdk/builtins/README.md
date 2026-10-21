@@ -71,3 +71,11 @@ The renderer refuses an unknown flag; a reader refuses a marker left underived.
 name is the name under `telo://manifest#/$defs`. A fragment refers to another —
 and a recursive one to itself — as `telo://manifest#/$defs/<Name>`, the spelling an
 author writes. Which fragments recurse is derived from those references.
+
+A recursive fragment cannot be expanded in place, so a reference to one is rewritten
+to a document-local `#/$defs/telo:<Name>` with one copy hoisted into the ROOT of the
+author-written schema holding the reference: a document's top-level schema-valued
+key, or a position a built-in entry declares as a schema fragment (directly or as a
+union branch) — a parameter's `schema`, a result's, a need type's `parameters` and
+`fields` values. Those positions are derived from these entries, so a built-in that
+gains a schema slot makes it a root with no change to the reader.

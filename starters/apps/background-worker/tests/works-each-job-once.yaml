@@ -176,8 +176,8 @@ steps:
         accepted: 202
         answeredWithQueue: true
         page:
-          - [ Enqueue, /api/jobs, [ Payload ] ]
-          - [ Refresh, /api/jobs/recent, [] ]
+          - [ { lang: en, message: [Enqueue] }, /api/jobs, [ { lang: und, message: [Payload] } ] ]
+          - [ { lang: en, message: [Refresh] }, /api/jobs/recent, [] ]
         pageTitle: 200
         empty: 400
         otherReplica: b

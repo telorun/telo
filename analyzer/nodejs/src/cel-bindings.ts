@@ -6,6 +6,7 @@ import {
   plainChainOf,
 } from "@telorun/templating";
 import { parseCelSource } from "./cel-environment.js";
+import type { NamedShapeLookup } from "./eval-paths.js";
 import { extractContextsFromSchema } from "./validate-cel-context.js";
 
 /** Annotation on an `x-telo-context` node naming the resource field that holds
@@ -34,11 +35,12 @@ export interface BindingSites {
  *  declare. Returns undefined for a kind that declares no bindings region. */
 export function findBindingSites(
   definitionSchema: Record<string, any> | undefined,
+  shapes: NamedShapeLookup,
 ): BindingSites | undefined {
   if (!definitionSchema) return undefined;
   const fields: string[] = [];
   const scopeNames = new Set<string>();
-  for (const { schema } of extractContextsFromSchema(definitionSchema)) {
+  for (const { schema } of extractContextsFromSchema(definitionSchema, shapes)) {
     const declared = schema?.[BINDINGS_ANNOTATION];
     if (typeof declared !== "string" || declared.length === 0) continue;
     if (!fields.includes(declared)) fields.push(declared);

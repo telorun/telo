@@ -1,237 +1,190 @@
 ---
-description: "The guarantees, checks and defaults a Telo application gets without writing them — each one something a typed framework leaves to hand-written code or team discipline."
+description: "The features a Telo application gets without writing them — request cancellation, graceful shutdown, configuration you can see, checks a compiler cannot make — and what the standard library adds on top."
 ---
 
 # What you get for free
 
-Telo checks what a typed framework leaves to discipline: that a write meant for
-a transaction is inside one on every path, that every error a handler can throw
-is rendered somewhere, that a retry would not silently resend a stream already consumed,
-that shutdown undoes exactly what startup did. Your compiler checks your types;
-these are the bugs that pass it.
+What a Telo application gets without writing it, compared with TypeScript, Go
+or Java and their usual libraries. **Telo itself** is what every application
+gets, whatever it imports. **Standard library** is what its modules add.
+Within each group, the features people ask about most come first. The page
+grows with every release.
 
-This page lists each one against what you would otherwise write in TypeScript,
-Go or Java with their usual libraries. It grows with every release.
+## Telo itself
 
-## Highlights
+### Running
 
-- **Crashes resume where they stopped.** Durable runs record every step and decision, so a restart continues from the record, and the ways durability silently breaks — a non-deterministic call, a swallowed suspension — are refused. No checkpointing code, no workflow engine to deploy. [Reliability](#reliability)
-- **Every error has a handler.** Each error code a handler declares is checked against the `catches:` entries of its route, router and server; one nothing renders is an error before the app runs. [Errors](#errors)
-- **Transactions are ambient, and checked.** Every statement reached through a `Sql.Transaction` joins it at any depth, and a statement that requires one is checked on every path the analyzer can see, the runtime refusing the rest (`ERR_ZONE_REQUIRED`). [Coordination & data integrity](#coordination--data-integrity)
-- **Retries that can't do harm.** Cancellations and contract violations are never retried, a retry that would resend a consumed stream is refused, and a timeout cancels the call instead of abandoning it. [Reliability](#reliability)
-- **Cleanup writes itself.** Every resource returns its own undo, run in dependency order on failure and on shutdown — no try/finally, no teardown mirroring startup. [Lifecycle](#lifecycle)
-- **Schema changes keep the running version working.** Declared tables reconcile at boot under a lock; removals wait for `reclaim:`, renames go expand-contract, and changes it detects as unsafe are refused before any DDL. [Lifecycle](#lifecycle)
-- **Credentials stay out of telemetry.** Secrets, URL passwords and fields marked sensitive are redacted in logs, errors and traces, and spans carry no payloads unless a contract opts a field in. [Security](#security)
-- **Wiring mistakes are caught before anything runs.** `telo check` and the editor resolve every reference, schema and expression — the configuration, wiring and query typos a compiler cannot see — and the runtime refuses the same things at load with the same message. [Static analysis & editing](#static-analysis--editing)
+- **Request cancellation.** When a caller goes away — a client disconnecting, a timeout, a shutdown — cancellation flows down everything the call started, to every call that honours it, retry backoffs included. No cancellation token passed through every function.
+- **Graceful shutdown.** `SIGINT` / `SIGTERM` cancel in-flight work, refuse what has not started, close resources in reverse dependency order, wait briefly for background work, flush logs last, and exit with a defined code — the same in a packaged binary. A cleanup that fails does not stop the rest.
+- **Timeouts that cancel.** A per-attempt `timeout:` on any call cancels it rather than abandoning it with its side effect still running.
+- **Safe retries.** `retry:` on any call, with exponential backoff and full jitter. Cancellations and contract violations are never retried, `nonRetryable:` stops on named codes, a retry that would resend a consumed stream is refused before the app runs, and a cancelled backoff keeps the original failure.
+- **Starts and stops itself.** Startup order comes from the references between resources, and a dependency loop is reported with its path before anything starts. The process stays up while something serves or schedules and exits when the work is done; one stuck waiting on something that can never happen exits 1 with the reason.
+- **Validation on every call.** A resource's `inputType` / `outputType` are checked at runtime on every call between resources, not only at the HTTP edge.
+- **No context leaking between requests.** Inbound work starts with no inherited transaction or trace.
 
-Within each section below, rows are ordered by weight: the ones replacing the
-most come first.
+### Configuration
 
-Every diagnostic code below without an `ERR_` prefix is reported by
-`telo check` and in the editor, before anything runs.
+- **See what an app needs.** `--help` lists every argument and every environment-only input with its type and default; `telo needs report` lists the variables its dependencies read; `telo module manifest --json` reports all of it; `telo env template` writes the `.env` / `.env.local` lines. Nothing is booted for any of them.
+- **Validated before start.** Inputs are declared once with `env:` and `type:`, and every missing or invalid one is reported together before anything starts. A declared variable reads as unset through the process environment, so code reading it directly gets nothing.
+- **Asked for at the terminal.** `telo run` at a terminal asks for each input nothing supplies — a secret without echo, each answer checked as the environment variable would be and asked again with the reason when refused — then offers to save the answers to `.env` / `.env.local`. A watch session asks once; nothing is asked under `--no-input`, in a runner or without a terminal.
+- **Dependency settings without inventing names.** A library's settings are read from derived names (`TELO_NEED_ORDERS__DATABASE_ACCESS__URL`); a missing one names every variable to set; two settings reading one variable are refused; a stated `version:` or `features:` is checked against what the dependency finds at start.
+- **Libraries can't read your environment.** Only the application reads environment variables and arguments; a library declaring one is refused, and receives values from its importer instead.
+- **Command-line arguments.** `arg:` turns an input into a flag or positional, with one precedence (argument, then environment, then `default:`) and unknown arguments refused. A secret can never be an argument.
+- **`.env` files.** `.env` and `.env.local` are collected up to the workspace marker by `telo run` and Studio alike. `.env` may be committed; `.env.local` holds secrets.
+- **Public URLs without hard-coding.** `Telo.PublicUrl` is derived from host templates, so no domain is written in a manifest; two addresses no host could route apart are refused at start.
+- **Paths that don't depend on the working directory.** A relative path in configuration is refused before the app runs, and files a module ships are found wherever it is unpacked and checked to exist.
+- **Ports known before boot.** `ports:` are typed TCP or UDP and known to a runner before the app starts.
 
-## Static analysis & editing
+### Checked before it runs
 
-| With Telo | Without it |
-| --- | --- |
-| `telo check` resolves every import, reference, schema and expression with no database, network or process; exits non-zero on errors only; `-o json` gives `file` / `line` / `column` / `code` / `fix` | Configuration, wiring and query typos found at runtime even when the code compiles |
-| `telo run` runs the same analysis and refuses to start; runtime refusals mirror static ones as `ERR_<code>` with the same wording | A half-started process; a linter and a runtime that disagree |
-| The editor runs the exact engine of the telo version the module's `requires: telo:` selects, and the local runner runs that same release | An editor plugin drifting from CI; works in the editor, fails in staging |
-| Studio: Topology, Inventory, Source and Deployment views over the YAML on disk, edits round-tripping | A diagram nobody keeps in sync with the code |
-| A security setting that would protect nothing is refused: a sensitive mark no contract reaches (`SENSITIVE_ANNOTATION_MISPLACED`), a redaction path that does not parse (`INVALID_REDACTION_PATH`), a version requirement nothing compares (`NEED_CONSTRAINT_UNVERIFIED`) | A redaction rule or version pin that silently does nothing |
+- **Static checking.** `telo check` resolves every import, reference, schema and expression with no database, network or process — the configuration, wiring and query mistakes a compiler cannot see. Malformed URLs, regexes, durations and cron expressions are refused too. It exits non-zero on errors only, and `-o json` gives each finding with its location, code and fix.
+- **The runtime agrees with the checker.** `telo run` runs the same analysis and refuses to start, with the same message.
+- **Error coverage.** Each error code a handler declares must be rendered by a `catches:` entry around it; a catch for a code nothing throws and a missing or misplaced catch-all are refused. Wrappers pass their body's codes through (`throws: { inherit: true }`), and errors are coded and typed rather than matched on message text.
+- **Wiring checked.** Every reference must resolve to a resource of the kind its slot accepts.
+- **Texts checked for translation.** Text shown to a person is typed `Text` and written in the module's `lang:`, with `{$name}` placeholders and plural cases chosen by the language's CLDR rules. A text that does not parse, a plural case its language lacks, a value a text reads that the call does not give, a placeholder the screen or controller that shows the text will not fill, an expression where a text must be written at the call, and a translation reading a placeholder its source lacks are refused before the app runs, and the same mistakes in a computed text when it is computed, at start or per call; a translation nothing shows is warned about. Each controller receives the text with the language it is written in.
+- **Security settings that would do nothing are refused.** A sensitive mark no contract reaches, a redaction path that does not parse, a version requirement nothing compares.
+- **Failures point at the cause.** A failed start reports the root cause first, with the resources it blocked collapsed under it and the manifest location named.
 
-## Authoring & composition
+### Observability and security
 
-| With Telo | Without it |
-| --- | --- |
-| When the standard library lacks something, a controller in TypeScript or Rust becomes a new kind: its schema, references and contract are checked like a built-in's, its code is ordinary TypeScript or Rust | Custom components outside the framework's checks |
-| References must resolve to a resource of the kind the slot accepts (`UNRESOLVED_REFERENCE`, `REFERENCE_KIND_MISMATCH`) | Dependency-injection wiring errors found at startup |
-| A library imported by relative `source:`; publishing it changes only that `source:` | A private package, its build and its registry |
-| The hub's MCP server gives coding agents `search_resources`, `get_kinds` with exact pins and schemas, and authoring guides | Agents guessing package names and option shapes |
+- **Tracing.** Every call is a span and an incoming W3C `traceparent` is continued. Tracing turns on by listing one sink.
+- **Structured logging.** Every record carries its resource and `scope`, and inside a call its `trace_id` / `span_id`. Levels are set per import and cascade. A log call never throws, sinks are bounded with dropped records counted, `fatal` flushes, and only sinks the application lists receive anything.
+- **Secret redaction.** `secrets:` values, URL passwords, sensitive dependency settings and contract fields marked `x-telo-sensitive` are redacted in logs, errors and traces. Spans carry no payloads unless a contract field opts in (`x-telo-span-attribute`).
+- **Secrets stay where they belong.** Never packaged or indexed; a published contract shows only a secret's type. A secret read from an env file not marked sensitive is warned about at `telo run` and in Studio's Variables tab, and sensitive env files are never synced to Telo Cloud or into an agent's session.
+- **Verified downloads.** Import pins, layer digests, revalidated mutable tags, pinned `https`-only staged files and checksummed binaries; an archive path escaping its module is refused.
+- **Egress guard.** `TELO_EGRESS=public-only` refuses module fetches to private and loopback hosts.
 
-## Data shape
+### Delivery
 
-| With Telo | Without it |
-| --- | --- |
-| `Crud.Model`'s four shapes (read, list, create, update), checked for consistency | DTOs and mappers per endpoint |
-| A declared SQL table projects its row, so seed rows, filters and keys are checked against its columns (`SQL_SEED_KEY_UNKNOWN_COLUMN`) | ORM models kept in sync with migrations |
-| Malformed URLs (`URL_INVALID`), regexes (`CEL_INVALID_ARGUMENT`), Telo formats, durations and cron expressions in configuration refused before start | A malformed value found at startup or on the request that uses it |
-| One enum declaration: a native type on PostgreSQL, a `CHECK` on SQLite | An enum emulation per database engine |
+- **No install step.** `telo run` fetches each import on first use, verified against its pin, and only the parts this machine needs — under `--watch` too, so an import added while editing is fetched on the next reload. An app has no package manifest, dependency directory or lockfile of its own.
+- **One executable.** `telo package` produces a file that runs with no telo and no network, and refuses to write one that would be incomplete.
+- **Run a published app by reference.** `telo run oci://…@<version>#sha256-<pin>`, verified before anything runs.
+- **No image per change.** Runners run a manifest without building an image, and watch sessions reload on edit.
+- **Offline boot.** `telo install` warms `.telo/`, so the tree boots with no network.
+- **Upgrades your runtime can read.** `telo upgrade` and the editor's import CodeLenses move pins only to versions your telo can run, and report what they held back.
+- **One version of each module.** A module imported at incompatible versions is refused before the app runs.
+- **Downloads only what's used.** Module layers and assets are fetched lazily, for the kinds actually used and this platform only.
 
-## Inputs & boundaries
+### Editing and extending
 
-| With Telo | Without it |
-| --- | --- |
-| `inputType` / `outputType` validated at runtime on every call between resources, not only at the HTTP edge (`ERR_INPUT_INVALID`, `ERR_OUTPUT_INVALID`); defaults filled into a copy | Validation at the edge only, internal callers trusted; mutated input |
-| Duplicate routes and MCP tool names refused | A later route silently shadowing an earlier one |
-| CRUD lists accept only declared filters and sorts, validating `limit` / `sort` / `cursor` | Hand-validated query strings and queries on unindexed columns |
-| Every input bounded by default: `maxBodyBytes` (1 MiB, always on), multipart limits, `maxBytes` on reads, agent `maxSteps` / `maxToolResultBytes`, bounded channel reads | Unbounded reads; runaway agent loops |
-| HTTP inputs validated and typed before the handler, with a standard 400 envelope; OpenAPI built from the routes and served offline; `Accept` negotiated | Validator, error formatter and spec configured per framework |
-| Vector `dimensions` enforced at insert and query | Corrupted similarity results |
+- **Write your own modules.** When the standard library lacks something, write a module beside your app — controllers in TypeScript or Rust — and import it by relative path. No build step: TypeScript is bundled from source when the app loads and Rust is built from its crate (with `cargo` installed). Its kinds' schemas, references and contracts are checked like the standard library's, and publishing it later changes only the import's `source:`. See [`examples/local-modules`](https://github.com/telorun/telo/tree/main/examples/local-modules) for a TypeScript and a Rust module racing on the same job.
+- **Visual editing.** Studio shows Topology, Inventory, Source and Deployment views over the YAML on disk, with edits going both ways.
+- **Editor and runtime on one version.** The editor runs the exact engine of the telo version the module's `requires: telo:` selects, and the local runner runs that same release.
+- **Coding agents know the modules.** The hub's MCP server gives agents `search_resources`, `get_kinds` with exact pins and schemas, and authoring guides.
 
-## Configuration
+## Standard library
 
-| With Telo | Without it |
-| --- | --- |
-| Dependency configuration read from derived names (`TELO_NEED_ORDERS__DATABASE_ACCESS__URL`); `telo needs report` and `telo module manifest --json` list every input without booting | A name invented and documented for each dependency's setting |
-| A missing or partly supplied dependency setting names every variable to set before boot (`ERR_NEED_UNMET`, `ERR_NEED_PARTIALLY_SUPPLIED`); two settings reading one variable are refused (`NEED_ENV_NAME_COLLISION`) | Cryptic connection failures; two settings sharing one variable |
-| A dependency's `version:` / `features:` checked against what the resource finds at start | A missing database extension found at the first query |
-| Only the root application reads environment variables and arguments (`LIBRARY_ENV_KEY_REJECTED`) | Dependencies reading arbitrary environment variables |
-| Inputs declared once with `env:` and `type:`, every failure reported together before start; a declared variable reads as unset through the process environment, so code reading it directly gets nothing | Configuration read in many places, some bypassing validation |
-| `telo run` at a terminal asks for each input nothing supplies — a secret without echo, each answer checked as the environment variable would be and asked again with the reason when refused — then offers to save the answers to `.env` / `.env.local`; a watch session asks once; nothing is asked under `--no-input`, in a runner or without a terminal | A startup crash per missing variable; a hand-written setup prompt |
-| `arg:` bindings and `--help` generated from the same declarations: every argument, every environment-only input with its type and default, the needs; a secret can never be an argument | A CLI parser and a help text kept in sync by hand |
-| `Telo.PublicUrl` derived from host templates; two addresses no host could route apart refused (`ERR_NEED_PUBLIC_URL_COLLISION`) | A hard-coded base URL per environment |
-| Paths in configuration always absolute (`HOST_PATH_RELATIVE`); files a module ships found wherever it is unpacked, and checked to exist | Paths resolved against wherever the process started; assets missing from the image |
-| `ports:` typed, TCP or UDP, known to a runner before boot | A port number repeated in code, Dockerfile and deploy config |
-| `telo env template` writes `.env` and `.env.local` from the manifest — every variable with its default and whether it is required, secrets and sensitive need fields kept to the file `env.files` marks sensitive (`.env.local` by default), re-runs adding only what is new | A hand-kept `.env.example` drifting from the code |
-| `.env` / `.env.local` collected up to the workspace marker, by `telo run` and Studio runs alike | Per-package copies of env files; an editor's own copy of the values |
+**Secure by default.** The standard library's modules ship with their protective settings on: request and read limits enforced, guards and locks that fail closed, SQL parameters always bound, commands run without a shell, secrets and tokens kept out of logs. Each module is a pinned, integrity-checked artifact.
 
-## Errors
+### HTTP server
 
-| With Telo | Without it |
-| --- | --- |
-| Error coverage checked: a declared error code no `catches:` entry renders (`UNCOVERED_THROW_CODE`), a catch for a code nothing throws (`UNDECLARED_THROW_CODE`), a missing or misplaced catch-all (`UNBOUNDED_UNION_NEEDS_CATCHALL`, `CATCHALL_NOT_LAST`) | Unmapped errors reaching clients as 500s; dead or order-dependent handlers |
-| The `catches:` ladder: route → `Http.Api` → `Http.Server` → built-in 500 | A global handler with a chain of type checks |
-| `throws: { inherit: true }` carries a body's error codes through wrappers, so a route can catch a code thrown inside a transaction | Error types lost at every layer |
-| Coded errors (`code`, `message`, `data`, `step`), typed in `catch:` and `catches:` | Matching on error message strings |
-| Failures point at the cause in your manifest: root cause first, resources blocked by it collapsed under it, location named | The real error buried in a cascade of follow-on failures |
-| One closed error set per client family (AI providers, graph, search, OCR, MCP), with `retryAfterSeconds` | Per-vendor error parsing |
+- **Request validation.** `request.schema` checks body, query, path and headers before the handler runs, converting query and path values to their declared types, with a standard 400 envelope.
+- **Error rendering.** Thrown codes are rendered through `catches:` on the route, then `Http.Api`, then `Http.Server`, then a built-in 500, with `error.data` typed per code.
+- **Streaming responses.** `mode: stream` with an encoder (NDJSON, SSE, plain text): backpressure, a client disconnect cancels the upstream call, and a mid-stream failure is written in-band.
+- **OpenAPI.** Built from the mounted routes; `Http.Reference` serves a browsable page offline, listing only the routes the requesting host can reach.
+- **Body limits.** `maxBodyBytes` (1 MiB default, always on) and multipart limits are enforced while reading.
+- **Auth guards.** A mount `guard:` runs after CORS and before the body is parsed, and never fails open.
+- **Host routing.** `unknownHosts: reject` answers foreign hosts with 421; forwarded headers and client IP are trusted only when declared.
+- **No silent route shadowing.** Duplicate routes and MCP tool names are refused.
+- **Content negotiation.** `Accept` negotiated per RFC 9110, with `406` listing what is available.
 
-## Lifecycle
+### HTTP client
 
-| With Telo | Without it |
-| --- | --- |
-| Resources return their own undo, run newest-first on failure; a failed init is discarded | try/finally; a teardown mirroring startup; half-built objects |
-| Startup order derived from references, loops traced (`DEPENDENCY_CYCLE`) | A hand-ordered boot sequence; startup deadlocks |
-| `Postgres.Schema` / `SQLite.Schema` reconcile at boot under an advisory lock, one transaction per batch, touching only objects they declare | Migration files; replicas racing each other; dropping a table you don't own |
-| Schema changes stay compatible with the running version: removals tombstoned until `reclaim:`, renames expand-contract (`renamedFrom:`), and changes it detects as unsafe — narrowing a type, `NOT NULL` over existing NULLs — refused before any DDL | Down-migrations; migrations that half-apply |
-| Shutdown in dependency order, log sinks last, every undo attempted even when one fails (`ERR_EFFECT_RECOVERY_FAILED`) | Hand-ordered shutdown hooks; one exception stranding the rest of cleanup |
-| Background work tracked: its failures logged, waited for at shutdown, and work against a torn-down resource refused (`ERR_EFFECT_SCOPE_CLOSED`) | Unhandled failures; work outliving what it uses |
-| The process stays up while something serves or schedules, and exits when the work is done; waiting on something that can never happen exits 1 with a reason | Keep-alive hacks; a process that exits too early, or reports success when it was stuck |
-| `SIGINT` / `SIGTERM` cancel in-flight work and tear down, with defined exit codes, identically in packaged binaries | Signal handling and exit codes written per service |
+- **Resilient by default.** Retries on 408/429/5xx and network failures, `Retry-After` honoured, a 10 s default timeout, network errors normalized to one set of codes.
+- **Credential refresh.** A 401 refreshes the credential and retries once.
+- **No empty resends.** A streamed body is never re-sent as an empty one.
 
-## Reliability
+### SQL
 
-| With Telo | Without it |
-| --- | --- |
-| Durable runs record steps and decisions; a crash resumes where it stopped | Checkpointing by hand, or a workflow engine and its determinism rules |
-| Durability can't break silently: swallowed suspensions detected, catches rethrow them, a replay reaching a different step refused (`ERR_JOURNAL_ENTRY_MISMATCH`), `now()` / `uuidv4()` inside a replayed region refused (`DURABLE_NONDETERMINISM`) | Corrupt resumes; replays that diverge |
-| Durable timing survives restarts: long backoffs park with their attempt count, deadlines fixed on the first pass, missed schedules found due | Timers and retry budgets reset on every redeploy; dropped cron runs |
-| Retries that can't do harm: cancellations and contract violations never retried, `nonRetryable:` codes, a retry that would resend a consumed stream refused (`LIVE_VALUE_RETRIED`, `ERR_HTTP_BODY_NOT_REPLAYABLE`), backoff cancellable with the original failure kept | Retrying a typo; resending an empty body; losing the real error |
-| A per-attempt `timeout:` cancels the call rather than abandoning it (`ERR_STEP_TIMEOUT`) | A timeout that leaves the side effect running |
-| Cancellation flows down the call tree to every call that honours it; shutdown cancels calls rather than failing them | A cancellation token threaded through every call; Ctrl-C making work terminal |
-| `retry:` declared on any call, exponential backoff with full jitter | Retry loops written per call site |
-| Outbound HTTP resilient by default: retries, `Retry-After`, a 10 s timeout, normalized network errors, credential refresh on 401 | A retry library, a forgotten timeout, token-refresh interceptors |
-| Postgres pools probe and replace dead connections; `LISTEN` re-subscribes after reconnecting | Connection errors after a failover; listeners that hear nothing |
-| `Cache.View`: stale-while-revalidate, single-flight, stale-if-error | Caching decorators written by hand |
-| A cache falls back to another store and reports `cache.degraded` / `cache.recovered` | Custom circuit-breaking around the cache |
+- **Ambient transactions.** Every statement reached through a `Sql.Transaction` joins it at any depth; nested transactions join the outer one; a throw rolls back.
+- **Transactions checked on every path.** A statement that requires a transaction is checked on every path the analyzer can see before the app runs, the runtime refusing the rest; a durable wait inside a transaction or lease is refused.
+- **Declarative schema.** `Postgres.Schema` / `SQLite.Schema` bring the database to the declared tables at boot, under an advisory lock, one transaction per batch, touching only objects they declare.
+- **Safe schema changes.** Removals wait for `reclaim:`, renames go expand-contract (`renamedFrom:`), and changes it detects as unsafe — narrowing a type, `NOT NULL` over existing NULLs — are refused before any DDL.
+- **Parameterized by construction.** `!sql` binds every hole as a driver-native parameter.
+- **Typed rows.** A declared table projects its row, so seed rows, filters and keys are checked against its columns.
+- **Portable enums.** One declaration becomes a native type on PostgreSQL and a `CHECK` on SQLite.
+- **Self-healing connections.** Postgres pools probe and replace dead connections; `LISTEN` re-subscribes after reconnecting.
 
-## Coordination & data integrity
+### CRUD
 
-| With Telo | Without it |
-| --- | --- |
-| `Sql.Transaction` is an ambient zone; nested ones join; a throw rolls back | A transaction object threaded through every function |
-| Transaction rules checked on every path the analyzer can see, the runtime refusing the rest (`ERR_ZONE_REQUIRED`): a statement needing a transaction reached without one (`ZONE_REQUIREMENT_UNSATISFIED`), a durable wait inside a lock (`ZONE_ATTRIBUTE_VIOLATED`) | Non-transactional writes found in an incident review; a lock held for days |
-| `Idempotency.Once`: atomic claim, replayed result, released on failure; a repeated workflow `runId` attaches | Idempotency keys, a cache, a lock and dedup tables |
-| `Lease.Critical`: acquire, run and release, `ttl`, fail-closed, holder-guarded | Distributed-lock code with stuck-lock bugs |
-| Journal writes commit in the business transaction, and each region logs which regime it got (`durable.zone.mode`) | An exactly-once claim nobody can verify |
-| Atomic `putIfAbsent` / `compareAndSet`; a lost race is `null`, not an exception | Get-then-set races |
-| `RateLimit.Guard` / `Budget` verdicts over any cache | Hand-rolled token buckets |
-| Inbound work starts with no inherited transaction or trace | Context leaking across requests |
-| One OAuth refresh per grant at a time | Revoked grants from concurrent refreshes |
+- **Models instead of DTOs.** `Crud.Model` gives four shapes — read, list, create, update — checked for consistency.
+- **Safe list queries.** Only declared filters and sorts are accepted, `limit` / `sort` / `cursor` are validated, and seek cursors return every row once even while rows are inserted.
 
-## Streaming & I/O
+### User interfaces
 
-| With Telo | Without it |
-| --- | --- |
-| `mode: stream` + an encoder: backpressure, a client disconnect cancels the upstream call, mid-stream failures written in-band | Hand-wired streams that fail silently |
-| Writes are atomic: `Fs.FileWrite` renames into place, `Blob.Put` replaces whole, an over-size write stores nothing | Temp-file-and-rename logic |
-| `Stream.Chunk`, `Stream.Tap`, lazy `Run.Iteration` | Buffering large sources in memory |
-| Multipart and any declared content type arrive as a stream | A multipart parser to configure |
+- **Screens that follow their data, with no frontend code.** A `Ui.Data` reads a record when its page is drawn — a loading state first, a failure state for a refused read, again on window focus or when a request inside it answers 401 — and a node's `shown` condition decides in the browser what is drawn from the answer, the page's query parameters or a form's values; hidden content keeps what was typed and requests nothing. A sign-in gate is a reader and two conditions. A condition that can never hold for the value it reads, or that reads a value its place does not hold, is refused before the app runs.
+- **Forms with lookups, date ranges and remembered values.** A form's fields are kinds: a choice or a picker over options read from your API — searched as the viewer types, paged as the list scrolls, chosen values labelled by one lookup, narrowed by other fields of the form — a date range with presets such as this month or last quarter in the viewer's time zone, and sliders, switches and tags. Fields are grouped into labelled sections, checked against the model as values are typed with the server's refusals shown on the field they name, and kept in the page address or the browser's storage across visits (`state:`). A field whose control or options do not fit its property — from `ui` or from any other module — is refused before the app runs.
+- **Buttons that answer in place, with no double submits.** A `Ui.Action` draws a success as its `result:` tree and any failure — a refusal, a 401, no answer at all — as its `failure:` tree, then reloads every reader and table over the paths `onSuccess.refreshes` names and moves the page where `onSuccess.navigate` says. A form or a row takes no second press while its first is pending, `concurrency: serial` runs presses one after another, and a table's or a list's row draws the answer of its action — a download link, a status — in place of its button. A row's inputs that cannot make a valid request are refused before the app runs.
+- **Screens in the viewer's language.** Give `UiReact.App` a `translator:` and a `lang:` read from `Accept-Language` or a cookie, and every page title, label, model title, enumeration label and built-in word is served translated, with plurals and numbers formatted in the browser by the language's rules and a heading over data composed from the values it names (`{ text, values }`). Each language is one cached document with `Vary` naming exactly the headers read.
 
-## Performance
+### Durable execution
 
-| With Telo | Without it |
-| --- | --- |
-| Module layers and assets fetched lazily, only for kinds actually used and only for this platform | Downloading every platform's binaries |
-| Seek cursors returning every row once, even while rows are inserted | OFFSET pagination that drifts and slows down |
-| Concurrent agent tool calls, results in call order | A tool-call scheduler |
+- **Crash recovery.** Durable runs record each step and decision; a restart resumes where the work stopped.
+- **Durability that can't break silently.** Swallowed suspensions are detected, a replay reaching a different step is refused, and `now()` / `uuidv4()` inside a replayed region are refused before the app runs.
+- **Waiting for days.** `Durable.Sleep` / `Durable.Await` hold no process, connection or timer; a delivery is checked against its type.
+- **Timing that survives restarts.** Long backoffs park with their attempt count, deadlines are fixed on the first pass, and missed schedules are found due.
+- **Exactly-once with the database.** With the journal on the business connection, journal writes commit in the same transaction, and each region logs which regime it got (`durable.zone.mode`).
 
-## Observability
+### Coordination
 
-| With Telo | Without it |
-| --- | --- |
-| Every invocation a span, incoming W3C `traceparent` continued; tracing turned on by listing one sink | Per-handler instrumentation; an OpenTelemetry SDK and propagation middleware |
-| Every log record carries its resource and `scope`, and inside a dispatch its `trace_id` / `span_id` | Passing request IDs by hand |
-| Standard operations logged with OpenTelemetry names: `http.server.*` with `http.route`, SQL with timing, retries, credential refreshes, agent spans with GenAI attributes | Log formats per library; invisible retries; custom LLM telemetry |
-| Per-import log levels that cascade; a record's `scope` is the path you write to change it | Guessing logger names |
-| Logging can't hurt the app: bounded sinks with counted drops, a log call never throws, `fatal` flushes, startup records replayed, errors never sampled | A log call failing a request; missing startup logs |
-| Only listed sinks receive records; a library can't open one | Dependencies writing log files on your behalf |
+- **Idempotency.** `Idempotency.Once` claims atomically, replays the stored result on repeats and releases on failure; a repeated workflow `runId` attaches to the existing run.
+- **Distributed locks.** `Lease.Critical` acquires, runs and releases, expires on `ttl`, fails closed on an empty key and guards release by holder.
+- **Race-free key/value.** `putIfAbsent` / `compareAndSet` are atomic, and a lost race is `null`, not an exception.
+- **Rate limiting.** `RateLimit.Guard` and `RateLimit.Budget` return `{ allowed, remaining, retryAfter }` over any cache store.
 
-## Security
+### Caching
 
-| With Telo | Without it |
-| --- | --- |
-| Credentials redacted in logs, errors and traces: `secrets:` values, `Telo.Url` passwords, sensitive need fields, `x-telo-sensitive` contract fields; need variables hidden from the process environment and from children | A hand-kept redaction list; database passwords in error messages |
-| Spans carry no payloads unless a contract field opts in (`x-telo-span-attribute`); no request headers, SQL parameters, URL queries or LLM message content are logged | Payloads and signed URLs leaking into logs and traces |
-| `!sql` binds every hole as a parameter | Remembering parameterized queries |
-| Downloads verified: import pins, layer digests, revalidated mutable tags, `sha256`-pinned `https`-only staged files, checksummed engines and runner binaries; archive paths escaping a module refused | Trusting what a registry serves today; install scripts fetching unpinned binaries |
-| Secrets never packaged or indexed; a published contract exposes only a secret's type | Credentials in artifacts |
-| A secret or sensitive need field read from an env file `env.files` does not mark sensitive is warned at `telo run`, and on its row in Studio's Variables tab | A password committed in `.env`, unnoticed |
-| Sensitive env files (`.env.local` by default, else the `env.files` entries marked `sensitive`, by the nearest `telo-workspace.yaml`) never synced to Telo Cloud or into an agent's session | A `.gitignore` line someone forgets; secrets copied into a sandbox |
-| A mount `guard:` runs after CORS and before body parsing, and never fails open | Auth middleware ordering bugs |
-| `OAuthClient`: PKCE, `iss` checks, single-use sign-ins, tokens never logged | Hand-implemented OAuth details |
-| `Shell.Command` `args:` run with no shell; `env: {X: null}` unsets an inherited secret | Command injection; secrets inherited by child processes |
-| Host and client identity trusted only when declared: `unknownHosts: reject` → 421, forwarded headers off by default | DNS-rebinding checks; a spoofable client IP |
-| Untrusted content handled safely: allowlist HTML sanitizing, `Image.Fit` sizing before decode and stripping metadata, `Blob.Key` refusing `../x` | Regex scrubbing; decompression bombs; path traversal |
-| `Ai.Agent` `approval:` gates tool calls | Hand-built human-in-the-loop |
-| `TELO_EGRESS=public-only` refuses module fetches to private hosts | A hand-written SSRF guard |
+- **Stale-while-revalidate.** `Cache.View` revalidates in the background with single-flight, or synchronously, and serves stale on error.
+- **Degraded mode.** A cache falls back to another store and reports `cache.degraded` / `cache.recovered`.
 
-## Time & scheduling
+### Scheduling
 
-| With Telo | Without it |
-| --- | --- |
-| `Durable.Sleep` / `Durable.Await` wait for days holding nothing; deliveries type-checked | Polling tables and a job queue |
-| `Schedule.Interval` / `Schedule.Cron` with timezone and `when:`; failing ticks re-arm, ticks never overlap, teardown waits for the tick in flight | A cron library; jobs that die, stack up or are abandoned on shutdown |
-| `Watch.Wait` / `Watch.Publish` long polling with capped timeouts | Long-poll plumbing |
+- **Schedules.** `Schedule.Interval` and `Schedule.Cron` with a timezone and a per-tick `when:`; a failing tick re-arms, ticks never overlap, and shutdown waits for the tick in flight.
+- **Long polling.** `Watch.Wait` / `Watch.Publish` with capped timeouts.
 
-## Testing
+### Translation
 
-| With Telo | Without it |
-| --- | --- |
-| Tests are manifests run by the kernel you deploy; `Assert.Equals` is a step | A test framework mocking the runtime |
-| Tests start their own containers — readiness-waited, loopback-only, always removed — unchanged locally, in CI or in a runner session | Compose files; CI service blocks; leaked containers |
-| Tests run the real wiring: `App.Instance` runs the application file, `include:` partials are shared | An importable app factory; fixtures drifting from production |
-| `Assert.Events` matches kernel events as a subsequence or counts them (`times: 0` for "never") | Spies inside the code under test |
-| In-memory stores and `:memory:` SQLite run the production code path | Mocking the store layer |
-| `Benchmark.Suite` fails CI on `p99` thresholds | A load-testing tool wired into the pipeline |
-| `Channel.SendLine` / `Channel.ReadUntil` drive an interactive app with bounded reads | expect-style scripting |
+- **Translated texts.** `I18n.Catalog` holds one language's translations and `Self.t(text, lang, values)` formats a text in the language asked for — falling back from `pl-PL` to `pl` to the source, with numbers and plural cases by the language's CLDR rules and no ambient locale; a text translated twice in one language across a translator's catalogs is refused before the app runs.
+- **Language negotiation.** `I18n.Negotiator` answers the language to reply in from an `Accept-Language` value, by quality and RFC 4647 lookup over the catalog languages and a default, skipping malformed ranges instead of failing the request.
 
-## Packaging & delivery
+### Files and streams
 
-| With Telo | Without it |
-| --- | --- |
-| No install step: `telo run` fetches each import on first use, verified against its pin, and only the parts this machine needs — under `--watch` too, so an import added while editing is fetched on the next reload; an app has no package manifest, dependency directory or lockfile of its own | An install step before every run, and a restart after adding a dependency; a dependency tree and lockfile to maintain |
-| `telo package`: one executable that needs no telo and no network, refusing a payload that would be incomplete; `telo package inspect` | A runtime to install on the target, or an image to build |
-| Runners run a manifest with no image build; watch sessions reload | An image built and pushed per change |
-| `telo run oci://…@<version>#sha256-<pin>` runs a published app, verified first | Pull, unpack, install |
-| One module at incompatible versions in one app is refused (`MODULE_VERSION_CONFLICT`) | Two copies of a library at different versions loaded side by side |
-| `telo upgrade` and import CodeLenses move pins only to versions your runtime can read, re-pin them, and report what they held back | Upgrades past what production can run |
-| `telo install` warms `.telo/`, so the tree boots offline | Dependencies pulled at boot |
+- **Atomic writes.** `Fs.FileWrite` renames into place and `Blob.Put` replaces whole; an over-size write stores nothing.
+- **Streams without buffering.** `Stream.Chunk`, `Stream.Tap` and lazy `Run.Iteration`; multipart bodies arrive as a stream.
+
+### Testing
+
+- **Tests run the real app.** `App.Instance` runs the application file itself, and tests are manifests run by the kernel you deploy.
+- **Containers on demand.** Tests start their own containers — readiness-waited, loopback-only, always removed — unchanged locally, in CI or in a runner session.
+- **Assert on what happened.** `Assert.Events` matches kernel events as a subsequence or counts them (`times: 0` for "never").
+- **No store mocks.** In-memory stores and `:memory:` SQLite run the production code path.
+- **Benchmarks in CI.** `Benchmark.Suite` fails the build on `p99` thresholds.
+- **Interactive apps.** `Channel.SendLine` / `Channel.ReadUntil` drive one step by step, with bounded reads.
+
+### Auth and untrusted input
+
+- **OAuth.** `OAuthClient`: PKCE on, `iss` checked, single-use sign-ins, one refresh per grant at a time, tokens never logged.
+- **Shell commands.** `Shell.Command` `args:` run with no shell; `env: {X: null}` unsets an inherited secret.
+- **Untrusted content.** Allowlist HTML sanitizing, `Image.Fit` sizing before decoding and stripping metadata, `Blob.Key` refusing `../x`.
+
+### AI
+
+- **Human approval.** `Ai.Agent` `approval:` gates tool calls.
+- **Bounded agents.** `maxSteps` caps model calls and `maxToolResultBytes` caps each tool result, with an explicit truncation marker.
+- **Concurrent tool calls.** Run concurrently, results returned in call order.
+- **One error set per provider family.** Every model provider — and every search, OCR, graph and MCP client — reports one closed set of codes, with `retryAfterSeconds`.
+- **Vector dimensions.** Enforced at insert and query.
 
 ## For module authors
 
-| With Telo | Without it |
-| --- | --- |
-| Kind authors state cross-field and referrer rules, checked statically (`RESOURCE_RULE_VIOLATED`, `REFERRER_RULE_VIOLATED`) | Controller guards that fire only at runtime |
-| Templated definitions checked like any manifest, a forwarded value's error reported on the consumer's line | A composite component whose inner wiring fails at request time |
-| The kernel bundles TypeScript controllers and `exports.browser:` entries; `telo publish` uses the same builder | Bundler configs; stale committed bundles |
-| Rust controllers built on load, the kernels that can host a kind derived from its `controllers:`; `native:` files declared once, a miss naming every shipped platform | FFI glue; prebuild loaders; "module not found" on an unexpected platform |
-| A module declares the telo it needs (`requires: telo:`); a consumer on an older runtime gets one `MODULE_REQUIRES_NEWER_RUNTIME`, and ranges are verified at their edges on publish | Consumers blaming a module for version skew; compatibility claims nobody tests |
-| `telo publish`: an OCI artifact at `metadata.version`, annotations, `--dry-run`, JSON outcomes; an unpinned import or changed contents at a published version refused | Release scripts; a version silently changing under consumers |
-| `telo release`: digest-driven bumps propagated with reasons, every version file and `Cargo.lock` written, colliding destinations refused | Hand-decided bumps; a forgotten lockfile; an overwritten artifact |
-| `Assert.Manifest` asserts the exact diagnostics a manifest produces, and can run it to prove both verdicts agree | Shell scripts around the CLI |
-| `telo changed` lists the tests a diff reaches | Hand-written CI path filters |
-| Reproducible layer archives | Builds differing by clock or path |
-| `telo release add` writes changelog fragments; `CHANGELOG_ENTRY_REQUESTED` warns on a changed module with none | Hand-kept CHANGELOG files |
-| A module root's `LICENSE` and upstream notices shipped automatically | Remembering license files in packaging config |
+- **Rules for your kinds.** State cross-field and referrer rules as data, checked before the app runs.
+- **Templated definitions.** Checked like any manifest; an error in a forwarded value is reported on the consumer's line.
+- **Typed node trees.** A kind whose schema is a recursive node tree (`$ref` to a named shape) gets every expression in it typed and evaluated at every depth, a nested `x-telo-context` adding its names to the enclosing one; a condition's schema that can never hold for the value it names (`x-telo-match-for`) is refused before the app runs.
+- **No bundler config.** The kernel bundles TypeScript controllers and `exports.browser:` entries; `telo publish` uses the same builder.
+- **Native controllers.** Rust controllers build on load, the kernels that can host a kind are derived from its `controllers:`, and `native:` files are declared once.
+- **Runtime requirements.** `requires: telo:` gives a consumer on an older runtime one clear "runtime too old" error instead of errors blamed on their manifest, and ranges are verified at their edges on publish.
+- **Publishing.** `telo publish` pushes an OCI artifact at `metadata.version`; an unpinned import or changed contents at a published version are refused.
+- **Releases.** `telo release` decides bumps from payload digests, propagates them with reasons, writes every version file and `Cargo.lock`, and `telo release add` writes changelog fragments.
+- **Diagnostics tests.** `Assert.Manifest` asserts the exact diagnostics a manifest produces, and can run it to prove both verdicts agree.
+- **Test selection.** `telo changed` lists the tests a diff reaches.
+- **Reproducible artifacts.** Layer archives are a pure function of their files; the module's `LICENSE` and upstream notices ship automatically.

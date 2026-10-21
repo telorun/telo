@@ -1,0 +1,12 @@
+kind: Telo.Library
+metadata:
+  name: TextVocabularyLib
+  version: 1.0.0
+  description: Fixture library computing whole text catalogs.
+imports:
+  Kinds: ../../kinds
+---
+kind: Kinds.Catalogs
+metadata:
+  name: pl
+catalogs: !cel "[{'lang': 'pl', 'texts': [{'text': 'Open', 'translation': 'Otwórz'}]}]"

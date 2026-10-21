@@ -1,0 +1,362 @@
+kind: Telo.Application
+metadata:
+  name: ReportConsoleRoutesTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/report-console` and calls every route its screen calls, with
+    the records the page would send: the sign-in check with and without a
+    session, the consent stand-in granting and refusing, connecting and signing
+    out; the Drive and the projects under the collection contract — by kind, by
+    search, by id, a page at a time; generating a billing report, an hours
+    report, an empty one and the refusals; drafting, uploading and reminding.
+    Every route but the sign-in ones answers 401 without a session.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+# A browser with no session. Redirects are read, not followed.
+kind: HttpClient.Client
+metadata: { name: visitor }
+baseUrl: http://127.0.0.1:8142
+followRedirects: false
+---
+kind: HttpClient.Client
+metadata: { name: signedIn }
+baseUrl: http://127.0.0.1:8142
+headers:
+  cookie: report_session=signed-in
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8142
+targets:
+  - !ref app
+steps:
+  # Signing in: the check, the consent stand-in, connecting and signing out.
+  - name: anonymous
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/auth }
+  - name: expired
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/auth }
+    inputs:
+      headers: { cookie: "theme=light; report_signin=expired" }
+  - name: session
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/auth }
+  - name: granted
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/auth/consent }
+  - name: denied
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/auth/consent?outcome=denied" }
+  - name: connect
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/auth/connect, method: POST }
+    inputs:
+      body: {}
+  - name: signOut
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/auth/signout, method: POST }
+    inputs:
+      body: {}
+  - name: account
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/auth/user }
+  - name: verifySignIn
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        anonymous: !cel "steps.anonymous.result.body"
+        expired: !cel "steps.expired.result.body"
+        session: !cel "steps.session.result.body"
+        granted:
+          status: !cel "steps.granted.result.status"
+          location: !cel "steps.granted.result.headers['location']"
+          cookie: !cel "steps.granted.result.headers['set-cookie']"
+        denied:
+          status: !cel "steps.denied.result.status"
+          location: !cel "steps.denied.result.headers['location']"
+          cookie: !cel "steps.denied.result.headers['set-cookie']"
+        connect: !cel "steps.connect.result.body"
+        signOut:
+          status: !cel "steps.signOut.result.status"
+          cookie: !cel "steps.signOut.result.headers['set-cookie']"
+        account: !cel "steps.account.result.body"
+      expected:
+        anonymous: { authorized: false }
+        expired: { authorized: false, failure: expired }
+        session: { authorized: true }
+        granted:
+          status: 302
+          location: /
+          cookie: report_session=signed-in; Path=/; HttpOnly; SameSite=Lax
+        denied:
+          status: 302
+          location: /?signin=denied
+          cookie: report_signin=denied; Path=/; HttpOnly; SameSite=Lax
+        connect: { url: /api/auth/consent }
+        signOut:
+          status: 200
+          cookie: report_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax
+        account: { email: ada.nowak@example.com }
+
+  # Without a session every other route is refused, with a body the page's
+  # failure tree reads.
+  - name: anonymousAccount
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/auth/user }
+  - name: anonymousFiles
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/drive/files }
+  - name: anonymousGenerate
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/generate, method: POST }
+    inputs:
+      body: {}
+  - name: verifyGuarded
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - [ !cel "steps.anonymousAccount.result.status", !cel "steps.anonymousAccount.result.body" ]
+        - [ !cel "steps.anonymousFiles.result.status", !cel "steps.anonymousFiles.result.body" ]
+        - [ !cel "steps.anonymousGenerate.result.status", !cel "steps.anonymousGenerate.result.body" ]
+      expected:
+        - [ 401, &refused { code: UNAUTHORIZED, message: Sign in to Google first. } ]
+        - [ 401, *refused ]
+        - [ 401, *refused ]
+
+  # The Drive: the sheets a page at a time, a search, and the lookup that
+  # labels a remembered sheet and folder by id.
+  - name: sheets
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: "/api/drive/files?kind=spreadsheet&limit=2" }
+  - name: moreSheets
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: "/api/drive/files?kind=spreadsheet&limit=2&cursor=2" }
+  - name: searched
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: "/api/drive/files?kind=folder&name.contains=2026" }
+  - name: labelled
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: "/api/drive/files?id.in=sheet-2026&id.in=folder-archive" }
+  - name: verifyDrive
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        sheets:
+          ids: !cel "steps.sheets.result.body.rows.map(r, r.id)"
+          total: !cel "steps.sheets.result.body.total"
+          next: !cel "steps.sheets.result.body.next"
+        moreSheets:
+          ids: !cel "steps.moreSheets.result.body.rows.map(r, r.id)"
+          next: !cel "steps.moreSheets.result.body.next"
+        searched: !cel "steps.searched.result.body.rows.map(r, r.id)"
+        labelled:
+          rows: !cel "steps.labelled.result.body.rows.map(r, [r.id, r.name, r.kind, r.owner, r.url])"
+          total: !cel "steps.labelled.result.body.total"
+          next: !cel "steps.labelled.result.body.next"
+      expected:
+        sheets: { ids: [ sheet-2026, sheet-2025 ], total: 3, next: "2" }
+        moreSheets: { ids: [ sheet-support ], next: null }
+        searched: [ folder-invoices ]
+        labelled:
+          rows:
+            - [ sheet-2026, Hours 2026, spreadsheet, ada.nowak@example.com, "https://drive.example.com/sheet-2026" ]
+            - [ folder-archive, Archive, folder, jan.kowalski@example.com, "https://drive.example.com/folder-archive" ]
+          total: 2
+          next: null
+
+  # The projects of the chosen sheet, and the lookup that keeps only the
+  # chosen projects the sheet still has.
+  - name: projects
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: "/api/projects?spreadsheetId=sheet-2026" }
+  - name: keptProjects
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: "/api/projects?spreadsheetId=sheet-2026&id.in=atlas&id.in=helpdesk" }
+  - name: verifyProjects
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        projects: !cel "steps.projects.result.body.rows.map(r, [r.id, r.name, 'email' in r ? r.email : ''])"
+        total: !cel "steps.projects.result.body.total"
+        kept: !cel "steps.keptProjects.result.body.rows.map(r, r.id)"
+      expected:
+        projects:
+          - [ atlas, Atlas, billing@atlas.example.com ]
+          - [ borealis, Borealis, "" ]
+          - [ cirrus, Cirrus, finance@cirrus.example.com ]
+          - [ delta, Delta, ap@delta.example.com ]
+        total: 4
+        kept: [ atlas ]
+
+  # A billing report: an amount among the columns makes it one, so the files
+  # carry amounts and what could not be priced is listed. Delta logged no time
+  # in September and is skipped.
+  - name: billing
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/generate, method: POST }
+    inputs:
+      body:
+        spreadsheetId: sheet-2026
+        period: { from: "2026-09-01", to: "2026-09-30" }
+        columns: [ date, person, hours, amount ]
+        hoursFormat: clock
+        merge: true
+        chart: true
+  - name: verifyBilling
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.billing.result.status"
+        body: !cel "steps.billing.result.body"
+      expected:
+        status: 200
+        body:
+          kind: billing
+          period: 2026-09-01 – 2026-09-30
+          projectsInPeriod: 3
+          skipped: 1
+          files:
+            - projectId: atlas
+              project: Atlas
+              email: billing@atlas.example.com
+              hours: "42:30"
+              amount: 8500
+              currency: PLN
+              pdf: https://drive.example.com/reports/sheet-2026/2026-09/atlas.pdf
+            - projectId: borealis
+              project: Borealis
+              hours: "12:15"
+              amount: 2205
+              currency: EUR
+              pdf: https://drive.example.com/reports/sheet-2026/2026-09/borealis.pdf
+            - projectId: cirrus
+              project: Cirrus
+              email: finance@cirrus.example.com
+              hours: "8:00"
+              pdf: https://drive.example.com/reports/sheet-2026/2026-09/cirrus.pdf
+          unpriced: [ { person: Jan Kowalski, hours: 3 } ]
+          unassigned: [ { task: Weekly sync, hours: 2 } ]
+          noCurrency: [ { project: Cirrus } ]
+          combined: https://drive.example.com/reports/sheet-2026/2026-09/all.pdf
+          chart: https://drive.example.com/reports/sheet-2026/2026-09/chart.svg
+          projectsLink: /projects?sheet=sheet-2026
+
+  # An hours report over two chosen projects, one of which logged nothing.
+  - name: hours
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/generate, method: POST }
+    inputs:
+      body:
+        spreadsheetId: sheet-2026
+        period: { from: "2026-09-01", to: "2026-09-30" }
+        projects: [ atlas, delta ]
+        columns: [ person, hours ]
+        hoursFormat: decimal
+  # A month nobody logged time in: the empty state.
+  - name: quiet
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/generate, method: POST }
+    inputs:
+      body:
+        spreadsheetId: sheet-2026
+        period: { from: "2026-07-01", to: "2026-07-31" }
+        columns: [ hours ]
+        hoursFormat: decimal
+  - name: verifyHours
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        hours: !cel "steps.hours.result.body"
+        quiet: !cel "steps.quiet.result.body"
+      expected:
+        hours:
+          kind: hours
+          period: 2026-09-01 – 2026-09-30
+          projectsInPeriod: 1
+          skipped: 1
+          files:
+            - projectId: atlas
+              project: Atlas
+              email: billing@atlas.example.com
+              hours: "42.5"
+              pdf: https://drive.example.com/reports/sheet-2026/2026-09/atlas.pdf
+          unpriced: []
+          unassigned: [ { task: Weekly sync, hours: 2 } ]
+          noCurrency: []
+          projectsLink: /projects?sheet=sheet-2026
+        quiet:
+          kind: hours
+          period: 2026-07-01 – 2026-07-31
+          projectsInPeriod: 0
+          skipped: 4
+          files: []
+          unpriced: []
+          unassigned: []
+          noCurrency: []
+          projectsLink: /projects?sheet=sheet-2026
+
+  # Refusals the failure tree draws: a closed sheet, an unknown one, a period
+  # that ends before it starts and a record the route's schema refuses — the
+  # last two as the request-validation envelope, which marks the field.
+  - name: closed
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/generate, method: POST }
+    inputs:
+      body: { spreadsheetId: sheet-2025, period: { from: "2025-09-01", to: "2025-09-30" }, columns: [ hours ], hoursFormat: decimal }
+  - name: unknown
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/generate, method: POST }
+    inputs:
+      body: { spreadsheetId: sheet-1999, period: { from: "2026-09-01", to: "2026-09-30" }, columns: [ hours ], hoursFormat: decimal }
+  - name: reversed
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/generate, method: POST }
+    inputs:
+      body: { spreadsheetId: sheet-2026, period: { from: "2026-09-30", to: "2026-09-01" }, columns: [ hours ], hoursFormat: decimal }
+  - name: noColumns
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/generate, method: POST }
+    inputs:
+      body: { spreadsheetId: sheet-2026, period: { from: "2026-09-01", to: "2026-09-30" }, columns: [], hoursFormat: decimal }
+  - name: verifyRefusals
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        closed: [ !cel "steps.closed.result.status", !cel "steps.closed.result.body" ]
+        unknown: [ !cel "steps.unknown.result.status", !cel "steps.unknown.result.body" ]
+        reversed: [ !cel "steps.reversed.result.status", !cel "steps.reversed.result.body" ]
+        noColumns: [ !cel "steps.noColumns.result.status", !cel "steps.noColumns.result.body.details.map(d, [d.location, d.path])" ]
+      expected:
+        closed: [ 409, { code: SHEET_CLOSED, message: The timesheet 'Hours 2025' is closed for reporting. } ]
+        unknown: [ 404, { code: SHEET_UNKNOWN, message: There is no timesheet 'sheet-1999'. } ]
+        reversed:
+          - 400
+          - error: ValidationError
+            message: Request validation failed
+            status: 400
+            details: [ { location: body, path: period, message: must not start after it ends } ]
+        noColumns: [ 400, [ [ body, columns ] ] ]
+
+  # A result row's two actions, and the projects table's.
+  - name: draft
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/draft, method: POST }
+    inputs:
+      body: { email: billing@atlas.example.com, pdf: "https://drive.example.com/reports/sheet-2026/2026-09/atlas.pdf", project: Atlas }
+  - name: upload
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/upload, method: POST }
+    inputs:
+      body: { pdf: "https://drive.example.com/reports/sheet-2026/2026-09/atlas.pdf", folder: folder-invoices, from: "2026-09-01", to: "2026-09-30" }
+  - name: uploadNowhere
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/upload, method: POST }
+    inputs:
+      body: { pdf: "https://drive.example.com/reports/sheet-2026/2026-09/atlas.pdf", folder: sheet-2026, from: "2026-09-01", to: "2026-09-30" }
+  - name: remind
+    invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/projects/remind, method: POST }
+    inputs:
+      body: { projectId: atlas, email: billing@atlas.example.com, sheet: sheet-2026 }
+  - name: verifyRowActions
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        draft: [ !cel "steps.draft.result.status", !cel "steps.draft.result.body" ]
+        upload: [ !cel "steps.upload.result.status", !cel "steps.upload.result.body" ]
+        uploadNowhere: [ !cel "steps.uploadNowhere.result.status", !cel "steps.uploadNowhere.result.body" ]
+        remind: [ !cel "steps.remind.result.status", !cel "steps.remind.result.body" ]
+      expected:
+        draft:
+          - 201
+          - url: https://mail.example.com/drafts/new?to=billing%40atlas.example.com&attach=https%3A%2F%2Fdrive.example.com%2Freports%2Fsheet-2026%2F2026-09%2Fatlas.pdf
+        upload:
+          - 201
+          - link: https://drive.example.com/folder-invoices/2026-09-01_2026-09-30/atlas.pdf
+            target: Invoices 2026 / 2026-09-01 – 2026-09-30
+        uploadNowhere: [ 404, { code: FOLDER_UNKNOWN, message: There is no Drive folder 'sheet-2026'. } ]
+        remind: [ 200, { sentTo: billing@atlas.example.com } ]

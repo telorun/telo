@@ -41,10 +41,12 @@ An application then places `{ type: composite, ref: { kind: Banners.Banner, head
 ## For a renderer's controller: `@telorun/ui`
 
 A module that imports this one can import its code entry, `@telorun/ui`, from
-its own controller. Its surface is one function and the two shapes it speaks:
+its own controller. Among what it exports:
 
 | Export | |
 | --- | --- |
+| `SpecTranslator` | `new SpecTranslator({ root, resolve }, translate)` over the registered `Ui.SpecNode` schema and a lookup of the shapes it names: `.node(node)` returns a provided node with every text record replaced by what `translate(record)` returns — found by following the schema, a `{ text, values }` text flattened to the translation with `values` beside it, a word reference left as it is. See [Texts and translation](texts.md#what-a-renderer-receives). |
+| `isWords(instance)` / `Words` (type) | Recognises a `Ui.Words` resource a renderer holds; its `provide()` answers `Words`, every word id to its text record. |
 | `entryAssets(entry)` | Turns a built browser entry — what `ctx.resolveBrowserEntry` / `ctx.resolveControllerBrowserEntry` return — into `{ module, assets }`: the entry file and every file built beside it as `assets`, and the entry's own address as `module`. |
 | `AssetFile` (type) | One file of `assets`: `{ digest, name, file, mediaType }`, as in the table above. |
 | `AssetRef` (type) | An address, `{ digest, name }`. |

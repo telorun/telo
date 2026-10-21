@@ -9,7 +9,8 @@ targets:
   - !ref verifyCatches
 ---
 # A throw that escapes the whole projection is mapped to a fallback result by
-# the kind-level `catches`; an unmatched throw would propagate (fail-fast).
+# the kind-level `catches`; an unmatched throw would propagate (fail-fast). The
+# fallback is the projection's result, so it is an array like any other.
 kind: Run.Projection
 metadata:
   name: mightFail
@@ -40,8 +41,8 @@ outputs:
 catches:
   - when: !cel "error.code == 'BAD_ITEM'"
     value:
-      fallback: true
-      failedWith: !cel "error.code"
+      - fallback: true
+        failedWith: !cel "error.code"
 ---
 kind: Run.Sequence
 metadata:
@@ -51,12 +52,8 @@ steps:
     invoke: !ref mightFail
   - name: check
     inputs:
-      result: !cel "steps.project.result"
+      actual: !cel "steps.project.result"
+      expected:
+        - { fallback: true, failedWith: BAD_ITEM }
     invoke:
-      kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            type: object
-            const: { fallback: true, failedWith: BAD_ITEM }
+      kind: Assert.Equals

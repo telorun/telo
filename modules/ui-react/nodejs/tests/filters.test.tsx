@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
-import { dialogSurface, filterField, filtersNode, opener, tableNode, todos } from "./spec-nodes.js";
+import { dialogSurface, filterField, filtersNode, opener, tableNode, todos, todoSchema } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 beforeEach(() => {
@@ -50,7 +50,7 @@ const position = () => (window.history.state as { teloPosition: number }).teloPo
 const done = (more: Record<string, unknown> = {}) => filterField("isDone", "eq", more);
 const status = (more: Record<string, unknown> = {}) => filterField("status", "in", more);
 const task = (more: Record<string, unknown> = {}) => filterField("text", "contains", more);
-const kept = (state: Record<string, unknown>) => ({ state: { key: "todos", address: false, store: { type: "memory" }, ...state } });
+const kept = (state: Record<string, unknown>) => ({ state: { key: "todos", address: false, store: { type: "memory" }, fields: Object.keys(todoSchema.properties), ...state } });
 const panel = (name: string) => ({ type: "panel", side: "end", size: "medium", dismiss: { escape: true, closeButton: true }, address: { name } });
 const overlay = (surface: Record<string, unknown> = {}) => ({ type: "overlay", surface: { ...dialogSurface, ...surface } });
 const titles = (r: Rendered) => r.parts("surface-title").map((title) => title.textContent);
@@ -509,7 +509,7 @@ describe("a filter bar's state", () => {
     ];
     expect(drawn()).toEqual(["", "", "unchecked", null]);
     rendered.unmount();
-    rendered = await show({ state: { key: "kept", address: false, store: { type: "session" } }, fields });
+    rendered = await show({ state: { key: "kept", address: false, store: { type: "session" }, fields: ["isDone"] }, fields });
     expect([...drawn(), stored(sessionStorage)]).toEqual(["", "", "unchecked", null, { "telo.ui:/:f:kept": { v: 1, values: {}, open: false } }]);
   });
 

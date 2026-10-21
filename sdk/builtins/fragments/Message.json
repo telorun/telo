@@ -1,0 +1,62 @@
+{
+  "title": "Message",
+  "description": "Text shown to a person: a pattern with `{$name}` placeholders and the escapes `\\{`, `\\}`, `\\\\`, or a plural selection `{ plural: <name>, cases: { <category> | =<integer>: Message } }` whose `other` case is required.",
+  "anyOf": [
+    {
+      "type": "string"
+    },
+    {
+      "type": "object",
+      "required": [
+        "plural",
+        "cases"
+      ],
+      "properties": {
+        "plural": {
+          "description": "The name of the number the selection reads, bound like a placeholder.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "not": {
+            "enum": [
+              "as",
+              "break",
+              "const",
+              "continue",
+              "else",
+              "false",
+              "for",
+              "function",
+              "if",
+              "import",
+              "in",
+              "let",
+              "loop",
+              "namespace",
+              "null",
+              "package",
+              "return",
+              "true",
+              "var",
+              "void",
+              "while"
+            ]
+          }
+        },
+        "cases": {
+          "description": "A Message per CLDR plural category (`zero`, `one`, `two`, `few`, `many`, `other`) or exact value (`=0`); `=N` cases are matched first.",
+          "type": "object",
+          "required": [
+            "other"
+          ],
+          "propertyNames": {
+            "pattern": "^(zero|one|two|few|many|other|=(0|-?[1-9][0-9]*))$"
+          },
+          "additionalProperties": {
+            "$ref": "telo://manifest#/$defs/Message"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

@@ -85,6 +85,7 @@ describe("a native function", () => {
       () => ({ validate: () => {} }),
       () => undefined,
       { error: (_message: string, _attributes: unknown, options: { error: unknown }) => reported.push(options.error) } as unknown as Logger,
+      true,
     );
 
     expect(() => (instance as unknown as { call: (a: object) => unknown }).call({})).toThrowError(

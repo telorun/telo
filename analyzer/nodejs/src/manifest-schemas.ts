@@ -31,7 +31,7 @@
  * `$ref`-ing it. Browser-safe: no Node built-ins.
  */
 
-import { BUILTIN_FRAGMENT_FILES } from "./builtin-entries/index.js";
+import { BUILTIN_DOCUMENT_FILES, BUILTIN_FRAGMENT_FILES } from "./builtin-entries/index.js";
 import { refuseRosterMarkers } from "./builtin-entry-markers.js";
 import { SCHEMA_REGION_KEYS } from "./schema-region.js";
 
@@ -79,6 +79,87 @@ function hoistedDefKey(name: string): string {
  *  the kind's own schema. */
 export function isHoistedFragmentDefKey(key: string): boolean {
   return key.startsWith(hoistedDefKey(""));
+}
+
+/** The keywords whose value is one subschema, a list of them, or a map of them —
+ *  what {@link liftFragmentDefs} descends. `$defs` / `definitions` are not among
+ *  them: a reserved definition is lifted from a slot's root, never from inside
+ *  another definition. */
+const LIFT_SINGLE = [
+  "items",
+  "additionalItems",
+  "additionalProperties",
+  "contains",
+  "propertyNames",
+  "not",
+  "if",
+  "then",
+  "else",
+] as const;
+const LIFT_LISTS = ["anyOf", "oneOf", "allOf", "items"] as const;
+const LIFT_MAPS = ["properties", "patternProperties", "dependencies"] as const;
+
+/**
+ * A schema COMPOSED over slot schemas — an argument record over its parameters, a
+ * nullable union over a slot, a need type's fields as one object — with every
+ * reserved fragment definition a slot carries at its own root moved to the
+ * composed root.
+ *
+ * A slot is the root its recursive fragments were hoisted into (a parameter's
+ * `schema`, a `status:` block), so its `#/$defs/telo:<Name>` pointers resolve
+ * against IT; nested under a composition, they would resolve against the
+ * composition instead and find nothing. The reserved namespace is what makes the
+ * merge safe: two slots holding `telo:Message` hold the same fragment. Every
+ * composer goes through this one function. Copy-on-write: the slots are left as
+ * they are, and a schema holding nothing to lift is returned by identity.
+ */
+export function liftFragmentDefs<T extends Record<string, unknown>>(composed: T): T {
+  const lifted: Record<string, unknown> = {};
+  const visit = (node: unknown, isRoot: boolean): unknown => {
+    if (!isPlainObject(node)) return node;
+    let out: Record<string, unknown> = node;
+    const own = node.$defs;
+    if (!isRoot && isPlainObject(own) && Object.keys(own).some(isHoistedFragmentDefKey)) {
+      const kept: Record<string, unknown> = {};
+      for (const [key, body] of Object.entries(own)) {
+        if (isHoistedFragmentDefKey(key)) lifted[key] ??= body;
+        else kept[key] = body;
+      }
+      out = { ...node };
+      if (Object.keys(kept).length > 0) out.$defs = kept;
+      else delete out.$defs;
+    }
+    const replace = (key: string, value: unknown) => {
+      if (value === out[key]) return;
+      if (out === node) out = { ...node };
+      out[key] = value;
+    };
+    for (const key of LIFT_SINGLE) {
+      if (isPlainObject(out[key])) replace(key, visit(out[key], false));
+    }
+    for (const key of LIFT_LISTS) {
+      const list = out[key];
+      if (!Array.isArray(list)) continue;
+      const next = list.map((child) => visit(child, false));
+      if (next.some((child, index) => child !== list[index])) replace(key, next);
+    }
+    for (const key of LIFT_MAPS) {
+      const map = out[key];
+      if (!isPlainObject(map)) continue;
+      let changed = false;
+      const next: Record<string, unknown> = {};
+      for (const [name, child] of Object.entries(map)) {
+        next[name] = visit(child, false);
+        if (next[name] !== child) changed = true;
+      }
+      if (changed) replace(key, next);
+    }
+    return out;
+  };
+  const result = visit(composed, true) as Record<string, unknown>;
+  if (Object.keys(lifted).length === 0) return composed;
+  const rootDefs = isPlainObject(result.$defs) ? result.$defs : {};
+  return { ...result, $defs: { ...lifted, ...rootDefs } } as unknown as T;
 }
 
 /** Recursively freeze, so the fragment set cannot be edited through any of the
@@ -222,7 +303,7 @@ function expandedFragment(name: string): ExpandedTemplate {
   if (!template) {
     const body = structuredClone(requireFragment(name)) as Record<string, unknown>;
     const hoists = new Set<string>();
-    walkFragments(body, new Set(), { hoist: (fragment) => hoists.add(fragment), depth: 1 });
+    walkFragments(body, new Set(), { hoist: (fragment) => hoists.add(fragment) });
     template = { body, hoists: [...hoists] };
     expandedFragments.set(name, template);
   }
@@ -274,34 +355,160 @@ export function manifestFragment(name: string): Record<string, unknown> {
 export function expandManifestFragments(node: unknown, seen = new Set<object>()): void {
   if (!node || typeof node !== "object") return;
   const target = node as Record<string, unknown>;
-  walkFragments(node, seen, { hoist: (name) => hoistFragmentDef(target, name), depth: 0 });
+  const kind = Array.isArray(node) ? undefined : target.kind;
+  walkFragments(node, seen, {
+    hoist: (name) => hoistFragmentDef(target, name),
+    path: [],
+    roots: rootPatternsOf(typeof kind === "string" ? kind : undefined),
+  });
 }
 
-/** Where a recursive fragment the walk localizes is hoisted, and how deep the
- *  walk is — the two facts {@link walkFragments} carries down. */
+/** One segment of a schema root's position: a literal key, any list index
+ *  (`[*]`), or any key of a map (`*`). */
+type RootSegment = string;
+
+/** Where a document holds author-written schema, per document kind. */
+type RootPatterns = readonly (readonly RootSegment[])[];
+
+/**
+ * The positions at which each BUILT-IN document kind holds author-written schema
+ * — a position whose declared schema is a schema fragment (`JsonSchema7` /
+ * `KindSchema`), directly or as a union branch, reached through the kind's
+ * properties, its lists' items, its maps' values and the fragments it names.
+ * Today: a definition's and an abstract's `schema`, `status`, `params[*].schema`
+ * and `returns.schema`; a function's `params[*].schema` and `returns.schema`; a
+ * named shape's `schema`; a need type's `parameters` and every `fields` value.
+ *
+ * DERIVED once from the entries' data, so a slot a built-in gains becomes a root
+ * with no change here.
+ */
+const DOCUMENT_ROOTS: ReadonlyMap<string, RootPatterns> = (() => {
+  const out = new Map<string, RootPatterns>();
+  for (const [, data] of BUILTIN_DOCUMENT_FILES) {
+    if (!isPlainObject(data) || data.kind !== "Telo.Definition" || !isPlainObject(data.schema)) continue;
+    const name = isPlainObject(data.metadata) ? data.metadata.name : undefined;
+    if (typeof name !== "string") continue;
+    const patterns: RootSegment[][] = [];
+    collectSchemaPositions(data.schema, [], new Set(), patterns);
+    if (patterns.length > 0) out.set(`Telo.${name}`, patterns);
+  }
+  return out;
+})();
+
+function fragmentNameOf(node: unknown): string | undefined {
+  if (!isPlainObject(node) || typeof node.$ref !== "string") return undefined;
+  return node.$ref.startsWith(FRAGMENT_PREFIX) ? node.$ref.slice(FRAGMENT_PREFIX.length) : undefined;
+}
+
+function declaresSchemaFragment(node: unknown): boolean {
+  if (isSchemaFragment(fragmentNameOf(node))) return true;
+  if (!isPlainObject(node)) return false;
+  return (["anyOf", "oneOf"] as const).some(
+    (key) =>
+      Array.isArray(node[key]) &&
+      (node[key] as unknown[]).some((branch) => declaresSchemaFragment(branch)),
+  );
+}
+
+function collectSchemaPositions(
+  node: unknown,
+  path: readonly RootSegment[],
+  entered: ReadonlySet<string>,
+  out: RootSegment[][],
+): void {
+  if (!isPlainObject(node)) return;
+  if (path.length > 0 && declaresSchemaFragment(node)) {
+    out.push([...path]);
+    return;
+  }
+  const fragment = fragmentNameOf(node);
+  if (fragment && !entered.has(fragment)) {
+    const body = fragmentBody(fragment);
+    if (body) collectSchemaPositions(body, path, new Set([...entered, fragment]), out);
+  }
+  for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+    if (Array.isArray(node[key])) {
+      for (const branch of node[key] as unknown[]) collectSchemaPositions(branch, path, entered, out);
+    }
+  }
+  if (isPlainObject(node.properties)) {
+    for (const [key, child] of Object.entries(node.properties)) {
+      collectSchemaPositions(child, [...path, key], entered, out);
+    }
+  }
+  if (isPlainObject(node.items)) collectSchemaPositions(node.items, [...path, "[*]"], entered, out);
+  if (isPlainObject(node.additionalProperties)) {
+    collectSchemaPositions(node.additionalProperties, [...path, "*"], entered, out);
+  }
+}
+
+/** The schema roots of a document of `kind`: every top-level schema-valued key,
+ *  plus the positions its built-in kind derives. */
+function rootPatternsOf(kind: string | undefined): RootPatterns {
+  const derived = kind ? DOCUMENT_ROOTS.get(kind) ?? [] : [];
+  return [...SCHEMA_REGION_KEYS.map((key) => [key]), ...derived];
+}
+
+/** Where a recursive fragment the walk localizes is hoisted, where the walk is,
+ *  and which positions of the document open a schema root. */
 interface ExpandContext {
   /** Hoist a localized fragment into the nearest enclosing node AJV will
-   *  compile as a schema: a document's top-level schema-valued key, else the
-   *  node expansion started from — or, while a template is expanded, record it
-   *  for whoever embeds the template. */
+   *  compile as a schema: a schema root of the document, else the node expansion
+   *  started from — or, while a template is expanded, record it for whoever
+   *  embeds the template. */
   readonly hoist: (name: string) => void;
-  readonly depth: number;
+  /** The position below the document; absent inside a template or a root. */
+  readonly path?: readonly (string | number)[];
+  readonly roots?: RootPatterns;
 }
 
 /**
- * Descend one key. A TOP-LEVEL schema-valued key (`schema:`, `inputType:`,
- * `status:`, …) opens a new hoist target, because that node is what a validator
- * compiles: a `#/$defs/…` pointer written below it resolves against IT, not
- * against the document. Depth-anchored for the reason migrations anchor `under`
- * at top-level keys — a slot DESCRIBING a field named `schema` is not itself a
- * schema region, and treating it as one would scatter `$defs` blocks into the
- * middle of a kind's property map.
+ * True when the value at `key` below `ctx` is a SCHEMA ROOT: the object a
+ * validator compiles, so a `#/$defs/…` pointer written below it resolves against
+ * IT, not against the document. Position-anchored for the reason migrations anchor
+ * `under` at top-level keys — a slot DESCRIBING a field named `schema` is not
+ * itself a schema root, and treating it as one would scatter `$defs` blocks into
+ * the middle of a kind's property map.
  */
-function childContext(ctx: ExpandContext, key: string, value: unknown): ExpandContext {
-  if (ctx.depth === 0 && SCHEMA_REGION_KEYS.includes(key) && isPlainObject(value)) {
-    return { hoist: (name) => hoistFragmentDef(value, name), depth: 1 };
+function isRootPosition(ctx: ExpandContext, key: string | number): boolean {
+  if (!ctx.path || !ctx.roots) return false;
+  const position = [...ctx.path, key];
+  return ctx.roots.some(
+    (pattern) =>
+      pattern.length === position.length &&
+      pattern.every((segment, index) => {
+        const at = position[index];
+        if (segment === "[*]") return typeof at === "number";
+        if (segment === "*") return typeof at === "string";
+        return segment === at;
+      }),
+  );
+}
+
+function childContext(ctx: ExpandContext, key: string | number): ExpandContext {
+  return { hoist: ctx.hoist, ...(ctx.path ? { path: [...ctx.path, key], roots: ctx.roots } : {}) };
+}
+
+/** A schema root, its fragments expanded: one referencing a fragment is the
+ *  fragment expanded in place (or, for a recursive one, its localized reference),
+ *  and every recursive fragment it holds is hoisted into it. */
+function expandRoot(value: Record<string, unknown>, seen: Set<object>): Record<string, unknown> {
+  const rootCtx = (target: Record<string, unknown>): ExpandContext => ({
+    hoist: (name) => hoistFragmentDef(target, name),
+  });
+  const name = fragmentNameOf(value);
+  if (name && RECURSIVE_FRAGMENTS.has(name)) {
+    const localized = { ...value, $ref: `#/$defs/${hoistedDefKey(name)}`, [X_TELO_FRAGMENT]: name };
+    hoistFragmentDef(localized, name);
+    return localized;
   }
-  return { hoist: ctx.hoist, depth: ctx.depth + 1 };
+  const expanded = name && fragmentBody(name) ? fragmentFor(value, { hoist: () => {} }, true) : undefined;
+  if (expanded) {
+    for (const hoisted of expanded.hoists) hoistFragmentDef(expanded.body, hoisted);
+    return expanded.body;
+  }
+  walkFragments(value, seen, rootCtx(value));
+  return value;
 }
 
 function walkFragments(node: unknown, seen: Set<object>, ctx: ExpandContext): void {
@@ -309,29 +516,22 @@ function walkFragments(node: unknown, seen: Set<object>, ctx: ExpandContext): vo
   if (seen.has(node as object)) return;
   seen.add(node as object);
 
-  if (Array.isArray(node)) {
-    for (let i = 0; i < node.length; i++) {
-      const localized = localizeRecursiveFragment(node[i], ctx);
-      if (localized) node[i] = localized;
-      else {
-        const fragment = fragmentFor(node[i], ctx);
-        if (fragment) node[i] = fragment;
-        else walkFragments(node[i], seen, { hoist: ctx.hoist, depth: ctx.depth + 1 });
-      }
+  const container = node as Record<string | number, unknown>;
+  const keys: (string | number)[] = Array.isArray(node) ? node.map((_, index) => index) : Object.keys(node);
+  for (const key of keys) {
+    const value = container[key];
+    if (isPlainObject(value) && isRootPosition(ctx, key)) {
+      container[key] = expandRoot(value, seen);
+      continue;
     }
-    return;
-  }
-
-  const obj = node as Record<string, unknown>;
-  for (const [key, value] of Object.entries(obj)) {
     const localized = localizeRecursiveFragment(value, ctx);
     if (localized) {
-      obj[key] = localized;
+      container[key] = localized;
       continue;
     }
     const fragment = fragmentFor(value, ctx);
-    if (fragment) obj[key] = fragment;
-    else walkFragments(value, seen, childContext(ctx, key, value));
+    if (fragment) container[key] = fragment;
+    else walkFragments(value, seen, childContext(ctx, key));
   }
 }
 
@@ -425,7 +625,17 @@ export function withSchemaFragments<T extends Record<string, unknown>>(schema: T
  * rewrite schemas in place, and a shared object would let one manifest's rewrite
  * reach every other manifest that pointed at the same shape.
  */
-function fragmentFor(value: unknown, ctx: ExpandContext): Record<string, unknown> | undefined {
+function fragmentFor(value: unknown, ctx: ExpandContext): Record<string, unknown> | undefined;
+function fragmentFor(
+  value: unknown,
+  ctx: ExpandContext,
+  detached: true,
+): { body: Record<string, unknown>; hoists: readonly string[] } | undefined;
+function fragmentFor(
+  value: unknown,
+  ctx: ExpandContext,
+  detached?: true,
+): Record<string, unknown> | { body: Record<string, unknown>; hoists: readonly string[] } | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const node = value as Record<string, unknown>;
   const ref = node.$ref;
@@ -435,9 +645,10 @@ function fragmentFor(value: unknown, ctx: ExpandContext): Record<string, unknown
 
   // A fragment may reference another (InvokeStep holds a RetryPolicy); the copy
   // arrives expanded, so one pass leaves no reference behind. What it localized
-  // is hoisted where this node's own schema keeps its `$defs`.
+  // is hoisted where this node's own schema keeps its `$defs` — or, when the node
+  // is itself a schema root, into the expanded copy, which the caller does.
   const { body: expanded, hoists } = expandedFragment(name);
-  for (const hoisted of hoists) ctx.hoist(hoisted);
+  if (!detached) for (const hoisted of hoists) ctx.hoist(hoisted);
 
   for (const [key, own] of Object.entries(node)) {
     if (key === "$ref") continue;
@@ -452,7 +663,7 @@ function fragmentFor(value: unknown, ctx: ExpandContext): Record<string, unknown
     expanded[key] = own;
   }
   expanded[X_TELO_FRAGMENT] = name;
-  return expanded;
+  return detached ? { body: expanded, hoists } : expanded;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

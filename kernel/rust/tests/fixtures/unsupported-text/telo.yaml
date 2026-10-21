@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedText
+  version: 1.0.0
+  description: |
+    Declares a kind whose field is a Text. This kernel builds no text records,
+    so creating a resource of the kind must fail naming its kind rather than hand
+    the controller a raw message.
+---
+kind: Telo.Definition
+metadata:
+  name: Label
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/unbuilt-label?local_path=./unbuilt#Label
+schema:
+  type: object
+  properties:
+    text: { $ref: "telo://manifest#/$defs/Text" }
+---
+kind: Self.Label
+metadata:
+  name: greeting
+text: Hello

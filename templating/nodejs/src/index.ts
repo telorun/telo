@@ -52,6 +52,13 @@ export {
   type ModuleCallTypeResolver,
 } from "./cel/module-call.js";
 export { walkCelExpressions } from "./cel/walk.js";
+export {
+  literalValueOf,
+  writtenCalls,
+  type LiteralValue,
+  type WrittenArgument,
+  type WrittenCall,
+} from "./cel/literal-argument.js";
 
 export { celEngine } from "./engines/cel.js";
 export {

@@ -1,0 +1,15 @@
+# A text an expression in a per-call field computes: the controller evaluates it
+# when it is invoked, and the kernel judges what it produced there.
+kind: Telo.Application
+metadata:
+  name: LateRuntimeFieldApp
+  version: 1.0.0
+imports:
+  Kinds: ../evaluated
+targets:
+  - invoke: !ref notice
+---
+kind: Kinds.Notice
+metadata:
+  name: notice
+title: !cel "'Hello {' + 'name}'"

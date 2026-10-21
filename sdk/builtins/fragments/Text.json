@@ -1,0 +1,26 @@
+{
+  "title": "Text",
+  "description": "Text shown to a person: a Message, or `{ text: Message, context }` where `context` tells the same words used elsewhere apart.",
+  "anyOf": [
+    {
+      "$ref": "telo://manifest#/$defs/Message"
+    },
+    {
+      "type": "object",
+      "required": [
+        "text",
+        "context"
+      ],
+      "properties": {
+        "text": {
+          "$ref": "telo://manifest#/$defs/Message"
+        },
+        "context": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+# `{ $n }` and `{$n}` are one placeholder: one text, translated twice.
+kind: Telo.Library
+metadata:
+  name: CatalogSetSpacing
+  version: 1.0.0
+  description: Fixture library whose catalog set translates one text twice.
+imports:
+  Kinds: ../../kinds
+---
+kind: Kinds.Catalog
+metadata: { name: spaced }
+lang: pl
+texts:
+  - { text: "{ $n } files", translation: "{$n} plików" }
+---
+kind: Kinds.Set
+metadata: { name: set }
+own:
+  lang: pl
+  texts:
+    - { text: "{$n} files", translation: "{$n} pliki" }
+catalogs: [!ref spaced]

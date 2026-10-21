@@ -329,4 +329,8 @@ steps:
         tables:
           - [/api/requests, 2]
           - [/api/requests, 0]
-        form: [Requester, Item, Amount (cents), Cost center]
+        form:
+          - { lang: und, message: [Requester] }
+          - { lang: und, message: [Item] }
+          - { lang: und, message: [Amount (cents)] }
+          - { lang: und, message: [Cost center] }

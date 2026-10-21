@@ -1,0 +1,66 @@
+# Two functions holding labels as data. `top` holds `base`, so `readTop`'s view
+# of it holds `base`'s view — the same object `readBase` holds.
+kind: Telo.Application
+metadata:
+  name: CallableDataViews
+  version: 1.0.0
+lang: en
+---
+kind: Telo.Definition
+metadata:
+  name: Label
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    title: { type: string }
+    text: { $ref: "telo://manifest#/$defs/Text" }
+    pick:
+      type: string
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          row: { type: object }
+    peer:
+      x-telo-ref: { kind: Self.Label, use: dependency }
+controllers:
+  - pkg:telo/local/js?path=./functions.mjs#Label
+---
+kind: Telo.Definition
+metadata:
+  name: Read
+capability: Telo.Callable
+schema:
+  type: object
+  properties:
+    source:
+      x-telo-ref: { kind: Self.Label, use: dependency }
+params: []
+returns:
+  schema: { type: object }
+controllers:
+  - pkg:telo/local/js?path=./functions.mjs#Read
+---
+kind: Self.Label
+metadata:
+  name: base
+text: Hello
+pick: !cel "row.name"
+---
+kind: Self.Label
+metadata:
+  name: top
+title: !cel "'T' + module.version"
+text: { text: Top, context: heading }
+peer: !ref base
+---
+kind: Self.Read
+metadata:
+  name: readTop
+source: !ref top
+---
+kind: Self.Read
+metadata:
+  name: readBase
+source: !ref base

@@ -153,6 +153,24 @@ targets:
   - !ref callableAbstractsAtRuntime
   - !ref callableSignaturelessSlotAtRuntime
   - !ref callableUnresolvedShapeAtRuntime
+  - !ref callableDataKinds
+  - !ref callableData
+  - !ref callableDataRuns
+  - !ref callableDataRefused
+  - !ref callableDataExpressionAtRuntime
+  - !ref callableDataScopeAtRuntime
+  - !ref callableDataNeedAtRuntime
+  - !ref callableDataNeedKindAtRuntime
+  - !ref callableDataInput
+  - !ref callableDataInputAtImport
+  - !ref callableDataTemplate
+  - !ref callableDataTemplateApp
+  - !ref callableDataTemplateRuns
+  - !ref callableDataTemplateRefused
+  - !ref callableDataTemplateModuleAtRuntime
+  - !ref callableDataTemplateLateAtRuntime
+  - !ref callableDataTemplateForward
+  - !ref callableDataTemplateForwardAtRuntime
   - !ref callableStepInvoke
   - !ref callableStepInvokeAtRuntime
   - !ref abstractExtendsUnresolved
@@ -261,6 +279,10 @@ targets:
   - !ref valueSchemaContextAtRuntime
   - !ref valueSchemaFromInvalid
   - !ref valueSchemaFromInvalidAtRuntime
+  - !ref valueSchemaMemberKeyInvalid
+  - !ref valueSchemaMemberKeyInvalidAtRuntime
+  - !ref valueSchemaMemberPointerInvalid
+  - !ref valueSchemaMemberPointerInvalidAtRuntime
   - !ref valueSchemaFromShape
   - !ref valueSchemaFromShapeAtRuntime
   - !ref valueSchemaOwnDefsLiteralRefused
@@ -377,6 +399,81 @@ targets:
   - !ref reservedLibraryName
   - !ref reservedLibraryNameAtImport
   - !ref reservedImportAlias
+  - !ref textFieldSyntax
+  - !ref textFieldSyntaxAtRuntime
+  - !ref textArgumentSyntax
+  - !ref textArgumentSyntaxAtRuntime
+  - !ref textArgumentCategory
+  - !ref textArgumentCategoryAtRuntime
+  - !ref textArgumentNoLang
+  - !ref textArgumentNoLangAtRuntime
+  - !ref textArgumentComputed
+  - !ref textArgumentComputedAtRuntime
+  - !ref textValuesUnbound
+  - !ref textValuesUnboundAtRuntime
+  - !ref textValuesUnsupported
+  - !ref textValuesUnsupportedAtRuntime
+  - !ref textValuesForInvalid
+  - !ref textValuesForInvalidAtRuntime
+  - !ref textContextEmpty
+  - !ref textContextEmptyAtRuntime
+  - !ref textCatalogComputed
+  - !ref textCatalogComputedAtRuntime
+  - !ref textCatalogPlaceholder
+  - !ref textCatalogPlaceholderAtRuntime
+  - !ref textCatalogDuplicate
+  - !ref textCatalogDuplicateAtRuntime
+  - !ref textCatalogsComputed
+  - !ref textCatalogsComputedAtRuntime
+  - !ref textComputedAtRuntime
+  - !ref textValuesComputedAtRuntime
+  - !ref textParameterRuns
+  - !ref textLateRuntimeFieldAtRuntime
+  - !ref textLateRegionAtRuntime
+  - !ref textAccessorValuesRun
+  - !ref textSlotAccessor
+  - !ref textSlotAccessorAtRuntime
+  - !ref boundTextDelivered
+  - !ref boundTextMissingValues
+  - !ref boundTextPluralNoLang
+  - !ref textValuesUndeclared
+  - !ref textValuesUndeclaredAtRuntime
+  - !ref textValuesDeclaredComputedAtRuntime
+  - !ref textValuesSelectorString
+  - !ref textValuesSelectorStringAtRuntime
+  - !ref textValuesInvalid
+  - !ref textValuesInvalidAtRuntime
+  - !ref textValuesClean
+  - !ref textCatalogSetClean
+  - !ref textCatalogSetNested
+  - !ref textCatalogSetNestedAtRuntime
+  - !ref textCatalogSetSpacing
+  - !ref textCatalogSetSpacingAtRuntime
+  - !ref textCatalogSetCase
+  - !ref textCatalogSetCaseAtRuntime
+  - !ref textCatalogSetInvalid
+  - !ref textCatalogSetInvalidAtImport
+  - !ref textCatalogSetInput
+  - !ref textCatalogSetInputAtImport
+  - !ref textCatalogSetBody
+  - !ref textCatalogSetBodyAtRuntime
+  - !ref textCatalogSetForwardLibrary
+  - !ref textCatalogSetForwarded
+  - !ref textCatalogSetForwardedAtRuntime
+  - !ref matchUnsatisfiable
+  - !ref matchUnsatisfiableAtRun
+  - !ref matchUnsatisfiableInDependency
+  - !ref contextFillCycle
+  - !ref contextFillCycleAtRun
+  - !ref contextFillCycleInDependency
+  - !ref accessorOnlyEvaluated
+  - !ref accessorOnlyEvaluatedAtRuntime
+  - !ref accessorRootRuntimeOnly
+  - !ref accessorRootRuntimeOnlyAtRuntime
+  - !ref compileOnlyReadPerCall
+  - !ref compileOnlyReadPerCallAtRuntime
+  - !ref mapRegionUnknownField
+  - !ref mapRegionUnknownFieldAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -1239,6 +1336,173 @@ metadata:
 source: ./__fixtures__/check-run-agreement/callable-kinds/telo.yaml
 expect:
   runFails: "CONTRACT_TYPE_NOT_FOUND at returns.schema.items"
+---
+# A native function's `use: dependency` slot holds any kind but a need type, as
+# data: the kinds are clean where they are written, including a deterministic
+# function holding a function abstract that does not require determinism there,
+# since a data slot is never called…
+kind: Assert.Manifest
+metadata:
+  name: callableDataKinds
+source: ./__fixtures__/check-run-agreement/callable-data/kinds/telo.yaml
+expect: {}
+---
+# …a function holding a provider is clean where it is wired…
+kind: Assert.Manifest
+metadata:
+  name: callableData
+source: ./__fixtures__/check-run-agreement/callable-data/telo.yaml
+expect: {}
+---
+# …and receives the provider's configuration at creation, as its controller
+# received it, the provider it references replaced by its own, frozen.
+kind: Assert.Manifest
+metadata:
+  name: callableDataRuns
+source: ./__fixtures__/check-run-agreement/callable-data/telo.yaml
+expect:
+  runs: true
+---
+# Referents whose configuration is not data — an expression evaluated per call,
+# a scope, a need reached through the referent — and a data slot naming a need
+# type, refused where they are written…
+kind: Assert.Manifest
+metadata:
+  name: callableDataRefused
+source: ./__fixtures__/check-run-agreement/callable-data/refused/telo.yaml
+expect:
+  errors:
+    - code: CALLABLE_DEFINITION_INVALID
+      message: "NeedPeek: holds the need type 'CallableDataKinds.Access' at 'schema.properties.access'"
+    - code: CALLABLE_REFERENCE_NOT_DATA
+      message: "peekLate: holds 'late' at 'target' as data, but it holds `!cel` at 'greeting', evaluated after it is created"
+    - code: CALLABLE_REFERENCE_NOT_DATA
+      message: "peekScoped: holds 'scoped' at 'target' as data, but it declares a scope at 'members'"
+    - code: CALLABLE_REFERENCE_NOT_DATA
+      message: "peekNeed: holds 'holder' at 'target' as data, but 'access' is a need"
+---
+# …and refused by the kernel as it creates each function, from a consumer whose
+# entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: callableDataExpressionAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-data/refused-app/telo.yaml
+expect:
+  runFails: "CallableDataKinds.Peek/peekLate: holds 'late' at 'target' as data, but it holds `!cel` at 'greeting', evaluated after it is created"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableDataScopeAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-data/refused-app/telo.yaml
+expect:
+  runFails: "CallableDataKinds.Peek/peekScoped: holds 'scoped' at 'target' as data, but it declares a scope at 'members'"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableDataNeedAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-data/refused-app/telo.yaml
+expect:
+  runFails: "CallableDataKinds.Peek/peekNeed: holds 'holder' at 'target' as data, but 'access' is a need"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableDataNeedKindAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-data/refused-app/telo.yaml
+expect:
+  runFails: "Telo.Definition/NeedPeek: holds the need type 'Kinds.Access' at 'schema.properties.access'"
+---
+# A function holding a library's resource input: what is supplied is unknown to
+# the library's own check, which is silent…
+kind: Assert.Manifest
+metadata:
+  name: callableDataInput
+source: ./__fixtures__/check-run-agreement/callable-data/input/telo.yaml
+expect: {}
+---
+# …and judged at the import that supplies it, whose run is refused naming it.
+kind: Assert.Manifest
+metadata:
+  name: callableDataInputAtImport
+source: ./__fixtures__/check-run-agreement/callable-data/input-app/telo.yaml
+expect:
+  errors:
+    - code: CALLABLE_REFERENCE_NOT_DATA
+      message: "reached through import 'Input': Kinds.Peek/peekInput: holds 'source' at 'target' as data, but it holds `!cel` at 'greeting'"
+  runFails: "[CALLABLE_REFERENCE_NOT_DATA] Imported library 'CallableDataInput', reached through import 'Input': Kinds.Peek/peekInput: holds 'source' at 'target' as data, but it holds `!cel` at 'greeting'"
+---
+# A native function in a template body holds what the template's child context
+# gives it: a sibling entry, an instance through the defining module's imports,
+# and what its consumer forwards — clean where the body is declared…
+kind: Assert.Manifest
+metadata:
+  name: callableDataTemplate
+source: ./__fixtures__/check-run-agreement/callable-data/template/telo.yaml
+expect: {}
+---
+# …and where it is instantiated…
+kind: Assert.Manifest
+metadata:
+  name: callableDataTemplateApp
+source: ./__fixtures__/check-run-agreement/callable-data/template-app/telo.yaml
+expect: {}
+---
+# …each answering from its referent's configuration.
+kind: Assert.Manifest
+metadata:
+  name: callableDataTemplateRuns
+source: ./__fixtures__/check-run-agreement/callable-data/template-app/telo.yaml
+expect:
+  runs: true
+---
+# A body's reference to a resource of the module defining the template, which
+# no entry of the body reaches, and a sibling whose expression its kind
+# evaluates per call — refused at the definition declaring the body…
+kind: Assert.Manifest
+metadata:
+  name: callableDataTemplateRefused
+source: ./__fixtures__/check-run-agreement/callable-data/template-refused/telo.yaml
+expect:
+  errors:
+    - code: CALLABLE_REFERENCE_NOT_DATA
+      message: "Telo.Definition/ModuleHeld: the Kinds.Peek entry 'peekModule': holds 'table' at 'target' as data, but 'table' is a resource of the module defining the template"
+    - code: CALLABLE_REFERENCE_NOT_DATA
+      message: "Telo.Definition/LateHeld: the Kinds.Peek entry 'peekLate': holds 'late' at 'target' as data, but it holds `!cel` at 'greeting'"
+---
+# …and by the kernel as each template creates its function, from a consumer
+# whose entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: callableDataTemplateModuleAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-data/template-refused-app/telo.yaml
+expect:
+  runFails: "CallableDataKinds.Peek/peekModule: holds 'table' at 'target' as data, but 'table' is a resource of the module defining the template"
+---
+kind: Assert.Manifest
+metadata:
+  name: callableDataTemplateLateAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-data/template-refused-app/telo.yaml
+expect:
+  runFails: "CallableDataKinds.Peek/peekLate: holds 'late' at 'target' as data, but it holds `!cel` at 'greeting'"
+---
+# A consumer forwarding a resource that is not data into a body's function is
+# refused at its own field…
+kind: Assert.Manifest
+metadata:
+  name: callableDataTemplateForward
+source: ./__fixtures__/check-run-agreement/callable-data/template-forward/telo.yaml
+expect:
+  errors:
+    - code: CALLABLE_REFERENCE_NOT_DATA
+      message: "Template.Probe/probe: 'source' is forwarded into the Kinds.Peek entry 'peekForward' as 'target', which checks it as its own field — holds 'late' at 'target' as data, but it holds `!cel` at 'greeting'"
+---
+# …and by the kernel as the template creates the function, from a consumer
+# whose entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: callableDataTemplateForwardAtRuntime
+source: ./__fixtures__/check-run-agreement/callable-data/template-forward-app/telo.yaml
+expect:
+  runFails: "CallableDataKinds.Peek/peekForward: holds 'late' at 'target' as data, but it holds `!cel` at 'greeting'"
 ---
 # A step whose `invoke:` names a function. A callable is outside
 # `Telo.Executable`, so the step is refused where it is written…
@@ -2819,6 +3083,43 @@ expect:
   errors: []
   runFails: "ERR_VALUE_SCHEMA_FROM_INVALID"
 ---
+# A member named by the key of a value reached by an index has no key: the
+# kind is refused where it is written and when the kernel registers it.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaMemberKeyInvalid
+source: ./__fixtures__/check-run-agreement/value-schema-member-key/lib/telo.yaml
+expect:
+  errors:
+    - code: VALUE_SCHEMA_FROM_INVALID
+      message: "`member` takes the key of a node that is no map value or object member"
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaMemberKeyInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-member-key/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_VALUE_SCHEMA_FROM_INVALID] RuntimeError: Telo.Definition 'Caller' at 'schema.properties.values.items.x-telo-value-schema-from': `member` takes the key"
+---
+# A member named through a field that holds no string names nothing.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaMemberPointerInvalid
+source: ./__fixtures__/check-run-agreement/value-schema-member-pointer/lib/telo.yaml
+expect:
+  errors:
+    - code: VALUE_SCHEMA_FROM_INVALID
+      message: "`member` names 'size', which is not declared a string"
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaMemberPointerInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-member-pointer/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_VALUE_SCHEMA_FROM_INVALID] RuntimeError: Telo.Definition 'Caller' at 'schema.properties.entry.properties.value.x-telo-value-schema-from': `member` names 'size'"
+---
 # The same refusal for an annotation written in the NAMED SHAPE a contract field
 # names: the annotation is the kind's wherever its contract is written.
 kind: Assert.Manifest
@@ -4104,3 +4405,722 @@ expect:
     - code: KIND_PREFIX_RESERVED
       message: "Cannot use import 'Telo' → '../plain-library': An import may not be aliased 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so this import would replace them. Choose another alias."
   runFails: "[KIND_PREFIX_RESERVED] Cannot use import 'Telo' → '../plain-library': An import may not be aliased 'Telo': `Telo.<Kind>` names a built-in kind and `Self.<Kind>` the declaring module's own, so this import would replace them. Choose another alias."
+---
+# THE BUILT-IN TEXT VOCABULARY. Each defect is written by a library — a text in
+# a field, a text argument at a call, a catalog entry, a text annotation — and
+# reported by that library's own check, where it was written; a consumer's
+# entry-scoped check is silent, so the kernel's refusal, raised when the import
+# creates the library's resources (or binds their calls), is pinned at it.
+kind: Assert.Manifest
+metadata:
+  name: textFieldSyntax
+source: ./__fixtures__/check-run-agreement/text-vocabulary/field-syntax/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_SYNTAX_INVALID
+      message: "Kinds.Label/greeting: the text at 'text' is refused: a placeholder is written {$name}"
+---
+kind: Assert.Manifest
+metadata:
+  name: textFieldSyntaxAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/field-syntax/telo.yaml
+expect:
+  runFails: "TextKinds.Label/greeting: the text at 'text' is refused: a placeholder is written {$name}"
+---
+kind: Assert.Manifest
+metadata:
+  name: textArgumentSyntax
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-argument-syntax/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_SYNTAX_INVALID
+      message: "calls 'Self.t' with a text for parameter 'text' that is refused: a placeholder is written {$name}"
+---
+kind: Assert.Manifest
+metadata:
+  name: textArgumentSyntaxAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-argument-syntax/telo.yaml
+expect:
+  runFails: "CEL calls 'Self.t' with a text for parameter 'text' that is refused: a placeholder is written {$name}"
+---
+kind: Assert.Manifest
+metadata:
+  name: textArgumentCategory
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-argument-category/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_PLURAL_CATEGORY_INVALID
+      message: "calls 'Self.t' with a text for parameter 'text' (at cases.few) that is refused: few is not a plural category of en"
+---
+kind: Assert.Manifest
+metadata:
+  name: textArgumentCategoryAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-argument-category/telo.yaml
+expect:
+  runFails: "CEL calls 'Self.t' with a text for parameter 'text' (at cases.few) that is refused: few is not a plural category of en"
+---
+kind: Assert.Manifest
+metadata:
+  name: textArgumentNoLang
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-argument-no-lang/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_SOURCE_LANGUAGE_MISSING
+      message: "calls 'Self.t' with a text for parameter 'text' that is refused: this text selects a plural case, but the module that writes it declares no lang:"
+---
+kind: Assert.Manifest
+metadata:
+  name: textArgumentNoLangAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-argument-no-lang/telo.yaml
+expect:
+  runFails: "CEL calls 'Self.t' with a text for parameter 'text' that is refused: this text selects a plural case, but the module that writes it declares no lang:"
+---
+kind: Assert.Manifest
+metadata:
+  name: textArgumentComputed
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-argument-computed/lib/telo.yaml
+expect:
+  errors:
+    - code: TEXT_ARGUMENT_COMPUTED
+      message: "calls 'Self.t' with a computed argument for parameter 'text', which is a Text"
+---
+kind: Assert.Manifest
+metadata:
+  name: textArgumentComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-argument-computed/telo.yaml
+expect:
+  runFails: "CEL calls 'Self.t' with a computed argument for parameter 'text', which is a Text"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesUnbound
+source: ./__fixtures__/check-run-agreement/text-vocabulary/values-unbound/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_PLACEHOLDER_UNBOUND
+      message: "calls 'Self.t' with values for parameter 'values' that the text of 'text' cannot take: no value is given for n"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesUnboundAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/values-unbound/telo.yaml
+expect:
+  runFails: "CEL calls 'Self.t' with values for parameter 'values' that the text of 'text' cannot take: no value is given for n"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesUnsupported
+source: ./__fixtures__/check-run-agreement/text-vocabulary/values-unsupported/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED
+      message: "the value given for n is a boolean, and a placeholder takes a string or a number"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesUnsupportedAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/values-unsupported/telo.yaml
+expect:
+  runFails: "the value given for n is a boolean, and a placeholder takes a string or a number"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesForInvalid
+source: ./__fixtures__/check-run-agreement/text-vocabulary/values-for-invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: TEXT_VALUES_FOR_INVALID
+      message: "x-telo-text-values-for: '/text' names a parameter that is not typed by the Text fragment"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesForInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/values-for-invalid/telo.yaml
+expect:
+  runFails: "Telo.Function/t: params[1].schema.x-telo-text-values-for: x-telo-text-values-for: '/text' names a parameter that is not typed by the Text fragment"
+---
+kind: Assert.Manifest
+metadata:
+  name: textContextEmpty
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-context-empty/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "x-telo-text-context must NOT have fewer than 1 characters"
+---
+kind: Assert.Manifest
+metadata:
+  name: textContextEmptyAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-context-empty/telo.yaml
+expect:
+  runFails: "Telo.JsonSchema/Row: schema.properties.status.x-telo-text-context: x-telo-text-context must NOT have fewer than 1 characters"
+---
+kind: Assert.Manifest
+metadata:
+  name: textCatalogComputed
+source: ./__fixtures__/check-run-agreement/text-vocabulary/catalog-computed/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_ENTRY_COMPUTED
+      message: "the text catalog entry at 'catalog.texts[0].translation' is refused: a text catalog holds literals only"
+---
+kind: Assert.Manifest
+metadata:
+  name: textCatalogComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/catalog-computed/telo.yaml
+expect:
+  runFails: "TextKinds.Catalog/pl: the text catalog entry at 'catalog.texts[0].translation' is refused: a text catalog holds literals only"
+---
+kind: Assert.Manifest
+metadata:
+  name: textCatalogPlaceholder
+source: ./__fixtures__/check-run-agreement/text-vocabulary/catalog-placeholder/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_PLACEHOLDER_UNKNOWN
+      message: "the text catalog entry at 'catalog.texts[0].translation' is refused: what is not a placeholder of the source text"
+---
+kind: Assert.Manifest
+metadata:
+  name: textCatalogPlaceholderAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/catalog-placeholder/telo.yaml
+expect:
+  runFails: "TextKinds.Catalog/pl: the text catalog entry at 'catalog.texts[0].translation' is refused: what is not a placeholder of the source text"
+---
+kind: Assert.Manifest
+metadata:
+  name: textCatalogDuplicate
+source: ./__fixtures__/check-run-agreement/text-vocabulary/catalog-duplicate/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_ENTRY_DUPLICATE
+      message: "the text catalog entry at 'catalog.texts[1]' is refused: this entry translates the same text and context as texts[0]"
+---
+kind: Assert.Manifest
+metadata:
+  name: textCatalogDuplicateAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/catalog-duplicate/telo.yaml
+expect:
+  runFails: "TextKinds.Catalog/pl: the text catalog entry at 'catalog.texts[1]' is refused: this entry translates the same text and context as texts[0]"
+---
+# Whole catalogs an expression above their slot produces: nothing in them can be
+# checked or looked up, so the expression is refused — at the library…
+kind: Assert.Manifest
+metadata:
+  name: textCatalogsComputed
+source: ./__fixtures__/check-run-agreement/text-vocabulary/catalogs-computed/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_ENTRY_COMPUTED
+      message: "the value at 'catalogs' is refused: a text catalog holds literals only"
+---
+# …and by the kernel before the resource is created, from a silent consumer.
+kind: Assert.Manifest
+metadata:
+  name: textCatalogsComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/catalogs-computed/telo.yaml
+expect:
+  runFails: "TextKinds.Catalogs/pl: the value at 'catalogs' is refused: a text catalog holds literals only"
+---
+# A text, or a message's values, an expression computes: `telo check` cannot read
+# them, so they are judged by the kernel alone — the text when the resource
+# holding it is created, the values when the call is bound.
+kind: Assert.Manifest
+metadata:
+  name: textComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/computed-text/telo.yaml
+expect:
+  runFails: "TextKinds.Label/greeting: the text at 'text' is refused: a placeholder is written {$name}"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/values-computed/telo.yaml
+expect:
+  runFails: "the values for parameter 'values' cannot be taken by the text of 'text': no value is given for n, which the message reads"
+---
+# A literal text and its values at a `Text` parameter: the call binds and runs,
+# the parameter's schema resolving the Message fragment it holds.
+kind: Assert.Manifest
+metadata:
+  name: textParameterRuns
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-parameter-runs/telo.yaml
+expect:
+  runs: true
+---
+# A text in a field its controller evaluates per call — a runtime-eval field, a
+# field a region covers — is computed after creation: `telo check` cannot read it,
+# and the kernel judges what the controller's evaluation produced, in the
+# language of the module that wrote it.
+kind: Assert.Manifest
+metadata:
+  name: textLateRuntimeFieldAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/late-runtime-field/telo.yaml
+expect:
+  errors: []
+  runFails: "EvaluatedTextKinds.Notice/notice: the text at 'title' is refused: a placeholder is written {$name}"
+---
+kind: Assert.Manifest
+metadata:
+  name: textLateRegionAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/late-region/telo.yaml
+expect:
+  errors: []
+  runFails: "EvaluatedTextKinds.Notice/notice: the text at 'banner.heading' is refused: a placeholder is written {$name}"
+---
+# A text's values named by accessor reach the controller as bindings: a literal
+# is judged as its value, a chain as a key its consumer resolves — and typed by
+# `telo check` — so both boot.
+kind: Assert.Manifest
+metadata:
+  name: textAccessorValuesRun
+source: ./__fixtures__/check-run-agreement/text-vocabulary/accessor-values/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A text typed beneath an accessor field — directly, and through a named shape —
+# would reach the controller as a binding, so the kind is refused at the library
+# that declares it, and at a consumer's `imports:` entry, since the kernel refuses
+# the kind when the import registers it.
+kind: Assert.Manifest
+metadata:
+  name: textSlotAccessor
+source: ./__fixtures__/check-run-agreement/text-vocabulary/slot-accessor/lib/telo.yaml
+expect:
+  errors:
+    - code: TEXT_SLOT_ACCESSOR
+      message: "Telo.Definition 'Column' declares 'schema.properties.label.x-telo-eval: accessor', and the field's value is typed by the Text fragment."
+    - code: TEXT_SLOT_ACCESSOR
+      message: "Telo.Definition 'Tile' declares 'schema.properties.caption.x-telo-eval: accessor', and the field's value is typed by the Text fragment through the named shape 'Caption'."
+---
+kind: Assert.Manifest
+metadata:
+  name: textSlotAccessorAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/slot-accessor/telo.yaml
+expect:
+  errors:
+    - code: TEXT_SLOT_ACCESSOR
+      message: "reached through import 'Kinds': Telo.Definition 'Column' declares 'schema.properties.label.x-telo-eval: accessor'"
+    - code: TEXT_SLOT_ACCESSOR
+      message: "reached through import 'Kinds': Telo.Definition 'Tile' declares 'schema.properties.caption.x-telo-eval: accessor'"
+  runFails: "[TEXT_SLOT_ACCESSOR] Imported library 'TextSlotAccessorLib', reached through import 'Kinds': Telo.Definition 'Column' declares 'schema.properties.label.x-telo-eval: accessor', and the field's value is typed by the Text fragment."
+---
+# A text that is one alternative of a union beside a text with values: the text
+# walk records a text only where the fragment admits the value, so each form is
+# read by the branch that holds it — a literal, and one an expression computes,
+# whose inner text arrives computed.
+kind: Assert.Manifest
+metadata:
+  name: boundTextDelivered
+source: ./__fixtures__/check-run-agreement/text-vocabulary/bound/delivered/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+kind: Assert.Manifest
+metadata:
+  name: boundTextMissingValues
+source: ./__fixtures__/check-run-agreement/text-vocabulary/bound/missing-values/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Kinds.Caption/caption: /label must match a schema in anyOf"
+  runFails: "[SCHEMA_VIOLATION] Kinds.Caption/caption: /label must match a schema in anyOf"
+---
+kind: Assert.Manifest
+metadata:
+  name: boundTextPluralNoLang
+source: ./__fixtures__/check-run-agreement/text-vocabulary/bound/plural-no-lang/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_SOURCE_LANGUAGE_MISSING
+      message: "Kinds.Caption/caption: the text at 'label' is refused: this text selects a plural case, but the module that writes it declares no lang:"
+  runFails: "[MESSAGE_SOURCE_LANGUAGE_MISSING] Kinds.Caption/caption: the text at 'label' is refused: this text selects a plural case"
+---
+# A text whose reader declares the values it formats it with
+# (`x-telo-text-values`): a placeholder or selector it does not declare is
+# refused where the text is written — a library's literal at the library, and
+# by the kernel at a silent consumer; a computed text by the kernel alone.
+kind: Assert.Manifest
+metadata:
+  name: textValuesUndeclared
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-values/unbound-lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_PLACEHOLDER_UNBOUND
+      message: "Kinds.Heading/arrivals: the text at 'text' is refused: no value is given for who, which the message reads, but whoever shows this text formats it with {$count}, {$name}"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesUndeclaredAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-values/unbound/telo.yaml
+expect:
+  errors: []
+  runFails: "TextValuesKinds.Heading/arrivals: the text at 'text' is refused: no value is given for who, which the message reads, but whoever shows this text formats it with {$count}, {$name}"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesDeclaredComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-values/computed/telo.yaml
+expect:
+  errors: []
+  runFails: "TextValuesKinds.Heading/arrivals: the text at 'text' is refused: no value is given for who"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesSelectorString
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-values/selector-lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED
+      message: "Kinds.Heading/greeting: the text at 'text.name' is refused: the value given for name is a string, and name selects a plural case, which needs a number"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesSelectorStringAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-values/selector/telo.yaml
+expect:
+  errors: []
+  runFails: "TextValuesKinds.Heading/greeting: the text at 'text.name' is refused: the value given for name is a string, and name selects a plural case, which needs a number"
+---
+# The declaration on a node holding no text, or naming a value that is neither a
+# string nor a number: refused at the kind, and at a consumer's `imports:` entry,
+# since the kernel refuses the kind when the import registers it.
+kind: Assert.Manifest
+metadata:
+  name: textValuesInvalid
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-values/misuse-lib/telo.yaml
+expect:
+  errors:
+    - code: TEXT_VALUES_INVALID
+      message: "Telo.Definition 'Counter' declares 'schema.properties.count.x-telo-text-values' on a node that is no text"
+    - code: TEXT_VALUES_INVALID
+      message: "Telo.Definition 'Notice' declares 'schema.properties.text.x-telo-text-values' with 'done' typed as neither a string nor a number"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-values/misuse/telo.yaml
+expect:
+  errors:
+    - code: TEXT_VALUES_INVALID
+      message: "reached through import 'Kinds': Telo.Definition 'Counter' declares 'schema.properties.count.x-telo-text-values' on a node that is no text"
+    - code: TEXT_VALUES_INVALID
+      message: "reached through import 'Kinds': Telo.Definition 'Notice' declares 'schema.properties.text.x-telo-text-values' with 'done' typed as neither a string nor a number"
+  runFails: "[TEXT_VALUES_INVALID] Imported library 'TextValuesMisuseLib', reached through import 'Kinds': Telo.Definition 'Counter' declares 'schema.properties.count.x-telo-text-values' on a node that is no text"
+---
+kind: Assert.Manifest
+metadata:
+  name: textValuesClean
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-values/clean/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A catalog set holds one translation of a text per language, across every
+# catalog it gathers — the ones it writes, and those of each resource it
+# references, through that resource's own set. A catalog reached twice is one
+# member: clean, and it runs.
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetClean
+source: ./__fixtures__/check-run-agreement/text-catalog-set/clean/telo.yaml
+expect:
+  runs: true
+---
+# One text, translated twice into one language: a source nested twenty
+# selections deep and the plain pattern it reaches through `other`, the second
+# brought in through a nested set — refused at the library…
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetNested
+source: ./__fixtures__/check-run-agreement/text-catalog-set/nested/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_ENTRY_DUPLICATE
+      message: "the reference at 'catalogs[1]' is refused: it brings in Kinds.Catalog/plain, whose texts[0] translates '{$n} files' into pl, which Kinds.Catalog/nested already translates at texts[0]"
+---
+# …and by the kernel when the import creates the set, from a silent consumer.
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetNestedAtRuntime
+source: ./__fixtures__/check-run-agreement/text-catalog-set/nested/telo.yaml
+expect:
+  runFails: "CatalogSetKinds.Set/set: the reference at 'catalogs[1]' is refused: it brings in Kinds.Catalog/plain, whose texts[0] translates '{$n} files' into pl, which Kinds.Catalog/nested already translates at texts[0]"
+---
+# `{ $n }` and `{$n}` are one placeholder.
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetSpacing
+source: ./__fixtures__/check-run-agreement/text-catalog-set/spacing/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_ENTRY_DUPLICATE
+      message: "the reference at 'catalogs[0]' is refused: it brings in Kinds.Catalog/spaced, whose texts[0] translates '{$n} files' into pl, which the text catalog at 'own' already translates at texts[0]"
+---
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetSpacingAtRuntime
+source: ./__fixtures__/check-run-agreement/text-catalog-set/spacing/telo.yaml
+expect:
+  runFails: "CatalogSetKinds.Set/set: the reference at 'catalogs[0]' is refused: it brings in Kinds.Catalog/spaced, whose texts[0] translates '{$n} files' into pl, which the text catalog at 'own' already translates at texts[0]"
+---
+# `pl` and `PL` are one language.
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetCase
+source: ./__fixtures__/check-run-agreement/text-catalog-set/case/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_ENTRY_DUPLICATE
+      message: "the reference at 'catalogs[1]' is refused: it brings in Kinds.Catalog/upper, whose texts[0] translates 'Open' into PL, which Kinds.Catalog/lower already translates at texts[0]"
+---
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetCaseAtRuntime
+source: ./__fixtures__/check-run-agreement/text-catalog-set/case/telo.yaml
+expect:
+  runFails: "CatalogSetKinds.Set/set: the reference at 'catalogs[1]' is refused: it brings in Kinds.Catalog/upper, whose texts[0] translates 'Open' into PL, which Kinds.Catalog/lower already translates at texts[0]"
+---
+# A catalog set marked where nothing is a catalog or a reference, and one marked
+# inside another: refused at the kinds…
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetInvalid
+source: ./__fixtures__/check-run-agreement/text-catalog-set/invalid/telo.yaml
+expect:
+  errors:
+    - code: TEXT_CATALOG_SET_INVALID
+      message: "Telo.Definition 'Labelled' marks 'schema.properties.label.x-telo-text-catalog-set' as a catalog set, and nothing at or beneath it is a text catalog or a reference"
+    - code: TEXT_CATALOG_SET_INVALID
+      message: "Telo.Definition 'Doubled' marks 'schema.properties.catalogs.x-telo-text-catalog-set' as a catalog set inside the catalog set 'schema.x-telo-text-catalog-set'"
+---
+# …and at the import of their library, whose run is refused naming the cause.
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetInvalidAtImport
+source: ./__fixtures__/check-run-agreement/text-catalog-set/invalid-app/telo.yaml
+expect:
+  errors:
+    - code: TEXT_CATALOG_SET_INVALID
+      message: "reached through import 'Invalid': Telo.Definition 'Labelled' marks 'schema.properties.label.x-telo-text-catalog-set' as a catalog set, and nothing at or beneath it is a text catalog or a reference"
+    - code: TEXT_CATALOG_SET_INVALID
+      message: "reached through import 'Invalid': Telo.Definition 'Doubled' marks 'schema.properties.catalogs.x-telo-text-catalog-set' as a catalog set inside the catalog set 'schema.x-telo-text-catalog-set'"
+  runFails: "[TEXT_CATALOG_SET_INVALID] Imported library 'CatalogSetInvalid', reached through import 'Invalid': Telo.Definition 'Labelled' marks 'schema.properties.label.x-telo-text-catalog-set' as a catalog set, and nothing at or beneath it is a text catalog or a reference"
+---
+# A set holding a catalog its importer supplies: silent where what is supplied
+# is unknown…
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetInput
+source: ./__fixtures__/check-run-agreement/text-catalog-set/input/telo.yaml
+expect: {}
+---
+# …and judged at the import that supplies one, whose run is refused naming it.
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetInputAtImport
+source: ./__fixtures__/check-run-agreement/text-catalog-set/input-app/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_ENTRY_DUPLICATE
+      message: "reached through import 'Input': Kinds.Set/set: the reference at 'catalogs[1]' is refused: it brings in Kinds.Catalog/pack, whose texts[0] translates 'Open' into pl, which Kinds.Catalog/base already translates at texts[0]"
+  runFails: "[MESSAGE_ENTRY_DUPLICATE] Imported library 'CatalogSetInput', reached through import 'Input': Kinds.Set/set: the reference at 'catalogs[1]' is refused: it brings in Kinds.Catalog/pack, whose texts[0] translates 'Open' into pl, which Kinds.Catalog/base already translates at texts[0]"
+---
+# A set an entry of a template body holds, its references naming sibling
+# entries: refused at the definition declaring the body…
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetBody
+source: ./__fixtures__/check-run-agreement/text-catalog-set/body/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_ENTRY_DUPLICATE
+      message: "the Kinds.Set entry 'set': the reference at 'catalogs[1]' is refused: it brings in Kinds.Catalog/pack, whose texts[0] translates 'Open' into pl, which Kinds.Catalog/base already translates at texts[0]"
+---
+# …and by the kernel when the template creates the entry, from a silent consumer.
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetBodyAtRuntime
+source: ./__fixtures__/check-run-agreement/text-catalog-set/body/telo.yaml
+expect:
+  runFails: "CatalogSetKinds.Set/set: the reference at 'catalogs[1]' is refused: it brings in Kinds.Catalog/pack, whose texts[0] translates 'Open' into pl, which Kinds.Catalog/base already translates at texts[0]"
+---
+# A template body handing on, with a bare `self.<path>`, a whole catalog and a
+# catalog reference its consumer writes: neither is computed, so the library
+# defining the body is clean…
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetForwardLibrary
+source: ./__fixtures__/check-run-agreement/text-catalog-set/forward/lib/telo.yaml
+expect:
+  errors: []
+---
+# …while the consumer's forwarded catalog repeats one the body writes itself:
+# one set, refused at the consumer's own path…
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetForwarded
+source: ./__fixtures__/check-run-agreement/text-catalog-set/forward/mid/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_ENTRY_DUPLICATE
+      message: "'extra' is forwarded into the Kinds.Set entry 'set' as 'catalogs[1]', which checks it as its own field — the reference at 'catalogs[1]' is refused: it brings in Kinds.Catalog/pack, whose texts[0] translates 'Open' into pl, which Kinds.Catalog/base already translates at texts[0]"
+---
+# …and by the kernel when the template creates the entry, from a silent consumer.
+kind: Assert.Manifest
+metadata:
+  name: textCatalogSetForwardedAtRuntime
+source: ./__fixtures__/check-run-agreement/text-catalog-set/forward/telo.yaml
+expect:
+  runFails: "CatalogSetKinds.Set/set: the reference at 'catalogs[1]' is refused: it brings in Kinds.Catalog/pack, whose texts[0] translates 'Open' into pl, which Kinds.Catalog/base already translates at texts[0]"
+---
+# A schema matched against the value an accessor names, which it can never hold
+# for: refused where the condition is written…
+kind: Assert.Manifest
+metadata:
+  name: matchUnsatisfiable
+source: ./__fixtures__/check-run-agreement/node-tree/match-lib/telo.yaml
+expect:
+  errors:
+    - code: MATCH_UNSATISFIABLE
+      message: "Kinds.Probe/overdue: the schema at 'condition.matches' can never hold for 'condition.at' — it requires string, and the value is integer."
+---
+# …by the load analysis of an application holding it…
+kind: Assert.Manifest
+metadata:
+  name: matchUnsatisfiableAtRun
+source: ./__fixtures__/check-run-agreement/node-tree/match-app/telo.yaml
+expect:
+  errors:
+    - code: MATCH_UNSATISFIABLE
+      message: "it requires \"billing\", and the value is integer"
+  runFails: "Kinds.Probe/overdue: the schema at 'condition.matches' can never hold for 'condition.at'"
+---
+# …and not in a consumer of the library holding it, which checks clean and runs.
+kind: Assert.Manifest
+metadata:
+  name: matchUnsatisfiableInDependency
+source: ./__fixtures__/check-run-agreement/node-tree/match-consumer/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# Entries of a list that fill a record's members and read each other's in a
+# cycle — here a field drawn only once its own member holds a value — are
+# refused where the cycle is written…
+kind: Assert.Manifest
+metadata:
+  name: contextFillCycle
+source: ./__fixtures__/check-run-agreement/fill-cycle/lib/telo.yaml
+expect:
+  errors:
+    - code: CONTEXT_FILL_CYCLE
+      message: "'values.sheet' makes the entry filling 'sheet' depend on 'sheet', which it fills itself"
+---
+# …by the load analysis of an application holding them…
+kind: Assert.Manifest
+metadata:
+  name: contextFillCycleAtRun
+source: ./__fixtures__/check-run-agreement/fill-cycle/app/telo.yaml
+expect:
+  errors:
+    - code: CONTEXT_FILL_CYCLE
+      message: "in a cycle (sheet → sheet)"
+  runFails: "'values.sheet' makes the entry filling 'sheet' depend on 'sheet'"
+---
+# …and not in a consumer of the library holding them, which checks clean and runs.
+kind: Assert.Manifest
+metadata:
+  name: contextFillCycleInDependency
+source: ./__fixtures__/check-run-agreement/fill-cycle/consumer/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A binding that exists only where a value is named is unknown to an expression
+# that is evaluated…
+kind: Assert.Manifest
+metadata:
+  name: accessorOnlyEvaluated
+source: ./__fixtures__/check-run-agreement/node-tree/accessor-only-lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Kinds.Probe/labelled: !cel: unknown identifier 'row'"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Kinds.Probe/labelled: !cel: 'row' is not defined"
+---
+# …and the kernel, evaluating it at creation, has no such variable.
+kind: Assert.Manifest
+metadata:
+  name: accessorOnlyEvaluatedAtRuntime
+source: ./__fixtures__/check-run-agreement/node-tree/accessor-only-app/telo.yaml
+expect:
+  errors: []
+  runFails: "Kinds.Probe labelled: Expression !cel \"string(row.amount)\" failed: no such variable: row.amount"
+---
+# An accessor may root only at a binding that exists where a value is named; one
+# marked to exist per request alone is unknown there…
+kind: Assert.Manifest
+metadata:
+  name: accessorRootRuntimeOnly
+source: ./__fixtures__/check-run-agreement/node-tree/runtime-root-lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Kinds.Probe/byAddress: !cel: unknown identifier 'request'"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Kinds.Probe/byAddress: !cel: 'request' is not defined"
+---
+# …and the kernel refuses the chain when it delivers the field.
+kind: Assert.Manifest
+metadata:
+  name: accessorRootRuntimeOnlyAtRuntime
+source: ./__fixtures__/check-run-agreement/node-tree/runtime-root-app/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_ACCESSOR_NOT_PLAIN_CHAIN] RuntimeError: NodeTreeKinds.Probe/byAddress: 'condition.at: !cel \"request.ip\"' is not a plain chain the field can name: it starts at 'request'"
+---
+# A binding that exists only at load is unknown to an expression evaluated per
+# call…
+kind: Assert.Manifest
+metadata:
+  name: compileOnlyReadPerCall
+source: ./__fixtures__/check-run-agreement/node-tree/compile-only-lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Kinds.Tags/stamped: !cel: unknown identifier 'stamp'"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Kinds.Tags/stamped: !cel: 'stamp' is not defined"
+---
+# …and the controller, evaluating it per call, has no such variable.
+kind: Assert.Manifest
+metadata:
+  name: compileOnlyReadPerCallAtRuntime
+source: ./__fixtures__/check-run-agreement/node-tree/compile-only-app/telo.yaml
+expect:
+  errors: []
+  runFails: "Expression !cel \"stamp\" failed: no such variable: stamp"
+---
+# A region declared under a map value types every entry of the map…
+kind: Assert.Manifest
+metadata:
+  name: mapRegionUnknownField
+source: ./__fixtures__/check-run-agreement/node-tree/map-lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Kinds.Tags/tagged: !cel: 'tag.cod' is not defined (available: code)"
+---
+# …and the controller evaluates each entry against the binding it declares.
+kind: Assert.Manifest
+metadata:
+  name: mapRegionUnknownFieldAtRuntime
+source: ./__fixtures__/check-run-agreement/node-tree/map-app/telo.yaml
+expect:
+  errors: []
+  runFails: "Expression !cel \"tag.cod\" failed: no such key: \"cod\""
+

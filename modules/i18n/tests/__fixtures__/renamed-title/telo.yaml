@@ -1,0 +1,25 @@
+# A shape whose title was renamed from Invoice to Bill: the catalog still holds
+# a translation of the old title, which nothing shows any more.
+kind: Telo.Application
+metadata:
+  name: RenamedTitle
+  version: 1.0.0
+lang: en
+imports:
+  I18n: ../../../
+---
+kind: Telo.JsonSchema
+metadata: { name: Invoice }
+schema:
+  type: object
+  title: Bill
+  properties:
+    total: { type: number, title: Total }
+---
+kind: I18n.Catalog
+metadata: { name: polish }
+lang: pl
+texts:
+  - { text: Bill, translation: Rachunek }
+  - { text: Invoice, translation: Faktura }
+  - { text: Total, translation: Suma }

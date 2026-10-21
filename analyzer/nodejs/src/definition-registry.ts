@@ -1,3 +1,4 @@
+import type { NamedShapeLookup } from "./eval-paths.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { schemaWithTagsAsText } from "./schema-tag-text.js";
 import { canonicalTypeSchemaId, parseCanonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
@@ -305,6 +306,9 @@ export class DefinitionRegistry {
    *  compiling a shape the registry holds but cannot compile throws out of
    *  whichever walk asked. That shape's compile failure is reported where the
    *  shape is validated, not here. */
+  /** {@link schemaForId} as the named-shape lookup every eval-site walk takes. */
+  readonly shapeLookup: NamedShapeLookup = (id) => this.schemaForId(id);
+
   schemaForId(id: string): Record<string, any> | undefined {
     let entry = this.ajv.schemas[id] ?? this.ajv.refs[id];
     while (typeof entry === "string") entry = this.ajv.schemas[entry] ?? this.ajv.refs[entry];

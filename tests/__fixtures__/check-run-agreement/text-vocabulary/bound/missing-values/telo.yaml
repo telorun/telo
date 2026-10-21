@@ -1,0 +1,15 @@
+# A caption written as a text with values but missing its values: no branch of
+# the union admits it, so it is one schema violation, refused by both halves.
+kind: Telo.Application
+metadata:
+  name: BoundTextMissingValuesApp
+  version: 1.0.0
+lang: en
+imports:
+  Kinds: ../../text-values/kinds
+---
+kind: Kinds.Caption
+metadata:
+  name: caption
+label:
+  text: "{$n} items"

@@ -1,0 +1,34 @@
+# A templated kind whose body entry gathers one catalog set from what the body
+# writes itself and what its consumer forwards with a bare `self.<path>`: a
+# catalog the consumer references, and a whole catalog the consumer writes.
+kind: Telo.Library
+metadata:
+  name: CatalogSetForward
+  version: 1.0.0
+  description: Fixture library whose template body gathers a catalog set from its own catalog and forwarded ones.
+imports:
+  Kinds: ../../kinds
+exports:
+  kinds: [Translations]
+---
+kind: Telo.Definition
+metadata:
+  name: Translations
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    extra:
+      x-telo-ref: { kind: Kinds.Catalog, use: dependency }
+    own: { $ref: "telo://manifest#/$defs/TextCatalog" }
+provide: !ref set
+resources:
+  - kind: Kinds.Catalog
+    metadata: { name: base }
+    lang: pl
+    texts:
+      - { text: Open, translation: Otwórz }
+  - kind: Kinds.Set
+    metadata: { name: set }
+    own: !cel "self.own"
+    catalogs: [!ref base, !cel "self.extra"]

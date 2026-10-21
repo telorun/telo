@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { controlFor } from "../src/browser/record-fields.js";
 import { render, type Rendered } from "./harness.js";
-import { formNode, opener, tableNode, todos } from "./spec-nodes.js";
+import { formNode, memoryState, opener, tableNode, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -44,7 +44,9 @@ const listForm = {
   type: "form",
   schema: listSchema,
   basePath: "/api/lists",
-  fields: ["formats", "sizes", "notes"].map((property) => ({ property, label: property })),
+  fields: ["formats", "sizes", "notes"].map((property) => ({ type: "input", property, label: property, control: "auto" })),
+  groups: [],
+  state: memoryState(["formats", "sizes", "notes"]),
 };
 
 describe("a form", () => {

@@ -28,6 +28,7 @@
     "@telorun/editor-protocol",
     "@telorun/glob",
     "@telorun/ide-support",
+    "@telorun/message-format",
     "@telorun/sdk",
     "@telorun/templating"
   ],

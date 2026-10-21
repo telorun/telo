@@ -1,0 +1,2125 @@
+{
+  "cldrVersion": "48.2.0",
+  "locales": {
+    "af": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "agq": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "‎-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-BH": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-DJ": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-DZ": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "‎-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-EG": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-ER": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-IL": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-IQ": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-JO": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-KM": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-KW": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-LB": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-LY": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "‎-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-MA": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "‎-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-MR": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-OM": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-PS": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-QA": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-SA": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-SD": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-SO": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-SS": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-SY": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-TD": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-TN": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "‎-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ar-YE": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "as": {
+      "digits": "০১২৩৪৫৬৭৮৯",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ast": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "az": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "az-Arab": {
+      "digits": "۰۱۲۳۴۵۶۷۸۹",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "‎-‎",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "az-Cyrl": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ba": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "bas": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "be": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "bg": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "bgc": {
+      "digits": "०१२३४५६७८९",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "bgn": {
+      "digits": "۰۱۲۳۴۵۶۷۸۹",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "‎-‎",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "bho": {
+      "digits": "०१२३४५६७८९",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "blo": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "bn": {
+      "digits": "০১২৩৪৫৬৭৮৯",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "br": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "brx": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "bs": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "bs-Cyrl": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "bua": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ca": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ccp": {
+      "digits": "𑄶𑄷𑄸𑄹𑄺𑄻𑄼𑄽𑄾𑄿",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ckb": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "‏-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "cs": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "cv": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "da": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "de": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "de-AT": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "de-CH": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": "'",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "de-LI": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": "'",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "dje": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "dsb": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "dua": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "dyo": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "dz": {
+      "digits": "༠༡༢༣༤༥༦༧༨༩",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ee": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "3"
+    },
+    "el": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-AT": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-BE": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-CH": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": "'",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-CZ": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-DE": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-DK": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-EE": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-ES": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-FI": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-FR": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-GE": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-HU": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-ID": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-IN": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-IT": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-LT": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-LV": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-NL": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-NO": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-PL": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-PT": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-RO": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-SE": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-SI": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-SK": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-UA": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "en-ZA": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "eo": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "es": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "es-419": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "es-AR": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "es-BO": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "es-CL": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "es-CO": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "es-CR": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "es-EC": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "es-PY": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "es-UY": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "es-VE": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "et": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "eu": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ewo": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "fa": {
+      "digits": "۰۱۲۳۴۵۶۷۸۹",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "‎−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ff": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ff-Adlm": {
+      "digits": "𞥐𞥑𞥒𞥓𞥔𞥕𞥖𞥗𞥘𞥙",
+      "decimal": ".",
+      "group": "⹁",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "fi": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "fo": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "fr": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "fr-CA": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "fr-CH": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": "'",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "fr-LU": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "fr-MA": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "fur": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "fy": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "gl": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "gsw": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": "'",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "gu": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "he": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "‎-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "hi": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "hnj": {
+      "digits": "𞅀𞅁𞅂𞅃𞅄𞅅𞅆𞅇𞅈𞅉",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "hr": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "hsb": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ht": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "hu": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "hy": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "ia": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "id": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ie": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "is": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "it": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "it-CH": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": "'",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "jgo": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "jv": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ka": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "kab": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "kea": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "kgp": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "khq": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "kk": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "kkj": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "kl": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "kok": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "kok-Latn": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ks": {
+      "digits": "۰۱۲۳۴۵۶۷۸۹",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "‎-‎",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ksf": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ksh": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ku": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "kxv": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "kxv-Deva": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "kxv-Orya": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "kxv-Telu": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ky": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "lb": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "lij": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "lld": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "lmo": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": "'",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ln": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "lo": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "lrc": {
+      "digits": "۰۱۲۳۴۵۶۷۸۹",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "‎-‎",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "lt": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "lu": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "lv": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "mfe": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "mgh": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "mk": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ml": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "mni": {
+      "digits": "০১২৩৪৫৬৭৮৯",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "mni-Mtei": {
+      "digits": "꯰꯱꯲꯳꯴꯵꯶꯷꯸꯹",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "mr": {
+      "digits": "०१२३४५६७८९",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ms-Arab-BN": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ms-BN": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ms-ID": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "mua": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "mww": {
+      "digits": "𞅀𞅁𞅂𞅃𞅄𞅅𞅆𞅇𞅈𞅉",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "my": {
+      "digits": "၀၁၂၃၄၅၆၇၈၉",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "mzn": {
+      "digits": "۰۱۲۳۴۵۶۷۸۹",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "‎-‎",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "nds": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ne": {
+      "digits": "०१२३४५६७८९",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "nl": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "nmg": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "nnh": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "no": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "nqo": {
+      "digits": "߀߁߂߃߄߅߆߇߈߉",
+      "decimal": ".",
+      "group": "،",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "nr": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "oc": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "or": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "os": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "pa": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "pa-Arab": {
+      "digits": "۰۱۲۳۴۵۶۷۸۹",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "‎-‎",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "pl": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "pms": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "prg": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ps": {
+      "digits": "۰۱۲۳۴۵۶۷۸۹",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "‎-‎",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "pt": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "pt-AO": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "pt-PT": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "qu-BO": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "raj": {
+      "digits": "०१२३४५६७८९",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "rm": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "rn": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ro": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "root": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ru": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ru-UA": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "rw": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sa": {
+      "digits": "०१२३४५६७८९",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sah": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sat": {
+      "digits": "᱐᱑᱒᱓᱔᱕᱖᱗᱘᱙",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sat-Deva": {
+      "digits": "०१२३४५६७८९",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sc": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "scn": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sd": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": ".",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sdh": {
+      "digits": "٠١٢٣٤٥٦٧٨٩",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "؜-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "se": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "seh": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ses": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sg": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "shi": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "shi-Latn": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sk": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sl": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "smn": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sq": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "2"
+    },
+    "sr": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sr-Latn": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ss": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "su": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sv": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "−",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "sw-CD": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "szl": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ta": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ta-MY": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ta-SG": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "te": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "tg": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "tk": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "tn": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": "'",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "tok": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,#0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "tr": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ts": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "tt": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "twq": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "tyv": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "tzm": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "uk": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ur": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "‎-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ur-IN": {
+      "digits": "۰۱۲۳۴۵۶۷۸۹",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "‎-‎",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "uz": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "uz-Arab": {
+      "digits": "۰۱۲۳۴۵۶۷۸۹",
+      "decimal": "٫",
+      "group": "٬",
+      "minusSign": "‎-‎",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "uz-Cyrl": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "ve": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "vec": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "vi": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "vmw": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "wae": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": "'",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "wo": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "xh": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "xnr": {
+      "digits": "0123456789",
+      "decimal": ".",
+      "group": ",",
+      "minusSign": "-",
+      "pattern": "#,##,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "yav": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "yrl": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": ".",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    },
+    "zgh": {
+      "digits": "0123456789",
+      "decimal": ",",
+      "group": " ",
+      "minusSign": "-",
+      "pattern": "#,##0.###",
+      "minimumGroupingDigits": "1"
+    }
+  }
+}

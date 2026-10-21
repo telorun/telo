@@ -1,0 +1,167 @@
+{
+  "chains": [
+    {
+      "id": "chain-001",
+      "tag": "pl-Latn-PL",
+      "chain": [
+        "pl-Latn-PL",
+        "pl-Latn",
+        "pl"
+      ]
+    },
+    {
+      "id": "chain-002",
+      "tag": "pl",
+      "chain": [
+        "pl"
+      ]
+    },
+    {
+      "id": "chain-003",
+      "tag": "",
+      "chain": []
+    },
+    {
+      "id": "chain-004",
+      "tag": "zh-Hant-CN-x-private1-private2",
+      "chain": [
+        "zh-Hant-CN-x-private1-private2",
+        "zh-Hant-CN-x-private1",
+        "zh-Hant-CN",
+        "zh-Hant",
+        "zh"
+      ]
+    },
+    {
+      "id": "chain-005",
+      "tag": "en-a-bbb-x-a-ccc",
+      "chain": [
+        "en-a-bbb-x-a-ccc",
+        "en-a-bbb",
+        "en"
+      ]
+    },
+    {
+      "id": "chain-006",
+      "tag": "sr-Latn-RS-u-nu-latn",
+      "chain": [
+        "sr-Latn-RS-u-nu-latn",
+        "sr-Latn-RS-u-nu",
+        "sr-Latn-RS",
+        "sr-Latn",
+        "sr"
+      ]
+    },
+    {
+      "id": "chain-007",
+      "tag": "x-private",
+      "chain": [
+        "x-private",
+        "x"
+      ]
+    }
+  ],
+  "lookups": [
+    {
+      "id": "lookup-001",
+      "requested": "pl-PL",
+      "available": [
+        "en",
+        "pl"
+      ],
+      "result": "pl"
+    },
+    {
+      "id": "lookup-002",
+      "requested": "pl-Latn-PL",
+      "available": [
+        "pl-Latn",
+        "pl"
+      ],
+      "result": "pl-Latn"
+    },
+    {
+      "id": "lookup-003",
+      "requested": "PL-pl",
+      "available": [
+        "en",
+        "pl"
+      ],
+      "result": "pl"
+    },
+    {
+      "id": "lookup-004",
+      "requested": "pl",
+      "available": [
+        "pl-PL"
+      ],
+      "result": null
+    },
+    {
+      "id": "lookup-005",
+      "requested": "de",
+      "available": [
+        "pl",
+        "en"
+      ],
+      "result": null
+    },
+    {
+      "id": "lookup-006",
+      "requested": "en-US",
+      "available": [
+        "EN"
+      ],
+      "result": "EN"
+    },
+    {
+      "id": "lookup-007",
+      "requested": "en-us",
+      "available": [
+        "en-US",
+        "en"
+      ],
+      "result": "en-US"
+    },
+    {
+      "id": "lookup-008",
+      "requested": "zh-Hant-TW",
+      "available": [
+        "zh",
+        "zh-Hant"
+      ],
+      "result": "zh-Hant"
+    },
+    {
+      "id": "lookup-009",
+      "requested": "",
+      "available": [
+        "en"
+      ],
+      "result": null
+    },
+    {
+      "id": "lookup-010",
+      "requested": "en",
+      "available": [],
+      "result": null
+    },
+    {
+      "id": "lookup-011",
+      "requested": "sr-Latn-RS-u-nu-latn",
+      "available": [
+        "sr-Latn"
+      ],
+      "result": "sr-Latn"
+    },
+    {
+      "id": "lookup-012",
+      "requested": "pl",
+      "available": [
+        "PL",
+        "pl"
+      ],
+      "result": "PL"
+    }
+  ]
+}

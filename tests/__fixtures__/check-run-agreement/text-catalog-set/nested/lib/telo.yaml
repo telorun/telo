@@ -1,0 +1,32 @@
+# A catalog whose source nests twenty selections deep and one whose source is
+# the plain pattern it reaches by taking `other` at every selection: one text,
+# translated twice into Polish across the set — the second reached through a
+# set the first one references.
+kind: Telo.Library
+metadata:
+  name: CatalogSetNested
+  version: 1.0.0
+  description: Fixture library whose catalog set translates one text twice.
+imports:
+  Kinds: ../../kinds
+---
+kind: Kinds.Catalog
+metadata: { name: nested }
+lang: pl
+texts:
+  - text: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: { plural: n, cases: { one: "{$n} file", other: "{$n} files" } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+    translation: "{$n} plików"
+---
+kind: Kinds.Catalog
+metadata: { name: plain }
+lang: pl
+texts:
+  - { text: "{$n} files", translation: "{$n} pliki" }
+---
+kind: Kinds.Set
+metadata: { name: inner }
+catalogs: [!ref plain]
+---
+kind: Kinds.Set
+metadata: { name: set }
+catalogs: [!ref nested, !ref inner]

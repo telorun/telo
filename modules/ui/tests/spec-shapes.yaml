@@ -97,13 +97,14 @@ steps:
               type: table
               schema: {}
               basePath: /api/todos
+              query: {}
               rowKey: id
               pageSize: 25
               columns: []
               rowActions: []
               delete: false
               create:
-                form: { type: form, schema: {}, basePath: /api/todos, fields: [] }
+                form: { type: form, schema: {}, basePath: /api/todos, fields: [], groups: [], state: { address: false, store: { type: memory }, fields: [] } }
                 surface: { type: dialog, size: huge, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
                 afterSubmit: close
                 unsaved: confirm
@@ -152,13 +153,13 @@ steps:
             node:
               type: filters
               fields: []
-              content: { type: text, text: Todos }
+              content: { type: text, text: { word: loading } }
               show: all
               placement: { type: nowhere }
               controls: direct
               apply: commit
               summary: none
-              state: { address: false, store: { type: memory } }
+              state: { address: false, store: { type: memory }, fields: [] }
               presets: []
       - name: filtersPlacementAccepted
         throw: { code: ACCEPTED, message: the provider's contract accepted the value }
@@ -175,13 +176,13 @@ steps:
             node:
               type: filters
               fields: []
-              content: { type: text, text: Todos }
+              content: { type: text, text: { word: loading } }
               show: all
               placement: { type: above }
               controls: direct
               apply: commit
               summary: none
-              state: { address: false, store: { type: server } }
+              state: { address: false, store: { type: server }, fields: [] }
               presets: []
       - name: filtersStoreAccepted
         throw: { code: ACCEPTED, message: the provider's contract accepted the value }
@@ -199,4 +200,4 @@ steps:
         - "ERR_OUTPUT_INVALID Error: /surface matches no alternative — expected one with 'modal', or one with 'align'"
         - "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'open', or one with 'surface'"
         - "ERR_OUTPUT_INVALID Error: /node/placement matches no alternative — expected one with 'side', or one with 'open', or one with 'surface'"
-        - "ERR_OUTPUT_INVALID Error: /node matches no alternative — expected one with 'children', or one with 'text', or one with 'src', or one with 'markup', or one with 'schema', or one with 'module', or one with 'code'"
+        - "ERR_OUTPUT_INVALID Error: /node matches no alternative — expected one with 'children', or one with 'text', or one with 'src', or one with 'markup', or one with 'schema', or one with 'module', or one with 'value', or one with 'rows', or one with 'code'"

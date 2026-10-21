@@ -74,6 +74,7 @@ function created(
     () => ({ validate: () => {} }),
     noShapes,
     {} as Logger,
+    true,
   );
   return instance;
 }
@@ -87,7 +88,7 @@ describe("a callable's dispatch entry", () => {
       { name: "width", schema: { type: "integer", default: 8 }, optional: true },
       { name: "fill", schema: { type: "string" }, optional: true },
     ];
-    const entry = callableEntry("Self.pad", echo(params), params, noShapes);
+    const entry = callableEntry("Self.pad", echo(params), params, noShapes, { lang: null });
 
     expect(entry(["x"])).toEqual({ text: "x", width: 8n, fill: null });
   });
@@ -100,7 +101,7 @@ describe("a callable's dispatch entry", () => {
       (args.tags as unknown[]).push("seen");
       return args.tags;
     }, params);
-    const entry = callableEntry("Self.tag", pushing, params, noShapes);
+    const entry = callableEntry("Self.tag", pushing, params, noShapes, { lang: null });
 
     entry([]);
     expect(entry([])).toEqual(["seen"]);
@@ -111,21 +112,21 @@ describe("a callable's dispatch entry", () => {
       { name: "x", schema: { type: "number" } },
       { name: "n", schema: { type: "integer" }, nullable: true },
     ];
-    const entry = callableEntry("Self.half", echo(params), params, noShapes);
+    const entry = callableEntry("Self.half", echo(params), params, noShapes, { lang: null });
 
     expect(entry([3n, 4])).toEqual({ x: 3, n: 4n });
   });
 
   it("returns the result in the representation its signature declares", () => {
     const one = created(() => 1n, [], { schema: { type: "number" } });
-    const entry = callableEntry("Self.ratio", one, [], noShapes);
+    const entry = callableEntry("Self.ratio", one, [], noShapes, { lang: null });
 
     expect(entry([])).toBe(1);
   });
 
   it("refuses an argument count no parameter list accepts, as a structured error", () => {
     const params: SignatureParam[] = [{ name: "text" }];
-    const entry = callableEntry("Self.pad", echo(params), params, noShapes);
+    const entry = callableEntry("Self.pad", echo(params), params, noShapes, { lang: null });
 
     let thrown: unknown;
     try {
@@ -141,7 +142,7 @@ describe("a callable's dispatch entry", () => {
     const parking = created(() => {
       throw new InvokeError(ERR_DURABLE_SUSPENDED, "parked");
     });
-    const entry = callableEntry("Self.wait", parking, [], noShapes);
+    const entry = callableEntry("Self.wait", parking, [], noShapes, { lang: null });
 
     expect(() => entry([])).toThrowError(expect.objectContaining({ code: ERR_DURABLE_SUSPENDED }));
   });
@@ -150,7 +151,7 @@ describe("a callable's dispatch entry", () => {
     const failing = created(() => {
       throw new InvokeError("ERR_KEY_REJECTED", "key too short");
     });
-    const entry = callableEntry("Crypto.sign", failing, [], noShapes);
+    const entry = callableEntry("Crypto.sign", failing, [], noShapes, { lang: null });
 
     try {
       entry([]);

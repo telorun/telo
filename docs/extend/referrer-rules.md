@@ -69,7 +69,8 @@ must supply it. That is not a stylistic preference:
 | Binding | Is |
 | --- | --- |
 | `self` | the resource the rule is declared for — the one being referenced |
-| `referrer` | the resource that references it |
+| `referrer` | the resource that references it — with `resolve:`, its named reference slots replaced by the declarations they name |
+| `self` with `resolveSelf:` | the referenced resource with its own named reference slots replaced the same way |
 | `entry` | *(with `peers:`)* the referrer's own entry that reached me |
 | `peers` | *(with `peers:`)* that collection's other entries |
 
@@ -166,6 +167,65 @@ this kind in the analysis" needs no resolution and is unsound: a physical name i
 scoped by its namespace, so two schema resources over one connection — which the
 schema design supports deliberately — would report a conflict between objects that
 never meet. The reference collection is what defines the scope.
+
+## `resolve:` — what the referrer's references name
+
+A rule about a field's place in the form holding it reads the form's model, which
+the form holds by reference. `resolve:` lists JSON Pointers to the REFERRER
+kind's own reference slots; `referrer` binds with each one replaced by the
+declaration it names, one level deep — the resource-rule
+[`resolve:`](./resource-rules.md), pointed at the referrer:
+
+```yaml
+x-telo-referrer-rules:
+  - referrer: Self.Form
+    resolve: [/model]
+    condition: !cel "self.name in referrer.model.columns"
+    code: FIELD_NOT_IN_MODEL
+    message: names no column of the form's model.
+```
+
+A slot that names a collection binds each reference in it the same way. The
+binding is the one `peers:` and a resource rule's `resolve:` use, so a reference
+that does not resolve — or names a library's kind-only `resources:` input —
+makes the rule `REFERRER_RULE_SKIPPED` for that referrer, a slot refusing the kind
+it names reports nothing, and a pointer resolving to nothing leaves the field
+absent. `resolve:` requires `referrer:`, and each pointer must name a field that
+kind (or one of its implementations) declares — `REFERRER_RULE_INVALID` at the
+kind that wrote the rule otherwise.
+
+A pointer may continue past a reference slot into what it names, and range
+with `*`, exactly as a resource rule's `resolve:` does.
+
+### `resolveSelf:` — what my own references name
+
+`resolveSelf:` is the same view pointed at `self`: JSON Pointers to the
+DECLARING kind's own reference slots, `self` bound with each replaced by the
+declaration it names. A choice field judging its option source's value type
+against the form's model needs both sides resolved:
+
+```yaml
+x-telo-referrer-rules:
+  - referrer: Self.Form
+    resolve: [/model]
+    resolveSelf: [/options/model]
+    condition: !cel "…self.options.model… against referrer.model…"
+    code: OPTION_VALUE_MISMATCH
+    message: offers values of another type than the property holds.
+```
+
+Each pointer must name a field this kind declares (`REFERRER_RULE_INVALID`
+otherwise); a reference that does not resolve skips the rule for that referrer.
+
+**A code names one rule per `referrer:` filter.** The same judgement declared
+once per owner kind — `referrer: Self.Form` and `referrer: Self.Action` — keeps
+one code, told apart by the referrer it judges; two rules sharing both a code
+and a filter are refused.
+
+An analyzer released before `resolve:` ignores the key and evaluates the
+condition over the reference itself, which reports the rule as defective on the
+module's own line — so, as for `peers:` below, the first module to write it
+declares a `requires: telo:` floor, verified by execution.
 
 ## `referrer:` — which references the rule is about
 

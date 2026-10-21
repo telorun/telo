@@ -31,13 +31,14 @@ export const interpolateEngine: TemplatingEngine = {
   compile(source, env) {
     const holes = requireHoles(INTERPOLATE_ENGINE, source);
     const fragments = literalFragments(source, holes);
-    const { compiled, refs, calls, volatile } = compileHoles(holes, env);
+    const { compiled, refs, calls, callArguments, volatile } = compileHoles(holes, env);
     const convert = stringConversion(env.celEnv);
     return {
       __compiled: true,
       source,
       refs,
       calls,
+      callArguments,
       ...(volatile ? { volatile: true as const } : {}),
       call: (ctx: Record<string, unknown>): string => {
         let out = fragments[0]!;

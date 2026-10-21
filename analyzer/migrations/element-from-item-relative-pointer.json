@@ -1,0 +1,20 @@
+{
+  "$comment": "The bare field name released in ui 0.3.0 and 0.4.0 named a field of the array entry enclosing the context; that entry is the object holding the field the region is declared on whenever the region sits on a field of an array entry, which is every published use, so the bare name is exactly the pointer `0/<name>`. `valuePattern` admits only a bare name, so a pointer — or anything else — is left for the validator. `inSchema` with the wildcard `inKind` / `under` reaches the annotation wherever a kind or a named shape writes it, and `notUnder` keeps the rule out of data-bearing keywords.",
+  "id": "element-from-item-relative-pointer",
+  "code": "DEPRECATED_ELEMENT_FROM_ITEM_FIELD",
+  "severity": "warning",
+  "reason": "`x-telo-context-element-from-item` names the field whose chain types the binding with a relative JSON pointer from the object holding the field the region is declared on (`0/rows` for a sibling, `2/rows` two levels up), so a region on a list column's own field can reach the list's `rows`; a bare field name could name only a field of the enclosing array entry.",
+  "rules": [
+    {
+      "match": {
+        "key": "x-telo-context-element-from-item",
+        "inKind": ["*"],
+        "under": ["*"],
+        "inSchema": true,
+        "valuePattern": "[^/~]+",
+        "notUnder": ["const", "default", "enum", "examples"]
+      },
+      "patch": [{ "op": "set-value", "qualify": "0/" }]
+    }
+  ]
+}

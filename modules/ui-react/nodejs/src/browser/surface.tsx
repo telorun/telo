@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 import { Icon } from "./icon.js";
 import { ErrorNode } from "./nodes.js";
 import type { ErrorSpec } from "./ui-error.js";
+import { useSay } from "./texts.js";
 
 /** Where a form appears and how it is dismissed, as the page document says it. */
 export interface SurfaceSpec {
@@ -64,8 +65,9 @@ const attributes = (spec: SurfaceSpec) => ({
 });
 
 function CloseButton({ onClose }: { onClose: () => void }) {
+  const say = useSay();
   return (
-    <button data-telo-part="surface-close" type="button" aria-label="Close" onClick={onClose}>
+    <button data-telo-part="surface-close" type="button" aria-label={say("close")} onClick={onClose}>
       <Icon of={X} />
     </button>
   );
@@ -316,7 +318,8 @@ interface ConfirmationProps {
 
 /** A question that interrupts: only Escape or one of its two buttons answers
  *  it, and confirming leaves it open for whoever asked to close. */
-export function Confirmation({ title, description, confirm, danger = true, cancel = "Cancel", busy = false, failure, children, onConfirm, onClose }: ConfirmationProps) {
+export function Confirmation({ title, description, confirm, danger = true, cancel, busy = false, failure, children, onConfirm, onClose }: ConfirmationProps) {
+  const say = useSay();
   const heading = <AlertDialog.Title data-telo-part="surface-title">{title}</AlertDialog.Title>;
   return (
     <AlertDialog.Root open onOpenChange={(open) => !open && onClose()}>
@@ -337,7 +340,7 @@ export function Confirmation({ title, description, confirm, danger = true, cance
           {children}
           {failure && <ErrorNode error={failure} />}
           <div data-telo-part="form-actions">
-            <AlertDialog.Cancel data-telo-part="cancel">{cancel}</AlertDialog.Cancel>
+            <AlertDialog.Cancel data-telo-part="cancel">{cancel ?? say("cancel")}</AlertDialog.Cancel>
             <button data-telo-part="submit" data-style={danger ? "danger" : undefined} type="button" disabled={busy} onClick={onConfirm}>
               {confirm}
             </button>

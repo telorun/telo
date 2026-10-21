@@ -1,0 +1,23 @@
+# The same form in an application's own resources: its load analysis refuses it.
+kind: Telo.Application
+metadata:
+  name: FillCycleApp
+  version: 1.0.0
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Form
+metadata:
+  name: form
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      sheet: { type: string }
+      title: { type: string }
+fields:
+  - title
+  - kind: Kinds.Field
+    property: sheet
+    shown: { at: !cel "values.sheet" }

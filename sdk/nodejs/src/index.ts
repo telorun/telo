@@ -2,6 +2,8 @@ export * from "./bigint-json.js";
 export * from "./cancellation.js";
 export * from "./cel-host-value.js";
 export * from "./cel-value-identity.js";
+// The message core, re-exported so every controller formats through the SDK's one copy.
+export * from "@telorun/message-format";
 // Deprecated compatibility shims for the two classes the value domain replaced. They exist
 // for controller artifacts already published against them, which no floor can reach.
 export { Duration, UnsignedInt } from "./legacy-value-classes.js";
@@ -38,6 +40,7 @@ export * from "./step-predicate.js";
 export * from "./record-buffer.js";
 export * from "./runtime-seam.js";
 export * from "./text-channel.js";
+export * from "./text-record.js";
 export * from "./log-severity.js";
 export * from "./logger.js";
 export * from "./network-fetch.js";

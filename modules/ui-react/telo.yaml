@@ -13,14 +13,15 @@ metadata:
     page descriptions into a working admin panel or internal tool with no
     frontend build step.
 requires:
-  # 0.111.0 checks this file clean, but refuses an application's `theme:` on
-  # the application's own line (INVALID_REFERENCE at 'theme'), and its kernel
-  # has no `ctx.resolveControllerBrowserEntry`, which `UiReact.App` calls to
-  # find the renderer it serves. Verified by execution (`check` and `run` of an
-  # application declaring a `UiReact.App`) against 0.111.0.
-  telo: ">=0.112.0"
+  # 0.120.1 refuses this file: it does not know `x-telo-context-eval`, which
+  # keeps a page's `request` out of what the browser names and its `query` out
+  # of what the server evaluates, nor the `Text` fragment and
+  # `x-telo-text-values` an application's titles are typed with. Verified by
+  # execution (`check` of this file) against 0.120.1.
+  telo: ">=0.121.0"
 imports:
   Ui: ../ui
+  I18n: ../i18n
   SseCodec: ../sse-codec
 exports:
   kinds:
@@ -79,7 +80,15 @@ exports:
       source: ./nodejs/src/browser/renderer.tsx
       abi: ui_react-1
       external: [react, react/jsx-runtime, react-dom, react-dom/client]
-      exports: [mount]
+      # The message core it formats every text with, beside `mount`: what the
+      # core's conformance vectors are run against in the entry as built.
+      exports:
+        [
+        mount, formatMessage, formatNumber, invalidPluralCategories, lookupLanguage,
+        messageIdentity, messageVariables, parsePattern, pluralCategories,
+        pluralCategory, pluralCategoryOfDecimal, readMessage, readText,
+        serializePattern, textIdentity, truncationChain, unknownVariables,
+        ]
 ---
 kind: Telo.Definition
 metadata:
@@ -96,18 +105,47 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required: [title, pages]
+  required: [title, words, pages]
   properties:
     title:
       title: Title
       description: The application's name, shown in its header and as the document title.
-      type: string
+      $ref: "telo://manifest#/$defs/Text"
+      x-telo-text-values: {}
       x-telo-eval: compile
     lang:
       title: Language
-      description: The language of the content, written as the document's `lang`. Absent, none is written.
+      description: >-
+        The language a request asks for, read per request — a negotiator's
+        answer over its Accept-Language header — or one fixed tag. The documents
+        are in the catalog language it lands on through the translator, else in
+        the language the application module's `lang:` declares, else in none.
       type: string
-      x-telo-eval: compile
+      format: language-tag
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            type: object
+            properties:
+              headers:
+                type: object
+                additionalProperties: { type: string }
+              ip: { type: string }
+    translator:
+      title: Translator
+      description: >-
+        The catalogs every text of the application is looked up in: its titles,
+        its pages' texts, the labels of its data shapes and the renderer's own
+        words. A text no catalog translates is shown as written.
+      x-telo-ref: { kind: I18n.Translator, use: dependency }
+    words:
+      title: Words
+      description: >-
+        The words the renderer shows of its own — loading, empty states,
+        buttons, validation messages — `Ui.words` in English, or a set of one's
+        own.
+      x-telo-ref: { kind: Ui.Words, use: dependency }
     theme:
       title: Theme
       description: >-
@@ -174,24 +212,41 @@ schema:
           title:
             title: Title
             description: Shown above the page and in the navigation.
-            type: string
+            $ref: "telo://manifest#/$defs/Text"
+            x-telo-text-values: {}
+          query:
+            title: Query
+            description: >-
+              The query parameters the page's nodes read, each a string or a
+              list of strings for a key given more than once. Read as `query`
+              by a condition or a value the browser draws.
+            $ref: "telo://Ui/QueryParameters"
           children:
             title: Children
             description: >-
               The page's nodes, top to bottom. Each node's `when:` and text
-              values may read the request.
+              values may read the request, evaluated per request; a `shown`
+              condition and a `value` or `list` node read `query` in the
+              browser.
             type: array
             items: { $ref: "telo://Ui/Node" }
             x-telo-context:
               type: object
               properties:
                 request:
+                  x-telo-context-eval: runtime
                   type: object
                   properties:
                     headers:
                       type: object
                       additionalProperties: { type: string }
                     ip: { type: string }
+                query:
+                  x-telo-context-eval: accessor
+                  x-telo-context-from: query
+                  type: object
+                  properties: {}
+                  additionalProperties: false
   x-telo-resource-rules:
     - in: /pages
       condition: !cel "self.pages.exists_one(p, p.path == this.path)"

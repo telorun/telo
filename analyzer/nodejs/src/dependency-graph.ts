@@ -574,6 +574,7 @@ function addStartupStatusReadEdges(
     const sites = governedCelEvalSites(
       definitionInScope(registry, node.kind, node.manifest.metadata, aliases, aliasesByModule),
       resolveDef,
+      registry.shapeLookup,
     );
     if (!sites) continue;
     const fromModule = declaringModuleOf(node.manifest);

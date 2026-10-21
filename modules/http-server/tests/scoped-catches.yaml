@@ -45,10 +45,10 @@ steps:
 # an InvokeError no rung below the server claims, which is how the SERVER rung
 # is exercised across the mount boundary by a manifest that checks clean.
 #
-# The mismatch is deliberately behind an expression: `x-telo-value-schema-from`
-# checks this slot against `outputType`, and a literal string at a boolean field
-# is exactly what it would reject. What the contract cannot see statically is
-# what the expression EVALUATES to, which is the runtime failure under test.
+# The mismatch is deliberately behind a `dyn(...)` expression: `x-telo-value-schema-from`
+# checks this slot against `outputType`, and both a literal string and a string-typed
+# expression at a boolean field are what it rejects. A `dyn` value's type is unknown
+# statically, so what it EVALUATES to is the runtime failure under test.
 kind: Run.Value
 metadata: { name: producesInvalidOutput }
 outputType:
@@ -59,7 +59,7 @@ outputType:
       ok: { type: boolean }
     required: [ ok ]
 value:
-  ok: !cel "'definitely-not-a-boolean'"
+  ok: !cel "dyn('definitely-not-a-boolean')"
 ---
 # Requires an integer it is handed a non-numeric string for, so the kernel's
 # ambient ERR_INPUT_INVALID is raised — named by no entry at any rung, which is

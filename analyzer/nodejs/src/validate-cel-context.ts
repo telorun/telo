@@ -7,8 +7,10 @@ import {
   parseCanonicalTypeSchemaId,
 } from "@telorun/sdk";
 import { KERNEL_BUILTINS } from "./builtins.js";
+import { CONTEXT_FROM_REFERRER } from "./context-from-referrer.js";
+import { ELEMENT_FROM_ITEM } from "./element-from-item.js";
 import { kindDeclarationOf } from "./kind-declaration.js";
-import { parameterContextProperties, readParams } from "./callable-signature.js";
+import { argumentRecordSchema, readParams } from "./callable-signature.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { withRefSlotsAsReadings } from "./ref-slot-reading.js";
 import { inlineNamedShapes } from "./schema-compat.js";
@@ -19,7 +21,11 @@ import { valueDerivedContract } from "./value-derived-contract.js";
 // question in one place. Re-exported: this module is where every existing
 // consumer imports them from.
 export { extractCelRegionScopes, pathMatchesScope } from "./eval-paths.js";
-import { pathMatchesScope } from "./eval-paths.js";
+import {
+  contextRegionsOf,
+  scopeMatchOf,
+  type NamedShapeLookup,
+} from "./eval-paths.js";
 
 /** True when a node's value is decided at load or dispatch rather than written
  *  — a tagged sentinel (`!cel`, `!sql`, an embed) or an already-compiled value.
@@ -313,44 +319,6 @@ function inputsContractSchema(
     : undefined;
 }
 
-/** Types a binding from the element of the collection a field of the PER-SCOPE
- *  ITEM names. */
-const ELEMENT_FROM_ITEM_ANNOTATION = "x-telo-context-element-from-item";
-
-/**
- * The element of the collection the per-scope item's `field` names, when
- * statically known.
- *
- * The field holds a pure chain rooted at a binding of the SAME context, typed
- * as that binding resolved with named shapes seen through. A chain rooted at
- * `inputs` that the binding does not type is read against the resource's
- * contract, as `x-telo-context-element-from` reads it. Anything else answers
- * undefined, and the caller leaves the binding untyped.
- */
-function elementOfItemCollection(
-  field: string,
-  manifestItem: Record<string, any>,
-  bindings: Record<string, any>,
-  opts: ContextResolveOpts,
-): Record<string, any> | undefined {
-  const chain = purePathChain(manifestItem?.[field]);
-  if (!chain) return undefined;
-  const [rootName, ...members] = chain;
-  const schemaForId = opts.defs?.schemaForId?.bind(opts.defs);
-  const elementUnder = (root: unknown) => {
-    if (!root || typeof root !== "object") return undefined;
-    const typed = root as Record<string, any>;
-    return elementOfCollection(
-      schemaAtChain(members, schemaForId ? inlineNamedShapes(typed, schemaForId) : typed),
-    );
-  };
-  const declared = Object.prototype.hasOwnProperty.call(bindings, rootName!)
-    ? elementUnder(bindings[rootName!])
-    : undefined;
-  if (declared || rootName !== "inputs") return declared;
-  return elementUnder(inputsContractSchema(opts.manifestRoot ?? manifestItem, opts.allManifests));
-}
-
 /**
  * What ITERATING a collection schema yields.
  *
@@ -359,7 +327,7 @@ function elementOfItemCollection(
  * is named here on purpose: a future iterable value type is covered by declaring
  * `element` on one of its parameters, with nothing to change in the analyzer.
  */
-function elementOfCollection(
+export function elementOfCollection(
   collection: Record<string, any> | undefined,
 ): Record<string, any> | undefined {
   if (!collection || typeof collection !== "object") return undefined;
@@ -502,16 +470,15 @@ export function resolveContextAnnotations(
   const parametersFrom = schema[PARAMETERS_FROM_ANNOTATION] as string | undefined;
   if (parametersFrom) {
     const declared = navigatePath(manifestRoot, parametersFrom.split("/"));
+    const record = argumentRecordSchema(readParams({ params: declared }), (node) => {
+      const root = resolveTypeFieldToSchema(node, allManifests ?? []) ?? node;
+      const schemaForId = defs?.schemaForId?.bind(defs);
+      return schemaForId ? inlineNamedShapes(root, schemaForId) : root;
+    });
     return {
       ...schema,
-      properties: {
-        ...(schema.properties ?? {}),
-        ...parameterContextProperties(readParams({ params: declared }), (node) => {
-          const root = resolveTypeFieldToSchema(node, allManifests ?? []) ?? node;
-          const schemaForId = defs?.schemaForId?.bind(defs);
-          return schemaForId ? inlineNamedShapes(root, schemaForId) : root;
-        }),
-      },
+      properties: { ...(schema.properties ?? {}), ...record.properties },
+      ...(record.$defs ? { $defs: { ...(schema.$defs ?? {}), ...record.$defs } } : {}),
       additionalProperties: false,
     };
   }
@@ -539,7 +506,14 @@ export function resolveContextAnnotations(
 
   // Typed by the enclosing property map, from its siblings. Reached directly it
   // has none to read, so it is untyped.
-  if (typeof schema[ELEMENT_FROM_ITEM_ANNOTATION] === "string") return {};
+  if (typeof schema[ELEMENT_FROM_ITEM] === "string") return {};
+
+  // Typed by the scope rule from each referrer's scope (`cel-scope.ts`); with no
+  // referrer it is what it declares itself.
+  if (schema[CONTEXT_FROM_REFERRER] !== undefined) {
+    const { [CONTEXT_FROM_REFERRER]: _referrer, ...own } = schema;
+    return own;
+  }
 
   const fromRoot = schema["x-telo-context-from-root"] as string | undefined;
   const fromRefKindRaw = schema["x-telo-context-from-ref-kind"] as
@@ -674,28 +648,18 @@ export function resolveContextAnnotations(
 
   if (schema.properties) {
     const props: Record<string, any> = {};
-    const elementsFromItem: Array<[string, string]> = [];
     for (const [k, v] of Object.entries(schema.properties)) {
       // Withholding happens HERE rather than inside the child resolver, because
       // this is the only level that owns the property map — a child can return a
       // schema but cannot remove itself from one.
       if (collectionBindingWithheld(v as Record<string, any>, manifestRoot, allManifests)) continue;
-      const fromItem = (v as Record<string, any> | undefined)?.[ELEMENT_FROM_ITEM_ANNOTATION];
-      if (typeof fromItem === "string") {
-        // Typed from its SIBLINGS, so it waits until every one of them is
-        // resolved; the placeholder keeps the declared order.
+      if (typeof (v as Record<string, any> | undefined)?.[ELEMENT_FROM_ITEM] === "string") {
+        // Typed from the chain at another site, which only the scope rule can
+        // type (`cel-scope.ts`); untyped until it does.
         props[k] = {};
-        elementsFromItem.push([k, fromItem]);
         continue;
       }
       props[k] = resolveContextAnnotations(v as Record<string, any>, manifestItem, normalizedOpts);
-    }
-    for (const [k, field] of elementsFromItem) {
-      props[k] =
-        elementOfItemCollection(field, manifestItem, props, {
-          ...normalizedOpts,
-          manifestRoot,
-        }) ?? {};
     }
     return { ...schema, properties: props };
   }
@@ -706,34 +670,23 @@ export function resolveContextAnnotations(
 /**
  * Extracts the concrete manifest array item for a given expression path + scope.
  * e.g. exprPath="routes[0].inputs.q", scope="$.routes[*].inputs" → manifest.routes[0]
+ *
+ * The item is the node at the LAST index a `[*]` of the scope matched — the
+ * per-scope item `x-telo-context-from` navigates from. A scope with no `[*]`
+ * names the whole document.
  */
 export function getManifestItem(
   exprPath: string,
   scope: string,
   manifest: Record<string, any>,
 ): Record<string, any> {
-  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope;
-  const parts = stripped.split("[*]");
-  if (parts.length === 1) return manifest;
-  // Resolve each `[*]` against the concrete index the expression path carries at
-  // the same position, accumulating up to the LAST wildcard: that node is the
-  // per-scope item (`routes[2]`), which is what `x-telo-context-from` navigates
-  // from. Built by walking the pattern rather than by a regex over the scope —
-  // a scope is a path, not a pattern, and its own `[4]` segments are regex
-  // character classes, which is what silently made every nested scope resolve
-  // to the whole document instead of the item.
-  let remaining = exprPath;
-  let concrete = "";
-  for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i]!;
-    if (!remaining.startsWith(part)) return manifest;
-    remaining = remaining.slice(part.length);
-    const index = remaining.match(/^\[(\d+)\]/);
-    if (!index) return manifest;
-    remaining = remaining.slice(index[0].length);
-    concrete += `${part}${index[0]}`;
-  }
-  return (navigateConcretePath(manifest, concrete) as Record<string, any> | undefined) ?? manifest;
+  const match = scopeMatchOf(exprPath, scope);
+  if (!match || match.itemEnd === 0) return manifest;
+  return (
+    (navigateConcretePath(manifest, match.prefix.slice(0, match.itemEnd)) as
+      | Record<string, any>
+      | undefined) ?? manifest
+  );
 }
 
 /**
@@ -775,29 +728,21 @@ export function getContextHolder(
   scope: string,
   manifest: Record<string, any>,
 ): Record<string, any> {
-  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope;
-  const parts = stripped.split("[*]");
-  let remaining = exprPath;
-  let concrete = "";
-  for (let i = 0; i < parts.length - 1; i++) {
-    const part = parts[i]!;
-    if (!remaining.startsWith(part)) return manifest;
-    remaining = remaining.slice(part.length);
-    const index = remaining.match(/^\[(\d+)\]/);
-    if (!index) return manifest;
-    remaining = remaining.slice(index[0].length);
-    concrete += `${part}${index[0]}`;
-  }
-  const tail = parts[parts.length - 1]!;
+  const match = scopeMatchOf(exprPath, scope);
+  if (!match) return manifest;
+  const tail = match.prefix.slice(match.itemEnd);
   const cut = tail.lastIndexOf(".");
-  const holder = navigateConcretePath(manifest, cut > 0 ? concrete + tail.slice(0, cut) : concrete);
+  const holder = navigateConcretePath(
+    manifest,
+    match.prefix.slice(0, cut > 0 ? match.itemEnd + cut : match.itemEnd),
+  );
   return holder && typeof holder === "object" && !Array.isArray(holder)
     ? (holder as Record<string, any>)
     : manifest;
 }
 
 /** Walk a concrete dotted path with `[N]` indices (`resources[4].routes[2]`). */
-function navigateConcretePath(root: unknown, path: string): unknown {
+export function navigateConcretePath(root: unknown, path: string): unknown {
   let cur: unknown = root;
   for (const segment of path.match(/[^.[\]]+/g) ?? []) {
     if (cur === null || typeof cur !== "object") return undefined;
@@ -838,51 +783,44 @@ export function kindAtPath(
 }
 
 /**
- * Walk a JSON Schema tree and collect all `x-telo-context` annotations,
- * returning them as `{ scope, schema }` pairs using JSONPath-style scopes —
- * the same format the analyzer uses for CEL context validation.
+ * Every `x-telo-context` region a schema declares, as `{ scope, schema }` pairs
+ * in the analyzer's scope grammar, reached through the walk the eval-path reader
+ * makes — local references, named shapes (`shapes`), map values and recursion
+ * included.
  *
- * Result is sorted by scope specificity (longer scope first) so that the
- * per-expression resolver's first-match-wins logic picks the most-specific
- * context. Without this, a broader ancestor scope (e.g. `$.resources[*]`)
- * could shadow a narrower descendant scope whose activation differs.
+ * Sorted by scope specificity (longer scope first), the order a caller reading
+ * only the most specific region relies on; a nested region ADDS to every
+ * enclosing one, which {@link contextChainAt} assembles.
  */
 export function extractContextsFromSchema(
   schema: Record<string, any>,
+  shapes: NamedShapeLookup,
   path = "$",
 ): Array<{ scope: string; schema: Record<string, any> }> {
-  const all = collectContexts(schema, path);
-  return all.sort((a, b) => b.scope.length - a.scope.length);
+  return contextRegionsOf(schema, shapes, path).sort((a, b) => b.scope.length - a.scope.length);
 }
 
-function collectContexts(
-  schema: Record<string, any>,
+/** One region in force at a site, and the concrete place it matched. */
+export interface MatchedContext {
+  scope: string;
+  schema: Record<string, any>;
+}
+
+/**
+ * Every region in `contexts` covering `path`, outermost first: each one adds to
+ * those enclosing it, a name it declares shadowing theirs. Ordered by how deep
+ * the place it matched lies, so a region declared below another is read after
+ * it whatever their scope text.
+ */
+export function contextChainAt(
+  contexts: ReadonlyArray<{ scope: string; schema: Record<string, any> }>,
   path: string,
-): Array<{ scope: string; schema: Record<string, any> }> {
-  if (!schema || typeof schema !== "object") return [];
-  const results: Array<{ scope: string; schema: Record<string, any> }> = [];
-
-  if (schema["x-telo-context"]) {
-    results.push({ scope: path, schema: schema["x-telo-context"] });
-  }
-
-  if (schema.properties) {
-    for (const [key, value] of Object.entries(schema.properties as Record<string, any>)) {
-      results.push(...collectContexts(value, `${path}.${key}`));
-    }
-  }
-
-  if (schema.items && typeof schema.items === "object") {
-    results.push(...collectContexts(schema.items, `${path}[*]`));
-  }
-
-  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
-    if (Array.isArray(schema[key])) {
-      for (const subschema of schema[key]) {
-        results.push(...collectContexts(subschema, path));
-      }
-    }
-  }
-
-  return results;
+): MatchedContext[] {
+  const matched: Array<MatchedContext & { depth: number; order: number }> = [];
+  contexts.forEach((ctx, order) => {
+    const match = scopeMatchOf(path, ctx.scope);
+    if (match) matched.push({ scope: ctx.scope, schema: ctx.schema, depth: match.prefix.length, order });
+  });
+  matched.sort((a, b) => a.depth - b.depth || b.order - a.order);
+  return matched.map(({ scope, schema }) => ({ scope, schema }));
 }

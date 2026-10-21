@@ -1,0 +1,34 @@
+# A page whose condition names the request, which only the server has, and
+# whose delivery reads the query, which only the browser has.
+kind: Telo.Library
+metadata:
+  name: UiReactPageRoots
+  version: 1.0.0
+  description: >-
+    Test fixture exporting an application whose page condition reads the
+    request and whose delivery condition reads the query.
+imports:
+  UiReact: ../../../../
+  Ui: ../../../../../ui
+exports:
+  resources: [mixed]
+---
+kind: UiReact.App
+metadata:
+  name: mixed
+title: Mixed
+words: !ref Ui.words
+pages:
+  - path: /
+    title: Home
+    query:
+      tab: { type: string }
+    children:
+      - type: text
+        text: Local
+        shown:
+          at: !cel "request.ip"
+          matches: { const: 127.0.0.1 }
+      - type: text
+        text: Tabbed
+        when: !cel "query.tab == 'one'"

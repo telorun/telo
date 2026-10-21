@@ -1,0 +1,26 @@
+kind: Telo.Library
+metadata:
+  name: TextVocabularyLib
+  version: 1.0.0
+  description: Fixture library holding one text defect.
+
+---
+kind: Telo.Function
+metadata:
+  name: t
+params:
+  - name: text
+    schema: { $ref: "telo://manifest#/$defs/Text" }
+  - name: values
+    optional: true
+    schema: { type: object, x-telo-text-values-for: /text }
+returns:
+  schema: { type: string }
+body: !cel "'translated'"
+---
+kind: Telo.Function
+metadata:
+  name: caller
+returns:
+  schema: { type: string }
+body: !cel "Self.t('a' + 'b')"

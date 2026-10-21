@@ -1,0 +1,17 @@
+# Supplies the library next door a resource whose configuration holds an
+# expression evaluated per call — refused at the import that supplies it.
+kind: Telo.Application
+metadata:
+  name: CallableDataInputApp
+  version: 1.0.0
+imports:
+  Kinds: ../kinds
+  Input:
+    source: ../input
+    resources:
+      source: !ref late
+---
+kind: Kinds.Late
+metadata:
+  name: late
+greeting: !cel "'hello'"

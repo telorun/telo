@@ -13,10 +13,12 @@ import {
   implicitEvalSites,
   mergeCelEvalSites,
   NO_CEL_EVAL_SITES,
+  NO_NAMED_SHAPES,
   pathMatchesScope,
   SELF_PATH,
   templateTargetsOf,
   type CelEvalSites,
+  type NamedShapeLookup,
 } from "@telorun/analyzer";
 import {
   isCompiledValue,
@@ -26,6 +28,12 @@ import {
 } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { celSelfView } from "../../evaluation-context.js";
+import {
+  provenanceAlong,
+  recordTextProvenance,
+  TextProvenance,
+  textProvenanceOf,
+} from "../../text-records.js";
 import {
   refuseComputedRefSlots,
   type RefPositionHost,
@@ -54,8 +62,9 @@ import { declaringContextOf } from "./declaring-context.js";
  */
 /** True when a node at `path` inside a body is evaluated by the child's own
  *  controller rather than at the template's init(). `runtime` paths are
- *  property-only and match by containment; a region scope is a JSONPath
- *  (`$.routes[*].returns`) whose wildcards a plain prefix test cannot resolve. */
+ *  property-only and match by containment; a region scope is `$` and an eval
+ *  path (`$.routes[*].returns`), whose wildcards a plain prefix test cannot
+ *  resolve. */
 function isDeferredPath(sites: CelEvalSites, path: string): boolean {
   return (
     sites.runtime.some((p) => evalPathCovers(p, path)) ||
@@ -202,7 +211,9 @@ export function createTemplateController(definition: {
  *  reason every other kernel-supplied hook is: a third-party host keeps
  *  compiling, and absent reads as "no positions", which is what a context that
  *  cannot enumerate them already meant. */
-refPositions?: RefPositionHost): ControllerInstance {
+refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): ControllerInstance {
+  // A body entry's kind is read through the lookup `telo check` reads it with.
+  const shapes = refPositions?.shapeLookup ?? NO_NAMED_SHAPES;
   // Checked at registration (`templateTargetProblems`), so every item is a
   // `!ref` naming an entry by the time an instance exists.
   const startTargets = templateTargetsOf(definition as Record<string, unknown>).map((t) => t.name);
@@ -358,7 +369,18 @@ refPositions?: RefPositionHost): ControllerInstance {
       // (`resolveRefSentinels`) does not descend into template bodies, so the
       // child context's Phase 5 injection would otherwise see an unrecognized
       // sentinel and leave the slot unresolved.
-      const expandSelf = (value: any, path: string, deferred: CelEvalSites): any => {
+      // Who wrote each value an entry holds: the defining library, except what a
+      // bare `self.<path>` forwards, which is whoever wrote it in `self`, and what
+      // a `self` expression computes. Recorded for the entry's creation.
+      const selfProvenance = (): TextProvenance =>
+        textProvenanceOf(resource) ?? TextProvenance.of({ computed: false });
+      const expandSelf = (
+        value: any,
+        path: string,
+        deferred: CelEvalSites,
+        segments: (string | number)[] = [],
+        provenance?: TextProvenance,
+      ): any => {
         if (isCompiledValue(value)) {
           if (isDeferredPath(deferred, path) && referencesBeyondSelf(value)) return value;
           // A pure `self.<path>` access (e.g. a `connection: !ref` passed down) is
@@ -371,10 +393,14 @@ refPositions?: RefPositionHost): ControllerInstance {
           const selfPath =
             typeof value.source === "string" ? value.source.trim().match(SELF_PATH) : null;
           if (selfPath) {
-            let cur: any = getSelf();
-            for (const key of selfPath[1]!.split(".").slice(1)) cur = memberOf(cur, key);
+            const self = getSelf();
+            const keys = selfPath[1]!.split(".").slice(1);
+            provenance?.graft(segments, provenanceAlong(self, selfProvenance(), keys));
+            let cur: any = self;
+            for (const key of keys) cur = memberOf(cur, key);
             return cur;
           }
+          provenance?.markComputed(segments);
           // CEL cannot read a member off a live instance, and a ref slot holds
           // one after Phase-5 injection. `celSelfView` replaces each with its
           // published reading, so `self.<ref>.<field>` answers exactly as
@@ -395,12 +421,14 @@ refPositions?: RefPositionHost): ControllerInstance {
           return { kind: refKind(name), name };
         }
         if (Array.isArray(value)) {
-          return value.map((item, i) => expandSelf(item, `${path}[${i}]`, deferred));
+          return value.map((item, i) =>
+            expandSelf(item, `${path}[${i}]`, deferred, [...segments, i], provenance),
+          );
         }
         if (value !== null && typeof value === "object") {
           const out: Record<string, unknown> = {};
           for (const [k, v] of Object.entries(value)) {
-            out[k] = expandSelf(v, path ? `${path}.${k}` : k, deferred);
+            out[k] = expandSelf(v, path ? `${path}.${k}` : k, deferred, [...segments, k], provenance);
           }
           return out;
         }
@@ -430,11 +458,12 @@ refPositions?: RefPositionHost): ControllerInstance {
         const capability = def?.capability;
         const sites = def
           ? mergeCelEvalSites(
-              celEvalSites(effectiveAuthorSchema(def, resolveDef) as Record<string, any>),
+              celEvalSites(effectiveAuthorSchema(def, resolveDef) as Record<string, any>, shapes),
               celEvalSites(
                 (capability ? resolveDef(capability)?.schema : undefined) as
                   | Record<string, any>
                   | undefined,
+                shapes,
               ),
               implicitEvalSites(def),
             )
@@ -484,9 +513,10 @@ refPositions?: RefPositionHost): ControllerInstance {
                   refPositions?.referencePositionsOf(entry as ResourceManifest) ?? [],
                   { forwardable: true },
                 );
-                childContext.registerManifest(
-                  expandSelf(entry, "", deferredPathsFor(template?.kind)),
-                );
+                const provenance = TextProvenance.of({ computed: false });
+                const expanded = expandSelf(entry, "", deferredPathsFor(template?.kind), [], provenance);
+                recordTextProvenance(expanded, provenance);
+                childContext.registerManifest(expanded);
               }
               registered = true;
             }

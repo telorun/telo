@@ -18,6 +18,7 @@ import {
   templateTargetProblems,
   valueSchemaFromProblems,
   type DefResolver,
+  type NamedShapeLookup,
 } from "@telorun/analyzer";
 import type { ModuleArtifact } from "../../bundle/module-artifact.js";
 import type { NativeFileModule } from "../../module-file-resolution.js";
@@ -277,7 +278,7 @@ class ResourceDefinition implements ResourceInstance {
       // registered the kind.
       const controllerInstance = createTemplateController(
         this.resource as any,
-        ctx as unknown as RefPositionHost,
+        ctx as unknown as RefPositionHost & { shapeLookup: NamedShapeLookup },
       );
       register();
       await ctx.registerController(

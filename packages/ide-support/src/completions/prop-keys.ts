@@ -1,6 +1,7 @@
 import {
   manifestFragmentOf,
   TELO_SCHEMA_ANNOTATIONS,
+  TELO_CONTEXT_BINDING_ANNOTATIONS,
   TELO_DATA_SCHEMA_ANNOTATIONS,
   type AnalysisRegistry,
 } from "@telorun/analyzer";
@@ -49,6 +50,19 @@ export function propKeyCompletions(
       return buildItems(ROOT_IMPLICIT_PROPS, existingKeys, new Set<string>());
     }
     return [];
+  }
+
+  // A binding of an `x-telo-context` in a kind's own schema takes the binding
+  // vocabulary: the context's value is a schema no fragment types, so the
+  // position is what says where the cursor is.
+  if (
+    (kind === "Telo.Definition" || kind === "Telo.Abstract") &&
+    yamlPath[0] === "schema" &&
+    yamlPath.length >= 3 &&
+    yamlPath[yamlPath.length - 3] === "x-telo-context" &&
+    yamlPath[yamlPath.length - 2] === "properties"
+  ) {
+    return buildItems(TELO_CONTEXT_BINDING_ANNOTATIONS, existingKeys, new Set<string>());
   }
 
   const targetSchema = yamlPath.length === 0

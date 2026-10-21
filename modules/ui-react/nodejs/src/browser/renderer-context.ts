@@ -20,6 +20,14 @@ export const RendererContext = createContext<RendererEnvironment>({
   pages: [],
 });
 
+/** The values the roots of a data scope hold — `data`, `query`, `error`,
+ *  `row`, `values` — by name, for the bindings drawn beneath. */
+export const RootsContext = createContext<Readonly<Record<string, unknown>>>({});
+
+/** Whether what is drawn here is shown. Hidden content keeps its state and
+ *  starts no request until it is shown. */
+export const VisibleContext = createContext(true);
+
 /** The row a table cell is drawn for; absent everywhere else. */
 export const RowContext = createContext<Record<string, unknown> | undefined>(undefined);
 

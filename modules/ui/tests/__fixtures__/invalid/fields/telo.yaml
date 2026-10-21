@@ -1,0 +1,297 @@
+# Forms and actions whose fields, groups and kept state their model cannot
+# answer for, field kinds that do not fit the property they enter, and option
+# sources the collection they read would refuse. `telo check` reports every one
+# here; a consumer's own check sees none of them, so there each is refused when
+# it is first read.
+kind: Telo.Library
+metadata:
+  name: UiInvalidFields
+  version: 1.0.0
+  description: >-
+    Test fixture exporting forms, actions, a filter bar and option sources that
+    each break one rule of field kinds, groups, kept state or option sources.
+imports:
+  Ui: ../../../../
+exports:
+  resources:
+    - fieldUnknown
+    - fieldDuplicate
+    - requiredNotEntered
+    - groupUnknown
+    - groupDuplicate
+    - groupSplit
+    - stateFieldUnknown
+    - filtersStateFieldUnknown
+    - inputControl
+    - actionInputControl
+    - choiceControl
+    - choiceMismatch
+    - pickerMismatch
+    - rangeProperty
+    - rangeDefault
+    - rangePresetUnknown
+    - rangeLabelDuplicate
+    - searchNotAccepted
+    - valueNotFilterable
+    - optionFilterNotAccepted
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Task
+schema:
+  type: object
+  properties:
+    text: { type: string }
+    isDone: { type: boolean }
+    count: { type: integer }
+    owner: { type: string }
+    period:
+      type: object
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Person
+schema:
+  type: object
+  properties:
+    id: { type: string }
+    name: { type: string }
+    team: { type: string }
+---
+kind: Ui.Collection
+metadata:
+  name: people
+query:
+  filters:
+    - { property: id, operator: in }
+    - { property: name, operator: contains }
+    - { property: team, operator: eq }
+  sort: []
+---
+kind: Ui.Collection
+metadata:
+  name: tasks
+query:
+  filters:
+    - { property: text, operator: contains }
+  sort: []
+---
+kind: Ui.CollectionOptions
+metadata:
+  name: personOptions
+model: !ref Person
+value: !cel "row.id"
+label: !cel "row.name"
+collection: !ref people
+source: { basePath: /api/people }
+search: { property: name, operator: contains }
+---
+kind: Ui.Form
+metadata:
+  name: fieldUnknown
+model: !ref Task
+source: { basePath: /api/tasks }
+fields:
+  - { kind: Ui.InputField, property: title }
+---
+kind: Ui.Form
+metadata:
+  name: fieldDuplicate
+model: !ref Task
+source: { basePath: /api/tasks }
+fields:
+  - text
+  - { kind: Ui.InputField, property: text }
+---
+kind: Ui.Form
+metadata:
+  name: requiredNotEntered
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [owner]
+    properties:
+      owner: { type: string }
+      text: { type: string }
+source: { basePath: /api/tasks }
+fields: [text]
+---
+kind: Ui.Form
+metadata:
+  name: groupUnknown
+model: !ref Task
+source: { basePath: /api/tasks }
+fields:
+  - { kind: Ui.InputField, property: text, group: details }
+---
+kind: Ui.Form
+metadata:
+  name: groupDuplicate
+model: !ref Task
+source: { basePath: /api/tasks }
+groups:
+  - { name: main, label: Main }
+  - { name: main, label: Again }
+fields: [text]
+---
+kind: Ui.Form
+metadata:
+  name: groupSplit
+model: !ref Task
+source: { basePath: /api/tasks }
+groups:
+  - { name: main, label: Main }
+fields:
+  - { kind: Ui.InputField, property: text, group: main }
+  - isDone
+  - { kind: Ui.InputField, property: count, group: main }
+---
+kind: Ui.Form
+metadata:
+  name: stateFieldUnknown
+model: !ref Task
+source: { basePath: /api/tasks }
+fields: [text]
+state: { key: task, address: true, fields: [count] }
+---
+kind: Ui.Filters
+metadata:
+  name: filtersStateFieldUnknown
+model: !ref Task
+collection: !ref tasks
+fields:
+  - { property: text, operator: contains }
+policy:
+  state: { key: tasks, address: true, fields: [count] }
+content: { type: text, text: Tasks }
+---
+kind: Ui.Form
+metadata:
+  name: inputControl
+model: !ref Task
+source: { basePath: /api/tasks }
+fields:
+  - { kind: Ui.InputField, property: text, control: toggle }
+---
+kind: Ui.Action
+metadata:
+  name: actionInputControl
+inputModel: !ref Task
+source: { path: /api/tasks }
+label: Send
+fields:
+  - { kind: Ui.InputField, property: isDone, control: slider }
+---
+kind: Ui.Form
+metadata:
+  name: choiceControl
+model: !ref Task
+source: { basePath: /api/tasks }
+fields:
+  - { kind: Ui.ChoiceField, property: owner, options: !ref personOptions, control: tags }
+---
+kind: Ui.Form
+metadata:
+  name: choiceMismatch
+model: !ref Task
+source: { basePath: /api/tasks }
+fields:
+  - { kind: Ui.ChoiceField, property: count, options: !ref personOptions }
+---
+kind: Ui.Form
+metadata:
+  name: pickerMismatch
+model: !ref Task
+source: { basePath: /api/tasks }
+fields:
+  - { kind: Ui.PickerField, property: count, options: !ref personOptions }
+---
+kind: Ui.Form
+metadata:
+  name: rangeProperty
+model: !ref Task
+source: { basePath: /api/tasks }
+fields:
+  - { kind: Ui.DateRangeField, property: text, presets: [] }
+---
+kind: Ui.Form
+metadata:
+  name: rangeDefault
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      period:
+        type: object
+        default: { from: "2026-01-01", to: "2026-01-31" }
+        properties:
+          from: { type: string, format: date }
+          to: { type: string, format: date }
+source: { basePath: /api/tasks }
+fields:
+  - kind: Ui.DateRangeField
+    property: period
+    presets: [{ label: Today, unit: day, offset: 0 }]
+    initialPreset: Today
+---
+kind: Ui.DateRangeField
+metadata:
+  name: startsNowhere
+property: period
+presets: [{ label: Today, unit: day, offset: 0 }]
+initialPreset: Yesterday
+---
+kind: Ui.Form
+metadata:
+  name: rangePresetUnknown
+model: !ref Task
+source: { basePath: /api/tasks }
+fields: [!ref startsNowhere]
+---
+kind: Ui.DateRangeField
+metadata:
+  name: twoMonths
+property: period
+presets:
+  - { label: Month, unit: month, offset: 0 }
+  - { label: Month, unit: month, offset: -1 }
+---
+kind: Ui.Form
+metadata:
+  name: rangeLabelDuplicate
+model: !ref Task
+source: { basePath: /api/tasks }
+fields: [!ref twoMonths]
+---
+kind: Ui.CollectionOptions
+metadata:
+  name: searchNotAccepted
+model: !ref Person
+value: !cel "row.id"
+label: !cel "row.name"
+collection: !ref people
+source: { basePath: /api/people }
+search: { property: team, operator: contains }
+---
+kind: Ui.CollectionOptions
+metadata:
+  name: valueNotFilterable
+model: !ref Person
+value: !cel "row.name"
+label: !cel "row.name"
+collection: !ref people
+source: { basePath: /api/people }
+---
+kind: Ui.CollectionOptions
+metadata:
+  name: optionFilterNotAccepted
+model: !ref Person
+value: !cel "row.id"
+label: !cel "row.name"
+collection: !ref people
+source: { basePath: /api/people, filters: { name: Ada } }

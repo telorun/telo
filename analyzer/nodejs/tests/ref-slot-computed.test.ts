@@ -85,8 +85,8 @@ describe("an expression at or above a resource's reference slot", () => {
   it("reports an expression AT the slot, and says only that about it", () => {
     const diags = analyze(busKind("Telo.Provider"), bus({ handler: cel("'target'") }));
     expect(codes(diags, "REF_SLOT_COMPUTED").map((d) => d.data?.path)).toEqual(["handler"]);
-    // Not also "must have string 'kind' and 'name' fields": that describes the
-    // value's shape and leaves an author with nothing to do.
+    // Not also INVALID_REFERENCE: what the slot takes is no repair for an
+    // expression, which a reference cannot come out of.
     expect(codes(diags, "INVALID_REFERENCE")).toEqual([]);
   });
 

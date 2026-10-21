@@ -1,0 +1,18 @@
+# Supplies the library next door a catalog translating a text its own catalog
+# already translates — refused at the import that supplies it.
+kind: Telo.Application
+metadata:
+  name: CatalogSetInputApp
+  version: 1.0.0
+imports:
+  Kinds: ../kinds
+  Input:
+    source: ../input
+    resources:
+      extra: !ref pack
+---
+kind: Kinds.Catalog
+metadata: { name: pack }
+lang: pl
+texts:
+  - { text: Open, translation: Otwórzcie }

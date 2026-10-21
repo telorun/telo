@@ -14,6 +14,9 @@
 
 import { fullFormats } from "ajv-formats/dist/formats.js";
 import { cssSelectorChecker } from "./css-selector-format.js";
+import { languageTagChecker } from "./language-tag-format.js";
+import { messagePatternChecker } from "./message-pattern-format.js";
+import { re2PatternChecker } from "./re2-pattern-format.js";
 import { FORMAT_ENTRY_FILES } from "./formats/entries/index.js";
 
 /** Why a value is not in a format's grammar. */
@@ -39,6 +42,9 @@ export interface TeloFormatEntry {
 
 const CHECKERS: Readonly<Record<string, TeloFormatChecker>> = {
   "css-selector": cssSelectorChecker,
+  "language-tag": languageTagChecker,
+  "message-pattern": messagePatternChecker,
+  "re2-pattern": re2PatternChecker,
 };
 
 const ENTRY_KEYS = new Set(["name", "grammar", "standIn", "description", "conformance"]);

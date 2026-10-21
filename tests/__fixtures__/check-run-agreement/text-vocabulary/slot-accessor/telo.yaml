@@ -1,0 +1,8 @@
+# An application importing kinds whose accessor fields hold text: the kernel
+# refuses each kind when the import registers it.
+kind: Telo.Application
+metadata:
+  name: TextSlotAccessorApp
+  version: 1.0.0
+imports:
+  Kinds: ./lib

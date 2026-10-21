@@ -21,7 +21,12 @@ interface SelectProps {
   none: string;
   invalid?: boolean;
   onChange: (value: string) => void;
+  /** Told when the list is scrolled to its end: where more options are read. */
+  onScrolledToEnd?: () => void;
 }
+
+/** Whether a scrolled list shows its end. */
+const atEnd = (element: HTMLElement) => element.scrollTop + element.clientHeight >= element.scrollHeight - 8;
 
 const NONE = "none";
 
@@ -29,7 +34,7 @@ const NONE = "none";
  * One choice from a list. Entries are keyed by their position, because the
  * primitive refuses an empty value and an option may be any text.
  */
-export function Select({ part, id, options, value, placeholder, none, invalid, onChange }: SelectProps) {
+export function Select({ part, id, options, value, placeholder, none, invalid, onChange, onScrolledToEnd }: SelectProps) {
   const chosen = options.findIndex((option) => option.value === value);
   return (
     <SelectPrimitive.Root
@@ -44,7 +49,7 @@ export function Select({ part, id, options, value, placeholder, none, invalid, o
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
         <SelectPrimitive.Content data-telo-part="select-content" position="popper" sideOffset={4}>
-          <SelectPrimitive.Viewport>
+          <SelectPrimitive.Viewport onScroll={(event) => atEnd(event.currentTarget) && onScrolledToEnd?.()}>
             <Item value={NONE} label={none} />
             {options.map((option, index) => (
               <Item key={index} value={String(index)} label={option.label} />
@@ -74,10 +79,11 @@ interface MultiSelectProps {
   values: string[];
   placeholder: string;
   onChange: (values: string[]) => void;
+  onScrolledToEnd?: () => void;
 }
 
 /** Any number of choices from a list, which stays open while they are made. */
-export function MultiSelect({ part, id, options, values, placeholder, onChange }: MultiSelectProps) {
+export function MultiSelect({ part, id, options, values, placeholder, onChange, onScrolledToEnd }: MultiSelectProps) {
   const chosen = options.filter((option) => values.includes(option.value));
   return (
     <DropdownMenu.Root>
@@ -86,7 +92,7 @@ export function MultiSelect({ part, id, options, values, placeholder, onChange }
         <Icon of={ChevronDown} />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content data-telo-part="select-content" align="start" sideOffset={4}>
+        <DropdownMenu.Content data-telo-part="select-content" align="start" sideOffset={4} onScroll={(event) => atEnd(event.currentTarget) && onScrolledToEnd?.()}>
           {options.map((option) => {
             const checked = values.includes(option.value);
             return (

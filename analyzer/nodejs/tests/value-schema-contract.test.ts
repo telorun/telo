@@ -423,6 +423,27 @@ describe("a contract typed by the declaration it is bound to", () => {
     });
   });
 
+  it("types a member by its own key: a fixed property, and every value of a map", () => {
+    const member = { "x-telo-value-schema-from": { from: "contextType", member: "0#" } };
+    const contract = {
+      type: "object",
+      properties: { turnId: { ...member }, rest: { type: "object", additionalProperties: { ...member } } },
+    };
+    const entry = "#/$defs/telo:value-schema-from:0";
+    const resolved = resolveContractValueSchemas(contract, declaration, host) as Record<string, any>;
+    expect(resolved.properties.turnId).toEqual({ allOf: [{ $ref: `${entry}/properties/turnId` }] });
+    expect(resolved.properties.rest.additionalProperties).toEqual({
+      allOf: [
+        {
+          properties: {
+            turnId: { $ref: `${entry}/properties/turnId` },
+            parent: { $ref: `${entry}/properties/parent` },
+          },
+        },
+      ],
+    });
+  });
+
   it("returns a contract no location typed by identity, a keyword's value included", () => {
     const contract = { type: "object", properties: { context: { type: "object", default: annotated } } };
     expect(resolveContractValueSchemas(contract, declaration, host)).toBe(contract);

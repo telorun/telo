@@ -48,7 +48,16 @@ body: !cel "net * (1.0 + rate)"
   nullable. `nullable: true` admits `null` as an argument, which is different
   from omitting one.
 - **`schema`** is JSON Schema, and names a shape with `!ref`
-  (`schema: !ref Money`) — never a bare string.
+  (`schema: !ref Money`) — never a bare string. Each parameter's schema, and the
+  result's, is a schema of its own: a shared shape it points at with
+  `telo://manifest#/$defs/<Name>` resolves inside it, whatever else the
+  signature declares.
+- **A `Text` parameter** (`schema: { $ref: "telo://manifest#/$defs/Text" }`) takes
+  a text written at the call — a string or `{ 'text': …, 'context': … }` — never an
+  expression, and is checked in the calling module's `lang:`. A parameter whose
+  schema carries `x-telo-text-values-for: /<text parameter>` holds that text's
+  values, checked against every placeholder it reads. A native function receives
+  the text as its record; see [Reading a `Text`](./text-records.md).
 - **`body`** sees its parameters, the CEL catalog and the functions it can call,
   and nothing else: no `variables`, `resources`, `steps` or `request`. A function
   computes from its arguments.
@@ -214,7 +223,8 @@ export const Hmac: FunctionController<HmacResource, { key: string; message: stri
   returned at runtime is `ERR_FUNCTION_ASYNC`.
 - `args` is one object keyed by parameter name, with defaults filled and declared
   scalars normalized; values are CEL values — a `bigint` for an integer, a `Date`
-  for a timestamp, a `Duration`, a `Uint8Array` for bytes. Arguments that do not
+  for a timestamp, a `Duration`, a `Uint8Array` for bytes, and a `TextRecord` for
+  a `Text` parameter. Arguments that do not
   satisfy `params` are `ERR_INPUT_INVALID`, a result that does not satisfy
   `returns` is `ERR_OUTPUT_INVALID`.
 
@@ -248,6 +258,83 @@ controllers:
 Arguments and results cross as typed frames, so `Timestamp`, `Duration`, `Bytes`
 and `Uint64` keep their CEL type. `Drop` releases what `create` allocated. A panic
 fails the expression as `ERR_FUNCTION_FAILED` carrying `ERR_CONTROLLER_PANIC`.
+
+### Dependencies, as data
+
+A native function's `call` receives no context, so a resource it holds as an
+instance is of no use to it. What it can use is a resource's **configuration** —
+a translator reading its catalogs, a formatter reading a table of units. So a
+native callable kind's `use: dependency` slot may name any kind but a need type,
+and at `create()` the controller receives, at that slot, the referent's
+configuration as its own controller received it: compile-time expressions
+evaluated, accessor fields as their bindings, each `Text` as its record, and
+every reference inside replaced the same way, recursively — without `kind` and
+`metadata`, deep-cloned and frozen, one copy per referenced resource.
+
+```yaml
+kind: Telo.Definition
+metadata:
+  name: Lookup
+capability: Telo.Callable
+deterministic: true
+schema:
+  type: object
+  properties:
+    table:
+      x-telo-ref: { kind: Self.Table, use: dependency }
+params:
+  - name: key
+    schema: { type: string }
+returns:
+  schema: { type: string }
+controllers:
+  - pkg:telo/local/js?path=./nodejs/lookup.mjs&local_path=./nodejs/src/index.ts#Lookup
+```
+
+```ts
+import type { FunctionController, ResourceManifest } from "@telorun/sdk";
+
+interface LookupResource extends ResourceManifest {
+  table: { readonly rows: Readonly<Record<string, string>> };
+}
+
+export const Lookup: FunctionController<LookupResource, { key: string }, string> = {
+  create(resource) {
+    const rows = resource.table.rows; // the table's configuration, not an instance
+    return { call: ({ key }) => rows[key] ?? "" };
+  },
+};
+```
+
+The reference stays a dependency: the function is created after the table,
+rebuilt when it changes, and its callers rebound with it. A slot is a data slot
+only when every use it can take — every case of a `use` case map — is
+`dependency`; a slot one of whose uses is `call` is held as before, and may name
+only another function or a shape. A native function that calls a function it
+holds declares that slot `use: call`.
+
+A referent is data only when nothing in its configuration is still to be
+produced, so `CALLABLE_REFERENCE_NOT_DATA` — and `ERR_CALLABLE_REFERENCE_NOT_DATA`
+from the kernel — refuses, at the function's slot, a referent that holds an
+expression evaluated after creation (a runtime-eval field, a CEL region, a step
+or function body), a scope, a need (read its fields in a compile-eval field
+instead), or a reference cycle. A library's resource input is judged at each
+import that supplies it. A function kind whose result comes from a body never
+receives anything at creation, so one inheriting a data slot naming any other
+kind is refused at that slot (`CALLABLE_DEFINITION_INVALID`), and a deterministic
+claim is not judged against what a data slot holds, since it is never called.
+
+A native function written as an entry of a template body receives what the
+template's body reaches. A sibling entry is delivered as the template created it
+— an expression the template evaluates before creating the entry is data, one its
+kind evaluates per call is not — and `!ref <Alias>.<name>` reaches an instance
+the defining module imports. A resource of the defining module itself, named
+bare or as `Self.<name>`, is not reached by an entry of the body, so it is
+refused (`CALLABLE_REFERENCE_NOT_DATA` at the definition, the kernel's twin as
+the template creates the function): declare it in the body's `resources:`, or
+hand it in through a bare `self.<field>`. What a consumer hands in that way is
+its own, so it is judged where the consumer writes it — at the function's slot,
+or in a sibling the function holds.
 
 ## Functions in slots
 
@@ -301,7 +388,9 @@ signature when it is created: defaults are filled, arguments that do not satisfy
   move editor positions off what the author wrote.
 - **Held as a `dependency`, never a `call`.** `call(args)` receives no context, so
   no zone, cancellation or trace reaches it, and claiming it runs inside the
-  holder's invocation would assert a containment that cannot exist.
+  holder's invocation would assert a containment that cannot exist. The one
+  holder that declares `call` is another native function, whose own call is the
+  whole of its invocation — its `use: dependency` slot hands over configuration.
 - **A body sees only its parameters.** That is what makes it typable from its
   signature, rebuilt exactly when something it calls changes, and evaluable by
   `telo check` inside a rule condition.

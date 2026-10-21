@@ -33,6 +33,7 @@ import {
   InvokeError,
   isCompiledValue,
   RuntimeError,
+  type CompiledCall,
   type ResourceDefinition,
   type ResourceInstance,
   type ResourceManifest,
@@ -42,12 +43,18 @@ import {
   callArgumentBinding,
   inheritedCapability,
   isCallableKind,
+  judgeText,
+  judgeValues,
+  renderValuePath,
   resolveSignature,
+  runtimeValueKind,
+  textParameters,
   type DefResolver,
+  type KnownValues,
   type SignatureParam,
 } from "@telorun/analyzer";
 import type { ModuleCallDispatch } from "@telorun/templating";
-import { functionFailure, signatureBoundCallOf } from "./function-binding.js";
+import { functionFailure, signatureBoundCallOf, type CallWriter } from "./function-binding.js";
 
 /** One dispatch entry: the positional arguments of one call site. */
 export type ModuleFunction = (args: readonly unknown[]) => unknown;
@@ -59,6 +66,9 @@ export interface BoundFunction {
    *  through an alias. Withdrawing that resource drops the binding. */
   readonly holder: string;
   readonly call: ModuleFunction;
+  /** The parameters in force for the callee, which a call site's written
+   *  arguments are judged against. */
+  readonly params?: readonly SignatureParam[];
 }
 
 /** The dispatch table of one module context. */
@@ -67,6 +77,7 @@ export class ModuleFunctionTable {
    *  context that copied the module's CEL context shares it. */
   readonly dispatch: Map<string, ModuleFunction> & ModuleCallDispatch = new Map();
   private readonly holders = new Map<string, string>();
+  private readonly params = new Map<string, readonly SignatureParam[] | undefined>();
 
   /** Bind `qualified` unless it is already bound. `resolve` runs only when it is
    *  not, and throws the refusal or the deferral the call earns. */
@@ -75,6 +86,12 @@ export class ModuleFunctionTable {
     const bound = resolve();
     this.dispatch.set(qualified, bound.call);
     this.holders.set(qualified, bound.holder);
+    this.params.set(qualified, bound.params);
+  }
+
+  /** The parameters of the callee `qualified` is bound to. */
+  paramsOf(qualified: string): readonly SignatureParam[] | undefined {
+    return this.params.get(qualified);
   }
 
   /**
@@ -87,6 +104,7 @@ export class ModuleFunctionTable {
     for (const [qualified, bound] of this.holders) {
       if (bound !== holder) continue;
       this.holders.delete(qualified);
+      this.params.delete(qualified);
       this.dispatch.set(qualified, () => {
         throw new InvokeError(
           ERR_INVOKE_CANCELLED,
@@ -150,6 +168,8 @@ export type ShapeLookup = (ref: string) => Record<string, any> | undefined;
 /** What the module a call is bound in answers about the names it reaches. */
 export interface FunctionScope {
   readonly functions: ModuleFunctionTable;
+  /** The module's `telo.yaml` — whose `lang:` its calls' texts are written in. */
+  readonly source?: string;
   readonly resourceInstances: ReadonlyMap<string, { instance: ResourceInstance }>;
   ownModuleName(): string | undefined;
   declaredManifestFor(name: string): ResourceManifest | undefined;
@@ -176,6 +196,9 @@ export interface FunctionResolutionHost {
   /** A kind resolved in the module that declared the document it is read off. */
   readonly resolveDef: DefResolver;
   readonly shapes: ShapeLookup;
+  /** The `lang:` of the module one of whose files is `source`; `null` when it
+   *  declares none. */
+  moduleLang(source: string | undefined): string | null;
 }
 
 /**
@@ -192,6 +215,92 @@ export function bindModuleFunctions(
   for (const qualified of moduleCallsOf(resource)) {
     module.functions.bind(qualified, () => resolveModuleFunction(module, qualified, resource, host));
   }
+  refuseTextArguments(module, resource, host);
+}
+
+const writtenCallsByManifest = new WeakMap<object, readonly CompiledCall[]>();
+
+/** Every module call a manifest's expressions write, with how each argument is
+ *  written. */
+function writtenCallsOf(manifest: ResourceManifest): readonly CompiledCall[] {
+  const cached = writtenCallsByManifest.get(manifest);
+  if (cached) return cached;
+  const found: CompiledCall[] = [];
+  const seen = new WeakSet<object>();
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    if (isCompiledValue(value)) {
+      found.push(...(value.callArguments ?? []));
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return;
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(manifest);
+  writtenCallsByManifest.set(manifest, found);
+  return found;
+}
+
+/**
+ * Each call site's argument at a `Text` parameter: written as literals alone
+ * (`ERR_TEXT_ARGUMENT_COMPUTED` otherwise), and the text judged in the calling
+ * module's language; the values a call writes beside it, as a map of literals or
+ * by omission, judged against it. The kernel twins of the analyzer's call-site
+ * checks, so a library's own call is refused at boot as `telo check` refuses the
+ * entry's.
+ */
+function refuseTextArguments(module: FunctionScope, resource: ResourceManifest, host: FunctionResolutionHost): void {
+  const site = `${resource.kind}/${(resource.metadata?.name as string | undefined) ?? "<unnamed>"}`;
+  for (const call of writtenCallsOf(resource)) {
+    const texts = textParameters(module.functions.paramsOf(call.qualified) as { name?: unknown; schema?: unknown }[] | undefined);
+    for (const parameter of texts) {
+      if (parameter.index >= call.arguments.length) continue;
+      const argument = call.arguments[parameter.index]!;
+      if (!argument.literal) {
+        throw new RuntimeError(
+          "ERR_TEXT_ARGUMENT_COMPUTED",
+          `${site}: CEL calls '${call.qualified}' with a computed argument for parameter '${parameter.name}', which is a Text: a text is looked up in a catalog by what is written, so it must be written at the call — a string, or { 'text': …, 'context': … } — never an expression.`,
+        );
+      }
+      const judged = judgeText(argument.value, host.moduleLang(module.source));
+      const [problem] = judged.problems;
+      if (problem) {
+        const at = renderValuePath(problem.path);
+        throw new RuntimeError(
+          `ERR_${problem.code}`,
+          `${site}: CEL calls '${call.qualified}' with a text for parameter '${parameter.name}'${at ? ` (at ${at})` : ""} that is refused: ${problem.message}.`,
+        );
+      }
+      if (!judged.text || !parameter.values) continue;
+      const known = writtenValues(call, parameter.values.index);
+      if (!known) continue;
+      const [unbound] = judgeValues(judged.text.message, known);
+      if (unbound) {
+        throw new RuntimeError(
+          `ERR_${unbound.code}`,
+          `${site}: CEL calls '${call.qualified}' with values for parameter '${parameter.values.name}' that the text of '${parameter.name}' cannot take: ${unbound.message}.`,
+        );
+      }
+    }
+  }
+}
+
+/** The values a call writes at a parameter: none when it omits them, each key's
+ *  kind when it writes a map of literals, undefined when they are computed —
+ *  judged at call binding instead. */
+function writtenValues(call: CompiledCall, index: number): KnownValues | undefined {
+  if (index >= call.arguments.length) return new Map();
+  const argument = call.arguments[index]!;
+  if (!argument.literal) return undefined;
+  const value = argument.value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return new Map(Object.entries(value).map(([key, item]) => [key, runtimeValueKind(item)]));
 }
 
 /**
@@ -242,7 +351,13 @@ function resolveModuleFunction(
     instance: ResourceInstance,
   ): BoundFunction => {
     const { params } = resolveSignature(manifest, definition, host.resolveDef);
-    return { holder, call: callableEntry(qualified, instance, params, host.shapes) };
+    return {
+      holder,
+      params,
+      call: callableEntry(qualified, instance, params, host.shapes, {
+        lang: host.moduleLang(module.source),
+      }),
+    };
   };
 
   if (receiver === "Self" || receiver === module.ownModuleName()) {
@@ -327,6 +442,7 @@ export function callableEntry(
   instance: ResourceInstance,
   params: readonly SignatureParam[] | undefined,
   lookup: ShapeLookup,
+  writer: CallWriter,
 ): ModuleFunction {
   const checked = signatureBoundCallOf(instance);
   if (!checked) {
@@ -352,7 +468,7 @@ export function callableEntry(
       });
     }
     try {
-      return checked(binding.name(args));
+      return checked(binding.name(args), writer);
     } catch (error) {
       throw functionFailure(qualified, error);
     }

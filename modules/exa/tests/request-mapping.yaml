@@ -18,7 +18,7 @@ targets:
 ---
 kind: Http.Request
 metadata: { name: request }
-client: { kind: Http.Client, baseUrl: "http://localhost:18864" }
+client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18864" }
 ---
 kind: Exa.WebSearchEngine
 metadata: { name: moderated }

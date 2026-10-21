@@ -50,7 +50,7 @@ export function evaluatedCelSource(value: unknown): string | undefined {
 /** The tag and source of a value that is COMPUTED where it stands: any tag
  *  whose engine evaluates expressions (`!cel`, `!interpolate`, `!sql`), asked of
  *  the engine rather than of its name. */
-function computedValue(value: unknown): { tag: string; source: string } | undefined {
+export function computedValue(value: unknown): { tag: string; source: string } | undefined {
   if (!isTaggedSentinel(value) && !isCompiledValue(value)) return undefined;
   const { engine, source } = value as { engine?: unknown; source?: unknown };
   if (typeof engine !== "string" || typeof source !== "string") return undefined;

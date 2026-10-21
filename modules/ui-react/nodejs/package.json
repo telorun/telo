@@ -3,19 +3,22 @@
   "version": "0.5.0",
   "license": "MIT",
   "private": true,
-  "description": "Build-only package for the std/ui-react module: its bundled controller and the browser entries it serves. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle and the browser entries in its browser layer. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
+  "description": "Build-only package for the std/ui-react module: its bundled controller and the browser entries it serves. Never published \u2014 the controller ships inside the module artifact as a pkg:telo/local/js bundle and the browser entries in its browser layer. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.lib.json && tsc -p tsconfig.spec.json",
     "test": "vitest run"
   },
   "dependencies": {
+    "@telorun/i18n": "workspace:*",
+    "@telorun/message-format": "workspace:*",
     "@telorun/sse-codec": "workspace:*",
     "@telorun/ui": "workspace:*",
     "lucide-react": "^1.8.0",
     "radix-ui": "^1.4.3"
   },
   "devDependencies": {
+    "@telorun/cel": "workspace:*",
     "@telorun/http-dispatch": "workspace:*",
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",

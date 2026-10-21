@@ -53,8 +53,7 @@ export function publicationFailureMessage(error: NonNullable<Publication["error"
     case "version_content_mismatch":
       return `Version ${named("version") ?? "of this module"} is already published with different content. Change metadata.version and commit before publishing again.`;
     case "sibling_not_published":
-      return "This module imports modules of this project that are not published yet. Publish those first.";
-    case "import_unpinned":
+      return "This module imports modules of this project that are not published yet. Publish those first.";    case "import_unpinned":
       return `The import ${importOf()} carries no integrity pin. Pin it, commit, and publish again.`;
     case "import_pin_mismatch":
       return `The import ${importOf()} is pinned to content its registry no longer serves.`;

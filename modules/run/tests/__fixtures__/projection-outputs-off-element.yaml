@@ -1,0 +1,25 @@
+# Not a runnable test — a `telo check` fixture. `outputs` is held to the
+# declared `elementType`: a misspelled key leaves the required `value` missing.
+kind: Telo.Application
+metadata:
+  name: ProjectionOutputsOffElementFixture
+  version: 1.0.0
+imports:
+  Run: ../../
+---
+kind: Run.Projection
+metadata:
+  name: misspelled
+elementType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [value]
+    properties:
+      value: { type: integer }
+collection: !cel "[1, 2, 3]"
+steps:
+  - name: noop
+    value: !cel "item"
+outputs:
+  valu: !cel "item"

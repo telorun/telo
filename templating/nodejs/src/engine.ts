@@ -166,6 +166,13 @@ export interface CallSite {
 export interface CallArgument {
   readonly type?: string;
   readonly chain?: readonly string[];
+  /** The argument's value when it is written as literals alone — a string, an
+   *  integer (bigint), a double, a boolean, null, or a list or string-keyed map of
+   *  them — so a caller can judge a parameter that takes only a fixed value. */
+  readonly literal?: { readonly value: unknown };
+  /** For an argument written as a map literal keyed by string literals: each key
+   *  and the CEL type of what it holds, absent where that is not known. */
+  readonly entries?: readonly { readonly key: string; readonly type?: string }[];
 }
 
 /** What one `analyze` call establishes about one source. Everything derivable

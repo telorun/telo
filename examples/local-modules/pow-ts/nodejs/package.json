@@ -1,0 +1,16 @@
+{
+  "name": "@telorun/local-modules-example-pow-ts-build",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Type-check only package for the local-modules example's TypeScript controller. Never published; the kernel bundles the controller from source.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json"
+  },
+  "devDependencies": {
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

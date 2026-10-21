@@ -1,4 +1,4 @@
-import { createContext, useContext, useSyncExternalStore } from "react";
+import { createContext, useContext, useMemo, useSyncExternalStore } from "react";
 import type { Host, HostLocation } from "../contract/ui-react.js";
 import { openValue, withFiltersOf, withOpen } from "./open-address.js";
 
@@ -274,6 +274,12 @@ export class HostStore {
     return target;
   }
 
+  /** Load another document in place of this one: an address outside the
+   *  application, or one of it no page declares. */
+  leave(href: string): void {
+    window.location.assign(href);
+  }
+
   /** The address of a reference inside this application, for the renderer's own
    *  links: nothing — never a throw — when it does not resolve inside it. */
   readonly localHref = (to: string): string | undefined => {
@@ -320,11 +326,28 @@ export function useHostStore(): HostStore {
   return store;
 }
 
-/** The host object; the caller re-renders when `location` changes. */
+/** Told every response a request drawn beneath it got — how a reader learns
+ *  that something inside its content was refused. Innermost first. */
+export type ResponseWatcher = (response: Response) => void;
+
+export const ResponseWatchContext = createContext<readonly ResponseWatcher[]>([]);
+
+/** The host object; the caller re-renders when `location` changes. Its `fetch`
+ *  reports each response to the readers the caller is drawn inside. */
 export function useHost(): Host {
   const store = useContext(HostContext);
   if (!store) {
     throw new Error("useHost() was called outside a component the host renders.");
   }
-  return useSyncExternalStore(store.subscribe, store.snapshot);
+  const host = useSyncExternalStore(store.subscribe, store.snapshot);
+  const watchers = useContext(ResponseWatchContext);
+  return useMemo(() => {
+    if (watchers.length === 0) return host;
+    const fetch: Host["fetch"] = async (input, init) => {
+      const response = await host.fetch(input, init);
+      for (const watcher of watchers) watcher(response);
+      return response;
+    };
+    return { ...host, fetch };
+  }, [host, watchers]);
 }

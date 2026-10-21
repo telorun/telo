@@ -82,12 +82,18 @@ import { isInjectedDeclaration } from "./resource-input.js";
 import {
   dynamicNode,
   findDynamicLeaf,
+  pointerSegments,
   pointerToPath,
   resolvePointer,
   type DynamicLeaf,
 } from "./resource-rule.js";
 import { isTypeKind, resolveTypeFieldToSchema } from "./validate-cel-context.js";
-import { isIterableSchema, schemaAtPointer } from "./validate-resource-rules.js";
+import {
+  isIterableSchema,
+  rulePointerReaches,
+  schemaAtPointer,
+  type KindSchemas,
+} from "./validate-resource-rules.js";
 
 /**
  * The half of a definition registry both halves below need.
@@ -231,6 +237,22 @@ export function isSilentBindingFailure(failure: PeerBindingFailure): boolean {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+const toPointer = (segments: readonly string[]): string =>
+  segments.map((segment) => `/${segment.replace(/~/g, "~0").replace(/\//g, "~1")}`).join("");
+
+/** `value` with `replacement` at `segments`, copied along that path only. */
+function replaceAt(value: unknown, segments: readonly string[], replacement: unknown): unknown {
+  if (segments.length === 0) return replacement;
+  const [head, ...rest] = segments;
+  if (Array.isArray(value)) {
+    const copy = [...value];
+    copy[Number(head)] = replaceAt(copy[Number(head)], rest, replacement);
+    return copy;
+  }
+  const record = isObject(value) ? value : {};
+  return { ...record, [head!]: replaceAt(record[head!], rest, replacement) };
 }
 
 /** The reference a value holds, in either shape, or `undefined`. Read only at a
@@ -541,6 +563,110 @@ export class PeerBinder {
     return { ok: true, value: Object.fromEntries(resolved.keys.map((k, i) => [k, resolved.values[i]])) };
   }
 
+  /**
+   * `view` with every reference along `pointer` resolved, a hop at a time — the
+   * location grammar `x-telo-value-schema-from` reads: a segment past a
+   * reference slot continues inside the declaration it names, and `*` ranges
+   * over every item of a list or value of a map. A pointer crossing no
+   * reference reads as {@link resolveReferences} reads it.
+   */
+  resolveAlong(
+    manifest: ResourceManifest,
+    kind: string,
+    view: Record<string, unknown>,
+    pointer: string,
+  ): { readonly ok: true; readonly view: Record<string, unknown> } | { readonly ok: false; readonly failure: PeerBindingFailure } {
+    const segments = pointerSegments(pointer);
+    if (!segments) return { ok: false, failure: { reason: "unknown-shape", at: pointer } };
+    return this.along(manifest, kind, view, segments);
+  }
+
+  private along(
+    holder: ResourceManifest,
+    kind: string,
+    view: Record<string, unknown>,
+    segments: readonly string[],
+  ): { readonly ok: true; readonly view: Record<string, unknown> } | { readonly ok: false; readonly failure: PeerBindingFailure } {
+    for (let k = 1; k <= segments.length; k++) {
+      if (segments[k - 1] === "*") {
+        const head = segments.slice(0, k - 1);
+        const container = resolvePointer(view, toPointer(head));
+        if (!container || typeof container !== "object") return { ok: true, view };
+        let current = view;
+        for (const key of Object.keys(container as object)) {
+          const each = this.along(holder, kind, current, [...head, key, ...segments.slice(k)]);
+          if (!each.ok) return each;
+          current = each.view;
+        }
+        return { ok: true, view: current };
+      }
+      const prefix = segments.slice(0, k);
+      if (!this.isReferenceLocation(holder, kind, prefix)) continue;
+      const resolved = this.resolveReferences(holder, kind, toPointer(prefix));
+      if (!resolved.ok) return resolved;
+      if (resolved.value === undefined || resolved.value === null) return { ok: true, view };
+      const continued = this.continueInto(resolved.value, segments.slice(k));
+      if (!continued.ok) return continued;
+      return { ok: true, view: replaceAt(view, prefix, continued.value) as Record<string, unknown> };
+    }
+    const resolved = this.resolveReferences(holder, kind, toPointer(segments));
+    if (!resolved.ok) return resolved;
+    if (resolved.value === undefined) return { ok: true, view };
+    return { ok: true, view: replaceAt(view, segments, resolved.value) as Record<string, unknown> };
+  }
+
+  /** A value a hop resolved, with the rest of the pointer applied inside it. */
+  private continueInto(
+    value: unknown,
+    rest: readonly string[],
+  ): { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly failure: PeerBindingFailure } {
+    if (rest.length === 0) return { ok: true, value };
+    const [head, ...tail] = rest;
+    if (head === "*") {
+      if (Array.isArray(value)) {
+        const out: unknown[] = [];
+        for (const item of value) {
+          const each = this.continueInto(item, tail);
+          if (!each.ok) return each;
+          out.push(each.value);
+        }
+        return { ok: true, value: out };
+      }
+      if (!isObject(value)) return { ok: true, value };
+      const out: Record<string, unknown> = {};
+      for (const [key, item] of Object.entries(value)) {
+        const each = this.continueInto(item, tail);
+        if (!each.ok) return each;
+        out[key] = each.value;
+      }
+      return { ok: true, value: out };
+    }
+    if (!isObject(value)) return { ok: true, value };
+    if (typeof value.kind === "string" && value.kind.length > 0) {
+      const declaration = value as unknown as ResourceManifest;
+      const along = this.along(declaration, value.kind, value, rest);
+      return along.ok ? { ok: true, value: along.view } : along;
+    }
+    const child = value[head!];
+    if (child === undefined) return { ok: true, value };
+    const each = this.continueInto(child, tail);
+    return each.ok ? { ok: true, value: { ...value, [head!]: each.value } } : each;
+  }
+
+  /** Whether the value at `segments` of a declaration is a reference site, or a
+   *  collection whose entries are. */
+  private isReferenceLocation(holder: ResourceManifest, kind: string, segments: readonly string[]): boolean {
+    const sites = this.env.refSitesOf(holder, kind);
+    const shapes = this.env.refSlotsOf(kind);
+    if (!sites || !shapes) return false;
+    const pointer = toPointer(segments);
+    const path = pointerToPath(pointer);
+    if (sites.has(path)) return true;
+    const raw = resolvePointer(this.view(holder), pointer);
+    if (!raw || typeof raw !== "object") return false;
+    return entryShapeOf(shapes, path, Array.isArray(raw)) !== undefined;
+  }
+
   /** True when the rule has something to compare — the input to the
    *  never-exercised report, asked through the same cache. */
   hasPeers(
@@ -840,5 +966,55 @@ export function analyzerPeersTarget(
     const filter = registry.resolve(referrerKind);
     if (implementations.length === 0 && filter?.kind === "Telo.Abstract") return "unknown";
     return sawCollection ? "plain" : "absent";
+  };
+}
+
+/**
+ * Whether a referrer rule's `resolve:` pointer names a field of its `referrer:`
+ * kind: `ok` when the kind or any implementation of it declares the field,
+ * `absent` when none does, `unknown` when no schema of the kind is in reach — an
+ * abstract filter with no implementations in this analysis included, since its
+ * backends declare the slots.
+ */
+export function analyzerReferrerDeclares(
+  registry: PeerBinderRegistry,
+): (referrerKind: string, pointer: string) => "ok" | "absent" | "unknown" {
+  return (referrerKind, pointer) => {
+    const implementations = registry
+      .getByExtends(referrerKind)
+      .map((d) =>
+        d.metadata.module ? `${d.metadata.module}.${d.metadata.name}` : String(d.metadata.name),
+      );
+    let sawSchema = false;
+    let unknown = false;
+    const kindSchemas = analyzerKindSchemas(registry);
+    for (const kind of [referrerKind, ...implementations]) {
+      const schema = registry.effectiveSchema(kind);
+      if (!schema) continue;
+      sawSchema = true;
+      const verdict = rulePointerReaches(schema, pointer, kindSchemas);
+      if (verdict === "ok") return "ok";
+      if (verdict === "unknown") unknown = true;
+    }
+    if (!sawSchema || unknown) return "unknown";
+    const filter = registry.resolve(referrerKind);
+    if (implementations.length === 0 && filter?.kind === "Telo.Abstract") return "unknown";
+    return "absent";
+  };
+}
+
+/** The schemas a kind constraint may hold — the kind's own and each
+ *  implementation's — for a rule pointer continuing past a reference slot. */
+export function analyzerKindSchemas(registry: PeerBinderRegistry): KindSchemas {
+  return (kind) => {
+    const kinds = [
+      kind,
+      ...registry
+        .getByExtends(kind)
+        .map((d) => (d.metadata.module ? `${d.metadata.module}.${d.metadata.name}` : String(d.metadata.name))),
+    ];
+    return kinds
+      .map((k) => registry.effectiveSchema(k))
+      .filter((s): s is Record<string, any> => !!s && typeof s === "object");
   };
 }

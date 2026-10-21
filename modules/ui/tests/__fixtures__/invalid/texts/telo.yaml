@@ -1,0 +1,35 @@
+# Displayed texts whose placeholders nothing fills: a node text written with a
+# placeholder and no values, and a text with values that bind only one of its
+# two placeholders.
+kind: Telo.Library
+metadata:
+  name: UiInvalidTexts
+  version: 1.0.0
+  description: >-
+    Test fixture declaring node texts whose placeholders are bound by no value.
+imports:
+  Ui: ../../../../
+---
+kind: Ui.View
+metadata:
+  name: noValues
+content:
+  type: text
+  text: "Hello {$name}"
+---
+kind: Ui.Data
+metadata:
+  name: partlyBound
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [count]
+    properties:
+      count: { type: integer }
+source: { path: /api/invoices }
+content:
+  type: text
+  text:
+    text: "{$count} of {$total} invoices"
+    values: { count: !cel "data.count" }

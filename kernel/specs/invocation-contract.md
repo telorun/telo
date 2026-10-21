@@ -124,6 +124,18 @@ is read, and the caller-facing contract is derived from it.
   from the declaration's root, one segment per field, where the segment `*`
   ranges over **every item of a list**.
 
+**A member of the type.** The annotation's object form, `{ from: <location>,
+member: <relative pointer> }`, reads the location as above and holds the value
+to ONE PROPERTY of each type it reaches rather than to the type: the property
+whose name `member` yields. `member` is a Relative JSON Pointer from the
+annotated node — a non-negative integer of levels out, then `#` (the key that
+node is reached by) or a JSON Pointer to the string naming the property; `0#` is
+a map value's own key, so a map typed by a model is held key by key. A name the
+type does not declare at its root contributes nothing. Inside a contract the
+member is known only where it is the node's own key: a property's name, or for a
+map's values every property the type declares, each under its own name; a member
+any other pointer names is data and contributes nothing there.
+
 **Crossing a reference.** When the value reached so far sits at one of the
 holding declaration's reference sites — the sites the runtime substitutes with a
 live instance, as its kind's schema declares them — and segments remain, the walk
@@ -171,7 +183,10 @@ may yield what the default lacks.
 
 **A location nothing can be written at is refused when the kind is registered**,
 with `ERR_VALUE_SCHEMA_FROM_INVALID`: an annotation that is not a non-empty
-string, a pointer with an empty segment, or a location whose segments — up to
+string or the object form with a well-formed `member`, a pointer with an empty
+segment, a `member` that takes the key of a node reached by an index (or of the
+root), a `member` pointer naming a node the schema does not declare a string,
+or a location whose segments — up to
 the first reference slot — name something the kind's own author schema (with
 inheritance resolved) does not declare. A segment is declared when it is a
 property of the node reached (through a document-local `$ref`, an `allOf` /
@@ -183,7 +198,10 @@ consumer's static check does not report.
 
 The same annotation on a **configuration** slot of a kind's `schema:` reads its
 location by these rules and is a static check of the value written there; it has
-no dispatch behaviour. The registration refusal covers it all the same: the
+no dispatch behaviour. Its literals are validated against what the location
+reaches, and every expression written there — an accessor's chain included —
+is held to it by its type, so a misfitting expression is refused as one that does
+not fit its slot. The registration refusal covers it all the same: the
 location is judged wherever the kind writes the annotation — in its `schema:`,
 its `inputType` or its `outputType`, written there or in the named shape the
 field names, as that field resolves — in whichever module declares the shape,
@@ -690,10 +708,66 @@ comes from its controller's code.
 - A controller exporting no `create` MUST be refused with `ERR_CONTROLLER_INVALID`
   naming the function as `<kind>/<name>`.
 - Arguments arrive as CEL values: an integer as a 64-bit integer, a timestamp or
-  duration as the runtime's native value, bytes as the runtime's byte type.
+  duration as the runtime's native value, bytes as the runtime's byte type, and a
+  `Text` argument as its text record (§7.5).
 - A function whose code runs in another language's runtime receives its
   configuration as the resource's plain JSON and its arguments, and returns its
   result, as typed frames (`durable-execution.md` §6), so no value changes type
   crossing that boundary. A panic there fails the evaluation as
   `ERR_FUNCTION_FAILED` carrying the code `ERR_CONTROLLER_PANIC`. Its instance is
   destroyed as the inverse of its creation, at teardown and on reload.
+
+### 7.5 Text parameters
+
+A parameter whose schema is the built-in `Text` fragment
+(`telo://manifest#/$defs/Text`) takes a text written AT THE CALL.
+
+- When it binds a call (§7.1), a runtime MUST refuse an argument at such a parameter
+  that is not written as literals alone with `ERR_TEXT_ARGUMENT_COMPUTED`, and MUST
+  judge the literal text in the `lang:` of the module the call is bound in —
+  `ERR_MESSAGE_SYNTAX_INVALID`, `ERR_MESSAGE_SOURCE_LANGUAGE_MISSING`,
+  `ERR_MESSAGE_PLURAL_CATEGORY_INVALID`.
+- A parameter whose schema carries `x-telo-text-values-for: /<name>` holds the values
+  of the `Text` parameter `<name>`. Every placeholder and selector the text reads MUST
+  be a key of them (an omitted values argument is an empty map), each value a string
+  or a number, a selector's a number — refused with
+  `ERR_MESSAGE_PLACEHOLDER_UNBOUND` / `ERR_MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`:
+  when the call is bound for values written as literals, and before the function
+  runs (§7.4) for values an expression computes.
+- A NATIVE function receives each `Text` argument as the record
+  `{ text, context, lang, computed }`: `text` the message as written, `context` its
+  context or `null`, `lang` the `lang:` of the module the call is bound in (`und` when
+  it declares none) and `computed: false`. A holder calling a function through a slot
+  it holds names no module, so the text is `computed: true` in `und`. A `Telo.Function`
+  body reads the text as written, as its parameters are typed.
+- The argument record a call is validated against is one schema of the parameters,
+  each parameter's schema a root of its own whose shared fragments resolve inside it.
+
+A runtime that builds no text records MUST refuse a resource whose kind's schema or
+parameters reach the `Text` fragment (`ERR_UNSUPPORTED_MANIFEST_FEATURE`) rather than
+hand its controller a raw message. **Polyglot debt:** `kernel/rust` is such a runtime.
+
+### 7.6 Texts a controller evaluates
+
+A field a controller evaluates after creation — one its kind marks
+`x-telo-eval: runtime`, or one a CEL region covers — may hold or produce a `Text` or a
+`Message`. A runtime MUST settle what such an evaluation produces exactly as it settles
+a resource's texts at creation:
+
+- which expressions bear text — one at, below or above a `Text` / `Message` slot, and
+  one half of a values pairing — and the `lang:` of the module that wrote each are
+  fixed when the instance is created, forwarded values carrying their writer's;
+- each text produced is judged in that language (`ERR_MESSAGE_SYNTAX_INVALID`,
+  `ERR_MESSAGE_SOURCE_LANGUAGE_MISSING`, `ERR_MESSAGE_PLURAL_CATEGORY_INVALID`) and a
+  `Text` is handed back as its record with `computed: true`; a literal already settled
+  at creation is handed back as it is;
+- a values pairing the evaluation completes is judged against its text
+  (`ERR_MESSAGE_PLACEHOLDER_UNBOUND`, `ERR_MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`).
+
+This holds in process and across the controller boundary (`Value.Expand`). An
+`x-telo-eval: accessor` field is never evaluated, so a kind whose schema types a text
+at or beneath one is refused when it is registered (`ERR_TEXT_SLOT_ACCESSOR`); a values
+pairing whose values are accessor fields is read as their bindings — a literal's
+`{ value }` as that value, a chain's `{ root, path }` as a key present with a value its
+consumer resolves.
+

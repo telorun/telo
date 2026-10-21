@@ -1,4 +1,5 @@
-import { RuntimeError, type ResourceContext } from "@telorun/sdk";
+import { RuntimeError, type ResourceContext, type TextRecord } from "@telorun/sdk";
+import { labelsOf, schemaText, textContextOf, type ValueLabel } from "./spec-texts.js";
 
 export type JsonSchema = Record<string, any>;
 
@@ -47,13 +48,6 @@ export function isEnterable(property: JsonSchema): boolean {
   const types = plainTypes(property);
   const items = property.items;
   return types.length === 1 && types[0] === "array" && items !== null && typeof items === "object" && !Array.isArray(items) && isScalar(items);
-}
-
-/** One field per property a control can enter, in declaration order. */
-export function enterableFields(schema: JsonSchema): { property: string; label: string }[] {
-  return propertiesOf(schema)
-    .filter(([, property]) => isEnterable(property))
-    .map(([name, property]) => ({ property: name, label: labelOf(name, property) }));
 }
 
 /** A schema node read as the shape it names: the keywords written beside a
@@ -170,12 +164,24 @@ export function presentation(target: Shape | undefined): JsonSchema | undefined 
   return Object.keys(present).length > 0 ? present : undefined;
 }
 
-/** A member's title where its shape gives one, else its name. */
-export function headerOf(name: string, target: Shape | undefined): string {
-  const title = target && keywordOf(target, "title")?.value;
-  return typeof title === "string" ? title : name;
+/** A member's title where its shape gives one, else its name — as the text a
+ *  renderer translates, its context the titled node's. */
+export function headerOf(name: string, target: Shape | undefined): TextRecord {
+  const titled = target?.find(({ schema }) => typeof schema.title === "string");
+  return titled ? schemaText(titled.schema.title, textContextOf(titled.schema)) : schemaText(name, null);
 }
 
-export function labelOf(name: string, property: JsonSchema | undefined): string {
-  return typeof property?.title === "string" ? property.title : name;
+export function labelOf(name: string, property: JsonSchema | undefined): TextRecord {
+  return typeof property?.title === "string"
+    ? schemaText(property.title, textContextOf(property))
+    : schemaText(name, null);
+}
+
+/** What a shape's values are shown as: the labels of the node its keywords
+ *  are read from, the keywords beside a reference first. */
+export function shapeLabels(target: Shape | undefined): ValueLabel[] {
+  if (!target) return [];
+  const merged: JsonSchema = {};
+  for (const { schema } of [...target].reverse()) Object.assign(merged, schema);
+  return labelsOf(merged);
 }

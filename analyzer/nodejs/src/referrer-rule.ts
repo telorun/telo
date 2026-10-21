@@ -15,7 +15,8 @@
  * consumer's import alias rather than anything the rule author controls.
  *
  * The CEL scope is `self` (the declaring resource) and `referrer` (the one that
- * references it). Deliberately NOT `this`: in a resource rule `this` is an
+ * references it) — with `resolve:`, the referrer with the reference slots it
+ * names replaced by the declarations they name, one level deep. Deliberately NOT `this`: in a resource rule `this` is an
  * ELEMENT of a collection, and binding it to a whole foreign manifest would give
  * one word two meanings across the two families.
  *
@@ -24,7 +25,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import { celSourceOf, type ResourceRuleSeverity } from "./resource-rule.js";
+import { celSourceOf, pointerSegments, type ResourceRuleSeverity } from "./resource-rule.js";
 
 export const REFERRER_RULES_ANNOTATION = "x-telo-referrer-rules";
 
@@ -54,6 +55,13 @@ export interface ReferrerRule {
    * from the item schema and there is no second pointer to write.
    */
   readonly peers?: string;
+  /** JSON Pointers to the REFERRER kind's own reference slots whose
+   *  declarations `referrer` reads in place of the references, resolved one
+   *  level — the resource-rule `resolve:`, pointed at the referrer. */
+  readonly resolve?: readonly string[];
+  /** JSON Pointers to THIS kind's own reference slots whose declarations `self`
+   *  reads in place of the references — the same view, pointed at `self`. */
+  readonly resolveSelf?: readonly string[];
   /** CEL source. TRUE when the rule holds. */
   readonly condition: string;
   /** The rule's own name, carried in `data.rule`. Never a diagnostic code —
@@ -90,12 +98,19 @@ export function readReferrerRules(schema: unknown): ReferrerRule[] {
     if (code.length === 0 || message.length === 0) return;
     if (referrer !== undefined && typeof referrer !== "string") return;
     if (peers !== undefined && typeof peers !== "string") return;
+    const { resolve, resolveSelf } = entry;
+    const pointers = (value: unknown) =>
+      value === undefined ||
+      (Array.isArray(value) && value.every((p) => typeof p === "string" && pointerSegments(p)));
+    if (!pointers(resolve) || !pointers(resolveSelf)) return;
     if (entry.severity !== undefined && entry.severity !== "warning" && entry.severity !== "error") {
       return;
     }
     rules.push({
       ...(referrer === undefined ? {} : { referrer }),
       ...(peers === undefined ? {} : { peers }),
+      ...(resolve === undefined ? {} : { resolve: resolve as string[] }),
+      ...(resolveSelf === undefined ? {} : { resolveSelf: resolveSelf as string[] }),
       condition,
       code,
       message,

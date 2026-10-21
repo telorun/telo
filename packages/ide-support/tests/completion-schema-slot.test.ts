@@ -72,4 +72,29 @@ describe("buildCompletions — JSON Schema slots", () => {
     expect(labels).toEqual(expect.arrayContaining(["properties", "required"]));
     expect(labels).not.toContain("x-telo-ref");
   });
+
+  it("offers x-telo-match-for in a kind's schema, and the binding marks on a binding alone", async () => {
+    const schemaLabels = await completeAt([...DEFINITION_DOC, "schema:", "  type: object", "  "]);
+    expect(schemaLabels).toContain("x-telo-match-for");
+    expect(schemaLabels).not.toContain("x-telo-context-eval");
+    expect(schemaLabels).not.toContain("x-telo-context-from-referrer");
+    const bindingLabels = await completeAt([
+      ...DEFINITION_DOC,
+      "schema:",
+      "  type: object",
+      "  properties:",
+      "    shown:",
+      "      x-telo-context:",
+      "        type: object",
+      "        properties:",
+      "          row:",
+      "            type: object",
+      "            ",
+    ]);
+    expect([...bindingLabels].sort()).toEqual([
+      "x-telo-context-eval",
+      "x-telo-context-from-referrer",
+      "x-telo-context-item-fills",
+    ]);
+  });
 });

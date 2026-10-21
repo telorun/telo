@@ -1,8 +1,10 @@
 # Actions and row actions that each write something `telo check` refuses on
-# the line it was written: a key the kind does not take, a list read from
-# something that is no list or by an expression, a column reading a member its
-# row or its answer does not declare, and row inputs that cannot make a record
-# of the action they are handed to.
+# the line it was written: a key the kind does not take (`lists` among them), a
+# list of the answer read from something that is no list or by an expression, a
+# column reading a member its row or its answer does not declare, a navigation
+# or a refresh that is no address, and row inputs — of a table or of a list —
+# that cannot make a record of the action they are handed to or read a root
+# nothing binds there.
 kind: Telo.Application
 metadata:
   name: UiInvalidActionsApp
@@ -47,10 +49,11 @@ inputModel: !ref Request
 outputModel: !ref Answer
 source: { path: /api/reports }
 label: Generate
-lists:
-  - rows: !cel "result.files"
-    columns:
-      - value: !cel "row.nmae"
+result:
+  type: list
+  rows: !cel "result.files"
+  columns:
+    - value: !cel "row.nmae"
 ---
 kind: Ui.Action
 metadata:
@@ -59,10 +62,11 @@ inputModel: !ref Request
 outputModel: !ref Answer
 source: { path: /api/reports }
 label: Generate
-lists:
-  - rows: !cel "result.kind"
-    columns:
-      - value: !cel "result.kind"
+result:
+  type: list
+  rows: !cel "result.kind"
+  columns:
+    - value: !cel "result.kind"
 ---
 kind: Ui.Action
 metadata:
@@ -71,10 +75,11 @@ inputModel: !ref Request
 outputModel: !ref Answer
 source: { path: /api/reports }
 label: Generate
-lists:
-  - rows: !cel "size(result.files)"
-    columns:
-      - value: !cel "result.kind"
+result:
+  type: list
+  rows: !cel "size(result.files)"
+  columns:
+    - value: !cel "result.kind"
 ---
 kind: Ui.Action
 metadata:
@@ -82,10 +87,30 @@ metadata:
 inputModel: !ref Request
 source: { path: /api/reports }
 label: Generate
-lists:
-  - rows: !cel "result.files"
-    columns:
-      - value: fixed
+result:
+  type: list
+  rows: !cel "result.files"
+  columns:
+    - value: fixed
+---
+kind: Ui.Action
+metadata:
+  name: listsRemoved
+inputModel: !ref Request
+outputModel: !ref Answer
+source: { path: /api/reports }
+label: Generate
+lists: []
+---
+kind: Ui.Action
+metadata:
+  name: navigateOff
+inputModel: !ref Request
+source: { path: /api/reports }
+label: Generate
+onSuccess:
+  navigate: ftp://files.example/report
+  refreshes: [api/reports]
 ---
 kind: Telo.JsonSchema
 metadata:
@@ -220,3 +245,37 @@ rowActions:
   - action: !ref rename
     inputs: { name: !cel "row.name" }
     confirm: ""
+---
+kind: Ui.Table
+metadata:
+  name: queryTypo
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+query:
+  status: { type: string }
+rowActions:
+  - action: !ref archive
+    inputs: { id: !cel "row.id", status: !cel "query.statuss" }
+---
+# A list's row actions: one reads a root no form binds here, one leaves the
+# action's required input unbound.
+kind: Ui.Data
+metadata:
+  name: listRowActions
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      todos: { type: array, items: !ref Todo }
+source: { path: /api/todos }
+content:
+  type: list
+  rows: !cel "data.todos"
+  columns: [{ value: !cel "row.name" }]
+  rowActions:
+    - action: !ref archive
+      inputs: { id: !cel "row.id", status: !cel "values.folder" }
+    - action: !ref archive
+      inputs: { status: !cel "row.name" }

@@ -118,20 +118,40 @@ steps:
         theme: !cel "{'tokens': steps.theme.result.tokens, 'body': steps.theme.result.fonts['font.body'].family}"
       expected:
         derived:
-          - { property: status, operator: in, label: status }
-          - { property: text, operator: contains, label: Task }
-          - { property: priority, operator: gte, label: priority }
+          - { property: status, operator: in, label: { text: status, context: null, lang: und, computed: false } }
+          - { property: text, operator: contains, label: { text: Task, context: null, lang: und, computed: false } }
+          - { property: priority, operator: gte, label: { text: priority, context: null, lang: und, computed: false } }
         derivedContent: false
         written:
-          - { property: priority, operator: gte, label: priority, schema: { type: integer }, pinned: false, control: auto }
-          - { property: text, operator: contains, label: Task, schema: { type: string, title: Task }, pinned: false, control: auto }
+          - property: priority
+            operator: gte
+            label: { text: priority, context: null, lang: und, computed: false }
+            labels: []
+            schema: { type: integer }
+            pinned: false
+            control: auto
+          - property: text
+            operator: contains
+            label: { text: Task, context: null, lang: und, computed: false }
+            labels: []
+            schema: { type: string, title: Task }
+            pinned: false
+            control: auto
         writtenContent: [table]
         form:
-          - { property: text, label: Task }
-          - { property: isDone, label: isDone }
-          - { property: priority, label: priority }
-          - { property: status, label: status }
-          - { property: tags, label: tags }
+          - { type: input, property: text, label: { text: Task, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+          - { type: input, property: isDone, label: { text: isDone, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+          - { type: input, property: priority, label: { text: priority, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+          - type: input
+            property: status
+            label: { text: status, context: null, lang: und, computed: false }
+            description: null
+            labels:
+              - { value: open, label: { text: open, context: null, lang: und, computed: false } }
+              - { value: blocked, label: { text: blocked, context: null, lang: und, computed: false } }
+              - { value: done, label: { text: done, context: null, lang: und, computed: false } }
+            control: auto
+          - { type: input, property: tags, label: { text: tags, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
         theme:
           tokens: { color.accent: "#1f8fff", radius.md: 6px }
           body: Inter

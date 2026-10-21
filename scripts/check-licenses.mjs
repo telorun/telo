@@ -30,6 +30,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const MIT_DIRECTORIES = [
   "cel",
+  "message-format",
   "sdk",
   "templating",
   "packages/glob",

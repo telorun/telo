@@ -22,6 +22,7 @@ import {
   type CelProgram,
   type NamespaceImplementation,
 } from "@telorun/cel";
+import { writtenCalls } from "./literal-argument.js";
 import {
   celNamespaceNames,
   MODULE_CALL_DISPATCH_KEY,
@@ -160,6 +161,7 @@ export function compiledValueOf(
     source: expr,
     refs: rootReferences(parsed.root),
     calls,
+    callArguments: writtenCalls(parsed.root),
     ...(callsNonDeterministic(parsed.root) ? { volatile: true as const } : {}),
     // **A module call is dispatched through the engine's namespace seam**, reading the table
     // the owning scope bound on the activation. Evaluating without it reaches no function at

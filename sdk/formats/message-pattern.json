@@ -1,0 +1,31 @@
+{
+  "name": "message-pattern",
+  "grammar": "https://www.unicode.org/reports/tr35/tr35-messageFormat.html#pattern",
+  "standIn": "",
+  "description": "A MessageFormat 2 pattern in Telo's profile: literal text, variable placeholders {$name} — a name starts with a letter or _, continues with letters, digits or _, and is not a CEL reserved word — and the escapes \\{, \\} and \\\\. Whitespace and bidi marks MF2 allows inside the braces are accepted. Literals, functions, options, attributes and markup in braces are outside the profile.",
+  "conformance": {
+    "valid": [
+      "",
+      "Hello",
+      "Hello {$name}!",
+      "{$count} files",
+      "\\{literal\\}",
+      "a \\\\ b",
+      "{ $name }",
+      "{$a}{$b}",
+      "Zażółć {$x}"
+    ],
+    "invalid": [
+      "{name}",
+      "{$}",
+      "{$1x}",
+      "{$in}",
+      "a } b",
+      "{$name",
+      "\\n",
+      "{$name :number}",
+      "{|literal|}",
+      "{$a b}"
+    ]
+  }
+}

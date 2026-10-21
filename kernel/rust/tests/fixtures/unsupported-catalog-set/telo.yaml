@@ -1,0 +1,27 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedCatalogSet
+  version: 1.0.0
+  description: |
+    Declares a kind marking a text catalog set. This kernel does not gather a
+    set's catalogs, so creating a resource of the kind must fail naming its kind
+    rather than leave a duplicate translation unrefused.
+---
+kind: Telo.Definition
+metadata:
+  name: Lookup
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/unbuilt-lookup?local_path=./unbuilt#Lookup
+schema:
+  type: object
+  properties:
+    catalogs:
+      type: array
+      x-telo-text-catalog-set: true
+      items: { type: object }
+---
+kind: Self.Lookup
+metadata:
+  name: lookup
+catalogs: []

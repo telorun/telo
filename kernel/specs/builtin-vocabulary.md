@@ -31,8 +31,8 @@ A YAML stream. The first document is the **root**; every later document is one b
      file verbatim (`sdk/value-types/`).
    - `zoneAttributes` — every zone attribute, keyed by its `name` (`noSuspend`), verbatim
      (`sdk/zone-attributes/`).
-   - `formats` — every Telo string format, keyed by its `name` (`css-selector`), verbatim
-     (`sdk/formats/`).
+   - `formats` — every Telo string format, keyed by its `name` (`css-selector`,
+     `language-tag`, `message-pattern`), verbatim (`sdk/formats/`).
 3. Every later document is a built-in in its authored form: `kind` is `Telo.Abstract`,
    `Telo.Definition` or `Telo.NeedType`, and no document carries `controllers:` — the root's
    kind says once that the runtime implements every kind in the archive. A fragment reference

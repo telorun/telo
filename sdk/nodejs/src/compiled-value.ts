@@ -22,11 +22,27 @@ export interface CompiledValue {
    *  method call on a variable named `Billing`. Absent for an engine that
    *  surfaces no AST; empty for an expression that calls nothing qualified. */
   readonly calls?: readonly string[];
+  /** Each qualified call the expression makes, with how every argument is
+   *  WRITTEN: its value when it is literals alone, else `literal: false`. Read
+   *  where a parameter takes only a value fixed at the call site (a `Text`
+   *  parameter), which the value the call evaluates to cannot say. Absent for an
+   *  engine that surfaces no AST; empty for an expression that calls nothing
+   *  qualified. */
+  readonly callArguments?: readonly CompiledCall[];
   /** True when the expression calls a catalog function whose result differs
    *  per evaluation (`uuidv4()`, `nowMillis()`), so it must never be evaluated
    *  once and reused — even where it reads nothing but constants. */
   readonly volatile?: true;
   call(ctx: Record<string, unknown>): unknown;
+}
+
+/** One qualified call of a compiled expression, with how its arguments are written. */
+export interface CompiledCall {
+  readonly qualified: string;
+  readonly arguments: readonly (
+    | { readonly literal: true; readonly value: unknown }
+    | { readonly literal: false }
+  )[];
 }
 
 export function isCompiledValue(v: unknown): v is CompiledValue {

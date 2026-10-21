@@ -1,0 +1,57 @@
+# Native functions wired to referents whose configuration is not data: an
+# expression evaluated per call, a scope, a need reached through the referent
+# — and a function kind whose data slot names a need type. Each is refused by
+# this library's own `telo check` and, through the same reader, by the kernel.
+kind: Telo.Library
+metadata:
+  name: CallableDataRefused
+  version: 1.0.0
+  description: >-
+    Fixture library wiring native functions to referents whose configuration is
+    not data.
+imports:
+  Kinds: ../kinds
+needs:
+  access: { kind: Kinds.Access }
+---
+kind: Kinds.Late
+metadata:
+  name: late
+greeting: !cel "'hello'"
+---
+kind: Kinds.Peek
+metadata:
+  name: peekLate
+target: !ref late
+---
+kind: Kinds.Scoped
+metadata:
+  name: scoped
+members: []
+---
+kind: Kinds.Peek
+metadata:
+  name: peekScoped
+target: !ref scoped
+---
+kind: Kinds.Holder
+metadata:
+  name: holder
+access: !ref access
+---
+kind: Kinds.Peek
+metadata:
+  name: peekNeed
+target: !ref holder
+---
+kind: Telo.Definition
+metadata:
+  name: NeedPeek
+capability: Telo.Callable
+schema:
+  type: object
+  properties:
+    access:
+      x-telo-ref: { kind: Kinds.Access, use: dependency }
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never

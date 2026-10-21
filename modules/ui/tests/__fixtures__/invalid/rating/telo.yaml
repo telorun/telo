@@ -1,0 +1,25 @@
+# A field kind from another module placed over a property it cannot rate: its
+# own rule refuses it, which `ui` knows nothing about.
+kind: Telo.Library
+metadata:
+  name: UiInvalidRating
+  version: 1.0.0
+  description: Test fixture exporting a form rating a property of text.
+imports:
+  Ui: ../../../../
+  Stars: ../../external-field
+exports:
+  resources: [rated]
+---
+kind: Ui.Form
+metadata:
+  name: rated
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      note: { type: string }
+source: { basePath: /api/notes }
+fields:
+  - { kind: Stars.Rating, property: note }

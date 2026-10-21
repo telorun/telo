@@ -1,0 +1,54 @@
+# Kinds holding text, for the text-vocabulary rows: a provider whose field is a
+# `Text`, one whose field is a `TextCatalog`, and one whose field is a list of them. Templates, so no controller is
+# needed — a resource of either is judged when it is created.
+kind: Telo.Library
+metadata:
+  name: TextKinds
+  version: 1.0.0
+  description: Fixture kinds holding a text and a text catalog.
+exports:
+  kinds: [Label, Catalog, Catalogs]
+---
+kind: Telo.Definition
+metadata:
+  name: Label
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    text: { $ref: "telo://manifest#/$defs/Text" }
+provide: !ref shape
+resources:
+  - kind: Telo.JsonSchema
+    metadata: { name: shape }
+    schema: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: Catalog
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    catalog: { $ref: "telo://manifest#/$defs/TextCatalog" }
+provide: !ref shape
+resources:
+  - kind: Telo.JsonSchema
+    metadata: { name: shape }
+    schema: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: Catalogs
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    catalogs:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/TextCatalog" }
+provide: !ref shape
+resources:
+  - kind: Telo.JsonSchema
+    metadata: { name: shape }
+    schema: { type: object }

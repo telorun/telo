@@ -1,0 +1,611 @@
+{
+  "$comment": "The interpreted profile of Ui.Match: each row is a schema, a value (or `missing: true` for a value the condition's path does not reach) and whether a condition over them holds. A renderer interprets the profile as data and must answer every row; `ui`'s own test holds every schema here to the Ui.Match shape.",
+  "rows": [
+    {
+      "name": "a missing value does not satisfy an empty schema",
+      "matches": {},
+      "missing": true,
+      "holds": false
+    },
+    {
+      "name": "a missing value does not satisfy a negation either",
+      "matches": {
+        "not": {
+          "const": 1
+        }
+      },
+      "missing": true,
+      "holds": false
+    },
+    {
+      "name": "a missing value does not satisfy a negated type",
+      "matches": {
+        "not": {
+          "type": "string"
+        }
+      },
+      "missing": true,
+      "holds": false
+    },
+    {
+      "name": "null is a present value",
+      "matches": {
+        "type": "null"
+      },
+      "value": null,
+      "holds": true
+    },
+    {
+      "name": "null satisfies an empty schema",
+      "matches": {},
+      "value": null,
+      "holds": true
+    },
+    {
+      "name": "null satisfies a negation of another type",
+      "matches": {
+        "not": {
+          "type": "string"
+        }
+      },
+      "value": null,
+      "holds": true
+    },
+    {
+      "name": "type string",
+      "matches": {
+        "type": "string"
+      },
+      "value": "a",
+      "holds": true
+    },
+    {
+      "name": "type string refuses a number",
+      "matches": {
+        "type": "string"
+      },
+      "value": 1,
+      "holds": false
+    },
+    {
+      "name": "type integer accepts a whole number",
+      "matches": {
+        "type": "integer"
+      },
+      "value": 3,
+      "holds": true
+    },
+    {
+      "name": "type integer accepts 1.0",
+      "matches": {
+        "type": "integer"
+      },
+      "value": 1.0,
+      "holds": true
+    },
+    {
+      "name": "type integer refuses 1.5",
+      "matches": {
+        "type": "integer"
+      },
+      "value": 1.5,
+      "holds": false
+    },
+    {
+      "name": "type number accepts an integer",
+      "matches": {
+        "type": "number"
+      },
+      "value": 3,
+      "holds": true
+    },
+    {
+      "name": "type boolean",
+      "matches": {
+        "type": "boolean"
+      },
+      "value": false,
+      "holds": true
+    },
+    {
+      "name": "type object refuses a list",
+      "matches": {
+        "type": "object"
+      },
+      "value": [],
+      "holds": false
+    },
+    {
+      "name": "type array",
+      "matches": {
+        "type": "array"
+      },
+      "value": [],
+      "holds": true
+    },
+    {
+      "name": "a type list holds when any holds",
+      "matches": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "value": null,
+      "holds": true
+    },
+    {
+      "name": "a type list refuses what none holds",
+      "matches": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "value": 0,
+      "holds": false
+    },
+    {
+      "name": "const equal scalar",
+      "matches": {
+        "const": "billing"
+      },
+      "value": "billing",
+      "holds": true
+    },
+    {
+      "name": "const different scalar",
+      "matches": {
+        "const": "billing"
+      },
+      "value": "BILLING",
+      "holds": false
+    },
+    {
+      "name": "const compares objects by value, in any key order",
+      "matches": {
+        "const": {
+          "a": 1,
+          "b": [
+            1,
+            2
+          ]
+        }
+      },
+      "value": {
+        "b": [
+          1,
+          2
+        ],
+        "a": 1
+      },
+      "holds": true
+    },
+    {
+      "name": "const does not equate 1 and true",
+      "matches": {
+        "const": 1
+      },
+      "value": true,
+      "holds": false
+    },
+    {
+      "name": "const null",
+      "matches": {
+        "const": null
+      },
+      "value": null,
+      "holds": true
+    },
+    {
+      "name": "enum holds for a member",
+      "matches": {
+        "enum": [
+          "a",
+          "b"
+        ]
+      },
+      "value": "b",
+      "holds": true
+    },
+    {
+      "name": "enum refuses a non-member",
+      "matches": {
+        "enum": [
+          "a",
+          "b"
+        ]
+      },
+      "value": "c",
+      "holds": false
+    },
+    {
+      "name": "not inverts a present value",
+      "matches": {
+        "not": {
+          "const": "x"
+        }
+      },
+      "value": "y",
+      "holds": true
+    },
+    {
+      "name": "not refuses what it negates",
+      "matches": {
+        "not": {
+          "const": "x"
+        }
+      },
+      "value": "x",
+      "holds": false
+    },
+    {
+      "name": "allOf holds when every member holds",
+      "matches": {
+        "allOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "minimum": 2
+          }
+        ]
+      },
+      "value": 3,
+      "holds": true
+    },
+    {
+      "name": "allOf refuses when one member does not",
+      "matches": {
+        "allOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "minimum": 5
+          }
+        ]
+      },
+      "value": 3,
+      "holds": false
+    },
+    {
+      "name": "anyOf holds when one member holds",
+      "matches": {
+        "anyOf": [
+          {
+            "const": 1
+          },
+          {
+            "const": 2
+          }
+        ]
+      },
+      "value": 2,
+      "holds": true
+    },
+    {
+      "name": "anyOf refuses when none holds",
+      "matches": {
+        "anyOf": [
+          {
+            "const": 1
+          },
+          {
+            "const": 2
+          }
+        ]
+      },
+      "value": 3,
+      "holds": false
+    },
+    {
+      "name": "required holds when the member is present",
+      "matches": {
+        "required": [
+          "a"
+        ]
+      },
+      "value": {
+        "a": null
+      },
+      "holds": true
+    },
+    {
+      "name": "required refuses a missing member",
+      "matches": {
+        "required": [
+          "a"
+        ]
+      },
+      "value": {
+        "b": 1
+      },
+      "holds": false
+    },
+    {
+      "name": "absence is tested at the parent",
+      "matches": {
+        "not": {
+          "required": [
+            "signin"
+          ]
+        }
+      },
+      "value": {},
+      "holds": true
+    },
+    {
+      "name": "absence at the parent refuses a present member",
+      "matches": {
+        "not": {
+          "required": [
+            "signin"
+          ]
+        }
+      },
+      "value": {
+        "signin": "denied"
+      },
+      "holds": false
+    },
+    {
+      "name": "properties judge present members",
+      "matches": {
+        "properties": {
+          "a": {
+            "type": "string"
+          }
+        }
+      },
+      "value": {
+        "a": "x"
+      },
+      "holds": true
+    },
+    {
+      "name": "properties refuse a present member that does not hold",
+      "matches": {
+        "properties": {
+          "a": {
+            "type": "string"
+          }
+        }
+      },
+      "value": {
+        "a": 1
+      },
+      "holds": false
+    },
+    {
+      "name": "properties pass over a missing member",
+      "matches": {
+        "properties": {
+          "a": {
+            "type": "string"
+          }
+        }
+      },
+      "value": {},
+      "holds": true
+    },
+    {
+      "name": "required and properties apply to objects only",
+      "matches": {
+        "required": [
+          "a"
+        ],
+        "properties": {
+          "a": {
+            "type": "string"
+          }
+        }
+      },
+      "value": "text",
+      "holds": true
+    },
+    {
+      "name": "items judge every element",
+      "matches": {
+        "items": {
+          "type": "integer"
+        }
+      },
+      "value": [
+        1,
+        2,
+        3
+      ],
+      "holds": true
+    },
+    {
+      "name": "items refuse one element that does not hold",
+      "matches": {
+        "items": {
+          "type": "integer"
+        }
+      },
+      "value": [
+        1,
+        "2"
+      ],
+      "holds": false
+    },
+    {
+      "name": "minItems 1 refuses an empty list",
+      "matches": {
+        "minItems": 1
+      },
+      "value": [],
+      "holds": false
+    },
+    {
+      "name": "minItems 1 holds for one element",
+      "matches": {
+        "minItems": 1
+      },
+      "value": [
+        "a"
+      ],
+      "holds": true
+    },
+    {
+      "name": "maxItems",
+      "matches": {
+        "maxItems": 1
+      },
+      "value": [
+        1,
+        2
+      ],
+      "holds": false
+    },
+    {
+      "name": "uniqueItems refuses a repeated element",
+      "matches": {
+        "uniqueItems": true
+      },
+      "value": [
+        {
+          "a": 1
+        },
+        {
+          "a": 1
+        }
+      ],
+      "holds": false
+    },
+    {
+      "name": "uniqueItems holds for distinct elements",
+      "matches": {
+        "uniqueItems": true
+      },
+      "value": [
+        1,
+        "1",
+        true
+      ],
+      "holds": true
+    },
+    {
+      "name": "array keywords apply to arrays only",
+      "matches": {
+        "minItems": 3
+      },
+      "value": "ab",
+      "holds": true
+    },
+    {
+      "name": "minLength counts code points",
+      "matches": {
+        "minLength": 2
+      },
+      "value": "😀",
+      "holds": false
+    },
+    {
+      "name": "maxLength",
+      "matches": {
+        "maxLength": 3
+      },
+      "value": "abcd",
+      "holds": false
+    },
+    {
+      "name": "pattern is a search, not a whole-string match",
+      "matches": {
+        "pattern": "[0-9]{4}"
+      },
+      "value": "year 2026",
+      "holds": true
+    },
+    {
+      "name": "pattern anchors when written",
+      "matches": {
+        "pattern": "^[0-9]{4}$"
+      },
+      "value": "year 2026",
+      "holds": false
+    },
+    {
+      "name": "pattern reads general categories",
+      "matches": {
+        "pattern": "^\\p{Lu}"
+      },
+      "value": "Łódź",
+      "holds": true
+    },
+    {
+      "name": "string keywords apply to strings only",
+      "matches": {
+        "minLength": 5
+      },
+      "value": 3,
+      "holds": true
+    },
+    {
+      "name": "minimum is inclusive",
+      "matches": {
+        "minimum": 2
+      },
+      "value": 2,
+      "holds": true
+    },
+    {
+      "name": "maximum is inclusive",
+      "matches": {
+        "maximum": 2
+      },
+      "value": 3,
+      "holds": false
+    },
+    {
+      "name": "exclusiveMinimum",
+      "matches": {
+        "exclusiveMinimum": 2
+      },
+      "value": 2,
+      "holds": false
+    },
+    {
+      "name": "exclusiveMaximum",
+      "matches": {
+        "exclusiveMaximum": 2
+      },
+      "value": 1.5,
+      "holds": true
+    },
+    {
+      "name": "multipleOf",
+      "matches": {
+        "multipleOf": 0.5
+      },
+      "value": 2.5,
+      "holds": true
+    },
+    {
+      "name": "multipleOf refuses a remainder",
+      "matches": {
+        "multipleOf": 2
+      },
+      "value": 3,
+      "holds": false
+    },
+    {
+      "name": "multipleOf of a decimal fraction",
+      "matches": {
+        "multipleOf": 0.01
+      },
+      "value": 0.07,
+      "holds": true
+    },
+    {
+      "name": "number keywords apply to numbers only",
+      "matches": {
+        "minimum": 10
+      },
+      "value": "1",
+      "holds": true
+    }
+  ]
+}

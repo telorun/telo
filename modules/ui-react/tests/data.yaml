@@ -1,0 +1,92 @@
+kind: Telo.Application
+metadata:
+  name: UiReactDataTest
+  version: 1.0.0
+  description: |
+    A page document holding a reader: the `data` node with its source, its
+    declared query and its filled `loading` and `failure` trees, every `shown`
+    condition carried as written, the page's declared query parameters beside
+    its children, and no `when` key anywhere — a node whose `when` holds for
+    the request is delivered without it, one whose `when` does not is left out.
+imports:
+  App: ../../app
+  Run: ../../run
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/data/telo.yaml
+    ports:
+      http: 8121
+targets:
+  - !ref fixture
+steps:
+  - name: visitor
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8121/_telo/ui/page?path=/" }
+  - name: staff
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8121/_telo/ui/page?path=/" }
+    inputs:
+      headers: { x-role: staff }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        query: !cel "steps.visitor.result.body.query"
+        visitor: !cel "steps.visitor.result.body.children"
+        staff: !cel "steps.staff.result.body.children.map(c, c.type == 'text' ? c.text : c.type)"
+      expected:
+        query:
+          signin: { type: string, enum: [denied, expired] }
+        visitor:
+          - type: text
+            text: { lang: und, message: [Your sign-in was refused.] }
+            shown:
+              at: { root: query, path: [signin] }
+              matches: { const: denied }
+          - type: data
+            schema:
+              type: object
+              required: [authorized]
+              properties:
+                authorized: { type: boolean }
+                email: { type: string, title: Email }
+            source: { path: /api/auth, params: {} }
+            query: {}
+            content:
+              type: stack
+              children:
+                - type: value
+                  value: { root: data, path: [email] }
+                  present: { type: string }
+                  shown:
+                    at: { root: data, path: [authorized] }
+                    matches: { const: true }
+                  labels: []
+                - type: text
+                  text: { lang: und, message: [Sign in first.] }
+                  shown:
+                    at: { root: data, path: [authorized] }
+                    matches: { const: false }
+            loading: { type: text, text: { word: loading }, style: muted }
+            failure:
+              type: stack
+              style: danger
+              children:
+                - { type: value, value: { root: error, path: [code] }, present: { type: string }, style: strong, labels: [] }
+                - { type: value, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
+            reloadOn: [focus, unauthorized]
+        staff: [ { lang: und, message: [ Your sign-in was refused. ] }, { lang: und, message: [Staff] }, data ]
+  - name: answer
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8121/api/auth" }
+  - name: verifyAnswer
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.answer.result.body"
+      expected: { authorized: true, email: ada@example.com }

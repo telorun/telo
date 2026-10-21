@@ -30,10 +30,17 @@ export const formNode = (basePath = "/api/todos"): SpecNode => ({
   schema: todoSchema,
   basePath,
   fields: ["text", "isDone", "priority", "status", "dueOn", "notes"].map((property) => ({
+    type: "input",
     property,
     label: (todoSchema.properties as Record<string, { title?: string }>)[property].title ?? property,
+    control: "auto",
   })),
+  groups: [],
+  state: memoryState(["text", "isDone", "priority", "status", "dueOn", "notes"]),
 });
+
+/** A record kept in memory: what a form or an action without `state` carries. */
+export const memoryState = (fields: string[]) => ({ address: false, store: { type: "memory" }, fields });
 
 export const component = (name: string, props: Record<string, unknown> = {}): SpecNode => ({
   type: "component",
@@ -60,6 +67,7 @@ export const tableNode = (overrides: Record<string, unknown> = {}): SpecNode => 
   type: "table",
   schema: todoSchema,
   basePath: "/api/todos",
+  query: {},
   rowKey: "id",
   pageSize: 2,
   rowActions: [],
@@ -104,7 +112,7 @@ export const filtersNode = (content: SpecNode, overrides: Record<string, unknown
   controls: "direct",
   apply: "commit",
   summary: "none",
-  state: { address: false, store: { type: "memory" } },
+  state: { address: false, store: { type: "memory" }, fields: Object.keys(todoSchema.properties) },
   presets: [],
   ...overrides,
 });
@@ -123,25 +131,96 @@ export const reportSchema = {
 
 const result = (...path: string[]) => ({ root: "result", path });
 
-/** An action over the report model that draws the files of its answer, then its totals. */
-export const actionNode = (overrides: Record<string, unknown> = {}): SpecNode => ({
+/** What `ui` fills a left-out `failure` tree with: the error's code and message. */
+export const defaultFailure = {
+  type: "stack",
+  style: "danger",
+  children: [
+    { type: "value", value: { root: "error", path: ["code"] }, present: { type: "string" }, style: "strong" },
+    { type: "value", value: { root: "error", path: ["message"] }, present: { type: "string" } },
+  ],
+};
+
+/** An operation as `ui` provides it, every member it fills filled. */
+export const operation = (path: string, label: string, schema: Record<string, unknown>, overrides: Record<string, unknown> = {}): SpecNode => ({
   type: "action",
-  schema: reportSchema,
-  path: "/api/reports",
-  label: "Generate",
-  fields: Object.entries(reportSchema.properties).map(([property, { title }]) => ({ property, label: title })),
-  lists: [
-    {
-      heading: "Files",
-      rows: result("files"),
-      columns: [
-        { header: "File", value: row("name"), present: { type: "string" } },
-        { header: "Download", value: row("url"), present: { type: "string", format: "uri-reference" } },
-        { header: "Month", value: result("month"), present: { type: "string" } },
-        { header: "Kind", value: { value: "report" } },
+  schema,
+  path,
+  label,
+  fields: Object.entries((schema.properties ?? {}) as Record<string, { title?: string }>).map(([property, { title }]) => ({
+    type: "input",
+    property,
+    label: title ?? property,
+    control: "auto",
+  })),
+  groups: [],
+  state: memoryState(Object.keys(schema.properties ?? {})),
+  failure: defaultFailure,
+  onSuccess: { refreshes: [] },
+  concurrency: "parallel",
+  clearAnswerOn: [],
+  ...overrides,
+});
+
+/** An action over the report model that draws the files of its answer, then its totals. */
+export const actionNode = (overrides: Record<string, unknown> = {}): SpecNode =>
+  operation("/api/reports", "Generate", reportSchema, {
+    result: {
+      type: "stack",
+      children: [
+        {
+          type: "list",
+          heading: "Files",
+          rows: result("files"),
+          columns: [
+            { header: "File", value: row("name"), present: { type: "string" } },
+            { header: "Download", value: row("url"), present: { type: "string", format: "uri-reference" } },
+            { header: "Month", value: result("month"), present: { type: "string" } },
+            { header: "Kind", value: { value: "report" } },
+          ],
+        },
+        { type: "list", rows: result("totals"), columns: [{ header: "Made", value: row("at"), present: { type: "string", format: "date" } }] },
       ],
     },
-    { rows: result("totals"), columns: [{ header: "Made", value: row("at"), present: { type: "string", format: "date" } }] },
-  ],
+    ...overrides,
+  });
+
+/** The record of the test reader: who is signed in, and their files. */
+export const accountSchema = {
+  type: "object",
+  required: ["authorized"],
+  properties: {
+    authorized: { type: "boolean" },
+    email: { type: "string" },
+    files: { type: "array", items: { type: "object", properties: { name: { type: "string" }, url: { type: "string", format: "uri-reference" } } } },
+  },
+};
+
+const data = (...path: string[]) => ({ root: "data", path });
+
+/** A reader over `/api/account`: the email and the files while signed in, a
+ *  banner otherwise; defaults for its loading and failure trees. */
+export const dataNode = (overrides: Record<string, unknown> = {}): SpecNode => ({
+  type: "data",
+  schema: accountSchema,
+  source: { path: "/api/account", params: {} },
+  query: {},
+  content: {
+    type: "stack",
+    children: [
+      { type: "value", value: data("email"), present: { type: "string" }, shown: { at: data("authorized"), matches: { const: true } } },
+      {
+        type: "list",
+        heading: "Files",
+        rows: data("files"),
+        columns: [{ header: "Name", value: row("name"), present: { type: "string" } }],
+        shown: { at: data("authorized"), matches: { const: true } },
+      },
+      { type: "text", text: "Sign in first.", shown: { at: data("authorized"), matches: { const: false } } },
+    ],
+  },
+  loading: { type: "text", text: "Loading…", style: "muted" },
+  failure: defaultFailure,
+  reloadOn: [],
   ...overrides,
 });

@@ -61,14 +61,18 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-context-collection-from",
   "x-telo-context-element-from",
   "x-telo-context-element-from-item",
+  "x-telo-context-eval",
+  "x-telo-context-item-fills",
   "x-telo-context-from",
   "x-telo-context-from-ref-kind",
+  "x-telo-context-from-referrer",
   "x-telo-context-from-root",
   "x-telo-context-parameters-from",
   "x-telo-context-ref-from",
   "x-telo-error-context",
   "x-telo-eval",
   "x-telo-inline",
+  "x-telo-match-for",
   "x-telo-outcome-list",
   "x-telo-provides-zone",
   "x-telo-ref",
@@ -83,6 +87,10 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-sensitive",
   "x-telo-span-attribute",
   "x-telo-step-context",
+  "x-telo-text-catalog-set",
+  "x-telo-text-context",
+  "x-telo-text-values",
+  "x-telo-text-values-for",
   "x-telo-topology-role",
   "x-telo-unbound-calls",
   "x-telo-value-schema-from",
@@ -92,7 +100,7 @@ export const ANNOTATION_KEYWORDS = [
 /** Folded into the kernel's validator cache key. Bump it with any change to the
  *  code or messages {@link valueTypeKeyword} emits: a validator compiled before
  *  the change is otherwise served from disk unchanged. */
-export const VALUE_TYPE_KEYWORD_VERSION = 5;
+export const VALUE_TYPE_KEYWORD_VERSION = 6;
 
 /** How an AJV instance treats a `live` value type. */
 export interface TeloKeywordOptions {

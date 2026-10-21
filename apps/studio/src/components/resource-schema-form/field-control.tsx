@@ -24,6 +24,8 @@ import { ReferenceSelectField } from "./reference-select-field";
 import { ScalarField } from "./scalar-field";
 import { TypeField } from "./type-field";
 import { isValueOrReferenceSlot, ValueOrReferenceField } from "./value-or-reference-field";
+import { resolveLocalSchemaRef, useLocalSchemaRoot } from "./local-schema-ref";
+import { branchDescends, branchIndexOf, UnionField, unionBranches } from "./union-field";
 import type {
   CelFieldTarget,
   JsonSchemaProperty,
@@ -102,6 +104,10 @@ interface FieldControlProps {
   /** Editor layout hint forwarded to `ObjectField`/`MapField` to render entries
    *  inline (horizontal) instead of behind an accordion. Set by the consumer. */
   flat?: boolean;
+  /** Set when this control draws one branch of a union for the union's own
+   *  value: the union's field carries the value tags, the diagnostics and the
+   *  description, so the branch draws its control alone. */
+  asBranch?: boolean;
 }
 
 export function inferType(prop: JsonSchemaProperty): string {
@@ -109,6 +115,17 @@ export function inferType(prop: JsonSchemaProperty): string {
   const oneOfTypes = (prop.oneOf ?? []).map((x) => x.type).filter(Boolean);
   if (oneOfTypes.length === 1) return oneOfTypes[0] as string;
   return "string";
+}
+
+/** The type a field's label names: each type a union's branches take, else the
+ *  field's own. */
+export function fieldKindLabel(
+  prop: JsonSchemaProperty,
+  root: Record<string, unknown> | undefined,
+): string {
+  const branches = unionBranches(prop, root);
+  if (branches.length === 0) return inferType(prop);
+  return [...new Set(branches.map(inferType))].join(" | ");
 }
 
 const MAP_VALUE_QUALIFIERS = [
@@ -159,7 +176,7 @@ export function FieldControl({
   rootFieldName,
   fieldPath,
   addressPath,
-  prop,
+  prop: writtenProp,
   value,
   onValueChange,
   onFieldBlur,
@@ -176,7 +193,10 @@ export function FieldControl({
   label,
   required,
   flat,
+  asBranch,
 }: FieldControlProps) {
+  const schemaRoot = useLocalSchemaRoot();
+  const prop = resolveLocalSchemaRef(writtenProp, schemaRoot);
   const kind = inferType(prop);
   const address = addressPath ?? fieldPath;
   const onBlur = () => onFieldBlur?.(rootFieldName);
@@ -256,6 +276,48 @@ export function FieldControl({
           onMoveDeclaration={
             onMoveDeclaration ? (direction) => onMoveDeclaration(address, direction) : undefined
           }
+        />
+      );
+    }
+
+    const branches = unionBranches(prop, schemaRoot);
+    if (branches.length > 0) {
+      descends = branchDescends(branches[branchIndexOf(branches, value, schemaRoot)]);
+      return (
+        <UnionField
+          branches={branches}
+          value={value}
+          onValueChange={onValueChange}
+          root={schemaRoot}
+          resolvedResources={resolvedResources}
+          registry={registry}
+          renderBranch={(branch) => (
+            <FieldControl
+              rootFieldName={rootFieldName}
+              fieldPath={fieldPath}
+              addressPath={address}
+              prop={branch}
+              value={value}
+              onValueChange={onValueChange}
+              onFieldBlur={onFieldBlur}
+              onErrorChange={onErrorChange}
+              resolvedResources={resolvedResources}
+              rootCelEval={evalMode}
+              onSelectResource={onSelectResource}
+              onOpenInline={onOpenInline}
+              onMoveDeclaration={onMoveDeclaration}
+              celTarget={celTarget}
+              fieldDiagnostics={fieldDiagnostics}
+              typeKinds={typeKinds}
+              registry={registry}
+              label={label}
+              required={required}
+              // The union's own field heads the branch, so an object branch's
+              // members are drawn in place rather than behind a second header.
+              flat
+              asBranch
+            />
+          )}
         />
       );
     }
@@ -411,6 +473,7 @@ export function FieldControl({
   }
 
   const inner = renderInner();
+  if (asBranch) return inner;
 
   // A container's children carry their own messages, so it says only what names
   // it exactly; a leaf is where the path ends as far as this form renders, so it

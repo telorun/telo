@@ -91,6 +91,20 @@ ones that must contrast with it too — or decline the built-in theme with
 | `link` | a `link` node |
 | `image` | an `image` node |
 | `svg` | an `svg` node, drawn as an image |
+| `value` | a `value` node: one value of a data scope, presented as its schema says — a `format: uri` / `uri-reference` string as a `link` |
+| `list` | a `list` node, or one list of an action's answer: its heading, then its grid |
+| `list-heading` | a list's heading, an `h3`; absent when the list declares none |
+| `data` | a `data` node: a reader, holding its `loading` tree before the first answer, its `content` once one is in, its `failure` when the read did not succeed |
+
+A column of a `list` whose `shown` does not hold is left out, header and cells.
+
+A `data` part carries `data-state`: `loading` before the first answer, `idle`
+once one is drawn, `error` while its `failure` is drawn. A reload keeps the
+content mounted; while the failure is drawn the content is kept, out of sight.
+
+A node whose `shown` does not hold is drawn inside an element with
+`display: none` — kept mounted, so what it holds survives — and one that holds
+inside an element with `display: contents`, which no selector needs to reach.
 
 ### Table
 
@@ -141,20 +155,60 @@ ones that must contrast with it too — or decline the built-in theme with
 | `form-actions` | the row of buttons under a form or in a confirmation |
 | `submit` | the button that commits: `Save` on a form, an action's own label on an action, a confirmation's answer |
 | `cancel` | the button that backs out |
+| `field-group` | a labelled section of a form, around the fields that name it |
+| `field-group-label` | the section's heading |
+| `field-group-description` | the text under it; absent when the group declares none |
+| `field-description` | a field's hint: its model property's `description` |
+| `field-warning` | what a field warns of without blocking — a date range longer than its limit |
+| `switch` | an on/off control, drawn before its label: an input field's `toggle` |
+| `slider` | a number entered by dragging between its `minimum` and `maximum` |
+| `options-more` | the button reading more options of a choice drawn side by side, while its source has more |
+| `option-hint` | the hint an option source gives beside an option's label |
+
+### Picker
+
+| Part | Is |
+| --- | --- |
+| `picker` | a picker field's control: the chosen values, then the button choosing them |
+| `picker-value` | the chosen values, each its label |
+| `picker-chosen` | one chosen value: its label, a `link` where the source gives one |
+| `picker-trigger` | the button opening the surface the options are chosen in |
+| `picker-search` | the search box in that surface; absent when the source declares no `search` |
+| `picker-list` | the options read so far, scrolled for more |
+| `picker-empty` | what a picker says when its source offers nothing |
+| `picker-option` | one option, `on` while chosen |
+
+### Date range
+
+| Part | Is |
+| --- | --- |
+| `date-range` | a date range field's control: its presets, then the two dates |
+| `date-range-presets` | the presets, side by side; absent when there are none |
+| `date-range-preset` | one preset, `on` while the dates equal it |
+| `date-range-from` | the date the range starts on |
+| `date-range-to` | the date it ends on |
 
 ### Action
 
 | Part | Is |
 | --- | --- |
 | `action` | an action, with everything belonging to it: its form, then what its operation answered |
-| `action-result` | the lists drawn from the answer; absent until the operation has answered, and while it runs again |
-| `list` | one list of the answer: its heading, then its grid |
-| `list-heading` | a list's heading, an `h3`; absent when the list declares none |
+| `action-result` | the action's `result` tree, drawn from a success; absent until the operation has answered, and while it runs again |
+| `action-failure` | the action's `failure` tree, drawn for any answer but a success and for no answer at all |
+| `row-answer` | a row action's `result` tree, drawn in the row in place of its `row-action` button once it succeeded |
+| `row-failure` | a row action's `failure` tree, drawn in the row beside its button when no confirmation was open |
+| `disabled-text` | why a button cannot be pressed — beside an action's `submit` in `form-actions`, or beside a `row-action` — present only while its `enabled` condition does not hold |
 
-Inside `action`, in this order: one `form` holding a `field` per field, a
-`form-error` when there is one, and a `form-actions` with the `submit`; an
-`error` when the operation failed; `action-result`. The `form` of an action
-carries no `data-state` and no `data-dirty` — the `action` carries the state.
+Inside `action`, in this order: one `form` holding a `field` per field shown, a
+`form-error` when there is one, and a `form-actions` with the `submit` (and the
+`disabled-text` while it is disabled); `action-result` after a success, or
+`action-failure` after anything else. The `form` of an action carries no
+`data-state` and no `data-dirty` — the `action` carries the state, and a
+`row-action` its own while its press is pending or queued.
+
+A list's row actions are drawn as a table's are: a last `table-header-cell`
+and, per row, a `row-actions` cell holding each `row-action`, or its
+`row-answer`.
 
 A `list` draws its rows with the table's own grid parts — `table-frame`,
 `table-grid`, `table-head`, `table-body`, `table-row`, `table-header-cell`,
@@ -292,8 +346,8 @@ listed.
 
 | Attribute | Values | On |
 | --- | --- | --- |
-| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `table`, `form`, `filters`, `component`, `action`, `row-action` |
-| `data-invalid="…"` | `true` | `field`, `input`, `textarea`, `select`, `checkbox`, `options`, `tags` |
+| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `data`, `table`, `form`, `filters`, `component`, `action`, `row-action`, `picker-list` |
+| `data-invalid="…"` | `true` | `field`, `input`, `textarea`, `select`, `checkbox`, `options`, `tags`, `picker`, `date-range` |
 | `data-dirty="…"` | `true`, while it holds input that is not saved | `form` |
 | `data-compact="…"` | `true`, while the viewport is below the application's `compactBelow` | `app` |
 | `data-surface="…"` | `dialog`, `drawer`, `popover`, `inline`, `panel`, `page`, `confirmation` | `surface` |
@@ -317,8 +371,8 @@ idle tooltip trigger alike.
 | Values | On |
 | --- | --- |
 | `open`, `closed` | `surface`, `surface-overlay`, `select`, `filter-select`, `select-content`, `filters-bar`, `filter-chip`, `menu` |
-| `on`, `off` | `filters-preset`, `filter-option`, `option` |
-| `checked`, `unchecked` | `checkbox`, `select-item`, `filter-toggle` |
+| `on`, `off` | `filters-preset`, `filter-option`, `option`, `date-range-preset`, `picker-option` |
+| `checked`, `unchecked` | `checkbox`, `select-item`, `filter-toggle`, `switch` |
 | `closed`, `delayed-open`, `instant-open` | `row-edit`, `row-delete`, `pager-prev`, `pager-next`, `tooltip` |
 
 A `select` or `filter-select` with nothing chosen carries `data-placeholder`,

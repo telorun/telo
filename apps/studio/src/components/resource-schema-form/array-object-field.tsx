@@ -1,7 +1,8 @@
 import { isRecord } from "../../lib/utils";
 import type { CelEvalMode } from "./cel-utils";
 import { buildEditorDefaultValue } from "./default-value";
-import { FieldControl, inferType, ownsLabel } from "./field-control";
+import { FieldControl, fieldKindLabel, ownsLabel } from "./field-control";
+import { resolveLocalSchemaRef, useLocalSchemaRoot } from "./local-schema-ref";
 import type { RefResolver } from "./ref-candidates";
 import { SeverityDot, type FieldDiagnostic } from "./field-diagnostics";
 import type {
@@ -66,6 +67,7 @@ export function ArrayObjectField({
   typeKinds,
   registry,
 }: ArrayObjectFieldProps) {
+  const schemaRoot = useLocalSchemaRoot();
   const itemSchema = prop.items as JsonSchemaProperty;
   const entries = Array.isArray(value) ? value : [];
   const itemProperties = itemSchema.properties ?? {};
@@ -109,9 +111,10 @@ export function ArrayObjectField({
             </div>
 
             <div className="flex flex-col gap-2">
-              {Object.entries(itemProperties).map(([itemName, itemProp]) => {
+              {Object.entries(itemProperties).map(([itemName, writtenItemProp]) => {
+                const itemProp = resolveLocalSchemaRef(writtenItemProp, schemaRoot);
                 const itemValue = entryValue[itemName];
-                const itemKind = inferType(itemProp);
+                const itemKind = fieldKindLabel(itemProp, schemaRoot);
                 const itemLabel =
                   typeof itemProp.title === "string" ? itemProp.title : itemName;
                 const itemOwnsLabel = ownsLabel(itemProp);

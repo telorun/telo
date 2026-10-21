@@ -54,7 +54,8 @@ import {
   resolveNamedShape,
   valueSchemaHostOf,
 } from "./invocation-contract.js";
-import { buildCallGraph } from "./call-graph.js";
+import { buildCallGraph, referrerSlotsOf } from "./call-graph.js";
+import { contextFillCycles } from "./context-fill-cycle.js";
 import { libraryDeclarations } from "./library-declarations.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import {
@@ -92,9 +93,15 @@ import { resolveSchemaRefKinds, type RefConstraintIssue } from "./resolve-schema
 import { runZoneAnalysis, type ZoneExportCache } from "./resolve-zone-requirements.js";
 import { validateDurableRegions } from "./validate-durable-regions.js";
 import { validateZoneViolations } from "./validate-zone-violations.js";
-import { ManifestRootSchema } from "./manifest-schemas.js";
+import { ManifestRootSchema, manifestFragmentRef } from "./manifest-schemas.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
-import { buildStepContextSchema, CelScopeResolver, manifestRootForResolver } from "./cel-scope.js";
+import {
+  buildStepContextSchema,
+  CelScopeResolver,
+  manifestRootForResolver,
+  type CelSiteRef,
+  type ReferrerVariant,
+} from "./cel-scope.js";
 import { capabilityExtendsExecutable } from "./executable-capability.js";
 import { capabilityProblem, type CapabilityProblem } from "./capability-roster.js";
 
@@ -115,6 +122,7 @@ import {
   reportResourceRules,
   reportUnexercisedRule,
   ruleExercised,
+  rulePointerReaches,
   validateResourceRuleDeclarations,
   type ResourceRuleDiagnostic,
   type ResourceRuleIssue,
@@ -133,7 +141,13 @@ import {
   type ReferrerRuleDiagnostic,
   type ReferrerRuleIssue,
 } from "./validate-referrer-rules.js";
-import { analyzerPeerBinder, analyzerPeersTarget, navigatePath } from "./peer-binding.js";
+import {
+  analyzerPeerBinder,
+  analyzerPeersTarget,
+  analyzerKindSchemas,
+  analyzerReferrerDeclares,
+  navigatePath,
+} from "./peer-binding.js";
 import { RuleFailureLedger } from "./rule-condition.js";
 import {
   describeProjectionFailure,
@@ -180,10 +194,11 @@ import { navigateDeclaredChain, shapeNamedBy } from "./referenced-shape.js";
 import { declaredResultSchemaAt, RETURNS_FROM_ANNOTATION } from "./callable-signature.js";
 import { collectValueSchemaIssues, type ShapeAwareValidator } from "./validate-value-schema.js";
 import { valueSchemaFromProblems } from "./validate-value-schema-location.js";
+import { annotationDeclarationProblems, unsatisfiedMatches } from "./validate-match-for.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
 import { producerAdmitsNull, slotAdmitsNull } from "./schema-nullability.js";
-import { templateCallSite } from "./derived-slots.js";
+import { templateCallSite, valueSchemaSites } from "./derived-slots.js";
 import {
   DiagnosticSeverity,
   DiagnosticTag,
@@ -192,11 +207,14 @@ import {
 } from "./types.js";
 import {
   extractAccessChains,
+  contextChainAt,
   extractContextsFromSchema,
   getManifestItem,
+  navigateConcretePath,
   resolveContextAnnotations,
 } from "./validate-cel-context.js";
 import {
+  accessorSiteAt,
   celEvalModeAt,
   governedCelEvalSites,
   kindCelEvalSites,
@@ -263,17 +281,34 @@ import { observesProblems } from "./observing-slot.js";
 import { validateResourceInputs } from "./validate-resource-inputs.js";
 import { validateExports } from "./validate-exports.js";
 import { validateTemplateBody } from "./validate-template-body.js";
+import { templateBodies } from "./template-body.js";
+import { declaredScopes, isScopeMember } from "./scope-declarations.js";
 import { buildTemplateForwardViews } from "./template-forward.js";
 import { validateTemplateForwards } from "./validate-template-forward.js";
 import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
 import { validateModuleCallNames } from "./validate-module-call-names.js";
 import { validateCallableDeclarations } from "./validate-callable-kinds.js";
+import { validateCallableData } from "./validate-callable-data.js";
 import { validateScopedNameReach } from "./validate-scope-reach.js";
 import { validateScopedKindDocuments } from "./validate-scoped-kind-documents.js";
 import { importAnchoredDiagnostic, importReach } from "./reaching-import.js";
+import { textSlotAccessorProblems } from "./text-slot-accessor.js";
+import { textValuesProblems } from "./text-values.js";
+import { celTypeValueKind, schemaValueKind } from "./text-judgement.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
 import { readStepSlot } from "./step-slot.js";
+import { TextLanguageScope, validateTexts } from "./validate-texts.js";
+import { validateTextCatalogSets } from "./validate-text-catalog-sets.js";
+import type { TextFragment } from "./text-slot.js";
+
+/** One schema per text fragment, so the registry's per-schema validator memo
+ *  compiles each once. */
+const TEXT_FRAGMENT_SCHEMAS: Readonly<Record<TextFragment, Record<string, any>>> = {
+  Message: { $ref: manifestFragmentRef("Message") },
+  Text: { $ref: manifestFragmentRef("Text") },
+  TextCatalog: { $ref: manifestFragmentRef("TextCatalog") },
+};
 
 const SELF_PREFIX = "Self.";
 
@@ -740,6 +775,75 @@ export interface CelValueSlot {
  *  against that same root (`referenced-shape.ts`). A member or item is read
  *  from every `allOf` conjunct that declares it, so a leaf several declare is
  *  returned once per declaration and must fit each. */
+/** What one judgement of a CEL site found about its value. */
+interface CelSiteFacts {
+  type?: string;
+  literal?: string;
+  produced?: Record<string, any>;
+}
+
+/** Who gives a variant its typing, as a message names them. */
+function referrerLabel(variant: ReferrerVariant | undefined): string | undefined {
+  if (!variant || variant.referrers.length === 0) return undefined;
+  return [...new Set(variant.referrers.map((r) => r.label))].join(", ");
+}
+
+/**
+ * The findings of a site judged once per referrer variant: one every variant
+ * makes is reported once, one only some make names the referrers it holds
+ * under. A site of a resource from another module whose types its referrers
+ * gave is reported at each referencing slot the entry's own modules hold.
+ */
+function mergeVariantFindings(
+  judged: ReadonlyArray<{ variant: ReferrerVariant | undefined; sink: AnalysisDiagnostic[] }>,
+  module: string | undefined,
+  rootModules: ReadonlySet<string>,
+): AnalysisDiagnostic[] {
+  const keyOf = (d: AnalysisDiagnostic) =>
+    `${d.code}\0${d.message}\0${String((d.data as { path?: unknown } | undefined)?.path ?? "")}`;
+  const counts = new Map<string, number>();
+  for (const { sink } of judged) {
+    for (const key of new Set(sink.map(keyOf))) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const foreign = module !== undefined && !rootModules.has(module);
+  const out: AnalysisDiagnostic[] = [];
+  const emitted = new Set<string>();
+  for (const { variant, sink } of judged) {
+    const label = referrerLabel(variant);
+    for (const d of sink) {
+      const shared = counts.get(keyOf(d)) === judged.length;
+      const finding =
+        shared || label === undefined ? d : { ...d, message: `${d.message} (as ${label} references it)` };
+      const anchors = foreign
+        ? (variant?.referrers ?? []).filter((r) => {
+            const own = (r.manifest.metadata as { module?: string } | undefined)?.module;
+            return own === undefined || rootModules.has(own);
+          })
+        : [];
+      const copies =
+        anchors.length === 0
+          ? [finding]
+          : anchors.map((r) => ({
+              ...finding,
+              message: `${r.manifest.kind}/${String(r.manifest.metadata?.name ?? "")} at '${r.path}': ${finding.message}`,
+              data: {
+                ...(finding.data as Record<string, unknown>),
+                resource: { kind: r.manifest.kind, name: String(r.manifest.metadata?.name ?? "") },
+                filePath: (r.manifest.metadata as { source?: string } | undefined)?.source,
+                path: r.path,
+              },
+            }));
+      for (const copy of copies) {
+        const key = keyOf(copy);
+        if (emitted.has(key)) continue;
+        emitted.add(key);
+        out.push(copy);
+      }
+    }
+  }
+  return out;
+}
+
 function collectCelValueSlots(
   data: unknown,
   schema: Record<string, any>,
@@ -1525,16 +1629,19 @@ export class StaticAnalyzer {
      * data — the two shapes where the rule would see no declaration at all.
      */
     const peersTarget = analyzerPeersTarget(defs);
+    const referrerDeclares = analyzerReferrerDeclares(defs);
 
     // Checked against the MERGED schema, so an `in:` pointer naming an
     // inherited field resolves — which is what lets a rule shared by every
     // backend be declared once on the abstract they extend.
+    const kindSchemas = analyzerKindSchemas(defs);
     for (const declarer of ownRuleDeclarers) {
       resourceRuleIssues.push(
         ...validateResourceRuleDeclarations(
           declarer,
           effectiveAuthorSchema(declarer as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
           moduleCallNamesOf(moduleCallNames, declarer),
+          kindSchemas,
         ),
       );
     }
@@ -1566,6 +1673,13 @@ export class StaticAnalyzer {
         referrerRuleIssues.push(
           ...validateReferrerRuleDeclarations(declarer, {
             peersTarget,
+            referrerDeclares,
+            selfDeclares: (pointer) =>
+              rulePointerReaches(
+                effectiveAuthorSchema(declarer as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
+                pointer,
+                kindSchemas,
+              ),
             moduleNames: moduleCallNamesOf(moduleCallNames, declarer),
           }),
         );
@@ -1753,6 +1867,12 @@ export class StaticAnalyzer {
       ? undefined
       : buildTemplateForwardViews(allManifests, defs, aliases, { aliasesByModule, rootModules });
     if (forwardViews) allManifests.push(...forwardViews.analyzed);
+    // Which module wrote each manifest, and the language it writes its texts in.
+    const textLanguages = new TextLanguageScope(
+      allManifests as unknown as ResourceManifest[],
+      rootModules,
+      options?.moduleDocuments ?? [],
+    );
 
     // ONE typed reference graph per analysis. Both graph consumers in this
     // pass (the dynamic-selector check and run-reachability) read the same
@@ -2080,7 +2200,7 @@ export class StaticAnalyzer {
       ) as unknown as ResourceDefinition | undefined;
       if (!definition) return bodyEntry && { bodyEntry: true };
       if (!ruleSites.has(definition)) {
-        ruleSites.set(definition, governedCelEvalSites(definition, ruleDef));
+        ruleSites.set(definition, governedCelEvalSites(definition, ruleDef, defs.shapeLookup));
       }
       return { sites: ruleSites.get(definition), bodyEntry: bodyEntry !== undefined };
     }, forwardedReference);
@@ -2232,12 +2352,33 @@ export class StaticAnalyzer {
     const scopedDefs = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, moduleScopes);
     /** How the kind of a resource declared inline below `host` evaluates the
      *  field `path` crosses into — `undefined` when the path crosses none. */
+    // Whether a path inside a template body's entry is an accessor field's value,
+    // by the entry kind's own sites, resolved in the defining module.
+    const bodyAccessorSites = new Map<ResourceManifest, Array<{ prefix: string; sites: CelEvalSites }>>();
+    const bodyAccessorAt = (host: ResourceManifest, path: string): boolean => {
+      if (host.kind !== "Telo.Definition") return false;
+      let bodies = bodyAccessorSites.get(host);
+      if (!bodies) {
+        const module = host.metadata?.module as string | undefined;
+        const resolve: DefResolver = (kind) => scopedDefs.in(kind, module);
+        bodies = templateBodies(host, defs, aliases, moduleScopes).map((body) => ({
+          prefix: body.prefix,
+          sites: kindCelEvalSites(body.definition, resolve, defs.shapeLookup),
+        }));
+        bodyAccessorSites.set(host, bodies);
+      }
+      const body = bodies.find((b) => path.startsWith(`${b.prefix}.`));
+      return body !== undefined && accessorSiteAt(body.sites, path.slice(body.prefix.length + 1)) !== undefined;
+    };
     const nestedEvalModeAt = (host: ResourceManifest, path: string): CelEvalMode | null | undefined => {
       const nested = nestedResourceAt(host, path);
       if (!nested) return undefined;
       const module = host.metadata?.module as string | undefined;
       const resolve: DefResolver = (kind) => scopedDefs.in(kind, module);
-      return celEvalModeAt(kindCelEvalSites(resolve(nested.resource.kind), resolve), nested.path);
+      return celEvalModeAt(
+        kindCelEvalSites(resolve(nested.resource.kind), resolve, defs.shapeLookup),
+        nested.path,
+      );
     };
     const reportsObservedState = [...observedState.values()].some((r) => r.status || r.reading);
     const runReachable = reportsObservedState
@@ -2393,6 +2534,11 @@ export class StaticAnalyzer {
     // fit the slot at all", the schema answers "do their type arguments agree",
     // which cel-js cannot express because it types by constructor identity.
     const celSourceSchemaByPath = new Map<ResourceManifest, Map<string, Record<string, any>>>();
+    // What a site judged under several referrer typings found under each.
+    const celVariantFacts = new Map<
+      ResourceManifest,
+      Map<string, ReadonlyArray<CelSiteFacts & { label: string | undefined }>>
+    >();
     // What every CEL expression in this set is typed against. The rule lives in
     // `cel-scope.ts` so the IDE asks the same question the pass does — a
     // completion list is a claim that the name it offers will pass this check,
@@ -2409,6 +2555,9 @@ export class StaticAnalyzer {
       moduleCallNames,
       moduleFunctions,
       callableFlags,
+      referrersOf: (m) => referrerSlotsOf(getCallGraph(), m),
+      definitionOf: (m) =>
+        definitionInScope(defs, m.kind, m.metadata, aliases, aliasesByModule) as ResourceDefinition | undefined,
     });
 
     /**
@@ -2784,6 +2933,17 @@ export class StaticAnalyzer {
           shapeAwareValidator,
           valueSchemaHost,
         );
+        // The same slots' expressions join the slot-fit check, each held to the
+        // type its location reaches: a placeholder satisfies AJV, its TYPE is
+        // judged here.
+        for (const site of valueSchemaSites(m as Record<string, any>, schema, {
+          typeManifests: allManifests as Record<string, any>[],
+          valueSchemaHost,
+        })) {
+          for (const slot of collectCelValueSlots(site.value, site.schema, site.path, namedShape)) {
+            celReturnSlots.push({ manifest: m, resource, filePath, ...slot });
+          }
+        }
         const issues = [...ajvIssues, ...valueSchemaIssues];
         // WHY A FIELD THIS KIND EXISTS TO SUPPLY IS STILL REQUIRED OF ITS
         // CONSUMER. A child that `extends` and declares no `base:` is authored
@@ -3330,7 +3490,7 @@ export class StaticAnalyzer {
               });
             }
           }
-          celBindingSites = findBindingSites(e.definition?.schema as Record<string, any>);
+          celBindingSites = findBindingSites(e.definition?.schema as Record<string, any>, defs.shapeLookup);
           if (celBindingSites) {
             const declared = (m as Record<string, any>)[celBindingSites.field];
             const bindingsName = (m.metadata as any)?.name as string | undefined;
@@ -3457,7 +3617,11 @@ export class StaticAnalyzer {
             // covered here without the provider restating anything. A base-form
             // child's own fields are too (`implicitEvalSites`): `base:` reads
             // them once at create().
-            celSites = kindCelEvalSites(e.definition as unknown as ResourceDefinition, resolveDef);
+            celSites = kindCelEvalSites(
+              e.definition as unknown as ResourceDefinition,
+              resolveDef,
+              defs.shapeLookup,
+            );
           } else {
             celSites = NO_CEL_EVAL_SITES;
           }
@@ -3658,262 +3822,451 @@ export class StaticAnalyzer {
             }
           }
 
-          const engine = defaultRegistry().get(engineName);
-          if (!engine) {
-            // No registered engine owns this tag — the expression would go
-            // entirely unanalyzed. Surface it rather than skipping silently.
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "UNKNOWN_ENGINE",
-              source: SOURCE,
-              message: `${m.kind}/${resource.name}: no templating engine registered for '!${engineName}' at '${path}'.`,
-              data: { resource, filePath, path },
-            });
-            return;
-          }
-          // The engine type-checks, so it gets the environment typed for THIS
-          // path — not the bare base one. Both halves come from the one scope
-          // rule, which is what makes the IDE's answer and this check the same
-          // answer rather than two that agree today.
-          const {
-            env: typedEnv,
-            contextSchema: effectiveContext,
-            moduleNames: siteModuleNames,
-            moduleCallType,
-            moduleCallResult,
-            moduleCallFlags,
-            explainSchema,
-          } = celScope.scopeFor({
+          const siteRef: CelSiteRef = {
             source: m,
             path,
             contextSchema: e.contextSchema,
             matchedScope,
-          });
-
-          const result = engine.analyze(expr, {
-            celEnv: typedEnv,
-            contextSchema: effectiveContext,
-            // A call whose receiver is one of these resolves to a module
-            // function: it is not classified against the catalog, its
-            // determinism is not the catalog's, and its receiver is not a root
-            // identifier. It types as its callee's declared result, and member
-            // access on it is checked against that result's schema.
-            moduleNames: siteModuleNames,
-            moduleCallType,
-            moduleCallResult,
-            // Each module call carries its callee's derived flags, so the
-            // policies below read `deterministic === false` for a module call as
-            // they do for a catalog one.
-            moduleCallFlags,
-            explainSchema,
-            // `scopeFor` registers every kernel global (none in a parameter scope,
-            // which replaces them) and every name the site's context declares,
-            // so a root this environment does not know is one
-            // nothing puts in scope. Two places where the CEL belongs to another
-            // scope, both already recognised by the non-eval-field check: a kind
-            // document, whose CEL is written for whoever instantiates the kind,
-            // and anything below a nested inline `{ kind }`, whose CEL the
-            // nested kind evaluates — and which is analyzed again, in its own
-            // scope, as the resource it was extracted into.
-            rootsDeclared: !isKindDocument(m) && !pathCrossesNestedResource(m, path),
-            // Which bare names could be a module: the naming rule, which the
-            // engine does not own. A module name and an import alias are
-            // type-level, so a lowercase receiver is a misspelled value and the
-            // `imports:` repair would be advice for a different mistake.
-            couldNameModule: isTypeLevelName,
-          });
-
-          if (result.type !== undefined) {
-            let byPath = celTypeByPath.get(m);
-            if (!byPath) celTypeByPath.set(m, (byPath = new Map()));
-            byPath.set(path, result.type);
-            let sources = celSourceByPath.get(m);
-            if (!sources) celSourceByPath.set(m, (sources = new Map()));
-            sources.set(path, expr);
-            if (result.stringLiteral !== undefined) {
-              let literals = celLiteralByPath.get(m);
-              if (!literals) celLiteralByPath.set(m, (literals = new Map()));
-              literals.set(path, result.stringLiteral);
-            }
-          }
-
-          // The producer half of the type-argument check. A CEL type is a bare
-          // name — cel-js types by constructor identity, so a byte stream and a
-          // string stream are one CEL type and always will be — so the argument
-          // comparison is a parallel pass over the SCHEMAS the analyzer already
-          // walks. This is where the producer's schema is in hand: navigating
-          // the expression's chain into its context schema is exactly "the
-          // producer's outputType at the expression's tail".
-          //
-          // Only a PLAIN CHAIN is navigated — `steps.encode.result.output`, the
-          // shape a wiring site actually takes. An expression that computes
-          // rather than names has no schema to read off the context, so it
-          // records nothing and no argument check fires: silence where the
-          // analyzer knows least is the conservative direction, and the same one
-          // `x-telo-step-context`'s pure-`value` typing takes.
-          // A site with no context of its own still reads the kernel globals —
-          // `variables.dataDir` in a plain config field — whose declared schemas
-          // the host-path check needs as much as a step result's.
-          const chainContext =
-            effectiveContext ?? kernelGlobals.forResource(m as unknown as ResourceManifest);
-          const chain = plainChainOf(makeTaggedSentinel(engineName, expr));
-          if (chain) {
-            // Read as the shape it names: a reference at a hop or at the tail
-            // is followed, so what a producer declares behind one is judged. A
-            // step chain is read off the step map itself, where each result is
-            // the document its target declared; the context is a copy of it,
-            // in which no pointer can be traced to its document.
-            const produced =
-              celStepContextSchema !== undefined && chain.startsWith(STEPS_ROOT)
-                ? navigateDeclaredChain(
-                    celStepContextSchema,
-                    chain.slice(STEPS_ROOT.length),
-                    namedShape,
-                  )
-                : navigateDeclaredChain(chainContext, chain, namedShape);
-            // An undeclared step result is typed by the permissive fallback: an
-            // absence of a claim, not a producer saying `object`. Asked of the
-            // step map itself, because the context is a copy of it.
-            const undeclared =
-              celStepContextSchema !== undefined &&
-              chain.startsWith(STEPS_ROOT) &&
-              navigateSchemaToExprPath(celStepContextSchema, chain.slice(STEPS_ROOT.length)) ===
-                PERMISSIVE_CONTRACT;
-            if (produced && !undeclared) {
-              let byPath = celSourceSchemaByPath.get(m);
-              if (!byPath) celSourceSchemaByPath.set(m, (byPath = new Map()));
-              byPath.set(path, produced);
-            }
-          }
-
-          // What each module call reaches, and whether the call fits it — the
-          // kernel's binding refusals and the signature checks. A module doc's
-          // inline `imports:` map is the same expression its desugared
-          // `Telo.Import` carries — the resource the kernel creates — so it is
-          // judged there, once. An expression below a nested declaration is
-          // that declaration's, evaluated where IT is created, so the enclosing
-          // field's unbound-calls annotation does not reach it.
-          if (!(isModuleKind(m.kind as string) && path.startsWith("imports."))) {
-            const unboundReason = pathCrossesNestedResource(m, path)
-              ? undefined
-              : unboundCallReason(celUnboundSchema, path);
-            diagnostics.push(
-              ...moduleCallDiagnostics(
-                {
-                  manifest: m as unknown as ResourceManifest,
-                  resource,
-                  filePath,
-                  path,
-                  calls: result.calls,
-                  contextSchema: effectiveContext,
-                  resolveRef: (ref) => defs.schemaForId(ref),
-                  ...(unboundReason !== undefined ? { unboundReason } : {}),
-                },
-                moduleFunctions,
-              ),
-            );
-          }
-
-          // A non-deterministic call in a compile-eval field is baked once at
-          // load: `nowIso()` there freezes at boot. Sometimes that is the
-          // intent (a boot timestamp, a run id), so it warns rather than
-          // blocking. The engine reports which calls re-evaluate; the eval mode
-          // is manifest policy and stays here.
-          if (evalMode === "compile") {
-            // A module call is named by the chain to the leaf that makes it
-            // volatile (`Self.stamp → now()`), so the author sees which call did.
-            const volatile = [
-              ...new Set(
-                result.calls
-                  .filter((c) => c.deterministic === false)
-                  .map((c) =>
-                    c.moduleCall
-                      ? renderChain(moduleCallFlags(c.name)?.nondeterministicVia ?? [c.name])
-                      : `${c.name}()`,
-                  ),
-              ),
-            ].sort();
-            if (volatile.length > 0) {
+            ...(e.contexts ? { contexts: e.contexts } : {}),
+            mode: accessor || bodyAccessorAt(m as unknown as ResourceManifest, path) ? "accessor" : (evalMode ?? undefined),
+          };
+          // A binding typed from the resource's referrers may take several
+          // types; the site is judged once per distinct one.
+          const variants = celScope.siteVariants(siteRef);
+          const judgeUnder = (
+            variant: ReferrerVariant | undefined,
+            diagnostics: AnalysisDiagnostic[],
+            primary: boolean,
+            facts: CelSiteFacts,
+          ): void => {
+            const engine = defaultRegistry().get(engineName);
+            if (!engine) {
+              // No registered engine owns this tag — the expression would go
+              // entirely unanalyzed. Surface it rather than skipping silently.
               diagnostics.push({
-                severity: DiagnosticSeverity.Warning,
-                code: "CEL_NONDETERMINISTIC_IN_COMPILE_FIELD",
+                severity: DiagnosticSeverity.Error,
+                code: "UNKNOWN_ENGINE",
                 source: SOURCE,
-                message: `${m.kind}/${resource.name}: '${path}' is evaluated once at startup, so ${volatile.map((n) => `\`${n}\``).join(", ")} ${volatile.length === 1 ? "is" : "are"} baked in at load and never re-evaluated. Move the expression to a field evaluated per call (x-telo-eval: runtime) if it should change over time.`,
+                message: `${m.kind}/${resource.name}: no templating engine registered for '!${engineName}' at '${path}'.`,
+                data: { resource, filePath, path },
+              });
+              return;
+            }
+            // The engine type-checks, so it gets the environment typed for THIS
+            // path — not the bare base one. Both halves come from the one scope
+            // rule, which is what makes the IDE's answer and this check the same
+            // answer rather than two that agree today.
+            const {
+              env: typedEnv,
+              contextSchema: effectiveContext,
+              moduleNames: siteModuleNames,
+              moduleCallType,
+              moduleCallResult,
+              moduleCallFlags,
+              explainSchema,
+            } = celScope.scopeFor({ ...siteRef, ...(variant ? { variant } : {}) });
+
+            const result = engine.analyze(expr, {
+              celEnv: typedEnv,
+              contextSchema: effectiveContext,
+              // A call whose receiver is one of these resolves to a module
+              // function: it is not classified against the catalog, its
+              // determinism is not the catalog's, and its receiver is not a root
+              // identifier. It types as its callee's declared result, and member
+              // access on it is checked against that result's schema.
+              moduleNames: siteModuleNames,
+              moduleCallType,
+              moduleCallResult,
+              // Each module call carries its callee's derived flags, so the
+              // policies below read `deterministic === false` for a module call as
+              // they do for a catalog one.
+              moduleCallFlags,
+              explainSchema,
+              // `scopeFor` registers every kernel global (none in a parameter scope,
+              // which replaces them) and every name the site's context declares,
+              // so a root this environment does not know is one
+              // nothing puts in scope. Two places where the CEL belongs to another
+              // scope, both already recognised by the non-eval-field check: a kind
+              // document, whose CEL is written for whoever instantiates the kind,
+              // and anything below a nested inline `{ kind }`, whose CEL the
+              // nested kind evaluates — and which is analyzed again, in its own
+              // scope, as the resource it was extracted into.
+              rootsDeclared: !isKindDocument(m) && !pathCrossesNestedResource(m, path),
+              // Which bare names could be a module: the naming rule, which the
+              // engine does not own. A module name and an import alias are
+              // type-level, so a lowercase receiver is a misspelled value and the
+              // `imports:` repair would be advice for a different mistake.
+              couldNameModule: isTypeLevelName,
+            });
+
+            if (result.type !== undefined) facts.type = result.type;
+            if (result.type !== undefined && primary) {
+              let byPath = celTypeByPath.get(m);
+              if (!byPath) celTypeByPath.set(m, (byPath = new Map()));
+              byPath.set(path, result.type);
+              let sources = celSourceByPath.get(m);
+              if (!sources) celSourceByPath.set(m, (sources = new Map()));
+              sources.set(path, expr);
+              if (result.stringLiteral !== undefined) {
+                facts.literal = result.stringLiteral;
+                let literals = celLiteralByPath.get(m);
+                if (!literals) celLiteralByPath.set(m, (literals = new Map()));
+                literals.set(path, result.stringLiteral);
+              }
+            }
+
+            // The producer half of the type-argument check. A CEL type is a bare
+            // name — cel-js types by constructor identity, so a byte stream and a
+            // string stream are one CEL type and always will be — so the argument
+            // comparison is a parallel pass over the SCHEMAS the analyzer already
+            // walks. This is where the producer's schema is in hand: navigating
+            // the expression's chain into its context schema is exactly "the
+            // producer's outputType at the expression's tail".
+            //
+            // Only a PLAIN CHAIN is navigated — `steps.encode.result.output`, the
+            // shape a wiring site actually takes. An expression that computes
+            // rather than names has no schema to read off the context, so it
+            // records nothing and no argument check fires: silence where the
+            // analyzer knows least is the conservative direction, and the same one
+            // `x-telo-step-context`'s pure-`value` typing takes.
+            // A site with no context of its own still reads the kernel globals —
+            // `variables.dataDir` in a plain config field — whose declared schemas
+            // the host-path check needs as much as a step result's.
+            const chainContext =
+              effectiveContext ?? kernelGlobals.forResource(m as unknown as ResourceManifest);
+            const chain = plainChainOf(makeTaggedSentinel(engineName, expr));
+            if (chain) {
+              // Read as the shape it names: a reference at a hop or at the tail
+              // is followed, so what a producer declares behind one is judged. A
+              // step chain is read off the step map itself, where each result is
+              // the document its target declared; the context is a copy of it,
+              // in which no pointer can be traced to its document.
+              const produced =
+                celStepContextSchema !== undefined && chain.startsWith(STEPS_ROOT)
+                  ? navigateDeclaredChain(
+                      celStepContextSchema,
+                      chain.slice(STEPS_ROOT.length),
+                      namedShape,
+                    )
+                  : navigateDeclaredChain(chainContext, chain, namedShape);
+              // An undeclared step result is typed by the permissive fallback: an
+              // absence of a claim, not a producer saying `object`. Asked of the
+              // step map itself, because the context is a copy of it.
+              const undeclared =
+                celStepContextSchema !== undefined &&
+                chain.startsWith(STEPS_ROOT) &&
+                navigateSchemaToExprPath(celStepContextSchema, chain.slice(STEPS_ROOT.length)) ===
+                  PERMISSIVE_CONTRACT;
+              if (produced && !undeclared) facts.produced = produced;
+              if (produced && !undeclared && primary) {
+                let byPath = celSourceSchemaByPath.get(m);
+                if (!byPath) celSourceSchemaByPath.set(m, (byPath = new Map()));
+                byPath.set(path, produced);
+              }
+            }
+
+            // What each module call reaches, and whether the call fits it — the
+            // kernel's binding refusals and the signature checks. A module doc's
+            // inline `imports:` map is the same expression its desugared
+            // `Telo.Import` carries — the resource the kernel creates — so it is
+            // judged there, once. An expression below a nested declaration is
+            // that declaration's, evaluated where IT is created, so the enclosing
+            // field's unbound-calls annotation does not reach it.
+            if (!(isModuleKind(m.kind as string) && path.startsWith("imports."))) {
+              const unboundReason = pathCrossesNestedResource(m, path)
+                ? undefined
+                : unboundCallReason(celUnboundSchema, path);
+              diagnostics.push(
+                ...moduleCallDiagnostics(
+                  {
+                    manifest: m as unknown as ResourceManifest,
+                    resource,
+                    filePath,
+                    path,
+                    calls: result.calls,
+                    contextSchema: effectiveContext,
+                    resolveRef: (ref) => defs.schemaForId(ref),
+                    ...(unboundReason !== undefined ? { unboundReason } : {}),
+                    lang: textLanguages.langOf(m as unknown as ResourceManifest),
+                  },
+                  moduleFunctions,
+                ),
+              );
+            }
+
+            // A non-deterministic call in a compile-eval field is baked once at
+            // load: `nowIso()` there freezes at boot. Sometimes that is the
+            // intent (a boot timestamp, a run id), so it warns rather than
+            // blocking. The engine reports which calls re-evaluate; the eval mode
+            // is manifest policy and stays here.
+            if (evalMode === "compile") {
+              // A module call is named by the chain to the leaf that makes it
+              // volatile (`Self.stamp → now()`), so the author sees which call did.
+              const volatile = [
+                ...new Set(
+                  result.calls
+                    .filter((c) => c.deterministic === false)
+                    .map((c) =>
+                      c.moduleCall
+                        ? renderChain(moduleCallFlags(c.name)?.nondeterministicVia ?? [c.name])
+                        : `${c.name}()`,
+                    ),
+                ),
+              ].sort();
+              if (volatile.length > 0) {
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Warning,
+                  code: "CEL_NONDETERMINISTIC_IN_COMPILE_FIELD",
+                  source: SOURCE,
+                  message: `${m.kind}/${resource.name}: '${path}' is evaluated once at startup, so ${volatile.map((n) => `\`${n}\``).join(", ")} ${volatile.length === 1 ? "is" : "are"} baked in at load and never re-evaluated. Move the expression to a field evaluated per call (x-telo-eval: runtime) if it should change over time.`,
+                  data: { resource, filePath, path },
+                });
+              }
+            }
+
+            // A chain rooted outside the field's bindings names nothing its
+            // consumer can resolve. Where the name is not in scope at all the
+            // expression's own verdict says so; a kernel global is in scope, and
+            // only this rule refuses it.
+            const unbound = accessorVerdict?.find((p) => p.unboundRoot !== undefined);
+            if (unbound && !result.diagnostics.some((f) => f.code === "CEL_UNKNOWN_IDENTIFIER")) {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: "ACCESSOR_NOT_PLAIN_CHAIN",
+                source: SOURCE,
+                message: `${m.kind}/${resource.name}: ${unbound.message}`,
                 data: { resource, filePath, path },
               });
             }
-          }
 
-          // A chain rooted outside the field's bindings names nothing its
-          // consumer can resolve. Where the name is not in scope at all the
-          // expression's own verdict says so; a kernel global is in scope, and
-          // only this rule refuses it.
-          const unbound = accessorVerdict?.find((p) => p.unboundRoot !== undefined);
-          if (unbound && !result.diagnostics.some((f) => f.code === "CEL_UNKNOWN_IDENTIFIER")) {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: "ACCESSOR_NOT_PLAIN_CHAIN",
-              source: SOURCE,
-              message: `${m.kind}/${resource.name}: ${unbound.message}`,
-              data: { resource, filePath, path },
-            });
-          }
-
-          for (const f of result.diagnostics) {
-            // The consumer resolves an accessor by path, null-propagating, so
-            // an unguarded read through a nullable value is not a fault there.
-            if (accessor && f.code === "CEL_NULLABLE_ACCESS") continue;
-            // An engine's fix is always a whole-scalar replacement — a tag with
-            // holes re-anchors a hole's repair onto its text itself.
-            const fix = f.fix;
-            const data = { resource, filePath, path, ...(fix ? { fix } : {}) };
-            if (f.code === "CEL_SYNTAX_ERROR") {
-              diagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                code: "CEL_SYNTAX_ERROR",
-                source: SOURCE,
-                message: `CEL syntax error: ${f.message}`,
-                data,
-              });
-            } else if (f.code === undefined) {
-              // No code from a future engine — pass the message through, tagged
-              // with a generic ENGINE_DIAGNOSTIC code so downstream filters can
-              // still bucket it.
-              diagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                code: "ENGINE_DIAGNOSTIC",
-                source: SOURCE,
-                message: `${m.kind}/${resource.name}: !${engineName}: ${f.message}`,
-                data,
-              });
-            } else {
-              // Named by ENGINE, not hardcoded to CEL: the seam exists so a
-              // second engine can produce coded findings, and labelling them
-              // `CEL` would misattribute the first one that does. The position is
-              // `data.path`, which every host anchors on — quoted in the text it
-              // would name a generated path wherever the value was extracted.
-              diagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                code: f.code,
-                source: SOURCE,
-                message:
-                  `${m.kind}/${resource.name}: !${engineName}: ${f.message}` +
-                  (f.code === "CEL_TYPE_ERROR" ? valueBrandHint(result.readTypes) : ""),
-                data,
-              });
+            for (const f of result.diagnostics) {
+              // The consumer resolves an accessor by path, null-propagating, so
+              // an unguarded read through a nullable value is not a fault there.
+              if (accessor && f.code === "CEL_NULLABLE_ACCESS") continue;
+              // An engine's fix is always a whole-scalar replacement — a tag with
+              // holes re-anchors a hole's repair onto its text itself.
+              const fix = f.fix;
+              const data = { resource, filePath, path, ...(fix ? { fix } : {}) };
+              if (f.code === "CEL_SYNTAX_ERROR") {
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: "CEL_SYNTAX_ERROR",
+                  source: SOURCE,
+                  message: `CEL syntax error: ${f.message}`,
+                  data,
+                });
+              } else if (f.code === undefined) {
+                // No code from a future engine — pass the message through, tagged
+                // with a generic ENGINE_DIAGNOSTIC code so downstream filters can
+                // still bucket it.
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: "ENGINE_DIAGNOSTIC",
+                  source: SOURCE,
+                  message: `${m.kind}/${resource.name}: !${engineName}: ${f.message}`,
+                  data,
+                });
+              } else {
+                // Named by ENGINE, not hardcoded to CEL: the seam exists so a
+                // second engine can produce coded findings, and labelling them
+                // `CEL` would misattribute the first one that does. The position is
+                // `data.path`, which every host anchors on — quoted in the text it
+                // would name a generated path wherever the value was extracted.
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: f.code,
+                  source: SOURCE,
+                  message:
+                    `${m.kind}/${resource.name}: !${engineName}: ${f.message}` +
+                    (f.code === "CEL_TYPE_ERROR" ? valueBrandHint(result.readTypes) : ""),
+                  data,
+                });
+              }
             }
+          };
+          const judged = variants.map((variant, index) => {
+            const sink: AnalysisDiagnostic[] = [];
+            const facts: CelSiteFacts = {};
+            judgeUnder(variant, sink, index === 0, facts);
+            return { variant, sink, facts };
+          });
+          if (judged.length > 1) {
+            let byPath = celVariantFacts.get(m);
+            if (!byPath) celVariantFacts.set(m, (byPath = new Map()));
+            byPath.set(
+              path,
+              judged.map(({ variant, facts }) => ({ ...facts, label: referrerLabel(variant) })),
+            );
           }
+          diagnostics.push(
+            ...mergeVariantFindings(judged, (m.metadata as { module?: string } | undefined)?.module, rootModules),
+          );
         },
       },
       { aliases, aliasesByModule, rootModules },
     );
 
+    // A schema matched against an accessor that it can never hold for — judged
+    // against the type the walk above recorded for the accessor's chain, at
+    // every resource and template-body entry of the entry's own modules.
+    if (!options?.skipValidation) {
+      const isExpression = (node: unknown) =>
+        (isTaggedSentinel(node) && !isRefSentinel(node)) ||
+        (!!node && typeof node === "object" && (node as { __compiled?: unknown }).__compiled === true);
+      for (const m of allManifests) {
+        const module = (m.metadata as { module?: string } | undefined)?.module;
+        if (module && !rootModules.has(module)) continue;
+        if (!m.kind) continue;
+        if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract" || m.kind === "Telo.JsonSchema") {
+          for (const problem of annotationDeclarationProblems(
+            (m as Record<string, unknown>).schema,
+            ["schema"],
+            defs.shapeLookup,
+            m.kind !== "Telo.JsonSchema",
+          )) {
+            diagnostics.push({
+              severity: problem.warning ? DiagnosticSeverity.Warning : DiagnosticSeverity.Error,
+              code: problem.code,
+              source: SOURCE,
+              message: `${m.kind}/${m.metadata?.name as string}: ${problem.message}`,
+              data: {
+                resource: { kind: m.kind, name: m.metadata?.name as string },
+                filePath: (m.metadata as { source?: string } | undefined)?.source,
+                path: problem.path,
+              },
+            });
+          }
+        }
+        const types = celSourceSchemaByPath.get(m);
+        const typeAt = (path: string) => types?.get(path);
+        const judged: Array<{ value: Record<string, unknown>; schema: Record<string, any>; prefix: string }> = [];
+        const own = defs.effectiveSchemaOf(
+          definitionInScope(defs, m.kind, m.metadata, aliases, aliasesByModule),
+        ) as Record<string, any> | undefined;
+        if (own) judged.push({ value: m as Record<string, unknown>, schema: own, prefix: "" });
+        for (const body of templateBodies(m, defs, aliases, { aliasesByModule, rootModules })) {
+          const schema = defs.effectiveSchemaOf(body.definition) as Record<string, any> | undefined;
+          if (schema) judged.push({ value: body.manifest as Record<string, unknown>, schema, prefix: body.prefix });
+        }
+        // A `with:` member gets no CEL pass of its own, so an accessor there is
+        // typed here, by the scope rule, against the member's own kind.
+        const memberTypes = new Map<string, (path: string) => Record<string, any> | undefined>();
+        const visitMembers = (holder: ResourceManifest, prefix: string): void => {
+          for (const scope of declaredScopes(defs.referenceSites(holder, aliases, aliasesByModule))) {
+            scope.declarations.forEach((entry, index) => {
+              if (!isScopeMember(entry) || isKindDocument(entry)) return;
+              const member = (module !== undefined
+                ? { ...entry, metadata: { ...entry.metadata, module } }
+                : entry) as ResourceManifest;
+              const definition = definitionInScope(defs, member.kind, member.metadata, aliases, aliasesByModule);
+              const schema = defs.effectiveSchemaOf(definition) as Record<string, any> | undefined;
+              const at = `${prefix}${scope.path}[${index}]`;
+              if (schema) {
+                judged.push({ value: member as Record<string, unknown>, schema, prefix: at });
+                const contexts = extractContextsFromSchema(schema, defs.shapeLookup);
+                memberTypes.set(at, (local) => {
+                  const chain = plainChainOf(navigateConcretePath(member, local));
+                  if (!chain) return undefined;
+                  const regions = contextChainAt(contexts, local);
+                  const innermost = regions[regions.length - 1];
+                  celScope.enterResource(member, definition as ResourceDefinition | undefined);
+                  const { contextSchema } = celScope.scopeFor({
+                    source: member,
+                    path: local,
+                    contextSchema: innermost?.schema,
+                    matchedScope: innermost?.scope,
+                    contexts: regions,
+                    mode: "accessor",
+                  });
+                  return contextSchema ? navigateDeclaredChain(contextSchema, chain, namedShape) : undefined;
+                });
+              }
+              visitMembers(member, `${at}.`);
+            });
+          }
+        };
+        visitMembers(m, "");
+        const typeOfAt = (path: string) => {
+          let held: string | undefined;
+          for (const at of memberTypes.keys()) {
+            if (path.startsWith(`${at}.`) && (held === undefined || at.length > held.length)) held = at;
+          }
+          return held === undefined ? typeAt(path) : memberTypes.get(held)!(path.slice(held.length + 1));
+        };
+        // A site typed by several referrers is matched under each typing; a
+        // schema only some of them refuse names those referrers.
+        const variantsAt = celVariantFacts.get(m);
+        const typings = Math.max(1, ...[...(variantsAt?.values() ?? [])].map((v) => v.length));
+        for (const { value, schema, prefix } of judged) {
+          const found = new Map<string, { path: string; accessorPath: string; reason: string; labels: Set<string>; count: number }>();
+          for (let typing = 0; typing < typings; typing++) {
+            const typedAt = (path: string) => {
+              const facts = variantsAt?.get(path);
+              return facts ? facts[typing]?.produced : typeOfAt(path);
+            };
+            for (const each of unsatisfiedMatches(value, schema, defs.shapeLookup, typedAt, isExpression, prefix)) {
+              const key = `${each.path}\0${each.accessorPath}\0${each.reason}`;
+              let entry = found.get(key);
+              if (!entry) found.set(key, (entry = { ...each, labels: new Set(), count: 0 }));
+              entry.count++;
+              const label = variantsAt?.get(each.accessorPath)?.[typing]?.label;
+              if (label) entry.labels.add(label);
+            }
+          }
+          for (const entry of found.values()) {
+            const under = entry.count < typings && entry.labels.size > 0 ? ` (as ${[...entry.labels].join(", ")} references it)` : "";
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "MATCH_UNSATISFIABLE",
+              source: SOURCE,
+              message: `${m.kind}/${m.metadata?.name as string}: the schema at '${entry.path}' can never hold for '${entry.accessorPath}' — ${entry.reason}.${under}`,
+              data: {
+                resource: { kind: m.kind, name: m.metadata?.name as string },
+                filePath: (m.metadata as { source?: string } | undefined)?.source,
+                path: entry.path,
+              },
+            });
+          }
+        }
+      }
+    }
+
+    // Entries of a list that fill a binding's members and read each other's
+    // through it, in a cycle — none could be entered first.
+    if (!options?.skipValidation) {
+      const fillHost = {
+        graph: getCallGraph(),
+        shapes: defs.shapeLookup,
+        definitionOf: (m: ResourceManifest) =>
+          definitionInScope(defs, m.kind, m.metadata, aliases, aliasesByModule) as ResourceDefinition | undefined,
+        schemaOf: (definition: ResourceDefinition | undefined) =>
+          defs.effectiveSchemaOf(definition) as Record<string, any> | undefined,
+      };
+      for (const m of allManifests) {
+        const module = (m.metadata as { module?: string } | undefined)?.module;
+        if ((module && !rootModules.has(module)) || !m.kind || isKindDocument(m)) continue;
+        for (const finding of contextFillCycles(m, fillHost)) {
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "CONTEXT_FILL_CYCLE",
+            source: SOURCE,
+            message: `${finding.manifest.kind}/${finding.manifest.metadata?.name as string}: ${finding.message}`,
+            data: {
+              resource: { kind: finding.manifest.kind, name: finding.manifest.metadata?.name as string },
+              filePath: (finding.manifest.metadata as { source?: string } | undefined)?.source,
+              path: finding.path,
+            },
+          });
+        }
+      }
+    }
+
     // The two halves of "does this expression fit the slot it flows into" meet
     // here: the engine resolved the expression's type during the walk above,
     // and the schema walk recorded the slot. An expression that failed to check
     // recorded no type and is already reported by its own diagnostic.
-    const judgeSlot = (slot: JoinSlot): AnalysisDiagnostic | undefined => {
-      const type = celTypeByPath.get(slot.manifest)?.get(slot.path);
+    const judgeSlotWith = (slot: JoinSlot, facts: CelSiteFacts): AnalysisDiagnostic | undefined => {
+      const type = facts.type;
       if (type === undefined) return undefined;
       // A field whose value IS a callable's result is held to the declared
       // result rather than to its own schema, which cannot know it. The declared
@@ -3934,8 +4287,8 @@ export class StaticAnalyzer {
         hostPath
           ? hostPathBranchesFor(
               target,
-              celLiteralByPath.get(slot.manifest)?.get(slot.path),
-              celSourceSchemaByPath.get(slot.manifest)?.get(slot.path),
+              facts.literal,
+              facts.produced,
             )
           : target,
       );
@@ -3978,7 +4331,7 @@ export class StaticAnalyzer {
       // producer's type is — and the CEL type does not carry it. Only a plain
       // chain has a producer schema to read; a guarded, computed or `dyn`
       // expression says nothing here and is left to the runtime.
-      const nullable = celSourceSchemaByPath.get(slot.manifest)?.get(slot.path);
+      const nullable = facts.produced;
       if (!result && nullable && producerAdmitsNull(nullable) && !slotAdmitsNull(target)) {
         const chain = expression.trim();
         return {
@@ -4012,7 +4365,7 @@ export class StaticAnalyzer {
           data,
         };
       }
-      const produced = celSourceSchemaByPath.get(slot.manifest)?.get(slot.path);
+      const produced = facts.produced;
       if (!produced) return undefined;
       // A host path forwarded from a source DECLARED as something else — a
       // plain `type: string` field or variable — carries whatever relative text
@@ -4081,6 +4434,25 @@ export class StaticAnalyzer {
                 `${issues.join("; ")}.`,
               data,
             };
+    };
+    // A site judged under several referrer typings is held to the slot under
+    // each; a misfit only some of them make names those referrers.
+    const judgeSlot = (slot: JoinSlot): AnalysisDiagnostic | undefined => {
+      const variants = celVariantFacts.get(slot.manifest)?.get(slot.path);
+      if (!variants) {
+        return judgeSlotWith(slot, {
+          type: celTypeByPath.get(slot.manifest)?.get(slot.path),
+          literal: celLiteralByPath.get(slot.manifest)?.get(slot.path),
+          produced: celSourceSchemaByPath.get(slot.manifest)?.get(slot.path),
+        });
+      }
+      const verdicts = variants.map((facts) => ({ label: facts.label, verdict: judgeSlotWith(slot, facts) }));
+      const misfits = verdicts.filter((v) => v.verdict !== undefined);
+      if (misfits.length === 0) return undefined;
+      const first = misfits[0]!.verdict!;
+      if (misfits.length === verdicts.length && misfits.every((v) => v.verdict!.message === first.message)) return first;
+      const labels = misfits.map((v) => v.label).filter((l): l is string => l !== undefined);
+      return labels.length === 0 ? first : { ...first, message: `${first.message} (as ${labels.join(", ")} references it)` };
     };
     // A path that is both an own-field slot and a call-site slot (a whole-map
     // `inputs: !cel`) is held to both declarations and reported once: the
@@ -4268,6 +4640,24 @@ export class StaticAnalyzer {
         rootModules,
       ),
     );
+    // What a native function's data slot holds: the referent's configuration,
+    // which must be data — the static half of the kernel's delivery at creation.
+    diagnostics.push(
+      ...validateCallableData({
+        manifests: allManifests as unknown as ResourceManifest[],
+        rootModules,
+        resolveDef: moduleScopedDefResolver<ResourceDefinition>(defs, aliases, {
+          aliasesByModule,
+          rootModules,
+        }),
+        shapes: defs.shapeLookup,
+        sitesOf: (manifest) => defs.referenceSites(manifest, aliases, aliasesByModule),
+        scope: resourceProjectionScope,
+        libraries,
+        moduleDocuments: options?.moduleDocuments ?? [],
+        forwards: forwardViews,
+      }),
+    );
 
     // An inline declaration referencing a name declared by a scope it was
     // written inside but is created outside of.
@@ -4310,6 +4700,116 @@ export class StaticAnalyzer {
           );
         },
       ),
+    );
+
+    // A text slot at or beneath an accessor field. The kernel refuses the kind
+    // when it registers it, so a dependency's is reported at the `imports:` entry
+    // reaching it; a named shape is read from the registry, else from the
+    // library's own documents.
+    const shapeDocuments = new Map<string, Record<string, any>>();
+    for (const library of options?.moduleDocuments ?? []) {
+      for (const doc of library.manifests) {
+        const name = doc.metadata?.name;
+        if (typeof name === "string" && doc.schema && typeof doc.schema === "object") {
+          shapeDocuments.set(canonicalTypeSchemaId(library.module, name), doc.schema as Record<string, any>);
+        }
+      }
+    }
+    const textAccessorKinds = new Set<string>();
+    for (const m of allManifests as unknown as ResourceManifest[]) {
+      if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
+      const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+      const key = `${ownModule ?? ""}\0${String(m.metadata?.name)}`;
+      if (textAccessorKinds.has(key)) continue;
+      textAccessorKinds.add(key);
+      const resolveShape = (ref: string) => defs.schemaForId(ref) ?? shapeDocuments.get(ref);
+      const kindProblems = [
+        ...textSlotAccessorProblems(String(m.metadata?.name), m.schema, resolveShape).map((problem) => ({
+          code: "TEXT_SLOT_ACCESSOR",
+          ...problem,
+        })),
+        ...textValuesProblems(String(m.metadata?.name), m.schema, resolveShape).map((problem) => ({
+          code: "TEXT_VALUES_INVALID",
+          ...problem,
+        })),
+      ];
+      for (const problem of kindProblems) {
+        const message = `${m.kind} ${problem.message}`;
+        const via = ownModule ? reach.of(ownModule) : undefined;
+        diagnostics.push(
+          ownModule && via
+            ? importAnchoredDiagnostic(problem.code, ownModule, via, message)
+            : {
+                severity: DiagnosticSeverity.Error,
+                code: problem.code,
+                source: SOURCE,
+                message,
+                data: {
+                  resource: { kind: m.kind, name: m.metadata?.name as string },
+                  filePath: (m.metadata as { source?: string } | undefined)?.source,
+                  path: problem.path,
+                },
+              },
+        );
+      }
+    }
+
+    // The built-in text vocabulary: each literal text judged as the module that
+    // wrote it writes, catalogs, values pairings, the two text annotations, and
+    // the texts each catalog's import closure shows.
+    diagnostics.push(
+      ...validateTexts({
+        manifests: allManifests as unknown as ResourceManifest[],
+        rootModules,
+        resolveDef: moduleScopedDefResolver<ResourceDefinition>(defs, aliases, {
+          aliasesByModule,
+          rootModules,
+        }),
+        moduleDocuments: options?.moduleDocuments ?? [],
+        moduleCallNames,
+        schemaForId: (id) => defs.schemaForId(id),
+        accepts: (fragment, value) =>
+          defs.validateResourceConfig(value, TEXT_FRAGMENT_SCHEMAS[fragment]).length === 0,
+        valueKindAt: (manifest, path) => {
+          const type = celTypeByPath.get(manifest)?.get(path);
+          if (type !== undefined && type !== "dyn") return celTypeValueKind(type);
+          const produced = celSourceSchemaByPath.get(manifest)?.get(path);
+          return produced ? schemaValueKind(produced) : undefined;
+        },
+      }),
+    );
+
+    // A catalog set: each text translated once per language across the
+    // catalogs a resource gathers, and the mark itself where a kind writes it.
+    const catalogSetDefs = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, {
+      aliasesByModule,
+      rootModules,
+    });
+    diagnostics.push(
+      ...validateTextCatalogSets({
+        manifests: allManifests as unknown as ResourceManifest[],
+        rootModules,
+        schemaOf: (manifest) => {
+          if (typeof manifest.kind !== "string") return undefined;
+          const definition = catalogSetDefs(manifest.kind, manifest as { metadata?: { module?: string } });
+          return definition
+            ? effectiveAuthorSchema(definition, (k) => catalogSetDefs.in(k, definition.metadata?.module))
+            : undefined;
+        },
+        resolveRef: (ref) => {
+          const schema = defs.schemaForId(ref) ?? shapeDocuments.get(ref);
+          return schema ? { schema, root: schema } : undefined;
+        },
+        sitesOf: (manifest) => defs.referenceSites(manifest, aliases, aliasesByModule),
+        scope: resourceProjectionScope,
+        libraries,
+        moduleDocuments: options?.moduleDocuments ?? [],
+        accepts: (catalog) =>
+          defs.validateResourceConfig(catalog, TEXT_FRAGMENT_SCHEMAS.TextCatalog).length === 0,
+        isExpression: (value) => isTaggedSentinel(value) && !isRefSentinel(value),
+        reachOf: (module) => reach.of(module),
+        forwards: forwardViews,
+      }),
     );
 
     // Reroute diagnostics on synthetic (inline-extracted) resources back to

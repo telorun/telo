@@ -27,10 +27,17 @@ metadata:
         curl -s localhost:8106/api/status
         curl -si 'localhost:8106/api/posts?userId=1' | head -20
         curl -s -XPOST localhost:8106/api/sync
+# Module `lang:` — the language this application's texts are written in — and
+# `UiReact.App.words` are read from 0.121.0.
+requires:
+  telo: ">=0.121.0"
+lang: en
+# `ui` and `ui-react` come from this repository while their changes are
+# unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
-  Ui: oci://ghcr.io/telorun/ui@0.4.0#sha256-9hNZj-hzEkskbX-GgG3eabew02lvQIjMbAHILQ7ca3U
-  UiReact: oci://ghcr.io/telorun/ui-react@0.5.0#sha256-xyuX5J_vK5o817qrpjNTlhi3TerS7dxPqisDyNTl4WA
+  Ui: ../../../modules/ui
+  UiReact: ../../../modules/ui-react
   HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
   Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.1#sha256-1WEaTSJ_-AD9dVAa9JTdqtD94jzkkBvoGLdm2jrlroM
@@ -515,7 +522,7 @@ schema:
 kind: UiReact.App
 metadata: { name: ui }
 title: API sync
-lang: en
+words: !ref Ui.words
 pages:
   - path: /
     title: Sync
@@ -531,15 +538,16 @@ pages:
           outputModel: !ref SyncResult
           source: { path: /api/sync }
           label: Sync now
-          lists:
-            - heading: Last runs
-              rows: !cel "result.runs"
-              columns:
-                - value: !cel "row.finishedAt"
-                - value: !cel "row.outcome"
-                - value: !cel "row.pages"
-                - value: !cel "row.records"
-                - value: !cel "row.detail"
+          result:
+            type: list
+            heading: Last runs
+            rows: !cel "result.runs"
+            columns:
+              - value: !cel "row.finishedAt"
+              - value: !cel "row.outcome"
+              - value: !cel "row.pages"
+              - value: !cel "row.records"
+              - value: !cel "row.detail"
   - path: /posts
     title: Posts
     children:
@@ -552,12 +560,13 @@ pages:
           outputModel: !ref PostList
           source: { path: /api/posts/search }
           label: Find posts
-          lists:
-            - rows: !cel "result.posts"
-              columns:
-                - value: !cel "row.id"
-                - value: !cel "row.userId"
-                - value: !cel "row.title"
+          result:
+            type: list
+            rows: !cel "result.posts"
+            columns:
+              - value: !cel "row.id"
+              - value: !cel "row.userId"
+              - value: !cel "row.title"
 ---
 kind: Http.Server
 metadata: { name: server }

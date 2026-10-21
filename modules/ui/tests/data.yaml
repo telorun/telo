@@ -1,0 +1,225 @@
+kind: Telo.Application
+metadata:
+  name: UiDataTest
+  version: 1.0.0
+  description: |
+    A reader provides a `data` node: its model, its source with each parameter
+    a binding, its declared query parameters, and its three trees resolved —
+    a node whose `when` is false at creation left out, `shown` carried as
+    written, each `value` and `list` node carrying what the model, the query
+    parameters or the request error say about the values it names. `loading`
+    and `failure` left out are filled by `ui`. A form's field carries its
+    `shown` and an action its `enabled`, unchanged.
+imports:
+  Ui: ../
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Account
+schema:
+  type: object
+  required: [authorized]
+  properties:
+    authorized: { type: boolean }
+    email: { type: string, title: Email }
+    files:
+      type: array
+      items:
+        type: object
+        properties:
+          name: { type: string, title: Name }
+          url: { type: string, format: uri-reference, title: Link }
+---
+kind: Ui.Data
+metadata:
+  name: account
+model: !ref Account
+query:
+  signin: { type: string, enum: [denied, expired] }
+source:
+  path: /api/auth
+  params:
+    signin: !cel "query.signin"
+    fixed: 1
+reloadOn: [focus, unauthorized]
+content:
+  type: stack
+  children:
+    - type: value
+      value: !cel "data.email"
+      shown: { at: !cel "data.authorized", matches: { const: true } }
+    - type: text
+      text: Never
+      when: !cel "module.version == '0.0.0'"
+    - type: list
+      heading: Files
+      rows: !cel "data.files"
+      columns:
+        - value: !cel "row.name"
+        - header: Open
+          value: !cel "row.url"
+          shown: { at: !cel "data.authorized", matches: { const: true } }
+    - type: value
+      value: !cel "query.signin"
+failure:
+  type: value
+  value: !cel "error.message"
+---
+kind: Ui.Data
+metadata:
+  name: plain
+model:
+  kind: Telo.JsonSchema
+  schema: { type: object }
+source: { path: /api/plain }
+content: { type: text, text: Ready }
+---
+kind: Ui.Form
+metadata:
+  name: note
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      title: { type: string }
+      detail: { type: string }
+source: { basePath: /api/notes }
+fields:
+  - title
+  - kind: Ui.InputField
+    property: detail
+    shown: { at: !cel "values.title", matches: { minLength: 1 } }
+---
+kind: Ui.Action
+metadata:
+  name: send
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      to: { type: string }
+source: { path: /api/send }
+label: Send
+enabled:
+  at: !cel "values.to"
+  matches: { type: string, minLength: 3 }
+  disabledText: Enter a recipient first.
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: account
+    invoke: { kind: Probe.Read, source: !ref account }
+  - name: accountIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.account.result.node"
+      expected:
+        type: data
+        schema:
+          type: object
+          required: [authorized]
+          properties:
+            authorized: { type: boolean }
+            email: { type: string, title: Email }
+            files:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string, title: Name }
+                  url: { type: string, format: uri-reference, title: Link }
+        source:
+          path: /api/auth
+          params:
+            signin: { root: query, path: [signin] }
+            fixed: { value: 1 }
+        query:
+          signin: { type: string, enum: [denied, expired] }
+        content:
+          type: stack
+          children:
+            - type: value
+              value: { root: data, path: [email] }
+              present: { type: string }
+              labels: []
+              shown: { at: { root: data, path: [authorized] }, matches: { const: true } }
+            - type: list
+              heading: { text: Files, context: null, lang: und, computed: false }
+              rows: { root: data, path: [files] }
+              columns:
+                - header: { text: Name, context: null, lang: und, computed: false }
+                  value: { root: row, path: [name] }
+                  present: { type: string }
+                  labels: []
+                - header: { text: Open, context: null, lang: und, computed: false }
+                  value: { root: row, path: [url] }
+                  present: { type: string, format: uri-reference }
+                  labels: []
+                  shown: { at: { root: data, path: [authorized] }, matches: { const: true } }
+            - type: value
+              value: { root: query, path: [signin] }
+              present: { type: string }
+              labels:
+                - { value: denied, label: { text: denied, context: null, lang: und, computed: false } }
+                - { value: expired, label: { text: expired, context: null, lang: und, computed: false } }
+        loading: { type: text, text: { word: loading }, style: muted }
+        failure:
+          type: value
+          labels: []
+          value: { root: error, path: [message] }
+          present: { type: string }
+        reloadOn: [focus, unauthorized]
+  - name: plain
+    invoke: { kind: Probe.Read, source: !ref plain }
+  - name: plainIs
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.plain.result.node"
+      expected:
+        type: data
+        schema: { type: object }
+        source: { path: /api/plain, params: {} }
+        query: {}
+        content: { type: text, text: { text: Ready, context: null, lang: und, computed: false } }
+        loading: { type: text, text: { word: loading }, style: muted }
+        failure:
+          type: stack
+          style: danger
+          children:
+            - { type: value, value: { root: error, path: [code] }, present: { type: string }, labels: [], style: strong }
+            - { type: value, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
+        reloadOn: []
+  - name: note
+    invoke: { kind: Probe.Read, source: !ref note }
+  - name: noteFields
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.note.result.node.fields"
+      expected:
+        - { type: input, property: title, label: { text: title, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+        - type: input
+          property: detail
+          label: { text: detail, context: null, lang: und, computed: false }
+          description: null
+          labels: []
+          control: auto
+          shown: { at: { root: values, path: [title] }, matches: { minLength: 1 } }
+  - name: send
+    invoke: { kind: Probe.Read, source: !ref send }
+  - name: sendEnabled
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.send.result.node.enabled"
+      expected:
+        at: { root: values, path: [to] }
+        matches: { type: string, minLength: 3 }
+        disabledText: { text: "Enter a recipient first.", context: null, lang: und, computed: false }

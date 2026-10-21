@@ -1,0 +1,10 @@
+[package]
+name = "telorun-message-format"
+version = "0.120.0"
+license = "MIT"
+edition = "2021"
+publish = false
+description = "Telo's message core for Rust: the MessageFormat 2 profile Telo reads — patterns with {$name} placeholders, nested plural selections, canonical identity, CLDR plural rules and decimal formatting from pinned CLDR 48.2 data, RFC 4647 lookup. No dependencies, no host locale; answers as @telorun/message-format answers."
+
+[lib]
+crate-type = ["rlib"]

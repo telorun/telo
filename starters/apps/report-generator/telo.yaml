@@ -26,10 +26,17 @@ metadata:
         curl -s localhost:8107/api/reports
         curl -s -XPOST localhost:8107/api/reports
         curl -s localhost:8107/api/reports/latest/csv
+# Module `lang:` — the language this application's texts are written in — and
+# `UiReact.App.words` are read from 0.121.0.
+requires:
+  telo: ">=0.121.0"
+lang: en
+# `ui` and `ui-react` come from this repository while their changes are
+# unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
-  Ui: oci://ghcr.io/telorun/ui@0.4.0#sha256-9hNZj-hzEkskbX-GgG3eabew02lvQIjMbAHILQ7ca3U
-  UiReact: oci://ghcr.io/telorun/ui-react@0.5.0#sha256-xyuX5J_vK5o817qrpjNTlhi3TerS7dxPqisDyNTl4WA
+  Ui: ../../../modules/ui
+  UiReact: ../../../modules/ui-react
   Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.1#sha256-1WEaTSJ_-AD9dVAa9JTdqtD94jzkkBvoGLdm2jrlroM
   Collection: oci://ghcr.io/telorun/collection@0.9.0#sha256-Fpb3ikCM8ANNwrM6069WEB-QjA3UofvUqMvYrgBW9sw
@@ -502,7 +509,7 @@ routes:
 kind: UiReact.App
 metadata: { name: ui }
 title: !cel "variables.title"
-lang: en
+words: !ref Ui.words
 pages:
   - path: /
     title: Reports
@@ -518,14 +525,15 @@ pages:
           outputModel: !ref ReportList
           source: { path: /api/reports }
           label: Build report
-          lists:
-            - heading: Reports
-              rows: !cel "result.reports"
-              columns: &reportColumns
-                - value: !cel "row.builtAt"
-                - value: !cel "row.total"
-                - value: !cel "row.html"
-                - value: !cel "row.csv"
+          result:
+            type: list
+            heading: Reports
+            rows: !cel "result.reports"
+            columns: &reportColumns
+              - value: !cel "row.builtAt"
+              - value: !cel "row.total"
+              - value: !cel "row.html"
+              - value: !cel "row.csv"
       - { type: text, text: "Built so far", style: heading }
       - type: composite
         ref:
@@ -534,9 +542,10 @@ pages:
           outputModel: !ref ReportList
           source: { path: /api/reports/recent }
           label: Show reports
-          lists:
-            - rows: !cel "result.reports"
-              columns: *reportColumns
+          result:
+            type: list
+            rows: !cel "result.reports"
+            columns: *reportColumns
       - { type: link, text: "Open the latest report", href: /api/reports/latest }
 ---
 kind: Http.Server

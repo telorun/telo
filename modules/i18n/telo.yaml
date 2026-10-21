@@ -1,0 +1,127 @@
+kind: Telo.Library
+metadata:
+  name: I18n
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Data]
+  description: >-
+    Translation of an application's texts into the caller's language: catalogs of
+    translations per language, a translator formatting a text with its values and
+    plural rules in the language asked for, falling back through regional variants
+    to the source, and a negotiator choosing the best language from an
+    Accept-Language preference list.
+# `lang:`, the text fragments, a native function's data slot and catalog sets
+# (`x-telo-text-catalog-set`) are read from 0.121.0; 0.120.1 refuses this file.
+requires:
+  telo: ">=0.121.0"
+lang: en
+exports:
+  kinds:
+    - Catalog
+    - Translator
+    - Negotiator
+  # The entry point a dependent module's controller resolves `@telorun/i18n` to:
+  # the reader of a translator's catalog set, one module scope across consumers.
+  code:
+    - specifier: "@telorun/i18n"
+      format: js
+      path: ./nodejs/i18n.mjs
+      source: ./nodejs/src/index.ts
+---
+# I18n.Catalog — one language's translations. Its whole configuration is the
+# built-in `TextCatalog` fragment, so every entry is judged against its source
+# text where it is written; a translator receives it as data.
+kind: Telo.Definition
+metadata:
+  name: Catalog
+  description: >-
+    Translations of a module's texts into one language: each entry names a source
+    text, with an optional context telling the same words apart, and the message
+    translating it, plural cases included. Every value is written literally and
+    checked against its source's placeholders and the language's plural categories.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/i18n.mjs&local_path=./nodejs/src/index.ts#Catalog
+schema: { $ref: "telo://manifest#/$defs/TextCatalog" }
+---
+# I18n.Translator — a CEL function over a set of catalogs: `Self.t(text, lang,
+# values?)`. Its catalogs are one lookup set, so a text translated twice into one
+# language across them is refused before it runs.
+kind: Telo.Definition
+metadata:
+  name: Translator
+  description: >-
+    Translates a text into a requested language and formats it with its values:
+    the requested language tag falls back through its shorter variants to the
+    source text, numbers are written by the language's rules, and plural cases are
+    chosen for the counts given. A text missing from every catalog is formatted as
+    written, in its own language.
+capability: Telo.Callable
+deterministic: true
+controllers:
+  - pkg:telo/local/js?path=./nodejs/i18n.mjs&local_path=./nodejs/src/index.ts#Translator
+params:
+  - name: text
+    description: The source text, written at the call — a message, or `{ text, context }`.
+    schema: { $ref: "telo://manifest#/$defs/Text" }
+  - name: lang
+    description: The language to translate into, one resolved tag (`pl-PL`); never a preference list.
+    schema: { type: string, format: language-tag }
+  - name: values
+    description: A value for every placeholder and plural selector the text reads, by name.
+    optional: true
+    schema:
+      type: object
+      x-telo-text-values-for: /text
+returns:
+  schema: { type: string }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    catalogs:
+      title: Catalogs
+      description: >-
+        The translations this translator looks texts up in. None translates
+        nothing: every text is formatted as written.
+      type: array
+      x-telo-text-catalog-set: true
+      items:
+        x-telo-ref: { kind: Self.Catalog, use: dependency }
+---
+# I18n.Negotiator — a CEL function choosing the language to answer in:
+# `Self.language(request.headers['accept-language'])`.
+kind: Telo.Definition
+metadata:
+  name: Negotiator
+  description: >-
+    Chooses the language to answer a caller in from an Accept-Language preference
+    list: ranges are tried by quality, each matched against the translator's
+    catalog languages and the default by dropping subtags from the end, and the
+    default answers when nothing matches. Malformed ranges are skipped, never
+    refused.
+capability: Telo.Callable
+deterministic: true
+controllers:
+  - pkg:telo/local/js?path=./nodejs/i18n.mjs&local_path=./nodejs/src/index.ts#Negotiator
+params:
+  - name: acceptLanguage
+    description: An Accept-Language value — `pl-PL, pl;q=0.9, en;q=0.5`. Empty when the caller sent none.
+    schema: { type: string }
+returns:
+  schema: { type: string, format: language-tag }
+schema:
+  type: object
+  additionalProperties: false
+  required: [translator, default]
+  properties:
+    translator:
+      title: Translator
+      description: The translator whose catalog languages a caller may be answered in.
+      x-telo-ref: { kind: Self.Translator, use: dependency }
+    default:
+      title: Default language
+      description: The language the texts are written in, answered when no catalog language matches.
+      type: string
+      format: language-tag

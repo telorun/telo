@@ -1,0 +1,7 @@
+# Imports a library whose heading selects by a string value.
+kind: Telo.Application
+metadata:
+  name: TextValuesSelectorApp
+  version: 1.0.0
+imports:
+  Lib: ../selector-lib

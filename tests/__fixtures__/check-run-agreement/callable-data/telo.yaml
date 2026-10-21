@@ -1,0 +1,44 @@
+# A native function holding a provider as data: it receives the provider's
+# configuration as the provider's controller received it — its compile-time
+# expression already evaluated, the table it references replaced by that
+# table's own configuration — frozen, without `kind` and `metadata`.
+kind: Telo.Application
+metadata:
+  name: CallableDataApp
+  version: 1.0.0
+imports:
+  Kinds: ./kinds
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref check
+---
+kind: Kinds.Table
+metadata:
+  name: inner
+rows:
+  b: bee
+---
+kind: Kinds.Table
+metadata:
+  name: outer
+title: !cel "'Units ' + module.version"
+source: !ref inner
+---
+kind: Kinds.Peek
+metadata:
+  name: peek
+target: !ref outer
+---
+kind: Run.Sequence
+metadata:
+  name: check
+steps:
+  - name: read
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[Self.peek('title'), Self.peek('source.rows.b'), Self.peek('kind')]"
+      expected:
+        - '{"frozen":true,"at":"Units 1.0.0"}'
+        - '{"frozen":true,"at":"bee"}'
+        - '{"frozen":true}'

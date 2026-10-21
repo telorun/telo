@@ -284,14 +284,20 @@ const GRID_DEF: ResourceDefinition = {
         items: {
           type: "object",
           properties: {
-            rows: { "x-telo-eval": "accessor" },
+            rows: {
+              "x-telo-eval": "accessor",
+              "x-telo-context": {
+                type: "object",
+                properties: { result: { "x-telo-context-from-root": "outputModel" } },
+              },
+            },
             columns: {
               type: "array",
               "x-telo-context": {
                 type: "object",
                 properties: {
                   result: { "x-telo-context-from-root": "outputModel" },
-                  row: { "x-telo-context-element-from-item": "rows" },
+                  row: { "x-telo-context-element-from-item": "0/rows" },
                 },
               },
               items: { type: "object", properties: { value: { "x-telo-eval": "accessor" } } },

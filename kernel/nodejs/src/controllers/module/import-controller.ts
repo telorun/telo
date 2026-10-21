@@ -4,6 +4,7 @@ import {
   foldIntegrity,
   isInjectedDeclaration,
   isKindDocument,
+  liftFragmentDefs,
   loadImportTarget,
   needSupplyOf,
   needTypeOf,
@@ -992,10 +993,13 @@ function bindNeedSupplies(
       values[field] = settled.value;
     }
     try {
-      ctx.validateSchema(values, {
-        type: "object",
-        properties: shape.fields,
-      });
+      ctx.validateSchema(
+        values,
+        liftFragmentDefs({
+          type: "object",
+          properties: shape.fields,
+        }),
+      );
     } catch (err) {
       throw new RuntimeError(
         "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",

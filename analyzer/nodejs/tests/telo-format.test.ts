@@ -14,6 +14,19 @@ describe("Telo formats", () => {
     });
   }
 
+  it("re2-pattern: every conforming value compiles as an ECMAScript u-mode pattern", () => {
+    const entry = TELO_FORMATS.get("re2-pattern")!;
+    const refused = entry.conformance.valid.filter((value) => {
+      try {
+        new RegExp(value, "u");
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    expect(refused).toEqual([]);
+  });
+
   it("the checker's import graph reaches no Node built-in", () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const src = resolve(here, "../src");
@@ -22,6 +35,7 @@ describe("Telo formats", () => {
     const files = [
       join(src, "telo-format.ts"),
       join(src, "css-selector-format.ts"),
+      join(src, "re2-pattern-format.ts"),
       ...readdirSync(parserDir)
         .filter((f) => f.endsWith(".js"))
         .map((f) => join(parserDir, f)),

@@ -27,7 +27,7 @@
   },
   "response": {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "The evaluated value.",
+    "description": "The evaluated value, each `Text` it fills as its text record and every text in it judged as creation judges one.",
     "type": "object",
     "properties": {
       "value": {
@@ -42,7 +42,12 @@
   "errors": [
     "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
     "ERR_HOST_PATH_RELATIVE",
-    "ERR_FUNCTION_FAILED"
+    "ERR_FUNCTION_FAILED",
+    "ERR_MESSAGE_SYNTAX_INVALID",
+    "ERR_MESSAGE_SOURCE_LANGUAGE_MISSING",
+    "ERR_MESSAGE_PLURAL_CATEGORY_INVALID",
+    "ERR_MESSAGE_PLACEHOLDER_UNBOUND",
+    "ERR_MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED"
   ],
   "synchronous": true,
   "reentrant": true

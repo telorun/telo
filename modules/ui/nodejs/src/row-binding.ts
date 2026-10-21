@@ -12,3 +12,10 @@ export interface StyleRule {
 export function isChain(binding: Binding): binding is { root: string; path: string[] } {
   return !("value" in binding);
 }
+
+/** A condition as a controller receives it: the binding it reads and the
+ *  schema the value must satisfy. */
+export interface Condition {
+  at: Binding;
+  matches: Record<string, unknown>;
+}

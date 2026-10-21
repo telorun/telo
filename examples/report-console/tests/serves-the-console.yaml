@@ -1,0 +1,442 @@
+kind: Telo.Application
+metadata:
+  name: ReportConsoleScreenTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/report-console` and reads what its screen is given: the
+    application document in English and in Polish, the report page — the
+    sign-in gate and its conditions, the account reader, the report form with
+    its pickers, date range, project choice, columns, toggles, groups, kept
+    values and enablement, and the answer it draws: plural headings, warning
+    boxes, the files list with its billing-only columns and its draft and
+    upload row actions, the failure box — and the projects page's table with
+    its query and row action. The routes these call are asserted by
+    `answers-every-route.yaml`.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8141
+targets:
+  - !ref app
+steps:
+  - name: app
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8141/_telo/ui/app" }
+  - name: polishApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8141/_telo/ui/app" }
+    inputs:
+      headers: { accept-language: "pl-PL, en;q=0.5" }
+  - name: page
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8141/_telo/ui/page?path=/" }
+  - name: polishPage
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8141/_telo/ui/page?path=/" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: projectsPage
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8141/_telo/ui/page?path=/projects" }
+
+  # The nodes the checks below read, by name.
+  - name: nodes
+    value:
+      gate: !cel "steps.page.result.body.children[1]"
+      connect: !cel "steps.page.result.body.children[1].content.children[2].children[1]"
+      account: !cel "steps.page.result.body.children[1].content.children[3].children[0]"
+      form: !cel "steps.page.result.body.children[1].content.children[3].children[1]"
+      polishForm: !cel "steps.polishPage.result.body.children[1].content.children[3].children[1]"
+      files: !cel "steps.page.result.body.children[1].content.children[3].children[1].result.children[9]"
+      table: !cel "steps.projectsPage.result.body.children[1].content.children[1]"
+
+  # The application: two pages, the stylesheet beside the theme, and a
+  # language read from Accept-Language.
+  - name: verifyApp
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.app.result.status"
+        lang: !cel "steps.app.result.body.lang"
+        title: !cel "steps.app.result.body.title"
+        pages: !cel "steps.app.result.body.pages"
+        stylesheet: !cel "steps.app.result.body.stylesheets[size(steps.app.result.body.stylesheets) - 1].endsWith('/console.css')"
+        vary: !cel "steps.app.result.headers['vary']"
+      expected:
+        status: 200
+        lang: en
+        title: { lang: en, message: [ Reports ] }
+        pages:
+          - { path: /, title: { lang: en, message: [ Reports ] } }
+          - { path: /projects, title: { lang: en, message: [ Projects ] } }
+        stylesheet: true
+        vary: Accept-Language
+
+  # In Polish: the application's texts, its models' titles and enumeration
+  # labels, a plural heading over the answer and the renderer's own words.
+  - name: verifyPolish
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        lang: !cel "steps.polishApp.result.body.lang"
+        title: !cel "steps.polishApp.result.body.title"
+        save: !cel "steps.polishApp.result.body.words.save"
+        longerThanMonths: !cel "steps.polishApp.result.body.words.rangeLongerThanMonths"
+        heading: !cel "steps.polishPage.result.body.children[0].text"
+        sheetLabel: !cel "steps.nodes.result.polishForm.fields[0].label"
+        hoursAs: !cel "steps.nodes.result.polishForm.fields[5].labels"
+        group: !cel "steps.nodes.result.polishForm.groups[0].label"
+        found: !cel "steps.nodes.result.polishForm.result.children[0].text"
+      expected:
+        lang: pl
+        title: { lang: pl, message: [ Raporty ] }
+        save: { lang: pl, message: [ Zapisz ] }
+        longerThanMonths:
+          lang: pl
+          message:
+            plural: count
+            cases:
+              one: [ "Dłużej niż ", { placeholder: count }, " miesiąc" ]
+              few: [ "Dłużej niż ", { placeholder: count }, " miesiące" ]
+              many: [ "Dłużej niż ", { placeholder: count }, " miesięcy" ]
+              other: [ "Dłużej niż ", { placeholder: count }, " miesiąca" ]
+        heading: { lang: pl, message: [ Raporty miesięczne ] }
+        sheetLabel: { lang: pl, message: [ Arkusz czasu pracy ] }
+        hoursAs:
+          - { value: decimal, label: { lang: pl, message: [ "Ułamek dziesiętny (7,5)" ] } }
+          - { value: clock, label: { lang: pl, message: [ "Godziny i minuty (7:30)" ] } }
+        group: { lang: pl, message: [ Źródło ] }
+        found:
+          lang: pl
+          message:
+            plural: count
+            cases:
+              one: [ { placeholder: count }, " projekt z zalogowanym czasem, ", { placeholder: period } ]
+              few: [ { placeholder: count }, " projekty z zalogowanym czasem, ", { placeholder: period } ]
+              many: [ { placeholder: count }, " projektów z zalogowanym czasem, ", { placeholder: period } ]
+              other: [ { placeholder: count }, " projektu z zalogowanym czasem, ", { placeholder: period } ]
+          values:
+            count: { root: result, path: [ projectsInPeriod ] }
+            period: { root: result, path: [ period ] }
+
+  # The sign-in gate: a reader over /api/auth with the page's `signin`
+  # parameter, read again on focus and on any 401 inside it, drawing the
+  # cancelled and expired notices, the banner or the console by its answer.
+  - name: verifyGate
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        type: !cel "steps.nodes.result.gate.type"
+        source: !cel "steps.nodes.result.gate.source"
+        query: !cel "steps.nodes.result.gate.query"
+        reloadOn: !cel "steps.nodes.result.gate.reloadOn"
+        loading: !cel "steps.nodes.result.gate.loading"
+        branches: !cel "steps.nodes.result.gate.content.children.map(c, [c.type, c.shown])"
+        connect:
+          path: !cel "steps.nodes.result.connect.path"
+          label: !cel "steps.nodes.result.connect.label"
+          onSuccess: !cel "steps.nodes.result.connect.onSuccess"
+        account:
+          type: !cel "steps.nodes.result.account.type"
+          source: !cel "steps.nodes.result.account.source"
+          email: !cel "steps.nodes.result.account.content.children[0].value"
+          signOut:
+            path: !cel "steps.nodes.result.account.content.children[1].path"
+            onSuccess: !cel "steps.nodes.result.account.content.children[1].onSuccess"
+      expected:
+        type: data
+        source: { path: /api/auth, params: {} }
+        query:
+          signin: { type: string, enum: [ denied, expired ] }
+        reloadOn: [ focus, unauthorized ]
+        loading: { type: text, text: { lang: en, message: [ Checking your sign-in… ] }, style: muted }
+        branches:
+          - [ text, { at: { root: query, path: [ signin ] }, matches: { const: denied } } ]
+          - [ text, { at: { root: data, path: [ failure ] }, matches: { const: expired } } ]
+          - [ stack, { at: { root: data, path: [ authorized ] }, matches: { const: false } } ]
+          - [ stack, { at: { root: data, path: [ authorized ] }, matches: { const: true } } ]
+        connect:
+          path: /api/auth/connect
+          label: { lang: en, message: [ Connect Google ] }
+          onSuccess: { navigate: { root: result, path: [ url ] }, refreshes: [] }
+        account:
+          type: data
+          source: { path: /api/auth/user, params: {} }
+          email: { root: data, path: [ email ] }
+          signOut:
+            path: /api/auth/signout
+            onSuccess: { refreshes: [ /api/auth ] }
+
+  # The report form: its fields by kind and group, each option source, the
+  # date range, the columns' fixed order and default, the remembered sheet
+  # and folder, the sections shown once a sheet is chosen, and when the
+  # button can be pressed.
+  - name: verifyForm
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        path: !cel "steps.nodes.result.form.path"
+        label: !cel "steps.nodes.result.form.label"
+        fields: !cel "steps.nodes.result.form.fields.map(f, [f.type, f.property, f.group, 'control' in f ? f.control : '-'])"
+        hints: !cel "steps.nodes.result.form.fields.map(f, f.description == null ? '-' : f.description.message[0])"
+        sources: !cel >-
+          steps.nodes.result.form.fields.filter(f, 'options' in f).map(f, {
+            'basePath': f.options.basePath, 'filters': f.options.filters, 'pageSize': f.options.pageSize,
+            'value': f.options.value, 'label': f.options.label,
+            'hint': 'hint' in f.options ? f.options.hint : null,
+            'href': 'href' in f.options ? f.options.href : null,
+            'search': 'search' in f.options ? f.options.search : null})
+        surfaces: !cel "steps.nodes.result.form.fields.filter(f, 'surface' in f).map(f, f.surface.type)"
+        period: !cel >-
+          steps.nodes.result.form.fields.filter(f, f.type == 'dateRange').map(f, {
+            'presets': f.presets.map(p, [p.label.message[0], p.unit, p.offset]),
+            'weekStart': f.weekStart, 'initialPreset': f.initialPreset, 'warnLongerThan': f.warnLongerThan})
+        columns:
+          order: !cel "steps.nodes.result.form.fields[4].labels.map(l, l.value)"
+          default: !cel "steps.nodes.result.form.schema.properties.columns.default"
+        groups: !cel "steps.nodes.result.form.groups.map(g, [g.name, g.label.message[0], 'shown' in g ? g.shown : null])"
+        state: !cel "steps.nodes.result.form.state"
+        enabled: !cel "steps.nodes.result.form.enabled"
+        clearAnswerOn: !cel "steps.nodes.result.form.clearAnswerOn"
+        concurrency: !cel "steps.nodes.result.form.concurrency"
+      expected:
+        path: /api/generate
+        label: { lang: en, message: [ Generate ] }
+        fields:
+          - [ picker, spreadsheetId, source, "-" ]
+          - [ picker, folder, source, "-" ]
+          - [ dateRange, period, period, "-" ]
+          - [ choice, projects, content, options ]
+          - [ input, columns, content, auto ]
+          - [ input, hoursFormat, output, options ]
+          - [ input, merge, output, toggle ]
+          - [ input, chart, output, toggle ]
+        hints:
+          - "-"
+          - Where Upload puts a report.
+          - "-"
+          - None chosen means every project of the sheet.
+          - Always in this order.
+          - "-"
+          - Merge every project into one PDF.
+          - Add a chart of hours per person.
+        sources:
+          - basePath: /api/drive/files
+            filters: { kind: { value: spreadsheet } }
+            pageSize: 25
+            value: &rowId { root: row, path: [ id ] }
+            label: &rowName { root: row, path: [ name ] }
+            hint: { root: row, path: [ owner ] }
+            href: &rowUrl { root: row, path: [ url ] }
+            search: &byName { property: name, operator: contains }
+          - basePath: /api/drive/files
+            filters: { kind: { value: folder } }
+            pageSize: 25
+            value: *rowId
+            label: *rowName
+            hint: null
+            href: *rowUrl
+            search: *byName
+          - basePath: /api/projects
+            filters: { spreadsheetId: { root: values, path: [ spreadsheetId ] } }
+            pageSize: 25
+            value: *rowId
+            label: *rowName
+            hint: { root: row, path: [ email ] }
+            href: null
+            search: null
+        surfaces: [ popover, dialog ]
+        period:
+          - presets:
+              - [ This month, month, 0 ]
+              - [ Last month, month, -1 ]
+              - [ Last week, week, -1 ]
+              - [ This quarter, quarter, 0 ]
+            weekStart: monday
+            initialPreset: 1
+            warnLongerThan: { unit: month, count: 1 }
+        columns:
+          order: [ date, person, task, hours, amount ]
+          default: [ date, person, hours ]
+        groups:
+          - [ source, Source, null ]
+          - [ period, Period, &sheetChosen { at: { root: values, path: [ spreadsheetId ] }, matches: { minLength: 1 } } ]
+          - [ content, Content, *sheetChosen ]
+          - [ output, Output, *sheetChosen ]
+        state: { key: report, address: false, store: { type: local }, fields: [ spreadsheetId, folder ] }
+        enabled:
+          at: { root: values, path: [ columns ] }
+          matches: { minItems: 1 }
+          disabledText: { lang: en, message: [ Choose at least one column. ] }
+        clearAnswerOn: [ spreadsheetId, period, projects, columns ]
+        concurrency: parallel
+
+  # The answer: headings and notices over its counts, the three warning boxes
+  # only when they hold something, the merged file and chart only when
+  # produced, and the failure box.
+  - name: verifyAnswer
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        drawn: !cel "steps.nodes.result.form.result.children.map(c, [c.type, 'style' in c ? c.style : '-', 'shown' in c ? c.shown : null])"
+        skipped: !cel "steps.nodes.result.form.result.children[1].text"
+        warnings: !cel "steps.nodes.result.form.result.children.filter(c, c.type == 'box').map(c, [c.children[0].heading.message[0], c.children[0].rows])"
+        failure: !cel "steps.nodes.result.form.failure"
+      expected:
+        drawn:
+          - [ text, heading, { at: { root: result, path: [ projectsInPeriod ] }, matches: { minimum: 1 } } ]
+          - [ text, muted, { at: { root: result, path: [ skipped ] }, matches: { minimum: 1 } } ]
+          - [ text, "-", { at: { root: result, path: [ projectsInPeriod ] }, matches: { const: 0 } } ]
+          - [ text, "-", { at: { root: result, path: [] }, matches: { properties: { files: { maxItems: 0 }, projectsInPeriod: { minimum: 1 } } } } ]
+          - [ box, danger, { at: { root: result, path: [ unpriced ] }, matches: { minItems: 1 } } ]
+          - [ box, danger, { at: { root: result, path: [ unassigned ] }, matches: { minItems: 1 } } ]
+          - [ box, danger, { at: { root: result, path: [ noCurrency ] }, matches: { minItems: 1 } } ]
+          - [ value, "-", { at: { root: result, path: [] }, matches: { required: [ combined ] } } ]
+          - [ value, "-", { at: { root: result, path: [] }, matches: { required: [ chart ] } } ]
+          - [ list, "-", { at: { root: result, path: [ files ] }, matches: { minItems: 1 } } ]
+          - [ value, "-", null ]
+        skipped:
+          lang: en
+          message:
+            plural: count
+            cases:
+              one: [ { placeholder: count }, " chosen project has no time in the period and was skipped." ]
+              other: [ { placeholder: count }, " chosen projects have no time in the period and were skipped." ]
+          values:
+            count: { root: result, path: [ skipped ] }
+        warnings:
+          - [ Hours without a rate, { root: result, path: [ unpriced ] } ]
+          - [ Hours on no project, { root: result, path: [ unassigned ] } ]
+          - [ Projects with no currency, { root: result, path: [ noCurrency ] } ]
+        failure:
+          type: stack
+          style: danger
+          children:
+            - type: text
+              style: strong
+              text:
+                lang: en
+                message: [ "HTTP ", { placeholder: status }, " · ", { placeholder: code } ]
+                values:
+                  status: { root: error, path: [ status ] }
+                  code: { root: error, path: [ code ] }
+              shown: { at: { root: error, path: [] }, matches: { required: [ status ] } }
+            - type: text
+              style: strong
+              text:
+                lang: en
+                message: [ "No answer · ", { placeholder: code } ]
+                values:
+                  code: { root: error, path: [ code ] }
+              shown: { at: { root: error, path: [] }, matches: { not: { required: [ status ] } } }
+            - { type: value, value: { root: error, path: [ message ] }, present: { type: string }, labels: [] }
+
+  # The files list: an amount and a currency only on a billing report, the
+  # PDF as a link, and on each row a draft that needs the project's address
+  # and an upload that reads the folder chosen now and the period sent.
+  - name: verifyFiles
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        rows: !cel "steps.nodes.result.files.rows"
+        columns: !cel "steps.nodes.result.files.columns.map(c, [c.header.message[0], c.value, c.present, 'shown' in c ? c.shown : null])"
+        rowActions: !cel >-
+          steps.nodes.result.files.rowActions.map(r, {
+            'path': r.action.path, 'label': r.action.label.message[0], 'concurrency': r.action.concurrency,
+            'inputs': r.inputs, 'enabled': r.enabled, 'result': r.action.result})
+      expected:
+        rows: { root: result, path: [ files ] }
+        columns:
+          - [ Project, { root: row, path: [ project ] }, { type: string }, null ]
+          - [ E-mail, { root: row, path: [ email ] }, { type: string }, null ]
+          - [ Hours, { root: row, path: [ hours ] }, { type: string }, null ]
+          - [ Amount, { root: row, path: [ amount ] }, { type: number }, &billing { at: { root: result, path: [ kind ] }, matches: { const: billing } } ]
+          - [ Currency, { root: row, path: [ currency ] }, { type: string }, *billing ]
+          - [ PDF, { root: row, path: [ pdf ] }, { type: string, format: uri-reference }, null ]
+        rowActions:
+          - path: /api/draft
+            label: Draft e-mail
+            concurrency: parallel
+            inputs:
+              email: { root: row, path: [ email ] }
+              pdf: { root: row, path: [ pdf ] }
+              project: { root: row, path: [ project ] }
+            enabled:
+              at: { root: row, path: [ email ] }
+              matches: { type: string, minLength: 1 }
+              disabledText: { lang: en, message: [ The project has no billing e-mail. ] }
+            result:
+              type: value
+              value: { root: result, path: [ url ] }
+              text: { lang: en, message: [ Open the draft ] }
+              present: { type: string, format: uri }
+              labels: []
+          - path: /api/upload
+            label: Upload
+            concurrency: serial
+            inputs:
+              pdf: { root: row, path: [ pdf ] }
+              folder: { root: values, path: [ folder ] }
+              from: { root: input, path: [ period, from ] }
+              to: { root: input, path: [ period, to ] }
+            enabled:
+              at: { root: values, path: [ folder ] }
+              matches: { minLength: 1 }
+              disabledText: { lang: en, message: [ Choose an upload folder first. ] }
+            result:
+              type: value
+              value: { root: result, path: [ link ] }
+              text:
+                lang: en
+                message: [ "Uploaded to ", { placeholder: target } ]
+                values:
+                  target: { root: result, path: [ target ] }
+              present: { type: string, format: uri }
+              labels: []
+
+  # The projects page: a table over the sheet the address names, offering a
+  # reminder on every row that has an address.
+  - name: verifyProjectsPage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        nodes: !cel "steps.projectsPage.result.body.children.map(c, c.type)"
+        table:
+          type: !cel "steps.nodes.result.table.type"
+          shown: !cel "steps.nodes.result.table.shown"
+          basePath: !cel "steps.nodes.result.table.basePath"
+          query: !cel "steps.nodes.result.table.query"
+          filters: !cel "steps.nodes.result.table.filters"
+          remind:
+            path: !cel "steps.nodes.result.table.rowActions[0].action.path"
+            inputs: !cel "steps.nodes.result.table.rowActions[0].inputs"
+            confirm: !cel "steps.nodes.result.table.rowActions[0].confirm"
+            enabled: !cel "steps.nodes.result.table.rowActions[0].enabled"
+      expected:
+        nodes: [ text, data ]
+        table:
+          type: table
+          shown: { at: { root: data, path: [ authorized ] }, matches: { const: true } }
+          basePath: /api/projects
+          query:
+            sheet: { type: string, minLength: 1 }
+          filters:
+            spreadsheetId: { root: query, path: [ sheet ] }
+          remind:
+            path: /api/projects/remind
+            inputs:
+              projectId: { root: row, path: [ id ] }
+              email: { root: row, path: [ email ] }
+              sheet: { root: query, path: [ sheet ] }
+            confirm: { lang: en, message: [ Remind the client to log this month's time? ] }
+            enabled:
+              at: { root: row, path: [ email ] }
+              matches: { minLength: 1 }
+              disabledText: { lang: en, message: [ The project has no billing e-mail. ] }

@@ -1,0 +1,18 @@
+modules:
+  modules/ui: Added
+body: "Form and action fields are kinds under the new Ui.Field abstract: Ui.InputField
+  (a named Ui.Control), Ui.ChoiceField and Ui.PickerField over a Ui.OptionSource such as
+  the new Ui.CollectionOptions (paged, searched, chosen values labelled by one in
+  lookup, pageSize sent as limit), and Ui.DateRangeField with presets. Each field kind
+  judges its own fit to the model through a referrer rule and its invoke answer, so a
+  field kind from another module is placed with no change to ui. Forms and actions gain
+  groups (Ui.FieldGroup) and state (Ui.StateRecord, which Ui.Filters policy.state now
+  is, with fields); the wire field is a type-tagged spec, form and action nodes carry
+  groups and state, a bar's state carries fields, and a table's source.filters are
+  accessors over query sent as bindings. Ui.controlFits is the one exported fit
+  predicate, held to conformance/control-fits.json. Breaking: a fields entry written as
+  { property: text } is refused — write the property name (text) or a field kind, inline
+  as { kind: Ui.InputField, property: text } or as a !ref to one; the codes
+  UI_FORM_FIELD_*, UI_ACTION_FIELD_* and UI_ACTION_REQUIRED_INPUT_NOT_ENTERED are now
+  UI_FIELD_* (UI_FIELD_REQUIRED_NOT_ENTERED applies to forms too); a renderer must read
+  the new wire shapes."

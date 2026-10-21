@@ -1,3 +1,6 @@
+import type { Say } from "./texts.js";
+import { holds, type JsonSchema, type Read } from "./validation.js";
+
 export type Binding = { root: string; path: string[] } | { value: unknown };
 export type Style = string | string[];
 
@@ -14,6 +17,30 @@ export function resolveBinding(binding: Binding, roots: Record<string, unknown>)
   let current: any = roots[binding.root];
   for (const key of binding.path) current = current?.[key];
   return current;
+}
+
+/** What a binding reads: its literal, or what the path from its root reaches —
+ *  nothing when a root or a step is missing. */
+export function readBinding(binding: Binding, roots: Readonly<Record<string, unknown>>): Read {
+  if ("value" in binding) return { present: true, value: binding.value };
+  if (!Object.hasOwn(roots, binding.root)) return { present: false };
+  let current: unknown = roots[binding.root];
+  for (const key of binding.path) {
+    if (current === null || typeof current !== "object" || !Object.hasOwn(current, key)) return { present: false };
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current === undefined ? { present: false } : { present: true, value: current };
+}
+
+/** A condition as the renderer receives it. */
+export interface Condition {
+  at: Binding;
+  matches: JsonSchema;
+}
+
+/** Whether a condition holds over the roots in scope; none written holds. */
+export function conditionHolds(condition: Condition | undefined, roots: Readonly<Record<string, unknown>>): boolean {
+  return condition === undefined || holds(condition.matches, readBinding(condition.at, roots));
 }
 
 /** The style a rule gives a row: the case keyed by the value's plain text,
@@ -35,9 +62,9 @@ const DATE = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC
 const DATE_TIME = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" });
 
 /** How a cell shows a value, from what the model says the value is. */
-export function presentValue(value: unknown, present?: { type?: unknown; format?: unknown }): string {
+export function presentValue(value: unknown, present: { type?: unknown; format?: unknown } | undefined, say: Say): string {
   if (value === null || value === undefined) return "";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "boolean") return say(value ? "yes" : "no");
   if (typeof value === "object") return JSON.stringify(value);
   if (typeof value === "string" && (present?.format === "date" || present?.format === "date-time")) {
     const date = new Date(present.format === "date" ? `${value}T00:00:00Z` : value);

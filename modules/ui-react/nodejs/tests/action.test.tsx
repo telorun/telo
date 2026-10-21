@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { act } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import reportRequest from "../../tests/__fixtures__/action/report-request.json" with { type: "json" };
+import { HostStore } from "../src/browser/host.js";
 import { render, type Rendered } from "./harness.js";
 import { actionNode, reportSchema } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
-afterEach(() => rendered?.unmount());
+afterEach(() => {
+  rendered?.unmount();
+  vi.restoreAllMocks();
+});
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const answer = { month: "2026-09", files: [{ name: "2026-09.pdf", url: "/files/2026-09.pdf" }, { name: "2026-09.csv", url: "javascript:alert(1)" }], totals: "none" };
@@ -17,6 +22,8 @@ const state = (r: Rendered) => r.part("action").getAttribute("data-state");
 const posts = (r: Rendered) => r.sent.filter((each) => each.request.startsWith("POST"));
 const within = (r: Rendered, part: string, name: string) => [...r.part(part).querySelectorAll<HTMLElement>(`[data-telo-part="${name}"]`)];
 const texts = (elements: Element[]) => elements.map((element) => element.textContent);
+/** What the action's failure tree draws: each value it presents. */
+const failure = (r: Rendered) => texts(within(r, "action-failure", "value"));
 
 /** Enter the record of the shared request body. */
 async function enterReport(r: Rendered) {
@@ -120,14 +127,14 @@ describe("an action", () => {
     expect(rendered.parts("action-result")).toEqual([]);
     finish(json({ message: "it broke" }, 500));
     await rendered.settle();
-    expect(rendered.part("error-code").textContent).toBe("ERR_UI_REQUEST_FAILED");
+    expect(failure(rendered)).toEqual(["ERR_UI_REQUEST_FAILED", "it broke"]);
     expect(rendered.parts("action-result")).toEqual([]);
     await rendered.click(rendered.part("submit"));
-    expect(rendered.parts("error")).toEqual([]);
+    expect(rendered.parts("action-failure")).toEqual([]);
     expect(state(rendered)).toBe("submitting");
   });
 
-  it("puts a 400's details on the fields they name and the rest under the form", async () => {
+  it("puts a 400's details on the fields they name and the rest under the form, and draws its failure", async () => {
     const details = [
       { location: "body", path: "month", message: "is in the future" },
       { location: "body", path: "owner", message: "is a required property" },
@@ -139,12 +146,12 @@ describe("an action", () => {
     expect(texts(rendered.parts("field-error"))).toEqual(["is in the future"]);
     expect(rendered.part("form-error").textContent).toBe("owner is a required property");
     expect(state(rendered)).toBe("error");
-    expect(rendered.parts("error")).toEqual([]);
+    expect(failure(rendered)).toEqual(["ERR_UI_REQUEST_FAILED", "Request validation failed"]);
   });
 
   it.each([
     ["an action", actionNode()],
-    ["a form", { type: "form", schema: reportSchema, basePath: "/api/reports", fields: actionNode().fields }],
+    ["a form", { type: "form", schema: reportSchema, basePath: "/api/reports", fields: actionNode().fields, groups: [], state: actionNode().state }],
   ])("marks the list controls of %s a 400 names, until a record is accepted", async (name, node) => {
     const details = ["formats", "recipients"].map((path) => ({ location: "body", path, message: "is refused" }));
     let respond = () => json({ error: "ValidationError", status: 400, details }, 400);
@@ -160,11 +167,12 @@ describe("an action", () => {
     expect([rendered.part("options").getAttribute("data-invalid"), rendered.part("tags").getAttribute("data-invalid")]).toEqual([null, null]);
   });
 
-  it("shows a 400 that names nothing as its message, under the form", async () => {
-    rendered = await show(() => json({ error: "ValidationError", message: "No report for that month", status: 400 }, 400));
+  it("draws a 400 that names nothing as its failure, with the code its body gives", async () => {
+    rendered = await show(() => json({ code: "ERR_NO_REPORT", message: "No report for that month", status: 400 }, 400));
     await rendered.enter(rendered.part("input"), "2026-09");
     await rendered.click(rendered.part("submit"));
-    expect(rendered.part("form-error").textContent).toBe("No report for that month");
+    expect(rendered.parts("form-error")).toEqual([]);
+    expect(failure(rendered)).toEqual(["ERR_NO_REPORT", "No report for that month"]);
   });
 
   it.each([
@@ -180,18 +188,115 @@ describe("an action", () => {
     ],
     ["a success that is a list", () => json([{ name: "a" }]), "ERR_UI_RESPONSE_INVALID"],
     ["a success that is not JSON", () => new Response("done", { status: 200 }), "ERR_UI_RESPONSE_INVALID"],
-  ])("shows %s as an error node where the answer would be", async (name, respond, code) => {
+  ])("draws %s as its failure where the answer would be", async (name, respond, code) => {
     rendered = await show(respond);
     await rendered.enter(rendered.part("input"), "2026-09");
     await rendered.click(rendered.part("submit"));
-    expect(texts(within(rendered, "action", "error-code"))).toEqual([code]);
-    expect(rendered.part("error").previousElementSibling).toBe(rendered.part("form"));
+    expect(failure(rendered)[0]).toBe(code);
+    expect(rendered.part("action-failure").previousElementSibling).toBe(rendered.part("form"));
     expect(rendered.parts("action-result")).toEqual([]);
     expect(state(rendered)).toBe("error");
   });
 
+  it("draws no answer at all with the status absent", async () => {
+    const tree = { type: "stack", children: [{ type: "value", value: { root: "error", path: ["status"] } }, { type: "value", value: { root: "error", path: ["code"] } }] };
+    rendered = await show(() => {
+      throw new TypeError("Failed to fetch");
+    }, actionNode({ failure: tree }));
+    await rendered.enter(rendered.part("input"), "2026-09");
+    await rendered.click(rendered.part("submit"));
+    expect(failure(rendered)).toEqual(["", "ERR_UI_REQUEST_FAILED"]);
+  });
+
+  it("draws a success that does not fit the declared answer as its failure", async () => {
+    rendered = await show(() => json({ files: "none" }), actionNode({ answer: { type: "object", properties: { files: { type: "array" } } } }));
+    await rendered.enter(rendered.part("input"), "2026-09");
+    await rendered.click(rendered.part("submit"));
+    expect(failure(rendered)[0]).toBe("ERR_UI_RESPONSE_INVALID");
+    expect(rendered.parts("action-result")).toEqual([]);
+  });
+
+  it("draws its result over the record sent and the form's current values", async () => {
+    const tree = { type: "stack", children: [{ type: "value", value: { root: "input", path: ["month"] } }, { type: "value", value: { root: "values", path: ["month"] } }] };
+    rendered = await show(() => json({}), actionNode({ result: tree }));
+    await rendered.enter(rendered.part("input"), "2026-09");
+    await rendered.click(rendered.part("submit"));
+    await rendered.enter(rendered.part("input"), "2026-10");
+    expect(texts(within(rendered, "action-result", "value"))).toEqual(["2026-09", "2026-10"]);
+  });
+
+  it("clears its answer when a property it lists changes, and keeps it for any other", async () => {
+    rendered = await show(() => json(answer), actionNode({ clearAnswerOn: ["copies"] }));
+    await rendered.enter(rendered.part("input"), "2026-09");
+    await rendered.click(rendered.part("submit"));
+    await rendered.enter(rendered.part("input"), "2026-10");
+    expect(rendered.parts("action-result")).toHaveLength(1);
+    await rendered.enter(rendered.parts("input")[1], "2");
+    expect(rendered.parts("action-result")).toEqual([]);
+  });
+
+  it("takes no second press while the first is pending", async () => {
+    let finish: (response: Response) => void = () => {};
+    rendered = await show(() => new Promise<Response>((resolve) => (finish = resolve)));
+    await rendered.enter(rendered.part("input"), "2026-09");
+    const form = rendered.part("form");
+    await act(async () => {
+      for (let press = 0; press < 2; press++) form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(posts(rendered)).toHaveLength(1);
+    finish(json(answer));
+    await rendered.settle();
+  });
+
+  it("runs the presses of a serial action on the page one after another", async () => {
+    const finishes: ((response: Response) => void)[] = [];
+    const serial = actionNode({ concurrency: "serial" });
+    rendered = await render({
+      path: "/",
+      answers: { "/api/reports": () => new Promise<Response>((resolve) => finishes.push(resolve)) },
+      pages: { "/": { title: "Reports", children: [serial, serial] } },
+    });
+    for (const input of rendered.parts("form").map((form) => form.querySelector('[data-telo-part="input"]') as Element)) await rendered.enter(input, "2026-09");
+    for (const submit of rendered.parts("submit")) await rendered.click(submit);
+    expect(posts(rendered)).toHaveLength(1);
+    expect(rendered.parts("action").map((each) => each.getAttribute("data-state"))).toEqual(["submitting", "submitting"]);
+    finishes[0](json(answer));
+    await rendered.settle();
+    expect(posts(rendered)).toHaveLength(2);
+    finishes[1](json(answer));
+    await rendered.settle();
+    expect(rendered.parts("action-result")).toHaveLength(2);
+  });
+
+  it("leaves the page for an absolute address its answer names, and moves within it for a declared page", async () => {
+    const leave = vi.spyOn(HostStore.prototype, "leave").mockImplementation(() => {});
+    const going = (to: unknown) => actionNode({ result: undefined, onSuccess: { navigate: { root: "result", path: ["next"] }, refreshes: [] } });
+    rendered = await render({
+      path: "/",
+      prefix: "/admin",
+      answers: { "/api/reports": () => json({ next: "https://example.com/report" }) },
+      pages: { "/": { title: "Reports", children: [going("https")] }, "/done": { title: "Done", children: [] } },
+    });
+    await rendered.enter(rendered.part("input"), "2026-09");
+    await rendered.click(rendered.part("submit"));
+    expect(leave.mock.calls).toEqual([["https://example.com/report"]]);
+    rendered.answer("/api/reports", () => json({ next: "/done" }));
+    await rendered.click(rendered.part("submit"));
+    expect(window.location.pathname).toBe("/admin/done");
+    expect(leave.mock.calls).toHaveLength(1);
+  });
+
+  it("navigates nowhere for a value that is no address, and draws its answer", async () => {
+    const leave = vi.spyOn(HostStore.prototype, "leave").mockImplementation(() => {});
+    rendered = await show(() => json({ ...answer, next: "javascript:alert(1)" }), actionNode({ onSuccess: { navigate: { root: "result", path: ["next"] }, refreshes: [] } }));
+    await rendered.enter(rendered.part("input"), "2026-09");
+    await rendered.click(rendered.part("submit"));
+    expect(leave).not.toHaveBeenCalled();
+    expect(rendered.parts("action-result")).toHaveLength(1);
+  });
+
   it("does not read the answer of an action that draws nothing", async () => {
-    rendered = await show(() => new Response("done", { status: 200 }), actionNode({ lists: [] }));
+    rendered = await show(() => new Response("done", { status: 200 }), actionNode({ result: undefined }));
     await rendered.enter(rendered.part("input"), "2026-09");
     await rendered.click(rendered.part("submit"));
     expect(state(rendered)).toBe("idle");

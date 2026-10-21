@@ -1,0 +1,91 @@
+kind: Telo.Application
+metadata:
+  name: I18nTranslationTest
+  version: 1.0.0
+  description: |
+    `Self.t(text, lang, values?)` as a manifest sees it: a placeholder and plural
+    cases translated into Polish, a regional tag falling back to its language and
+    an unknown language to the source, one text in two contexts translated apart,
+    a source written in Polish selected by Polish rules for any language, and an
+    exported translator called through its alias.
+lang: en
+imports:
+  I18n: ../
+  Pl: ./__fixtures__/polish-source
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: I18n.Catalog
+metadata: { name: polish }
+lang: pl
+texts:
+  - { text: "Rate not found for {$user}", translation: "Nie znaleziono stawki dla {$user}" }
+  - text: { plural: n, cases: { one: "{$n} file", other: "{$n} files" } }
+    translation:
+      plural: n
+      cases: { one: "{$n} plik", few: "{$n} pliki", many: "{$n} plików", other: "{$n} pliku" }
+  - { text: Open, context: verb, translation: Otwórz }
+  - { text: Open, context: state, translation: Otwarte }
+---
+kind: I18n.Translator
+metadata: { name: t }
+catalogs: [!ref polish]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertPlaceholder
+    inputs:
+      actual: !cel "Self.t('Rate not found for {$user}', 'pl', {'user': 'Ala'})"
+      expected: Nie znaleziono stawki dla Ala
+    invoke: !ref Assert.equals
+
+  - name: assertPluralCases
+    inputs:
+      actual: !cel >-
+        [1, 3, 5].map(n, Self.t({'plural': 'n', 'cases': {'one': '{$n} file', 'other': '{$n} files'}}, 'pl', {'n': n}))
+      expected: [1 plik, 3 pliki, 5 plików]
+    invoke: !ref Assert.equals
+
+  # `pl-PL` has no catalog of its own and falls back to `pl`; nothing translates
+  # into German, so the English source is formatted by English rules.
+  - name: assertFallback
+    inputs:
+      actual:
+        regional: !cel "Self.t('Rate not found for {$user}', 'pl-PL', {'user': 'Ala'})"
+        unknown: !cel "Self.t({'plural': 'n', 'cases': {'one': '{$n} file', 'other': '{$n} files'}}, 'de', {'n': 1})"
+      expected:
+        regional: Nie znaleziono stawki dla Ala
+        unknown: 1 file
+    invoke: !ref Assert.equals
+
+  - name: assertContexts
+    inputs:
+      actual:
+        verb: !cel "Self.t({'text': 'Open', 'context': 'verb'}, 'pl')"
+        state: !cel "Self.t({'text': 'Open', 'context': 'state'}, 'pl')"
+        none: !cel "Self.t('Open', 'pl')"
+      expected: { verb: Otwórz, state: Otwarte, none: Open }
+    invoke: !ref Assert.equals
+
+  # Written in Polish and translated into nothing: German is asked for, and the
+  # Polish source is selected by Polish plural rules.
+  - name: assertPolishSource
+    inputs:
+      actual:
+        five: !cel "Pl.files(5, 'de')"
+        two: !cel "Pl.files(2, 'de')"
+        alias: !cel "Pl.t('Otwórz', 'de')"
+      expected: { five: 5 plików, two: 2 pliki, alias: Otwórz }
+    invoke: !ref Assert.equals
+
+  - name: assertDuplicateRefused
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/duplicate/telo.yaml
+      expect:
+        errors:
+          - code: MESSAGE_ENTRY_DUPLICATE
+            message: "the reference at 'catalogs[1]' is refused: it brings in I18n.Catalog/polishPack, whose texts[0] translates 'Open' into pl, which I18n.Catalog/polish already translates at texts[0]"

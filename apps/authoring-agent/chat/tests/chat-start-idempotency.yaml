@@ -150,7 +150,7 @@ steps:
               first: !cel "steps.history.result.turns[0].records[0].data"
             expected:
               turns: [ !cel "steps.first.result.body.turnId" ]
-              first: { type: user-message, content: add a health endpoint, model: gpt-5.2 }
+              first: { type: user-message, content: add a health endpoint, model: gpt-6-luna }
   - name: atCapacity
     invoke:
       kind: Run.Sequence

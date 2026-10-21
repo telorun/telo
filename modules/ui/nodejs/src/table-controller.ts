@@ -1,7 +1,7 @@
-import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
+import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource, type TextRecord } from "@telorun/sdk";
+import { schemaText, type ValueLabel } from "./spec-texts.js";
 import { isCollection, type CollectionQuery } from "./collection-controller.js";
 import { isComposite, mergeAssets, type AssetFile, type Provided, type SpecNode } from "./composite.js";
-import { isAction } from "./action-controller.js";
 import {
   headerOf,
   modelSchema,
@@ -9,15 +9,17 @@ import {
   presentation,
   propertiesOf,
   schemaAt,
+  shapeLabels,
   type JsonSchema,
   type Shape,
   type ShapeReader,
 } from "./model-schema.js";
 import { isChain, type Binding, type StyleRule } from "./row-binding.js";
+import { pendingRowAction, providedRowActions, type RowActionConfig } from "./row-actions.js";
 import { dialogSpec, isSurface } from "./surface-spec.js";
 
 interface ColumnConfig {
-  header?: string;
+  header?: TextRecord;
   value?: Binding;
   cell?: unknown;
   style?: StyleRule;
@@ -26,7 +28,7 @@ interface ColumnConfig {
 type TableResource = RuntimeResource & {
   model: unknown;
   collection: unknown;
-  source: { basePath: string; filters?: Record<string, string | number | boolean> };
+  source: { basePath: string; filters?: Record<string, Binding> | null };
   rowKey?: string;
   columns?: ColumnConfig[];
   pageSize?: number;
@@ -34,48 +36,9 @@ type TableResource = RuntimeResource & {
   create?: OpenerConfig;
   edit?: OpenerConfig;
   delete?: boolean;
+  query?: Record<string, JsonSchema> | null;
   rowActions?: RowActionConfig[];
 };
-
-/** An operation a row offers. A member holding nothing is one left out. */
-interface RowActionConfig {
-  action: unknown;
-  inputs: Record<string, Binding>;
-  confirm?: string;
-  prompt?: boolean;
-}
-
-/** Why a row's inputs cannot make a record of the action's input model: a key
- *  a closed model does not declare, a required input left unbound, a fixed
- *  value its property refuses. A path into the row is typed by `telo check`
- *  alone. */
-function rowActionInputProblems(schema: JsonSchema, inputs: Record<string, Binding>, ctx: ResourceContext): string[] {
-  const properties = (schema.properties ?? {}) as Record<string, JsonSchema>;
-  const problems: string[] = [];
-  for (const [name, binding] of Object.entries(inputs)) {
-    if (!Object.hasOwn(properties, name)) {
-      if (schema.additionalProperties === false) problems.push(`'${name}' is not a property of the action's input model`);
-      continue;
-    }
-    if (isChain(binding)) continue;
-    // Beside the model's own definitions, which the property may reference.
-    const validator = ctx.createSchemaValidator({
-      allOf: [properties[name]],
-      $defs: schema.$defs,
-      definitions: schema.definitions,
-    });
-    try {
-      validator.validate(binding.value);
-    } catch (error) {
-      if (!(error instanceof Error)) throw error;
-      problems.push(`'${name}' holds a value its property refuses (${error.message})`);
-    }
-  }
-  for (const required of (Array.isArray(schema.required) ? schema.required : []) as string[]) {
-    if (!Object.hasOwn(inputs, required)) problems.push(`required input '${required}' is not bound`);
-  }
-  return problems;
-}
 
 /** How a form is opened. A member holding nothing is one left out. */
 interface OpenerConfig {
@@ -86,10 +49,11 @@ interface OpenerConfig {
 }
 
 export interface ValueColumn {
-  header: string;
+  header: TextRecord;
   value: Binding;
   sort?: string;
   present?: JsonSchema;
+  labels: ValueLabel[];
   style?: StyleRule;
 }
 
@@ -103,20 +67,21 @@ export function valueColumn(
   model: Shape,
   reader: ShapeReader,
   sortable: CollectionQuery["sort"],
-  column: { header?: string; value: Binding; style?: StyleRule },
+  column: { header?: TextRecord; value: Binding; style?: StyleRule },
 ): ValueColumn {
   const { value, style } = column;
   if (!isChain(value)) {
-    return { header: column.header ?? "", value, ...(style ? { style } : {}) };
+    return { header: column.header ?? schemaText("", null), value, labels: [], ...(style ? { style } : {}) };
   }
   const target = schemaAt(model, value.path, reader, "model");
   const last = value.path[value.path.length - 1];
   const present = presentation(target);
   return {
-    header: column.header ?? (last === undefined ? "" : headerOf(last, target)),
+    header: column.header ?? headerOf(last ?? "", target),
     value,
     ...(value.path.length === 1 && sortable.some((sort) => sort.property === last) ? { sort: last } : {}),
     ...(present ? { present } : {}),
+    labels: shapeLabels(target),
     ...(style ? { style } : {}),
   };
 }
@@ -179,7 +144,7 @@ class Table implements ResourceInstance {
       }
       const cell = await part(column.cell, `columns[${index}].cell`);
       if (!cell) continue;
-      columns.push({ header: column.header ?? "", cell, ...(column.style ? { style: column.style } : {}) });
+      columns.push({ header: column.header ?? schemaText("", null), labels: [], cell, ...(column.style ? { style: column.style } : {}) });
     }
     const opener = async (config: OpenerConfig | undefined, slot: string) => {
       if (config === undefined) return undefined;
@@ -193,47 +158,18 @@ class Table implements ResourceInstance {
               .provide();
       return { form, surface, afterSubmit: config.afterSubmit ?? "close", unsaved: config.unsaved ?? "confirm" };
     };
-    const rowActions: Record<string, unknown>[] = [];
-    for (const [index, entry] of (resource.rowActions ?? []).entries()) {
-      const where = `rowActions[${index}]`;
-      const operation = this.ctx
-        .resolveRef(entry.action, isAction, () => `'${where}.action' of ${owner}`, "Ui.Action")
-        .operation();
-      if (operation.drawsLists) {
-        throw new RuntimeError(
-          "ERR_UI_ROW_ACTION_DRAWS_LISTS",
-          `${owner}: '${where}' offers in a row an action that draws lists from its answer, and a row has nowhere to draw them. Declare an action without 'lists' for the row.`,
-        );
-      }
-      const problems = rowActionInputProblems(operation.schema, entry.inputs, this.ctx);
-      if (problems.length > 0) {
-        throw new RuntimeError(
-          "ERR_UI_ROW_ACTION_INPUTS_INVALID",
-          `${owner}: '${where}.inputs' cannot make a record of the action's input model: ${problems.join("; ")}.`,
-        );
-      }
-      rowActions.push({
-        path: operation.path,
-        label: operation.label,
-        inputs: entry.inputs,
-        ...(entry.confirm != null ? { confirm: entry.confirm } : {}),
-        // The row's inputs are sent as bound; the dialog enters the rest.
-        ...(entry.prompt === true
-          ? {
-              prompt: {
-                schema: operation.schema,
-                fields: operation.fields().filter((field) => !Object.hasOwn(entry.inputs, field.property)),
-              },
-            }
-          : {}),
-      });
-    }
+    const pending = (resource.rowActions ?? []).map((entry, index) =>
+      pendingRowAction(entry, this.ctx, owner, `rowActions[${index}]`),
+    );
+    const { rowActions, assets: actionAssets } = await providedRowActions(pending);
+    assets.push(...actionAssets);
     const create = await opener(resource.create, "create");
     const edit = await opener(resource.edit, "edit");
     const node: SpecNode = {
       type: "table",
       schema,
       basePath: resource.source.basePath,
+      query: resource.query ?? {},
       ...(resource.source.filters ? { filters: resource.source.filters } : {}),
       rowKey,
       pageSize: Number(resource.pageSize ?? 25),

@@ -1,0 +1,8 @@
+# Imports the library next door, whose template body holds a function over a
+# sibling that references a resource of the library itself.
+kind: Telo.Application
+metadata:
+  name: CallableDataViewsTemplate
+  version: 1.0.0
+imports:
+  Lib: ./lib

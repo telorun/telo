@@ -1,0 +1,8 @@
+# The library's set translates one text twice; its own check is silent here, so
+# the kernel's refusal, raised when the import creates the set, is pinned.
+kind: Telo.Application
+metadata:
+  name: CatalogSetCaseApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

@@ -1,0 +1,47 @@
+# Kinds typing an accessor field's value as text — directly, and through a named
+# shape. Their controller would receive a binding there, so neither could judge
+# the text nor hand it over as its record.
+kind: Telo.Library
+metadata:
+  name: TextSlotAccessorLib
+  version: 1.0.0
+  description: Fixture kinds whose accessor fields hold text.
+exports:
+  kinds: [Column, Tile]
+  resources: [Caption]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Caption
+schema:
+  type: object
+  properties:
+    text: { $ref: "telo://manifest#/$defs/Text" }
+---
+kind: Telo.Definition
+metadata:
+  name: Column
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Column
+schema:
+  type: object
+  properties:
+    label:
+      $ref: "telo://manifest#/$defs/Text"
+      x-telo-eval: accessor
+      x-telo-context: { type: object, properties: { row: {} } }
+---
+kind: Telo.Definition
+metadata:
+  name: Tile
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Tile
+schema:
+  type: object
+  properties:
+    caption:
+      $ref: "telo://Self/Caption"
+      x-telo-eval: accessor
+      x-telo-context: { type: object, properties: { row: {} } }

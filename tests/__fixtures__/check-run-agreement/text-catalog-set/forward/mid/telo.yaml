@@ -1,0 +1,26 @@
+# Consumes the forwarding template: the catalog it hands in translates a text
+# the body's own catalog already translates into Polish.
+kind: Telo.Library
+metadata:
+  name: CatalogSetForwardMid
+  version: 1.0.0
+  description: Fixture library forwarding a catalog that repeats one its template body holds.
+imports:
+  Lib: ../lib
+  Kinds: ../../kinds
+exports:
+  resources: [translations]
+---
+kind: Kinds.Catalog
+metadata: { name: pack }
+lang: pl
+texts:
+  - { text: Open, translation: Otwórzcie }
+---
+kind: Lib.Translations
+metadata: { name: translations }
+extra: !ref pack
+own:
+  lang: pl
+  texts:
+    - { text: Close, translation: Zamknij }

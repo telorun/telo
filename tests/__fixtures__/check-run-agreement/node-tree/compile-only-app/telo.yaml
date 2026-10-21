@@ -1,0 +1,9 @@
+# Running the library's sequence evaluates the template per call.
+kind: Telo.Application
+metadata:
+  name: CompileOnlyApp
+  version: 1.0.0
+imports:
+  Lib: ../compile-only-lib
+targets:
+  - !ref Lib.go

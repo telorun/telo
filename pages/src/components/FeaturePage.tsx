@@ -27,9 +27,11 @@ export interface FeaturePageProps {
   tagline: string;
   intro: ReactNode;
   points: FeaturePoint[];
+  /** A link below the cards to the page they are drawn from. */
+  more?: { to: string; label: string };
 }
 
-export default function FeaturePage({ slug, emoji, title, tagline, intro, points }: FeaturePageProps) {
+export default function FeaturePage({ slug, emoji, title, tagline, intro, points, more }: FeaturePageProps) {
   const index = FEATURE_PAGES.findIndex((page) => page.slug === slug);
   const count = FEATURE_PAGES.length;
   const prev = FEATURE_PAGES[(index - 1 + count) % count];
@@ -88,6 +90,12 @@ export default function FeaturePage({ slug, emoji, title, tagline, intro, points
             </div>
           ))}
         </div>
+
+        {more && (
+          <p className="text--center margin-top--md">
+            <Link to={more.to}>{more.label}</Link>
+          </p>
+        )}
 
         <div className="text--center margin-top--xl">
           <Link className="button button--primary button--lg margin-right--md" to="/learn/getting-started">

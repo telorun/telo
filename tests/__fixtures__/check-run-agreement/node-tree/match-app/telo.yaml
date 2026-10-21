@@ -1,0 +1,15 @@
+# The same condition in an application's own resource: its load analysis
+# refuses it.
+kind: Telo.Application
+metadata:
+  name: MatchApp
+  version: 1.0.0
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Probe
+metadata:
+  name: overdue
+condition:
+  at: !cel "row.amount"
+  matches: { const: billing }

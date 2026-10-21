@@ -6,7 +6,7 @@ metadata:
     A column's header and presentation come from the member it names however
     that member is reached: written in place, through a named shape, through a
     pointer into the model's own definitions, or through a shape a shape names
-    — for a list of an action's answer and for a nested member of a table's
+    — for a list drawn from an action's answer and for a nested member of a table's
     row alike, and for a table's derived column over a member that is itself
     a reference. What is written beside a reference wins over the shape it
     names. A reference that names nothing passes the check and is refused when
@@ -67,15 +67,21 @@ inputModel:
 outputModel: !ref Answer
 source: { path: /api/reports }
 label: Generate
-lists:
-  - rows: !cel "result.inline"
-    columns: [{ value: !cel "row.url" }]
-  - rows: !cel "result.named"
-    columns: [{ value: !cel "row.url" }]
-  - rows: !cel "result.local"
-    columns: [{ value: !cel "row.url" }]
-  - rows: !cel "result.batch.files"
-    columns: [{ value: !cel "row.url" }]
+result:
+  type: stack
+  children:
+    - type: list
+      rows: !cel "result.inline"
+      columns: [{ value: !cel "row.url" }]
+    - type: list
+      rows: !cel "result.named"
+      columns: [{ value: !cel "row.url" }]
+    - type: list
+      rows: !cel "result.local"
+      columns: [{ value: !cel "row.url" }]
+    - type: list
+      rows: !cel "result.batch.files"
+      columns: [{ value: !cel "row.url" }]
 ---
 kind: Telo.JsonSchema
 metadata:
@@ -123,19 +129,19 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        lists: !cel "steps.generate.result.node.lists.map(l, l.columns)"
+        lists: !cel "steps.generate.result.node.result.children.map(l, l.columns)"
         table: !cel "steps.reports.result.node.columns"
         derived: !cel "steps.derived.result.node.columns.filter(c, c.value.path == ['site'])"
       expected:
         lists:
-          - [{ header: Download, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }]
-          - [{ header: Download, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }]
-          - [{ header: Download, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }]
-          - [{ header: Download, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }]
+          - [ { header: { text: Download, context: null, lang: und, computed: false }, value: { root: row, path: [ url ] }, present: { type: string, format: uri-reference }, labels: [] } ]
+          - [ { header: { text: Download, context: null, lang: und, computed: false }, value: { root: row, path: [ url ] }, present: { type: string, format: uri-reference }, labels: [] } ]
+          - [ { header: { text: Download, context: null, lang: und, computed: false }, value: { root: row, path: [ url ] }, present: { type: string, format: uri-reference }, labels: [] } ]
+          - [ { header: { text: Download, context: null, lang: und, computed: false }, value: { root: row, path: [ url ] }, present: { type: string, format: uri-reference }, labels: [] } ]
         table:
-          - { header: Download, value: { root: row, path: [latest, url] }, present: { type: string, format: uri-reference } }
+          - { header: { text: Download, context: null, lang: und, computed: false }, value: { root: row, path: [latest, url] }, present: { type: string, format: uri-reference }, labels: [] }
         derived:
-          - { header: Website, value: { root: row, path: [site] }, present: { type: string, format: uri } }
+          - { header: { text: Website, context: null, lang: und, computed: false }, value: { root: row, path: [site] }, present: { type: string, format: uri }, labels: [] }
 ---
 kind: Assert.Manifest
 metadata:
@@ -143,4 +149,4 @@ metadata:
 source: ./__fixtures__/invalid/dangling-reference/telo.yaml
 expect:
   errors: []
-  runFails: "Ui.Action 'danglingReference': 'outputModel.files.items' holds a reference ('#/$defs/File') that does not name a data shape. Declare that shape, or correct the reference."
+  runFails: "Ui.Action 'danglingReference' result: 'Ui.Action 'danglingReference' result.rows.items' holds a reference ('#/$defs/File') that does not name a data shape. Declare that shape, or correct the reference."

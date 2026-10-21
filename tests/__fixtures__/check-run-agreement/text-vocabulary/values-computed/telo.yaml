@@ -1,0 +1,37 @@
+# Calls a Text parameter with values an expression computes: `telo check`
+# cannot know what they hold, so the kernel judges them when it binds the call,
+# before the function runs.
+kind: Telo.Application
+metadata:
+  name: TextCallApp
+  version: 1.0.0
+lang: en
+imports:
+  Run: ../../../../../modules/run
+variables:
+  values:
+    env: TEXT_CALL_VALUES
+    type: object
+    default: {}
+targets:
+  - !ref flow
+---
+kind: Telo.Function
+metadata:
+  name: t
+params:
+  - name: text
+    schema: { $ref: "telo://manifest#/$defs/Text" }
+  - name: values
+    optional: true
+    schema: { type: object, x-telo-text-values-for: /text }
+returns:
+  schema: { type: string }
+body: !cel "'translated'"
+---
+kind: Run.Sequence
+metadata:
+  name: flow
+steps:
+  - name: translated
+    value: !cel "Self.t('{$n} files', variables.values)"

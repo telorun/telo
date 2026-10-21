@@ -1,0 +1,31 @@
+# Two Polish catalogs translating one text, listed by one translator.
+kind: Telo.Application
+metadata:
+  name: TranslatorDuplicate
+  version: 1.0.0
+lang: en
+imports:
+  I18n: ../../../
+---
+kind: I18n.Catalog
+metadata: { name: polish }
+lang: pl
+texts:
+  - { text: Open, translation: Otwórz }
+---
+kind: I18n.Catalog
+metadata: { name: polishPack }
+lang: pl
+texts:
+  - { text: Open, translation: Otwórzcie }
+---
+kind: I18n.Translator
+metadata: { name: t }
+catalogs: [!ref polish, !ref polishPack]
+---
+kind: Telo.Function
+metadata: { name: open }
+params: []
+returns:
+  schema: { type: string }
+body: !cel "Self.t('Open', 'pl')"

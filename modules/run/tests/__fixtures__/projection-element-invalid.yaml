@@ -1,0 +1,44 @@
+# Not a runnable test — an `Assert.Manifest` fixture. Every collected element
+# is validated against `elementType` at dispatch: the elements here hold
+# integers where the contract declares strings, which no static check can see
+# because `item` is untyped.
+kind: Telo.Application
+metadata:
+  name: ProjectionElementInvalidFixture
+  version: 1.0.0
+imports:
+  Run: ../../
+targets:
+  - !ref main
+---
+kind: Run.Projection
+metadata:
+  name: mistyped
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      numbers: { type: array }
+elementType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [value]
+    properties:
+      value: { type: string }
+collection: !cel "inputs.numbers"
+steps:
+  - name: noop
+    value: !cel "item"
+outputs:
+  value: !cel "item"
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: project
+    invoke: !ref mistyped
+    inputs:
+      numbers: [1, 2, 3]

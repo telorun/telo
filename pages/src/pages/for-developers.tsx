@@ -7,85 +7,70 @@ export default function DeveloperFirst() {
       emoji="🛠"
       title="For developers"
       tagline="Errors caught early, surfaced clearly, and traced to the line that needs fixing."
-      intro="Telo treats developer experience as a correctness problem. Mistakes show up as actionable diagnostics in your editor - not as opaque stack traces at runtime - and the analyzer that powers them runs the same checks the kernel does before it boots."
+      intro="Telo checks what a typed framework leaves to discipline: that every error a handler throws is rendered, that a write meant for a transaction is inside one, that a retry won't resend a consumed stream, that shutdown cancels and cleans up. Manifests are plain text in Git, reviewed and rolled back like any code, and what you read is what runs."
       points={[
         {
           icon: "🔍",
-          title: "Static analysis",
-          body: "Reference validation, schema checks, and CEL type-checking run without executing the kernel, so broken wiring and type mismatches are caught at edit time.",
+          title: "Checked before it runs",
+          body: "Every import, reference, schema and expression is resolved with no database, network or process — in the editor as you type, from the same engine as the release you run. The runtime refuses the same mistakes at start, with the same message.",
         },
         {
-          icon: "💡",
-          title: "IDE diagnostics",
-          body: "The VS Code extension surfaces the analyzer's findings inline as you type, pointing at the exact place in the manifest that needs attention.",
-        },
-        {
-          icon: "🚦",
-          title: "Errors never swallowed",
-          body: "Failures are surfaced, not hidden. Messages are written to guide you to a concrete fix rather than leave you guessing at the cause.",
-        },
-        {
-          icon: "🪶",
-          title: "No boilerplate",
-          body: "Manifests are minimal - they carry your business logic and nothing else. There is no scaffolding, wiring, or framework ceremony to write and maintain around it.",
-        },
-        {
-          icon: "🧩",
-          title: "Composable micro-kernel",
-          body: "The kernel knows nothing about HTTP or SQL. Everything is a module you import, scope, and compose - small, testable units instead of a monolith.",
-        },
-        {
-          icon: "🌐",
-          title: "Polyglot controllers",
-          body: "Modules can be written in the language that fits the job. Node.js is fully supported today, Rust is partial, and Go is on the roadmap - so you pick the runtime, not the other way around.",
-        },
-        {
-          icon: "👀",
-          title: "Watch mode",
-          body: "Run a manifest locally in watch mode and the kernel reloads on change, so the feedback loop between editing YAML and seeing it run is near-instant.",
-        },
-        {
-          icon: "🔀",
-          title: "Git-native workflow",
-          body: "Manifests are plain text, so your whole backend lives in Git like any code: branch a feature, open a PR, review the diff, roll back a bad change, or bisect to find a regression. No proprietary versioning layer.",
-        },
-        {
-          icon: "📖",
-          title: "The manifest is the docs",
-          body: "Because the manifest declares intent explicitly, it doubles as living documentation. There's no separate spec to write or keep in sync - what you read is what runs.",
-        },
-        {
-          icon: "✅",
-          title: "Validation at the edge",
-          body: "Inputs are checked against JSON Schema before any handler runs, so malformed requests are rejected at the boundary with a clear error rather than blowing up deep in your logic.",
-        },
-        {
-          icon: "🔐",
-          title: "Variables & secrets, declared",
-          body: "Configuration variables and secrets are declared as a typed contract and injected from the host environment - never hardcoded in the manifest, with secrets kept out of logs alongside ordinary config.",
-        },
-        {
-          icon: "🔁",
-          title: "Retries & backoff",
-          body: "Declare retry policies with backoff right next to the step they protect, instead of scattering ad-hoc retry loops through handler code.",
-        },
-        {
-          icon: "🔌",
-          title: "Graceful shutdown",
-          body: "On shutdown the kernel drains in-flight work and tears down services in order, so a deploy or restart never severs a request mid-flight or leaks a connection.",
-        },
-        {
-          icon: "📊",
-          title: "Built-in observability",
-          planned: true,
-          body: "Structured logging, metrics, and tracing as first-class primitives you compose into a manifest - insight into what's running without bolting on a separate stack.",
+          icon: "🧯",
+          title: "Every error has a handler",
+          body: "Each error code a handler declares must be rendered by a catch around it — on the route, the router or the server. One nothing renders is refused before the app runs, instead of reaching a client as a 500.",
         },
         {
           icon: "🛑",
           title: "Request cancellation",
-          body: "A cancellation signal propagates through every downstream step, so abandoned requests stop their database, HTTP, and AI work instead of burning resources after the caller has gone.",
+          body: "When a caller goes away — a client disconnecting, a timeout, a shutdown — cancellation flows down everything the call started, retry backoffs included. No cancellation token passed through every function.",
+        },
+        {
+          icon: "🔌",
+          title: "Graceful shutdown",
+          body: "SIGINT and SIGTERM cancel in-flight work, refuse what has not started, close resources in reverse dependency order, flush logs last and exit with a defined code — the same in a packaged binary.",
+        },
+        {
+          icon: "🔁",
+          title: "Safe retries and timeouts",
+          body: "Declare retry with backoff on any call. Cancellations and contract violations are never retried, a retry that would resend a consumed stream is refused, and a timeout cancels the call instead of leaving it running.",
+        },
+        {
+          icon: "🔐",
+          title: "See what an app needs",
+          body: "--help lists every input with its variable and default, telo needs report lists what dependencies read, and telo env template writes the .env files. Every missing value is reported together before start, and secrets stay out of logs.",
+        },
+        {
+          icon: "✅",
+          title: "Validation on every call",
+          body: "Inputs and outputs are checked against their declared schema on every call between resources, not only at the HTTP edge, so a bad value is stopped where it enters.",
+        },
+        {
+          icon: "🗄",
+          title: "Transactions, checked",
+          body: "Every statement inside a transaction joins it at any depth, with nothing threaded through your code. A statement that needs a transaction is checked on every path the analyzer can see.",
+        },
+        {
+          icon: "♻️",
+          title: "Crash recovery",
+          body: "Durable runs record each step and decision, so a restart resumes where the work stopped — and the ways durability silently breaks, like a non-deterministic call in a replayed region, are refused.",
+        },
+        {
+          icon: "📊",
+          title: "Observability built in",
+          body: "Structured logs carry the resource and trace ids, every call is a span, and an incoming traceparent is continued. Tracing turns on by listing one sink; spans carry no payloads unless a field opts in.",
+        },
+        {
+          icon: "🧩",
+          title: "Write your own modules",
+          body: "When the standard library lacks something, write a module beside your app with controllers in TypeScript or Rust. No build step, and its kinds are checked like the standard library's.",
+        },
+        {
+          icon: "📦",
+          title: "No install step, one executable",
+          body: "telo run fetches each import on first use, verified against its pin — in watch mode too. telo package turns an app into one file that runs with no telo and no network.",
         },
       ]}
+      more={{ to: "/learn/what-you-get", label: "See everything you get for free →" }}
     />
   );
 }

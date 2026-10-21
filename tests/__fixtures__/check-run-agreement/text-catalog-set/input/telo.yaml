@@ -1,0 +1,22 @@
+# A set holding a catalog its importer supplies. What is supplied is not known
+# here, so this library's own check is silent; each import that supplies one is
+# judged against what it supplies.
+kind: Telo.Library
+metadata:
+  name: CatalogSetInput
+  version: 1.0.0
+  description: Fixture library whose catalog set holds a catalog its importer supplies.
+imports:
+  Kinds: ../kinds
+resources:
+  extra: { kind: Kinds.Catalog }
+---
+kind: Kinds.Catalog
+metadata: { name: base }
+lang: pl
+texts:
+  - { text: Open, translation: Otwórz }
+---
+kind: Kinds.Set
+metadata: { name: set }
+catalogs: [!ref base, !ref extra]

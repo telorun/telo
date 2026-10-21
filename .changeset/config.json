@@ -6,6 +6,7 @@
     [
       "@telorun/sdk",
       "@telorun/cel",
+      "@telorun/message-format",
       "@telorun/templating",
       "@telorun/analyzer",
       "@telorun/kernel",
@@ -64,6 +65,7 @@
     "@telorun/http-client-build",
     "@telorun/http-dispatch",
     "@telorun/http-server-build",
+    "@telorun/i18n",
     "@telorun/idempotency-build",
     "@telorun/image",
     "@telorun/javascript-build",

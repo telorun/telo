@@ -1,0 +1,9 @@
+# A library writing in English calling a Text parameter with a plural case English lacks.
+# Its own check is silent — the defect is the library's — so the kernel's
+# refusal, raised when the import creates the library's resources, is pinned here.
+kind: Telo.Application
+metadata:
+  name: TextVocabularyApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

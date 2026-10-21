@@ -1,0 +1,94 @@
+# An application whose page reads who is signed in when it is drawn: a reader
+# over `/api/auth`, conditions over its answer and over the page's declared
+# query parameter, a node delivered only when a request header says so.
+# Start it with
+#   pnpm run telo ./modules/ui-react/tests/__fixtures__/data/telo.yaml
+# and open http://127.0.0.1:8121/
+kind: Telo.Application
+metadata:
+  name: UiDataFixtureApp
+  version: 1.0.0
+imports:
+  Http: ../../../../http-server
+  Run: ../../../../run
+  Ui: ../../../../ui
+  UiReact: ../../../
+ports:
+  http: { env: PORT, default: 8121 }
+targets:
+  - !ref server
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Auth
+schema:
+  type: object
+  required: [authorized]
+  properties:
+    authorized: { type: boolean }
+    email: { type: string, title: Email }
+---
+kind: UiReact.App
+metadata:
+  name: app
+title: Account
+words: !ref Ui.words
+pages:
+  - path: /
+    title: Account
+    query:
+      signin: { type: string, enum: [denied, expired] }
+    children:
+      - type: text
+        text: Your sign-in was refused.
+        shown:
+          at: !cel "query.signin"
+          matches: { const: denied }
+      - type: text
+        text: Staff
+        when: !cel "'x-role' in request.headers && request.headers['x-role'] == 'staff'"
+      - type: composite
+        ref:
+          kind: Ui.Data
+          model: !ref Auth
+          source: { path: /api/auth }
+          reloadOn: [focus, unauthorized]
+          content:
+            type: stack
+            children:
+              - type: value
+                value: !cel "data.email"
+                shown:
+                  at: !cel "data.authorized"
+                  matches: { const: true }
+              - type: text
+                text: Sign in first.
+                shown:
+                  at: !cel "data.authorized"
+                  matches: { const: false }
+---
+kind: Http.Api
+metadata:
+  name: authApi
+routes:
+  - request: { path: /, method: GET }
+    handler:
+      kind: Run.Value
+      value: { authorized: true, email: ada@example.com }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+kind: Http.Server
+metadata:
+  name: server
+listen:
+  address: 127.0.0.1
+  port: !cel "ports.http"
+mounts:
+  - path: /api/auth
+    mount: !ref authApi
+  - path: /
+    mount: !ref app

@@ -1,7 +1,8 @@
 import { Collapsible as CollapsiblePrimitive } from "radix-ui";
 import { isRecord } from "../../lib/utils";
 import type { CelEvalMode } from "./cel-utils";
-import { FieldControl, inferType, ownsLabel } from "./field-control";
+import { FieldControl, fieldKindLabel, ownsLabel } from "./field-control";
+import { resolveLocalSchemaRef, useLocalSchemaRoot } from "./local-schema-ref";
 import { resolveSiblingTypedProp } from "./sibling-typed-field";
 import type { RefResolver } from "./ref-candidates";
 import { SeverityDot, worstUnder, type FieldDiagnostic } from "./field-diagnostics";
@@ -82,6 +83,7 @@ export function ObjectField({
   required,
   flat = false,
 }: ObjectFieldProps) {
+  const schemaRoot = useLocalSchemaRoot();
   const objectValue = isRecord(value) ? value : {};
   const objectRequired = new Set(prop.required ?? []);
   const properties = prop.properties ?? {};
@@ -95,10 +97,13 @@ export function ObjectField({
   const fields = Object.entries(properties).flatMap(([childName, rawChildProp]) => {
     // Same resolution the form root performs, so a sibling-typed field behaves
     // identically at any depth.
-    const childProp = resolveSiblingTypedProp(rawChildProp, objectValue);
+    const childProp = resolveSiblingTypedProp(
+      resolveLocalSchemaRef(rawChildProp, schemaRoot),
+      objectValue,
+    );
     if (!childProp) return [];
     const childValue = objectValue[childName];
-    const childKind = inferType(childProp);
+    const childKind = fieldKindLabel(childProp, schemaRoot);
     const childLabel = typeof childProp.title === "string" ? childProp.title : childName;
     const childOwnsLabel = ownsLabel(childProp);
 

@@ -1,0 +1,40 @@
+# Kinds for the catalog-set rows: a catalog, and a set gathering the catalogs it
+# writes and the catalogs (and sets) it references. Templates, so no controller
+# is needed — a set is judged when it is created.
+kind: Telo.Library
+metadata:
+  name: CatalogSetKinds
+  version: 1.0.0
+  description: Fixture kinds for text catalog sets.
+exports:
+  kinds: [Catalog, Set]
+---
+kind: Telo.Definition
+metadata:
+  name: Catalog
+capability: Telo.Provider
+schema: { $ref: "telo://manifest#/$defs/TextCatalog" }
+provide: !ref shape
+resources:
+  - kind: Telo.JsonSchema
+    metadata: { name: shape }
+    schema: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: Set
+capability: Telo.Provider
+schema:
+  type: object
+  x-telo-text-catalog-set: true
+  properties:
+    own: { $ref: "telo://manifest#/$defs/TextCatalog" }
+    catalogs:
+      type: array
+      items:
+        x-telo-ref: { kind: [Self.Catalog, Self.Set], use: dependency }
+provide: !ref shape
+resources:
+  - kind: Telo.JsonSchema
+    metadata: { name: shape }
+    schema: { type: object }

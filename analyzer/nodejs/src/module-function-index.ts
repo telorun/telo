@@ -127,7 +127,12 @@ export class ModuleFunctionIndex {
           name,
           m,
         );
-        continue;
+        // An export is still a declaration of the module that wrote it, so its
+        // own `Self.` and module-name calls — a rule condition's above all —
+        // reach it in an importer's analysis. A re-export's copy is not: it is
+        // no declaration of the re-exporter.
+        const declarer = (m.metadata as { declaringModule?: unknown } | undefined)?.declaringModule;
+        if (declarer !== undefined && declarer !== exporter) continue;
       }
       if (m.kind === "Telo.Import") bucket(this.imports, module).set(name, m);
       const byName = bucket(this.declared, module);

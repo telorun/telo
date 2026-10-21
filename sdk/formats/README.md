@@ -50,3 +50,8 @@ and that reason is what both `telo check` and the kernel's refusal print.
   nest; `:nth-child(An+B of S)` takes a selector list. State and user-action
   pseudo-classes (`:hover`) are valid syntax — what they match is the consuming
   kind's to say.
+- **`re2-pattern`** — a regular expression RE2 and an ECMAScript engine with
+  the `u` flag both accept and match identically, as a closed allowlist (the
+  entry's `description` lists it). What the two engines read differently — `.`,
+  `\s` / `\S`, one engine's escape spellings — is refused, as is everything one
+  of them lacks; the conformance set is the authority.

@@ -1,0 +1,27 @@
+# Each column reads the row the list's `rows` names; one misspells a member.
+kind: Telo.Application
+metadata:
+  name: LegacyListsConsumer
+  version: 1.0.0
+imports:
+  Lists: ../lib
+---
+kind: Lists.Lists
+metadata:
+  name: files
+outputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      files:
+        type: array
+        items:
+          type: object
+          properties:
+            name: { type: string }
+lists:
+  - rows: !cel "result.files"
+    columns:
+      - value: !cel "row.name"
+      - value: !cel "row.nmae"

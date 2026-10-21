@@ -42,7 +42,8 @@
     "postpack": "rm -f LICENSE"
   },
   "dependencies": {
-    "@telorun/cel": "workspace:*"
+    "@telorun/cel": "workspace:*",
+    "@telorun/message-format": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

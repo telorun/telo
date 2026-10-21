@@ -6,6 +6,10 @@ kind: Telo.Application
 metadata:
   name: UiFixtureApp
   version: 1.0.0
+# Module `lang:` is read from 0.121.0.
+requires:
+  telo: ">=0.121.0"
+lang: en
 imports:
   Http: ../../../../http-server
   Font: ../../../../font
@@ -79,13 +83,7 @@ metadata:
   name: todoForm
 model: !ref Todo
 source: { basePath: /api/todos }
-fields:
-  - property: text
-  - property: isDone
-  - property: priority
-  - property: status
-  - property: dueOn
-  - property: notes
+fields: [text, isDone, priority, status, dueOn, notes]
 ---
 kind: Ui.Table
 metadata:
@@ -185,7 +183,7 @@ kind: UiReact.App
 metadata:
   name: admin
 title: Fixture Admin
-lang: en
+words: !ref Ui.words
 theme:
   - theme: !ref redTheme
     when: !cel "'x-tenant' in request.headers && request.headers['x-tenant'] == 'red'"
@@ -276,6 +274,7 @@ kind: UiReact.App
 metadata:
   name: plain
 title: Plain
+words: !ref Ui.words
 pages:
   - path: /
     title: Home

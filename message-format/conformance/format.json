@@ -1,0 +1,815 @@
+{
+  "rows": [
+    {
+      "id": "format-001-plain",
+      "lang": "en",
+      "message": "Hello {$user}!",
+      "values": {
+        "user": {
+          "string": "Ala"
+        }
+      },
+      "output": "Hello Ala!"
+    },
+    {
+      "id": "format-002-string-as-written",
+      "lang": "en",
+      "message": "{$s}",
+      "values": {
+        "s": {
+          "string": "1234.5 {$x} \\"
+        }
+      },
+      "output": "1234.5 {$x} \\"
+    },
+    {
+      "id": "format-003-number-placeholder",
+      "lang": "en",
+      "message": "Total: {$n}",
+      "values": {
+        "n": {
+          "double": "1234.5"
+        }
+      },
+      "output": "Total: 1,234.5"
+    },
+    {
+      "id": "format-004-number-placeholder-pl",
+      "lang": "pl",
+      "message": "Razem: {$n}",
+      "values": {
+        "n": {
+          "double": "12345.678"
+        }
+      },
+      "output": "Razem: 12 345,678"
+    },
+    {
+      "id": "format-005-escapes",
+      "lang": "en",
+      "message": "\\{{$a}\\} \\\\",
+      "values": {
+        "a": {
+          "string": "x"
+        }
+      },
+      "output": "{x} \\"
+    },
+    {
+      "id": "format-006-extra-values",
+      "lang": "en",
+      "message": "Hi",
+      "values": {
+        "unused": {
+          "string": "x"
+        }
+      },
+      "output": "Hi"
+    },
+    {
+      "id": "format-007-en-zero-exact",
+      "lang": "en",
+      "message": {
+        "plural": "count",
+        "cases": {
+          "=0": "No files",
+          "one": "{$count} file",
+          "other": "{$count} files"
+        }
+      },
+      "values": {
+        "count": {
+          "int": "0"
+        }
+      },
+      "output": "No files"
+    },
+    {
+      "id": "format-008-en-one",
+      "lang": "en",
+      "message": {
+        "plural": "count",
+        "cases": {
+          "=0": "No files",
+          "one": "{$count} file",
+          "other": "{$count} files"
+        }
+      },
+      "values": {
+        "count": {
+          "int": "1"
+        }
+      },
+      "output": "1 file"
+    },
+    {
+      "id": "format-009-en-one-double",
+      "lang": "en",
+      "message": {
+        "plural": "count",
+        "cases": {
+          "=0": "No files",
+          "one": "{$count} file",
+          "other": "{$count} files"
+        }
+      },
+      "values": {
+        "count": {
+          "double": "1.0"
+        }
+      },
+      "output": "1 file"
+    },
+    {
+      "id": "format-010-en-1.5",
+      "lang": "en",
+      "message": {
+        "plural": "count",
+        "cases": {
+          "=0": "No files",
+          "one": "{$count} file",
+          "other": "{$count} files"
+        }
+      },
+      "values": {
+        "count": {
+          "double": "1.5"
+        }
+      },
+      "output": "1.5 files"
+    },
+    {
+      "id": "format-011-en-many",
+      "lang": "en",
+      "message": {
+        "plural": "count",
+        "cases": {
+          "=0": "No files",
+          "one": "{$count} file",
+          "other": "{$count} files"
+        }
+      },
+      "values": {
+        "count": {
+          "int": "1234"
+        }
+      },
+      "output": "1,234 files"
+    },
+    {
+      "id": "format-012-en-1.0004-exact",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "=1": "exactly one",
+          "other": "{$n}"
+        }
+      },
+      "values": {
+        "n": {
+          "double": "1.0004"
+        }
+      },
+      "output": "exactly one"
+    },
+    {
+      "id": "format-013-en-0.9996-exact",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "=1": "exactly one",
+          "one": "one",
+          "other": "{$n}"
+        }
+      },
+      "values": {
+        "n": {
+          "double": "0.9996"
+        }
+      },
+      "output": "exactly one"
+    },
+    {
+      "id": "format-014-exact-before-category",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "category",
+          "=1": "exact",
+          "other": "other"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "1"
+        }
+      },
+      "output": "exact"
+    },
+    {
+      "id": "format-015-exact-negative",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "=-1": "minus one",
+          "other": "{$n}"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "-1"
+        }
+      },
+      "output": "minus one"
+    },
+    {
+      "id": "format-016-exact-negative-zero",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "=0": "zero",
+          "other": "{$n}"
+        }
+      },
+      "values": {
+        "n": {
+          "double": "-0.0001"
+        }
+      },
+      "output": "zero"
+    },
+    {
+      "id": "format-017-exact-uint-max",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "=18446744073709551615": "max",
+          "other": "{$n}"
+        }
+      },
+      "values": {
+        "n": {
+          "uint": "18446744073709551615"
+        }
+      },
+      "output": "max"
+    },
+    {
+      "id": "format-018-exact-int-min",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "=-9223372036854775808": "min",
+          "other": "{$n}"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "-9223372036854775808"
+        }
+      },
+      "output": "min"
+    },
+    {
+      "id": "format-019-exact-2^53+1",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "=9007199254740993": "exact",
+          "=9007199254740992": "neighbour",
+          "other": "{$n}"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "9007199254740993"
+        }
+      },
+      "output": "exact"
+    },
+    {
+      "id": "format-020-ar-zero-exact",
+      "lang": "ar",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "=0": "exact zero",
+          "zero": "zero",
+          "other": "other"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "0"
+        }
+      },
+      "output": "exact zero"
+    },
+    {
+      "id": "format-021-ar-zero-category",
+      "lang": "ar",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "zero": "zero",
+          "one": "one",
+          "two": "two",
+          "few": "few",
+          "many": "many",
+          "other": "other"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "0"
+        }
+      },
+      "output": "zero"
+    },
+    {
+      "id": "format-022-ar-two",
+      "lang": "ar",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "zero": "zero",
+          "one": "one",
+          "two": "two",
+          "few": "few",
+          "many": "many",
+          "other": "other"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "2"
+        }
+      },
+      "output": "two"
+    },
+    {
+      "id": "format-023-ar-few",
+      "lang": "ar",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "zero": "zero",
+          "one": "one",
+          "two": "two",
+          "few": "few",
+          "many": "many",
+          "other": "other"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "103"
+        }
+      },
+      "output": "few"
+    },
+    {
+      "id": "format-024-ar-many",
+      "lang": "ar",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "zero": "zero",
+          "one": "one",
+          "two": "two",
+          "few": "few",
+          "many": "many",
+          "other": "other"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "11"
+        }
+      },
+      "output": "many"
+    },
+    {
+      "id": "format-025-ar-other",
+      "lang": "ar",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "zero": "zero",
+          "one": "one",
+          "two": "two",
+          "few": "few",
+          "many": "many",
+          "other": "other"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "102"
+        }
+      },
+      "output": "other"
+    },
+    {
+      "id": "format-026-pl-1",
+      "lang": "pl",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "{$n} plik",
+          "few": "{$n} pliki",
+          "many": "{$n} plików",
+          "other": "{$n} pliku"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "1"
+        }
+      },
+      "output": "1 plik"
+    },
+    {
+      "id": "format-027-pl-3",
+      "lang": "pl",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "{$n} plik",
+          "few": "{$n} pliki",
+          "many": "{$n} plików",
+          "other": "{$n} pliku"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "3"
+        }
+      },
+      "output": "3 pliki"
+    },
+    {
+      "id": "format-028-pl-5",
+      "lang": "pl",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "{$n} plik",
+          "few": "{$n} pliki",
+          "many": "{$n} plików",
+          "other": "{$n} pliku"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "5"
+        }
+      },
+      "output": "5 plików"
+    },
+    {
+      "id": "format-029-pl-1.5",
+      "lang": "pl",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "{$n} plik",
+          "few": "{$n} pliki",
+          "many": "{$n} plików",
+          "other": "{$n} pliku"
+        }
+      },
+      "values": {
+        "n": {
+          "double": "1.5"
+        }
+      },
+      "output": "1,5 pliku"
+    },
+    {
+      "id": "format-030-pl-above-2^53",
+      "lang": "pl",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "{$n} plik",
+          "few": "{$n} pliki",
+          "many": "{$n} plików",
+          "other": "{$n} pliku"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "9007199254740993"
+        }
+      },
+      "output": "9 007 199 254 740 993 pliki"
+    },
+    {
+      "id": "format-031-category-missing-falls-to-other",
+      "lang": "pl",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "one",
+          "other": "other"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "5"
+        }
+      },
+      "output": "other"
+    },
+    {
+      "id": "format-032-nested-1-1",
+      "lang": "en",
+      "message": {
+        "plural": "files",
+        "cases": {
+          "one": {
+            "plural": "folders",
+            "cases": {
+              "one": "{$files} file in {$folders} folder",
+              "other": "{$files} file in {$folders} folders"
+            }
+          },
+          "other": {
+            "plural": "folders",
+            "cases": {
+              "one": "{$files} files in {$folders} folder",
+              "other": "{$files} files in {$folders} folders"
+            }
+          }
+        }
+      },
+      "values": {
+        "files": {
+          "int": "1"
+        },
+        "folders": {
+          "int": "1"
+        }
+      },
+      "output": "1 file in 1 folder"
+    },
+    {
+      "id": "format-033-nested-3-1",
+      "lang": "en",
+      "message": {
+        "plural": "files",
+        "cases": {
+          "one": {
+            "plural": "folders",
+            "cases": {
+              "one": "{$files} file in {$folders} folder",
+              "other": "{$files} file in {$folders} folders"
+            }
+          },
+          "other": {
+            "plural": "folders",
+            "cases": {
+              "one": "{$files} files in {$folders} folder",
+              "other": "{$files} files in {$folders} folders"
+            }
+          }
+        }
+      },
+      "values": {
+        "files": {
+          "int": "3"
+        },
+        "folders": {
+          "int": "1"
+        }
+      },
+      "output": "3 files in 1 folder"
+    },
+    {
+      "id": "format-034-nested-1-2",
+      "lang": "en",
+      "message": {
+        "plural": "files",
+        "cases": {
+          "one": {
+            "plural": "folders",
+            "cases": {
+              "one": "{$files} file in {$folders} folder",
+              "other": "{$files} file in {$folders} folders"
+            }
+          },
+          "other": {
+            "plural": "folders",
+            "cases": {
+              "one": "{$files} files in {$folders} folder",
+              "other": "{$files} files in {$folders} folders"
+            }
+          }
+        }
+      },
+      "values": {
+        "files": {
+          "int": "1"
+        },
+        "folders": {
+          "int": "2"
+        }
+      },
+      "output": "1 file in 2 folders"
+    },
+    {
+      "id": "format-035-nested-5-7",
+      "lang": "en",
+      "message": {
+        "plural": "files",
+        "cases": {
+          "one": {
+            "plural": "folders",
+            "cases": {
+              "one": "{$files} file in {$folders} folder",
+              "other": "{$files} file in {$folders} folders"
+            }
+          },
+          "other": {
+            "plural": "folders",
+            "cases": {
+              "one": "{$files} files in {$folders} folder",
+              "other": "{$files} files in {$folders} folders"
+            }
+          }
+        }
+      },
+      "values": {
+        "files": {
+          "int": "5"
+        },
+        "folders": {
+          "int": "7"
+        }
+      },
+      "output": "5 files in 7 folders"
+    },
+    {
+      "id": "format-036-selector-unread-in-pattern",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "One item",
+          "other": "Several items"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "2"
+        }
+      },
+      "output": "Several items"
+    },
+    {
+      "id": "format-037-polish-source-in-pl",
+      "lang": "pl",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "{$n} projekt",
+          "few": "{$n} projekty",
+          "many": "{$n} projektów",
+          "other": "{$n} projektu"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "5"
+        }
+      },
+      "output": "5 projektów"
+    },
+    {
+      "id": "format-038-unbound",
+      "lang": "en",
+      "message": "Hello {$user}",
+      "values": {},
+      "error": {
+        "code": "MESSAGE_PLACEHOLDER_UNBOUND",
+        "message": "no value is given for user, which the message reads"
+      }
+    },
+    {
+      "id": "format-039-unbound-selector",
+      "lang": "en",
+      "message": {
+        "plural": "count",
+        "cases": {
+          "=0": "No files",
+          "one": "{$count} file",
+          "other": "{$count} files"
+        }
+      },
+      "values": {},
+      "error": {
+        "code": "MESSAGE_PLACEHOLDER_UNBOUND",
+        "message": "no value is given for count, which the message reads"
+      }
+    },
+    {
+      "id": "format-040-unbound-other-branch",
+      "lang": "en",
+      "message": {
+        "plural": "n",
+        "cases": {
+          "one": "{$x}",
+          "other": "plain"
+        }
+      },
+      "values": {
+        "n": {
+          "int": "5"
+        }
+      },
+      "error": {
+        "code": "MESSAGE_PLACEHOLDER_UNBOUND",
+        "message": "no value is given for x, which the message reads"
+      }
+    },
+    {
+      "id": "format-041-string-selector",
+      "lang": "en",
+      "message": {
+        "plural": "count",
+        "cases": {
+          "=0": "No files",
+          "one": "{$count} file",
+          "other": "{$count} files"
+        }
+      },
+      "values": {
+        "count": {
+          "string": "1"
+        }
+      },
+      "error": {
+        "code": "MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED",
+        "message": "the value given for count is not a number, and count selects a plural case"
+      }
+    },
+    {
+      "id": "format-042-nan-placeholder",
+      "lang": "en",
+      "message": "{$n}",
+      "values": {
+        "n": {
+          "double": "NaN"
+        }
+      },
+      "error": {
+        "code": "MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED",
+        "message": "the value given for n is not a finite number"
+      }
+    },
+    {
+      "id": "format-043-infinite-selector",
+      "lang": "en",
+      "message": {
+        "plural": "count",
+        "cases": {
+          "=0": "No files",
+          "one": "{$count} file",
+          "other": "{$count} files"
+        }
+      },
+      "values": {
+        "count": {
+          "double": "Infinity"
+        }
+      },
+      "error": {
+        "code": "MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED",
+        "message": "the value given for count is not a finite number"
+      }
+    },
+    {
+      "id": "format-044-first-fault-in-order",
+      "lang": "en",
+      "message": "{$a} {$b}",
+      "values": {
+        "b": {
+          "double": "NaN"
+        }
+      },
+      "error": {
+        "code": "MESSAGE_PLACEHOLDER_UNBOUND",
+        "message": "no value is given for a, which the message reads"
+      }
+    }
+  ]
+}

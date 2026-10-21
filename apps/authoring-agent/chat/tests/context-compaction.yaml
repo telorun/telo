@@ -316,7 +316,7 @@ steps:
                    .filter(t, t in ['user-message', 'turn-continued', 'context-summary', 'finish'])]
             expected:
               t2: [ user-message, context-summary ]
-              t2Summary: [ context-summary, true, stub summary, gpt-5.2, 15 ]
+              t2Summary: [ context-summary, true, stub summary, gpt-6-luna, 15 ]
               tokens: 60
               t2Call: [ true, false, false ]
               failed: [ failed, ERR_CONTEXT_COMPACTION_FAILED, ERR_MODEL_REQUEST_REJECTED, [ user-message ] ]
@@ -482,7 +482,7 @@ steps:
                   .map(r, r.reasoning.effort + ' ' + (has(r.reasoning.summary) ? string(r.reasoning.summary) : '-')))
             expected:
               eFailed: [ failed, ERR_CONTEXT_COMPACTION_FAILED, ERR_SUMMARY_EMPTY, [ user-message, context-summary ] ]
-              eRecord: [ false, ERR_SUMMARY_EMPTY, true, gpt-5.2, 15 ]
+              eRecord: [ false, ERR_SUMMARY_EMPTY, true, gpt-6-luna, 15 ]
               eTokens: [ 45, 75 ]
               eContinued:
                 - 200

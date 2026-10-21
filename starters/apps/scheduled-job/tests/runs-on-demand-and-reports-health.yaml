@@ -94,8 +94,8 @@ steps:
         recorded: true
         answered: [ ok ]
         page:
-          - [ Run now, /api/run, 0 ]
-          - [ Show history, /api/runs/recent, 0 ]
+          - [ { lang: en, message: [Run now] }, /api/run, 0 ]
+          - [ { lang: en, message: [Show history] }, /api/runs/recent, 0 ]
         again: [ ok ]
   - name: withBrokenJob
     invoke: !ref brokenJob

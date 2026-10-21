@@ -1,0 +1,128 @@
+# A native function that holds its dependencies as data, and the kinds of
+# resource it may hold. `Peek` claims determinism while holding a function
+# abstract that does not require it — at a `use: dependency` slot, which hands
+# over configuration and is never called, so the claim stands. `Ask` calls the
+# functions it holds, and `shared` is a table an importer reaches by name.
+kind: Telo.Library
+metadata:
+  name: CallableDataKinds
+  version: 1.0.0
+  description: >-
+    Fixture library declaring a native function that holds its dependencies as
+    data, and the kinds of resource it may hold.
+exports:
+  resources: [shared]
+---
+kind: Telo.Abstract
+metadata:
+  name: Loose
+capability: Telo.Callable
+params:
+  - name: key
+    schema: { type: string }
+returns:
+  schema: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Peek
+capability: Telo.Callable
+deterministic: true
+schema:
+  type: object
+  properties:
+    target:
+      x-telo-ref:
+        kind: [Self.Table, Self.Late, Self.Holder, Self.Scoped]
+        use: dependency
+    helper:
+      x-telo-ref: { kind: Self.Loose, use: dependency }
+  required: [target]
+params:
+  - name: path
+    schema: { type: string }
+returns:
+  schema: { type: string }
+controllers:
+  - pkg:telo/local/js?path=./peek.mjs#Peek
+---
+kind: Telo.Definition
+metadata:
+  name: Table
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    title: { type: string }
+    rows:
+      type: object
+      additionalProperties: { type: string }
+    source:
+      x-telo-ref: { kind: Self.Table, use: dependency }
+controllers:
+  - pkg:telo/local/js?path=./peek.mjs#Inert
+---
+kind: Telo.Definition
+metadata:
+  name: Late
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    greeting: { type: string, x-telo-eval: runtime }
+controllers:
+  - pkg:telo/local/js?path=./peek.mjs#Late
+---
+kind: Telo.NeedType
+metadata:
+  name: Access
+fields:
+  url: { type: string }
+required: [url]
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    access:
+      x-telo-ref: { kind: Self.Access, use: dependency }
+controllers:
+  - pkg:telo/local/js?path=./peek.mjs#Inert
+---
+kind: Telo.Definition
+metadata:
+  name: Scoped
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    members:
+      type: array
+      x-telo-scope: /members
+controllers:
+  - pkg:telo/local/js?path=./peek.mjs#Inert
+---
+kind: Telo.Definition
+metadata:
+  name: Ask
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    path: { type: string }
+    functions:
+      type: array
+      items:
+        x-telo-ref: { kind: Self.Peek, use: call }
+  required: [path, functions]
+controllers:
+  - pkg:telo/local/js?path=./peek.mjs#Ask
+---
+kind: Self.Table
+metadata:
+  name: shared
+rows:
+  a: exported

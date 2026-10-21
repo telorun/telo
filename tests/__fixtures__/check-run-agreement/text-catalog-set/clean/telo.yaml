@@ -1,0 +1,34 @@
+# A set reaching one catalog three ways — twice directly and once through a
+# nested set — and catalogs translating the same text into different languages:
+# one member each, no duplicate, so it checks clean and runs.
+kind: Telo.Application
+metadata:
+  name: CatalogSetClean
+  version: 1.0.0
+lang: en
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Catalog
+metadata: { name: polish }
+lang: pl
+texts:
+  - { text: Open, translation: Otwórz }
+---
+kind: Kinds.Catalog
+metadata: { name: german }
+lang: de
+texts:
+  - { text: Open, translation: Öffnen }
+---
+kind: Kinds.Set
+metadata: { name: inner }
+catalogs: [!ref polish]
+---
+kind: Kinds.Set
+metadata: { name: outer }
+own:
+  lang: pl-PL
+  texts:
+    - { text: Open, translation: Otwórz }
+catalogs: [!ref polish, !ref german, !ref inner, !ref polish]

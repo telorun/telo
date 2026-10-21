@@ -101,7 +101,7 @@ variables:
     # importer including the tests, so a test exercises what the app ships. It
     # used to be restated as a literal at the root and in four tests, which made
     # this line dead config: changing it looked like an upgrade and did nothing.
-    default: gpt-5.2
+    default: gpt-6-luna
   reasoningEffort:
     type: string
     enum: [ minimal, low, medium, high ]

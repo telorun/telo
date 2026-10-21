@@ -1,67 +1,34 @@
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Pencil, Plus, Trash2 } from "lucide-react";
-import { Fragment, useContext, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
-import { requestAction } from "./action.js";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { resolveBinding, ruleStyle, styleAttribute, type Binding, type StyleRule } from "./bindings.js";
-import { fetchPage, send, type CollectionPage, type Param } from "./collection.js";
+import { boundFilters, fetchPage, send, type CollectionPage } from "./collection.js";
 import { Form } from "./form.js";
 import { useHost, useHostStore, type HostLocation, type UnsavedGuard } from "./host.js";
 import { Icon } from "./icon.js";
 import { IconButton } from "./icon-button.js";
 import { ErrorNode, Loading, Node, type SpecNode } from "./nodes.js";
 import { openValue } from "./open-address.js";
-import { FilterContext, RendererContext, RowContext } from "./renderer-context.js";
+import { FilterContext, RendererContext, RootsContext, RowContext, VisibleContext } from "./renderer-context.js";
+import type { RowActionSpec } from "./operation.js";
+import { queryRoot } from "./query-root.js";
+import { useRowActions } from "./row-actions.js";
 import { Confirmation, Surface, type SurfaceSpec } from "./surface.js";
-import { enteredRecord, enteredValues, fieldFindings, Fields, refusalOf, type EnteredValues, type Field } from "./record-fields.js";
-import { errorSpec, responseError, UiError, type ErrorSpec } from "./ui-error.js";
+import { errorSpec, type ErrorSpec } from "./ui-error.js";
 import type { JsonSchema } from "./validation.js";
+import { useSay, useText, type ValueLabel, type WireText } from "./texts.js";
 import { Presented } from "./value-cell.js";
 
 interface Column {
-  header: string;
+  header: WireText;
   value?: Binding;
   sort?: string;
   present?: { type?: unknown; format?: unknown };
+  labels?: ValueLabel[];
   style?: StyleRule;
   cell?: SpecNode;
 }
 
 type Row = Record<string, unknown>;
-
-/** An operation each row offers: where it is sent, and what of the row it sends. */
-interface RowAction {
-  path: string;
-  label: string;
-  inputs: Record<string, Binding>;
-  /** The question asked before it runs. */
-  confirm?: string;
-  /** What its dialog enters before it runs, as fields of the input model. */
-  prompt?: { schema: JsonSchema; fields: Field[] };
-}
-
-/** A row action that was pressed: being asked about, being sent, or refused. */
-interface Pressed {
-  action: RowAction;
-  row: Row;
-  /** Whether its confirmation is drawn: a question, or a refusal. */
-  open: boolean;
-  busy: boolean;
-  failure?: ErrorSpec;
-  /** What its prompt's fields hold, and what was refused of them. */
-  values: EnteredValues;
-  fieldErrors: Record<string, string>;
-  formError?: string;
-}
-
-/** The record a row action sends: each input it binds, a path that leads to
- *  nothing in the row left out. */
-function boundRecord(action: RowAction, row: Row): Record<string, unknown> {
-  const record: Record<string, unknown> = {};
-  for (const [property, binding] of Object.entries(action.inputs)) {
-    const value = resolveBinding(binding, { row });
-    if ("value" in binding || (value !== null && value !== undefined)) record[property] = value;
-  }
-  return record;
-}
 
 /**
  * Which rows are shown. The cursors and first-row numbers of the pages visited
@@ -100,6 +67,7 @@ type Opened = Pick<ComponentProps<typeof Form>, "afterSubmit" | "shownAt" | "onU
  */
 function ItemForm({ node, url, opened }: { node: SpecNode; url: string; opened: Opened }) {
   const host = useHost();
+  const say = useSay();
   const [item, setItem] = useState<Row>();
   const [failure, setFailure] = useState<ErrorSpec>();
 
@@ -122,7 +90,7 @@ function ItemForm({ node, url, opened }: { node: SpecNode; url: string; opened: 
         <ErrorNode error={failure} />
         <div data-telo-part="form-actions">
           <button data-telo-part="cancel" type="button" onClick={opened.onCancel}>
-            Cancel
+            {say("cancel")}
           </button>
         </div>
       </>
@@ -135,14 +103,29 @@ function ItemForm({ node, url, opened }: { node: SpecNode; url: string; opened: 
 /** A data grid over a collection. */
 export function Table({ node }: { node: SpecNode }) {
   const host = useHost();
+  const say = useSay();
+  const text = useText();
   const store = useHostStore();
   const { compact } = useContext(RendererContext);
   const filterParams = useContext(FilterContext);
+  const visible = useContext(VisibleContext);
+  const roots = useContext(RootsContext);
+  // What the shown page was read for: hidden, the table reads nothing, and on
+  // show it reads once if anything changed meanwhile.
+  const loadedFor = useRef<string>(undefined);
+  // Only the latest read is drawn; one already in flight when the table is
+  // hidden completes into the kept state.
+  const latestRead = useRef(0);
   const columns = node.columns as Column[];
   const basePath = node.basePath as string;
-  const fixed: Param[] = Object.entries((node.filters ?? {}) as Record<string, unknown>).map(([name, value]) => [name, String(value)]);
-  const filters = [...fixed, ...filterParams];
-  const filterKey = JSON.stringify(filters);
+  // A row action reads the row, and the query parameters the table declares;
+  // the source's own filters read the same roots.
+  const query = useMemo(() => queryRoot(node.query as Record<string, JsonSchema>, host.location.search), [node.query, host.location.search]);
+  const rowRoots = useMemo(() => ({ ...roots, query }), [roots, query]);
+  // While a filter the source reads holds nothing, nothing is read.
+  const fixed = boundFilters(node.filters as Record<string, Binding> | undefined, rowRoots);
+  const filters = [...(fixed ?? []), ...filterParams];
+  const filterKey = JSON.stringify(fixed === undefined ? null : filters);
 
   const [held, setView] = useState<View>(() => firstPage(filterKey));
   const view = held.filters === filterKey ? held : firstPage(filterKey, held.sort);
@@ -159,21 +142,30 @@ export function Table({ node }: { node: SpecNode }) {
   const [detail, setDetail] = useState<HTMLElement | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteFailure, setDeleteFailure] = useState<ErrorSpec>();
-  const [pressed, setPressed] = useState<Pressed>();
-  const promptId = useId();
-  // The row write in flight. Read on the press itself, which can arrive before
+  // The delete in flight. Read on the press itself, which can arrive before
   // the disabled buttons are drawn.
-  const writing = useRef<"action" | "delete" | undefined>(undefined);
+  const writing = useRef(false);
+  const rowActions = useRowActions(node.rowActions as RowActionSpec[], rowRoots, () => host.notifyChanged(basePath));
   const cursor = view.cursors[view.page];
 
   useEffect(() => host.onChanged(basePath, () => setChanges((count) => count + 1)), [basePath]);
 
   useEffect(() => {
-    let current = true;
+    const wanted = JSON.stringify([basePath, filterKey, view.sort, view.page, cursor, changes]);
+    if (!visible || loadedFor.current === wanted) return;
+    loadedFor.current = wanted;
+    const read = ++latestRead.current;
+    if (fixed === undefined) {
+      setPage({ rows: [], total: 0, next: null });
+      setFailure(undefined);
+      setLoading(false);
+      return;
+    }
+    const current = () => read === latestRead.current;
     setLoading(true);
     fetchPage(host, basePath, { limit: node.pageSize, cursor, sort: view.sort, filters }).then(
       (fetched) => {
-        if (!current) return;
+        if (!current()) return;
         setPage(fetched);
         setFailure(undefined);
         setLoading(false);
@@ -188,15 +180,12 @@ export function Table({ node }: { node: SpecNode }) {
         });
       },
       (error) => {
-        if (!current) return;
+        if (!current()) return;
         setFailure(errorSpec(error, "ERR_UI_REQUEST_FAILED"));
         setLoading(false);
       },
     );
-    return () => {
-      current = false;
-    };
-  }, [basePath, filterKey, view.sort, view.page, cursor, changes]);
+  }, [basePath, filterKey, view.sort, view.page, cursor, changes, visible]);
 
   const sortBy = (property: string) =>
     setView(firstPage(filterKey, view.sort === property ? `-${property}` : property));
@@ -206,8 +195,7 @@ export function Table({ node }: { node: SpecNode }) {
   const start = view.starts[view.page] ?? 0;
   const creates = node.create as Opener | undefined;
   const edits = node.edit as Opener | undefined;
-  const rowActions = node.rowActions as RowAction[];
-  const actions = rowActions.length > 0 || edits !== undefined || node.delete === true;
+  const actions = (node.rowActions as RowActionSpec[]).length > 0 || edits !== undefined || node.delete === true;
   const span = columns.length + (actions ? 1 : 0);
   const state = failure ? "error" : loading ? "loading" : rows.length === 0 ? "empty" : "idle";
 
@@ -261,8 +249,8 @@ export function Table({ node }: { node: SpecNode }) {
   /** A refused delete stays in its dialog, as a form's failure stays in the
    *  form: the grid and its rows are as they were. */
   const remove = async (row: Row) => {
-    if (writing.current) return;
-    writing.current = "delete";
+    if (writing.current || rowActions.busy(keyOf(row))) return;
+    writing.current = true;
     setDeleting(true);
     setDeleteFailure(undefined);
     try {
@@ -271,54 +259,18 @@ export function Table({ node }: { node: SpecNode }) {
       setDeleteFailure(errorSpec(error, "ERR_UI_REQUEST_FAILED"));
       return;
     } finally {
-      writing.current = undefined;
+      writing.current = false;
       setDeleting(false);
     }
     setRemoving(undefined);
     host.notifyChanged(basePath);
   };
 
-  /** Send a row's action, unless a row write of this table is in flight. A
-   *  refusal is shown in its confirmation, which opens for it when no question
-   *  was asked; the grid and its rows are as they were. */
-  const act = async (action: RowAction, row: Row, open: boolean, values: EnteredValues = {}) => {
-    if (writing.current) return;
-    const asked = action.prompt?.fields ?? [];
-    const held = { action, row, values, fieldErrors: {} };
-    // What the dialog entered, with the row's own values over it.
-    const record = { ...(action.prompt ? enteredRecord(action.prompt.schema, asked, values) : {}), ...boundRecord(action, row) };
-    const invalid = action.prompt ? fieldFindings(action.prompt.schema, asked, record) : {};
-    if (Object.keys(invalid).length > 0) return setPressed({ ...held, open: true, busy: false, fieldErrors: invalid });
-    writing.current = "action";
-    setPressed({ ...held, open, busy: true });
-    try {
-      const response = await requestAction(host, action.path, record);
-      if (response.status === 400) {
-        const { byField, other } = refusalOf(await response.json(), asked);
-        // A prompt shows a refusal as a form does: on its fields, and under them.
-        if (action.prompt) {
-          setPressed({ ...held, open: true, busy: false, fieldErrors: byField, ...(other.length > 0 ? { formError: other.join(" ") } : {}) });
-          return;
-        }
-        throw new UiError("ERR_UI_REQUEST_FAILED", `The request was refused: ${other.join(" ")}`);
-      }
-      if (!response.ok) throw await responseError(response);
-    } catch (error) {
-      setPressed({ ...held, open: true, busy: false, failure: errorSpec(error, "ERR_UI_REQUEST_FAILED") });
-      return;
-    } finally {
-      writing.current = undefined;
-    }
-    setPressed(undefined);
-    host.notifyChanged(basePath);
-  };
-  const press = (action: RowAction, row: Row) => {
-    if (writing.current) return;
-    if (action.confirm === undefined && action.prompt === undefined) return void act(action, row, false);
-    const values = action.prompt ? enteredValues(action.prompt.schema, action.prompt.fields) : {};
-    setPressed({ action, row, open: true, busy: false, values, fieldErrors: {} });
-  };
-  const acting = pressed?.busy === true;
+  // A row's answers last while its key is on the shown page.
+  const shownKeys = page ? page.rows.map((row) => String(row[node.rowKey])).join("\u0000") : undefined;
+  useEffect(() => {
+    if (shownKeys !== undefined) rowActions.retain(new Set(shownKeys === "" ? [] : shownKeys.split("\u0000")));
+  }, [shownKeys]);
 
   // The address of an opening is the declared surface's, whichever is drawn.
   const surface = open && opener ? (compact && opener.surface.compact ? opener.surface.compact : opener.surface) : undefined;
@@ -345,7 +297,7 @@ export function Table({ node }: { node: SpecNode }) {
       <Surface
         key="surface"
         spec={surface}
-        title={open.kind === "create" ? "New" : "Edit"}
+        title={say(open.kind === "create" ? "newRecord" : "edit")}
         anchor={anchor}
         container={underRow === undefined ? undefined : detail}
         onClose={close}
@@ -371,7 +323,7 @@ export function Table({ node }: { node: SpecNode }) {
         <div data-telo-part="table-toolbar">
           <button data-telo-part="table-create" type="button" onClick={(event) => show({ kind: "create" }, createName, "", event.currentTarget)}>
             <Icon of={Plus} />
-            New
+            {say("newRecord")}
           </button>
         </div>
       )}
@@ -389,10 +341,10 @@ export function Table({ node }: { node: SpecNode }) {
                     return (
                       <th key={index} data-telo-part="table-header-cell" data-sorted={sorted} aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : undefined}>
                         {column.sort === undefined ? (
-                          column.header
+                          text(column.header)
                         ) : (
                           <button data-telo-part="table-sort" type="button" onClick={() => sortBy(column.sort as string)}>
-                            {column.header}
+                            {text(column.header)}
                             <Icon of={sorted === "asc" ? ArrowUp : sorted === "desc" ? ArrowDown : ChevronsUpDown} />
                           </button>
                         )}
@@ -413,29 +365,15 @@ export function Table({ node }: { node: SpecNode }) {
                               <Node node={column.cell} />
                             </RowContext.Provider>
                           ) : (
-                            <Presented value={resolveBinding(column.value as Binding, { row })} present={column.present} />
+                            <Presented value={resolveBinding(column.value as Binding, { row })} present={column.present} labels={column.labels} />
                           )}
                         </td>
                       ))}
                       {actions && (
                         <td data-telo-part="row-actions">
-                          {rowActions.map((action, index) => {
-                            const sending = acting && pressed.action === action && keyOf(pressed.row) === keyOf(row);
-                            return (
-                              <button
-                                key={index}
-                                data-telo-part="row-action"
-                                type="button"
-                                data-state={sending ? "submitting" : undefined}
-                                disabled={acting || deleting}
-                                onClick={() => press(action, row)}
-                              >
-                                {action.label}
-                              </button>
-                            );
-                          })}
-                          {edits && <IconButton part="row-edit" label="Edit" icon={Pencil} onClick={(button) => show({ kind: "edit", key: keyOf(row) }, editName, keyOf(row), button)} />}
-                          {node.delete && <IconButton part="row-delete" label="Delete" icon={Trash2} disabled={acting} onClick={() => writing.current === "action" || confirmDelete(row)} />}
+                          {rowActions.cell(row, keyOf(row), deleting)}
+                          {edits && <IconButton part="row-edit" label={say("edit")} icon={Pencil} onClick={(button) => show({ kind: "edit", key: keyOf(row) }, editName, keyOf(row), button)} />}
+                          {node.delete && <IconButton part="row-delete" label={say("delete")} icon={Trash2} disabled={rowActions.busy(keyOf(row))} onClick={() => rowActions.busy(keyOf(row)) || confirmDelete(row)} />}
                         </td>
                       )}
                     </tr>
@@ -449,7 +387,7 @@ export function Table({ node }: { node: SpecNode }) {
                 {page && rows.length === 0 && (
                   <tr>
                     <td data-telo-part="table-empty" colSpan={span}>
-                      No rows.
+                      {say("noRows")}
                     </td>
                   </tr>
                 )}
@@ -466,55 +404,24 @@ export function Table({ node }: { node: SpecNode }) {
         )}
         <div data-telo-part="pager">
           <span data-telo-part="pager-status">
-            {page ? (rows.length === 0 ? `0 of ${page.total}` : `${start + 1}–${start + rows.length} of ${page.total}`) : ""}
+            {page
+              ? rows.length === 0
+                ? say("pagerEmpty", { total: page.total })
+                : say("pagerRange", { first: start + 1, last: start + rows.length, total: page.total })
+              : ""}
           </span>
-          <IconButton part="pager-prev" label="Previous page" icon={ChevronLeft} disabled={view.page === 0} onClick={() => setView({ ...view, page: view.page - 1 })} />
-          <IconButton part="pager-next" label="Next page" icon={ChevronRight} disabled={!page || page.next === null} onClick={() => setView({ ...view, page: view.page + 1 })} />
+          <IconButton part="pager-prev" label={say("previousPage")} icon={ChevronLeft} disabled={view.page === 0} onClick={() => setView({ ...view, page: view.page - 1 })} />
+          <IconButton part="pager-next" label={say("nextPage")} icon={ChevronRight} disabled={!page || page.next === null} onClick={() => setView({ ...view, page: view.page + 1 })} />
         </div>
       </div>
       {!above && drawn}
-      {pressed?.open && (
-        <Confirmation
-          title={pressed.action.confirm ?? pressed.action.label}
-          confirm={pressed.action.label}
-          danger={false}
-          busy={pressed.busy}
-          failure={pressed.failure}
-          onConfirm={() => act(pressed.action, pressed.row, true, pressed.values)}
-          onClose={() => pressed.busy || setPressed(undefined)}
-        >
-          {pressed.action.prompt && (
-            <form
-              data-telo-part="form"
-              autoComplete="off"
-              noValidate
-              onSubmit={(event) => {
-                event.preventDefault();
-                void act(pressed.action, pressed.row, true, pressed.values);
-              }}
-            >
-              <Fields
-                id={promptId}
-                schema={pressed.action.prompt.schema}
-                fields={pressed.action.prompt.fields}
-                values={pressed.values}
-                errors={pressed.fieldErrors}
-                onChange={(property, next) => setPressed((current) => current && { ...current, values: { ...current.values, [property]: next } })}
-              />
-              {pressed.formError && (
-                <div data-telo-part="form-error" role="alert">
-                  {pressed.formError}
-                </div>
-              )}
-            </form>
-          )}
-        </Confirmation>
-      )}
+      {rowActions.dialog}
       {removing && (
         <Confirmation
-          title="Delete this row?"
-          description="This cannot be undone."
-          confirm="Delete"
+          title={say("deleteRowQuestion")}
+          description={say("deleteRowDetail")}
+          confirm={say("delete")}
+          cancel={say("cancel")}
           busy={deleting}
           failure={deleteFailure}
           onConfirm={() => remove(removing)}

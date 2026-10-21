@@ -2,9 +2,10 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { styleAttribute } from "./bindings.js";
 import { useHost, useHostStore, type HostLocation, type UnsavedGuard } from "./host.js";
 import { ErrorNode, type SpecNode } from "./nodes.js";
-import { enteredRecord, enteredValues, fieldFindings, Fields, refusalOf, sameValues, type EnteredValues, type Field } from "./record-fields.js";
+import { useRecordEntry, type EntrySpec } from "./record-entry.js";
+import { enteredValues, Fields, refusalOf, sameValues, type EnteredValues } from "./record-fields.js";
+import { useSay } from "./texts.js";
 import { networkError, responseError, type ErrorSpec, errorSpec } from "./ui-error.js";
-import type { JsonSchema } from "./validation.js";
 
 export interface FormTarget {
   method: "POST" | "PUT";
@@ -41,18 +42,17 @@ interface FormProps {
 export function Form({ node, target, initial, afterSubmit = "again", shownAt, onUnsaved, onBusy, onSaved, onDone, onCancel }: FormProps) {
   const host = useHost();
   const store = useHostStore();
+  const say = useSay();
   const id = useId();
-  const schema = node.schema as JsonSchema;
-  const fields = node.fields as Field[];
-  const blank = () => enteredValues(schema, fields, initial);
+  const spec = node as unknown as EntrySpec;
+  const { schema, fields } = spec;
+  const entry = useRecordEntry(spec, initial);
+  const { values, shown } = entry;
   // What the form held when it was last saved, or opened.
-  const [saved, setSaved] = useState<EnteredValues>(blank);
-  const [values, setValues] = useState<EnteredValues>(saved);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [formError, setFormError] = useState<string>();
+  const [saved, setSaved] = useState<EnteredValues>(values);
   const [failure, setFailure] = useState<ErrorSpec>();
   const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
-
+  const blank = () => enteredValues(schema, fields, initial);
   const dirty = !sameValues(fields, values, saved);
   const busy = state === "submitting";
 
@@ -82,12 +82,6 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
     return () => onBusy?.(false);
   }, [busy]);
 
-  const refuse = (byField: Record<string, string>, other: string[]) => {
-    setFieldErrors(byField);
-    setFormError(other.length > 0 ? other.join(" ") : undefined);
-    setState("error");
-  };
-
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setFailure(undefined);
@@ -99,21 +93,22 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
         if (initial[name] !== null && initial[name] !== undefined) held[name] = initial[name];
       }
     }
-    const record = enteredRecord(schema, fields, values, held);
-    const invalid = fieldFindings(schema, fields, record);
-    if (Object.keys(invalid).length > 0) return refuse(invalid, []);
-    setFieldErrors({});
-    setFormError(undefined);
+    // A hidden field's value is neither sent nor checked; the record is still
+    // held to the model, so a property it requires blocks the submission.
+    for (const field of fields) if (!shown.includes(field)) delete held[field.property];
+    const checked = entry.check(held);
+    if (!checked.ok) return setState("error");
     setState("submitting");
     try {
       const response = await host
-        .fetch(target.url, { method: target.method, headers: { "content-type": "application/json" }, body: JSON.stringify(record) })
+        .fetch(target.url, { method: target.method, headers: { "content-type": "application/json" }, body: JSON.stringify(checked.record) })
         .catch((error) => {
           throw networkError(error);
         });
       if (response.status === 400) {
-        const { byField, other } = refusalOf(await response.json(), fields);
-        return refuse(byField, other);
+        const { byField, other } = refusalOf(await response.json(), shown, say);
+        entry.refuse(byField, other);
+        return setState("error");
       }
       if (!response.ok) throw await responseError(response);
     } catch (error) {
@@ -128,33 +123,26 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
     if (afterSubmit === "close") return onDone?.();
     const next = afterSubmit === "keep" ? values : blank();
     setSaved(next);
-    setValues(next);
+    entry.reset(next);
   };
 
   return (
     <form data-telo-part="form" autoComplete="off" data-state={state} data-dirty={dirty ? "true" : undefined} data-style={styleAttribute(node.style)} noValidate onSubmit={submit}>
       {failure && <ErrorNode error={failure} />}
-      <Fields
-        id={id}
-        schema={schema}
-        fields={fields}
-        values={values}
-        errors={fieldErrors}
-        onChange={(property, next) => setValues((current) => ({ ...current, [property]: next }))}
-      />
-      {formError && (
+      <Fields id={id} schema={schema} fields={shown} groups={spec.groups} values={values} roots={entry.roots} errors={entry.errors} onChange={entry.change} />
+      {entry.formError && (
         <div data-telo-part="form-error" role="alert">
-          {formError}
+          {entry.formError}
         </div>
       )}
       <div data-telo-part="form-actions">
         {onCancel && (
           <button data-telo-part="cancel" type="button" disabled={busy} onClick={onCancel}>
-            Cancel
+            {say("cancel")}
           </button>
         )}
         <button data-telo-part="submit" type="submit" disabled={busy}>
-          Save
+          {say("save")}
         </button>
       </div>
     </form>

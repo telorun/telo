@@ -6,6 +6,7 @@ packages:
   - apps/k8s-runner
   - benchmarks/*
   - cel/*
+  - message-format/nodejs
   - cli/*
   - modules/*/*
   - modules/*/*/*
@@ -24,6 +25,8 @@ packages:
   # one failure it must not have.
   - tests/__fixtures__/*/nodejs
   - modules/*/tests/__fixtures__/*/nodejs
+  # Example modules with TypeScript controllers, for the same reason.
+  - examples/*/*/nodejs
 
 onlyBuiltDependencies:
   - better-sqlite3

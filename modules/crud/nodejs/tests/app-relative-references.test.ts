@@ -33,16 +33,18 @@ const sites = MANIFESTS.flatMap((manifest) =>
 );
 
 describe("an app-relative reference", () => {
-  it("is declared at the nine places a manifest writes one", () => {
+  it("is declared at the eleven places a manifest writes one", () => {
     expect(sites.map(({ site }) => site.replace(/^.*\/telo\.yaml /, "").replace(/: .*\//, " "))).toEqual([
       "Ui basePath",
       "Node href",
       "Node src",
       "SpecNode href",
       "SpecNode src",
+      "Data path",
       "Table basePath",
       "Form basePath",
       "Action path",
+      "CollectionOptions basePath",
       "App path",
     ]);
   });

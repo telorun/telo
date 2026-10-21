@@ -1,0 +1,32 @@
+# A templated kind whose body holds a catalog set translating one text twice
+# into Polish across two sibling catalogs.
+kind: Telo.Library
+metadata:
+  name: CatalogSetBody
+  version: 1.0.0
+  description: Fixture library whose template body holds a catalog set translating one text twice.
+imports:
+  Kinds: ../../kinds
+exports:
+  kinds: [Translations]
+---
+kind: Telo.Definition
+metadata:
+  name: Translations
+capability: Telo.Provider
+schema: { type: object }
+provide: !ref set
+resources:
+  - kind: Kinds.Catalog
+    metadata: { name: base }
+    lang: pl
+    texts:
+      - { text: Open, translation: Otwórz }
+  - kind: Kinds.Catalog
+    metadata: { name: pack }
+    lang: pl
+    texts:
+      - { text: Open, translation: Otwórzcie }
+  - kind: Kinds.Set
+    metadata: { name: set }
+    catalogs: [!ref base, !ref pack]

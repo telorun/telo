@@ -6,11 +6,13 @@ metadata:
   version: 1.0.0
 imports:
   UiReact: ../../../../
+  Ui: ../../../../../ui
 ---
 kind: UiReact.App
 metadata:
   name: offsitePath
 title: Off-site path
+words: !ref Ui.words
 pages:
   - path: //reports
     title: Reports
@@ -20,6 +22,7 @@ kind: UiReact.App
 metadata:
   name: offsiteLink
 title: Off-site link
+words: !ref Ui.words
 pages:
   - path: /
     title: Home

@@ -1,0 +1,4 @@
+# Generated from ../cldr/*.json by `scripts/generate-cldr-module.mjs` (run by
+# `prepare`): TypeScript cannot import a JSON file from outside its own package,
+# and the tracked JSON is the one copy of the data.
+src/cldr-data.ts

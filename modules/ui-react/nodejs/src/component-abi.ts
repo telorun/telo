@@ -33,10 +33,22 @@ export function withUnhostedComponentsReplaced(
     const next: SpecNode = { ...current };
     if (Array.isArray(current.children)) next.children = current.children.map(visit);
     if (current.type === "filters") next.content = visit(current.content);
+    if (current.type === "data") {
+      next.content = visit(current.content);
+      next.loading = visit(current.loading);
+      next.failure = visit(current.failure);
+    }
+    if (current.type === "action") {
+      if (current.result !== undefined) next.result = visit(current.result);
+      next.failure = visit(current.failure);
+    }
     if (current.type === "table") {
       next.columns = current.columns.map((column: Record<string, any>) =>
         column.cell ? { ...column, cell: visit(column.cell) } : column,
       );
+    }
+    if (Array.isArray(current.rowActions)) {
+      next.rowActions = current.rowActions.map((entry: Record<string, any>) => ({ ...entry, action: visit(entry.action) }));
     }
     return next;
   };

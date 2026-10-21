@@ -1,0 +1,76 @@
+kind: Telo.Application
+metadata:
+  name: I18nNegotiationTest
+  version: 1.0.0
+  description: |
+    `Self.<negotiator>(acceptLanguage)` as a manifest sees it: ranges tried by
+    quality against the translator's catalog languages and the default, a
+    regional range answered by its language, malformed ranges, `*` and `q=0`
+    skipped, and the default when nothing matches.
+lang: en
+imports:
+  I18n: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: I18n.Catalog
+metadata: { name: polish }
+lang: pl
+texts:
+  - { text: Open, translation: Otwórz }
+---
+kind: I18n.Catalog
+metadata: { name: english }
+lang: en
+texts:
+  - { text: Open, translation: Open now }
+---
+kind: I18n.Translator
+metadata: { name: bilingual }
+catalogs: [!ref polish, !ref english]
+---
+kind: I18n.Translator
+metadata: { name: polishOnly }
+catalogs: [!ref polish]
+---
+kind: I18n.Negotiator
+metadata: { name: language }
+translator: !ref bilingual
+default: en
+---
+kind: I18n.Negotiator
+metadata: { name: polishOrEnglish }
+translator: !ref polishOnly
+default: en
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: assertByQuality
+    inputs:
+      actual:
+        firstUnavailable: !cel "Self.language('de;q=0.9, pl;q=0.8')"
+        defaultPreferred: !cel "Self.polishOrEnglish('en;q=1, pl;q=0.5')"
+        reordered: !cel "Self.language('en;q=0.4, pl')"
+      expected: { firstUnavailable: pl, defaultPreferred: en, reordered: pl }
+    invoke: !ref Assert.equals
+
+  - name: assertLookup
+    inputs:
+      actual:
+        regional: !cel "Self.language('pl-PL')"
+        caseInsensitive: !cel "Self.language('PL')"
+      expected: { regional: pl, caseInsensitive: pl }
+    invoke: !ref Assert.equals
+
+  - name: assertSkipped
+    inputs:
+      actual:
+        refused: !cel "Self.polishOrEnglish('pl;q=0, de')"
+        wildcard: !cel "Self.polishOrEnglish('*, pl;q=0.1')"
+        malformed: !cel "Self.polishOrEnglish('pl;q=2, ??, de-DE, pl;q=0.3')"
+        empty: !cel "Self.language('')"
+      expected: { refused: en, wildcard: pl, malformed: pl, empty: en }
+    invoke: !ref Assert.equals

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { CelEvalMode } from "./cel-utils";
-import { FieldControl, inferType, ownsLabel } from "./field-control";
+import { FieldControl, fieldKindLabel, ownsLabel } from "./field-control";
 import { SeverityDot, type FieldDiagnostic } from "./field-diagnostics";
+import { LocalSchemaRoot, resolveLocalSchemaRef } from "./local-schema-ref";
 import type { RefResolver } from "./ref-candidates";
 import { resolveSiblingTypedProp } from "./sibling-typed-field";
 import type {
@@ -74,10 +75,10 @@ export function ResourceSchemaForm({
   const fields = useMemo(
     () =>
       Object.entries(properties).flatMap(([name, rawProp]) => {
-        const prop = resolveSiblingTypedProp(rawProp, values);
-        return prop ? [{ name, prop, kind: inferType(prop) }] : [];
+        const prop = resolveSiblingTypedProp(resolveLocalSchemaRef(rawProp, schema), values);
+        return prop ? [{ name, prop, kind: fieldKindLabel(prop, schema) }] : [];
       }),
-    [properties, values],
+    [properties, values, schema],
   );
 
   const errorPathsRef = useRef<Set<string>>(new Set());
@@ -111,47 +112,49 @@ export function ResourceSchemaForm({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      {fields.map(({ name, prop, kind }) => {
-        const labelText = typeof prop.title === "string" ? prop.title : name;
-        const fieldOwnsLabel = ownsLabel(prop);
-        return (
-          <div key={name} className="flex flex-col gap-1">
-            {!fieldOwnsLabel && (
-              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                {labelText}
-                {required.has(name) ? <span className="ml-1 text-red-500">*</span> : null}
-                <span className="ml-1 text-zinc-400 dark:text-zinc-600">({kind})</span>
-                {/* The label marks that something below is wrong; the MESSAGE
-                    now sits at the field it is about, which for a nested one is
-                    somewhere inside this field rather than under it. */}
-                <SeverityDot diagnostics={fieldDiagnostics} fieldPath={name} />
-              </label>
-            )}
-            <FieldControl
-              rootFieldName={name}
-              fieldPath={name}
-              prop={prop}
-              value={values[name]}
-              onValueChange={(next) => setField(name, next)}
-              onFieldBlur={onFieldBlur}
-              onErrorChange={onErrorChange}
-              resolvedResources={resolvedResources}
-              rootCelEval={rootCelEval}
-              onSelectResource={onSelectResource}
-              onOpenInline={onOpenInline}
-              onMoveDeclaration={onMoveDeclaration}
-              celTarget={celTarget}
-              fieldDiagnostics={fieldDiagnostics}
-              typeKinds={typeKinds}
-              registry={registry}
-              label={labelText}
-              required={required.has(name)}
-              flat={flat}
-            />
-          </div>
-        );
-      })}
-    </div>
+    <LocalSchemaRoot.Provider value={schema}>
+      <div className="flex flex-col gap-3">
+        {fields.map(({ name, prop, kind }) => {
+          const labelText = typeof prop.title === "string" ? prop.title : name;
+          const fieldOwnsLabel = ownsLabel(prop);
+          return (
+            <div key={name} className="flex flex-col gap-1">
+              {!fieldOwnsLabel && (
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                  {labelText}
+                  {required.has(name) ? <span className="ml-1 text-red-500">*</span> : null}
+                  <span className="ml-1 text-zinc-400 dark:text-zinc-600">({kind})</span>
+                  {/* The label marks that something below is wrong; the MESSAGE
+                      now sits at the field it is about, which for a nested one is
+                      somewhere inside this field rather than under it. */}
+                  <SeverityDot diagnostics={fieldDiagnostics} fieldPath={name} />
+                </label>
+              )}
+              <FieldControl
+                rootFieldName={name}
+                fieldPath={name}
+                prop={prop}
+                value={values[name]}
+                onValueChange={(next) => setField(name, next)}
+                onFieldBlur={onFieldBlur}
+                onErrorChange={onErrorChange}
+                resolvedResources={resolvedResources}
+                rootCelEval={rootCelEval}
+                onSelectResource={onSelectResource}
+                onOpenInline={onOpenInline}
+                onMoveDeclaration={onMoveDeclaration}
+                celTarget={celTarget}
+                fieldDiagnostics={fieldDiagnostics}
+                typeKinds={typeKinds}
+                registry={registry}
+                label={labelText}
+                required={required.has(name)}
+                flat={flat}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </LocalSchemaRoot.Provider>
   );
 }

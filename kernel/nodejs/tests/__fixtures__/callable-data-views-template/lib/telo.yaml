@@ -1,0 +1,65 @@
+# `peer` names `base`, a resource of this library — which an entry of the body
+# does not reach, so the function holding `peer` is refused at creation.
+kind: Telo.Library
+metadata:
+  name: CallableDataViewsTemplateLib
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata:
+  name: Label
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    peer:
+      x-telo-ref: { kind: Self.Label, use: dependency }
+controllers:
+  - pkg:telo/local/js?path=./functions.mjs#Label
+---
+kind: Telo.Definition
+metadata:
+  name: Read
+capability: Telo.Callable
+schema:
+  type: object
+  properties:
+    source:
+      x-telo-ref: { kind: Self.Label, use: dependency }
+params: []
+returns:
+  schema: { type: object }
+controllers:
+  - pkg:telo/local/js?path=./functions.mjs#Read
+---
+kind: Telo.Definition
+metadata:
+  name: Box
+capability: Telo.Invocable
+schema: { type: object }
+invoke: !ref respond
+resources:
+  - kind: Self.Label
+    metadata: { name: peer }
+    peer: !ref base
+  - kind: Self.Read
+    metadata: { name: read }
+    source: !ref peer
+  - kind: Self.Respond
+    metadata: { name: respond }
+---
+kind: Telo.Definition
+metadata:
+  name: Respond
+capability: Telo.Invocable
+schema: { type: object }
+controllers:
+  - pkg:telo/local/js?path=./functions.mjs#Respond
+---
+kind: Self.Label
+metadata:
+  name: base
+---
+kind: Self.Box
+metadata:
+  name: box

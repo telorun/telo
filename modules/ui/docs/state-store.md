@@ -1,7 +1,9 @@
 # Keeping a filter bar's state
 
 A [filter bar](filters.md) with no `policy.state` keeps what the viewer chose
-in memory: it is gone on a reload. `state` says where else it is kept.
+in memory: it is gone on a reload. `state` — a `Ui.StateRecord`, the same
+record a [form's and an action's `state`](field-kinds.md#kept-values) is —
+says where else it is kept.
 
 ```yaml
 policy:
@@ -16,6 +18,7 @@ policy:
 | `key` | required | the name the state is kept under: a letter, then letters and digits |
 | `address` | `false` | whether the filter values are part of the page's address |
 | `store` | none | a `Ui.StateStore`, `!ref` or inline: where the state is stored between visits |
+| `fields` | every property shown | the properties whose filters are kept; one no filter shows is `UI_STATE_FIELD_UNKNOWN` |
 
 At least one of `address: true` and `store` is written; a `state` that keeps
 nothing is a `SCHEMA_VIOLATION`.

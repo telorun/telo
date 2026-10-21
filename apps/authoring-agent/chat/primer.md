@@ -235,13 +235,44 @@ operator, an index, `!interpolate`, a tag beneath the field or a chain rooted
 outside the field's bindings (`variables.x`) is `ACCESSOR_NOT_PLAIN_CHAIN`. The
 controller receives a plain map: `{ root: "row", path: ["status"] }` for a
 chain, `{ value: "muted" }` for a literal. A binding that is ONE ELEMENT of a
-list another accessor of the same entry names is typed with
-`x-telo-context-element-from-item: "<field>"` — `row: {
-x-telo-context-element-from-item: rows }` types `row` as an element of the
-array the entry's own `rows` chain points at; a chain that resolves to no
-array leaves the binding untyped. A kind that only FORWARDS such a
+list another accessor names is typed with
+`x-telo-context-element-from-item: "<relative pointer>"` — levels to climb from
+the object holding the field the region sits on, then a JSON Pointer:
+`row: { x-telo-context-element-from-item: "0/rows" }` on a region on `columns`
+types `row` as an element of the array the sibling `rows` chain points at, and
+`"2/rows"` on a region on each column's own `value` reaches the list two levels
+up. The chain is typed as at its own site, so it may root at a binding of an
+enclosing region; one that resolves to no array leaves the binding untyped. A
+pointer naming no CEL-typed field is `ELEMENT_FROM_ITEM_INVALID`; never write
+the bare field name (`rows`), the old spelling. A kind that only FORWARDS such a
 field into a template body does not annotate its own field `accessor` — the
-entry that finally holds it does.
+entry that finally holds it does. A chain may start at a binding of EVERY
+`x-telo-context` enclosing the field: a nested region adds to the ones above
+it, an inner name shadowing an outer one. Regions, eval fields and accessor
+fields inside a named shape are found at every depth of its recursion. Only the
+accessor field itself is left unevaluated at creation — an expression beside it
+under a provider's compile-eval root is still evaluated.
+
+A binding names the eval modes it exists at with `x-telo-context-eval:
+<mode> | [<mode>…]` (`compile`, `runtime`, `accessor`; absent, every mode). A
+binding only the consumer has (a row a page renders in the browser) is marked
+`accessor`: it may be named by an accessor and is `CEL_UNKNOWN_IDENTIFIER` in any
+`!cel` / `!interpolate` that is evaluated. One only the server has (a page's
+`request`) is marked `runtime`: an accessor chain rooted at it is
+`CEL_UNKNOWN_IDENTIFIER`. A binding of a kind whose resources are referenced
+from another (a form's field) may take its type from whoever references it:
+`x-telo-context-from-referrer: <name>` on an `accessor`-only binding types it
+as the binding of that name in scope at each referencing slot, judged once per
+distinct type. `x-telo-context-item-fills: ["", "/property"]` on a binding of a
+region over a list says which member each entry fills; entries reading each
+other's members in a cycle are `CONTEXT_FILL_CYCLE`. A
+field holding a JSON Schema matched against what an accessor names carries
+`x-telo-match-for: /<sibling accessor>`; a schema that can never hold for the
+accessor's type (`const: billing` at an integer, `type: string` at an integer)
+is `MATCH_UNSATISFIABLE`, and a pointer naming no accessor field is
+`MATCH_FOR_INVALID`. A `format: re2-pattern` string is a regular expression both
+RE2 and the browser match alike — no lookaround, backreferences, `.` or
+`\s` (write the class: `[^\n]`, `[ \t]`).
 
 A string field naming an EXPORT of a browser entry carries
 `x-telo-browser-export: { entry: /<sibling> }`, a JSON Pointer to the sibling
@@ -782,7 +813,8 @@ before that is not undone.
 
 A resource rule reads what its reference slots NAME only when it opts in with
 `resolve: [/<slot>]`: inside the condition each listed slot is the declaration
-it references, one level deep. A referenced `Telo.JsonSchema` is read as the
+it references; a pointer may continue past a slot into what it names and range
+with `*` (`resolve: [/fields/*/options/model]`). A referenced `Telo.JsonSchema` is read as the
 shape it is — its `extends:` parents folded into its `schema` — so a rule over
 `self.<slot>.schema.properties` sees inherited properties too. A pointer naming a field the resource left out
 contributes nothing — the field stays ABSENT, so `self.?xs.orValue([])` is the
@@ -1141,6 +1173,14 @@ rule declaring `peers:` evaluates once per entry; `peers:` requires `referrer:`
 and must name a collection that kind declares whose items are, or contain, a
 reference.
 
+`resolve: [/model]` binds `referrer` with each named reference slot of the
+referrer replaced by the declaration it names, one level deep — so
+`referrer.model.columns` reads the model a form references. It requires
+`referrer:`, and each pointer must be a field that kind declares.
+`resolveSelf: [/<slot>]` does the same for the kind's own slots, binding `self`.
+A rule code names one rule per `referrer:` filter, so one judgement declared for
+two owner kinds keeps one code.
+
 Both families: write `condition:` with the `!cel` tag, guard optional fields,
 and expect a rule that never ran anywhere to be reported as unexercised rather
 than to pass silently. A rule is SKIPPED when a value it reads holds a `!cel` or
@@ -1425,6 +1465,83 @@ relative to the element it is matched from starts with `:scope`
 there passes the check and its result is refused at creation (or dispatch)
 with the same reason.
 
+A language tag (`format: language-tag`, RFC 5646: `en`, `pl-PL`, `zh-Hant-TW`)
+and a MessageFormat 2 pattern (`format: message-pattern`) are checked the same way.
+
+## Text shown to a person — `Text`, `lang:`, catalogs
+
+A field or a function parameter holding text a person sees is typed
+`{ $ref: "telo://manifest#/$defs/Text" }`. Write the text as a pattern with
+`{$name}` placeholders (`"{$count} files"`; `\{`, `\}`, `\\` escape), as a
+plural selection, or with a context telling the same words apart:
+
+```yaml
+label:
+  plural: count
+  cases: { "=0": "No files", one: "{$count} file", other: "{$count} files" }
+title: { text: Open, context: verb }
+```
+
+`other` is required; `=N` cases match before the CLDR categories (`zero`, `one`,
+`two`, `few`, `many`). A module writes its texts in its `lang:` — a top-level key
+of the `Telo.Application` / `Telo.Library` document (`lang: en`). A plural text in
+a module with no `lang:` is `MESSAGE_SOURCE_LANGUAGE_MISSING`; a case its language
+lacks (`few` in `en`) is `MESSAGE_PLURAL_CATEGORY_INVALID`. A `Text` parameter
+takes a text WRITTEN AT THE CALL — `Self.t('Rate for {$who}', {'who': name})` —
+never an expression (`TEXT_ARGUMENT_COMPUTED`); a parameter whose schema says
+`x-telo-text-values-for: /text` holds that text's values, and every placeholder
+and selector must be given (`MESSAGE_PLACEHOLDER_UNBOUND`), a string or a number.
+A field holding a text's values declares the same annotation, its pointer relative
+to the object holding it. A translation set is typed
+`telo://manifest#/$defs/TextCatalog` — `{ lang, texts: [{ text, context?,
+translation }] }`, literals only — never an expression inside it or computing it
+whole (`MESSAGE_ENTRY_COMPUTED`), one entry per text and
+context (`MESSAGE_ENTRY_DUPLICATE`), a translation reading only the source's
+placeholders (`MESSAGE_PLACEHOLDER_UNKNOWN`); an entry matching no text the
+catalog's module imports is warned (`MESSAGE_TEXT_UNUSED`), so a language-pack
+library imports the module whose texts it translates. Titles, descriptions and
+string enum values of a data schema are texts too; `x-telo-text-context: <context>`
+on a node gives them a context. A controller receives every `Text` as
+`{ text, context, lang, computed }`, attributed to the module that wrote it — a
+text in a per-call field included, judged when the controller evaluates it. Never
+type a text under an `x-telo-eval: accessor` field (`TEXT_SLOT_ACCESSOR`): show
+text over per-row data as a `Text` field whose values object is
+`x-telo-text-values-for` with accessor entries (`count: !cel "row.count"`).
+A text a kind's consumer formats itself (a renderer in the browser) carries
+`x-telo-text-values: { limit: { type: integer } }` on its node — `{}` for none —
+and a text written there may read only those placeholders
+(`MESSAGE_PLACEHOLDER_UNBOUND`); on a non-text node, with a non-scalar value
+schema, or beside a values pairing it is `TEXT_VALUES_INVALID`. So a node text
+of `Ui` with a placeholder is written `{ text, values }`, never as a plain text.
+A field admitting a text OR another shape (`anyOf`) is judged by the branch the
+value is; a record a kind hands on is typed `telo://manifest#/$defs/TextRecord`
+and never judged again.
+A kind looking texts up in several catalogs marks where they are gathered with
+`x-telo-text-catalog-set: true` on a node of its `schema:` (a field holding
+catalogs, or the references naming them; never inside another marked node —
+`TEXT_CATALOG_SET_INVALID`): across the set — those catalogs, and the catalogs
+of every resource referenced there — one text and context is translated once
+per language (`MESSAGE_ENTRY_DUPLICATE`, at the reference bringing in the second).
+
+## Translating texts — the `i18n` module
+
+`I18n.Catalog` is one language's translations (its fields are the `TextCatalog`
+shape: `lang`, `texts`). `I18n.Translator` is a CEL function over a catalog set
+(`catalogs: [!ref polish, !ref Pack.german]`, optional — none formats texts as
+written); declare it top-level and call it `Self.t(text, lang, values?)`, or
+`<Alias>.t(...)` when a library exports it. `text` is written at the call (a
+message or `{'text': …, 'context': …}`), `lang` ONE tag passed on every call —
+there is no ambient locale — and `values` a map for its placeholders and plural
+selectors. Lookup tries `pl-PL`, then `pl`, then formats the source in its own
+module's language. `I18n.Negotiator` (`translator: !ref t`, `default: en`)
+answers the language to reply in from an `Accept-Language` value:
+`Self.language(request.headers[?'accept-language'].orValue(''))`. In an API,
+negotiate once per request in the route's `inputs:`, pass the tag to every
+`Self.t`, and write it to a `Content-Language` header in `returns:`. Choose a
+message by a value with a CEL map of literal calls,
+`{'A': Self.t('…', lang), 'B': Self.t('…', lang)}[?code].orValue(Self.t('…', lang))`
+— never a computed text.
+
 ## Typing a collection of entries — schema projections
 
 A kind whose config is a collection of typed entries types what its consumers
@@ -1466,7 +1583,11 @@ continues through a reference slot into the declaration that slot names, and a
 `*` segment ranges over every element of a list. Every type reached must hold,
 so declare such types OPEN (`properties` without `additionalProperties: false`)
 when several may combine; each reached type keeps its own `$defs`; when
-nothing is reached the node stays as written. A call whose argument does not
+nothing is reached the node stays as written. The object form
+`{ from: <location>, member: "0#" }` holds the value to the property of each
+reached type that its own map key names — a map of filters typed key by key by
+a model; on a configuration slot every expression there, accessors included,
+must fit that property's type (`CEL_TYPE_ERROR`). A call whose argument does not
 satisfy a reached type is `CONTRACT_INPUTS_MISMATCH` at the call site and
 `ERR_INPUT_INVALID` at dispatch.
 
@@ -1546,6 +1667,17 @@ body: !cel "net * (1.0 + rate)"
   - To hold a function in a kind's slot, constrain the slot to a callable
     `Telo.Abstract` that declares `params` / `returns`, never to bare
     `Telo.Callable`.
+  - A NATIVE callable kind's `use: dependency` slot may name ANY kind but a
+    need type: its controller's `create()` receives the referent's
+    configuration as plain frozen data (references inside it resolved the
+    same way), never an instance — how a translator reads its catalogs. A
+    referent holding a runtime-eval expression, a CEL region, a step or
+    function body, a scope or a need there is `CALLABLE_REFERENCE_NOT_DATA`.
+    A native function that CALLS a function it holds declares that slot
+    `use: call`. In a TEMPLATE BODY such a slot reaches a sibling entry or
+    `!ref <Alias>.<name>`, never a resource of the defining module (also
+    `CALLABLE_REFERENCE_NOT_DATA`): declare it in `resources:` or hand it in
+    through a bare `self.<field>`.
   - `telo cel functions <manifest>` lists what a manifest can call.
 
 ## Bytes and streams over HTTP
@@ -2900,6 +3032,9 @@ to say.
   specifier is `BROWSER_ENTRY_INVALID`. Entries declaring the SAME `external`
   list are built together and share their common code, which is the only way
   two entries share a dependency. Nothing needs a `files:` entry.
+- `lang:` — the language the module's own texts are written in, an RFC 5646 tag
+  (`lang: en`), on either module kind. A module using it — or any text-vocabulary
+  syntax — declares a `requires: telo:` floor at the release that carries it.
 - `requires:` — the runtime range this module is verified against, on either
   module kind. `telo:` is a semver range over the MANIFEST SURFACE GENERATION
   (`requires: {telo: ">=0.80.0"}`), one scale every kernel reports; host
@@ -3460,7 +3595,10 @@ third-party capability. `Run.Sequence` runs ordered steps with `if` / `while` /
 `iteration` (0-based, an integer — `iteration + 1` needs no cast) and
 `previous`; `Run.Iteration` / `Run.Projection` walk a collection, their body
 seeing each element as `item` and its 0-based position as `index`; `Run.Value` /
-`Run.Choice` compute. A recurring job is `Schedule.Interval` in `targets:`; a
+`Run.Choice` compute. A `Run.Projection`'s result is always an ARRAY: type one
+element with `elementType:` (never `outputType:`, which is the whole array) —
+`outputs` is checked against it and `steps.<name>.result[i]` is typed from it —
+and write a `catches:` fallback `value:` as an array too. A recurring job is `Schedule.Interval` in `targets:`; a
 loop that paces itself is `Run.Loop` with a `Timer.Delay` step. Neither needs a
 counter resource — the loop already carries one.
 

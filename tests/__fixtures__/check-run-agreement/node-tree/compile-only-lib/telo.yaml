@@ -1,0 +1,25 @@
+# A tag template evaluated per call reads a binding that exists only at load,
+# invoked by the sequence the library exports.
+kind: Telo.Library
+metadata:
+  name: CompileOnlyLib
+  version: 1.0.0
+  description: Fixture library whose tag template reads a binding that exists only at load.
+imports:
+  Kinds: ../kinds
+  Run: ../../../../../modules/run
+exports:
+  resources: [go]
+---
+kind: Kinds.Tags
+metadata:
+  name: stamped
+tags:
+  first: !cel "stamp"
+---
+kind: Run.Sequence
+metadata:
+  name: go
+steps:
+  - name: tags
+    invoke: !ref stamped

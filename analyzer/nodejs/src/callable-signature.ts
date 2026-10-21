@@ -29,6 +29,7 @@ import {
   effectiveContractField,
   inheritedCapability,
 } from "./extends-resolution.js";
+import { liftFragmentDefs } from "./manifest-schemas.js";
 
 /** The capability whose entry point is a synchronous `call(args)`. */
 export const CALLABLE_CAPABILITY = "Telo.Callable";
@@ -198,7 +199,7 @@ function withNull(schema: Record<string, any>): Record<string, any> {
   if (Array.isArray(schema.type)) {
     return schema.type.includes("null") ? schema : { ...schema, type: [...schema.type, "null"] };
   }
-  return { anyOf: [schema, { type: "null" }] };
+  return liftFragmentDefs({ anyOf: [schema, { type: "null" }] });
 }
 
 /** On a CEL field whose value IS a callable's result: names the root field
@@ -248,32 +249,10 @@ export function declaredResultSchemaAt(
 }
 
 /**
- * The CEL context properties a parameter list contributes — `name → schema`,
- * nullable folded in.
- *
- * A parameter with no usable schema contributes an OPEN node rather than
- * nothing: the parameter plainly exists, and withholding it would report every
- * read of it as an unknown identifier, blaming the body for the signature's
- * omission.
- */
-export function parameterContextProperties(
-  params: readonly SignatureParam[] | undefined,
-  /** Sees through a parameter typed by a named shape (`schema: !ref Money`), at
-   *  the root and at any depth, so its members type rather than reading as one
-   *  opaque reference node. The caller supplies it because only the caller holds
-   *  the shapes in scope. */
-  resolveSchema?: (schema: Record<string, any>) => Record<string, any> | undefined,
-): Record<string, any> {
-  const properties: Record<string, any> = {};
-  for (const param of params ?? []) {
-    if (typeof param.name !== "string" || param.name.length === 0) continue;
-    properties[param.name] = parameterSchemaOf(param, resolveSchema) ?? {};
-  }
-  return properties;
-}
-
-/**
- * The schema a body reads one parameter as.
+ * The schema a body reads one parameter as. A parameter with no usable schema
+ * reads as an OPEN node rather than nothing (see {@link argumentRecordSchema}): the
+ * parameter plainly exists, and withholding it would report every read of it as an
+ * unknown identifier, blaming the body for the signature's omission.
  *
  * An OPTIONAL parameter with no `default` reads as `null` when a call omits it,
  * so it is nullable inside the body whatever its schema says — a member read off
@@ -292,4 +271,30 @@ export function parameterSchemaOf(
     schema: resolved,
     ...(omittedReadsNull ? { nullable: true } : {}),
   });
+}
+
+/**
+ * The ARGUMENT RECORD a parameter list describes — `{ type: object, properties,
+ * required }`, one property per named parameter as a body reads it
+ * ({@link parameterSchemaOf}), the non-optional ones required — with every
+ * reserved fragment definition its parameter schemas hoisted lifted to its root.
+ *
+ * Each parameter's `schema` is a schema root of its own, so a fragment it
+ * references resolves against it; the record nests those roots, which is why it is
+ * built here and nowhere else — the kernel's function binding validates a call
+ * against it, a function body is typed by it, and a values pairing
+ * (`x-telo-text-values-for`) on a parameter is relative to it.
+ */
+export function argumentRecordSchema(
+  params: readonly SignatureParam[] | undefined,
+  resolveSchema?: (schema: Record<string, any>) => Record<string, any> | undefined,
+): Record<string, any> {
+  const properties: Record<string, any> = {};
+  const required: string[] = [];
+  for (const param of params ?? []) {
+    if (typeof param.name !== "string" || param.name.length === 0) continue;
+    properties[param.name] = parameterSchemaOf(param, resolveSchema) ?? {};
+    if (param.optional !== true) required.push(param.name);
+  }
+  return liftFragmentDefs({ type: "object", properties, required });
 }

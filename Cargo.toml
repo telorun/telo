@@ -6,6 +6,7 @@ members = [
     "tests/__fixtures__/rust-functions/rust",
     "cel/rust",
     "cel/rust/value",
+    "message-format/rust",
     "sdk/rust",
     "sdk/rust/core",
     "sdk/rust/abi",
@@ -16,4 +17,5 @@ members = [
     "cli/rust",
     "modules/console/rust",
     "modules/starlark/rust",
+    "examples/local-modules/pow-rust/rust",
 ]

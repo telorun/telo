@@ -1,0 +1,134 @@
+# An application translated into Polish: a catalog for its own texts — a page
+# title, a heading, a text with values, a field's label from its model, an enum
+# value's label — and one for the renderer's own words. Each application picks
+# its language its own way: from the Accept-Language header, from a cookie,
+# and as one fixed tag. Start it with
+#   pnpm run telo ./modules/ui-react/tests/__fixtures__/translated/telo.yaml
+# and open http://127.0.0.1:8130/ with the browser's language set to Polish.
+kind: Telo.Application
+metadata:
+  name: UiTranslatedFixtureApp
+  version: 1.0.0
+# Module `lang:` is read from 0.121.0.
+requires:
+  telo: ">=0.121.0"
+lang: en
+imports:
+  Http: ../../../../http-server
+  I18n: ../../../../i18n
+  Ui: ../../../../ui
+  UiReact: ../../../
+ports:
+  http: { env: PORT, default: 8130 }
+targets:
+  - !ref server
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Invoice
+schema:
+  type: object
+  required: [number]
+  properties:
+    number: { type: string, title: Number, minLength: 3 }
+    state:
+      title: State
+      type: string
+      oneOf:
+        - { const: open, title: Open }
+        - { const: paid, title: Paid }
+---
+kind: I18n.Catalog
+metadata:
+  name: polish
+lang: pl
+texts:
+  - { text: Invoices, translation: Faktury }
+  - { text: Unpaid invoices, translation: Nieopłacone faktury }
+  - text: { plural: n, cases: { one: "{$n} unpaid item", other: "{$n} unpaid items" } }
+    translation: { plural: n, cases: { one: "{$n} nieopłacona pozycja", few: "{$n} nieopłacone pozycje", other: "{$n} nieopłaconych pozycji" } }
+  - { text: Number, translation: Numer }
+  - { text: Open, translation: Otwarta }
+  - { text: Paid, translation: Opłacona }
+  - { text: Save, translation: Zapisz }
+  - text: { plural: limit, cases: { one: "Must be at least {$limit} character", other: "Must be at least {$limit} characters" } }
+    translation: { plural: limit, cases: { one: "Co najmniej {$limit} znak", few: "Co najmniej {$limit} znaki", other: "Co najmniej {$limit} znaków" } }
+---
+kind: I18n.Translator
+metadata:
+  name: t
+catalogs:
+  - !ref polish
+---
+kind: I18n.Negotiator
+metadata:
+  name: language
+translator: !ref t
+default: en
+---
+kind: Ui.Form
+metadata:
+  name: invoiceForm
+model: !ref Invoice
+source: { basePath: /api/invoices }
+---
+# The language the Accept-Language header asks for.
+kind: UiReact.App
+metadata:
+  name: byHeader
+title: Invoices
+words: !ref Ui.words
+translator: !ref t
+lang: !cel "'accept-language' in request.headers ? Self.language(request.headers['accept-language']) : 'en'"
+pages:
+  - path: /
+    title: Invoices
+    children:
+      - { type: text, text: Unpaid invoices, style: heading }
+      - type: text
+        text:
+          text: { plural: n, cases: { one: "{$n} unpaid item", other: "{$n} unpaid items" } }
+          values: { n: 3 }
+      - { type: composite, ref: !ref invoiceForm }
+---
+# The language a cookie names.
+kind: UiReact.App
+metadata:
+  name: byCookie
+title: Invoices
+words: !ref Ui.words
+translator: !ref t
+lang: !cel "'cookie' in request.headers && request.headers['cookie'].contains('lang=pl') ? 'pl' : 'en'"
+pages:
+  - path: /
+    title: Invoices
+    children:
+      - { type: text, text: Unpaid invoices }
+---
+# One language for every request.
+kind: UiReact.App
+metadata:
+  name: fixed
+title: Invoices
+words: !ref Ui.words
+translator: !ref t
+lang: pl
+pages:
+  - path: /
+    title: Invoices
+    children:
+      - { type: text, text: Unpaid invoices }
+---
+kind: Http.Server
+metadata:
+  name: server
+listen:
+  address: 127.0.0.1
+  port: !cel "ports.http"
+mounts:
+  - path: /cookie
+    mount: !ref byCookie
+  - path: /fixed
+    mount: !ref fixed
+  - path: /
+    mount: !ref byHeader

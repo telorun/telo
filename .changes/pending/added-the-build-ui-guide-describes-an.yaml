@@ -1,0 +1,5 @@
+modules:
+  apps/hub: Added
+body: The build-ui guide describes an action's result and failure trees, onSuccess,
+  concurrency and clearAnswerOn, and row actions on tables and list nodes with their own
+  enabled.

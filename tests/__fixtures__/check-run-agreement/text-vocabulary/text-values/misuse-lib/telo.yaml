@@ -1,0 +1,39 @@
+# A kind declaring the values a text is formatted with on a field that holds no
+# text, and a text whose declared value is neither a string nor a number.
+kind: Telo.Library
+metadata:
+  name: TextValuesMisuseLib
+  version: 1.0.0
+  description: Fixture kinds misplacing the values a text is formatted with.
+exports:
+  kinds: [Counter, Notice]
+---
+kind: Telo.Definition
+metadata:
+  name: Counter
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    count: { type: integer, x-telo-text-values: {} }
+provide: !ref shape
+resources:
+  - kind: Telo.JsonSchema
+    metadata: { name: shape }
+    schema: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: Notice
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    text:
+      $ref: "telo://manifest#/$defs/Text"
+      x-telo-text-values: { done: { type: boolean } }
+provide: !ref shape
+resources:
+  - kind: Telo.JsonSchema
+    metadata: { name: shape }
+    schema: { type: object }

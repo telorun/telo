@@ -1,0 +1,140 @@
+kind: Telo.Application
+metadata:
+  name: UiReactTranslatedTest
+  version: 1.0.0
+  description: |
+    An application with a translator serves each request in the language it
+    asks for: the documents carry the translated message and its tag, an
+    enumeration's labels are translated while its values stay as written, the
+    renderer's own words arrive translated, and `Vary` names exactly the header
+    the language is read from — none when the language is one fixed tag. A
+    thousand different Accept-Language values produce no more documents than
+    the translator has languages plus the source.
+imports:
+  App: ../../app
+  Run: ../../run
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/translated/telo.yaml
+    ports:
+      http: 8132
+targets:
+  - !ref fixture
+steps:
+  - name: polishApp
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8132/_telo/ui/app
+      headers: { accept-language: "pl-PL, en;q=0.5" }
+  - name: englishApp
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8132/_telo/ui/app
+      headers: { accept-language: en-GB }
+  - name: polishPage
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8132/_telo/ui/page?path=/
+      headers: { accept-language: pl }
+  - name: cookieApp
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8132/cookie/_telo/ui/app
+      headers: { cookie: lang=pl }
+  - name: fixedApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8132/fixed/_telo/ui/app" }
+  - name: fixedShell
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8132/fixed/", responseType: text }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        polish:
+          lang: !cel "steps.polishApp.result.body.lang"
+          title: !cel "steps.polishApp.result.body.title"
+          vary: !cel "steps.polishApp.result.headers['vary']"
+          save: !cel "steps.polishApp.result.body.words.save"
+        english:
+          lang: !cel "steps.englishApp.result.body.lang"
+          title: !cel "steps.englishApp.result.body.title"
+          save: !cel "steps.englishApp.result.body.words.save"
+        etagsDiffer: !cel "steps.polishApp.result.headers['etag'] != steps.englishApp.result.headers['etag']"
+        page:
+          lang: !cel "steps.polishPage.result.body.lang"
+          heading: !cel "steps.polishPage.result.body.children[0].text"
+          bound: !cel "steps.polishPage.result.body.children[1].text"
+          label: !cel "steps.polishPage.result.body.children[2].fields[0].label"
+          states: !cel "steps.polishPage.result.body.children[2].fields[1].labels"
+        cookie:
+          lang: !cel "steps.cookieApp.result.body.lang"
+          vary: !cel "steps.cookieApp.result.headers['vary']"
+        fixed:
+          lang: !cel "steps.fixedApp.result.body.lang"
+          varies: !cel "'vary' in steps.fixedApp.result.headers"
+          shellLang: !cel "steps.fixedShell.result.body.contains('<html lang=\"pl\">')"
+      expected:
+        polish:
+          lang: pl
+          title: { lang: pl, message: [Faktury] }
+          vary: Accept-Language
+          save: { lang: pl, message: [Zapisz] }
+        english:
+          lang: en
+          title: { lang: en, message: [Invoices] }
+          save: { lang: en, message: [Save] }
+        etagsDiffer: true
+        page:
+          lang: pl
+          heading: { lang: pl, message: [Nieopłacone faktury] }
+          bound:
+            lang: pl
+            message:
+              plural: n
+              cases:
+                one: [{ placeholder: n }, " nieopłacona pozycja"]
+                few: [{ placeholder: n }, " nieopłacone pozycje"]
+                other: [{ placeholder: n }, " nieopłaconych pozycji"]
+            values: { n: { value: 3 } }
+          label: { lang: pl, message: [Numer] }
+          states:
+            - { value: open, label: { lang: pl, message: [Otwarta] } }
+            - { value: paid, label: { lang: pl, message: [Opłacona] } }
+        cookie:
+          lang: pl
+          vary: Cookie
+        fixed:
+          lang: pl
+          varies: false
+          shellLang: true
+  # A thousand different Accept-Language values, half asking for Polish and
+  # half for a language the translator lacks: two documents between them.
+  - name: seen
+    value: { n: !cel "0", etags: [] }
+  - name: ask
+    while: !cel "steps.seen.result.n < 1000"
+    do:
+      - name: asked
+        invoke:
+          kind: HttpClient.Request
+          url: http://127.0.0.1:8132/_telo/ui/app
+        inputs:
+          headers:
+            accept-language: !cel "(steps.seen.result.n % 2 == 0 ? 'pl-x-v' : 'de-x-v') + string(steps.seen.result.n)"
+      - name: seen
+        value:
+          n: !cel "steps.seen.result.n + 1"
+          etags: !cel "steps.asked.result.headers['etag'] in steps.seen.result.etags ? steps.seen.result.etags : steps.seen.result.etags + [steps.asked.result.headers['etag']]"
+  - name: verifyDistinct
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "size(steps.seen.result.etags)"
+      expected: 2

@@ -1,0 +1,13 @@
+---
+"@telorun/analyzer": minor
+"@telorun/kernel": minor
+"@telorun/ide-support": minor
+---
+
+Typing inside node trees. Eval paths, accessor fields, `x-telo-context` regions and contexts are found by one walk that follows a named shape (`$ref: telo:<Module>/<Type>`) and recursion at any depth, as well as map values (`additionalProperties` / `patternProperties`) and local references; the analyzer and the kernel read named shapes through one lookup (`NamedShapeLookup`, the registry's `schemaForId`; `kindCelEvalSites` / `governedCelEvalSites` take it as a required argument), so a site inside a recursive shape is the same site at `telo check`, at creation and at a template's deferral. A region's scope is `$` followed by an eval path (`$.content(.children[*])*.note`). A nested region adds to every region enclosing it, an inner name shadowing an outer one, and an accessor field may start its chain at a binding of any of them.
+
+`x-telo-context-eval: <mode> | [<mode>…]` (`compile`, `runtime`, `accessor`) on a binding names the eval modes it exists at: an evaluated read of an `accessor`-only binding is `CEL_UNKNOWN_IDENTIFIER`, and an accessor chain rooted at a binding without `accessor` is `CEL_UNKNOWN_IDENTIFIER` at check and `ERR_ACCESSOR_NOT_PLAIN_CHAIN` at creation; a value that is no mode, an empty list or a repeated mode is `SCHEMA_VIOLATION`, the mark anywhere but on a binding the warning `CONTEXT_EVAL_MISPLACED`. Compile-time evaluation now skips each accessor field by itself, so an expression beside one under the same top-level property is evaluated at creation.
+
+`x-telo-match-for: "<pointer>"` on a JSON-Schema-valued field names the sibling accessor field the schema is matched against: a schema that can never hold for the accessor's static type (`type`, `const`, `enum`, closed-object `required`, through `properties`, non-empty `items`, `allOf`, `anyOf`) is `MATCH_UNSATISFIABLE`, judged at every resource, `with:` member, template-body entry and forwarded value of the entry's own modules and refused by the kernel's load analysis; a misdirected annotation is `MATCH_FOR_INVALID`.
+
+A referrer rule's `resolve:` binds `referrer` with the named reference slots of the referrer replaced by the declarations they name, one level deep. Format `re2-pattern` accepts the regular expressions RE2 and ECMAScript-`u` match identically, as a closed allowlist. `TEXT_SLOT_ACCESSOR` now finds an accessor field inside a named shape, reported at the kind's field naming it. Completion offers `x-telo-match-for` in a kind's schema and `x-telo-context-eval` on an `x-telo-context` binding.

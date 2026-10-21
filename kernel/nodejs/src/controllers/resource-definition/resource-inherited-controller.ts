@@ -9,6 +9,7 @@ import { isCelRecord, isCompiledValue } from "@telorun/sdk";
 import { effectiveAuthorSchema, reachSites, SELF_PATH, type DefResolver } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { declaringContextOf } from "./declaring-context.js";
+import { mappingProvenance, recordTextProvenance, textProvenanceOf } from "../../text-records.js";
 
 /** Typed internal seam implemented by the concrete `ResourceContextImpl`: runs
  *  the kernel's create phase for the parent-kind manifest and returns the native
@@ -233,6 +234,16 @@ export function createInheritedController(
         metadata: { ...resource.metadata },
         ...parentConfig,
       };
+      // Who wrote each value the parent receives: what `base:` forwards verbatim
+      // is the consumer's, a literal there the module declaring this kind's, and
+      // anything else computed; without `base:` the consumer's config whole.
+      const provenance = textProvenanceOf(resource);
+      if (provenance) {
+        recordTextProvenance(
+          parentResource,
+          base != null ? mappingProvenance(base, self, provenance) : provenance,
+        );
+      }
       const host = ctx as unknown as InheritedInstanceHost;
       if (typeof (host as { createInheritedInstance?: unknown }).createInheritedInstance !== "function") {
         throw new Error(

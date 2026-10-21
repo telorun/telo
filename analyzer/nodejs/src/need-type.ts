@@ -1,6 +1,7 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { sensitiveMembersOf, valueTypeOf } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
+import { liftFragmentDefs } from "./manifest-schemas.js";
 import { memberForbidden, membersSlotOf } from "./members-value-slot.js";
 import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
 import { INJECTED } from "./resource-input.js";
@@ -102,7 +103,7 @@ export function needTypeDefinition(doc: ResourceManifest): ResourceDefinition {
     metadata: { ...(doc.metadata ?? {}) },
     capability: "Telo.Provider",
     controllers: [{ runtime: "kernel", entry: NEED_TYPE_CONTROLLER_ENTRY }],
-    schema: {
+    schema: liftFragmentDefs({
       type: "object",
       properties: {
         fields: {
@@ -114,7 +115,7 @@ export function needTypeDefinition(doc: ResourceManifest): ResourceDefinition {
       },
       ...(required.length > 0 ? { required: ["fields"] } : {}),
       additionalProperties: false,
-    },
+    }),
     [NEED_TYPE_MARKER]: shape,
   } as unknown as ResourceDefinition;
 }
@@ -149,12 +150,12 @@ export function needReadingSchema(
   shape: NeedTypeShape,
   optional: boolean,
 ): Record<string, unknown> {
-  const reading = {
+  const reading = liftFragmentDefs({
     type: "object",
     properties: { ...shape.fields },
     required: shape.required.filter((name) => name in shape.fields),
     additionalProperties: false,
-  };
+  });
   return optional ? { ...reading, type: ["object", "null"] } : reading;
 }
 

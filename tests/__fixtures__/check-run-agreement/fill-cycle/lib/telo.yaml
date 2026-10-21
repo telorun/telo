@@ -1,0 +1,24 @@
+# A field drawn only once its own member holds a value can never be entered.
+kind: Telo.Library
+metadata:
+  name: FillCycleLib
+  version: 1.0.0
+  description: Fixture library holding a form whose field depends on the member it fills.
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Form
+metadata:
+  name: form
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      sheet: { type: string }
+      title: { type: string }
+fields:
+  - title
+  - kind: Kinds.Field
+    property: sheet
+    shown: { at: !cel "values.sheet" }

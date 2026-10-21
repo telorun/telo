@@ -1,34 +1,46 @@
 import type { RequestScope } from "@telorun/http-dispatch";
+import { catalogSetOf, type CatalogSet } from "@telorun/i18n";
 import {
   canonicalTypeSchemaId,
+  formatMessage,
+  lookupLanguage,
+  readMessage,
   RuntimeError,
   type DataValidator,
+  type Message,
   type ResourceContext,
   type RuntimeResource,
+  type TextRecord,
 } from "@telorun/sdk";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { basename } from "node:path";
+import { isWords, modelShape, presented, SpecTranslator, type AuthoredNode, type Words } from "@telorun/ui";
 import abi from "./contract/abi.json" with { type: "json" };
 import { AssetStore, entryAssets, type Asset, type AssetRef } from "./asset-store.js";
 import { withUnhostedComponentsReplaced, type Hosted, type SpecNode } from "./component-abi.js";
 import { DEFAULT_THEME_CSS } from "./default-theme.js";
 import { holdsCurrent, servedDocument, SPEC_VERSION } from "./documents.js";
 import { EventStreams } from "./event-streams.js";
+import { headerReads, unionReads, varyHeader, type HeaderReads } from "./header-reads.js";
 import { judgedComposite, producedNode, type EvaluatedNode } from "./page-nodes.js";
 import { shellHtml } from "./shell.js";
 import { themeStylesheet, type ProvidedTheme } from "./theme-stylesheet.js";
 
 interface PageConfig {
   path: string;
-  title: string;
+  title: TextRecord;
+  query?: Record<string, unknown> | null;
   children: unknown;
 }
 
 type ThemeEntry = { theme: unknown; when?: unknown };
 
 export type AppResource = RuntimeResource & {
-  title: string;
-  lang?: string;
+  title: TextRecord;
+  /** A fixed tag, or an expression read per request. */
+  lang?: unknown;
+  translator?: unknown;
+  words: unknown;
   theme?: unknown;
   defaultTheme?: boolean;
   stylesheets?: string[];
@@ -39,6 +51,8 @@ export type AppResource = RuntimeResource & {
 interface Providing<T> {
   provide(): Promise<T>;
 }
+
+const isObject = (candidate: unknown): candidate is object => typeof candidate === "object" && candidate !== null;
 
 const provides = <T>(candidate: unknown): candidate is Providing<T> =>
   typeof (candidate as Providing<T> | null)?.provide === "function";
@@ -53,11 +67,40 @@ const HOST = "@telorun/ui-react";
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
+/** A text as the browser receives it: the chosen Message, parsed, and the
+ *  language it is written in. */
+interface Translated {
+  message: Message;
+  lang: string;
+}
+
+/** What is the same for every request landing on one language: built once per
+ *  effective tag, so there are at most as many as the catalog languages, plus one. */
+interface InLanguage {
+  translator: SpecTranslator<Translated>;
+  shell: string;
+  title: Translated;
+  pageTitles: Translated[];
+  words: Record<string, Translated>;
+}
+
 /** Everything resolved once, when the application is mounted. */
 interface Started {
+  /** Mount prefix, with no trailing slash; empty at the root. */
+  mount: string;
   store: AssetStore;
   bundle: string;
-  shell: string;
+  rendererUrl: string;
+  importMap: Record<string, string>;
+  /** The translator's catalogs, when the application names one. */
+  catalogs?: CatalogSet;
+  /** The language the application's own module writes in, when it declares one. */
+  sourceLang?: string;
+  words: Words;
+  /** The headers the shell, the application document and each page read. */
+  vary: { shell: HeaderReads; app: HeaderReads; pages: HeaderReads[] };
+  /** By effective tag; `""` for none. */
+  languages: Map<string, InLanguage>;
   /** What each placed composite provided — `null` for nothing — in the order
    *  the pages place them. */
   composites: (SpecNode | null)[];
@@ -73,18 +116,26 @@ interface Started {
 }
 
 /**
- * A page's children with each composite's `ref` replaced by its index in
- * `placed`, where the instance is appended. A page's structure and references
- * are literal — only leaf values are evaluated per request — so the numbering
- * made once holds for every request, and no instance passes through
- * evaluation.
+ * A page's children with each composite's `ref`, and each list row action's
+ * `action`, replaced by its index in `placed`, where the instance is appended.
+ * A page's structure and references are literal — only leaf values are
+ * evaluated per request — so the numbering made once holds for every request,
+ * and no instance passes through evaluation.
  */
 function withCompositesNumbered(node: unknown, placed: unknown[]): unknown {
   if (Array.isArray(node)) return node.map((child) => withCompositesNumbered(child, placed));
   if (node === null || typeof node !== "object") return node;
-  const { type, ref, children } = node as EvaluatedNode;
+  const { type, ref, children, rowActions } = node as EvaluatedNode;
   if (type === "composite" && provides(ref)) return { ...node, ref: placed.push(ref) - 1 };
   if (Array.isArray(children)) return { ...node, children: withCompositesNumbered(children, placed) };
+  if (type === "list" && Array.isArray(rowActions)) {
+    return {
+      ...node,
+      rowActions: (rowActions as Record<string, unknown>[]).map((entry) =>
+        provides(entry.action) ? { ...entry, action: placed.push(entry.action) - 1 } : entry,
+      ),
+    };
+  }
   return node;
 }
 
@@ -168,7 +219,9 @@ export class UiReactApp {
     const hosted: Hosted = { abis: hostAbi === undefined ? [] : [hostAbi], specifiers: SUPPLIED };
 
     const placed: unknown[] = [];
-    const pages = this.resource.pages.map((page) => withCompositesNumbered(page.children, placed));
+    const pages = this.resource.pages.map((page, index) =>
+      withCompositesNumbered(this.presentedChildren(page, index), placed),
+    );
     const validator = this.ctx.createTypeValidator(canonicalTypeSchemaId("Ui", "SpecNode"));
     const composites: (SpecNode | null)[] = [];
     for (const instance of placed) {
@@ -221,15 +274,50 @@ export class UiReactApp {
     const importMap: Record<string, string> = {};
     for (const specifier of MAPPED) importMap[specifier] = urlOf(modules[specifier]);
     Object.assign(importMap, store.sharedFileRemaps(urlOf));
-    const shell = shellHtml({
-      title: this.resource.title,
-      lang: this.resource.lang,
-      prefix: mount,
+    const words = await this.ctx
+      .resolveRef(this.resource.words, isWords, () => `'words' of ${this.owner}`, "Ui.Words")
+      .provide();
+    const catalogs =
+      this.resource.translator === undefined
+        ? undefined
+        : catalogSetOf(this.ctx.resolveRef(this.resource.translator, isObject, () => `'translator' of ${this.owner}`, "I18n.Translator"));
+    // The application module's own language: the one its title is written in.
+    const sourceLang = this.resource.title.lang === "und" ? undefined : this.resource.title.lang;
+    const langReads = headerReads(this.resource.lang);
+    const vary = {
+      shell: langReads,
+      app: unionReads(langReads, headerReads(this.themeEntries().map((entry) => entry.when))),
+      pages: pages.map((page) => unionReads(langReads, headerReads(page))),
+    };
+    return {
+      mount,
+      store,
       bundle,
       rendererUrl: urlOf(modules[RENDERER]),
       importMap,
-    });
-    return { store, bundle, shell, composites, pages, themes, leading, trailing, validator };
+      catalogs,
+      sourceLang,
+      words,
+      vary,
+      languages: new Map(),
+      composites,
+      pages,
+      themes,
+      leading,
+      trailing,
+      validator,
+    };
+  }
+
+  /** A page's children with what its declared query parameters say about the
+   *  values its `value` and `list` nodes name; the page's only browser root. */
+  private presentedChildren(page: PageConfig, index: number): unknown {
+    const where = `${this.owner} pages[${index}]`;
+    const reader = { ctx: this.ctx, owner: where };
+    const query = modelShape({ type: "object", properties: page.query ?? {}, additionalProperties: false }, reader, "query");
+    return (page.children as AuthoredNode[]).map((child, at) =>
+      presented(child, { query }, reader, `${where}.children[${at}]`),
+    );
   }
 
   private themeEntries(): ThemeEntry[] {
@@ -246,8 +334,68 @@ export class UiReactApp {
     return { headers, ip: request.ip };
   }
 
-  private send(request: FastifyRequest, reply: FastifyReply, document: Record<string, unknown>) {
+  /**
+   * The language a request's documents are in: the catalog language its
+   * requested tag lands on through the translator, else the language the
+   * application's module writes in, else none.
+   */
+  private effectiveTag(started: Started, request: Record<string, unknown>): string | undefined {
+    const declared = this.resource.lang;
+    const requested = typeof declared === "string" ? declared : declared === undefined ? undefined : this.ctx.expandValue(declared, { request });
+    if (typeof requested === "string" && started.catalogs) {
+      const found = lookupLanguage(requested, started.catalogs.languages);
+      if (found !== null) return found;
+    }
+    return started.sourceLang;
+  }
+
+  /** What every request in one language shares, built once for it. */
+  private inLanguage(started: Started, tag: string | undefined): InLanguage {
+    const key = tag ?? "";
+    const held = started.languages.get(key);
+    if (held) return held;
+    const translate = (record: TextRecord): Translated => {
+      const found = tag === undefined || !started.catalogs ? null : started.catalogs.lookup(record, tag);
+      if (found) return { message: found.message, lang: found.lang };
+      const read = readMessage(record.text);
+      if (!read.ok) {
+        throw new RuntimeError(
+          "ERR_MESSAGE_SYNTAX_INVALID",
+          `${this.owner}: a text it shows is no message: ${read.problems.map((problem) => problem.message).join("; ")}.`,
+        );
+      }
+      return { message: read.message, lang: record.lang };
+    };
+    const translator = new SpecTranslator<Translated>(
+      {
+        root: this.ctx.lookupSchema(canonicalTypeSchemaId("Ui", "SpecNode")) as Record<string, any>,
+        resolve: (id) => this.ctx.lookupSchema(id) as Record<string, any> | undefined,
+      },
+      translate,
+    );
+    const title = translate(this.resource.title);
+    const made: InLanguage = {
+      translator,
+      title,
+      pageTitles: this.resource.pages.map((page) => translate(page.title)),
+      words: Object.fromEntries(Object.entries(started.words).map(([id, record]) => [id, translate(record)])),
+      shell: shellHtml({
+        title: formatMessage(title.message, title.lang, {}),
+        ...(tag === undefined ? {} : { lang: tag }),
+        prefix: started.mount,
+        bundle: started.bundle,
+        rendererUrl: started.rendererUrl,
+        importMap: started.importMap,
+      }),
+    };
+    started.languages.set(key, made);
+    return made;
+  }
+
+  private send(request: FastifyRequest, reply: FastifyReply, document: Record<string, unknown>, reads: HeaderReads) {
     const served = servedDocument(document);
+    const vary = varyHeader(reads);
+    if (vary !== undefined) reply.header("vary", vary);
     reply.header("cache-control", "private, no-cache").header("etag", `"${served.digest}"`);
     if (holdsCurrent(request.headers["if-none-match"], served.digest)) return reply.code(304).send();
     return reply.type("application/json; charset=utf-8").send(served.text);
@@ -259,15 +407,23 @@ export class UiReactApp {
       (entry) => entry.when === undefined || this.ctx.expandValue(entry.when, scope) === true,
     );
     const theme = chosen === undefined ? [] : [started.themes.get(chosen.theme) as string];
-    return this.send(request, reply, {
-      specVersion: SPEC_VERSION,
-      bundle: started.bundle,
-      title: this.resource.title,
-      ...(this.resource.lang === undefined ? {} : { lang: this.resource.lang }),
-      pages: this.resource.pages.map(({ path, title }) => ({ path, title })),
-      stylesheets: [...started.leading, ...theme, ...started.trailing],
-      compactBelow: this.resource.compactBelow ?? "40rem",
-    });
+    const tag = this.effectiveTag(started, scope.request);
+    const language = this.inLanguage(started, tag);
+    return this.send(
+      request,
+      reply,
+      {
+        specVersion: SPEC_VERSION,
+        bundle: started.bundle,
+        title: language.title,
+        ...(tag === undefined ? {} : { lang: tag }),
+        pages: this.resource.pages.map(({ path }, index) => ({ path, title: language.pageTitles[index] })),
+        words: language.words,
+        stylesheets: [...started.leading, ...theme, ...started.trailing],
+        compactBelow: this.resource.compactBelow ?? "40rem",
+      },
+      started.vary.app,
+    );
   }
 
   private servePage(started: Started, request: FastifyRequest, reply: FastifyReply) {
@@ -280,7 +436,10 @@ export class UiReactApp {
         .header("cache-control", "private, no-cache")
         .send({ error: "NotFound", message: `This application declares no page at '${String(path)}'.`, status: 404 });
     }
-    const evaluated = this.ctx.expandValue(started.pages[index], { request: this.requestOf(request) }) as EvaluatedNode[];
+    const scope = { request: this.requestOf(request) };
+    const evaluated = this.ctx.expandValue(started.pages[index], scope) as EvaluatedNode[];
+    const tag = this.effectiveTag(started, scope.request);
+    const language = this.inLanguage(started, tag);
     const children = evaluated
       .map((node) =>
         producedNode(
@@ -296,14 +455,22 @@ export class UiReactApp {
             }),
         ),
       )
-      .filter((node) => node !== undefined);
-    return this.send(request, reply, {
-      specVersion: SPEC_VERSION,
-      bundle: started.bundle,
-      path: page.path,
-      title: page.title,
-      children,
-    });
+      .filter((node) => node !== undefined)
+      .map((node) => language.translator.node(node));
+    return this.send(
+      request,
+      reply,
+      {
+        specVersion: SPEC_VERSION,
+        bundle: started.bundle,
+        path: page.path,
+        title: language.pageTitles[index],
+        ...(tag === undefined ? {} : { lang: tag }),
+        query: page.query ?? {},
+        children,
+      },
+      started.vary.pages[index],
+    );
   }
 
   private serveAsset(started: Started, request: FastifyRequest, reply: FastifyReply) {
@@ -323,11 +490,14 @@ export class UiReactApp {
       return reply.code(404).send({ error: "NotFound", message: `Nothing is served at '${path}'.`, status: 404 });
     }
     const declared = this.resource.pages.some((page) => page.path === path);
+    const language = this.inLanguage(started, this.effectiveTag(started, this.requestOf(request)));
+    const vary = varyHeader(started.vary.shell);
+    if (vary !== undefined) reply.header("vary", vary);
     return reply
       .code(declared ? 200 : 404)
       .header("cache-control", "no-cache")
       .type("text/html; charset=utf-8")
-      .send(started.shell);
+      .send(language.shell);
   }
 }
 

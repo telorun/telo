@@ -1,0 +1,14 @@
+# A heading an expression computes: `telo check` cannot read it, so the kernel
+# judges what it produced against the values its reader formats it with.
+kind: Telo.Application
+metadata:
+  name: TextValuesComputedApp
+  version: 1.0.0
+lang: en
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Heading
+metadata:
+  name: arrivals
+text: !cel "'{$who} ' + 'arrived'"

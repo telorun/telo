@@ -1,0 +1,49 @@
+kind: Telo.Library
+metadata:
+  name: PowTs
+  version: 1.0.0
+  categories: [ Compute ]
+  description: >-
+    Proof-of-work mining: finds the nonce that gives a text's SHA-256 hash a
+    required number of leading zero bits, and reports how long the search took.
+    Written in TypeScript beside the app that imports it and bundled from source
+    when the app loads, with no toolchain to install.
+exports:
+  kinds:
+    - Mine
+---
+# `local_path` is the TypeScript the kernel bundles on load; `path` is where a
+# published artifact carries the bundle.
+kind: Telo.Definition
+metadata:
+  name: Mine
+  description: >-
+    Searches nonces from zero upward until SHA-256 of the text followed by the
+    nonce in decimal has at least `difficulty` leading zero bits. Returns the
+    nonce, the hash in hex and the search time in milliseconds; each extra bit
+    doubles the expected work.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/pow-ts.mjs&local_path=./nodejs/src/index.ts#Mine
+schema:
+  type: object
+  additionalProperties: false
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ text, difficulty ]
+    properties:
+      text: { type: string }
+      difficulty: { type: integer, minimum: 1, maximum: 24 }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ nonce, hash, elapsedMs ]
+    properties:
+      nonce: { type: integer }
+      hash: { type: string }
+      elapsedMs: { type: number }

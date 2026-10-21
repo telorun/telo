@@ -1,0 +1,57 @@
+# Native functions in template bodies holding what an entry of a body cannot
+# hold as data: a resource of the module defining the template, which no entry
+# of the body reaches, and a sibling whose expression its own kind evaluates
+# per call. Refused at each definition by this library's own `telo check`, and
+# by the kernel as it creates each function.
+kind: Telo.Library
+metadata:
+  name: CallableDataTemplateRefused
+  version: 1.0.0
+  description: >-
+    Fixture library whose template bodies hold native functions over what they
+    cannot hold as data.
+imports:
+  Kinds: ../kinds
+variables:
+  greeting: { type: string, default: hello }
+---
+kind: Kinds.Table
+metadata:
+  name: table
+rows:
+  a: module
+---
+kind: Telo.Definition
+metadata:
+  name: ModuleHeld
+capability: Telo.Invocable
+schema: { type: object }
+invoke: !ref respond
+resources:
+  - kind: Kinds.Late
+    metadata: { name: respond }
+  - kind: Kinds.Peek
+    metadata: { name: peekModule }
+    target: !ref table
+---
+kind: Telo.Definition
+metadata:
+  name: LateHeld
+capability: Telo.Invocable
+schema: { type: object }
+invoke: !ref late
+resources:
+  - kind: Kinds.Late
+    metadata: { name: late }
+    greeting: !cel "variables.greeting"
+  - kind: Kinds.Peek
+    metadata: { name: peekLate }
+    target: !ref late
+---
+kind: Self.ModuleHeld
+metadata:
+  name: moduleHeld
+---
+kind: Self.LateHeld
+metadata:
+  name: lateHeld

@@ -22,20 +22,20 @@ kind: Exa.WebSearchEngine
 metadata: { name: engine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18868" }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18868" }
 ---
 kind: Exa.WebSearchEngine
 metadata: { name: throwingEngine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18868", throwOnHttpError: true }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18868", throwOnHttpError: true }
 ---
 # Nothing listens on this port.
 kind: Exa.WebSearchEngine
 metadata: { name: unreachableEngine }
 request:
   kind: Http.Request
-  client: { kind: Http.Client, baseUrl: "http://localhost:18869", timeout: 2000 }
+  client: { kind: Http.Client, baseUrl: "http://127.0.0.1:18869", timeout: 2000 }
 ---
 kind: Run.Value
 metadata: { name: errors }

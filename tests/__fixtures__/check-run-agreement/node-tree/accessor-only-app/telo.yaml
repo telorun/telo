@@ -1,0 +1,8 @@
+# The library's label is evaluated when its resource is created, where no row
+# exists.
+kind: Telo.Application
+metadata:
+  name: AccessorOnlyApp
+  version: 1.0.0
+imports:
+  Lib: ../accessor-only-lib

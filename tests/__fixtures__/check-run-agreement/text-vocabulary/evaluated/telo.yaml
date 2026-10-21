@@ -1,0 +1,57 @@
+# Kinds whose controller reads texts as it runs: one evaluating them per call —
+# at a runtime field and beneath a region's expression — and one naming a text's
+# values by accessor, for its consumer to resolve per row.
+kind: Telo.Library
+metadata:
+  name: EvaluatedTextKinds
+  version: 1.0.0
+  description: Fixture kinds holding texts their controller evaluates when invoked, and a text whose values are named per row.
+exports:
+  kinds: [Notice, Row]
+---
+kind: Telo.Definition
+metadata:
+  name: Notice
+  description: Returns its title and banner, each evaluated when it is invoked.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Notice
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    title: { $ref: "telo://manifest#/$defs/Text", x-telo-eval: runtime }
+    banner:
+      type: object
+      x-telo-context:
+        type: object
+        properties:
+          who: { type: string }
+      properties:
+        heading: { $ref: "telo://manifest#/$defs/Text" }
+---
+kind: Telo.Definition
+metadata:
+  name: Row
+  description: Provides a label whose values are named against each row its consumer resolves.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Row
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    label: { $ref: "telo://manifest#/$defs/Text" }
+    values:
+      type: object
+      x-telo-text-values-for: /label
+      x-telo-context:
+        type: object
+        properties:
+          row:
+            type: object
+            properties:
+              name: { type: string }
+              count: { type: integer }
+      additionalProperties:
+        x-telo-eval: accessor

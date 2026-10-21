@@ -1,0 +1,17 @@
+# A native function holding a resource its importer supplies. What is supplied
+# is not known here, so this library's own check is silent; each import that
+# supplies it is judged against what it supplies.
+kind: Telo.Library
+metadata:
+  name: CallableDataInput
+  version: 1.0.0
+  description: Fixture library whose native function holds a resource its importer supplies.
+imports:
+  Kinds: ../kinds
+resources:
+  source: { kind: Kinds.Late }
+---
+kind: Kinds.Peek
+metadata:
+  name: peekInput
+target: !ref source

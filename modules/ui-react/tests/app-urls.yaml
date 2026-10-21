@@ -169,10 +169,10 @@ steps:
           status: 200
           cache: private, no-cache
           etagIsDigest: true
-          keys: [bundle, compactBelow, digest, lang, pages, specVersion, stylesheets, title]
+          keys: [bundle, compactBelow, digest, lang, pages, specVersion, stylesheets, title, words]
           compactBelow: 48rem
           specVersion: 1
-          title: Fixture Admin
+          title: { lang: en, message: [Fixture Admin] }
           lang: en
           pages: [/, /done, /all, /variants, /new, /components, /gallery]
           stylesheets: [renderer.css, default-theme.css, theme.css, ui.css]
@@ -183,12 +183,12 @@ steps:
           status: 200
           cache: private, no-cache
           etagIsDigest: true
-          keys: [bundle, children, digest, path, specVersion, title]
+          keys: [bundle, children, digest, lang, path, query, specVersion, title]
           path: /done
-          title: Done
+          title: { lang: en, message: [Done] }
           sameBundle: true
           children: [text, table]
-          fixedFilter: { isDone: true }
+          fixedFilter: { isDone: { value: true } }
         pageAgain: 304
         noPage: { status: 404, error: NotFound }
         stylesheet:

@@ -158,6 +158,7 @@ with:
         mount:
           kind: UiReact.App
           title: Tasks
+          words: !ref Ui.words
           pages:
             - path: /
               title: Tasks
@@ -224,6 +225,7 @@ with:
         mount:
           kind: UiReact.App
           title: Tasks
+          words: !ref Ui.words
           pages:
             - path: /
               title: Tasks
@@ -338,7 +340,7 @@ steps:
         sortable: [text, dueOn]
         filters: [[text, contains], [isDone, eq], [status, in], [dueOn, gte]]
         statusFilter:
-          - { label: Status, schema: { title: Status, enum: [open, blocked, done] } }
+          - { label: { lang: und, message: [Status] }, schema: { title: Status, enum: [open, blocked, done] } }
   # The other ways of writing the keys, the docs' own example among them: the
   # same two documents each time.
   - name: verifyWritten
@@ -369,7 +371,7 @@ steps:
             controls: direct
             apply: commit
             summary: none
-            state: { address: false, store: { type: memory } }
+            state: { address: false, store: { type: memory }, fields: [text, isDone, status, dueOn] }
           create: &opener
             surface: &dialog
               type: dialog
@@ -386,7 +388,7 @@ steps:
             controls: direct
             apply: commit
             summary: none
-            state: { address: false, store: { type: memory } }
+            state: { address: false, store: { type: memory }, fields: [text, isDone, status, dueOn] }
           create: { surface: *dialog, afterSubmit: again, unsaved: confirm }
           edit: *opener
         - bar:
@@ -395,7 +397,7 @@ steps:
             controls: chips
             apply: button
             summary: chips
-            state: { key: tasks, address: true, store: { type: local } }
+            state: { key: tasks, address: true, store: { type: local }, fields: [text, isDone, status, dueOn] }
           create:
             surface:
               type: drawer

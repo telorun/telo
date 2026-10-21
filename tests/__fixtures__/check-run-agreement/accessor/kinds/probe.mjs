@@ -5,6 +5,7 @@ export const Table = {
       provide: async () => ({
         title: resource.title,
         rowStyle: resource.rowStyle,
+        headers: (resource.columns ?? []).map((column) => column.header),
         values: (resource.columns ?? []).map((column) => column.value),
       }),
     };

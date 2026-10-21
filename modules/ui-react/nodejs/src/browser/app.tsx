@@ -4,16 +4,25 @@ import { createRoot, type Root } from "react-dom/client";
 import { HostContext, HostStore, type Host } from "./host.js";
 import { applicationPath } from "./link-address.js";
 import { ErrorNode, Loading, Nodes, type SpecNode } from "./nodes.js";
-import { RendererContext, type RendererEnvironment } from "./renderer-context.js";
+import { PressQueueContext, PressQueues } from "./operation.js";
+import { queryRoot } from "./query-root.js";
+import { RendererContext, RootsContext, type RendererEnvironment } from "./renderer-context.js";
 import { Confirmation, PageSlotContext, type PageSlot } from "./surface.js";
 import { errorSpec, networkError, responseError, type ErrorSpec } from "./ui-error.js";
+import { formatText, formatWord, WordsContext, type TranslatedText, type Words } from "./texts.js";
+import type { JsonSchema } from "./validation.js";
+
+const NO_WORDS: Words = {};
 
 interface AppDocument {
   bundle: string;
   digest: string;
-  title: string;
+  title: TranslatedText;
+  /** The language the documents are in: a catalog's, else the application's own. */
   lang?: string;
-  pages: { path: string; title: string }[];
+  pages: { path: string; title: TranslatedText }[];
+  /** The renderer's own words, translated. */
+  words: Words;
   stylesheets: string[];
   /** The viewport width below which every compact surface applies, a CSS length. */
   compactBelow: string;
@@ -23,7 +32,10 @@ interface PageDocument {
   bundle: string;
   digest: string;
   path: string;
-  title: string;
+  title: TranslatedText;
+  lang?: string;
+  /** The query parameters the page's nodes read, by name. */
+  query?: Record<string, JsonSchema>;
   children: SpecNode[];
 }
 
@@ -200,7 +212,10 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     if (!app) return;
     let current = true;
     void applyStylesheets(app.stylesheets).then(() => current && setStyled(true));
-    document.title = declared ? `${declared.title} · ${app.title}` : app.title;
+    const title = formatText(app.words, app.title, {});
+    document.title = declared ? `${formatText(app.words, declared.title, {})} · ${title}` : title;
+    if (app.lang === undefined) document.documentElement.removeAttribute("lang");
+    else document.documentElement.lang = app.lang;
     return () => {
       current = false;
     };
@@ -221,15 +236,21 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   };
 
   const shown = page?.path === path ? page : undefined;
+  const pageRoots = useMemo(() => ({ query: queryRoot(shown?.query, host.location.search) }), [shown?.query, host.location.search]);
+  // Serial presses are ordered within one page.
+  const queues = useMemo(() => new PressQueues(), [path]);
   const state = failure ? "error" : !app ? "loading" : !declared ? "empty" : shown ? "idle" : "loading";
   // A failure is drawn whatever the styles: it must never be a spinner forever.
   if (!failure && !styled) return null;
+  const words = app?.words ?? NO_WORDS;
+  const say = (id: string, values?: Readonly<Record<string, string>>) => formatWord(words, id, values);
   return (
+    <WordsContext.Provider value={words}>
     <HostContext.Provider value={store}>
       <RendererContext.Provider value={base}>
         <div data-telo-part="app" data-compact={compact ? "true" : undefined} onClick={followAnchor}>
           <header data-telo-part="header">
-            <span data-telo-part="app-title">{app?.title}</span>
+            <span data-telo-part="app-title">{app && formatText(words, app.title, {})}</span>
             <nav data-telo-part="nav">
               {app?.pages.map((entry) => {
                 const href = store.localHref(entry.path);
@@ -244,7 +265,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
                   />
                 ) : (
                   <a key={entry.path} data-telo-part="nav-link" href={href} data-current={entry.path === path ? "page" : undefined} aria-current={entry.path === path ? "page" : undefined}>
-                    {entry.title}
+                    {formatText(words, entry.title, {})}
                   </a>
                 );
               })}
@@ -258,15 +279,23 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
                 <Loading />
               ) : !declared ? (
                 <>
-                  <h1 data-telo-part="page-title">Not found</h1>
-                  <p data-telo-part="text">This application has no page at {path}.</p>
+                  <h1 data-telo-part="page-title">{say("notFound")}</h1>
+                  <p data-telo-part="text">{say("noPageAt", { path })}</p>
                 </>
               ) : (
                 <>
-                  <h1 data-telo-part="page-title">{declared.title}</h1>
+                  <h1 data-telo-part="page-title">{formatText(words, declared.title, {})}</h1>
                   <PageSlotContext.Provider value={slot}>
                     <div ref={setSlotElement} style={{ display: "contents" }} />
-                    <div style={{ display: claims > 0 ? "none" : "contents" }}>{shown ? <Nodes nodes={shown.children} /> : <Loading />}</div>
+                    <div style={{ display: claims > 0 ? "none" : "contents" }}>{shown ? (
+                      <PressQueueContext.Provider value={queues}>
+                        <RootsContext.Provider value={pageRoots}>
+                          <Nodes nodes={shown.children} />
+                        </RootsContext.Provider>
+                      </PressQueueContext.Provider>
+                    ) : (
+                      <Loading />
+                    )}</div>
                   </PageSlotContext.Provider>
                 </>
               )}
@@ -275,16 +304,17 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
         </div>
         {asking && (
           <Confirmation
-            title="Discard unsaved changes?"
-            description="What you entered has not been saved."
-            confirm="Discard"
-            cancel="Keep editing"
+            title={say("unsavedQuestion")}
+            description={say("unsavedDetail")}
+            confirm={say("discard")}
+            cancel={say("keepEditing")}
             onConfirm={() => store.answer(true)}
             onClose={() => store.answer(false)}
           />
         )}
       </RendererContext.Provider>
     </HostContext.Provider>
+    </WordsContext.Provider>
   );
 }
 

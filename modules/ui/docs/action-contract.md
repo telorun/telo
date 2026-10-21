@@ -16,15 +16,22 @@ Requests carry the page's same-origin credentials.
 
 | Status | Means | Shown |
 | --- | --- | --- |
-| any 2xx | done | each declared list, drawn from the body |
-| 400 | the record was refused | on the fields, and under the form |
-| 401, 403 | not allowed | an `error` node: `ERR_UI_UNAUTHORIZED`, `ERR_UI_FORBIDDEN` |
-| anything else, or no answer at all | failed | an `error` node: `ERR_UI_REQUEST_FAILED` |
+| any 2xx | done | the `result` tree, drawn from the body |
+| 400 | the record was refused | on the fields, and the `failure` tree |
+| 401, 403 | not allowed | the `failure` tree |
+| anything else, or no answer at all | failed | the `failure` tree |
 
 **A 2xx body** is a JSON object valid against `outputModel`. It is read only
-when the action declares `lists`; an action with none may answer with anything,
-or with nothing. A 2xx whose body is not a JSON object, on an action that
-declares lists, is an `error` node `ERR_UI_RESPONSE_INVALID`.
+when the action's `result` tree or `onSuccess.navigate` reads `result`; an
+action whose answer nothing reads may answer with anything, or with nothing. A
+body that is read and is not a JSON object, or that `outputModel` refuses, is a
+failure with `code: ERR_UI_RESPONSE_INVALID`.
+
+**Any other answer** may carry a `{ code, message }` JSON body, which the
+`failure` tree reads as `error.code` and `error.message` beside `error.status`.
+Without one, `code` is `ERR_UI_UNAUTHORIZED` for a 401, `ERR_UI_FORBIDDEN` for a
+403 and `ERR_UI_REQUEST_FAILED` otherwise, with a message saying so. With no
+answer at all `status` is absent and `code` is `ERR_UI_REQUEST_FAILED`.
 
 **A 400** is the request-validation envelope
 [a collection answers with](collection-contract.md#refusals--400):
@@ -39,8 +46,8 @@ declares lists, is an `error` node `ERR_UI_RESPONSE_INVALID`.
 ```
 
 A detail whose `path` is exactly a shown field's property marks that field with
-its `message`. Every other detail is shown under the form, and so is a bare
-`message` when the envelope carries no details.
+its `message`. Every other detail is shown under the form, and the `failure`
+tree reads the envelope's `message`.
 
 ## One shape, named twice
 
@@ -107,19 +114,21 @@ inputModel: !ref ReportRequest
 outputModel: !ref ReportAnswer
 source: { path: /api/reports }
 label: Generate
-lists:
-  - rows: !cel "result.files"
-    columns:
-      - value: !cel "row.name"
-      - value: !cel "row.url"
+result:
+  type: list
+  rows: !cel "result.files"
+  columns:
+    - value: !cel "row.name"
+    - value: !cel "row.url"
 ```
 
 ## From a row
 
-[A row action](table.md#row-actions) sends the same request, its body built
+[A row action](action.md#row-actions) sends the same request, its body built
 from the row instead of a form: each input the entry binds, a path that
 resolves to nothing left out — and, where the entry declares `prompt`, each
-field its dialog entered. Any 2xx reloads every table over the same
-`source.basePath` on the page, and the body is not read. Any other answer is
-shown to the viewer and nothing reloads; a 400 to an entry that prompts is
-shown on its dialog's fields, as a form's is.
+field its dialog entered. Its answer is read and drawn as the action's own:
+the `result` tree in place of the row's button, the `failure` tree beside it;
+a 400 to an entry that prompts is shown on its dialog's fields, as a form's
+is. In a table, any 2xx also reloads every table over the same
+`source.basePath` on the page.

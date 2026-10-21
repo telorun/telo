@@ -26,6 +26,13 @@ import { X_TELO_TYPE } from "@telorun/sdk";
 /** The annotations read from a DATA schema rather than a kind schema. */
 const X_TELO_SENSITIVE = "x-telo-sensitive" as const;
 const X_TELO_SPAN_ATTRIBUTE = "x-telo-span-attribute" as const;
+const X_TELO_TEXT_CONTEXT = "x-telo-text-context" as const;
+const X_TELO_TEXT_VALUES_FOR = "x-telo-text-values-for" as const;
+const X_TELO_TEXT_VALUES = "x-telo-text-values" as const;
+/** Read on a binding of an `x-telo-context` alone. */
+const X_TELO_CONTEXT_EVAL = "x-telo-context-eval" as const;
+const X_TELO_CONTEXT_FROM_REFERRER = "x-telo-context-from-referrer" as const;
+const X_TELO_CONTEXT_ITEM_FILLS = "x-telo-context-item-fills" as const;
 import { ANNOTATION_KEYWORDS } from "./value-type-keyword.js";
 
 /**
@@ -60,7 +67,12 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   // would put them on the one schema where nothing reads them.
   | Exclude<
       (typeof ANNOTATION_KEYWORDS)[number],
-      typeof X_TELO_SENSITIVE | typeof X_TELO_SPAN_ATTRIBUTE
+      | typeof X_TELO_SENSITIVE
+      | typeof X_TELO_SPAN_ATTRIBUTE
+      | typeof X_TELO_TEXT_CONTEXT
+      | typeof X_TELO_CONTEXT_EVAL
+      | typeof X_TELO_CONTEXT_FROM_REFERRER
+      | typeof X_TELO_CONTEXT_ITEM_FILLS
     >
   | typeof X_TELO_TYPE,
   Record<string, unknown>
@@ -244,6 +256,31 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
     description: "Marks an array of conditional response-rendering entries (`returns:`).",
     anyOf: [{ type: "boolean" }, { type: "string" }],
   },
+  [X_TELO_TEXT_VALUES]: {
+    title: "Text values",
+    description:
+      "On a `Text` or `Message` node: the values whoever shows the text formats it with, by name, each typed as a string or a number (`{}` for none). A placeholder or plural selector the text reads that is not one of them is refused where the text is written.",
+    type: "object",
+  },
+  [X_TELO_TEXT_VALUES_FOR]: {
+    title: "Text values for",
+    description:
+      "This object holds the values of a message: a JSON Pointer, relative to the enclosing value (for a callable parameter, the call's arguments keyed by parameter name), to the `Text` they bind. Every placeholder and plural selector of that text must be one of its keys, holding a string or a number.",
+    type: "string",
+  },
+  "x-telo-match-for": {
+    title: "Match for",
+    description:
+      "This field holds a JSON Schema matched against the value an accessor field names: a JSON Pointer, relative to the object enclosing this field, to that `x-telo-eval: accessor` field. A schema that can never hold for the accessor's type is refused.",
+    type: "string",
+  },
+  "x-telo-text-catalog-set": {
+    title: "Text catalog set",
+    description:
+      "The catalogs at and beneath this node form one lookup set: each catalog written here, and the catalogs of every resource a reference here names (through that resource's own catalog sets). A text and context translated twice in one language across the set is refused. Only `true`; never nested under another catalog set.",
+    type: "boolean",
+    const: true,
+  },
   "x-telo-catches-for": {
     title: "Catches for",
     description:
@@ -251,6 +288,39 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
       "or the EMPTY string for everything this resource drives — a scope-level list, " +
       "which owes coverage of nothing itself and answers for every site it encloses.",
     type: "string",
+  },
+};
+
+/**
+ * Annotations read on a BINDING — a property of an `x-telo-context` — and
+ * nowhere else, offered there alone.
+ */
+export const TELO_CONTEXT_BINDING_ANNOTATIONS: Record<
+  typeof X_TELO_CONTEXT_EVAL | typeof X_TELO_CONTEXT_FROM_REFERRER | typeof X_TELO_CONTEXT_ITEM_FILLS,
+  Record<string, unknown>
+> = {
+  [X_TELO_CONTEXT_FROM_REFERRER]: {
+    title: "Context from referrer",
+    description:
+      "Type this binding from the binding of the named name in scope at each slot referencing the resource — a field's record from the form holding it. Only on a binding marked `x-telo-context-eval: accessor`. Judged once per distinct referrer type; with no referrer the binding is what it declares itself.",
+    type: "string",
+  },
+  [X_TELO_CONTEXT_ITEM_FILLS]: {
+    title: "Context item fills",
+    description:
+      "On a binding of a region declared on a list: which member of the binding each item fills, the first pointer yielding a string (`''` the item itself, `/property` its `property`, read through a reference). Items reading each other's members in a cycle are refused.",
+    type: "array",
+    minItems: 1,
+    items: { type: "string" },
+  },
+  [X_TELO_CONTEXT_EVAL]: {
+    title: "Context eval modes",
+    description:
+      "The eval modes this binding exists at: `compile`, `runtime`, `accessor`, or a list of them. Absent, every mode. At a site of another mode the binding is out of scope — `accessor` alone keeps it out of every evaluated expression, and a binding without `accessor` cannot root an accessor field's chain.",
+    anyOf: [
+      { type: "string", enum: ["compile", "runtime", "accessor"] },
+      { type: "array", minItems: 1, uniqueItems: true, items: { type: "string", enum: ["compile", "runtime", "accessor"] } },
+    ],
   },
 };
 
@@ -266,9 +336,32 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
  * is the whole mechanism.
  */
 export const TELO_DATA_SCHEMA_ANNOTATIONS: Record<
-  typeof X_TELO_SENSITIVE | typeof X_TELO_SPAN_ATTRIBUTE,
+  | typeof X_TELO_SENSITIVE
+  | typeof X_TELO_SPAN_ATTRIBUTE
+  | typeof X_TELO_TEXT_CONTEXT
+  | typeof X_TELO_TEXT_VALUES
+  | typeof X_TELO_TEXT_VALUES_FOR,
   Record<string, unknown>
 > = {
+  [X_TELO_TEXT_CONTEXT]: {
+    title: "Text context",
+    description:
+      "The context of this node's `title`, `description` and enum labels: what tells the same words used elsewhere apart, so a catalog entry translates them here only. Read on a data schema — a named shape, a contract, a status block, a callable's parameters and result.",
+    type: "string",
+    minLength: 1,
+  },
+  [X_TELO_TEXT_VALUES]: {
+    title: "Text values",
+    description:
+      "On a `Text` or `Message` node: the values whoever shows the text formats it with, by name, each typed as a string or a number (`{}` for none). A placeholder or plural selector the text reads that is not one of them is refused where the text is written.",
+    type: "object",
+  },
+  [X_TELO_TEXT_VALUES_FOR]: {
+    title: "Text values for",
+    description:
+      "This object holds the values of a message: a JSON Pointer, relative to the enclosing value (for a callable parameter, the call's arguments keyed by parameter name), to the `Text` they bind. Every placeholder and plural selector of that text must be one of its keys, holding a string or a number.",
+    type: "string",
+  },
   [X_TELO_SENSITIVE]: {
     title: "Sensitive",
     description:

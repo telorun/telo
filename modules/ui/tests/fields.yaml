@@ -1,0 +1,208 @@
+kind: Telo.Application
+metadata:
+  name: UiFieldsTest
+  version: 1.0.0
+  description: |
+    What a form carries for its fields: a property name and an input field
+    naming it are one field; every field kind's spec arrives with its defaults
+    filled, its option source and its surface, beside the groups and the kept
+    state. A field kind from another module is placed with no change to `ui`
+    and judged by its own rule — refused where it is written, and when the
+    form is first read.
+imports:
+  Ui: ..
+  Stars: ./__fixtures__/external-field
+  Assert: ../../assert
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+targets:
+  - !ref main
+  - !ref ratingRefused
+  - !ref ratingRefusedAtRuntime
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Task
+schema:
+  type: object
+  required: [title]
+  properties:
+    title: { type: string, title: Title }
+    owner: { type: string }
+    watchers: { type: array, items: { type: string } }
+    period:
+      type: object
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+    secret: { type: string, writeOnly: true }
+    stars: { type: integer, minimum: 1, maximum: 5 }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Person
+schema:
+  type: object
+  properties:
+    id: { type: string }
+    name: { type: string, title: Name }
+    team: { type: string }
+    page: { type: string, format: uri-reference }
+---
+kind: Ui.CollectionOptions
+metadata:
+  name: people
+model: !ref Person
+value: !cel "row.id"
+label: !cel "row.name"
+hint: !cel "row.team"
+href: !cel "row.page"
+collection:
+  kind: Ui.Collection
+  query:
+    filters:
+      - { property: id, operator: in }
+      - { property: name, operator: contains }
+      - { property: team, operator: eq }
+    sort: []
+source:
+  basePath: /api/people
+  filters: { team: !cel "values.title" }
+search: { property: name, operator: contains }
+---
+kind: Ui.Form
+metadata:
+  name: bare
+model: !ref Task
+source: { basePath: /api/tasks }
+fields: [title]
+---
+kind: Ui.Form
+metadata:
+  name: kinded
+model: !ref Task
+source: { basePath: /api/tasks }
+fields:
+  - { kind: Ui.InputField, property: title }
+---
+kind: Ui.Form
+metadata:
+  name: full
+model: !ref Task
+source: { basePath: /api/tasks }
+groups:
+  - { name: who, label: Who, description: The people on it. }
+  - name: when
+    label: When
+    shown: { at: !cel "values.title", matches: { minLength: 1 } }
+fields:
+  - title
+  - { kind: Ui.ChoiceField, property: owner, options: !ref people, control: options, group: who }
+  - { kind: Ui.PickerField, property: watchers, options: !ref people, group: who }
+  - kind: Ui.DateRangeField
+    property: period
+    group: when
+    presets:
+      - { label: This month, unit: month, offset: 0 }
+      - { label: Last month, unit: month, offset: -1 }
+    initialPreset: This month
+    warnLongerThan: { unit: quarter, count: 1 }
+  - { kind: Ui.InputField, property: secret, control: auto }
+  - { kind: Stars.Rating, property: stars }
+state: { key: task, address: true }
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: bare
+    invoke: { kind: Probe.Read, source: !ref bare }
+  - name: kinded
+    invoke: { kind: Probe.Read, source: !ref kinded }
+  - name: full
+    invoke: { kind: Probe.Read, source: !ref full }
+  - name: same
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.kinded.result"
+      expected: !cel "steps.bare.result"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "{'fields': steps.full.result.node.fields, 'groups': steps.full.result.node.groups, 'state': steps.full.result.node.state}"
+      expected:
+        fields:
+          - { type: input, property: title, label: { text: Title, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+          - type: choice
+            property: owner
+            label: { text: owner, context: null, lang: und, computed: false }
+            group: who
+            control: options
+            options: &people
+              type: collection
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  name: { type: string, title: Name }
+                  team: { type: string }
+                  page: { type: string, format: uri-reference }
+              value: { root: row, path: [id] }
+              label: { root: row, path: [name] }
+              hint: { root: row, path: [team] }
+              href: { root: row, path: [page] }
+              basePath: /api/people
+              filters: { team: { root: values, path: [title] } }
+              pageSize: 25
+              search: { property: name, operator: contains }
+            description: null
+            labels: []
+          - type: picker
+            property: watchers
+            label: { text: watchers, context: null, lang: und, computed: false }
+            group: who
+            options: *people
+            surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            description: null
+            labels: []
+          - type: dateRange
+            property: period
+            label: { text: period, context: null, lang: und, computed: false }
+            group: when
+            presets:
+              - { label: { text: This month, context: null, lang: und, computed: false }, unit: month, offset: 0 }
+              - { label: { text: Last month, context: null, lang: und, computed: false }, unit: month, offset: -1 }
+            weekStart: monday
+            initialPreset: 0
+            warnLongerThan: { unit: quarter, count: 1 }
+            description: null
+            labels: []
+          - { type: input, property: secret, label: { text: secret, context: null, lang: und, computed: false }, control: auto, description: null, labels: [] }
+          - { type: input, property: stars, label: { text: stars, context: null, lang: und, computed: false }, control: slider, description: null, labels: [] }
+        groups:
+          - { name: who, label: { text: Who, context: null, lang: und, computed: false }, description: { text: The people on it., context: null, lang: und, computed: false } }
+          - name: when
+            label: { text: When, context: null, lang: und, computed: false }
+            shown: { at: { root: values, path: [title] }, matches: { minLength: 1 } }
+        state:
+          key: task
+          address: true
+          store: { type: memory }
+          fields: [title, owner, watchers, period, stars]
+---
+kind: Assert.Manifest
+metadata:
+  name: ratingRefused
+source: ./__fixtures__/invalid/rating/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/rated at 'fields[0]': required by Stars.Rating — rates a property that is not a number declaring `minimum` and `maximum`"
+---
+kind: Assert.Manifest
+metadata:
+  name: ratingRefusedAtRuntime
+source: ./__fixtures__/invalid/rating-at-runtime/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'rated': 'fields[0]' rates a property that is not a number declaring 'minimum' and 'maximum' ('note')"

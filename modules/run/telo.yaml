@@ -504,6 +504,12 @@ controllers:
   - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Projection
 throws:
   inherit: true
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: array
+    items:
+      x-telo-value-schema-from: elementType
 schema:
   type: object
   properties:
@@ -520,10 +526,20 @@ schema:
     outputType:
       title: Output Type
       description: >-
-        The result contract — a named type reference or an inline type definition. Declaring it types
-        `steps.<name>.result` for callers, has every result slot checked
-        statically by `x-telo-value-schema-from`, and has the produced value
-        validated at dispatch.
+        The contract of the whole result array — a named type reference or an
+        inline type definition. Declaring it replaces the default contract (an
+        array of `elementType`), types `steps.<name>.result` for callers, and has
+        the produced array validated at dispatch.
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
+    elementType:
+      title: Element Type
+      description: >-
+        The contract each collected element satisfies — a named type reference or
+        an inline type definition. Declaring it holds `outputs` to that shape at
+        analysis time, types each element of `steps.<name>.result` for callers,
+        and has every element validated at dispatch.
       x-telo-ref:
         kind: Telo.Type
         use: schema
@@ -552,6 +568,8 @@ schema:
       description: >-
         Whole-operation error contract. Maps a throw that escapes the entire
         projection to a fallback result; an unmatched throw propagates (fail-fast).
+        The fallback is the projection's result, so it is an array validated
+        against the result contract like any other.
       x-telo-error-context:
         type: object
         description: The escaped failure (sees error and inputs).
@@ -583,7 +601,7 @@ schema:
             type: boolean
           value:
             title: Value
-            description: Fallback result returned when this entry matches.
+            description: Fallback result array returned when this entry matches.
     steps:
       title: Steps
       description: Body run once per element of collection. Sees item, index, items.
@@ -603,7 +621,8 @@ schema:
       description: >-
         A CEL map (key → expression) evaluated per element over `steps.*`, `item`,
         `index`, `items`, and `inputs`. Each element's value is collected into the
-        result array (input order preserved). Omit to collect the raw step map.
+        result array (input order preserved) and checked against `elementType`.
+        Omit to collect the raw step map.
       type: object
       additionalProperties: true
       x-telo-context:
@@ -613,7 +632,7 @@ schema:
           item: { x-telo-context-element-from: "collection" }
           index: { type: integer }
           items: { type: array }
-      x-telo-value-schema-from: outputType
+      x-telo-value-schema-from: elementType
   required:
     - collection
     - steps

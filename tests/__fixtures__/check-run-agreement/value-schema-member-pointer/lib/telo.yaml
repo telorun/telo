@@ -1,0 +1,34 @@
+# A kind naming a member by a sibling that holds no string: the sibling is an
+# integer, so it never names a property of the model.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaMemberPointerLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind names a member through a field that is not a
+    string.
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    model:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    entry:
+      type: object
+      properties:
+        size: { type: integer }
+        value:
+          type: string
+          x-telo-value-schema-from: { from: /model, member: "1/size" }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body

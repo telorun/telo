@@ -1,0 +1,44 @@
+# Two misplaced catalog sets: one marking a field that holds no catalog and no
+# reference, one marked inside another set.
+kind: Telo.Library
+metadata:
+  name: CatalogSetInvalid
+  version: 1.0.0
+  description: Fixture library declaring misplaced catalog sets.
+imports:
+  Kinds: ../kinds
+exports:
+  kinds: [Labelled, Doubled]
+---
+kind: Telo.Definition
+metadata:
+  name: Labelled
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    label: { type: string, x-telo-text-catalog-set: true }
+provide: !ref shape
+resources:
+  - kind: Telo.JsonSchema
+    metadata: { name: shape }
+    schema: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: Doubled
+capability: Telo.Provider
+schema:
+  type: object
+  x-telo-text-catalog-set: true
+  properties:
+    catalogs:
+      type: array
+      x-telo-text-catalog-set: true
+      items:
+        x-telo-ref: { kind: Kinds.Catalog, use: dependency }
+provide: !ref shape
+resources:
+  - kind: Telo.JsonSchema
+    metadata: { name: shape }
+    schema: { type: object }

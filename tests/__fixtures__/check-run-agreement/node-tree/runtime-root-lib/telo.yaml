@@ -1,0 +1,16 @@
+# An accessor naming a binding that exists only where an expression is
+# evaluated per request.
+kind: Telo.Library
+metadata:
+  name: RuntimeRootLib
+  version: 1.0.0
+  description: Fixture library whose condition names a binding no accessor may root at.
+imports:
+  Kinds: ../kinds
+---
+kind: Kinds.Probe
+metadata:
+  name: byAddress
+condition:
+  at: !cel "request.ip"
+  matches: { type: string }

@@ -1,0 +1,7 @@
+# The library's condition is delivered at creation, where its accessor is read.
+kind: Telo.Application
+metadata:
+  name: RuntimeRootApp
+  version: 1.0.0
+imports:
+  Lib: ../runtime-root-lib
