@@ -7,7 +7,7 @@ import { suggestedResourceName } from "../../../../resource-naming";
 import { celEvalModeAtPointer } from "../../../resource-schema-form/cel-utils";
 import type { JsonSchemaProperty } from "../../../resource-schema-form/types";
 import { Button } from "../../../ui/button";
-import type { RefWrite } from "../application-canvas-model";
+import type { RefWrite } from "../ref-write";
 import type { TopologyViewProps } from "../topology-view";
 import { ModuleGraphView } from "./ModuleGraphView";
 import {
@@ -266,6 +266,13 @@ export function TemplateCanvas({
     [body, viewData],
   );
 
+  // The body's candidates are its own entries, so an output verdict about one
+  // is the body's, never that of a module resource sharing its name.
+  const structuredModel = useMemo(
+    () => canvas.structuredModel?.forTemplate(template.kindId) ?? null,
+    [canvas.structuredModel, template.kindId],
+  );
+
   const outerIsEditable = canvas.isEditableModule;
   const isEditableModule = useCallback(
     (module: string) => editable && outerIsEditable(module),
@@ -285,6 +292,8 @@ export function TemplateCanvas({
     ...canvas,
     moduleGraph: template.graph,
     viewData: innerViewData,
+    structuredModel,
+    refResolver: structuredModel ?? canvas.refResolver,
     resource: body.bootRoot,
     resolvedResources,
     selectedResource: selectedEntry,

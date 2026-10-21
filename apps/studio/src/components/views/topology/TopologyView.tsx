@@ -14,6 +14,7 @@ import { ModuleGraphView } from "./module-graph-view/ModuleGraphView";
 import { TemplateCanvas } from "./module-graph-view/TemplateCanvas";
 import { ModuleBar } from "./ModuleBar";
 import { PreviewNotice } from "./PreviewNotice";
+import { StructuredModelNotice } from "./StructuredModelNotice";
 import type { TopologyViewProps } from "./topology-view";
 
 /**
@@ -33,9 +34,11 @@ import type { TopologyViewProps } from "./topology-view";
 export function TopologyView({
   readOnly,
   viewData,
-  registry,
+  viewModelStatus,
+  onRetryViewModel,
+  onOpenSourceView,
+  structuredModel,
   moduleGraph,
-  moduleGraphFor,
   templateGraphFor,
   isEditableModule,
   selectedResource,
@@ -151,11 +154,10 @@ export function TopologyView({
     root && rootKind?.schema && rootKind.topology === MODULE_OVERVIEW_TOPOLOGY
       ? {
           moduleGraph,
-          moduleGraphFor,
           isEditableModule,
           viewData,
-          registry,
-          refResolver: registry,
+          structuredModel,
+          refResolver: structuredModel,
           resource: root,
           schema: rootKind.schema,
           resolvedResources,
@@ -205,7 +207,7 @@ export function TopologyView({
         onCreateResourceOfKind={onCreateResourceOfKind}
         onSelect={onSelect}
         moduleGraph={moduleGraph}
-        registry={registry}
+        structuredModel={structuredModel}
         onMoveField={onMoveField}
         onRemoveField={onRemoveField}
         onSelectResource={onSelectResource}
@@ -217,7 +219,13 @@ export function TopologyView({
         <PreviewNotice />
         <div className="relative flex min-h-0 flex-1">
           <RegionErrorBoundary region="graph" resetKey={openKind}>
-          {canvasProps && openKind ? (
+          {canvasProps && viewModelStatus.state !== "ready" ? (
+            <StructuredModelNotice
+              status={viewModelStatus}
+              onOpenSource={onOpenSourceView}
+              onRetry={onRetryViewModel}
+            />
+          ) : canvasProps && openKind ? (
             template ? (
               <TemplateCanvas
                 canvas={canvasProps}
@@ -266,7 +274,7 @@ export function TopologyView({
         // is where a body is edited and nothing is drawn twice.
         canvasResource={null}
         viewData={viewData}
-        registry={registry}
+        registry={structuredModel}
         readOnly={readOnly}
         onSourceEdit={onSourceEdit}
         onExtractInline={onExtractInline}

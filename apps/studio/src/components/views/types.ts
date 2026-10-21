@@ -1,4 +1,6 @@
-import type { AnalysisRegistry, ModuleGraph } from "@telorun/analyzer";
+import type { ModuleGraph } from "@telorun/analyzer";
+import type { StructuredModel } from "../../language/structured-model";
+import type { ViewModelStatus } from "../../language/view-model-store";
 import type { ImportableLibrary } from "../../loader";
 import type { WorkspaceChanges } from "../../loader/observed-workspace-adapter";
 import type {
@@ -8,7 +10,7 @@ import type {
   SourceRevealRequest,
   WorkspaceAdapter,
 } from "../../model";
-import type { RefWrite } from "./topology/application-canvas-model";
+import type { RefWrite } from "./topology/ref-write";
 import type { TopologyHostState } from "./topology/topology-view";
 import type { TemplateGraph } from "./topology/module-graph-view/template-graph";
 
@@ -25,19 +27,20 @@ export interface ViewProps {
    *  Null when the module is editable. */
   readOnlyReason: "agent" | "remote" | "viewer" | "cloud" | null;
   viewData: ModuleViewData;
-  /** Analysis registry for the active module's closure — supplies the field
-   *  maps / capability lookups the overview graph needs. Null before the first
-   *  analysis pass completes for the module. */
-  registry: AnalysisRegistry | null;
-  /** The active module's graph — boxes, ordered rows and classed edges, folded
-   *  by the analyzer over the same flattened manifest set the checker ran on.
-   *  Null before the first analysis pass completes. */
+  /** What the active module's structured views can read: the view model its
+   *  engine serves, or why there is none yet. */
+  viewModelStatus: ViewModelStatus;
+  /** Reads the view model again after a failed read; absent where retrying
+   *  cannot help (no language session runs). */
+  onRetryViewModel?: () => void;
+  /** Switches the module to its source view. */
+  onOpenSourceView: () => void;
+  /** The active module's kinds, reference constraints and contracts, read from
+   *  its view model. Null until that model is ready. */
+  structuredModel: StructuredModel | null;
+  /** The active module's graph — boxes, ordered rows and classed edges, read
+   *  from its view model. Null until that model is ready. */
   moduleGraph: ModuleGraph | null;
-  /** The graph of an IMPORTED module, by its `metadata.name` — what lets the
-   *  canvas open a library in place instead of leaving it an opaque leaf. Null
-   *  for a module the workspace has not analyzed (an unresolved import, or a
-   *  dependency of a dependency). */
-  moduleGraphFor: (moduleName: string) => ModuleGraph | null;
   /** A templated kind's body drawn as a module graph, by canonical kind id —
    *  what the canvas opens when a reader drills into a template. Null when no
    *  templated definition in the active closure declares that kind. */

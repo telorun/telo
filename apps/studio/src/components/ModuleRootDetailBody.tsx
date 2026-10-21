@@ -1,4 +1,4 @@
-import { refTargetName } from "./views/topology/overview-graph";
+import { refTargetName } from "./views/topology/ref-target-name";
 
 interface ModuleRootTargetsSummaryProps {
   fields: Record<string, unknown>;

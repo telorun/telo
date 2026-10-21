@@ -8,7 +8,7 @@ import {
   writeConcretePath,
 } from "../../../../lib/concrete-path";
 import type { ParsedResource } from "../../../../model";
-import type { RefWrite } from "../application-canvas-model";
+import type { RefWrite } from "../ref-write";
 import { BOOT_FIELD } from "../boot-targets";
 
 /**

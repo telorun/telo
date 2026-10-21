@@ -125,7 +125,9 @@ export class FakeEngine {
         reply({
           capabilities: {
             ...(this.harness.capabilities[this.version] ?? DEFAULT_CAPABILITIES),
-            experimental: { telo: { protocol: 1 } },
+            experimental: {
+              telo: { protocol: 1, ...(this.harness.viewModelEngines.has(this.version) ? { viewModel: true } : {}) },
+            },
           },
           serverInfo: { name: "telo", version: reported },
         });
@@ -173,6 +175,8 @@ export interface HarnessOptions {
   bundledCode?: string;
   /** What each engine version advertises (default: full sync and hover). */
   capabilities?: Record<string, ServerCapabilities>;
+  /** Engine versions advertising `experimental.telo.viewModel`. */
+  viewModelEngines?: string[];
 }
 
 export class RouterHarness {
@@ -183,6 +187,9 @@ export class RouterHarness {
   /** Answers every engine gives to a request method. */
   readonly handlers: Record<string, (engine: FakeEngine, params: any) => unknown> = {};
   readonly capabilities: Record<string, ServerCapabilities>;
+  readonly viewModelEngines: Set<string>;
+  /** Every `telo/viewModelChanged` the editor received, in order. */
+  readonly viewModelChanges: Array<{ owner: string; revision: number }> = [];
   readonly diagnostics = new Map<string, string[]>();
   readonly applied: unknown[] = [];
   readonly statuses: TeloStatus[] = [];
@@ -203,6 +210,7 @@ export class RouterHarness {
   constructor(options: HarnessOptions = {}) {
     this.storedCatalog = options.catalog;
     this.capabilities = options.capabilities ?? {};
+    this.viewModelEngines = new Set(options.viewModelEngines ?? []);
     this.bundledCode = options.bundledCode ?? engineCode(BUNDLED);
     for (const [version, engine] of Object.entries(options.cached ?? {})) this.cache.set(version, engine);
     const transports = createInProcessTransports();
@@ -262,6 +270,9 @@ export class RouterHarness {
     this.client.onRequest("workspace/applyEdit", (params: unknown) => {
       this.applied.push(params);
       return { applied: true };
+    });
+    this.client.onNotification("telo/viewModelChanged", (params: { owner: string; revision: number }) => {
+      this.viewModelChanges.push(params);
     });
     this.client.onNotification("window/logMessage", (params: { message: string }) => this.logs.push(params.message));
     this.client.onRequest("client/registerCapability", (params: any) => {

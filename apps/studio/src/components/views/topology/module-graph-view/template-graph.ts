@@ -1,19 +1,13 @@
-import {
-  inheritedCapability,
-  templateModule,
-  type AnalysisRegistry,
-  type ManifestAnalysis,
-  type ModuleGraph,
-} from "@telorun/analyzer";
-import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { isModuleRootKind } from "../../../../application-adapter";
+import type { ModuleGraph } from "@telorun/analyzer";
+import type { TemplateGraphData, ViewModel } from "@telorun/editor-protocol";
+import type { ResourceManifest } from "@telorun/sdk";
+import { moduleGraphFromData } from "../../../../language/module-graph-from-data";
 
 /**
  * A templated kind's body, drawn as a module — see the analyzer's
- * `templateModule`. The graph is built by the SAME projection the module canvas
- * draws from, over the analyzed definition, against the closure's registry, so
- * a box inside the body and a box at top level cannot disagree about what a
- * kind's slots are.
+ * `templateModule`. The module's engine builds the graph by the SAME projection
+ * it draws the module from, against the closure's own kinds, so a box inside
+ * the body and a box at top level cannot disagree about what a kind's slots are.
  */
 export interface TemplateGraph {
   /** Canonical `<module>.<Name>` of the kind. */
@@ -28,59 +22,23 @@ export interface TemplateGraph {
   graph: ModuleGraph;
 }
 
-/** Built once per analysis, since the analysis is rebuilt on every edit. */
-const memo = new WeakMap<ManifestAnalysis, Map<string, TemplateGraph | null>>();
+const served = new WeakMap<TemplateGraphData, TemplateGraph>();
 
-/** The body of the kind `kindId`, or null when no templated definition in the
- *  analyzed closure declares it. */
-export function templateGraphOf(
-  analysis: ManifestAnalysis,
-  registry: AnalysisRegistry,
-  kindId: string,
-): TemplateGraph | null {
-  let byKind = memo.get(analysis);
-  if (!byKind) memo.set(analysis, (byKind = new Map()));
-  if (byKind.has(kindId)) return byKind.get(kindId)!;
-  const built = build(analysis, registry, kindId);
-  byKind.set(kindId, built);
-  return built;
-}
-
-function build(
-  analysis: ManifestAnalysis,
-  registry: AnalysisRegistry,
-  kindId: string,
-): TemplateGraph | null {
-  const definition = analysis.manifests.find(
-    (m) => m.kind === "Telo.Definition" && canonicalIdOf(m) === kindId,
-  );
-  if (!definition) return null;
-  const module = (definition.metadata as { module?: string } | undefined)?.module;
-  const moduleDoc = analysis.manifests.find(
-    (m) => isModuleRootKind(m.kind as string) && (!module || m.metadata?.name === module),
-  );
-  const body = templateModule(definition, moduleDoc, analysis.manifests);
-  const manifests = [...body.resources, body.root];
-  const graph = registry
-    .analysisOf(manifests)
-    .moduleGraph(registry.moduleGraphDeps(manifests, body.options), body.options);
-  const asDefinition = definition as unknown as ResourceDefinition;
-  const capability = inheritedCapability(asDefinition, registry.resolverForDefinition(asDefinition));
-  return {
-    kindId,
-    name: definition.metadata?.name as string,
-    ...(module ? { module } : {}),
-    ...(capability ? { capability } : {}),
-    definition,
-    graph,
+/** The body of the kind `kindId` as the module's view model carries it, or
+ *  null when no templated definition in the module's closure declares it. */
+export function templateGraphFromViewModel(model: ViewModel, kindId: string): TemplateGraph | null {
+  const data = model.templates[kindId];
+  if (!data) return null;
+  const known = served.get(data);
+  if (known) return known;
+  const template: TemplateGraph = {
+    kindId: data.kindId,
+    name: data.name,
+    ...(data.module !== undefined ? { module: data.module } : {}),
+    ...(data.capability !== undefined ? { capability: data.capability } : {}),
+    definition: data.definition as unknown as ResourceManifest,
+    graph: moduleGraphFromData(data.graph),
   };
-}
-
-/** The kind plane's id for a definition — `<module>.<Name>`, or the bare name
- *  where the loader stamped no module. */
-function canonicalIdOf(definition: ResourceManifest): string | undefined {
-  const name = definition.metadata?.name;
-  if (typeof name !== "string") return undefined;
-  const module = (definition.metadata as { module?: string } | undefined)?.module;
-  return module ? `${module}.${name}` : name;
+  served.set(data, template);
+  return template;
 }

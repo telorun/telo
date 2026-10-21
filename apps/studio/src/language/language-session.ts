@@ -1,7 +1,14 @@
 import type { ManifestSource } from "@telorun/analyzer";
 import {
+  TeloMethod,
+  type CelCompletionParams,
+  type ViewModel,
+  type ViewModelChangedParams,
+} from "@telorun/editor-protocol";
+import {
   HubClient,
   LanguageRouter,
+  canonicalUri,
   createInProcessTransports,
   type BundledEngine,
   type EngineCache,
@@ -9,7 +16,7 @@ import {
   type TeloStatus,
   type VersionMarks,
 } from "@telorun/language-host";
-import type { Diagnostic } from "vscode-languageserver-protocol";
+import type { CompletionItem, Diagnostic } from "vscode-languageserver-protocol";
 import type { WorkspaceAdapter } from "../model";
 import { pathToFileUri } from "./file-uri";
 import {
@@ -50,17 +57,31 @@ export interface LanguageSessionOptions {
   onMessage(type: 1 | 2 | 3 | 4, message: string, shown: boolean): void;
 }
 
+/** `telo/celCompletion` for the module at `modulePath`. */
+export type CelFieldCompletionParams = Omit<CelCompletionParams, "owner"> & { modulePath: string };
+
 /**
  * One workspace's language tooling: the router choosing and running engines,
  * and the Monaco bridge speaking to it. Every manifest model is a document the
- * engines analyse; every diagnostic studio shows comes from here.
+ * engines analyse; every diagnostic studio shows comes from here, and so does
+ * the view model each module's structured views read.
+ *
+ * A module is named by its workspace path; as an owner on the wire it is the
+ * canonical URI of that path (`ownerOf`), which is also how a
+ * `telo/viewModelChanged` names it.
  */
 export class LanguageSession {
+  private readonly viewModelListeners = new Set<(params: ViewModelChangedParams) => void>();
+
   private constructor(
     private readonly router: LanguageRouter,
     private readonly bridge: MonacoLspBridge,
     private readonly options: LanguageSessionOptions,
-  ) {}
+  ) {
+    bridge.onNotification(TeloMethod.viewModelChanged, (params: ViewModelChangedParams) => {
+      for (const listener of [...this.viewModelListeners]) listener(params);
+    });
+  }
 
   static async start(options: LanguageSessionOptions): Promise<LanguageSession> {
     const transports = createInProcessTransports();
@@ -124,6 +145,45 @@ export class LanguageSession {
 
   retry(): Promise<void> {
     return this.router.retry();
+  }
+
+  /** The canonical owner URI of the module at `modulePath`. */
+  ownerOf(modulePath: string): string {
+    return canonicalUri(pathToFileUri(modulePath));
+  }
+
+  /** Whether the engine serving the module serves structured editing;
+   *  `undefined` while no running engine serves it. */
+  supportsViewModel(modulePath: string): boolean | undefined {
+    return this.router.supportsViewModel(this.ownerOf(modulePath));
+  }
+
+  /** The version of the open document at canonical `uri` last sent to the
+   *  engines — the number a view model's `documents` names; undefined when no
+   *  model of it is open. */
+  documentVersion(uri: string): number | undefined {
+    for (const model of this.options.monaco.editor.getModels()) {
+      if (canonicalUri(model.uri.toString()) === uri) return model.getVersionId();
+    }
+    return undefined;
+  }
+
+  /** The module's view model, or `null` when its engine is not analysing it. */
+  viewModel(modulePath: string): Promise<ViewModel | null> {
+    return this.bridge.sendRequest<ViewModel | null>(TeloMethod.viewModel, { owner: this.ownerOf(modulePath) });
+  }
+
+  /** Completion inside a CEL value typed into a form field; a `textEdit`
+   *  range is a line/character range in `text`. */
+  celCompletion({ modulePath, ...field }: CelFieldCompletionParams): Promise<CompletionItem[]> {
+    const params: CelCompletionParams = { owner: this.ownerOf(modulePath), ...field };
+    return this.bridge.sendRequest<CompletionItem[]>(TeloMethod.celCompletion, params);
+  }
+
+  /** Every `telo/viewModelChanged`, its `owner` canonical. */
+  onViewModelChanged(listener: (params: ViewModelChangedParams) => void): { dispose(): void } {
+    this.viewModelListeners.add(listener);
+    return { dispose: () => void this.viewModelListeners.delete(listener) };
   }
 
   dispose(): Promise<void> {

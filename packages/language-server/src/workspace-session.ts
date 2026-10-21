@@ -11,10 +11,10 @@ import {
   type LoadedGraph,
   type ManifestAnalysis,
 } from "@telorun/analyzer";
-import type { RequirementsParams } from "@telorun/editor-protocol";
+import type { RequirementsParams, ViewModelChangedParams } from "@telorun/editor-protocol";
 import { normalizeDiagnostic } from "@telorun/ide-support";
 import { DiagnosticSeverity, type Diagnostic } from "vscode-languageserver/browser";
-import { dirnameOf } from "./document-uri.js";
+import { canonicalDocumentUri, dirnameOf, uriOfSource } from "./document-uri.js";
 import { errorText } from "./host-client.js";
 import type { HostManifestSource } from "./host-manifest-source.js";
 import { documentDiagnostic, toLspDiagnostic } from "./lsp-diagnostic.js";
@@ -45,18 +45,22 @@ export interface DocumentAnalysis {
   docsFor(text: string): AstDocument[] | undefined;
 }
 
-interface OwnerAnalysis {
+export interface OwnerAnalysis {
   graph: LoadedGraph;
   registry: AnalysisRegistry;
   analysis: ManifestAnalysis;
   /** Every source the analysis read — a change to any of them changes it. */
   closure: Set<string>;
+  /** Document URI → the LSP version of each open document the analysis read. */
+  documents: Record<string, number>;
   diagnostics: Map<string, Diagnostic[]>;
 }
 
 export interface SessionEvents {
   publishDiagnostics(source: string, diagnostics: Diagnostic[]): void;
   requirements(params: RequirementsParams): void;
+  /** An owner's analysis was stored or dropped. */
+  viewModelChanged(params: ViewModelChangedParams): void;
   /** One round of analysis settled; highlighting may now resolve more. */
   analysed(): void;
   /** The engine itself failed while refreshing `source`. */
@@ -79,8 +83,13 @@ export interface SessionEvents {
  * analysis runs costs one further analysis, not one per keystroke.
  */
 export class WorkspaceSession {
-  private readonly texts = new Map<string, string>();
+  private readonly texts = new Map<string, { text: string; version: number }>();
+  /** The version of each open document the analysis under way read. Analyses
+   *  are serialized, so every read between its start and its end is its own. */
+  private reads = new Map<string, number>();
   private readonly owners = new Map<string, OwnerAnalysis>();
+  /** Per owner, never reset — a dropped and re-analysed owner keeps counting. */
+  private readonly revisions = new Map<string, number>();
   private readonly documentOwner = new Map<string, string>();
   /** Diagnostics about a document as a whole — a load failure, a partial no
    *  module includes, a workspace marker's checks. */
@@ -95,13 +104,18 @@ export class WorkspaceSession {
     private readonly events: SessionEvents,
   ) {}
 
+  /** The open buffer standing in for `source`, read by an analysis — which
+   *  records the version it read; the earliest, should it read one twice. */
   textOf(source: string): string | undefined {
-    return this.texts.get(source);
+    const open = this.texts.get(source);
+    if (!open) return undefined;
+    if (!this.reads.has(source)) this.reads.set(source, open.version);
+    return open.text;
   }
 
   /** A document opened or edited — the host sends the whole text either way. */
-  changed(source: string, text: string): void {
-    this.texts.set(source, text);
+  changed(source: string, text: string, version: number): void {
+    this.texts.set(source, { text, version });
     this.schedule(source);
   }
 
@@ -141,6 +155,17 @@ export class WorkspaceSession {
     };
   }
 
+  /** The stored analysis of the owner a URI names, with its revision, or
+   *  undefined when it is not being analysed. Matched by canonical URI: a source
+   *  keeps the drive-letter case its document was opened with. */
+  ownerAnalysis(ownerUri: string): { state: OwnerAnalysis; revision: number } | undefined {
+    const wanted = canonicalDocumentUri(ownerUri);
+    for (const [owner, state] of this.owners) {
+      if (uriOfSource(owner) === wanted) return { state, revision: this.revisions.get(owner)! };
+    }
+    return undefined;
+  }
+
   private schedule(source: string): void {
     this.pending.add(source);
     this.draining ??= this.drain().finally(() => (this.draining = undefined));
@@ -177,7 +202,7 @@ export class WorkspaceSession {
   private async refresh(source: string, done: Set<string>): Promise<void> {
     if (this.texts.has(source)) {
       if (this.markers.isMarker(source)) {
-        this.documentDiagnostics.set(source, await this.markers.diagnostics(source, this.texts.get(source)!));
+        this.documentDiagnostics.set(source, await this.markers.diagnostics(source, this.texts.get(source)!.text));
         return;
       }
       await this.analyzeDocument(source, done);
@@ -185,13 +210,14 @@ export class WorkspaceSession {
     for (const [owner, state] of [...this.owners]) {
       if (done.has(owner) || !state.closure.has(source)) continue;
       const member = [...this.documentOwner].find(([, o]) => o === owner)?.[0];
-      if (member === undefined) this.owners.delete(owner);
+      if (member === undefined) this.dropOwner(owner);
       else await this.analyzeDocument(member, done);
     }
   }
 
   private async analyzeDocument(source: string, done: Set<string>): Promise<void> {
-    const text = this.texts.get(source)!;
+    const { text } = this.texts.get(source)!;
+    this.reads = new Map();
     this.documentDiagnostics.delete(source);
     // Unrelated YAML (a CI config or a Kubernetes manifest beside a telo.yaml)
     // is not a partial of it.
@@ -283,15 +309,30 @@ export class WorkspaceSession {
       closure.add(source);
       for (const file of [module.owner, ...module.partials]) closure.add(file.source);
     }
+    const documents: Record<string, number> = {};
+    for (const [source, version] of this.reads) if (closure.has(source)) documents[uriOfSource(source)] = version;
 
     this.owners.set(owner, {
       graph,
       registry,
       analysis: registry.analysisOf(manifests),
       closure,
+      documents,
       diagnostics,
     });
     this.events.requirements(requirementsOf(owner, graph));
+    this.viewModelMoved(owner);
+  }
+
+  private dropOwner(owner: string): void {
+    this.owners.delete(owner);
+    this.viewModelMoved(owner);
+  }
+
+  private viewModelMoved(owner: string): void {
+    const revision = (this.revisions.get(owner) ?? 0) + 1;
+    this.revisions.set(owner, revision);
+    this.events.viewModelChanged({ owner: uriOfSource(owner), revision });
   }
 
   /** An owner no open document belongs to any more stops being analysed, and
@@ -299,7 +340,7 @@ export class WorkspaceSession {
   private collectUnusedOwners(): void {
     const used = new Set(this.documentOwner.values());
     for (const owner of [...this.owners.keys()]) {
-      if (!used.has(owner)) this.owners.delete(owner);
+      if (!used.has(owner)) this.dropOwner(owner);
     }
   }
 

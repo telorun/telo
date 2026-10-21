@@ -1,5 +1,6 @@
-import type { AnalysisRegistry, GraphRow, ModuleGraph } from "@telorun/analyzer";
+import type { GraphRow, ModuleGraph } from "@telorun/analyzer";
 import { Braces, ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react";
+import type { StructuredModel } from "../../../language/structured-model";
 import type { ParsedResource, Selection } from "../../../model";
 import {
   BOOT_FIELD,
@@ -31,7 +32,7 @@ import { Section } from "./ModuleBarSection";
 export function BootSection({
   root,
   moduleGraph,
-  registry,
+  structuredModel,
   moduleSchema,
   readOnly,
   selection,
@@ -43,7 +44,7 @@ export function BootSection({
 }: {
   root: ParsedResource;
   moduleGraph: ModuleGraph | null;
-  registry: AnalysisRegistry | null;
+  structuredModel: StructuredModel | null;
   moduleSchema: Record<string, unknown> | undefined;
   readOnly: boolean;
   selection: Selection | null;
@@ -63,10 +64,10 @@ export function BootSection({
   const refs = moduleGraph ? bootConstraint(moduleGraph) : undefined;
   const started = new Set(moduleGraph ? bootMarkers(entries, moduleGraph).keys() : []);
   const candidates =
-    moduleGraph && registry && refs && refs.length > 0
+    moduleGraph && structuredModel && refs && refs.length > 0
       ? [
           ...new Set(
-            referenceableTargets({ refs }, moduleGraph.nodes, registry)
+            referenceableTargets({ refs }, moduleGraph.nodes, structuredModel)
               .filter((node) => !started.has(node.id))
               .map(referenceName),
           ),
@@ -96,7 +97,7 @@ export function BootSection({
     if (row?.inputs) {
       const target = row.targetNode ? moduleGraph?.nodeById(row.targetNode) : undefined;
       const targetKind = target ? (target.canonicalKind ?? target.kind) : undefined;
-      const schema = (targetKind ? registry?.inputTypeForKind(targetKind) : undefined) ?? {
+      const schema = (targetKind ? structuredModel?.inputTypeForKind(targetKind) : undefined) ?? {
         type: "object",
         additionalProperties: true,
       };

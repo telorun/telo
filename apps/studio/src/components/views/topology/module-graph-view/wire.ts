@@ -6,8 +6,8 @@ import { handleId } from "./graph-nodes";
  * Wiring by drag: which slot a gesture started from, and whether it may end
  * where it was dropped.
  *
- * The rule is the slot's own declared constraint, resolved through the registry
- * — the same `x-telo-ref` the checker validates the written reference against.
+ * The rule is the slot's own declared constraint, resolved through the
+ * module's structured model — the same `x-telo-ref` the checker validates the written reference against.
  * Nothing here knows a kind: a drag is legal when the target's kind is in the
  * accepted set the constraint expands to, which is what makes a third-party
  * kind wirable the day it is imported.
@@ -130,7 +130,7 @@ export function siteRefs(site: WireSite): string[] {
 /**
  * May this slot hold that resource?
  *
- * Undecidable is treated as ALLOWED: a constraint the registry cannot resolve
+ * Undecidable is treated as ALLOWED: a constraint the model cannot resolve
  * (an unresolved import) would otherwise make every slot on the canvas refuse
  * every drop, which reads as the editor being broken rather than as the import
  * being unresolved — and the written reference is still checked by `telo check`,

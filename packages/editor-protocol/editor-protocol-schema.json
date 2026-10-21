@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://telo.run/schemas/editor-protocol.json",
   "title": "Telo editor protocol, generation 1",
-  "description": "The messages an editor host and a telo language-server engine exchange beyond LSP itself. Each host-served request (engine to host) has a `<Name>Params` and a `<Name>Result` definition; `RequirementsParams` is the engine-to-host `telo/requirements` notification; `TeloDiagnosticData` is what an engine puts in `Diagnostic.data`; `ExperimentalCapabilities` is what an engine advertises under `ServerCapabilities.experimental`. `x-telo-methods` maps each method name to its definitions. Objects are open and enumerations list the values known to this generation: a receiver ignores a member it does not know and reads an unknown enumeration value as its least-capable value (README.md, Generations). See README.md for the handshake and the generation rule.",
+  "description": "The messages an editor host and a telo language-server engine exchange beyond LSP itself. Each request — host-served (engine to host) or engine-served (host to engine) — has a `<Name>Params` and a `<Name>Result` definition; `RequirementsParams` and `ViewModelChangedParams` are the engine-to-host `telo/requirements` and `telo/viewModelChanged` notifications; `TeloDiagnosticData` is what an engine puts in `Diagnostic.data`; `ExperimentalCapabilities` is what an engine advertises under `ServerCapabilities.experimental`. `x-telo-methods` maps each method name to its definitions. Objects are open and enumerations list the values known to this generation: a receiver ignores a member it does not know and reads an unknown enumeration value as its least-capable value (README.md, Generations). See README.md for the handshake and the generation rule.",
   "x-telo-methods": {
     "telo/read": {
       "params": "#/$defs/ReadParams",
@@ -26,6 +26,17 @@
     },
     "telo/requirements": {
       "params": "#/$defs/RequirementsParams"
+    },
+    "telo/viewModel": {
+      "params": "#/$defs/ViewModelParams",
+      "result": "#/$defs/ViewModelResult"
+    },
+    "telo/celCompletion": {
+      "params": "#/$defs/CelCompletionParams",
+      "result": "#/$defs/CelCompletionResult"
+    },
+    "telo/viewModelChanged": {
+      "params": "#/$defs/ViewModelChangedParams"
     }
   },
   "$defs": {
@@ -45,6 +56,10 @@
               "type": "integer",
               "minimum": 1,
               "description": "The protocol generation the engine speaks."
+            },
+            "viewModel": {
+              "type": "boolean",
+              "description": "The engine serves `telo/viewModel` and `telo/celCompletion` and sends `telo/viewModelChanged`."
             }
           }
         }
@@ -296,6 +311,1017 @@
           "items": {
             "$ref": "#/$defs/RequirementsRange"
           }
+        }
+      }
+    },
+    "ViewModelChangedParams": {
+      "description": "Sent after each analysis of an owner module, and when the owner stops being analysed.",
+      "type": "object",
+      "required": [
+        "owner",
+        "revision"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "description": "Canonical `file:` URI of the owner module's document."
+        },
+        "revision": {
+          "type": "integer",
+          "description": "Increases with every analysis of the owner, and when it is dropped."
+        }
+      }
+    },
+    "ViewModelParams": {
+      "type": "object",
+      "required": [
+        "owner"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string"
+        }
+      }
+    },
+    "ViewModelResult": {
+      "description": "The owner's view model, or null when the engine is not analysing it.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ViewModel"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "CelCompletionParams": {
+      "type": "object",
+      "required": [
+        "owner",
+        "resource",
+        "path",
+        "tag",
+        "text",
+        "offset"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string"
+        },
+        "resource": {
+          "description": "The resource the field belongs to.",
+          "type": "object",
+          "required": [
+            "kind",
+            "name"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "path": {
+          "type": "string",
+          "description": "Concrete path of the field within the resource."
+        },
+        "tag": {
+          "type": "string",
+          "description": "The tag the value is written under, without its `!`."
+        },
+        "text": {
+          "type": "string",
+          "description": "The field's value without its tag."
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cursor offset into `text`."
+        }
+      }
+    },
+    "CelCompletionResult": {
+      "description": "Completion items; a `textEdit` range is a line/character range in the request's `text`.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CompletionItem"
+      }
+    },
+    "CompletionItem": {
+      "description": "The members of an LSP `CompletionItem` an engine sets.",
+      "type": "object",
+      "required": [
+        "label"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "integer",
+          "description": "LSP `CompletionItemKind`."
+        },
+        "detail": {
+          "type": "string"
+        },
+        "documentation": {
+          "type": "string"
+        },
+        "insertText": {
+          "type": "string"
+        },
+        "insertTextFormat": {
+          "type": "integer",
+          "description": "LSP `InsertTextFormat`; 2 is a snippet."
+        },
+        "textEdit": {
+          "type": "object",
+          "required": [
+            "range",
+            "newText"
+          ],
+          "properties": {
+            "range": {
+              "type": "object",
+              "required": [
+                "start",
+                "end"
+              ],
+              "properties": {
+                "start": {
+                  "type": "object",
+                  "required": [
+                    "line",
+                    "character"
+                  ],
+                  "properties": {
+                    "line": {
+                      "type": "integer"
+                    },
+                    "character": {
+                      "type": "integer"
+                    }
+                  }
+                },
+                "end": {
+                  "type": "object",
+                  "required": [
+                    "line",
+                    "character"
+                  ],
+                  "properties": {
+                    "line": {
+                      "type": "integer"
+                    },
+                    "character": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            },
+            "newText": {
+              "type": "string"
+            }
+          }
+        },
+        "preselect": {
+          "type": "boolean"
+        },
+        "sortText": {
+          "type": "string"
+        },
+        "filterText": {
+          "type": "string"
+        },
+        "command": {
+          "type": "object",
+          "required": [
+            "title",
+            "command"
+          ],
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "command": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "ViewModel": {
+      "description": "What a structured editor reads about one owner module, from the analysis its diagnostics come from.",
+      "type": "object",
+      "required": [
+        "owner",
+        "revision",
+        "moduleGraph",
+        "moduleRootSchema",
+        "kindSpellings",
+        "refConstraints",
+        "contracts",
+        "outputRefusals",
+        "templates",
+        "referenceSites",
+        "documents"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "moduleGraph": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ModuleGraphData"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "moduleRootSchema": {
+          "description": "The schema of the owner's module document kind.",
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "A JSON Schema, as plain JSON."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kindSpellings": {
+          "description": "Kind spelling → the canonical kind it resolves to; an unresolved spelling is absent.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "refConstraints": {
+          "description": "Reference-slot constraint → what satisfies it; an unresolved constraint is absent.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/RefConstraint"
+          }
+        },
+        "contracts": {
+          "description": "Canonical kind → its invocation contract, for every kind declaring one.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/KindContract"
+          }
+        },
+        "outputRefusals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OutputRefusals"
+          }
+        },
+        "templates": {
+          "description": "Canonical kind → the body of the templated kind.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/TemplateGraphData"
+          }
+        },
+        "referenceSites": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ReferenceSite"
+          }
+        },
+        "documents": {
+          "description": "Canonical URI → the LSP version of each open document the analysis read.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "RefConstraint": {
+      "type": "object",
+      "required": [
+        "accepted",
+        "userFacing"
+      ],
+      "properties": {
+        "accepted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Canonical kinds that satisfy the constraint, sorted."
+        },
+        "userFacing": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Alias-form kinds a new resource could be created with."
+        }
+      }
+    },
+    "KindContract": {
+      "type": "object",
+      "properties": {
+        "inputType": {
+          "type": "object",
+          "description": "A JSON Schema, as plain JSON."
+        },
+        "outputType": {
+          "type": "object",
+          "description": "A JSON Schema, as plain JSON."
+        }
+      }
+    },
+    "OutputRefusals": {
+      "description": "One reference slot declaring an `outputType`, and why each candidate cannot fill it.",
+      "type": "object",
+      "required": [
+        "kind",
+        "pointer",
+        "refusals"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "The canonical kind declaring the slot."
+        },
+        "pointer": {
+          "type": "string",
+          "description": "JSON Pointer of the slot's `x-telo-ref` node within that kind's `schema`."
+        },
+        "refusals": {
+          "description": "Resource name, in the scope the entry is listed in, → one line per definite mismatch; an absent resource can fill the slot.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "TemplateGraphData": {
+      "type": "object",
+      "required": [
+        "kindId",
+        "name",
+        "definition",
+        "graph",
+        "outputRefusals"
+      ],
+      "properties": {
+        "kindId": {
+          "type": "string",
+          "description": "Canonical `<module>.<Name>`."
+        },
+        "name": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "capability": {
+          "type": "string",
+          "description": "The kind's capability, inherited along `extends`."
+        },
+        "definition": {
+          "type": "object",
+          "description": "The definition document as analysed; its `metadata.source` is a document URI."
+        },
+        "graph": {
+          "$ref": "#/$defs/ModuleGraphData"
+        },
+        "outputRefusals": {
+          "description": "Per reference slot declaring an `outputType`, why each entry of the body cannot fill it, keyed by entry name.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OutputRefusals"
+          }
+        }
+      }
+    },
+    "ReferenceSite": {
+      "type": "object",
+      "required": [
+        "source",
+        "path",
+        "target"
+      ],
+      "properties": {
+        "source": {
+          "description": "The resource writing the reference.",
+          "type": "object",
+          "required": [
+            "kind",
+            "name"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "path": {
+          "type": "string",
+          "description": "Concrete path of the slot within that resource."
+        },
+        "target": {
+          "type": "string",
+          "description": "The name the reference holds, as written."
+        }
+      }
+    },
+    "ModuleGraphData": {
+      "type": "object",
+      "required": [
+        "nodes",
+        "edges",
+        "regions",
+        "kinds"
+      ],
+      "properties": {
+        "root": {
+          "$ref": "#/$defs/GraphNode"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphNode"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphEdge"
+          }
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphRegion"
+          }
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphKind"
+          }
+        }
+      }
+    },
+    "GraphNode": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "ownership",
+        "ports",
+        "rows",
+        "rowArrays"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "description": "The kind as written."
+        },
+        "name": {
+          "type": "string"
+        },
+        "capability": {
+          "type": "string"
+        },
+        "canonicalKind": {
+          "type": "string",
+          "description": "The canonical kind, when `kind` is not already canonical."
+        },
+        "unknownKind": {
+          "type": "boolean"
+        },
+        "ownership": {
+          "anyOf": [
+            {
+              "enum": [
+                "root",
+                "named",
+                "inline",
+                "scoped",
+                "imported",
+                "injected",
+                "enclosing",
+                "forwarded"
+              ]
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "owner": {
+          "type": "string",
+          "description": "Node owning this declaration (`inline`, `scoped`)."
+        },
+        "ownerSite": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "external": {
+          "type": "boolean"
+        },
+        "alias": {
+          "type": "string"
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphPort"
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphRow"
+          }
+        },
+        "rowArrays": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "field",
+              "kind"
+            ],
+            "properties": {
+              "field": {
+                "type": "string"
+              },
+              "kind": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "step",
+                      "entry",
+                      "target",
+                      "inline",
+                      "reference",
+                      "export"
+                    ]
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "throws": {
+          "type": "object",
+          "required": [
+            "codes",
+            "unbounded"
+          ],
+          "properties": {
+            "codes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "unbounded": {
+              "type": "boolean"
+            }
+          }
+        },
+        "root": {
+          "type": "boolean"
+        }
+      }
+    },
+    "GraphPort": {
+      "type": "object",
+      "required": [
+        "slot",
+        "refs",
+        "capabilities",
+        "array",
+        "class",
+        "slots"
+      ],
+      "properties": {
+        "slot": {
+          "type": "string",
+          "description": "Field-map path with `[]` / `{}` markers."
+        },
+        "refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "array": {
+          "type": "boolean"
+        },
+        "class": {
+          "anyOf": [
+            {
+              "enum": [
+                "flow",
+                "holds",
+                "shape",
+                "data"
+              ]
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string"
+              },
+              "targetNode": {
+                "type": "string"
+              },
+              "inline": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "addPath": {
+          "type": "string"
+        },
+        "rowOwned": {
+          "type": "boolean"
+        }
+      }
+    },
+    "GraphRow": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "path",
+        "array",
+        "index",
+        "depth"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "step",
+                "entry",
+                "target",
+                "inline",
+                "reference",
+                "export"
+              ]
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "array": {
+          "type": "string"
+        },
+        "index": {
+          "type": "integer"
+        },
+        "depth": {
+          "type": "integer"
+        },
+        "parent": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "targetNode": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "string"
+        },
+        "match": {
+          "type": "object"
+        },
+        "variant": {
+          "type": "string"
+        },
+        "variantLabel": {
+          "type": "string"
+        },
+        "predicate": {
+          "type": "string"
+        },
+        "catches": {
+          "type": "boolean"
+        },
+        "dispatch": {
+          "type": "object",
+          "required": [
+            "path",
+            "refs"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "inline": {
+              "type": "boolean"
+            },
+            "alternatives": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "refs"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "refs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "declares": {
+          "type": "string"
+        },
+        "unknownKind": {
+          "type": "boolean"
+        }
+      }
+    },
+    "GraphEdge": {
+      "type": "object",
+      "required": [
+        "id",
+        "from",
+        "toName",
+        "class",
+        "use",
+        "slot",
+        "path"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "toName": {
+          "type": "string"
+        },
+        "class": {
+          "anyOf": [
+            {
+              "enum": [
+                "flow",
+                "holds",
+                "shape",
+                "data"
+              ]
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "use": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "enum": [
+                  "schema",
+                  "dependency",
+                  "call",
+                  "detached",
+                  "trigger.inbound",
+                  "trigger.consumer"
+                ]
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "slot": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "row": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "string"
+        },
+        "boot": {
+          "type": "boolean"
+        },
+        "scoped": {
+          "type": "boolean"
+        },
+        "read": {
+          "type": "string"
+        },
+        "call": {
+          "type": "string"
+        }
+      }
+    },
+    "GraphRegion": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "owner",
+        "site",
+        "members"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "inline",
+                "scope",
+                "zone"
+              ]
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "owner": {
+          "type": "string"
+        },
+        "site": {
+          "type": "string"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "attributes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "boundaries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "from",
+              "toName",
+              "escaping"
+            ],
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "toName": {
+                "type": "string"
+              },
+              "escaping": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "GraphKind": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "abstract",
+        "instances",
+        "template",
+        "own"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Canonical `<module>.<Name>`."
+        },
+        "name": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "abstract": {
+          "type": "boolean"
+        },
+        "capability": {
+          "type": "string"
+        },
+        "extendsId": {
+          "type": "string"
+        },
+        "extendsName": {
+          "type": "string"
+        },
+        "instances": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "template": {
+          "type": "boolean"
+        },
+        "own": {
+          "type": "boolean"
+        },
+        "exported": {
+          "type": "boolean"
         }
       }
     },

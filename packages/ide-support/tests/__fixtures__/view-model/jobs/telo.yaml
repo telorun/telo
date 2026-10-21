@@ -1,0 +1,54 @@
+kind: Telo.Library
+metadata:
+  name: Jobs
+  version: 1.0.0
+exports:
+  kinds: [Task, Source, Count]
+---
+kind: Telo.Definition
+metadata:
+  name: Source
+capability: Telo.Invocable
+outputType:
+  type: object
+  required: [value]
+  properties:
+    value: { type: string }
+schema:
+  type: object
+  properties:
+    value: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Count
+capability: Telo.Invocable
+outputType:
+  type: object
+  required: [count]
+  properties:
+    count: { type: integer }
+schema:
+  type: object
+---
+kind: Telo.Definition
+metadata:
+  name: Task
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    label:
+      type: string
+      x-telo-eval: compile
+    next:
+      x-telo-ref: { kind: Self.Task, use: call }
+    source:
+      x-telo-ref:
+        kind: Telo.Invocable
+        use: call
+        outputType:
+          type: object
+          required: [count]
+          properties:
+            count: { type: integer }

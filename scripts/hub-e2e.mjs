@@ -134,9 +134,8 @@ async function waitForSeedPass() {
   const expected = seeded.length;
   if (!(expected > 0)) throw new E2EFailure("SEED_REFS in the hub container lists no refs");
   console.log(`seeded refs: ${expected}`);
-  const seededFailures = `FROM modules WHERE last_error IS NOT NULL AND ref = ANY(ARRAY[${seeded
-    .map((ref) => `'${ref.replaceAll("'", "''")}'`)
-    .join(",")}])`;
+  const seededRefs = `ARRAY[${seeded.map((ref) => `'${ref.replaceAll("'", "''")}'`).join(",")}]`;
+  const seededFailures = `FROM modules WHERE last_error IS NOT NULL AND ref = ANY(${seededRefs})`;
 
   for (let attempt = 0; attempt < 60; attempt++) {
     if (interrupted) throw new E2EFailure("interrupted");
@@ -146,9 +145,11 @@ async function waitForSeedPass() {
       throw new E2EFailure(`${failed} seeded ref(s) failed to ingest`);
     }
     const total = Number(psql("SELECT count(*) FROM modules"));
+    // Only seeded refs count: a tracked ref nobody seeded (the built-in
+    // vocabulary's) would otherwise stand in for a seeded one still unindexed.
     const indexed = Number(
       psql(
-        "SELECT count(*) FROM modules m WHERE coalesce(m.latest_version, '') <> '' AND (" +
+        `SELECT count(*) FROM modules m WHERE m.ref = ANY(${seededRefs}) AND coalesce(m.latest_version, '') <> '' AND (` +
           "EXISTS (SELECT 1 FROM resource_kinds rk WHERE rk.module_id = m.id AND rk.version = m.latest_version) OR " +
           "EXISTS (SELECT 1 FROM module_resources mr WHERE mr.module_id = m.id AND mr.version = m.latest_version))",
       ),

@@ -1,13 +1,13 @@
 import {
   isSameModuleVersion,
   parseVersionedRef,
-  type AnalysisRegistry,
   type ModuleGraph,
 } from "@telorun/analyzer";
 import { describeRemedy } from "@telorun/ide-support";
 import { ArrowUp, ChevronLeft, ExternalLink, GitBranch, Plus, Settings2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import type { StructuredModel } from "../../../language/structured-model";
 import {
   bindingEntrySchema,
   importEntrySchema,
@@ -87,7 +87,7 @@ export function ModuleBar({
   onCreateResourceOfKind,
   onSelect,
   moduleGraph,
-  registry,
+  structuredModel,
   onMoveField,
   onRemoveField,
   onSelectResource,
@@ -97,9 +97,9 @@ export function ModuleBar({
   root: ParsedResource;
   /** What the boot entries resolve to, and which resources may be booted. */
   moduleGraph: ModuleGraph | null;
-  /** The module kind's own definition (the real `targets` / `logging` shapes)
-   *  and a boot step's argument contract. */
-  registry: AnalysisRegistry | null;
+  /** The module kind's own schema (the real `targets` / `logging` shapes) and a
+   *  boot step's argument contract. */
+  structuredModel: StructuredModel | null;
   onMoveField?: (target: { kind: string; name: string }, pointer: string, toIndex: number) => void;
   onRemoveField?: (target: { kind: string; name: string }, pointer: string) => void;
   onSelectResource: (kind: string, name: string) => void;
@@ -175,12 +175,11 @@ export function ModuleBar({
 
   const write = (next: Record<string, unknown>) => onUpdateResource(root.kind, root.name, next);
 
-  // The module kind's REAL schema, from the kernel built-in the registry holds:
-  // the synthesized root kind declares only what the root form edits, while a
-  // boot entry and the logging block are edited against the shapes the checker
+  // The module kind's REAL schema, from the built-in the engine resolved: the
+  // synthesized root kind declares only what the root form edits, while a boot
+  // entry and the logging block are edited against the shapes the checker
   // validates them by.
-  const moduleSchema = registry?.resolveDefinitionIn(root.kind, moduleGraph?.root?.module)
-    ?.schema as Record<string, unknown> | undefined;
+  const moduleSchema = structuredModel?.moduleRootSchema();
 
   // The kinds each import brings in, keyed by the alias they arrive under —
   // which is the import row's own name, so a row can offer what importing it
@@ -526,7 +525,7 @@ export function ModuleBar({
           <BootSection
             root={root}
             moduleGraph={moduleGraph}
-            registry={registry}
+            structuredModel={structuredModel}
             moduleSchema={moduleSchema}
             readOnly={readOnly}
             selection={selection}

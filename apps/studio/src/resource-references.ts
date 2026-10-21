@@ -1,9 +1,11 @@
-import { buildCelSegments, CelParseError, type AnalysisRegistry } from "@telorun/analyzer";
+import { buildCelSegments, CelParseError } from "@telorun/analyzer";
+import type { ViewModel } from "@telorun/editor-protocol";
 import { walkCel } from "@telorun/ide-support";
-import type { ResourceManifest } from "@telorun/sdk";
 import { walkCelExpressions } from "@telorun/templating";
 import { isModuleRootKind, moduleRootResource } from "./application-adapter";
-import { refTargetName } from "./components/views/topology/overview-graph";
+import { refTargetName } from "./components/views/topology/ref-target-name";
+import type { ViewModelStatus } from "./language/view-model-store";
+import { readConcretePath } from "./lib/concrete-path";
 import type { ParsedManifest, ParsedResource } from "./model";
 
 /**
@@ -34,58 +36,91 @@ export interface ResourceReference {
 }
 
 /**
- * References to `name` across the module, excluding the resource's own.
+ * References to `name` across the module, excluding the resource's own: the
+ * reference slots read from the module's view model — the reference sites its
+ * engine found — and the CEL reads from `manifest`.
  *
  * A self-reference is not a reason to refuse: the field holding it goes away
  * with the resource that declares it, so reporting it would tell the user to
- * delete the thing they are already deleting.
+ * delete the thing they are already deleting. The sites are those of the
+ * analysis the engine last ran, so a caller holding a manifest from after an
+ * edit asks about the edit's own resources.
  *
- * The module root rides along as a synthesized manifest, so an Application's
- * `targets` is an ordinary referrer rather than a case anyone has to remember.
+ * The module root rides along as a resource, so an Application's `targets` is
+ * an ordinary referrer rather than a case anyone has to remember.
  */
-export function findResourceReferences(
-  registry: AnalysisRegistry,
+export function findViewModelReferences(
+  model: ViewModel,
   manifest: ParsedManifest,
   name: string,
 ): ResourceReference[] {
-  const resources = [
-    ...manifest.resources.filter((r) => !isModuleRootKind(r.kind)),
-    moduleRootResource(manifest),
-  ];
-  return [...refSlotReferences(registry, resources, name), ...celReferences(resources, name)];
+  const sites = model.referenceSites
+    .filter((site) => site.target === name && site.source.name !== name)
+    .map((site): ResourceReference => ({ via: "ref", source: site.source, path: site.path }));
+  return [...sites, ...celReferences(moduleResources(manifest), name)];
 }
 
 /**
- * Reference slots naming `name`, through the analysis registry's visitor.
+ * The reference slots a delete of `deleted` clears: each site the view model
+ * found naming it whose value in `manifest` — the module as it is now, the
+ * delete applied — still names it.
  *
- * The visitor rather than the canvas model's edges: an edge exists only between
- * two NODES, so a reference to a provider or a type — ambient, drawn in no
- * picture — carries no edge at all, and those are precisely the resources this
- * is asked about.
+ * The sites are the engine's last analysis, which may predate an edit, and
+ * clearing a slot splices an array item without looking at it: two deletes
+ * before the engine catches up would otherwise clear the second one's stale
+ * index, which by then holds a sibling. So a site is cleared only when its live
+ * value is the reference, and one written since the analysis is left in place
+ * for the engine to report as dangling.
  */
-function refSlotReferences(
-  registry: AnalysisRegistry,
-  resources: ParsedResource[],
-  name: string,
+export function referenceSlotsToClear(
+  model: ViewModel,
+  manifest: ParsedManifest,
+  deleted: string,
 ): ResourceReference[] {
-  const asManifest = (r: ParsedResource) =>
-    ({ kind: r.kind, metadata: { name: r.name }, ...r.fields }) as unknown as ResourceManifest;
+  return findViewModelReferences(model, manifest, deleted).filter((ref) => {
+    if (ref.via !== "ref") return false;
+    const source =
+      manifest.resources.find((r) => r.kind === ref.source.kind && r.name === ref.source.name) ??
+      (isModuleRootKind(ref.source.kind) ? moduleRootResource(manifest) : undefined);
+    return source !== undefined && refTargetName(readConcretePath(source.fields, ref.path)) === deleted;
+  });
+}
 
-  const out: ResourceReference[] = [];
-  registry.visitManifest(
-    resources.map(asManifest),
-    {
-      onRef: (e) => {
-        if (refTargetName(e.value) !== name) return;
-        const sourceName = e.source.metadata?.name;
-        if (typeof e.source.kind !== "string" || typeof sourceName !== "string") return;
-        if (sourceName === name) return;
-        out.push({ via: "ref", source: { kind: e.source.kind, name: sourceName }, path: e.concretePath });
-      },
-    },
-    { expand: true, discoverNestedRefs: true },
-  );
-  return out;
+/** What names a resource, when the module's view model can say. */
+export type KnownReferences =
+  | { known: true; references: ResourceReference[] }
+  /** Unknown, not empty: `reason` says why when it is not that the analysis
+   *  is still running. */
+  | { known: false; reason?: string };
+
+/**
+ * What still names `name` in `manifest`, or that it cannot be known: the view
+ * model is not ready, or `isCurrent` says it was computed from text the editor
+ * has since changed — its sites would then miss a reference written since.
+ * Reading either as "nothing" is what would let a still-referenced resource be
+ * removed unchecked.
+ */
+export function knownReferences(
+  status: ViewModelStatus | undefined,
+  isCurrent: (model: ViewModel) => boolean,
+  manifest: ParsedManifest,
+  name: string,
+): KnownReferences {
+  if (status?.state === "unsupported") {
+    const version = status.version ? `Telo ${status.version}` : "The telo version this module is edited against";
+    return {
+      known: false,
+      reason: `${version} predates structured editing, so what still names it cannot be checked here — edit this module in the source view.`,
+    };
+  }
+  if (status?.state === "failed") return { known: false, reason: `What still names it cannot be checked: ${status.error}` };
+  if (status?.state !== "ready" || !isCurrent(status.model)) return { known: false };
+  return { known: true, references: findViewModelReferences(status.model, manifest, name) };
+}
+
+/** The module's resources, its module document riding along as one. */
+function moduleResources(manifest: ParsedManifest): ParsedResource[] {
+  return [...manifest.resources.filter((r) => !isModuleRootKind(r.kind)), moduleRootResource(manifest)];
 }
 
 /** CEL expressions reading `resources.<name>`, one entry per expression however

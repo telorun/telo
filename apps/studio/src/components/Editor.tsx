@@ -8,14 +8,13 @@ import { ReferencesBlockedDialog } from "./views/topology/ReferencesBlockedDialo
 import { File as FileIcon, Lock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isModuleRootKind, moduleRootResource } from "../application-adapter";
-import { analyzeWorkspace } from "../analysis";
 import { HistoryManager } from "../history/manager";
 import { LocalStorageHistoryStore } from "../history/store";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";
 import { useImportOps } from "../hooks/useImportOps";
 import { useWorkspaceLifecycle } from "../hooks/useWorkspaceLifecycle";
 import { INITIAL_STATE, pickInitialActiveModule } from "../editor-state";
-import { findResourceReferences, type ResourceReference } from "../resource-references";
+import { knownReferences, referenceSlotsToClear, type ResourceReference } from "../resource-references";
 import {
   createManifestSources,
   createResourceViaAst,
@@ -120,9 +119,13 @@ import type { TabItem } from "./EditorTabs";
 import { FileEditor } from "./views/FileEditor";
 import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
 import { RegionErrorBoundary } from "./RegionErrorBoundary";
-import { setActiveAnalysis } from "./views/source/provider-state";
 import { useLanguageSession } from "../hooks/useLanguageSession";
+import { useViewModel } from "../hooks/useViewModel";
+import { CelFieldContext, type CelFieldSource } from "../language/cel-field-context";
 import { LanguageModelsContext } from "../language/language-models-context";
+import { moduleGraphFromData } from "../language/module-graph-from-data";
+import { structuredModelOf } from "../language/structured-model";
+import type { ViewModelStatus } from "../language/view-model-store";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
@@ -131,10 +134,10 @@ import { TopBar } from "./TopBar";
 import { acceptTermsFor, isTermsAcceptedFor } from "../storage";
 import { ViewContainer } from "./views/ViewContainer";
 import type { ViewProps } from "./views/types";
-import type { RefWrite } from "./views/topology/application-canvas-model";
-import { templateGraphOf } from "./views/topology/module-graph-view/template-graph";
+import type { RefWrite } from "./views/topology/ref-write";
+import { templateGraphFromViewModel } from "./views/topology/module-graph-view/template-graph";
 import { leafConcreteIndex, writeConcretePath } from "../lib/concrete-path";
-import type { Range, ZoneExportCache } from "@telorun/analyzer";
+import type { Range } from "@telorun/analyzer";
 
 /** A module the user has not navigated inside yet: the containment root, no
  *  per-view state. Frozen so the shared default can never be mutated into a
@@ -178,15 +181,6 @@ function activateModuleState(s: EditorState, filePath: string): EditorState {
   };
 }
 
-/** The base a generated resource name is derived from (`Ai.Tools` → `tools`).
- *
- *  Case encodes what a name DENOTES: a resource instance is a VALUE, so it is
- *  camelCase, and only a `Telo.Type` — a named shape with no runtime instance —
- *  is type-level and stays PascalCase. Generating the kind name verbatim wrote a
- *  name `telo check` warns about (`NAME_CASE_CONVENTION`) the moment it landed.
- *  Only the first character moves, which is also all the rule checks: the rest
- *  may be an acronym (`SQL`, `AI`) that lowercasing whole would mangle.
- */
 /** Why a resource cannot be folded into the slot naming it, when the reason is
  *  not another reference. Null when there is none. */
 function inlineRefusal(manifest: ParsedManifest, name: string): string | null {
@@ -454,14 +448,6 @@ export function Editor() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [agentVisible, focusAgentComposer]);
 
-  const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Host-lifetime cache for per-library zone-export derivation. Owned here, not
-  // by the per-run AnalysisRegistry: analysis runs on every keystroke and each
-  // run builds a fresh registry per closure, so a cache there would rebuild
-  // every dependency's call graph each time. Its `(source, content signature)`
-  // key makes a workspace library the user is editing invalidate by
-  // construction.
-  const zoneExportCacheRef = useRef<ZoneExportCache>(new Map());
   // History manager lives in state so (a) construction runs in an effect, not
   // during render, and (b) swapping when rootDir changes triggers a re-render.
   // `historyVersion` bumps on every recordEdit/undo/redo; `canUndo`/`canRedo`
@@ -509,43 +495,6 @@ export function Editor() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
-
-  // Debounced model build for the structured views: rebuilt whenever the
-  // workspace changes. Held while external dependencies are still streaming in,
-  // so imported kinds resolve on the first build — it runs once the dependency
-  // merge clears `dependenciesPending` (which produces a new workspace and
-  // re-triggers this effect). Diagnostics are not built here: they come from
-  // the engine, through `useLanguageSession`.
-  useEffect(() => {
-    if (!state.workspace || state.workspace.dependenciesPending) return;
-    if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
-    const workspace = state.workspace;
-    analysisTimerRef.current = setTimeout(async () => {
-      const manifestAdapter = manifestAdapterRef.current;
-      if (!manifestAdapter) return;
-      const analysis = await analyzeWorkspace(
-        workspace,
-        manifestAdapter,
-        createManifestSources(settings),
-        zoneExportCacheRef.current,
-      );
-      setState((s) => {
-        if (s.workspace !== workspace) return s;
-        return { ...s, analysis };
-      });
-    }, 300);
-    return () => {
-      if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
-    };
-  }, [state.workspace]);
-
-  // What CEL sees in the active module's closure, for the form's CEL editor —
-  // built on first use, so opening a module is what pays for it rather than
-  // every model build.
-  useEffect(() => {
-    const path = state.activeModulePath;
-    setActiveAnalysis(path ? state.analysis.analysisByFile.get(path)?.() : undefined);
-  }, [state.analysis, state.activeModulePath]);
 
   // Where the Variables tab reads and writes: the open workspace's env files.
   const workspaceRoot = state.workspace?.rootDir ?? null;
@@ -1534,7 +1483,12 @@ export function Editor() {
 
   // Every diagnostic, and the source view's language features, come from the
   // engine of the telo version each module is edited against.
-  const { language: teloLanguage, models: languageModels } = useLanguageSession({
+  const {
+    language: teloLanguage,
+    models: languageModels,
+    viewModels,
+    session: languageSession,
+  } = useLanguageSession({
     state,
     setState,
     settings,
@@ -1542,6 +1496,24 @@ export function Editor() {
     navigate: navigateToDiagnostic,
     onShowMessage: (message) => setToast({ title: "Telo", description: message }),
   });
+
+  // What the active module's structured views read: the view model its engine
+  // serves. A workspace whose language tooling failed to start has none, and
+  // says why.
+  const activeViewModel = useViewModel(viewModels, state.activeModulePath);
+  const viewModelStatus: ViewModelStatus =
+    teloLanguage?.kind === "failed"
+      ? { state: "failed", error: teloLanguage.failure }
+      : (activeViewModel ?? { state: "loading" });
+  const activeModel = viewModelStatus.state === "ready" ? viewModelStatus.model : null;
+  const activeModuleGraph = activeModel?.moduleGraph ? moduleGraphFromData(activeModel.moduleGraph) : null;
+  const celFieldSource = useMemo<CelFieldSource | null>(
+    () =>
+      languageSession && state.activeModulePath
+        ? { session: languageSession, modulePath: state.activeModulePath }
+        : null,
+    [languageSession, state.activeModulePath],
+  );
 
   // ---------------------------------------------------------------------------
   // Resource creation
@@ -1561,6 +1533,7 @@ export function Editor() {
   );
 
   const availableKinds = viewData ? [...viewData.kinds.values()] : [];
+  const structuredModel = activeModel && viewData ? structuredModelOf(activeModel, viewData.kinds) : null;
 
   // A module's file, by the `metadata.name` a reference crosses the boundary
   // with. Built from the workspace rather than from the graph, because the
@@ -1574,27 +1547,12 @@ export function Editor() {
     return out;
   }, [state.workspace]);
 
-  /** An imported module's own graph — what lets the canvas open a library in
-   *  place. Null when the workspace never analyzed it. */
-  const moduleGraphByName = useCallback(
-    (moduleName: string) => {
-      const file = fileByModuleName.get(moduleName);
-      return (file ? state.analysis.moduleGraphByFile.get(file)?.() : undefined) ?? null;
-    },
-    [fileByModuleName, state.analysis],
-  );
-
   /** A templated kind's body in the active module's closure, drawn as a module
-   *  graph — built from that closure's own analysis and registry, so the body
-   *  resolves every kind exactly as the module around it does. */
+   *  graph — as the module's engine drew it, so the body resolves every kind
+   *  exactly as the module around it does. */
   const templateGraphByKind = useCallback(
-    (kindId: string) => {
-      const file = state.activeModulePath;
-      const analysis = file ? state.analysis.analysisByFile.get(file)?.() : undefined;
-      const registry = file ? state.analysis.registryByFile.get(file) : undefined;
-      return analysis && registry ? templateGraphOf(analysis, registry, kindId) : null;
-    },
-    [state.activeModulePath, state.analysis],
+    (kindId: string) => (activeModel ? templateGraphFromViewModel(activeModel, kindId) : null),
+    [activeModel],
   );
 
   /** Whether that module's files are editable here — false for one resolved
@@ -1717,22 +1675,28 @@ export function Editor() {
     }));
   }
 
-  // Clears every ref slot pointing at `deleted` across the module — found via
-  // the analysis registry's visitor (every ref shape and nesting), then routed
-  // through the generic ref writer. The Application root is fed in as a
-  // synthesized manifest so its `targets` are pruned the same way.
+  // Clears every ref slot pointing at `deleted` across the module — the
+  // reference sites the module's engine found, every ref shape and nesting —
+  // routed through the generic ref writer. The Application root's `targets` are
+  // sites like any other, so they are pruned the same way. A site is cleared
+  // only where the module as it is now still holds the reference there (the
+  // engine's sites may predate an edit); with no view model ready the sites are
+  // unknown, so nothing is pruned. Either way the delete lands and the engine
+  // reports each reference left dangling.
   function pruneDanglingRefs(ws: Workspace, modulePath: string, deleted: string): Workspace {
-    const registry = state.analysis.registryByFile.get(modulePath);
+    const status = viewModels?.get(modulePath);
     const manifest = ws.modules.get(modulePath);
-    if (!registry || !manifest) return ws;
+    if (status?.state !== "ready" || !manifest) return ws;
 
     // Ref slots only: a CEL read is an expression, and there is no value to
     // write null into. Deleting from the canvas therefore still leaves a CEL
     // read dangling — which the root level's delete refuses over, and which the
     // analyzer reports either way.
-    const writes: RefWrite[] = findResourceReferences(registry, manifest, deleted)
-      .filter((ref) => ref.via === "ref")
-      .map((ref) => ({ source: ref.source, concretePath: ref.path, target: null }));
+    const writes: RefWrite[] = referenceSlotsToClear(status.model, manifest, deleted).map((ref) => ({
+      source: ref.source,
+      concretePath: ref.path,
+      target: null,
+    }));
     return writes.length ? applyRefWrites(ws, modulePath, writes) : ws;
   }
 
@@ -1926,11 +1890,15 @@ export function Editor() {
       return;
     }
 
-    // No registry means the reference set is UNKNOWN, not empty — the one input
-    // on which reading it as empty would delete a resource unchecked.
-    const registry = state.analysis.registryByFile.get(modulePath);
-    if (!registry) {
-      setInlineBlocked({ name, references: [] });
+    // No view model — or one computed before the latest edit — means the
+    // reference set is UNKNOWN, not empty: the one input on which reading it
+    // as empty would delete a resource unchecked. A stale model is read again
+    // now, so retrying once the engine has caught up finds the current one.
+    const status = viewModels?.get(modulePath);
+    const known = knownReferences(status, (model) => viewModels!.isCurrent(model), manifest, name);
+    if (!known.known) {
+      if (status?.state === "ready") viewModels?.refresh(modulePath);
+      setInlineBlocked({ name, references: [], reason: known.reason });
       return;
     }
     const refusal = inlineRefusal(manifest, name);
@@ -1938,7 +1906,7 @@ export function Editor() {
       setInlineBlocked({ name, references: [], reason: refusal });
       return;
     }
-    const elsewhere = findResourceReferences(registry, manifest, name).filter(
+    const elsewhere = known.references.filter(
       (ref) =>
         !(
           ref.via === "ref" &&
@@ -2251,6 +2219,7 @@ export function Editor() {
 
   return (
     <LanguageModelsContext.Provider value={languageModels}>
+    <CelFieldContext.Provider value={celFieldSource}>
     <DiagnosticsProvider
       navigate={navigateToDiagnostic}
       diagnostics={state.diagnostics}
@@ -2386,15 +2355,15 @@ export function Editor() {
                       readOnly: readOnlyReason !== null,
                       readOnlyReason,
                       viewData,
-                      registry:
-                        (state.activeModulePath
-                          ? state.analysis.registryByFile.get(state.activeModulePath)
-                          : undefined) ?? null,
-                      moduleGraph:
-                        (state.activeModulePath
-                          ? state.analysis.moduleGraphByFile.get(state.activeModulePath)?.()
-                          : undefined) ?? null,
-                      moduleGraphFor: moduleGraphByName,
+                      viewModelStatus,
+                      onRetryViewModel:
+                        viewModels && state.activeModulePath
+                          ? () => viewModels.retry(state.activeModulePath!)
+                          : undefined,
+                      onOpenSourceView: () =>
+                        setState((s) => ({ ...s, activeView: "source" as ViewId })),
+                      structuredModel,
+                      moduleGraph: activeModuleGraph,
                       templateGraphFor: templateGraphByKind,
                       isEditableModule: isEditableModuleName,
                       selectedResource: state.selectedResource,
@@ -2663,6 +2632,7 @@ export function Editor() {
       </ToastProvider>
     </div>
     </DiagnosticsProvider>
+    </CelFieldContext.Provider>
     </LanguageModelsContext.Provider>
   );
 }

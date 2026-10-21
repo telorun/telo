@@ -1,6 +1,5 @@
 import type { DirectoryEntryKind } from "@telorun/editor-protocol";
 import type { AstDocument, LoadedFile, Range } from "@telorun/analyzer";
-import type { WorkspaceAnalysis } from "./analysis";
 import type { WorkspaceDiagnostics } from "./language/engine-diagnostics";
 
 /** A user-configured runner: an instance of an adapter *type* (`adapterId`)
@@ -356,8 +355,6 @@ export interface EditorState {
   /** Every diagnostic studio shows — as the engine of each module's telo
    *  version published it (`useLanguageSession`, its only producer). */
   diagnostics: WorkspaceDiagnostics;
-  /** The bundled analyzer's model the structured views read. */
-  analysis: WorkspaceAnalysis;
   /** Transient request for SourceView to activate a tab and reveal a range.
    *  Written by `navigateToDiagnostic` in Editor; consumed by SourceView
    *  (keyed on `nonce` for idempotency across remounts). Never cleared — the

@@ -130,6 +130,9 @@ const FEATURES: Record<string, keyof ServerCapabilities> = {
   "workspace/executeCommand": "executeCommandProvider",
 };
 
+/** Notifications the bridge handles itself, so none can be listened for. */
+const OWN_NOTIFICATIONS = new Set(["textDocument/publishDiagnostics", "window/logMessage", "window/showMessage"]);
+
 /**
  * Monaco as an LSP client — language-agnostic.
  *
@@ -141,7 +144,9 @@ const FEATURES: Record<string, keyof ServerCapabilities> = {
  * or later through `client/registerCapability`, withdrawn by
  * `client/unregisterCapability` — so an editor never offers a feature its
  * server cannot answer; commands the server executes are registered as Monaco
- * commands, and its `workspace/applyEdit` requests edit the models.
+ * commands, and its `workspace/applyEdit` requests edit the models. Any other
+ * notification reaches whoever listens for it (`onNotification`), and a host
+ * may send the server requests of its own (`sendRequest`).
  *
  * A projected model (`projections`) is served by the same providers without
  * ever being opened: each request is asked of its source document at the
@@ -157,6 +162,7 @@ export class MonacoLspBridge {
   private readonly registered = new Map<string, Monaco.IDisposable[]>();
   private readonly open = new Map<string, Monaco.IDisposable>();
   private readonly diagnostics = new Map<string, Diagnostic[]>();
+  private readonly notificationListeners = new Map<string, Set<(params: any) => void>>();
   private readonly lensesChanged: Monaco.Emitter<Monaco.languages.CodeLensProvider>;
   private lensProvider: Monaco.languages.CodeLensProvider | undefined;
   private readonly tokensChanged: Monaco.Emitter<void>;
@@ -225,9 +231,30 @@ export class MonacoLspBridge {
     return bridge;
   }
 
+  /** Listens for a server notification beyond the ones the bridge handles
+   *  itself; any number of listeners may share a method. */
+  onNotification(method: string, listener: (params: any) => void): Monaco.IDisposable {
+    if (OWN_NOTIFICATIONS.has(method)) throw new Error(`the bridge handles '${method}' itself.`);
+    const listeners = this.notificationListeners.get(method) ?? new Set<(params: any) => void>();
+    if (!this.notificationListeners.has(method)) {
+      this.notificationListeners.set(method, listeners);
+      this.connection.onNotification(method, (params: unknown) => {
+        for (const l of [...listeners]) l(params);
+      });
+    }
+    listeners.add(listener);
+    return { dispose: () => void listeners.delete(listener) };
+  }
+
+  /** A request to the server outside the features the bridge maps. */
+  sendRequest<R>(method: string, params: unknown): Promise<R> {
+    return this.connection.sendRequest<R>(method, params);
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.notificationListeners.clear();
     for (const d of this.disposables) d.dispose();
     for (const list of this.registered.values()) for (const d of list) d.dispose();
     this.registered.clear();

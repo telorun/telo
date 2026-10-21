@@ -3,7 +3,10 @@ import {
   TELO_SERVER_NAME,
   TeloMethod,
   type RequirementsParams,
+  type TeloEngineRequests,
   type TeloHostRequests,
+  type TeloProtocolCapability,
+  type ViewModelChangedParams,
 } from "@telorun/editor-protocol";
 import {
   ResponseError,
@@ -201,6 +204,17 @@ interface OwnerState {
 
 type Target = { version: string } | { error: StatusError } | { starting: true };
 
+/** The view-model revisions the editor sees for one owner: one increasing
+ *  sequence across every engine that served it. An engine's revision `r` is
+ *  presented as `base + r`; when the serving engine changes, a synthetic
+ *  `telo/viewModelChanged` is sent at `last + 1`, which becomes the new base. */
+interface OwnerRevisions {
+  /** The engine serving the owner when last looked at. */
+  slot?: EngineSlot;
+  base: number;
+  last: number;
+}
+
 const TEXT_DOCUMENT_SYNC = new Set(["textDocument/didOpen", "textDocument/didChange", "textDocument/didClose"]);
 
 /**
@@ -237,6 +251,12 @@ export class LanguageRouter {
   private readonly documents = new Map<string, OpenDocument>();
   private readonly owners = new Map<string, OwnerState>();
   private readonly documentOwner = new Map<string, string>();
+  /** Per canonical owner URI, the view-model revisions presented to the editor. */
+  private readonly revisions = new Map<string, OwnerRevisions>();
+  /** The highest revision presented for an owner whose record was pruned: a
+   *  record made again starts above it, so the owner's sequence never goes
+   *  back. */
+  private prunedRevision = 0;
   private resolutionsWritten: Promise<void> = Promise.resolve();
   private resolutionsRestored: Promise<void> | undefined;
   private readonly engineErrors = new Map<string, StatusError>();
@@ -323,6 +343,18 @@ export class LanguageRouter {
       reason,
       ...(error ? { error } : {}),
     };
+  }
+
+  /**
+   * Whether the engine serving `owner` serves structured editing (it advertises
+   * `experimental.telo.viewModel`); `undefined` while no running engine serves
+   * it — not chosen yet, starting, or unable to run. The answer can change only
+   * when the serving engine does, and the editor is then sent
+   * `telo/viewModelChanged` for the owner.
+   */
+  supportsViewModel(owner: string): boolean | undefined {
+    const slot = this.servingSlot(canonicalUri(owner));
+    return slot === undefined ? undefined : this.speaksTelo(slot, "viewModel");
   }
 
   /** Every known version marked for a picker against the active document. */
@@ -605,6 +637,7 @@ export class LanguageRouter {
     slot.ready.then(
       () => {
         this.syncRegistrations();
+        this.announceServingEngines();
         this.emitStatus();
       },
       (error) => this.unavailable(slot, error),
@@ -712,6 +745,7 @@ export class LanguageRouter {
     }
     this.syncRegistrations();
     this.refreshDiagnostics();
+    this.announceServingEngines();
     this.emitStatus();
   }
 
@@ -752,6 +786,114 @@ export class LanguageRouter {
     return capabilities as ServerCapabilities;
   }
 
+  /** Whether an engine advertises a `telo` capability. */
+  private speaksTelo(slot: EngineSlot, capability: keyof TeloProtocolCapability): boolean {
+    const telo = (slot.initializeResult?.capabilities.experimental as { telo?: TeloProtocolCapability } | undefined)
+      ?.telo;
+    return telo?.[capability] === true;
+  }
+
+  // --- view model ------------------------------------------------------------
+
+  /** The running engine an owner's document is routed to, by canonical URI. */
+  private servingSlot(owner: string): EngineSlot | undefined {
+    const target = this.targetOf(owner);
+    if (!("version" in target) || this.engineErrors.has(target.version)) return undefined;
+    const slot = this.slotOf(target.version);
+    return slot && slot.settled && !slot.ended ? slot : undefined;
+  }
+
+  private revisionsOf(owner: string): OwnerRevisions {
+    let revisions = this.revisions.get(owner);
+    if (!revisions) {
+      const slot = this.servingSlot(owner);
+      revisions = { ...(slot ? { slot } : {}), base: this.prunedRevision, last: this.prunedRevision };
+      this.revisions.set(owner, revisions);
+    }
+    return revisions;
+  }
+
+  /** Tell the editor about every owner whose serving engine changed — to
+   *  another engine or to none — so it reads the owner's view model again.
+   *  Run when what serves owners changes (an engine starting, failing or
+   *  stopping, a routing decision). The record of an owner none of whose
+   *  documents is open any more is dropped — announced as served by nothing
+   *  first, if something served it — and one made again later starts above
+   *  every revision shown, so an owner's sequence never goes back. */
+  private announceServingEngines(): void {
+    for (const owner of new Set([...this.owners.keys(), ...this.revisions.keys()])) {
+      if (this.isOpenOwner(owner)) {
+        this.announceServingEngine(owner);
+        continue;
+      }
+      const revisions = this.revisions.get(owner);
+      if (!revisions) continue;
+      if (revisions.slot) {
+        revisions.last += 1;
+        this.sendViewModelChanged({ owner, revision: revisions.last });
+      }
+      this.prunedRevision = Math.max(this.prunedRevision, revisions.last);
+      this.revisions.delete(owner);
+    }
+  }
+
+  /** Whether a document of `owner` — the owner itself or one it claims — is open. */
+  private isOpenOwner(owner: string): boolean {
+    if (this.documents.has(owner)) return true;
+    return this.owners.get(owner)?.documents.some((document) => this.documents.has(document)) ?? false;
+  }
+
+  /** Tell the editor when the engine serving `owner` changed. */
+  private announceServingEngine(owner: string): void {
+    const revisions = this.revisionsOf(owner);
+    const slot = this.servingSlot(owner);
+    if (revisions.slot === slot) return;
+    revisions.slot = slot;
+    revisions.last += 1;
+    revisions.base = revisions.last;
+    this.sendViewModelChanged({ owner, revision: revisions.last });
+  }
+
+  private sendViewModelChanged(params: ViewModelChangedParams): void {
+    this.client.sendNotification(TeloMethod.viewModelChanged, params).catch((error) =>
+      this.log(1, `telo: could not send ${TeloMethod.viewModelChanged} for ${params.owner}: ${errorText(error)}`),
+    );
+  }
+
+  /** An engine's `telo/viewModelChanged`: passed on only from the engine
+   *  serving the owner, its revision presented in the owner's sequence. */
+  private viewModelChanged(slot: EngineSlot, params: ViewModelChangedParams): void {
+    const owner = canonicalUri(params.owner);
+    this.announceServingEngine(owner);
+    const revisions = this.revisionsOf(owner);
+    if (revisions.slot !== slot) return;
+    revisions.last = Math.max(revisions.last, revisions.base + params.revision);
+    this.sendViewModelChanged({ owner, revision: revisions.base + params.revision });
+  }
+
+  /** An engine-served request, sent only to the engine serving its owner and
+   *  only when that engine advertises the capability; otherwise the empty
+   *  answer, with no engine asked. */
+  private async ownerRequest(method: keyof TeloEngineRequests, params: any, token: CancellationToken): Promise<unknown> {
+    const route = OWNER_REQUESTS[method];
+    if (typeof params?.owner !== "string") {
+      throw new ResponseError(-32602, `${method} names no owner: its params need an "owner" URI.`);
+    }
+    const owner = canonicalUri(params.owner);
+    this.announceServingEngine(owner);
+    const revisions = this.revisionsOf(owner);
+    const slot = revisions.slot;
+    if (!slot || !this.speaksTelo(slot, route.capability)) return route.unserved();
+    const base = revisions.base;
+    const result: any = await this.enqueue(slot, (c) => c.sendRequest(method, params, token));
+    if (method !== TeloMethod.viewModel || !result || typeof result.revision !== "number") return result;
+    // An answer from an engine the owner has since left keeps that engine's
+    // base: it is older than the change the editor was told about.
+    const revision = base + result.revision;
+    if (revisions.slot === slot) revisions.last = Math.max(revisions.last, revision);
+    return { ...result, revision };
+  }
+
   // --- documents -------------------------------------------------------------
 
   /** Put every open document on the engine it belongs on, then show every
@@ -766,6 +908,7 @@ export class LanguageRouter {
     }
     this.refreshDiagnostics();
     this.stopIdleEngines();
+    this.announceServingEngines();
     this.emitStatus();
   }
 
@@ -940,6 +1083,7 @@ export class LanguageRouter {
       return null;
     }
     if (method in RESOLVES) return this.resolve(method, params, token);
+    if (method in OWNER_REQUESTS) return this.ownerRequest(method as keyof TeloEngineRequests, params, token);
     const uri = documentUriOf(method, params);
     if (uri !== undefined) {
       const key = canonicalUri(uri);
@@ -1059,6 +1203,7 @@ export class LanguageRouter {
       this.documents.delete(key);
       this.refreshDiagnostics();
       this.stopIdleEngines();
+      this.announceServingEngines();
       return;
     }
     const changes = params.contentChanges as Array<{ text: string; range?: unknown }>;
@@ -1124,6 +1269,10 @@ export class LanguageRouter {
       void this.requirements(slot, canonicalRequirements(params as RequirementsParams));
       return;
     }
+    if (method === TeloMethod.viewModelChanged) {
+      this.viewModelChanged(slot, params as ViewModelChangedParams);
+      return;
+    }
     void this.client.sendNotification(method, params);
   }
 
@@ -1169,6 +1318,18 @@ const TELO_REQUESTS: Record<keyof TeloHostRequests, true> = {
   "telo/listDirectory": true,
   "telo/hub/searchRefs": true,
   "telo/hub/listVersions": true,
+};
+
+/** Engine-served requests, routed by their `owner` to the engine serving it:
+ *  the capability that engine must advertise, and the answer given — asking no
+ *  engine — when none serves the owner or it does not advertise it. Never sent
+ *  to every engine. */
+const OWNER_REQUESTS: Record<
+  keyof TeloEngineRequests,
+  { capability: keyof TeloProtocolCapability; unserved: () => unknown }
+> = {
+  "telo/viewModel": { capability: "viewModel", unserved: () => null },
+  "telo/celCompletion": { capability: "viewModel", unserved: () => [] },
 };
 
 /** `telo/requirements` with every URI in canonical form — the router's keys. */

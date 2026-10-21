@@ -49,6 +49,10 @@ The host sends a standard `initialize`. The engine answers:
   against `requires: telo:` intervals by semver precedence (build metadata
   ignored), and tells engines apart by the whole string.
 - `capabilities.experimental.telo.protocol: 1` — the generation it speaks.
+- `capabilities.experimental.telo.viewModel: true` — the engine serves the
+  [engine-served requests](#engine-served-requests-host--engine) and sends
+  [`telo/viewModelChanged`](#teloviewmodelchanged-engine--host-notification).
+  Absent, a host sends neither request.
 - The standard capabilities it serves: full text sync, completion, hover,
   definition, rename with `prepareRename`, signature help, `semanticTokens/full`
   (the legend is in the capabilities), `codeAction` (quick fixes),
@@ -148,6 +152,119 @@ analysed standalone:
 
 A range the analyzer refuses as malformed is reported as a diagnostic and does
 not appear here.
+
+## `telo/viewModelChanged` (engine → host notification)
+
+`{ owner, revision }` — sent after each analysis of an owner module (beside
+`telo/requirements`) and when the engine stops analysing an owner. `owner` is
+the owner's canonical URI; `revision` is an integer that increases with every
+send for that owner. A host holding a view model for `owner` at a lower
+revision asks for it again; after an owner is dropped, `telo/viewModel` answers
+`null`.
+
+## Engine-served requests (host → engine)
+
+Sent by a host, served by an engine, and only to an engine advertising
+`viewModel`. Each names an `owner` and is routed to the engine the host chose
+for that owner, like the owner's documents.
+
+| Method | Params | Result |
+| --- | --- | --- |
+| `telo/viewModel` | `{ owner }` | the owner's [view model](#the-view-model), or `null` when the engine is not analysing `owner`. |
+| `telo/celCompletion` | `{ owner, resource: { kind, name }, path, tag, text, offset }` | LSP `CompletionItem[]` for a CEL value typed into a structured form field, which is not document text yet; `[]` when the engine is not analysing `owner`. |
+
+`telo/celCompletion` answers what completion inside that value would offer were
+it written in the document: `path` is the field's concrete path within the
+resource (`routes[0].handler.inputs.x`), `tag` the tag it is written under
+without its `!` (`cel`, `interpolate`), `text` the value without its tag and
+`offset` the cursor's offset into `text`. A `textEdit` range is a
+line/character range in `text`.
+
+## The view model
+
+What a structured editor — a module canvas, a schema form, a reference picker —
+reads about one owner module. It is computed from the same analysis the
+engine's diagnostics come from, at the module's own telo version, and is plain
+JSON. JSON Schemas in it are plain JSON objects.
+
+- `owner`, `revision` — as in `telo/viewModelChanged`.
+- `moduleGraph` — the owner module drawn as a graph (below), or `null`.
+- `moduleRootSchema` — the schema of the owner's module document kind
+  (`Telo.Application` / `Telo.Library`), or `null`.
+- `kindSpellings` — every `kind:` spelling in the owner's import closure
+  (template bodies' entries included), every constraint key of
+  `refConstraints` and every spelling in their `userFacing` lists, mapped to
+  the canonical `<module>.<Kind>` it resolves to in the owner's scope; a
+  spelling only a graph node carries (a body entry of another module's
+  template) maps to that node's `canonicalKind`. A spelling that resolves to
+  nothing is absent.
+- `refConstraints` — per reference-slot constraint (each kind an `x-telo-ref`
+  in the closure's kinds names, as written and canonical, and each kind a port
+  or a row's dispatch site in the graphs names): `accepted`, the canonical kinds
+  that satisfy it, sorted; `userFacing`, the alias-form kinds a new resource
+  satisfying it could be declared with. A constraint that resolves to nothing
+  is absent.
+- `contracts` — per canonical kind declaring an invocation contract,
+  `{ inputType?, outputType? }`, resolved along `extends`.
+- `outputRefusals` — one entry per `x-telo-ref` in the closure's kinds that
+  declares an `outputType`: `kind` (the canonical kind declaring it),
+  `pointer` (the JSON Pointer of the `x-telo-ref` node within that kind's
+  `schema`, as the kind's author wrote it — a host finds a slot by where it
+  sits, never by comparing `outputType`s, which the engine reads after
+  migration), and `refusals`, mapping a resource name of the owner module to
+  why it cannot fill that slot by what it returns, one line per definite
+  mismatch. A resource absent from `refusals` can fill it. The verdict
+  `telo check` reports as `REFERENCE_OUTPUT_MISMATCH`.
+- `templates` — per canonical kind with a template body in the closure:
+  `kindId`, `name`, `module?`, `capability?` (inherited along `extends`),
+  `definition` (the definition document as analysed, its `metadata.source` a
+  document URI), `graph`, the body drawn as a module, and `outputRefusals`,
+  shaped as the owner's but judging the body's entries, keyed by entry name —
+  a name in a body is never looked up among the owner's resources.
+- `referenceSites` — every reference written in the owner module's resources
+  and in its module document (`targets:`, `imports:` and the rest): `source`
+  (`{ kind, name }` of the resource writing it, the module document as itself),
+  `path` (the slot's concrete path within it) and `target` (the name held, as
+  written — `Alias.name` across an import).
+- `documents` — the canonical URI of each document the analysis read from an
+  open buffer, mapped to the LSP version it read (the `version` of the
+  `didOpen` / `didChange` that carried that text). A host that has since sent
+  a later version of any of them holds text this model was not computed from:
+  the model is **stale**, and a host acting on its paths (writing at a
+  `referenceSites` path, deciding a resource is unreferenced) waits for the
+  next revision. A document read from the host rather than a buffer is
+  absent.
+
+A **module graph** is `{ root?, nodes, edges, regions, kinds }`:
+
+- a **node** is a resource or the module root: `id`, `kind` (as written),
+  `name`, `capability?`, `canonicalKind?` (when `kind` is not already
+  canonical), `unknownKind?`, `ownership` (`root`, `named`, `inline`, `scoped`,
+  `imported`, `injected`, `enclosing`, `forwarded`), `owner?` / `ownerSite?`
+  (the node and site declaring an owned declaration), `module?`, `external?`,
+  `alias?`, `ports`, `rows`, `rowArrays` (`{ field, kind }` per array the kind
+  can hold rows in), `throws?` (`{ codes, unbounded }`) and `root?`;
+- a **port** is a reference slot the kind declares, filled or not: `slot` (its
+  field-map path), `refs` (accepted constraints, canonical), `capabilities`,
+  `array`, `class`, `slots` (`{ path, target?, targetNode?, inline? }` per
+  occupancy), `addPath?` and `rowOwned?`;
+- a **row** is an ordered entry of a node: `id`, `kind` (`step`, `entry`,
+  `target`, `inline`, `reference`, `export`), `name?`, `path`, `array`,
+  `index`, `depth`, `parent?`, `target?`, `targetNode?`, `inputs?`, `match?`,
+  `variant?`, `variantLabel?`, `predicate?`, `catches?`, `dispatch?`
+  (`{ path, refs, inline?, alternatives? }`, where the call is written and
+  what may fill it), `declares?` and `unknownKind?`;
+- an **edge** is a reference site, classed: `id`, `from`, `to?`, `toName`,
+  `class` (`flow`, `holds`, `shape`, `data`), `use` (the slot's declared uses:
+  `schema`, `dependency`, `call`, `detached`, `trigger.inbound`,
+  `trigger.consumer`), `slot`, `path`, `row?`, `inputs?`, `boot?`, `scoped?`,
+  `read?` and `call?`;
+- a **region** is a containment: `id`, `kind` (`inline`, `scope`, `zone`),
+  `owner`, `site`, `members`, and for a zone `attributes?` (attribute → the
+  author's reason) and `boundaries?` (`{ from, toName, escaping }`);
+- a **kind** is a kind declaration in scope: `id` (canonical), `name`,
+  `module?`, `abstract`, `capability?`, `extendsId?`, `extendsName?`,
+  `instances` (node ids), `template`, `own` and `exported?`.
 
 ## `Diagnostic.data`
 
