@@ -1,0 +1,30 @@
+# A kind whose `x-telo-browser-export` lists a generation that is not of the
+# form `<family>-<version>`.
+kind: Telo.Library
+metadata:
+  name: BrowserAnnotationInvalidLib
+  version: 1.0.0
+  description: >-
+    Fixture library declaring a kind whose browser-export annotation lists a
+    malformed generation.
+exports:
+  kinds: [Component]
+---
+kind: Telo.Definition
+metadata:
+  name: Component
+  description: >-
+    Names an export of a browser entry, through an annotation listing a
+    malformed generation.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=../../kinds/probe.mjs#Widget
+schema:
+  type: object
+  additionalProperties: false
+  required: [entry, export]
+  properties:
+    entry: { type: string }
+    export:
+      type: string
+      x-telo-browser-export: { entry: /entry, abi: [controls] }

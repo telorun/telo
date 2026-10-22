@@ -7,7 +7,9 @@ import {
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { RefFieldEntry, SchemaFromFieldEntry } from "./reference-field-map.js";
-import { siteRefEntry, type ReachRef } from "./reference-reach.js";
+import { siteRefEntry, type Pattern, type ReachRef } from "./reference-reach.js";
+import { pointerSegments } from "./resource-rule.js";
+import { keysUnder } from "./scope-declarations.js";
 import type { ModuleScopes } from "./alias-resolver.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { templateBodies, withTemplateSelf } from "./template-body.js";
@@ -89,6 +91,8 @@ export interface RefSiteEvent {
   source: ResourceManifest;
   /** The declared pattern with `[]` / `{}` markers (e.g. `routes[].handler`). */
   fieldPath: string;
+  /** The same pattern as segments; absent for a value-tree-discovered site. */
+  fieldKeys?: Pattern;
   /** Concrete path with `[N]` / map keys, matching `buildPositionIndex` keys. */
   concretePath: string;
   /** The ref value at this concrete site (sentinel, string, or `{kind,name}`). */
@@ -224,10 +228,9 @@ function walkRefValues(
 const scopePrefixOf = (pointer: string): string =>
   pointer.replace(/^\//, "").replace(/\//g, ".");
 
-const pathUnderPrefix = (fieldPath: string, prefix: string): boolean =>
-  fieldPath === prefix ||
-  fieldPath.startsWith(prefix + ".") ||
-  fieldPath.startsWith(prefix + "[");
+/** A scope pointer's keys, read as `declaredScopes` reads them. */
+const scopeKeysOf = (pointer: string): readonly string[] =>
+  pointerSegments(pointer.startsWith("/") ? pointer : `/${pointer}`) ?? [];
 
 /** The per-declaring-module alias tables, when the caller threaded them. A
  *  nested kind inside an imported library's definition is written through THAT
@@ -337,11 +340,13 @@ export function visitManifest(
             if (refs.length === 0 || !reached.data) continue;
             const site = refs === reached.refs ? reached : { ...reached, refs };
             const concretePath = site.path;
-            const inScope = scopePrefixes.some((prefix) => pathUnderPrefix(concretePath, prefix));
+            const inScope = [...manifestsByPointer.keys()].some((pointer) =>
+              keysUnder(site.keys, scopeKeysOf(pointer)),
+            );
             const visibleScopeManifests: ResourceManifest[] = [];
             if (inScope) {
               for (const [pointer, manifests] of manifestsByPointer) {
-                if (pathUnderPrefix(concretePath, scopePrefixOf(pointer))) {
+                if (keysUnder(site.keys, scopeKeysOf(pointer))) {
                   visibleScopeManifests.push(...manifests);
                 }
               }
@@ -350,6 +355,7 @@ export function visitManifest(
             visitor.onRef!({
               source: r,
               fieldPath: site.refs[0]!.fieldPath,
+              fieldKeys: site.refs[0]!.fieldKeys,
               concretePath,
               value: site.data,
               entry: siteRefEntry(site),

@@ -5,6 +5,7 @@ export { englishWords, wireText };
 import { createRoot, type Root } from "react-dom/client";
 import { createCollection } from "../../tests/__fixtures__/collection-api/collection.mjs";
 import { App } from "../src/browser/app.js";
+import type { ControlsField } from "../src/browser/effective-controls.js";
 import type { SpecNode } from "../src/browser/nodes.js";
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -131,6 +132,7 @@ export async function render(options: {
   path: string;
   prefix?: string;
   pages: Record<string, Page>;
+  /** Collections by app-relative `basePath`, served under the mount. */
   collections?: Record<string, Record<string, unknown>[]>;
   required?: string[];
   loadModule?: (url: string) => Promise<Record<string, unknown>>;
@@ -143,6 +145,10 @@ export async function render(options: {
   /** The language the documents are in, and the renderer's words in it. */
   lang?: string;
   words?: Record<string, ReturnType<typeof wireText>>;
+  /** The application document's controls: the built-ins' mechanics and a theme's sets. */
+  controls?: ControlsField;
+  /** The application's own header nodes, by side. */
+  header?: { start: unknown[]; end: unknown[] };
 }): Promise<Rendered> {
   const prefix = options.prefix ?? "";
   const pages = { ...options.pages };
@@ -178,7 +184,9 @@ export async function render(options: {
         pages: Object.entries(pages).map(([path, page]) => ({ path, title: wireText(page.title) })),
         words: { ...englishWords, ...options.words },
         stylesheets: [`${prefix}/_telo/ui/assets/aa/base.css`],
+        controls: options.controls ?? { stylesheets: {}, sets: [] },
         compactBelow: "40rem",
+        ...(options.header ? { header: { start: wire(options.header.start), end: wire(options.header.end) } } : {}),
       });
     }
     if (url.pathname === `${prefix}/_telo/ui/page`) {
@@ -187,11 +195,11 @@ export async function render(options: {
       if (new Headers(init?.headers).get("if-none-match") === `"${digest}"`) return new Response(null, { status: 304 });
       return json({ specVersion: 1, bundle, digest, path, title: wireText(pages[path].title), lang: options.lang ?? "en", children: wire(pages[path].children) });
     }
-    const base = Object.keys(collections).find((candidate) => url.pathname === candidate || url.pathname.startsWith(`${candidate}/`));
+    const base = Object.keys(collections).find((candidate) => url.pathname === prefix + candidate || url.pathname.startsWith(`${prefix}${candidate}/`));
     if (base) {
       const answer = collections[base].handle({
         method,
-        path: url.pathname.slice(base.length),
+        path: url.pathname.slice(prefix.length + base.length),
         query: url.searchParams,
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
       });

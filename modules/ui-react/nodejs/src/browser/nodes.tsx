@@ -1,4 +1,3 @@
-import { CircleAlert, LoaderCircle } from "lucide-react";
 import { Component, useContext, type ReactNode } from "react";
 import { conditionHolds, readBinding, styleAttribute, type Condition, type Style } from "./bindings.js";
 import { Action } from "./action.js";
@@ -6,11 +5,12 @@ import { ComponentNode } from "./component.js";
 import { DataNode } from "./data.js";
 import { Filters } from "./filters.js";
 import { Form } from "./form.js";
+import { ControlsContext, useControl } from "./effective-controls.js";
 import { useHostStore } from "./host.js";
-import { Icon } from "./icon.js";
 import { linkAddress } from "./link-address.js";
 import { ListView, type ListColumn } from "./list.js";
-import { RendererContext, RootsContext, VisibleContext } from "./renderer-context.js";
+import { MenuNode } from "./menu-node.js";
+import { RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
 import { Table } from "./table.js";
 import { Presented } from "./value-cell.js";
 import { formatWord, useSay, useText, WordsContext } from "./texts.js";
@@ -25,18 +25,48 @@ export function ErrorNode({ error }: { error: ErrorSpec }) {
   const message = error.word && words[error.word.id] ? formatWord(words, error.word.id, error.word.values) : error.message;
   return (
     <div data-telo-part="error" role="alert">
-      <Icon of={CircleAlert} />
+      <ErrorGlyph />
       <span data-telo-part="error-code">{error.code}</span>
       <span data-telo-part="error-message">{message}</span>
     </div>
   );
 }
 
+/** What keeps an error node drawable whatever the glyph does. */
+class GlyphBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+/**
+ * An error node's glyph. Drawn by a theme's icon that fails, the node would
+ * fail drawing its own failure; so it is drawn without one instead, while every
+ * other icon of that theme draws the failure where it stands.
+ */
+function ErrorGlyph() {
+  const effective = useContext(ControlsContext);
+  if (effective.failures.Icon) return null;
+  const Icon = effective.components.Icon;
+  return (
+    <GlyphBoundary>
+      <Icon name="alert" />
+    </GlyphBoundary>
+  );
+}
+
 export function Loading() {
   const say = useSay();
+  const Icon = useControl("Icon");
   return (
     <div data-telo-part="loading" role="status">
-      <Icon of={LoaderCircle} />
+      <Icon name="loading" />
       {say("loading")}
     </div>
   );
@@ -102,7 +132,7 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
   const text = useText();
   const style = styleAttribute(node.style);
   // An app-relative address is the application's own: it lives under the mount.
-  const local = (address: string) => (address.startsWith("/") ? environment.prefix + address : address);
+  const local = (address: string) => underMount(environment.prefix, address);
   switch (node.type) {
     case "box":
     case "stack":
@@ -157,6 +187,8 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
         </a>
       );
     }
+    case "menu":
+      return <MenuNode node={node} />;
     case "image":
       return <img data-telo-part="image" data-style={style} src={local(node.src)} alt={text(node.alt)} />;
     case "svg":
@@ -197,7 +229,7 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
     case "table":
       return <Table node={node} />;
     case "form":
-      return <Form node={node} target={{ method: "POST", url: node.basePath }} />;
+      return <Form node={node} target={{ method: "POST", url: local(node.basePath) }} />;
     case "action":
       return <Action node={node} />;
     case "filters":

@@ -11,6 +11,7 @@ A page is a tree of nodes. A node is plain data with a `type`; the shape is
 | `text` | `text` | a run of text |
 | `badge` | `text` | a short label |
 | `link` | `text`, `href` | a link |
+| `menu` | `text`, `items` | a button opening a list of links |
 | `image` | `src`, `alt` | an image |
 | `svg` | `markup`, `alt` | SVG markup, drawn as an image |
 | `value` | `value`, `text?` | one value of a data scope, presented as its schema says |
@@ -28,6 +29,28 @@ Every node also takes:
   **drawn**. It is read in the browser over the roots the place it is written
   binds, and content it hides keeps its state and starts no request. Both keys
   may be present.
+
+## Menus
+
+A `menu` is a button labelled `text` that opens its `items`, each a `link`
+node — `text`, `href` and the keys every node takes:
+
+```yaml
+- type: menu
+  text: Language
+  items:
+    - { type: link, text: English, href: "/api/lang?set=en", style: strong }
+    - { type: link, text: Polski, href: "/api/lang?set=pl" }
+    - { type: link, text: Beta features, href: /beta, when: !cel "variables.beta" }
+```
+
+Choosing an item follows its `href` exactly as clicking that link would: a
+page the application declares is a move within it, anything else an ordinary
+load, under the same [address rule](#addresses). An item whose `style` holds
+`strong` is the current choice, and a renderer marks it so. Each item is
+delivered by its own `when` and drawn by its own `shown`; a menu none of whose
+items is delivered is left out, as a node whose `when` is false is. A menu
+works anywhere a node does.
 
 ## Values and lists
 
@@ -67,7 +90,8 @@ from.
 
 ## Texts
 
-Every text a node shows — a `text`, a `badge`, a link's `text`, an `alt`, a
+Every text a node shows — a `text`, a `badge`, a link's `text`, a menu's
+`text` and each of its items', an `alt`, a
 value's `text`, a list's `heading` and a column's `header` — is a
 `Ui.BoundText`: a [`Text`](https://telo.run/docs/extend/text-records) written in
 the module's `lang:`, or `{ text, values }` where the text names values the
@@ -91,13 +115,15 @@ Each `type` is a closed shape: a key it does not take is an error naming the
 key, and a `type` outside the list is an error listing the valid ones.
 
 There is no layout field — no gap, alignment, width or image size — and no
-button. How nodes are arranged is the renderer's styling contract; a button is
-a composite — a [`Ui.Action`](action.md), or what a table offers on its rows.
+button that runs anything. How nodes are arranged is the renderer's styling
+contract; a button that runs an operation is a composite — a
+[`Ui.Action`](action.md), or what a table offers on its rows — and a `menu`'s
+button only opens its links.
 
 ## Addresses
 
-- `link.href` is an app-relative path (`/done`), or starts with `https://`,
-  `http://` or `mailto:`. Anything else is refused.
+- `link.href` — a menu item's included — is an app-relative path (`/done`),
+  or starts with `https://`, `http://` or `mailto:`. Anything else is refused.
 - `image.src` is an app-relative path or starts with `https://` or `http://`.
   `alt` is required and may be empty for a decorative image.
 - An app-relative path is `/` followed by anything other than `/` or `\`,
@@ -112,9 +138,11 @@ a composite — a [`Ui.Action`](action.md), or what a table offers on its rows.
   The same rule holds for a table's and a form's `source.basePath` and an
   action's `source.path`. A literal
   one is refused by `telo check`; a computed `href` or `src` that breaks it is
-  replaced by an `error` node for that request.
+  replaced by an `error` node for that request — for a menu item, the whole
+  menu.
 - An app-relative path is the application's own: a renderer mounted under a
-  prefix resolves both under that prefix.
+  prefix resolves every one under that prefix — a `link`'s `href`, an
+  `image`'s `src`, a `source.basePath` and an action's `source.path` alike.
 - `svg.markup` is never inserted into the page. A renderer draws it as an
   image, so nothing in it can run or reach the document.
 
@@ -157,7 +185,7 @@ null value takes `default`; a value no case names takes `default` too.
 ## What a renderer receives
 
 `Ui.SpecNode` is the same vocabulary after resolution: every `when` decided
-and gone, every `shown` carried as written (`{ at, matches }`, `at` a binding),
+and gone — a menu's items included, so a `menu` carries at least one item — every `shown` carried as written (`{ at, matches }`, `at` a binding),
 every composite replaced by the node it provides (`table`, `form`, `action`,
 `filters`, `data`, `component`), and `error` for a node that could not be
 produced. A `value` node carries `present` — what the schema it reads says

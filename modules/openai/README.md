@@ -11,6 +11,7 @@ the de-facto standard.
 
 | Kind | Implements | Purpose |
 | --- | --- | --- |
+| `OpenAI.Client` | `Http.Client` | The account: the endpoint, a ten-minute timeout and your credential. |
 | `OpenAI.ChatModel` | `Ai.Model` | A chat model called for a complete answer, over `/chat/completions`. |
 | `OpenAI.ChatModelStream` | `Ai.ModelStream` | The same, delivered as parts as they are generated. |
 | `OpenAI.ResponsesModel` | `Ai.Model` | A chat model over `/v1/responses` — reasoning that survives a tool loop. |
@@ -185,7 +186,7 @@ A failure **mid-stream rejects the iteration** rather than arriving as a data pa
 error part cannot silently truncate. Parts already emitted still reach the consumer, and
 the shipped encoders frame the rejection with its code. A chat-completions stream is complete once a chunk carried a `finish_reason` or the `[DONE]` sentinel arrived; one that reaches `[DONE]` with no finish reason finishes `other`. A stream whose request is refused fails when it is first read, having read the refusal's explanation under a bound and released the response; a consumer that stops reading releases the transport.
 
-## The account is an `Http.Client`
+## The account is an `OpenAI.Client`
 
 The model, image and embedding kinds carry **no credential of their own**. They reference an
 `Http.Request`, whose client holds the base URL and the credential:
@@ -195,9 +196,8 @@ kind: Http.BearerToken
 metadata: { name: openaiKey }
 token: !cel "secrets.openaiApiKey"
 ---
-kind: Http.Client
+kind: OpenAI.Client
 metadata: { name: openaiClient }
-baseUrl: https://api.openai.com/v1
 credential: !ref openaiKey
 ---
 kind: Http.Request
@@ -205,9 +205,19 @@ metadata: { name: openaiRequest }
 client: !ref openaiClient
 ```
 
+`OpenAI.Client` is an `Http.Client` with OpenAI's settings filled in, so it fits every slot
+one does:
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `credential` | ref | no | An `Http.BearerToken` holding the API key. A self-hosted server that asks for no key takes none. |
+| `baseUrl` | string | no (`https://api.openai.com/v1`) | The endpoint — OpenAI's, Azure's, a gateway's or a self-hosted server's. |
+| `timeout` | integer ≥ 1 | no (`600000`) | Milliseconds a call may take. A complete answer or a generated image must arrive within it; a streamed answer must start within it. |
+| `headers` | map | no | Headers added to every call (an organization or project id, a gateway's own). |
+
 The key is declared once for every OpenAI kind in the app, and the `401`
-re-acquire-and-retry comes with it rather than being re-implemented per provider. A
-gateway, Azure or a self-hosted server is a different `baseUrl` on the client.
+re-acquire-and-retry comes with it rather than being re-implemented per provider. A plain
+`Http.Client` works too, but its 10-second default timeout ends most long answers early.
 
 `OpenAI.ImageModel` goes through the same request, including image edit, inpaint and
 variation, which send multipart/form-data: the form is framed as bytes and sent under the

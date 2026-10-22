@@ -55,7 +55,8 @@ function context(faults: Faults = {}) {
 
 const text = (written: string) => ({ text: written, context: null, lang: "en", computed: false });
 const WORDS = { provide: async () => ({}) };
-const RESOURCE = { kind: "UiReact.App", metadata: { name: "admin" }, title: text("Events"), words: WORDS, pages: [{ path: "/", title: text("Home"), children: [] }] };
+const THEME = { provide: async () => ({ owner: "UiReact.Theme 'plain'", stylesheets: [], controls: [] }) };
+const RESOURCE = { kind: "UiReact.App", metadata: { name: "admin" }, title: text("Events"), words: WORDS, theme: THEME, pages: [{ path: "/", title: text("Home"), children: [] }] };
 
 /** The application listening under `/admin`, and how to open a stream on it. */
 async function listening(ctx: ReturnType<typeof context>) {

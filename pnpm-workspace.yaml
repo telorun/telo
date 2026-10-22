@@ -44,6 +44,10 @@ catalog:
   # A rendered number is compared, stored and diffed downstream, and a minor
   # release that changes one would move it under every manifest at once.
   d3-format: 3.1.2
+  # The DOM the controls contract is judged in: ui-react proves its built-ins
+  # on it and ui-react-conformance holds every theme to it, so the two must be
+  # one version — the DOM is part of the oracle.
+  happy-dom: 21.0.4
 
 # The catalog governs what this repo DECLARES; vite brings its own esbuild, and
 # vite 5 (under vitest 2) pins ^0.21.3. esbuild only learned the `es2024` target

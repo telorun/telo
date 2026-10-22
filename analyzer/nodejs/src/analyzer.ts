@@ -174,7 +174,8 @@ import { validateSinkAttachment } from "./validate-sink-attachment.js";
 import {
   validateSpanAttributes,
 } from "./validate-span-attributes.js";
-import { resolveSchemaTypeRefs } from "./resolve-schema-type-refs.js";
+import { resolveSchemaTypeRefs, withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
+import { foldedNamedShapes, type NamedShapeDeclaration } from "./named-shape-extends.js";
 import { validateSchemaTypeRefs } from "./validate-schema-type-refs.js";
 import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
 import {
@@ -226,7 +227,12 @@ import {
 import { computedRefSlots, evaluatedField, refSlotComputedReason } from "./ref-slot-computed.js";
 import { accessorFields, accessorProblems, type AccessorProblem } from "./accessor-binding.js";
 import { RuleDeclarationViews, type ForwardedReference } from "./rule-declaration-view.js";
-import { browserExportProblems, browserExportSites } from "./browser-export-slot.js";
+import {
+  browserExportAnnotationProblems,
+  browserExportProblems,
+  browserExportSites,
+  schemaDeclaresBrowserExport,
+} from "./browser-export-slot.js";
 import { readBrowserEntries, type BrowserEntry } from "./module-browser.js";
 import {
   BINDINGS_ANNOTATION,
@@ -294,6 +300,7 @@ import { validateModuleCallNames } from "./validate-module-call-names.js";
 import { validateCallableDeclarations } from "./validate-callable-kinds.js";
 import { validateCallableData } from "./validate-callable-data.js";
 import { validateScopedNameReach } from "./validate-scope-reach.js";
+import { validateLibraryBrowserExports } from "./validate-library-browser-exports.js";
 import { validateScopedKindDocuments } from "./validate-scoped-kind-documents.js";
 import { importAnchoredDiagnostic, importReach } from "./reaching-import.js";
 import { textSlotAccessorProblems } from "./text-slot-accessor.js";
@@ -1601,12 +1608,64 @@ export class StaticAnalyzer {
       return { ownModule, typeName: m.metadata.name as string, scope };
     };
 
+    // Each imported library's own named shapes, read from its full documents:
+    // a shape's `extends` may name one no forwarded declaration reaches, and the
+    // kernel folds it all the same. Each `!ref` a schema holds is made
+    // canonical in its library's scope, once, when a fold first reads it.
+    const libraryShapes: NamedShapeDeclaration[] = [];
+    for (const library of options?.moduleDocuments ?? []) {
+      const scope = declaringModuleScope(library.module, aliases, { aliasesByModule, rootModules });
+      for (const doc of library.manifests) {
+        const name = doc.metadata?.name;
+        if (typeof name !== "string" || typeof doc.kind !== "string") continue;
+        if (!doc.schema || typeof doc.schema !== "object") continue;
+        if (defs.resolve(scope.resolveKind(doc.kind) ?? doc.kind)?.capability !== "Telo.Type") continue;
+        let canonical: Record<string, any> | undefined;
+        libraryShapes.push({
+          module: library.module,
+          name,
+          extends: (doc as { extends?: unknown }).extends,
+          get schema() {
+            canonical ??= withCanonicalRefSentinels(doc.schema, library.module, (alias) =>
+              scope.moduleForAlias(alias),
+            ) as Record<string, any>;
+            return canonical;
+          },
+        });
+      }
+    }
+    /** Every named shape `set` holds with its `extends` parents folded, as the
+     *  kernel registers it — a shape the set holds before a library's own. */
+    const foldedShapesOf = (
+      set: readonly ResourceManifest[],
+    ): Array<{ m: ResourceManifest; id: string; schema: Record<string, any> }> => {
+      const shapes = set.flatMap((m) => {
+        const shape = namedShapeOf(m);
+        return shape ? [{ m, shape }] : [];
+      });
+      const folded = foldedNamedShapes([
+        ...shapes.map(({ m, shape }) => ({
+          module: shape.ownModule,
+          name: shape.typeName,
+          schema: m.schema as Record<string, any>,
+          extends: (m as { extends?: unknown }).extends,
+        })),
+        ...libraryShapes,
+      ]);
+      return shapes.map(({ m, shape }) => ({
+        m,
+        id: canonicalTypeSchemaId(shape.ownModule, shape.typeName),
+        schema: folded(shape.ownModule, shape.typeName) ?? (m.schema as Record<string, any>),
+      }));
+    };
+
     // A named shape is part of every kind schema that `$ref`s it, and the
     // reference reach follows it — so the shapes are announced to the reach
     // BEFORE the passes that read it (inline extraction, `!ref` resolution),
     // with the reference slots they declare canonicalized in the declaring
-    // module's scope exactly as a definition's are. Registration proper stays
-    // Phase 2.6, which takes each schema once those passes resolved it.
+    // module's scope exactly as a definition's are, and their `extends` parents
+    // folded, so a slot a parent declares is the child's. Registration proper
+    // stays Phase 2.6, which takes each schema once those passes resolved it.
     for (const m of manifests) {
       const shape = namedShapeOf(m);
       if (!shape) continue;
@@ -1615,10 +1674,9 @@ export class StaticAnalyzer {
         refConstraintIssues.push(...issues);
         refSlotIssues.push(...validateRefSlotDeclarations(m));
       }
-      defs.announceNamedShape(
-        canonicalTypeSchemaId(shape.ownModule, shape.typeName),
-        m.schema as Record<string, any>,
-      );
+    }
+    for (const { id, schema } of foldedShapesOf(manifests as ResourceManifest[])) {
+      defs.announceNamedShape(id, schema);
     }
 
     /**
@@ -2018,14 +2076,13 @@ export class StaticAnalyzer {
     // `telo://Self|Alias/Type` schema refs resolve to one, then rewrite those
     // refs to the canonical id so AJV resolves them at compile time. Register
     // and validate BEFORE the rewrite, while the authored authority is intact.
-    for (const m of allManifests) {
-      const shape = namedShapeOf(m);
-      if (!shape) continue;
-      const { ownModule, typeName } = shape;
-      const registered = defs.registerNamedTypeSchema(
-        canonicalTypeSchemaId(ownModule, typeName),
-        m.schema as Record<string, any>,
-      );
+    // The schema registered is the shape's with its `extends` parents folded —
+    // what the kernel registers, so a nested `$ref` to it reads the inherited
+    // members too.
+    for (const { m, id, schema } of foldedShapesOf(allManifests as unknown as ResourceManifest[])) {
+      const typeName = m.metadata.name as string;
+      const ownModule = (m.metadata as { module: string }).module;
+      const registered = defs.registerNamedTypeSchema(id, schema);
       // Kinds and named types share one `telo://<module>/<Name>` id space. A
       // collision would leave every `$ref` to that id resolving to the kind's
       // schema — validating the wrong shape, silently — so it is an error, not
@@ -4756,10 +4813,11 @@ export class StaticAnalyzer {
       ),
     );
 
-    // A text slot at or beneath an accessor field. The kernel refuses the kind
-    // when it registers it, so a dependency's is reported at the `imports:` entry
-    // reaching it; a named shape is read from the registry, else from the
-    // library's own documents.
+    // A text slot at or beneath an accessor field, and a malformed
+    // `x-telo-browser-export`. The kernel refuses the kind when it registers
+    // it, so a dependency's is reported at the `imports:` entry reaching it; a
+    // named shape is read from the registry, else from the library's own
+    // documents.
     const shapeDocuments = new Map<string, Record<string, any>>();
     for (const library of options?.moduleDocuments ?? []) {
       for (const doc of library.manifests) {
@@ -4786,6 +4844,10 @@ export class StaticAnalyzer {
           code: "TEXT_VALUES_INVALID",
           ...problem,
         })),
+        ...browserExportAnnotationProblems(String(m.metadata?.name), m.schema).map((problem) => ({
+          code: "BROWSER_EXPORT_ANNOTATION_INVALID",
+          ...problem,
+        })),
       ];
       for (const problem of kindProblems) {
         const message = `${m.kind} ${problem.message}`;
@@ -4806,6 +4868,36 @@ export class StaticAnalyzer {
               },
         );
       }
+    }
+
+    // A browser export an imported library's resource names, judged against
+    // that library's own entries; the entry's own modules are judged by the
+    // per-resource walk. Skipped whole when no kind declares the annotation.
+    if (
+      allManifests.some(
+        (m) =>
+          isKindDocument(m) &&
+          !!m.schema &&
+          typeof m.schema === "object" &&
+          schemaDeclaresBrowserExport(m.schema as Record<string, any>),
+      )
+    ) {
+      const scopes = { aliasesByModule, rootModules };
+      diagnostics.push(
+        ...validateLibraryBrowserExports({
+          libraries: options?.moduleDocuments ?? [],
+          rootModules,
+          reach,
+          declarationsOf: (library) =>
+            normalizeInlineResources(library.manifests, defs, aliases, aliasesByModule),
+          kindSchemaOf: (resource, module) => {
+            const kind = declaringModuleScope(module, aliases, scopes).resolveKind(resource.kind);
+            return defs.effectiveSchemaOf(kind ? defs.resolve(kind) : undefined) as
+              | Record<string, any>
+              | undefined;
+          },
+        }),
+      );
     }
 
     // The built-in text vocabulary: each literal text judged as the module that

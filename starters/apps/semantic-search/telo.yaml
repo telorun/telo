@@ -499,6 +499,7 @@ kind: UiReact.App
 metadata: { name: ui }
 title: Semantic search
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Ask

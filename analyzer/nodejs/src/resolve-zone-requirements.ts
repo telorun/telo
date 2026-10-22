@@ -30,6 +30,7 @@ import {
 } from "./manifest-navigation.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { readProvidesZone, readRequiresZone } from "./zone-slot.js";
+import { ITEMS, MAP_VALUES, type Pattern, type PatternSegment } from "./reference-reach.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
@@ -153,33 +154,42 @@ function correlationIdOf(node: ResourceGraphNode): string {
 
 const labelOf = (node: ResourceGraphNode): string => `${node.kind} '${node.name}'`;
 
-/** The schema node at a field-map path (`steps`, `routes[].handler`), following
+/** The schema node at a slot pattern (`steps`, `routes[].handler`), following
  *  `[]` into `items`, `{}` into `additionalProperties` and local `$defs` refs —
- *  where a slot's zone annotations live. */
+ *  where a slot's zone annotations live. A property name is read as written. */
 function schemaNodeAt(
   rootSchema: Record<string, any> | undefined,
-  slotPath: string,
+  slot: Pattern,
 ): Record<string, any> | undefined {
   if (!rootSchema) return undefined;
   let current: Record<string, any> | undefined = rootSchema;
-  for (const segment of slotPath.split(".")) {
+  for (const segment of slot) {
     if (!current) return undefined;
-    const bare = segment.replace(/(\[\]|\{\})+$/g, "");
-    let next: Record<string, any> | undefined = propertySchemas(current).find(
-      ([k]) => k === bare,
-    )?.[1];
-    for (const marker of segment.slice(bare.length).match(/\[\]|\{\}/g) ?? []) {
-      next = resolveLocalRef(
-        marker === "[]"
-          ? (next?.items as Record<string, any> | undefined)
-          : (next?.additionalProperties as Record<string, any> | undefined),
-        rootSchema,
-      );
-      if (!next || typeof next !== "object") return undefined;
-    }
+    const next: Record<string, any> | undefined =
+      typeof segment === "string"
+        ? propertySchemas(current).find(([k]) => k === segment)?.[1]
+        : ((segment.wildcard === "[]" ? current.items : current.additionalProperties) as
+            | Record<string, any>
+            | undefined);
     current = resolveLocalRef(next, rootSchema);
+    if (!current || typeof current !== "object") return undefined;
   }
   return current;
+}
+
+/** A slot pattern from its dotted spelling — for a step array, and an edge the
+ *  reference reach did not find (a value-tree or module-call site), neither of
+ *  which carries segments. */
+function dottedPattern(text: string): Pattern {
+  const out: PatternSegment[] = [];
+  for (const part of text.split(".")) {
+    const bare = part.replace(/(\[\]|\{\})+$/g, "");
+    if (bare) out.push(bare);
+    for (const marker of part.slice(bare.length).match(/\[\]|\{\}/g) ?? []) {
+      out.push(marker === "[]" ? ITEMS : MAP_VALUES);
+    }
+  }
+  return out;
 }
 
 /**
@@ -416,7 +426,9 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
       // Handling one shape would make every requirement inside a natively-bodied
       // zone unsatisfiable, which is exactly what a durable workflow's body is.
       const bodySlot =
-        from.type === "step" ? from.array.replace(/\[\d+\].*$/, "") : edge.slot;
+        from.type === "step"
+          ? dottedPattern(from.array.replace(/\[\d+\].*$/, ""))
+          : (edge.slotKeys ?? dottedPattern(edge.slot));
       const slotSchema = schemaNodeAt(
         callerDef?.schema as Record<string, any> | undefined,
         bodySlot,

@@ -1,0 +1,144 @@
+kind: Telo.Application
+metadata:
+  name: UiShowcaseLatePagesRoutesTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/ui-showcase` on a database of its own and calls the routes
+    its last pages added, as the page calls them: the team's handbook and
+    mirror addresses an action navigates by; the route that sends every request
+    back to itself, so a browser gets no answer; and pausing a project, which
+    the session guard refuses with 401 without a session, the route with 403
+    and no body for a member who is no manager, and which a manager's session
+    carries out — with a 404 for an unknown project and a 409 for one not
+    running, worded in the caller's language and naming it.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+variables:
+  # The DIRECTORY each run's database goes in; see `serves-the-showcase.yaml`.
+  dbFile:
+    env: UI_SHOWCASE_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo
+targets:
+  - !ref test
+---
+# A browser with no session. Redirects are read, not followed.
+kind: HttpClient.Client
+metadata: { name: page }
+baseUrl: http://127.0.0.1:8156
+followRedirects: false
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    variables:
+      dbFile: !cel "variables.dbFile.joinPath('ui-showcase-late-' + uuidv4() + '.db')"
+    ports:
+      http: 8156
+targets:
+  - !ref app
+steps:
+  # ---- Where a success goes ----
+  - name: links
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/team-links, method: POST }
+    inputs:
+      body: {}
+  - name: selfRedirect
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/loop, method: POST, responseType: text }
+    inputs:
+      body: {}
+  - name: verifyAddresses
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        links: [ !cel "steps.links.result.status", !cel "steps.links.result.body" ]
+        selfRedirect: [ !cel "steps.selfRedirect.result.status", !cel "steps.selfRedirect.result.headers['location']" ]
+      expected:
+        links: [ 200, { handbook: /files/handbook.txt, mirror: //mirror.northwind.example/handbook } ]
+        selfRedirect: [ 307, /api/loop ]
+
+  # ---- Pausing a project: a manager's alone ----
+  - name: anonymous
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST, responseType: text }
+    inputs:
+      body: { code: OPS-7 }
+  - name: janSignIn
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/session/signin, method: POST }
+    inputs:
+      body: { email: jan@northwind.example }
+  - name: adaSignIn
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/session/signin, method: POST }
+    inputs:
+      body: { email: ada@northwind.example }
+  - name: cookies
+    value:
+      jan: !cel "string(steps.janSignIn.result.headers['set-cookie']).split(';')[0]"
+      ada: !cel "string(steps.adaSignIn.result.headers['set-cookie']).split(';')[0]"
+  - name: notManager
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST, responseType: text }
+    inputs:
+      headers: { cookie: !cel "steps.cookies.result.jan" }
+      body: { code: OPS-7 }
+  - name: pause
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST }
+    inputs:
+      headers: { cookie: !cel "steps.cookies.result.ada" }
+      body: { code: OPS-7 }
+  - name: pauseAgain
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST }
+    inputs:
+      headers: { cookie: !cel "steps.cookies.result.ada" }
+      body: { code: OPS-7 }
+  - name: pauseAgainPolish
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST }
+    inputs:
+      headers: { cookie: !cel "steps.cookies.result.ada", accept-language: "pl-PL, en;q=0.5" }
+      body: { code: OPS-7 }
+  - name: pauseAgainChosenPolish
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST }
+    inputs:
+      headers: { cookie: !cel "steps.cookies.result.ada + '; showcase-lang=pl'", accept-language: en }
+      body: { code: OPS-7 }
+  - name: unknown
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST }
+    inputs:
+      headers: { cookie: !cel "steps.cookies.result.ada" }
+      body: { code: NOPE-1 }
+  - name: malformed
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST }
+    inputs:
+      headers: { cookie: !cel "steps.cookies.result.ada" }
+      body: { code: ops seven }
+  - name: paused
+    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/projects?code=OPS-7" }
+  - name: verifyPause
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        anonymous: [ !cel "steps.anonymous.result.status", !cel "steps.anonymous.result.body" ]
+        notManager: [ !cel "steps.notManager.result.status", !cel "steps.notManager.result.body" ]
+        pause: [ !cel "steps.pause.result.status", !cel "steps.pause.result.body" ]
+        pauseAgain: [ !cel "steps.pauseAgain.result.status", !cel "steps.pauseAgain.result.headers['content-language']", !cel "steps.pauseAgain.result.body" ]
+        pauseAgainPolish: [ !cel "steps.pauseAgainPolish.result.status", !cel "steps.pauseAgainPolish.result.headers['content-language']", !cel "steps.pauseAgainPolish.result.body" ]
+        pauseAgainChosenPolish: [ !cel "steps.pauseAgainChosenPolish.result.status", !cel "steps.pauseAgainChosenPolish.result.headers['content-language']", !cel "steps.pauseAgainChosenPolish.result.body" ]
+        unknown: [ !cel "steps.unknown.result.status", !cel "steps.unknown.result.body" ]
+        malformed: !cel "[steps.malformed.result.status, steps.malformed.result.body.details.map(d, [d.location, d.path])]"
+        stored: !cel "steps.paused.result.body.rows.map(r, r.status)"
+      expected:
+        anonymous: [ 401, "" ]
+        notManager: [ 403, "" ]
+        pause: [ 200, { code: OPS-7, name: Billing migration, status: paused } ]
+        pauseAgain: [ 409, en, { code: PROJECT_NOT_ACTIVE, message: "OPS-7 is not running, so it cannot be paused." } ]
+        pauseAgainPolish: [ 409, pl, { code: PROJECT_NOT_ACTIVE, message: "Projekt OPS-7 nie jest w toku, więc nie można go wstrzymać." } ]
+        # The language cookie wins over Accept-Language, as in every application.
+        pauseAgainChosenPolish: [ 409, pl, { code: PROJECT_NOT_ACTIVE, message: "Projekt OPS-7 nie jest w toku, więc nie można go wstrzymać." } ]
+        unknown: [ 404, { code: PROJECT_UNKNOWN, message: There is no project 'NOPE-1'. } ]
+        malformed: [ 400, [ [ body, code ] ] ]
+        stored: [ paused ]

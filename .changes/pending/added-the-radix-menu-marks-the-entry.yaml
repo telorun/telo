@@ -1,0 +1,7 @@
+modules:
+  modules/ui-react-radix: Added
+body: The Radix Menu marks the entry given as current with aria-current and
+  data-current, and the Radix theme styles a menu node's trigger as a quiet button with
+  a downward chevron and the current menu item in the accent colour. Its header spans
+  the full window width with tighter spacing, so the title, the navigation and the
+  header's own nodes fit one row.

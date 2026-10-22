@@ -120,20 +120,20 @@ steps:
   - name: run
     invoke:
       kind: HttpClient.Request
-      url: http://127.0.0.1:19331/api/reports
+      url: http://127.0.0.1:19331/admin/api/reports
       method: POST
       headers: { content-type: application/json }
       body: !include-text ./__fixtures__/action/report-request.json
   - name: refused
     invoke:
       kind: HttpClient.Request
-      url: http://127.0.0.1:19331/api/reports
+      url: http://127.0.0.1:19331/admin/api/reports
       method: POST
       body: { month: September }
   - name: archive
     invoke:
       kind: HttpClient.Request
-      url: http://127.0.0.1:19331/api/archive
+      url: http://127.0.0.1:19331/admin/api/archive
       method: POST
       headers: { content-type: application/json }
       body: !include-text ./__fixtures__/action/archive-request.json

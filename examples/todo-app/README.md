@@ -88,10 +88,13 @@ ships to the client.
 
 ## Styling
 
-`Ui.Theme` sets design tokens (here the accent colour and a corner radius).
-Every element the UI renders carries a stable `data-telo-part` attribute, so a
-stylesheet listed under the app's `stylesheets:` can restyle anything — see the
-[styling contract](../../modules/ui-react/docs/app.md).
+`theme: !ref UiReact.defaultTheme` is the built-in look, and `tokens:` the
+brand over it — a `Ui.DesignTokens` set, here the accent colour and a corner
+radius. Swapping `theme:` for another module's theme changes every screen and
+keeps the brand. Every element the UI renders carries a stable
+`data-telo-part` attribute, so a stylesheet listed under the app's
+`stylesheets:` can restyle anything — see the
+[styling contract](../../modules/ui-react/docs/styling.md).
 
 ## Routes
 

@@ -31,7 +31,8 @@ export const NO_ROOTS: RootShapes = {};
 
 /**
  * Turn an authored node into the node a renderer receives: a node whose
- * `when:` is false is left out, a composite is replaced by what it provides,
+ * `when:` is false is left out, a menu keeps only the items delivered (see
+ * {@link deliveredMenu}), a composite is replaced by what it provides,
  * containers resolve their children in order, and a `value` or `list` node
  * carries what its roots say about the values it names. `undefined` means the
  * node is omitted — switched off, or a composite that provided none.
@@ -58,6 +59,10 @@ export async function resolveNode(
   }
   if (!Array.isArray(node.children)) {
     const { when, ...leaf } = presented(node, roots, reader, where);
+    if (leaf.type === "menu") {
+      const menu = deliveredMenu(leaf);
+      return menu && { node: menu as SpecNode, assets: [] };
+    }
     if (!Array.isArray(leaf.rowActions)) return { node: leaf as SpecNode, assets: [] };
     const { rowActions, assets } = await providedRowActions(leaf.rowActions as PendingRowAction[]);
     return { node: { ...leaf, rowActions } as SpecNode, assets: mergeAssets(...assets) };
@@ -132,6 +137,22 @@ export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeRe
     return { ...own, columns, ...(rowActions ? { rowActions } : {}) };
   }
   return own;
+}
+
+/**
+ * A `menu` node as delivered: the items whose `when` is not false, each without
+ * its `when` and without a member holding nothing. Nothing when no item is
+ * delivered — a menu with nothing to choose is left out, like a node switched
+ * off.
+ */
+export function deliveredMenu<T extends Record<string, unknown>>(menu: T): T | undefined {
+  const items = (menu.items as AuthoredNode[])
+    .filter((item) => item.when !== false)
+    .map((item) => {
+      const { when, ...kept } = withoutAbsent(item);
+      return kept;
+    });
+  return items.length === 0 ? undefined : { ...menu, items };
 }
 
 /** The shape the value a binding names is declared as, where its root says. */

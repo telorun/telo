@@ -11,6 +11,8 @@ export interface RendererEnvironment {
   compact: boolean;
   /** The paths of the pages the application declares. */
   pages: string[];
+  /** The language the documents are in; `und` when they declare none. */
+  lang: string;
 }
 
 export const RendererContext = createContext<RendererEnvironment>({
@@ -18,6 +20,7 @@ export const RendererContext = createContext<RendererEnvironment>({
   loadModule: (url) => import(/* @vite-ignore */ url),
   compact: false,
   pages: [],
+  lang: "und",
 });
 
 /** The values the roots of a data scope hold — `data`, `query`, `error`,
@@ -35,6 +38,12 @@ const NO_FILTERS: Param[] = [];
 
 /** The filters every table inside a filter bar obeys. */
 export const FilterContext = createContext<Param[]>(NO_FILTERS);
+
+/** The URL an app-relative path is requested at: under the mount. Any other
+ *  reference is requested as written. */
+export function underMount(prefix: string, path: string): string {
+  return path.startsWith("/") ? prefix + path : path;
+}
 
 export function assetUrl(environment: RendererEnvironment, asset: { digest: string; name: string }): string {
   return `${environment.prefix}/_telo/ui/assets/${asset.digest}/${asset.name}`;

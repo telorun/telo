@@ -126,7 +126,8 @@ One HTML document, the same for every page: the cascade layer order, an
 import map, and the renderer's script. It holds no content: it shows a spinner
 for as long as its root is empty, and the renderer draws nothing until the
 application's stylesheets have loaded — or, after five seconds, without them —
-so a page is never shown unstyled. A failure is drawn at once. The import map
+and its controls are loaded, so a page is never shown unstyled. A failure is
+drawn at once. The import map
 gives `react`, `react/jsx-runtime`, `react-dom`, `react-dom/client` and
 `@telorun/ui-react` each one content-addressed URL, and maps a file two
 entries share onto a single address, so the page holds one React and one host.
@@ -142,16 +143,33 @@ entries share onto a single address, so the page holds one React and one host.
   "lang": "en",
   "pages": [ { "path": "/", "title": "Todos" } ],
   "stylesheets": [ "/admin/_telo/ui/assets/…/renderer.css", "…" ],
-  "compactBelow": "40rem"
+  "controls": {
+    "stylesheets": { "Select": "/admin/_telo/ui/assets/…/select.css", "…": "…" },
+    "sets": [ { "module": "/admin/_telo/ui/assets/…/controls.js", "exports": [ "Select" ] } ]
+  },
+  "compactBelow": "40rem",
+  "header": { "start": [ { "type": "image", "src": "/logo.svg", "alt": "Acme" } ], "end": [] }
 }
 ```
 
 `lang` is present only when the application sets one. `stylesheets` is in
-application order and includes the theme chosen for this request, so two
-requests may get different lists. `compactBelow` is the application's
+cascade order — the renderer's layout, each of the theme's control sets'
+stylesheets, the theme's token values and stylesheets, the token set chosen
+for this request, then the application's own — so two requests may get
+different lists; a theme's or a control set's stylesheet is named by a
+stylesheet importing it into its layer. `controls` names the mechanics
+stylesheet of each built-in control in use, by control — none for a control a
+set replaces — and each set of controls the [theme](theme.md) supplies: its
+module and the controls it exports, which the renderer loads before it draws
+the page; see [the controls contract](controls-abi.md).
+`compactBelow` is the application's
 breakpoint, always present: below that viewport width every surface's
 `compact` replacement applies. A surface open when the viewport crosses the
 breakpoint is swapped in place: what was entered stays.
+`header` is present only when the application declares one: its `start` and
+`end` nodes as `Ui.SpecNode`s produced for this request, as a page's
+`children` are, each list empty when that side declares nothing or every node
+in it is switched off.
 
 ## A page document
 

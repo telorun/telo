@@ -1,0 +1,35 @@
+kind: Telo.Application
+metadata:
+  name: UiReactConformanceCheckThemeTest
+  version: 1.0.0
+  description: |
+    A theme's control sets are checked with it: a set implementing every
+    control with the renderer's own meets every vector, and every scene, drawn
+    with that set through the renderer's own loader, still holds. The style
+    half is pinned on the default theme by ui-react's own tests.
+imports:
+  UiReact: ../../ui-react
+  Conformance: ../
+  Fixture: ./__fixtures__/controls
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref checkThemeControls
+---
+kind: Run.Sequence
+metadata: { name: checkThemeControls }
+steps:
+  - name: check
+    invoke:
+      kind: Conformance.CheckTheme
+      theme:
+        kind: UiReact.Theme
+        controls: [!ref Fixture.builtInControls]
+  - name: setAndScenesConform
+    inputs:
+      actual: !cel >-
+        steps.check.result.problems.filter(p, p.check in
+        ['controls-load-failed', 'vector-failed', 'scene-failed'])
+      expected: []
+    invoke:
+      kind: Assert.Equals

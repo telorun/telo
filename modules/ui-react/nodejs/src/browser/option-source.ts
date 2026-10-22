@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { readBinding, type Binding } from "./bindings.js";
 import { boundFilters, fetchPage, filterParam, type Operator, type Param } from "./collection.js";
 import { useHost } from "./host.js";
+import { RendererContext, underMount } from "./renderer-context.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
 import type { JsonSchema } from "./validation.js";
 
@@ -68,6 +69,7 @@ export interface OptionPages {
  */
 export function useOptionPages(spec: OptionSourceSpec, roots: Readonly<Record<string, unknown>>, search = "", active = true): OptionPages {
   const host = useHost();
+  const collectionAt = underMount(useContext(RendererContext).prefix, spec.basePath);
   const filters = boundFilters(spec.filters, roots);
   const searched: Param[] = search !== "" && spec.search ? [filterParam(spec.search.property, spec.search.operator, search)] : [];
   const key = filters === undefined ? undefined : JSON.stringify([...filters, ...searched]);
@@ -84,7 +86,7 @@ export function useOptionPages(spec: OptionSourceSpec, roots: Readonly<Record<st
     const request = ++latest.current;
     inFlight.current = true;
     setState((held) => ({ ...held, key, loading: true }));
-    fetchPage(host, spec.basePath, { limit: spec.pageSize, cursor, filters: [...filters, ...searched] }).then(
+    fetchPage(host, collectionAt, { limit: spec.pageSize, cursor, filters: [...filters, ...searched] }).then(
       (page) => {
         if (request !== latest.current) return;
         inFlight.current = false;
@@ -140,6 +142,7 @@ export function useChosenOptions(
   onDropped: (kept: unknown[]) => void,
 ): ChoiceOption[] {
   const host = useHost();
+  const collectionAt = underMount(useContext(RendererContext).prefix, spec.basePath);
   const filters = boundFilters(spec.filters, roots);
   const filtersKey = filters === undefined ? undefined : JSON.stringify(filters);
   const [known, setKnown] = useState<{ filters?: string; options: Map<string, ChoiceOption> }>({ options: new Map() });
@@ -170,7 +173,7 @@ export function useChosenOptions(
     for (let at = 0; at < asked.length; at += spec.pageSize) batches.push(asked.slice(at, at + spec.pageSize));
     Promise.all(
       batches.map((batch) =>
-        fetchPage(host, spec.basePath, {
+        fetchPage(host, collectionAt, {
           limit: spec.pageSize,
           filters: [...filters, ...batch.map((value) => filterParam(property, "in", String(value)))],
         }),

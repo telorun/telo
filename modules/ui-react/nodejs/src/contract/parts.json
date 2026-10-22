@@ -1,7 +1,7 @@
 {
   "parts": {
-    "shell": ["app", "header", "app-title", "nav", "nav-link", "main", "page", "page-title"],
-    "structure": ["box", "stack", "columns", "column", "text", "badge", "link", "image", "svg", "value", "list", "list-heading", "data"],
+    "shell": ["app", "header", "header-start", "app-title", "nav", "nav-link", "header-end", "main", "page", "page-title"],
+    "structure": ["box", "stack", "columns", "column", "text", "badge", "link", "menu-trigger", "image", "svg", "value", "list", "list-heading", "data"],
     "table": [
       "table", "table-toolbar", "table-create", "table-main", "table-frame", "table-grid", "table-head", "table-body",
       "table-row", "table-header-cell", "table-sort", "table-cell", "row-actions", "row-action", "row-edit", "row-delete",
@@ -10,7 +10,7 @@
     "form": [
       "form", "field", "label", "input", "textarea", "select", "checkbox", "options", "option", "tags", "tag",
       "tag-remove", "field-error", "form-error", "form-actions", "submit", "cancel", "field-group", "field-group-label",
-      "field-group-description", "field-description", "field-warning", "switch", "slider", "options-more", "option-hint"
+      "field-group-description", "field-description", "field-warning", "switch", "slider", "slider-value", "options-more", "option-hint"
     ],
     "picker": ["picker", "picker-value", "picker-chosen", "picker-trigger", "picker-search", "picker-list", "picker-option", "picker-empty"],
     "date-range": ["date-range", "date-range-presets", "date-range-preset", "date-range-from", "date-range-to"],
@@ -19,7 +19,7 @@
       "filters", "filters-bar", "filters-content", "filters-toggle", "filters-count", "filters-add", "filters-apply",
       "filters-reset", "filters-presets", "filters-preset", "filters-summary", "summary-chip", "summary-chip-remove",
       "filter", "filter-label", "filter-group", "filter-bound", "filter-caption", "filter-remove", "filter-chip",
-      "filter-input", "filter-select", "filter-options", "filter-option", "filter-toggle", "filter-slider",
+      "filter-input", "filter-select", "filter-options", "filter-option", "filter-toggle", "filter-slider", "filter-slider-value",
       "filter-tags", "filter-tag", "filter-tag-remove"
     ],
     "surface": [
@@ -32,9 +32,9 @@
   "states": {
     "data-state": {
       "values": ["idle", "loading", "error", "empty", "submitting"],
-      "on": ["page", "data", "table", "form", "filters", "component", "action", "row-action", "picker-list"]
+      "on": ["page", "data", "table", "form", "filters", "component", "action", "row-action"]
     },
-    "data-invalid": { "values": ["true"], "on": ["field", "input", "textarea", "select", "checkbox", "options", "tags", "picker", "date-range"] },
+    "data-invalid": { "values": ["true"], "on": ["field", "picker"] },
     "data-dirty": { "values": ["true"], "on": ["form"] },
     "data-compact": { "values": ["true"], "on": ["app"] },
     "data-surface": { "values": ["dialog", "drawer", "popover", "inline", "panel", "page", "confirmation"], "on": ["surface"] },
@@ -48,10 +48,17 @@
     "data-sorted": { "values": ["asc", "desc"], "on": ["table-header-cell"] },
     "data-current": { "values": ["page"], "on": ["nav-link"] }
   },
-  "primitiveStates": [
-    { "values": ["open", "closed"], "on": ["surface", "surface-overlay", "select", "filter-select", "select-content", "filters-bar", "filter-chip", "menu"] },
-    { "values": ["on", "off"], "on": ["filters-preset", "filter-option", "option", "date-range-preset", "picker-option"] },
-    { "values": ["checked", "unchecked"], "on": ["checkbox", "select-item", "filter-toggle", "switch"] },
-    { "values": ["closed", "delayed-open", "instant-open"], "on": ["row-edit", "row-delete", "pager-prev", "pager-next", "tooltip"] }
+  "partStates": [
+    { "values": ["open", "closed"], "on": ["filters-bar", "filter-chip"] }
+  ],
+  "reserved": [
+    { "part": "filters-bar", "properties": ["display"], "because": "a closed collapsible bar is hidden" },
+    { "part": "filters", "properties": ["display", "grid-template-columns"], "because": "a bar placed aside sits beside what it filters" },
+    { "part": "surface-body", "properties": ["overflow-y", "min-height"], "because": "a surface's body scrolls while its header stays" },
+    { "part": "form-actions", "properties": ["position", "bottom"], "because": "a form's actions stay at its surface's bottom edge" },
+    { "part": "table-frame", "properties": ["overflow-x"], "because": "a grid wider than its table scrolls in its frame" },
+    { "part": "table", "properties": ["display", "grid-template-columns"], "because": "a panel sits beside the frame and the pager" },
+    { "part": "table-toolbar", "properties": ["order"], "because": "the toolbar stays above a panel" },
+    { "part": "surface", "properties": ["order"], "because": "a panel sits on its side" }
   ]
 }

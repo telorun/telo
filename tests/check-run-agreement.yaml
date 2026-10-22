@@ -189,6 +189,7 @@ targets:
   - !ref exportedInstanceScopeRuns
   - !ref templateInputsShapeRootRuns
   - !ref templateInputsShapeNestedRuns
+  - !ref nestedShapeExtendsRuns
   - !ref templateRefComputed
   - !ref templateRefComputedAtRuntime
   - !ref templateRefComputedChainedAtRuntime
@@ -267,6 +268,7 @@ targets:
   - !ref refSlotReachUnresolvedRootAnyOfAtRuntime
   - !ref refSlotReachUnresolvedRootMapAtRuntime
   - !ref refSlotReachUnresolvedRecursionAtRuntime
+  - !ref refSlotReachUnresolvedDottedKeyAtRuntime
   - !ref scopeSlotMisplaced
   - !ref scopeSlotMisplacedNestedObjectAtRuntime
   - !ref scopeSlotMisplacedArrayItemAtRuntime
@@ -331,6 +333,13 @@ targets:
   - !ref browserEntryUnknownAtRuntime
   - !ref browserExportUnknown
   - !ref browserExportUnknownAtRuntime
+  - !ref browserEntryAbiUnsupported
+  - !ref browserEntryAbiUnsupportedAtRuntime
+  - !ref browserEntryImportUnsupplied
+  - !ref browserEntryImportUnsuppliedAtRuntime
+  - !ref browserEntryComputedAtCreation
+  - !ref browserExportAnnotationInvalid
+  - !ref browserExportAnnotationInvalidAtRuntime
   - !ref needTypeUnresolved
   - !ref needTypeUnresolvedAtRuntime
   - !ref needParametersInvalid
@@ -1681,6 +1690,18 @@ source: ./__fixtures__/check-run-agreement/template-inputs-shape/nested.yaml
 expect:
   runs: true
 ---
+# A named shape that `extends` another — its parent in another module, named by
+# that module — read through a `!ref` nested in a third shape: `telo check`
+# types the inherited members the kernel's registered shape carries, so reading
+# one is clean and runs.
+kind: Assert.Manifest
+metadata:
+  name: nestedShapeExtendsRuns
+source: ./__fixtures__/check-run-agreement/nested-shape-extends/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
 # A template body computing a value that holds a reference slot. Only a bare
 # `self.<path>` carries a reference across the boundary; anything CEL evaluates
 # is data. Reported where the body is written…
@@ -2932,6 +2953,8 @@ expect:
       message: "Reach.ViaRootMap/viaRootMap: reference at 'missing' → resource 'nosuch' not found"
     - code: UNRESOLVED_REFERENCE
       message: "Reach.ViaRecursion/viaRecursion: reference at 'node.next.target' → resource 'nosuch' not found"
+    - code: UNRESOLVED_REFERENCE
+      message: "Reach.ViaDottedKey/viaDottedKey: reference at 'target.slot' → resource 'nosuch' not found"
 ---
 kind: Assert.Manifest
 metadata:
@@ -2961,6 +2984,14 @@ kind: Assert.Manifest
 metadata:
   name: refSlotReachUnresolvedRecursionAtRuntime
 source: ./__fixtures__/check-run-agreement/ref-slot-reach/unresolved/via-recursion.yaml
+expect:
+  errors: []
+  runFails: "Resource 'nosuch' not found in module context"
+---
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachUnresolvedDottedKeyAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/unresolved/via-dotted-key.yaml
 expect:
   errors: []
   runFails: "Resource 'nosuch' not found in module context"
@@ -3625,14 +3656,17 @@ expect:
     - code: BROWSER_ENTRY_UNKNOWN
       message: "Kinds.Widget/widget: 'entry: @fixture/shell' names no browser entry of the module declaring this resource"
 ---
-# …and the kernel refuses the resource at creation.
+# …and a consumer's check reports the library's refusal at the import reaching
+# it, since the kernel refuses the resource when the import creates it.
 kind: Assert.Manifest
 metadata:
   name: browserEntryUnknownAtRuntime
 source: ./__fixtures__/check-run-agreement/browser-entry/unknown-entry/telo.yaml
 expect:
-  errors: []
-  runFails: "BrowserKinds.Widget/widget: 'entry: @fixture/shell' names no browser entry of the module declaring this resource"
+  errors:
+    - code: BROWSER_ENTRY_UNKNOWN
+      message: "reached through import 'Lib': Kinds.Widget/widget: 'entry: @fixture/shell' names no browser entry of the module declaring this resource"
+  runFails: "[BROWSER_ENTRY_UNKNOWN] Imported library 'BrowserEntryUnknownLib', reached through import 'Lib': Kinds.Widget/widget: 'entry: @fixture/shell' names no browser entry of the module declaring this resource"
 ---
 # An export the named entry does not declare is refused the same two ways.
 kind: Assert.Manifest
@@ -3649,8 +3683,86 @@ metadata:
   name: browserExportUnknownAtRuntime
 source: ./__fixtures__/check-run-agreement/browser-entry/unknown-export/telo.yaml
 expect:
+  errors:
+    - code: BROWSER_EXPORT_UNKNOWN
+      message: "reached through import 'Lib': Kinds.Widget/widget: 'export: Missing' is not an export the browser entry '@fixture/own' declares"
+  runFails: "[BROWSER_EXPORT_UNKNOWN] Imported library 'BrowserExportUnknownLib', reached through import 'Lib': Kinds.Widget/widget: 'export: Missing' is not an export the browser entry '@fixture/own' declares"
+---
+# A kind's annotation may list the generations it accepts (`abi`) and the host
+# specifiers it supplies (`external`). An entry written against another
+# generation is refused at the library…
+kind: Assert.Manifest
+metadata:
+  name: browserEntryAbiUnsupported
+source: ./__fixtures__/check-run-agreement/browser-entry/abi-unsupported/lib/telo.yaml
+expect:
+  errors:
+    - code: BROWSER_ENTRY_ABI_UNSUPPORTED
+      message: "Kinds.Control/control: 'entry: @fixture/own' names a browser entry written against 'fixture_controls-2', and this field accepts 'fixture_controls-1'"
+---
+# …and at the import reaching it.
+kind: Assert.Manifest
+metadata:
+  name: browserEntryAbiUnsupportedAtRuntime
+source: ./__fixtures__/check-run-agreement/browser-entry/abi-unsupported/telo.yaml
+expect:
+  errors:
+    - code: BROWSER_ENTRY_ABI_UNSUPPORTED
+      message: "reached through import 'Lib': Kinds.Control/control: 'entry: @fixture/own' names a browser entry written against 'fixture_controls-2'"
+  runFails: "[BROWSER_ENTRY_ABI_UNSUPPORTED] Imported library 'BrowserAbiUnsupportedLib', reached through import 'Lib': Kinds.Control/control: 'entry: @fixture/own' names a browser entry written against 'fixture_controls-2', and this field accepts 'fixture_controls-1'"
+---
+# An entry leaving to its host a specifier the kind does not supply, the same
+# two ways.
+kind: Assert.Manifest
+metadata:
+  name: browserEntryImportUnsupplied
+source: ./__fixtures__/check-run-agreement/browser-entry/import-unsupplied/lib/telo.yaml
+expect:
+  errors:
+    - code: BROWSER_ENTRY_IMPORT_UNSUPPLIED
+      message: "Kinds.Control/control: 'entry: @fixture/own' names a browser entry that leaves '@fixture/router' to its host (its 'external'), and this field supplies only '@fixture/runtime'"
+---
+kind: Assert.Manifest
+metadata:
+  name: browserEntryImportUnsuppliedAtRuntime
+source: ./__fixtures__/check-run-agreement/browser-entry/import-unsupplied/telo.yaml
+expect:
+  errors:
+    - code: BROWSER_ENTRY_IMPORT_UNSUPPLIED
+      message: "reached through import 'Lib': Kinds.Control/control: 'entry: @fixture/own' names a browser entry that leaves '@fixture/router' to its host"
+  runFails: "[BROWSER_ENTRY_IMPORT_UNSUPPLIED] Imported library 'BrowserImportUnsuppliedLib', reached through import 'Lib': Kinds.Control/control: 'entry: @fixture/own' names a browser entry that leaves '@fixture/router' to its host (its 'external'), and this field supplies only '@fixture/runtime'"
+---
+# An entry named by an expression is judged when the resource is created: the
+# check is silent, and the kernel refuses with the same reader's verdict.
+kind: Assert.Manifest
+metadata:
+  name: browserEntryComputedAtCreation
+source: ./__fixtures__/check-run-agreement/browser-entry/computed-entry/telo.yaml
+expect:
   errors: []
-  runFails: "BrowserKinds.Widget/widget: 'export: Missing' is not an export the browser entry '@fixture/own' declares"
+  runFails: "[ERR_BROWSER_ENTRY_ABI_UNSUPPORTED] RuntimeError: BrowserKinds.Control/control: 'entry: @fixture/own' names a browser entry written against 'fixture_controls-2', and this field accepts 'fixture_controls-1'"
+---
+# The annotation's own shape is checked at the kind that writes it…
+kind: Assert.Manifest
+metadata:
+  name: browserExportAnnotationInvalid
+source: ./__fixtures__/check-run-agreement/browser-entry/annotation-invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: BROWSER_EXPORT_ANNOTATION_INVALID
+      message: "Telo.Definition 'Component' declares 'schema.properties.export.x-telo-browser-export.abi': 'abi' must be a non-empty list of the generations the kind accepts"
+---
+# …and at the import reaching it, since the kernel refuses the kind when the
+# import registers it.
+kind: Assert.Manifest
+metadata:
+  name: browserExportAnnotationInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/browser-entry/annotation-invalid/telo.yaml
+expect:
+  errors:
+    - code: BROWSER_EXPORT_ANNOTATION_INVALID
+      message: "reached through import 'Lib': Telo.Definition 'Component' declares 'schema.properties.export.x-telo-browser-export.abi'"
+  runFails: "[BROWSER_EXPORT_ANNOTATION_INVALID] Imported library 'BrowserAnnotationInvalidLib', reached through import 'Lib': Telo.Definition 'Component' declares 'schema.properties.export.x-telo-browser-export.abi': 'abi' must be a non-empty list of the generations the kind accepts"
 ---
 # NEEDS. The need table is one reader: `telo check` reports a refusal at the
 # module that wrote it, and the kernel raises its `ERR_` twin at load — for a

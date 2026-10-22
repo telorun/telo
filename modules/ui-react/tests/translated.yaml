@@ -4,12 +4,16 @@ metadata:
   version: 1.0.0
   description: |
     An application with a translator serves each request in the language it
-    asks for: the documents carry the translated message and its tag, an
-    enumeration's labels are translated while its values stay as written, the
-    renderer's own words arrive translated, and `Vary` names exactly the header
-    the language is read from — none when the language is one fixed tag. A
+    asks for: the documents carry the translated message and its tag, a text
+    with context is translated by its context, an enumeration's labels are
+    translated while its values stay as written, the renderer's own words
+    arrive translated, and `Vary` names exactly the header the language is
+    read from — none when the language is one fixed tag. A
     thousand different Accept-Language values produce no more documents than
-    the translator has languages plus the source.
+    the translator has languages plus the source. The application's own header
+    nodes travel in the application document, translated like the rest of it,
+    with a composite provided, a menu's text and items translated, a node and
+    a menu item delivered per request, and the header they read joins `Vary`.
 imports:
   App: ../../app
   Run: ../../run
@@ -40,6 +44,11 @@ steps:
       kind: HttpClient.Request
       url: http://127.0.0.1:8132/_telo/ui/app
       headers: { accept-language: en-GB }
+  - name: staffApp
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8132/_telo/ui/app
+      headers: { accept-language: en-GB, x-role: staff }
   - name: polishPage
     invoke:
       kind: HttpClient.Request
@@ -63,10 +72,13 @@ steps:
           title: !cel "steps.polishApp.result.body.title"
           vary: !cel "steps.polishApp.result.headers['vary']"
           save: !cel "steps.polishApp.result.body.words.save"
+          header: !cel "steps.polishApp.result.body.header"
         english:
           lang: !cel "steps.englishApp.result.body.lang"
           title: !cel "steps.englishApp.result.body.title"
           save: !cel "steps.englishApp.result.body.words.save"
+          header: !cel "steps.englishApp.result.body.header"
+        staffHeaderEnd: !cel "steps.staffApp.result.body.header.end"
         etagsDiffer: !cel "steps.polishApp.result.headers['etag'] != steps.englishApp.result.headers['etag']"
         page:
           lang: !cel "steps.polishPage.result.body.lang"
@@ -74,6 +86,7 @@ steps:
           bound: !cel "steps.polishPage.result.body.children[1].text"
           label: !cel "steps.polishPage.result.body.children[2].fields[0].label"
           states: !cel "steps.polishPage.result.body.children[2].fields[1].labels"
+          badge: !cel "steps.polishPage.result.body.children[3].text"
         cookie:
           lang: !cel "steps.cookieApp.result.body.lang"
           vary: !cel "steps.cookieApp.result.headers['vary']"
@@ -85,12 +98,34 @@ steps:
         polish:
           lang: pl
           title: { lang: pl, message: [Faktury] }
-          vary: Accept-Language
+          vary: Accept-Language, X-Role
           save: { lang: pl, message: [Zapisz] }
+          header:
+            start: [ { type: image, src: /logo.svg, alt: { lang: pl, message: [Faktury] } } ]
+            end:
+              - { type: link, text: { lang: pl, message: [Pomoc] }, href: /help }
+              - type: menu
+                text: { lang: pl, message: [Pomoc] }
+                items: [ { type: link, text: { lang: pl, message: [Pomoc] }, href: /help, style: strong } ]
         english:
           lang: en
           title: { lang: en, message: [Invoices] }
           save: { lang: en, message: [Save] }
+          header:
+            start: [ { type: image, src: /logo.svg, alt: { lang: en, message: [Invoices] } } ]
+            end:
+              - { type: link, text: { lang: en, message: [Help] }, href: /help }
+              - type: menu
+                text: { lang: en, message: [Help] }
+                items: [ { type: link, text: { lang: en, message: [Help] }, href: /help, style: strong } ]
+        staffHeaderEnd:
+          - { type: link, text: { lang: en, message: [Help] }, href: /help }
+          - type: menu
+            text: { lang: en, message: [Help] }
+            items:
+              - { type: link, text: { lang: en, message: [Help] }, href: /help, style: strong }
+              - { type: link, text: { lang: en, message: [Staff] }, href: /staff }
+          - { type: badge, text: { lang: en, message: [Staff] } }
         etagsDiffer: true
         page:
           lang: pl
@@ -108,6 +143,7 @@ steps:
           states:
             - { value: open, label: { lang: pl, message: [Otwarta] } }
             - { value: paid, label: { lang: pl, message: [Opłacona] } }
+          badge: { lang: pl, message: [Otwarte] }
         cookie:
           lang: pl
           vary: Cookie

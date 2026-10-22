@@ -2,8 +2,9 @@
 
 A Telo application's screens are declared in its manifest, never written as a
 frontend. The `ui` module is the vocabulary — pages, tables, forms, actions,
-filter bars, surfaces, themes. The `ui-react` module is a renderer: it serves
-that vocabulary to a browser as data a prebuilt React application interprets.
+filter bars, surfaces, design tokens. The `ui-react` module is a renderer: it
+serves that vocabulary to a browser as data a prebuilt React application
+interprets, styled by a swappable theme.
 What crosses the wire is a spec, never generated code, so the screen is
 type-checked by `telo check` with the rest of the manifest.
 
@@ -12,13 +13,12 @@ Rules that hold throughout:
 - **Never generate frontend code, and never use `JS.Script`.** Everything a
   screen does is a declared kind. A component of your own is a browser entry
   a library ships (see *Custom components*), not code in the manifest.
-- **Take every field from `get_kinds`.** This guide shows how the pieces fit;
-  the exact schema of each kind, and the `imports:` line to write for each
-  module (with its version and integrity pin), come from `get_kinds` on the
-  `ui`, `ui-react`, `http-server` and — for the generated admin screen —
-  `crud` modules. Write each import line exactly as `get_kinds` returns it. A
-  `Telo.*` kind is built in: `get_kinds` returns it with no import line, read at
-  the telo version you pass as `telo`, and you import nothing for it.
+- **Take every field from `get_kinds`.** The exact schema of each kind, and
+  the `imports:` line to write for each module (version and integrity pin),
+  come from `get_kinds` on the `ui`, `ui-react`, `http-server` and — for a
+  generated admin screen — `crud` modules. A `Telo.*` kind is built in:
+  `get_kinds` returns it with no import line, read at the telo version you
+  pass as `telo`.
 - **The API comes first.** A screen calls routes; it never reaches a database
   or an invocable directly. Declare the routes, then the screen over them.
 
@@ -26,8 +26,8 @@ Rules that hold throughout:
 
 Reach for `ui` when a person needs to browse, filter, create, edit or delete
 records, or press a button that runs an operation and read what it answered.
-For a static or server-rendered page, a document, or an HTML email, use a
-template or HTML module instead; for a machine consumer, the API alone.
+For a static page, a document or an HTML email, use a template or HTML module
+instead; for a machine consumer, the API alone.
 
 Who imports what:
 
@@ -60,6 +60,7 @@ kind: UiReact.App
 metadata: { name: admin }
 title: Tasks
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Open work
@@ -76,7 +77,7 @@ metadata: { name: server }
 listen:
   port: !cel "ports.http"
 mounts:
-  - { path: /api/tasks, mount: !ref tasksApi }
+  - { path: /admin/api/tasks, mount: !ref tasksApi }
   - { path: /admin, mount: !ref admin }
 ```
 
@@ -86,13 +87,16 @@ its node (`ref: { kind: Ui.Table, … }`) and gets a name only when two places
 use it — as `taskTable` below is, on a page and inside a filter bar.
 
 - `title` (required) names the application. `words` (required) is what the
-  renderer draws on its own — `!ref Ui.words`, English. `pages` (at least one)
-  are `{ path, title, children }`; every page gets a navigation link, in order.
+  renderer draws on its own — `!ref Ui.words`, English. `theme` (required) is
+  the look — `!ref UiReact.defaultTheme`, or another theme. `pages` (at least
+  one) are `{ path, title, children }`; every page gets a navigation link, in
+  order.
 - Optional: `translator` (an `I18n.Translator`) and `lang` (a tag, or
   `!cel` over `request.headers` — the negotiated `Accept-Language`) serve every
-  text translated; `theme`, `defaultTheme`, `stylesheets` (host paths,
-  written `!module-path ./ui.css`), `compactBelow` (the narrow-viewport
-  breakpoint).
+  text translated; `tokens` (the brand), `stylesheets` (host paths, written
+  `!module-path ./ui.css`), `compactBelow` (the narrow-viewport breakpoint),
+  `header: { start?, end? }` (nodes on every page around the title and
+  navigation; no `query` there).
 - A page `path` is literal and unique, never under `/_telo`.
 
 ### Nodes
@@ -104,6 +108,7 @@ A page's `children` are nodes — plain data with a `type`:
 | `box`, `stack`, `columns` | `children` |
 | `text`, `badge` | `text` |
 | `link` | `text`, `href` |
+| `menu` | `text`, `items` (`link`s behind a button; `strong` marks the current) |
 | `image` | `src`, `alt` (required, may be empty) |
 | `svg` | `markup`, `alt` — drawn as an image, never inserted |
 | `value` | `value` (an accessor), `text?` — one value, presented as its schema says |
@@ -114,8 +119,8 @@ Every node also takes `style` (one or a list of `heading`, `subheading`,
 `muted`, `strong`, `accent`, `danger`, `warning`, `success`), `when` (a
 boolean deciding on the server whether the node is delivered) and `shown` (a
 condition deciding in the browser whether it is drawn — see "Data and
-conditions"). There is no layout field and no button node: arrangement is the
-renderer's styling, and a button that does something is a `Ui.Action`.
+conditions"). There is no layout field: arrangement is the renderer's
+styling, and a button that does something is a `Ui.Action`.
 
 **Texts.** Every label, heading and node text is a text in the module's
 `lang:`. A text over data names its values instead of being concatenated, so a
@@ -126,13 +131,13 @@ A placeholder nothing binds is refused by `telo check`.
 **Addresses.** An address inside the application — a page `path`, a `link`'s
 `href`, an `image`'s `src`, a `source.basePath`, an action's `source.path` —
 is app-relative: `/` followed by anything but `/` or `\`, with no control
-character. `/`, `/done` and `/a//b` are valid; `//host` and `/\host` are
-refused. A `link` may also start `https://`, `http://` or `mailto:`; an
-`image`, `https://` or `http://`. A `link`'s `href` and an `image`'s `src`
-resolve under the application's mount; a `source.basePath` and an action's
-`source.path` are paths on the server's origin — where the API is mounted.
+character: `//host` and `/\host` are refused. A `link` may also start
+`https://`, `http://` or `mailto:`; an `image`, `https://` or `http://`. Each
+app-relative address resolves under the application's mount: mounted at
+`/admin`, `source.path: /api/reports` is requested at `/admin/api/reports`, so
+serve the API there.
 
-**Per request.** Inside `pages[].children`, a node's `when` and its leaf
+**Per request.** Inside `pages[].children` and `header`, a node's `when` and its leaf
 values (`text`, `href`, `src`, `alt`, `markup`, `style`) may be `!cel`,
 evaluated for every request against `request.headers` (lower-case names; test
 with `in` first) and `request.ip`:
@@ -578,7 +583,7 @@ halves from one model:
   table and schema kinds.
 - `Crud.Ui` is the whole screen — filter bar, sortable paged table, create
   and edit forms, confirmed delete — from `model` (the same model) and
-  `basePath` (where the resource is mounted). It does not reference the
+  `basePath` (its path under the app's mount). It does not reference the
   resource.
 
 ```yaml
@@ -600,6 +605,7 @@ kind: UiReact.App
 metadata: { name: admin }
 title: Tasks
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Tasks
@@ -643,16 +649,30 @@ operation — is hand-built from the kinds above over routes of your own.
 
 ## Themes, styling and custom components
 
-- **`Ui.Theme`** sets design tokens from a closed set — `color.` (`background`,
-  `surface`, `text`, `muted`, `border`, `accent`, `accent-text`, `danger`,
-  `warning`, `success`), `radius.`, `space.`, `shadow.`, `font.` (a `!ref` to a
-  font family resource), `font-size.`, `line-height.` — each a CSS value
-  string. `theme:` on the app is one theme or a list of `{ theme, when? }`,
-  the first whose `when` holds winning per request.
+- **Theme and brand are two keys.** `theme:` is one `UiReact.Theme` — the look
+  of every part and, optionally, control sets drawn in place of the built-in
+  selects, menus and dialogs: `!ref UiReact.defaultTheme`, an exported theme
+  of another module (find one with `search_resources`), or your own `{ kind:
+  UiReact.Theme, stylesheets: [!module-path ./look.css] }`. `tokens:` is the
+  brand over it: a `Ui.DesignTokens` whose fields are a closed token set
+  (`color.*`, `radius.*`, `space.*`, `shadow.*`, `font.*` as a `!ref` to a
+  font family, `font-size.*`, `line-height.*`), each a CSS value string,
+  written `{ kind: Ui.DesignTokens, color.accent: "#1d4ed8" }`; or a list of
+  `{ tokens, when? }`, the first whose `when` holds winning per request.
+  Changing the theme keeps the brand.
+- **Control sets.** A theme's `controls` lists `UiReact.Controls` sets, each
+  declared in the library shipping its browser entry (`entry`, `implements`);
+  no two entries implement one control, even one set via two aliases. The
+  fourteen inline controls may be replaced in any subset. The eight layer
+  controls — `Select`, `MultiSelect`, `Dialog`, `Drawer`, `Popover`,
+  `Confirmation`, `Menu`, `Tooltip` — are replaced as one unit: a set
+  implementing any of them implements all eight, or is refused before the app
+  runs. `ui-react-radix` exports `theme`, drawn with Radix; a theme of yours
+  takes its `controls` whole or none.
 - **Stylesheets.** Everything the renderer draws carries `data-telo-part`,
   with state in `data-` attributes; that list is a stable contract. Your
   `stylesheets` are unlayered and win over the renderer's layers without
-  out-specifying them. `defaultTheme: false` drops the built-in theme.
+  out-specifying them.
 - **Custom components.** A library ships a browser entry built for the
   renderer's ABI and publishes it with `Ui.ComponentExport` (`entry`,
   `export`, `props` as a shape), exported as an instance. An application

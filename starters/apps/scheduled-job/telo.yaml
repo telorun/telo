@@ -348,6 +348,7 @@ kind: UiReact.App
 metadata: { name: ui }
 title: Scheduled job
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Job

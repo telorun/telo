@@ -1,0 +1,20 @@
+# A theme whose two control sets both implement the box control.
+kind: Telo.Library
+metadata:
+  name: UiReactThemeControlDuplicate
+  version: 1.0.0
+  description: >-
+    Test fixture exporting a theme that lists two control sets implementing the
+    same control.
+imports:
+  UiReact: ../../../../../
+  Widgets: ../../../components
+exports:
+  resources: [doubled]
+---
+kind: UiReact.Theme
+metadata:
+  name: doubled
+controls:
+  - !ref Widgets.controls
+  - !ref Widgets.checkboxes

@@ -174,7 +174,7 @@ Both belong to the opener, beside `surface`:
 
 | Field | | |
 | --- | --- | --- |
-| `afterSubmit` | `close` | `close` the surface; `keep` it open with its values; on `create` also `again` — keep it open, emptied, for another record |
+| `afterSubmit` | `close` | `close` the surface; `keep` it open with its values; on `create` also `again` — keep it open for another record, back at the values a new record starts from: the model's defaults and each date range's initial preset, never the address or the store |
 | `unsaved` | `confirm` | `confirm` asks before unsaved input is dropped; `discard` drops it |
 
 The list reloads after every submit. `again` on `edit` is refused: an edit has

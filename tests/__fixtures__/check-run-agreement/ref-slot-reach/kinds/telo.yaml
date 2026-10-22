@@ -16,6 +16,7 @@ exports:
     - ViaRootAnyOf
     - ViaRootMap
     - ViaRecursion
+    - ViaDottedKey
     - ScopeViaAnyOf
     - ScopeViaDefs
     - Echo
@@ -91,6 +92,21 @@ schema:
         target:
           x-telo-ref: { kind: Telo.Invocable, use: call }
         next: { $ref: "#/$defs/Node" }
+---
+# A property name holding a dot is one key, not a path of two.
+kind: Telo.Definition
+metadata:
+  name: ViaDottedKey
+  description: Reports whether the target held under a property name containing a dot arrived live.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Mapped
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    target.slot:
+      x-telo-ref: { kind: Telo.Invocable, use: call }
 ---
 kind: Telo.Definition
 metadata:

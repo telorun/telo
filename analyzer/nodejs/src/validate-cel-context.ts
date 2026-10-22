@@ -233,11 +233,24 @@ function applyExtends(
   allManifests: Record<string, any>[],
   ancestry: ReadonlySet<string>,
 ): Record<string, any> {
+  return foldTypeExtends(ownSchema, extendsField, (parent) =>
+    resolveTypeFieldToSchema(parent, allManifests, ancestry),
+  );
+}
+
+/** A shape's own schema with each `extends` parent `resolveParent` resolves
+ *  folded in, parents first — the merge the kernel's type controller makes. A
+ *  parent that resolves to nothing is left out. */
+export function foldTypeExtends(
+  ownSchema: Record<string, any>,
+  extendsField: unknown,
+  resolveParent: (parent: unknown) => Record<string, any> | undefined,
+): Record<string, any> {
   if (!extendsField) return ownSchema;
   const parents = Array.isArray(extendsField) ? extendsField : [extendsField];
   const resolved: Record<string, any>[] = [];
   for (const parent of parents) {
-    const parentSchema = resolveTypeFieldToSchema(parent, allManifests, ancestry);
+    const parentSchema = resolveParent(parent);
     if (parentSchema) resolved.push(parentSchema);
   }
   if (resolved.length === 0) return ownSchema;

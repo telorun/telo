@@ -1,6 +1,9 @@
 # A caption written as a text with values, and one an expression computes in
 # that form: the walk reads each by the branch that admits it, so the
 # controller receives the inner text as its record — computed for the second.
+# A caption written as a text with context, written and computed, is read by
+# the text branch alone: the controller receives it as one record, never a
+# record nested inside another.
 kind: Telo.Application
 metadata:
   name: BoundTextDeliveredApp
@@ -21,20 +24,30 @@ label:
   values: { n: 3 }
 computedLabel: !cel "{'text': '{$n} files', 'values': {'n': 2}}"
 ---
+kind: Kinds.Caption
+metadata:
+  name: contextual
+label: { text: Open, context: page }
+computedLabel: !cel "{'text': 'Close', 'context': 'page'}"
+---
 kind: Run.Sequence
 metadata:
   name: main
 steps:
   - name: caption
     invoke: !ref caption
+  - name: contextual
+    invoke: !ref contextual
   - name: assert
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.caption.result"
+      actual: !cel "[steps.caption.result, steps.contextual.result]"
       expected:
-        label:
-          text: { text: "{$n} items", context: null, lang: en, computed: false }
-          values: { n: 3 }
-        computedLabel:
-          text: { text: "{$n} files", context: null, lang: en, computed: true }
-          values: { n: 2 }
+        - label:
+            text: { text: "{$n} items", context: null, lang: en, computed: false }
+            values: { n: 3 }
+          computedLabel:
+            text: { text: "{$n} files", context: null, lang: en, computed: true }
+            values: { n: 2 }
+        - label: { text: Open, context: page, lang: en, computed: false }
+          computedLabel: { text: Close, context: page, lang: en, computed: true }

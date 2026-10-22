@@ -128,13 +128,6 @@ connection: !ref db
 tables:
   - !ref todos
 ---
-kind: Ui.Theme
-metadata:
-  name: theme
-tokens:
-  color.accent: "#1f8fff"
-  radius.md: 6px
----
 # The whole frontend. `/` is one `Crud.Ui` — table, filters, and the create and
 # edit forms all come from the model — given three keys that say how it behaves:
 # the bar shows only the filters chosen, summarises them as chips and keeps them
@@ -148,7 +141,8 @@ metadata:
   name: ui
 title: Todos
 words: !ref Ui.words
-theme: !ref theme
+theme: !ref UiReact.defaultTheme
+tokens: { kind: Ui.DesignTokens, color.accent: "#1f8fff", radius.md: 6px }
 pages:
   - path: /
     title: Todos

@@ -91,7 +91,7 @@ edit:
 | --- | --- | --- |
 | `form` | required | a [`Ui.Form`](form.md), `!ref` or inline |
 | `surface` | a `Ui.Dialog` with its defaults | [where the form appears](surfaces.md): any `Ui.Surface`, `!ref` or inline |
-| `afterSubmit` | `close` | what the form does once the record is saved: `close`, `keep`, and on `create` also `again` |
+| `afterSubmit` | `close` | what the form does once the record is saved: `close`, `keep`, and on `create` also `again` — back at the values a new record starts from |
 | `unsaved` | `confirm` | whether leaving the form with unsaved input asks first (`confirm`) or drops it (`discard`) |
 
 An edit opens over the record read by its key, not over the row shown.

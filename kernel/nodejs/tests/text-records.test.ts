@@ -27,6 +27,7 @@ describe("a text a controller receives", () => {
 
     expect(probe().labels).toEqual({
       direct: { text: "Open", context: "verb", lang: "en", computed: false },
+      bound: { text: "Open", context: "noun", lang: "en", computed: false },
       computed: { text: "Hello there", context: null, lang: "en", computed: true },
       files: {
         text: { plural: "n", cases: { one: "{$n} file", other: "{$n} files" } },

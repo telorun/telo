@@ -1,0 +1,43 @@
+kind: Telo.Library
+metadata:
+  name: ControlsFixture
+  version: 1.0.0
+  description: >-
+    Test fixture: a control set implementing every control with the renderer's
+    own, and one implementing the eight layer controls whose Select closes on
+    Escape without asking the renderer.
+imports:
+  UiReact: ../../../../ui-react
+exports:
+  resources: [builtInControls, brokenSelect]
+  browser:
+    - specifier: "@fixture/built-in-controls"
+      path: ./browser/built-in-controls.js
+      source: ./src/built-in-controls.js
+      abi: ui_react_controls-1
+      external: [react, react/jsx-runtime, react-dom]
+      exports:
+        [
+        TextInput, NumberInput, TextArea, DateInput, DateTimeInput, TimeInput, TagsInput, DateRangeInput, Checkbox, Switch, Slider, OptionGroup, Select, MultiSelect, Listbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Icon,
+        ]
+    - specifier: "@fixture/broken-select"
+      path: ./browser/broken-select.js
+      source: ./src/broken-select.js
+      abi: ui_react_controls-1
+      external: [react, react/jsx-runtime, react-dom]
+      exports: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip]
+---
+kind: UiReact.Controls
+metadata:
+  name: builtInControls
+entry: "@fixture/built-in-controls"
+implements:
+  [
+  TextInput, NumberInput, TextArea, DateInput, DateTimeInput, TimeInput, TagsInput, DateRangeInput, Checkbox, Switch, Slider, OptionGroup, Select, MultiSelect, Listbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Icon,
+  ]
+---
+kind: UiReact.Controls
+metadata:
+  name: brokenSelect
+entry: "@fixture/broken-select"
+implements: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip]

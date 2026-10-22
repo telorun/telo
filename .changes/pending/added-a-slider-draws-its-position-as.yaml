@@ -1,0 +1,8 @@
+modules:
+  modules/ui-react: Added
+body: "A slider draws its position as text after its track, in the new parts
+  slider-value and filter-slider-value: the number it holds, or Any while a filter
+  slider restricts nothing, following the thumb as it is dragged and hidden from
+  assistive technology. The default theme styles both in tabular figures, leaving them
+  room past the track's end. A filter chip carries its whole text as its title, so a
+  chip a theme cuts short shows in full on hover."

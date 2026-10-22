@@ -18,6 +18,7 @@ imports:
   Http: ../http-client
 exports:
   kinds:
+    - Client
     - ChatModel
     - ChatModelStream
     - Model
@@ -26,6 +27,55 @@ exports:
     - ResponsesModelStream
     - ImageModel
     - EmbeddingModel
+---
+# The account as an Http.Client: OpenAI's endpoint and a timeout sized for
+# inference. A complete answer arrives in one response, so the HTTP client's own
+# 10-second default ends most long answers early.
+kind: Telo.Definition
+metadata:
+  name: Client
+  description: >-
+    An HTTP client preset for OpenAI and OpenAI-compatible APIs: the endpoint, a
+    ten-minute timeout that fits a long model answer or a generated image, and the
+    credential every call carries, usually the API key as a bearer token. Reference
+    it from the request a model calls through; override the base URL for Azure, a
+    gateway or a self-hosted server.
+extends: Http.Client
+schema:
+  type: object
+  properties:
+    credential:
+      title: Credential
+      description: >-
+        Authenticates every call — an `Http.BearerToken` holding the API key. A
+        self-hosted server that asks for no key takes none.
+      x-telo-ref:
+        kind: Http.Credential
+        use: call
+    baseUrl:
+      title: Base URL
+      type: string
+      default: https://api.openai.com/v1
+      description: The API endpoint, or that of Azure, a gateway or a self-hosted server.
+    timeout:
+      title: Timeout
+      type: integer
+      minimum: 1
+      default: 600000
+      description: >-
+        Milliseconds a call may take. A complete answer must arrive within it; a
+        streamed one must start within it.
+    headers:
+      title: Headers
+      type: object
+      additionalProperties:
+        type: string
+      description: Headers added to every call (an organization or project id, a gateway's own).
+base:
+  baseUrl: !cel "self.?baseUrl.orValue('https://api.openai.com/v1')"
+  timeout: !cel "self.?timeout.orValue(600000)"
+  credential: !cel "self.credential"
+  headers: !cel "self.headers"
 ---
 kind: Telo.Definition
 metadata:

@@ -152,6 +152,7 @@ describe("inline step targets are extracted at load", () => {
       parentKind: "demo.Task",
       parentName: "SequenceSeqSteps0First",
       pathFromParent: "helper",
+      keysFromParent: ["helper"],
     });
 
     // The caller's manifests are never touched.

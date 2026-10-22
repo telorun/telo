@@ -1,0 +1,73 @@
+kind: Telo.Library
+metadata:
+  name: UiShowcaseComponents
+  version: 1.0.0
+  description: >-
+    Browser components of the UI showcase, written in TSX against the UI host:
+    a task desk using every field the host offers, a priority meter for a data
+    grid cell, a sheet of every design token as the page applies it, and the
+    page's typefaces in each face with whether the application serves them.
+imports:
+  Ui: ../../../modules/ui
+exports:
+  resources: [ taskDesk, priorityMeter, tokenSheet, typefaceSamples ]
+  browser:
+    # One entry for the four components and their stylesheet, built by the
+    # kernel from the TSX source. React and the host module come from the page.
+    - specifier: "@ui-showcase/components"
+      path: ./browser/components.js
+      source: ./nodejs/src/components.tsx
+      abi: ui_react-1
+      external: [ react, react/jsx-runtime, react-dom, "@telorun/ui-react" ]
+      exports: [ TaskDesk, PriorityMeter, TokenSheet, TypefaceSamples ]
+---
+# Adds tasks to one project and shows how it stands, at the collection and the
+# counts route it is given.
+kind: Ui.ComponentExport
+metadata:
+  name: taskDesk
+entry: "@ui-showcase/components"
+export: TaskDesk
+props:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ basePath, countsPath, project ]
+    properties:
+      basePath: { type: string, pattern: "^/" }
+      countsPath: { type: string, pattern: "^/" }
+      project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+---
+kind: Ui.ComponentExport
+metadata:
+  name: priorityMeter
+entry: "@ui-showcase/components"
+export: PriorityMeter
+props:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ priority ]
+    properties:
+      priority: { type: integer, minimum: 1, maximum: 5 }
+      blocked: { type: boolean }
+---
+kind: Ui.ComponentExport
+metadata:
+  name: tokenSheet
+entry: "@ui-showcase/components"
+export: TokenSheet
+props:
+  kind: Telo.JsonSchema
+  schema: { type: object, additionalProperties: false }
+---
+kind: Ui.ComponentExport
+metadata:
+  name: typefaceSamples
+entry: "@ui-showcase/components"
+export: TypefaceSamples
+props:
+  kind: Telo.JsonSchema
+  schema: { type: object, additionalProperties: false }

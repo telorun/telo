@@ -3,7 +3,7 @@ import { styleAttribute } from "./bindings.js";
 import { useHost, useHostStore, type HostLocation, type UnsavedGuard } from "./host.js";
 import { ErrorNode, type SpecNode } from "./nodes.js";
 import { useRecordEntry, type EntrySpec } from "./record-entry.js";
-import { enteredValues, Fields, refusalOf, sameValues, type EnteredValues } from "./record-fields.js";
+import { Fields, refusalOf, sameValues, type EnteredValues } from "./record-fields.js";
 import { useSay } from "./texts.js";
 import { networkError, responseError, type ErrorSpec, errorSpec } from "./ui-error.js";
 
@@ -19,7 +19,8 @@ interface FormProps {
    *  model properties with each field's entered value over them. */
   initial?: Record<string, unknown>;
   /** What the form does once its record is saved: `close` hands over to
-   *  `onDone`, `keep` keeps its values, `again` empties it for another record. */
+   *  `onDone`, `keep` keeps its values, `again` returns it to the values it starts from —
+   *  the address and the store aside — for another record. */
   afterSubmit?: "close" | "again" | "keep";
   /** Given where unsaved input is guarded: whether a location still shows this
    *  form. A move to one that does not waits for the user's answer. */
@@ -52,7 +53,6 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
   const [saved, setSaved] = useState<EnteredValues>(values);
   const [failure, setFailure] = useState<ErrorSpec>();
   const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
-  const blank = () => enteredValues(schema, fields, initial);
   const dirty = !sameValues(fields, values, saved);
   const busy = state === "submitting";
 
@@ -121,7 +121,7 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
     host.notifyChanged(node.basePath);
     onSaved?.();
     if (afterSubmit === "close") return onDone?.();
-    const next = afterSubmit === "keep" ? values : blank();
+    const next = afterSubmit === "keep" ? values : entry.restarted();
     setSaved(next);
     entry.reset(next);
   };

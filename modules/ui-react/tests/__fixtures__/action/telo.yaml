@@ -153,6 +153,7 @@ metadata:
   name: admin
 title: Reports
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Reports
@@ -177,12 +178,13 @@ metadata:
 listen:
   address: 127.0.0.1
   port: !cel "ports.http"
+# The page's paths are app-relative, so its routes are served under its mount.
 mounts:
-  - path: /api/todos
+  - path: /admin/api/todos
     mount: !ref todosApi
-  - path: /api/reports
+  - path: /admin/api/reports
     mount: !ref reportsApi
-  - path: /api/archive
+  - path: /admin/api/archive
     mount: !ref archiveApi
   - path: /admin
     mount: !ref admin

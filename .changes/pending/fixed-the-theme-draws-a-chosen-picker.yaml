@@ -1,0 +1,6 @@
+modules:
+  modules/ui-react-radix: Fixed
+body: The theme draws a chosen picker value that links somewhere in the accent colour
+  with an underline, wraps long unbroken text, values and links inside their box, cuts a
+  long filter chip with an ellipsis, insets sliders so the thumb stays inside its column
+  at either end, and spaces the controls of a filter bar further apart.

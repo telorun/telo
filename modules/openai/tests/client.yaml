@@ -1,0 +1,102 @@
+kind: Telo.Application
+metadata:
+  name: OpenAIClient
+  version: 1.0.0
+  description: |
+    `OpenAI.Client` is an Http.Client preset: with nothing set it reads as
+    OpenAI's endpoint with a ten-minute timeout, every preset can be overridden,
+    a credential is optional, and a chat model calls through it with its key.
+
+    Offline: a local server that answers only the client's key.
+imports:
+  OpenAI: ../
+  Ai: ../../ai
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: OpenAI.Client
+metadata: { name: defaulted }
+---
+kind: OpenAI.Client
+metadata: { name: local }
+baseUrl: http://localhost:8977/v1
+timeout: 1234
+headers: { OpenAI-Organization: org-test }
+credential: { kind: Http.BearerToken, token: test-key }
+---
+kind: OpenAI.ChatModel
+metadata: { name: model }
+model: gpt-test
+request: { kind: Http.Request, client: !ref local }
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: ChatApi }
+    routes:
+      - request:
+          path: /chat/completions
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 200
+            when: !cel >-
+              'authorization' in request.headers && request.headers['authorization'] == 'Bearer test-key' &&
+              'openai-organization' in request.headers && request.headers['openai-organization'] == 'org-test'
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  choices:
+                    - message: { content: hello }
+                      finish_reason: stop
+                  usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+          - status: 401
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  error: { type: invalid_request_error, code: invalid_api_key, message: Incorrect API key }
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    listen:
+      port: 8977
+    mounts:
+      - path: /v1
+        mount: !ref ChatApi
+targets:
+  - !ref FakeServer
+steps:
+  - name: call
+    inputs: { messages: [{ role: user, content: hi }] }
+    invoke: !ref model
+  - name: assertClients
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        defaulted: !cel "resources.defaulted"
+        local: !cel "resources.local"
+        answer: !cel "steps.call.result.text"
+      expected:
+        defaulted:
+          baseUrl: https://api.openai.com/v1
+          headers: {}
+          timeout: 600000
+          followRedirects: true
+        local:
+          baseUrl: http://localhost:8977/v1
+          headers: { OpenAI-Organization: org-test }
+          timeout: 1234
+          followRedirects: true
+        answer: hello

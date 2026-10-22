@@ -13,6 +13,7 @@ metadata:
   name: offsitePath
 title: Off-site path
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: //reports
     title: Reports
@@ -23,6 +24,7 @@ metadata:
   name: offsiteLink
 title: Off-site link
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Home

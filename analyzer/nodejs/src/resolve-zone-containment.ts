@@ -39,6 +39,13 @@ import type { CallGraph, CallGraphEdge, CallGraphNode, ResourceGraphNode } from 
 import { propertySchemas, resolveLocalRef } from "./manifest-navigation.js";
 import { isStepSlot } from "./step-slot.js";
 import { readProvidesZone } from "./zone-slot.js";
+import {
+  ITEMS,
+  MAP_VALUES,
+  patternText,
+  samePattern,
+  type Pattern,
+} from "./reference-reach.js";
 
 /** One node the region reaches, with the route taken to it. */
 export interface ContainedNode {
@@ -226,7 +233,8 @@ export function findZoneProviders(
 
     // The providing slots of this kind, found by walking its own declared
     // properties rather than by knowing any kind's field names.
-    for (const [slot, slotSchema] of providingSlots(rootSchema)) {
+    for (const [slotKeys, slotSchema] of providingSlots(rootSchema)) {
+      const slot = patternText(slotKeys);
       const provides = readProvidesZone(slotSchema);
       if (!provides) continue;
 
@@ -253,7 +261,10 @@ export function findZoneProviders(
         // enclosing zone and open its own.
         const entries = graph
           .edgesFrom(node.id)
-          .filter((edge) => edge.slot === slot && edge.to)
+          .filter(
+            (edge) =>
+              (edge.slotKeys ? samePattern(edge.slotKeys, slotKeys) : edge.slot === slot) && edge.to,
+          )
           .map((edge) => ({
             node: graph.nodes.get(edge.to!)!,
             via: [`${slot} → ${edge.toName}`],
@@ -311,37 +322,37 @@ export function findZoneRegions(
   return out;
 }
 
-/** Field-map paths of every slot in a kind's schema carrying a provides-zone
+/** The pattern of every slot in a kind's schema carrying a provides-zone
  *  annotation, with the schema node at each. Walks properties, array items and
- *  `additionalProperties`, resolving local `$ref`s — the paths the call graph's
- *  own edges are keyed by, so a slot found here matches an edge's `slot`. */
+ *  `additionalProperties`, resolving local `$ref`s — the patterns the call
+ *  graph's own edges carry, so a slot found here matches an edge's `slotKeys`. */
 function providingSlots(
   rootSchema: Record<string, any>,
-): Array<[slot: string, schema: Record<string, any>]> {
-  const found: Array<[string, Record<string, any>]> = [];
+): Array<[slot: Pattern, schema: Record<string, any>]> {
+  const found: Array<[Pattern, Record<string, any>]> = [];
   const seen = new Set<object>();
 
-  const walk = (schema: Record<string, any> | undefined, path: string): void => {
+  const walk = (schema: Record<string, any> | undefined, path: Pattern): void => {
     const node = resolveLocalRef(schema, rootSchema);
     if (!node || typeof node !== "object" || seen.has(node)) return;
     seen.add(node);
-    if (path && readProvidesZone(node)) found.push([path, node]);
+    if (path.length > 0 && readProvidesZone(node)) found.push([path, node]);
     for (const [key, child] of propertySchemas(node)) {
-      const childPath = path ? `${path}.${key}` : key;
+      const childPath = [...path, key];
       walk(child, childPath);
       // A slot's zone annotation may sit on the ARRAY (`steps`) or on its item
       // (`routes[].handler`); both are real field-map paths.
       const items = resolveLocalRef(child?.items as Record<string, any> | undefined, rootSchema);
-      if (items) walk(items, `${childPath}[]`);
+      if (items) walk(items, [...childPath, ITEMS]);
       const additional = resolveLocalRef(
         child?.additionalProperties as Record<string, any> | undefined,
         rootSchema,
       );
-      if (additional) walk(additional, `${childPath}{}`);
+      if (additional) walk(additional, [...childPath, MAP_VALUES]);
     }
   };
 
-  walk(rootSchema, "");
+  walk(rootSchema, []);
   return found;
 }
 

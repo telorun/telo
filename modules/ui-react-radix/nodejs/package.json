@@ -1,0 +1,27 @@
+{
+  "name": "@telorun/ui-react-radix-build",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "description": "Build-only package for the std/ui-react-radix module's browser entry. Never published — the entry ships inside the module artifact's browser layer. This package exists to declare the dependencies esbuild inlines (the Radix primitives and the icon set) and to TYPE-CHECK the source, which esbuild does not do.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json && tsc -p tsconfig.spec.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "lucide-react": "^1.8.0",
+    "radix-ui": "^1.4.3"
+  },
+  "devDependencies": {
+    "@telorun/ui": "workspace:*",
+    "@types/node": "^20.0.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "happy-dom": "catalog:",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}

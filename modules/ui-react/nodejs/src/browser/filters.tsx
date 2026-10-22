@@ -1,7 +1,6 @@
 import { TYPING_PAUSE } from "./typing-pause.js";
-import { ListFilter, Plus, X } from "lucide-react";
-import { Collapsible, DropdownMenu, Label, Popover, ToggleGroup } from "radix-ui";
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useControl, useControls } from "./effective-controls.js";
 import { styleAttribute } from "./bindings.js";
 import type { Operator } from "./collection.js";
 import { FilterControl } from "./filter-control.js";
@@ -24,11 +23,10 @@ import {
   type Values,
 } from "./filter-state.js";
 import { useHost, useHostStore } from "./host.js";
-import { Icon } from "./icon.js";
 import { Node, type SpecNode } from "./nodes.js";
 import { openValue } from "./open-address.js";
 import { FilterContext, RendererContext } from "./renderer-context.js";
-import { Surface, type SurfaceSpec } from "./surface.js";
+import { Surface, useHeldInside, type SurfaceSpec } from "./surface.js";
 import { labelFor, useSay, useText, type Say, type WireText } from "./texts.js";
 import { plainTypes } from "./validation.js";
 
@@ -95,9 +93,75 @@ function shownValue(field: FilterField, values: string[], say: Say, text: (label
     .join(", ");
 }
 
+/**
+ * A filter chip and the popover holding its filters. The chip is the
+ * renderer's: it opens and closes the popover, and a press on it is never one
+ * outside the popover, so it is what closes an open one.
+ */
+function FilterChip({ active, label, children }: { active?: string; label: string; children: ReactNode }) {
+  const control = useControls();
+  const [open, setOpen] = useState(false);
+  const Popover = open ? control("Popover") : undefined;
+  const chip = useRef<HTMLButtonElement | null>(null);
+  const onChip = useHeldInside();
+  return (
+    <>
+      <button
+        data-telo-part="filter-chip"
+        type="button"
+        ref={chip}
+        data-active={active}
+        data-state={open ? "open" : "closed"}
+        // A theme may cut a long chip short; hovering shows it whole.
+        title={label}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onPointerDownCapture={onChip.mark}
+        onFocusCapture={onChip.mark}
+        onClick={() => setOpen(!open)}
+      >
+        {label}
+      </button>
+      {Popover && (
+        <Popover
+          open
+          anchor={chip.current}
+          side="bottom"
+          align="start"
+          attributes={{ "data-surface": "popover" }}
+          onOpenChange={(next, reason) => {
+            // A press on the chip is the chip's own: its click is what closes the popover.
+            if (!next && !(reason === "outside" && onChip.inside())) setOpen(false);
+          }}
+        >
+          {children}
+        </Popover>
+      )}
+    </>
+  );
+}
+
+/** The list of the filters a bar can add, opened from its button. */
+function AddFilter({ items, onAdd }: { items: { key: string; label: string }[]; onAdd: (key: string) => void }) {
+  const say = useSay();
+  const Menu = useControl("Menu");
+  const Icon = useControl("Icon");
+  const [open, setOpen] = useState(false);
+  return (
+    <Menu open={open} items={items} onOpenChange={setOpen} onChange={onAdd}>
+      <button data-telo-part="filters-add" type="button">
+        <Icon name="add" />
+        {say("addFilter")}
+      </button>
+    </Menu>
+  );
+}
+
 /** A filter bar: every table inside it obeys what is applied here. */
 export function Filters({ node }: { node: SpecNode }) {
   const id = useId();
+  const control = useControls();
+  const Icon = useControl("Icon");
   const say = useSay();
   const text = useText();
   const caption = (operator: Operator) => say(CAPTIONS[operator]);
@@ -228,9 +292,9 @@ export function Filters({ node }: { node: SpecNode }) {
     );
     const drawn = (
       <div data-telo-part="filter" data-active={active}>
-        <Label.Root data-telo-part="filter-label" htmlFor={`${id}-${group.members[0]}`}>
+        <label data-telo-part="filter-label" htmlFor={`${id}-${group.members[0]}`}>
           {text(group.label)}
-        </Label.Root>
+        </label>
         {members.length === 1 ? (
           control(members[0], group.members[0])
         ) : (
@@ -248,7 +312,7 @@ export function Filters({ node }: { node: SpecNode }) {
         )}
         {chosenOnly && !pinned(group) && (
           <button data-telo-part="filter-remove" type="button" aria-label={say("remove", { label: text(group.label) })} onClick={() => remove(members)}>
-            <Icon of={X} />
+            <Icon name="remove" />
           </button>
         )}
       </div>
@@ -259,16 +323,9 @@ export function Filters({ node }: { node: SpecNode }) {
       .map((field) => (members.length > 1 ? `${caption(field.operator)} ` : "") + valuesOf(field, held(field)))
       .join(", ");
     return (
-      <Popover.Root key={group.members[0]}>
-        <Popover.Trigger data-telo-part="filter-chip" data-active={active}>
-          {summary === "" ? text(group.label) : say("filterGroupSummary", { label: text(group.label), summary })}
-        </Popover.Trigger>
-        <Popover.Portal>
-          <Popover.Content data-telo-part="surface" data-surface="popover" align="start" sideOffset={6} collisionPadding={8}>
-            {drawn}
-          </Popover.Content>
-        </Popover.Portal>
-      </Popover.Root>
+      <FilterChip key={group.members[0]} active={active} label={summary === "" ? text(group.label) : say("filterGroupSummary", { label: text(group.label), summary })}>
+        {drawn}
+      </FilterChip>
     );
   };
   // What folds, and what stays beside the toggle whatever is folded.
@@ -278,35 +335,19 @@ export function Filters({ node }: { node: SpecNode }) {
     <>
       {inside.map(filter)}
       {chosenOnly && hidden.length > 0 && (
-        <DropdownMenu.Root>
-          {/* The trigger's own open state is the menu's to carry. */}
-          <DropdownMenu.Trigger asChild>
-            <button data-telo-part="filters-add" data-state={undefined} type="button">
-              <Icon of={Plus} />
-              {say("addFilter")}
-            </button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content data-telo-part="menu" align="start" sideOffset={4}>
-              {hidden.map((group) => (
-                <DropdownMenu.Item
-                  key={group.members[0]}
-                  data-telo-part="menu-item"
-                  onSelect={() => {
-                    // On show, holding nothing.
-                    const keys = group.members.map((index) => filterKey(fields[index]));
-                    setRemoved(new Set([...removed].filter((key) => !keys.includes(key))));
-                    const next = { ...draft };
-                    for (const key of keys) next[key] ??= [];
-                    change(next, "choice");
-                  }}
-                >
-                  {text(group.label)}
-                </DropdownMenu.Item>
-              ))}
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+        <AddFilter
+          items={hidden.map((group) => ({ key: String(group.members[0]), label: text(group.label) }))}
+          onAdd={(chosen) => {
+            // On show, holding nothing.
+            const group = hidden.find((each) => String(each.members[0]) === chosen);
+            if (!group) return;
+            const keys = group.members.map((index) => filterKey(fields[index]));
+            setRemoved(new Set([...removed].filter((key) => !keys.includes(key))));
+            const next = { ...draft };
+            for (const key of keys) next[key] ??= [];
+            change(next, "choice");
+          }}
+        />
       )}
     </>
   );
@@ -320,7 +361,7 @@ export function Filters({ node }: { node: SpecNode }) {
       )}
       <button data-telo-part="filters-reset" type="button" onClick={() => change(defaults, "command")}>
         {say("reset")}
-        <Icon of={X} />
+        <Icon name="reset" />
       </button>
     </>
   );
@@ -354,15 +395,17 @@ export function Filters({ node }: { node: SpecNode }) {
       type="button"
       ref={toggle}
       aria-expanded={placement.type === "collapsible" ? (chosenOpen ?? declaredOpen) : undefined}
+      aria-controls={placement.type === "collapsible" ? `${id}-bar` : undefined}
       onClick={() => (placement.type === "collapsible" ? setChosenOpen(!(chosenOpen ?? declaredOpen)) : openOverlay())}
     >
-      <Icon of={ListFilter} />
+      <Icon name="filter" />
       {say("filters")}
       {count > 0 && <span data-telo-part="filters-count">{count}</span>}
     </button>
   );
 
   const chosenPreset = activePreset(presets, draft);
+  const PresetGroup = presets.length > 0 ? control("OptionGroup") : undefined;
   return (
     <div
       data-telo-part="filters"
@@ -372,30 +415,29 @@ export function Filters({ node }: { node: SpecNode }) {
       data-pending={sameValues(draft, applied) ? undefined : "true"}
       data-style={styleAttribute(node.style)}
     >
-      {presets.length > 0 && (
-        <ToggleGroup.Root
-          data-telo-part="filters-presets"
-          type="single"
-          aria-label={say("presets")}
-          value={chosenPreset === -1 ? "" : String(chosenPreset)}
-          onValueChange={(value) => value !== "" && change(withPreset(presets, presets[Number(value)], draft), "command")}
-        >
-          {presets.map((preset, index) => (
-            <ToggleGroup.Item key={index} data-telo-part="filters-preset" value={String(index)}>
-              {text(preset.label)}
-            </ToggleGroup.Item>
-          ))}
-        </ToggleGroup.Root>
+      {PresetGroup && (
+        <PresetGroup
+          id={`${id}-presets`}
+          label={say("presets")}
+          invalid={false}
+          required={false}
+          disabled={false}
+          parts={{ root: "filters-presets", option: "filters-preset" }}
+          multiple={false}
+          options={presets.map((preset, index) => ({ key: String(index), label: text(preset.label) }))}
+          value={chosenPreset === -1 ? [] : [String(chosenPreset)]}
+          // A preset is a command; choosing the chosen one again leaves the bar as it is.
+          onChange={([chosen]) => chosen !== undefined && change(withPreset(presets, presets[Number(chosen)], draft), "command")}
+        />
       )}
       {outside.map(filter)}
       {folded}
       {folding && actions}
       {folding && !folds ? null : placement.type === "collapsible" ? (
-        <Collapsible.Root asChild open={chosenOpen ?? declaredOpen} onOpenChange={setChosenOpen}>
-          <Collapsible.Content data-telo-part="filters-bar" forceMount>
-            {bar}
-          </Collapsible.Content>
-        </Collapsible.Root>
+        // A disclosure: the toggle shows and hides the bar, which stays mounted with what it holds.
+        <div data-telo-part="filters-bar" id={`${id}-bar`} data-state={(chosenOpen ?? declaredOpen) ? "open" : "closed"} hidden={!(chosenOpen ?? declaredOpen)}>
+          {bar}
+        </div>
       ) : surface ? (
         overlayShown && (
           <Surface spec={environment.compact && surface.compact ? surface.compact : surface} title={say("filters")} anchor={toggle} onClose={closeOverlay}>
@@ -426,7 +468,7 @@ export function Filters({ node }: { node: SpecNode }) {
                   aria-label={say("clear", { label: text(field.label) })}
                   onClick={() => clear([field], "command")}
                 >
-                  <Icon of={X} />
+                  <Icon name="remove" />
                 </button>
               </span>
             ))}

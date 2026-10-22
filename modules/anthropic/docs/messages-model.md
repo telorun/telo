@@ -12,9 +12,8 @@ sidebar_label: Anthropic.MessagesModel
 ## Declaring one
 
 ```yaml
-kind: Http.Client
+kind: Anthropic.Client
 metadata: { name: anthropicClient }
-baseUrl: https://api.anthropic.com/v1
 credential:
   kind: Http.ApiKeyHeader
   header: x-api-key

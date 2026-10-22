@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AnalysisRegistry } from "../src/analysis-registry.js";
 import { StaticAnalyzer } from "../src/analyzer.js";
-import { flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
+import { collectModuleDocuments, flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
 import { Loader } from "../src/manifest-loader.js";
 import type { ManifestSource } from "../src/types.js";
 
@@ -250,6 +250,71 @@ steps:
     const diagnostics = new StaticAnalyzer().analyze(flattenForAnalyzer(graph));
     expect(unknownFields(diagnostics)).toEqual([
       expect.stringContaining("'inputs.wrapped.innr' is not defined (available: inner)"),
+    ]);
+  });
+
+  it("types the members a nested shape inherits through `extends`, from a parent in another module too", async () => {
+    // `Remote.Keyed` names the parent by its module, as the kernel looks it up;
+    // no forwarded declaration reaches it, so it is read from the library's own
+    // documents.
+    const files = {
+      "/remote/telo.yaml": `kind: Telo.Library
+metadata: { name: Remote, version: 0.1.0 }
+---
+kind: Telo.JsonSchema
+metadata: { name: Keyed }
+schema:
+  type: object
+  properties: { id: { type: integer } }
+`,
+      [URL_]: `kind: Telo.Library
+metadata: { name: Shapes, version: 0.1.0 }
+imports: { Far: ../remote/telo.yaml }
+---
+kind: Telo.JsonSchema
+metadata: { name: Named }
+extends: Remote.Keyed
+schema:
+  type: object
+  properties: { name: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Item }
+extends: Named
+schema:
+  type: object
+  additionalProperties: false
+  properties: { note: { type: string } }
+---
+kind: Telo.Definition
+metadata: { name: Flow }
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+inputType:
+  type: object
+  properties:
+    items: { type: array, items: !ref Item }
+schema:
+  type: object
+  properties:
+    steps:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+---
+kind: Self.Flow
+metadata: { name: flow }
+steps:
+  - name: read
+    value: !cel "[inputs.items[0].id, inputs.items[0].name, inputs.items[0].note, inputs.items[0].nme]"
+`,
+    };
+    const graph = await new Loader([source(files)]).loadGraph(URL_, { desugarImports: true });
+    const diagnostics = new StaticAnalyzer().analyze(flattenForAnalyzer(graph), {
+      moduleDocuments: collectModuleDocuments(graph),
+    });
+    expect(unknownFields(diagnostics)).toEqual([
+      expect.stringContaining("'inputs.items.[*].nme' is not defined (available: id, name, note)"),
     ]);
   });
 

@@ -1,0 +1,211 @@
+# The overview: every node type, how a value is presented by its schema, a
+# list, style rules, texts and composites. Every application places this view
+# on its `/` page; the `/` application adds the nodes evaluated per request.
+kind: Ui.View
+metadata:
+  name: overviewPage
+content:
+  type: stack
+  children:
+    # ---- Node types ----
+    - { type: text, text: Every node type, style: heading }
+    - type: text
+      style: muted
+      text: A box, a stack and columns hold other nodes, each drawing its children its own way.
+    - type: columns
+      children:
+        - type: box
+          children:
+            - { type: text, text: A box, style: subheading }
+            - { type: text, text: Groups its children. }
+        - type: stack
+          children:
+            - { type: text, text: A stack, style: subheading }
+            - { type: text, text: Draws its children one under another. }
+            - { type: badge, text: A badge }
+        - type: box
+          children:
+            - { type: text, text: Columns, style: subheading }
+            - { type: text, text: "Draw their children side by side, as these three are." }
+
+    - { type: text, text: Text in each style, style: subheading }
+    - type: text
+      style: muted
+      text: A style says what a node means; the theme decides how that looks. A node may carry several.
+    - type: columns
+      children:
+        - { type: text, text: Heading, style: heading }
+        - { type: text, text: Subheading, style: subheading }
+        - { type: text, text: Muted, style: muted }
+        - { type: text, text: Strong, style: strong }
+        - { type: text, text: Accent, style: accent }
+        - { type: text, text: Danger, style: danger }
+        - { type: text, text: Warning, style: warning }
+        - { type: text, text: Success, style: success }
+        - { type: text, text: Strong and accent, style: [ strong, accent ] }
+    - type: columns
+      children:
+        - { type: badge, text: A badge }
+        - { type: badge, text: Accent, style: accent }
+        - { type: badge, text: Success, style: success }
+        - { type: badge, text: Warning, style: warning }
+        - { type: badge, text: Danger, style: danger }
+
+    - { type: text, text: Links, style: subheading }
+    - type: text
+      style: muted
+      text: A link to a declared page moves within the application; a file served under the mount is an ordinary load; https and mailto leave it.
+    - type: columns
+      children:
+        - { type: link, text: Go to Conditions, href: /conditions }
+        - { type: link, text: A file the server serves, href: /files/handbook.txt }
+        - { type: link, text: telo.run, href: "https://telo.run" }
+        - { type: link, text: Write to us, href: "mailto:hello@northwind.example" }
+
+    - { type: text, text: Images, style: subheading }
+    - type: text
+      style: muted
+      text: An image by address, the same image as decoration with an empty alt, and SVG markup drawn as an image, never inserted into the page.
+    - type: columns
+      children:
+        - { type: image, src: /files/mark.svg, alt: The showcase mark }
+        - { type: image, src: /files/mark.svg, alt: "" }
+        - type: svg
+          alt: Three overlapping circles
+          markup: >-
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 64" width="96" height="64">
+            <circle cx="32" cy="32" r="22" fill="#2563eb" fill-opacity="0.7"/>
+            <circle cx="48" cy="32" r="22" fill="#16a34a" fill-opacity="0.7"/>
+            <circle cx="64" cy="32" r="22" fill="#dc2626" fill-opacity="0.7"/></svg>
+
+    # ---- One record, read when the page opens ----
+    - type: composite
+      ref:
+        kind: Ui.Data
+        model: !ref Team
+        source: { path: /api/team }
+        content:
+          type: stack
+          children:
+            - { type: text, text: Values by their schema, style: heading }
+            - type: text
+              style: muted
+              text: Each value is drawn as its model property says, read from the team record the page loads.
+            - type: columns
+              children:
+                - type: stack
+                  children:
+                    - { type: text, text: "A uri, drawn as a link with a text of its own", style: muted }
+                    - { type: value, value: !cel "data.homepage", text: Visit the team homepage }
+                - type: stack
+                  children:
+                    - { type: text, text: A uri-reference to a declared page, style: muted }
+                    - { type: value, value: !cel "data.guide" }
+                - type: stack
+                  children:
+                    - { type: text, text: A uri-reference to a served file, style: muted }
+                    - { type: value, value: !cel "data.handbook" }
+                - type: stack
+                  children:
+                    - { type: text, text: A mailto address, style: muted }
+                    - { type: value, value: !cel "data.contact" }
+                - type: stack
+                  children:
+                    - { type: text, text: "An address the rule refuses, drawn as plain text", style: muted }
+                    - { type: value, value: !cel "data.mirror" }
+            - type: columns
+              children:
+                - type: stack
+                  children:
+                    - { type: text, text: A date, style: muted }
+                    - { type: value, value: !cel "data.foundedOn" }
+                - type: stack
+                  children:
+                    - { type: text, text: A date and time, style: muted }
+                    - { type: value, value: !cel "data.updatedAt" }
+                - type: stack
+                  children:
+                    - { type: text, text: A boolean, style: muted }
+                    - { type: value, value: !cel "data.hiring" }
+                - type: stack
+                  children:
+                    - { type: text, text: An enumeration's label, style: muted }
+                    - { type: value, value: !cel "data.plan" }
+
+            - { type: text, text: A list, style: subheading }
+            - type: text
+              style: muted
+              text: The rows one answer holds, never paged. A header defaults to the property's title, and the last column is shown only while the team is hiring.
+            - type: list
+              heading: Projects under way
+              rows: !cel "data.projects"
+              columns:
+                - value: !cel "row.code"
+                - header: Project
+                  value: !cel "row.name"
+                - value: !cel "row.startedOn"
+                  shown: { at: !cel "data.hiring", matches: { const: true } }
+
+            - { type: text, text: Texts, style: heading }
+            - type: text
+              style: muted
+              text: A plural chosen in the browser for the number it reads, and a text whose values come from the record.
+            - type: text
+              style: strong
+              text:
+                text:
+                  plural: count
+                  cases:
+                    "=0": No projects yet.
+                    one: "{$count} project so far."
+                    other: "{$count} projects so far."
+                values: { count: !cel "data.projectCount" }
+            - type: text
+              text:
+                text: "{$team} started {$project} most recently."
+                values: { team: !cel "data.name", project: !cel "data.latestProject" }
+
+    # ---- Style rules ----
+    - { type: text, text: Style rules, style: heading }
+    - type: text
+      style: muted
+      text: A row's style and a cell's are chosen by a value of the row. The featured project is strong, each status has its colour, and a status no case names takes the default. Two columns are headed by the same word, Open, told apart by the context each header is written with.
+    - type: composite
+      ref:
+        kind: Ui.Table
+        model: !ref Project
+        collection: !ref projectModel
+        source: { basePath: /api/projects }
+        columns:
+          - value: !cel "row.code"
+          - value: !cel "row.name"
+          - value: !cel "row.status"
+            style: { by: !cel "row.status", cases: { active: success, paused: warning }, default: muted }
+          - value: !cel "row.budget"
+          - { header: { text: Open, context: state }, value: !cel "row.open" }
+          - { header: { text: Open, context: verb }, value: !cel "row.brief" }
+          - value: !cel "row.startedOn"
+        rowStyle: { by: !cel "row.featured", cases: { "true": strong } }
+    - type: text
+      style: muted
+      text: "A node's own text is told apart the same way: the badge says TEL-42 is open, the link offers to open its tasks."
+    - type: columns
+      children:
+        - { type: badge, style: success, text: { text: Open, context: state } }
+        - { type: link, text: { text: Open, context: verb }, href: "/tables?project=TEL-42" }
+
+    # ---- Composites ----
+    - { type: text, text: Composites, style: heading }
+    - type: text
+      style: muted
+      text: This whole page is a view each application places by reference. Below, a view written inline where it is placed, and a composite kind of this example's own, which has no controller.
+    - type: composite
+      ref:
+        kind: Ui.View
+        content: { type: text, text: A view declared inline at the node that places it. }
+    - type: composite
+      ref:
+        kind: UiShowcase.Callout
+        heading: A callout
+        body: Declared once as a kind that extends Ui.Composite and provides a view, and placed with fields of its own.
+        tone: accent

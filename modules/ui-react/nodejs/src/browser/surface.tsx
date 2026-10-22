@@ -1,5 +1,3 @@
-import { X } from "lucide-react";
-import { AlertDialog, Dialog, Popover } from "radix-ui";
 import {
   createContext,
   useCallback,
@@ -14,7 +12,8 @@ import {
   type SyntheticEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { Icon } from "./icon.js";
+import type { CloseReason } from "../contract/ui-react-controls.js";
+import { useControl, useControls } from "./effective-controls.js";
 import { ErrorNode } from "./nodes.js";
 import type { ErrorSpec } from "./ui-error.js";
 import { useSay } from "./texts.js";
@@ -55,57 +54,80 @@ interface SurfaceProps {
   children: ReactNode;
 }
 
-const attributes = (spec: SurfaceSpec) => ({
-  "data-telo-part": "surface",
-  "data-surface": spec.type,
-  "data-side": spec.side,
-  "data-size": spec.size,
-  "data-align": spec.align,
-  "data-modal": spec.modal === undefined ? undefined : String(spec.modal),
-});
+/** The state a surface's root carries, as the styling contract documents it. */
+const attributes = (spec: SurfaceSpec): Record<string, string> => {
+  const held: Record<string, string | undefined> = {
+    "data-surface": spec.type,
+    "data-side": spec.side,
+    "data-size": spec.size,
+    "data-align": spec.align,
+    "data-modal": spec.modal === undefined ? undefined : String(spec.modal),
+  };
+  return Object.fromEntries(Object.entries(held).filter((entry): entry is [string, string] => entry[1] !== undefined));
+};
 
 function CloseButton({ onClose }: { onClose: () => void }) {
   const say = useSay();
+  const Icon = useControl("Icon");
   return (
     <button data-telo-part="surface-close" type="button" aria-label={say("close")} onClick={onClose}>
-      <Icon of={X} />
+      <Icon name="close" />
     </button>
   );
 }
 
-/** A side as the primitive places it, which follows the text direction. */
-function placedSide(side: SurfaceSpec["side"]): "top" | "bottom" | "left" | "right" {
-  if (side === "top" || side === "bottom") return side;
-  const rightToLeft = document.documentElement.dir === "rtl";
-  return (side === "start") !== rightToLeft ? "left" : "right";
+/** The events being dispatched now, outermost first, as far as a window has
+ *  said: the innermost is what an overlay's report that it would close was
+ *  caused by. A handler moving the focus dispatches a focus event inside the
+ *  event it handles, which is the outer one again once that has finished. */
+const dispatching: Event[] = [];
+const watched = new WeakSet<Window>();
+
+const finished = (event: Event) => {
+  const at = dispatching.lastIndexOf(event);
+  if (at !== -1) dispatching.splice(at, 1);
+};
+
+function current(): Event | undefined {
+  // An event whose propagation was stopped never reaches the window's bubble listener.
+  while (dispatching.length > 0 && dispatching[dispatching.length - 1].eventPhase === Event.NONE) dispatching.pop();
+  return dispatching[dispatching.length - 1];
+}
+
+function watchDispatch(view: Window): void {
+  if (watched.has(view)) return;
+  watched.add(view);
+  for (const type of ["pointerdown", "click", "focusin", "keydown"]) {
+    view.addEventListener(
+      type,
+      (event) => {
+        dispatching.push(event);
+        view.setTimeout(() => finished(event), 0);
+      },
+      true,
+    );
+    view.addEventListener(type, finished);
+  }
 }
 
 /**
- * Leave a closed copy of a surface that is going where it stood, for as long as
- * its closing animation runs: whoever opened a surface removes it when it
- * closes, so there is nothing left of it to animate. The copy takes no input,
- * and none is made where the theme gives a closed surface no animation.
+ * The presses and the focus that begin in what a surface holds, wherever that
+ * is drawn: a list its form opens is drawn elsewhere, and is still inside it.
+ * A press is marked at its click too, since a touch press is judged then.
  */
-function leaveClosing(element: HTMLElement | null): void {
-  if (!element?.isConnected) return;
-  const closing = element.cloneNode(true) as HTMLElement;
-  const closed = closing.matches("[data-telo-part]") ? closing : (closing.querySelector<HTMLElement>("[data-telo-part]") ?? closing);
-  closed.setAttribute("data-state", "closed");
-  closing.setAttribute("inert", "");
-  closing.setAttribute("aria-hidden", "true");
-  closing.style.pointerEvents = "none";
-  for (const named of [closing, ...closing.querySelectorAll("[id]")]) named.removeAttribute("id");
-  document.body.append(closing);
-  const name = getComputedStyle(closed).animationName;
-  if (!name || name === "none") return closing.remove();
-  const remove = () => closing.remove();
-  closed.addEventListener("animationend", remove, { once: true });
-  closed.addEventListener("animationcancel", remove, { once: true });
-  window.setTimeout(remove, 1000);
+export function useHeldInside(): { mark: (event: SyntheticEvent) => void; inside: () => boolean } {
+  const [within] = useState(() => new WeakSet<Event>());
+  useEffect(() => watchDispatch(window), []);
+  return {
+    mark: (event) => {
+      within.add(event.nativeEvent);
+    },
+    inside: () => {
+      const event = current();
+      return event !== undefined && within.has(event);
+    },
+  };
 }
-
-/** What a primitive says of a press or a focus it takes to be outside it. */
-type OutsideEvent = CustomEvent<{ originalEvent: Event }>;
 
 /**
  * A form's surface: a dialog, a drawer or a popover over the page, or a place
@@ -125,18 +147,6 @@ export function Surface({ spec, title, anchor, container, onClose, children }: S
     return element;
   });
   const focused = useRef<HTMLElement | null>(null);
-  const overlay = useRef<HTMLDivElement>(null);
-  const floating = useRef<HTMLDivElement>(null);
-  // When the surface itself goes — not when another is drawn in its place.
-  useLayoutEffect(
-    () => () => {
-      leaveClosing(overlay.current);
-      // A popover is placed by the element around it.
-      const placed = floating.current?.parentElement;
-      leaveClosing(placed?.hasAttribute("data-radix-popper-content-wrapper") ? placed : floating.current);
-    },
-    [],
-  );
   const take = useCallback(
     (element: HTMLElement | null) => {
       if (!element) {
@@ -150,70 +160,59 @@ export function Surface({ spec, title, anchor, container, onClose, children }: S
     },
     [content],
   );
+  const held = useHeldInside();
+  const control = useControls();
 
-  // A primitive tells inside from outside by what its own tree handles. What is
-  // held here is in that tree only as far as it is drawn in the surface: a list
-  // it opens elsewhere is not, so a press or a focus that began in it is marked.
-  // Every one is: a touch press is judged at its click, after the focus it moved.
-  const [within] = useState(() => new WeakSet<Event>());
-  const mark = (event: SyntheticEvent) => {
-    within.add(event.nativeEvent);
-  };
-  const outside = (event: OutsideEvent) => {
-    if (!dismiss.outside || within.has(event.detail.originalEvent)) event.preventDefault();
+  // An overlay says why it would close; whether it does is this surface's policy.
+  const closing = (open: boolean, reason?: CloseReason) => {
+    if (open) return;
+    if (reason === "escape" && !dismiss.escape) return;
+    if (reason === "outside" && (!dismiss.outside || held.inside())) return;
+    onClose();
   };
 
-  const held = createPortal(
-    <div style={{ display: "contents" }} onPointerDownCapture={mark} onFocusCapture={mark}>
+  const kept = createPortal(
+    <div style={{ display: "contents" }} onPointerDownCapture={held.mark} onFocusCapture={held.mark} onClickCapture={held.mark}>
       {children}
     </div>,
     content,
   );
   const bodyPart = <div data-telo-part="surface-body" ref={take} />;
+  const header = (
+    <div data-telo-part="surface-header">
+      <h2 data-telo-part="surface-title" id={id}>
+        {title}
+      </h2>
+    </div>
+  );
   let drawn: ReactNode;
   if (spec.type === "dialog" || spec.type === "drawer") {
-    drawn = (
-      <Dialog.Root open modal={spec.modal !== false} onOpenChange={(open) => !open && onClose()}>
-        <Dialog.Portal>
-          <Dialog.Overlay data-telo-part="surface-overlay" ref={overlay} />
-          <Dialog.Content
-            {...attributes(spec)}
-            ref={floating}
-            aria-describedby={undefined}
-            onEscapeKeyDown={(event) => !dismiss.escape && event.preventDefault()}
-            onInteractOutside={outside}
-          >
-            <div data-telo-part="surface-header">
-              <Dialog.Title data-telo-part="surface-title">{title}</Dialog.Title>
-            </div>
-            {bodyPart}
-            {dismiss.closeButton && <CloseButton onClose={onClose} />}
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+    const inside = (
+      <>
+        {header}
+        {bodyPart}
+        {dismiss.closeButton && <CloseButton onClose={onClose} />}
+      </>
     );
+    const shared = { open: true, modal: spec.modal !== false, labelledBy: id, attributes: attributes(spec), onOpenChange: closing };
+    if (spec.type === "dialog") {
+      const Dialog = control("Dialog");
+      drawn = <Dialog {...shared}>{inside}</Dialog>;
+    } else {
+      const Drawer = control("Drawer");
+      drawn = (
+        <Drawer {...shared} side={spec.side ?? "end"}>
+          {inside}
+        </Drawer>
+      );
+    }
   } else if (spec.type === "popover") {
+    const Popover = control("Popover");
     drawn = (
-      <Popover.Root open onOpenChange={(open) => !open && onClose()}>
-        <Popover.Anchor virtualRef={anchor as RefObject<HTMLElement>} />
-        <Popover.Portal>
-          <Popover.Content
-            {...attributes(spec)}
-            ref={floating}
-            side={placedSide(spec.side)}
-            align={spec.align}
-            sideOffset={6}
-            collisionPadding={8}
-            aria-labelledby={id}
-            onEscapeKeyDown={(event) => !dismiss.escape && event.preventDefault()}
-            onInteractOutside={outside}
-          >
-            <Placed title={title} id={id}>
-              {bodyPart}
-            </Placed>
-          </Popover.Content>
-        </Popover.Portal>
-      </Popover.Root>
+      <Popover open anchor={anchor.current} side={spec.side ?? "bottom"} align={spec.align} labelledBy={id} attributes={attributes(spec)} onOpenChange={closing}>
+        {header}
+        {bodyPart}
+      </Popover>
     );
   } else if (spec.type === "page") {
     drawn = (
@@ -232,7 +231,7 @@ export function Surface({ spec, title, anchor, container, onClose, children }: S
   return (
     <>
       {drawn}
-      {held}
+      {kept}
     </>
   );
 }
@@ -273,7 +272,7 @@ function InPage({ spec, title, onClose, children }: { spec: SurfaceSpec; title: 
     return () => section.removeEventListener("keydown", escape);
   }, [escapes]);
   return (
-    <section {...attributes(spec)} ref={element} tabIndex={-1} aria-labelledby={id}>
+    <section {...attributes(spec)} data-telo-part="surface" ref={element} tabIndex={-1} aria-labelledby={id}>
       <Placed title={title} id={id}>
         {children}
       </Placed>
@@ -289,7 +288,7 @@ function PageSurface({ spec, title, children }: { spec: SurfaceSpec; title: stri
   useLayoutEffect(() => slot.claim(), [slot.claim]);
   if (!slot.element) return null;
   return createPortal(
-    <section {...attributes(spec)} aria-labelledby={id}>
+    <section {...attributes(spec)} data-telo-part="surface" aria-labelledby={id}>
       <Placed title={title} id={id}>
         {children}
       </Placed>
@@ -320,33 +319,33 @@ interface ConfirmationProps {
  *  it, and confirming leaves it open for whoever asked to close. */
 export function Confirmation({ title, description, confirm, danger = true, cancel, busy = false, failure, children, onConfirm, onClose }: ConfirmationProps) {
   const say = useSay();
-  const heading = <AlertDialog.Title data-telo-part="surface-title">{title}</AlertDialog.Title>;
+  const Question = useControl("Confirmation");
+  const id = useId();
+  const titleId = `${id}-title`;
+  // A question with nothing under it is its own description.
+  const describedBy = description === undefined ? `${id}-header` : `${id}-description`;
   return (
-    <AlertDialog.Root open onOpenChange={(open) => !open && onClose()}>
-      <AlertDialog.Portal>
-        <AlertDialog.Overlay data-telo-part="surface-overlay" />
-        <AlertDialog.Content data-telo-part="surface" data-surface="confirmation">
-          {description === undefined ? (
-            // A question with nothing under it is its own description.
-            <AlertDialog.Description asChild>
-              <div data-telo-part="surface-header">{heading}</div>
-            </AlertDialog.Description>
-          ) : (
-            <div data-telo-part="surface-header">
-              {heading}
-              <AlertDialog.Description data-telo-part="surface-description">{description}</AlertDialog.Description>
-            </div>
-          )}
-          {children}
-          {failure && <ErrorNode error={failure} />}
-          <div data-telo-part="form-actions">
-            <AlertDialog.Cancel data-telo-part="cancel">{cancel ?? say("cancel")}</AlertDialog.Cancel>
-            <button data-telo-part="submit" data-style={danger ? "danger" : undefined} type="button" disabled={busy} onClick={onConfirm}>
-              {confirm}
-            </button>
-          </div>
-        </AlertDialog.Content>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
+    <Question open labelledBy={titleId} describedBy={describedBy} attributes={{ "data-surface": "confirmation" }} onOpenChange={(open) => open || onClose()}>
+      <div data-telo-part="surface-header" id={`${id}-header`}>
+        <h2 data-telo-part="surface-title" id={titleId}>
+          {title}
+        </h2>
+        {description !== undefined && (
+          <p data-telo-part="surface-description" id={`${id}-description`}>
+            {description}
+          </p>
+        )}
+      </div>
+      {children}
+      {failure && <ErrorNode error={failure} />}
+      <div data-telo-part="form-actions">
+        <button data-telo-part="cancel" type="button" onClick={onClose}>
+          {cancel ?? say("cancel")}
+        </button>
+        <button data-telo-part="submit" data-style={danger ? "danger" : undefined} type="button" disabled={busy} onClick={onConfirm}>
+          {confirm}
+        </button>
+      </div>
+    </Question>
   );
 }

@@ -10,7 +10,13 @@ metadata:
     checked for duplicate paths all the same — the rule is not skipped. A page
     path and a link address written `//…` are refused as written: a browser
     reads either as another host. A condition the browser draws cannot read
-    the request, and a node's delivery cannot read the query.
+    the request, and a node's delivery cannot read the query; a header node
+    has no query to read at all. A theme two of
+    whose `controls` entries implement one control is refused where it is
+    declared and by the theme itself — two different sets, two equal
+    declarations through two imports, and one shared set through two aliases
+    alike — and so is a control set replacing some of the eight layer controls
+    but not all of them.
 imports:
   Probe: ./__fixtures__/probe
   Run: ../../run
@@ -23,6 +29,17 @@ targets:
   - !ref offsiteReferences
   - !ref ruleRuns
   - !ref pageRoots
+  - !ref headerRoots
+  - !ref themeControlDuplicate
+  - !ref themeControlDuplicateAtRuntime
+  - !ref themeControlEqual
+  - !ref themeControlEqualAtRuntime
+  - !ref themeControlShared
+  - !ref themeControlSharedAtRuntime
+  - !ref themeControlDisjoint
+  - !ref themeControlDisjointAtRuntime
+  - !ref controlsLayersPartial
+  - !ref controlsLayersPartialAtRuntime
 ---
 kind: Assert.Manifest
 metadata:
@@ -93,3 +110,104 @@ expect:
       message: "UiReact.App/mixed: !cel: unknown identifier 'request'"
     - code: CEL_UNKNOWN_IDENTIFIER
       message: "UiReact.App/mixed: !cel: unknown identifier 'query'"
+---
+kind: Assert.Manifest
+metadata:
+  name: headerRoots
+source: ./__fixtures__/invalid/header-roots/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "UiReact.App/headed: !cel: unknown identifier 'query'"
+    - code: CEL_UNKNOWN_FIELD
+      message: "UiReact.App/headed: !cel: 'query' is not defined"
+---
+kind: Assert.Manifest
+metadata:
+  name: themeControlDuplicate
+source: ./__fixtures__/invalid/theme-control-duplicate/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.Theme/doubled at 'controls[0]': implements a control another entry of controls implements too"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.Theme/doubled at 'controls[1]': implements a control another entry of controls implements too"
+---
+kind: Assert.Manifest
+metadata:
+  name: themeControlDuplicateAtRuntime
+source: ./__fixtures__/invalid/theme-control-duplicate/telo.yaml
+expect:
+  errors: []
+  runFails: "UiReact.Theme 'doubled': 'controls[1]' (UiReact.Controls 'checkboxes') implements 'Checkbox', which 'controls[0]' (UiReact.Controls 'controls') already implements"
+---
+kind: Assert.Manifest
+metadata:
+  name: themeControlEqual
+source: ./__fixtures__/invalid/theme-control-equal/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.Theme/equal at 'controls[0]': implements a control another entry of controls implements too"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.Theme/equal at 'controls[1]': implements a control another entry of controls implements too"
+---
+kind: Assert.Manifest
+metadata:
+  name: themeControlEqualAtRuntime
+source: ./__fixtures__/invalid/theme-control-equal/telo.yaml
+expect:
+  errors: []
+  runFails: "UiReact.Theme 'equal': 'controls[1]' (UiReact.Controls 'controls') implements 'Checkbox', which 'controls[0]' (UiReact.Controls 'controls') already implements"
+---
+kind: Assert.Manifest
+metadata:
+  name: themeControlShared
+source: ./__fixtures__/invalid/theme-control-shared/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.Theme/aliased at 'controls[0]': implements a control another entry of controls implements too"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.Theme/aliased at 'controls[1]': implements a control another entry of controls implements too"
+---
+kind: Assert.Manifest
+metadata:
+  name: themeControlSharedAtRuntime
+source: ./__fixtures__/invalid/theme-control-shared/telo.yaml
+expect:
+  errors: []
+  runFails: "UiReact.Theme 'aliased': 'controls[1]' (UiReact.Controls 'boxes') implements 'Checkbox', which 'controls[0]' (UiReact.Controls 'boxes') already implements"
+---
+kind: Assert.Manifest
+metadata:
+  name: controlsLayersPartial
+source: ./__fixtures__/invalid/controls-layers-partial/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.Controls/selectOnly: implements some of the layer controls but not all of them"
+---
+kind: Assert.Manifest
+metadata:
+  name: controlsLayersPartialAtRuntime
+source: ./__fixtures__/invalid/controls-layers-partial/telo.yaml
+expect:
+  errors: []
+  runFails: "UiReact.Controls 'selectOnly': implements the layer controls Select but not MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip"
+---
+# Two entries implementing different controls are one theme: nothing refuses it.
+kind: Assert.Manifest
+metadata:
+  name: themeControlDisjoint
+source: ./__fixtures__/theme-control-disjoint/lib/telo.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata:
+  name: themeControlDisjointAtRuntime
+source: ./__fixtures__/theme-control-disjoint/telo.yaml
+expect:
+  errors: []
+  runs: true

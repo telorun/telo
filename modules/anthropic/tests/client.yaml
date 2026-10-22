@@ -1,0 +1,106 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicClient
+  version: 1.0.0
+  description: |
+    `Anthropic.Client` is an Http.Client preset: with only a credential it reads
+    as Anthropic's endpoint with a ten-minute timeout, every preset can be
+    overridden, and a Messages model calls through it with its key.
+
+    Offline: a local server that answers only the client's key.
+imports:
+  Anthropic: ../
+  Ai: ../../ai
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Anthropic.Client
+metadata: { name: defaulted }
+credential: { kind: Http.ApiKeyHeader, header: x-api-key, key: test-key }
+---
+kind: Anthropic.Client
+metadata: { name: local }
+baseUrl: http://localhost:8976/v1
+timeout: 1234
+headers: { x-extra: yes }
+credential: { kind: Http.ApiKeyHeader, header: x-api-key, key: test-key }
+---
+kind: Anthropic.MessagesModel
+metadata: { name: model }
+model: claude-test
+request: { kind: Http.Request, client: !ref local }
+maxTokens: 16
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: MessagesApi }
+    routes:
+      - request:
+          path: /messages
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 200
+            when: !cel >-
+              'x-api-key' in request.headers && request.headers['x-api-key'] == 'test-key' &&
+              'x-extra' in request.headers && request.headers['x-extra'] == 'yes'
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  type: message
+                  role: assistant
+                  content: [{ type: text, text: hello }]
+                  stop_reason: end_turn
+                  usage: { input_tokens: 1, output_tokens: 1 }
+          - status: 401
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  type: error
+                  error: { type: authentication_error, message: invalid x-api-key }
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    listen:
+      port: 8976
+    mounts:
+      - path: /v1
+        mount: !ref MessagesApi
+targets:
+  - !ref FakeServer
+steps:
+  - name: call
+    inputs: { messages: [{ role: user, content: hi }] }
+    invoke: !ref model
+  - name: assertClients
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        defaulted: !cel "resources.defaulted"
+        local: !cel "resources.local"
+        answer: !cel "steps.call.result.text"
+      expected:
+        defaulted:
+          baseUrl: https://api.anthropic.com/v1
+          headers: {}
+          timeout: 600000
+          followRedirects: true
+        local:
+          baseUrl: http://localhost:8976/v1
+          headers: { x-extra: "yes" }
+          timeout: 1234
+          followRedirects: true
+        answer: hello

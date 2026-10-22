@@ -1,12 +1,12 @@
-import { Label, Slider, Switch, ToggleGroup } from "radix-ui";
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
+import type { Option, Semantics } from "../contract/ui-react-controls.js";
 import { conditionHolds, type Condition } from "./bindings.js";
-import { Checkbox } from "./checkbox.js";
-import { DateRange, rangeLongerThan, rangeReversed, type Preset, type Range, type Unit } from "./date-range.js";
-import { OptionGroup, Tags } from "./list-controls.js";
+import { MultiSelectList, SelectList } from "./choice-lists.js";
+import { presetRange, rangeLongerThan, rangeReversed, type Preset, type Range, type Unit } from "./date-range.js";
+import { useControl, useControls } from "./effective-controls.js";
 import { optionKey, useChosenOptions, useOptionPages, type OptionSourceSpec } from "./option-source.js";
 import { Picker } from "./picker.js";
-import { MultiSelect, Select, type Option } from "./select.js";
+import { RendererContext } from "./renderer-context.js";
 import type { SurfaceSpec } from "./surface.js";
 import { labelFor, useSay, useText, type Say, type ValueLabel, type WireText } from "./texts.js";
 import { plainTypes, validate, type JsonSchema } from "./validation.js";
@@ -116,7 +116,7 @@ export type ShowValue = (value: unknown) => string;
 
 /** The options a list or a single value is chosen from, each shown as `show` says. */
 function listedOptions(element: JsonSchema, show: ShowValue = String): { value: unknown; option: Option }[] {
-  return listedValues(element).map((value) => ({ value, option: { value: String(value), label: show(value) } }));
+  return listedValues(element).map((value) => ({ value, option: { key: String(value), label: show(value) } }));
 }
 
 /** How a field shows a value of its property: the label the model gives it,
@@ -191,7 +191,7 @@ function stored(value: unknown, field: Field, schema: JsonSchema): unknown {
     // Chosen options are sent in the order the model lists them.
     const list =
       widget !== "tags" && listed.length > 0
-        ? listed.filter(({ option }) => held.includes(option.value)).map(({ value: chosen }) => chosen)
+        ? listed.filter(({ option }) => held.includes(option.key)).map(({ value: chosen }) => chosen)
         : held.map((text) => storedItem(text, items));
     return list.length > 0 ? list : undefined;
   }
@@ -199,7 +199,7 @@ function stored(value: unknown, field: Field, schema: JsonSchema): unknown {
   if (value === "") return undefined;
   if (widget === "number" || widget === "slider") return Number(value);
   if (widget === "datetime-local") return new Date(String(value)).toISOString();
-  if (widget === "select" || widget === "single-options") return listedOptions(schema).find(({ option }) => option.value === value)?.value;
+  if (widget === "select" || widget === "single-options") return listedOptions(schema).find(({ option }) => option.key === value)?.value;
   return value;
 }
 
@@ -325,13 +325,13 @@ interface FieldsProps {
   onChange: (property: string, value: unknown) => void;
 }
 
-const TYPED = ["number", "date", "datetime-local", "time"];
+const TYPED = ["number", "date", "datetime-local", "time"] as const;
 
 /** A choice from what a source offers: a list, or options side by side. */
-function Choice({ id, field, schema, roots, value, invalid, onChange }: ControlProps) {
+function Choice({ semantics, field, schema, roots, value, onChange }: ControlProps) {
   const text = useText();
   const say = useSay();
-  const name = text(field.label);
+  const control = useControls();
   const source = field.options!;
   const many = isList(schema);
   const pages = useOptionPages(source, roots);
@@ -339,32 +339,15 @@ function Choice({ id, field, schema, roots, value, invalid, onChange }: ControlP
   const shown = useChosenOptions(source, roots, chosen, pages.options, onChange);
   // The chosen ones stay listed, labelled, while their page is not read.
   const all = [...pages.options, ...shown.filter((option) => !pages.options.some((offered) => optionKey(offered.value) === optionKey(option.value)))];
-  const options: Option[] = all.map((option) => ({ value: optionKey(option.value), label: option.label }));
+  const options: Option[] = all.map((option) => ({ key: optionKey(option.value), label: option.label }));
   const valueOf = (key: string) => all.find((option) => optionKey(option.value) === key)?.value;
   const keys = chosen.map(optionKey);
   const set = (next: string[]) => onChange(next.map(valueOf).filter((each) => each !== undefined));
   if (field.control === "options") {
+    const OptionGroup = control("OptionGroup");
     return (
       <>
-        {many ? (
-          <OptionGroup parts={{ group: "options", option: "option" }} id={id} name={name} options={options} values={keys} invalid={invalid} onChange={set} />
-        ) : (
-          <ToggleGroup.Root
-            data-telo-part="options"
-            id={id}
-            type="single"
-            aria-label={name}
-            data-invalid={invalid ? "true" : undefined}
-            value={keys[0] ?? ""}
-            onValueChange={(next) => set(next === "" ? [] : [next])}
-          >
-            {options.map((option) => (
-              <ToggleGroup.Item key={option.value} data-telo-part="option" value={option.value}>
-                {option.label}
-              </ToggleGroup.Item>
-            ))}
-          </ToggleGroup.Root>
-        )}
+        <OptionGroup {...semantics} label={text(field.label)} parts={{ root: "options", option: "option" }} multiple={many} options={options} value={keys} onChange={set} />
         {pages.more && (
           <button data-telo-part="options-more" type="button" disabled={pages.loading} onClick={pages.next}>
             {say("more")}
@@ -373,116 +356,151 @@ function Choice({ id, field, schema, roots, value, invalid, onChange }: ControlP
       </>
     );
   }
+  const list = { ...semantics, part: "select" as const, options, loading: pages.loading, hasMore: pages.more, onEndReached: pages.next };
   return many ? (
-    <MultiSelect part="select" id={id} options={options} values={keys} placeholder={say("select")} onChange={set} onScrolledToEnd={pages.next} />
+    <MultiSelectList {...list} value={keys} placeholder={say("select")} onChange={set} />
   ) : (
-    <Select
-      part="select"
-      id={id}
-      options={options}
-      value={keys[0] ?? ""}
-      placeholder={say("select")}
-      none={say("none")}
-      invalid={invalid}
-      onChange={(next) => set(next === "" ? [] : [next])}
-      onScrolledToEnd={pages.next}
-    />
+    <SelectList {...list} value={keys[0] ?? ""} placeholder={say("select")} noneLabel={say("none")} onChange={(next) => set(next === "" ? [] : [next])} />
   );
 }
 
 interface ControlProps {
-  id: string;
+  /** What the control forwards to the element a person focuses. */
+  semantics: Semantics;
   field: Field;
   schema: JsonSchema;
   roots: Readonly<Record<string, unknown>>;
   value: unknown;
-  invalid: boolean;
   onChange: (next: any) => void;
 }
 
 /** An input field's control, as it names it or as its property calls for. */
-function Input({ id, field, schema, value, invalid, onChange }: ControlProps) {
+function Input({ semantics, field, schema, value, onChange }: ControlProps) {
   const text = useText();
   const say = useSay();
   const show = useShowValue(field.labels);
+  const { lang } = useContext(RendererContext);
   const name = text(field.label);
   const widget = widgetOf(field, schema);
-  const shared = { id, name: field.property, autoComplete: "off", "data-invalid": invalid ? "true" : undefined, "aria-invalid": invalid ? true : undefined };
   const element = isList(schema) ? itemsOf(schema) : schema;
   const options = listedOptions(element, show).map(({ option }) => option);
+  const control = useControls();
+  const entry = { ...semantics, name: field.property, value: String(value), onChange };
   switch (widget) {
-    case "checkbox":
-      return <Checkbox id={id} name={field.property} checked={value === true} invalid={invalid} onChange={onChange} />;
-    case "switch":
-      return <Switch.Root data-telo-part="switch" id={id} checked={value === true} aria-invalid={invalid ? true : undefined} onCheckedChange={onChange} />;
+    case "checkbox": {
+      const Checkbox = control("Checkbox");
+      return <Checkbox {...semantics} name={field.property} checked={value === true} onChange={onChange} />;
+    }
+    case "switch": {
+      const Switch = control("Switch");
+      return <Switch {...semantics} part="switch" checked={value === true} onChange={onChange} />;
+    }
     case "select":
-      return <Select part="select" id={id} options={options} value={String(value)} placeholder={say("select")} none={say("none")} invalid={invalid} onChange={onChange} />;
+      return <SelectList {...semantics} part="select" options={options} value={String(value)} placeholder={say("select")} noneLabel={say("none")} onChange={onChange} />;
     case "multiselect":
-      return <MultiSelect part="select" id={id} options={options} values={value as string[]} placeholder={say("select")} onChange={onChange} />;
+      return <MultiSelectList {...semantics} part="select" options={options} value={value as string[]} placeholder={say("select")} onChange={onChange} />;
     case "options":
-      return <OptionGroup parts={{ group: "options", option: "option" }} id={id} name={name} options={options} values={value as string[]} invalid={invalid} onChange={onChange} />;
-    case "single-options":
+    case "single-options": {
+      const OptionGroup = control("OptionGroup");
+      const many = widget === "options";
       return (
-        <ToggleGroup.Root
-          data-telo-part="options"
-          id={id}
-          type="single"
-          aria-label={name}
-          data-invalid={invalid ? "true" : undefined}
-          value={String(value)}
-          onValueChange={onChange}
-        >
-          {options.map((option) => (
-            <ToggleGroup.Item key={option.value} data-telo-part="option" value={option.value}>
-              {option.label}
-            </ToggleGroup.Item>
-          ))}
-        </ToggleGroup.Root>
+        <OptionGroup
+          {...semantics}
+          label={name}
+          parts={{ root: "options", option: "option" }}
+          multiple={many}
+          options={options}
+          value={many ? (value as string[]) : value === "" ? [] : [String(value)]}
+          onChange={(next) => onChange(many ? next : (next[0] ?? ""))}
+        />
       );
+    }
     case "slider": {
+      const Slider = control("Slider");
       const { minimum, maximum, multipleOf } = schema;
       return (
-        <Slider.Root
-          data-telo-part="slider"
-          id={id}
+        <Slider
+          {...semantics}
+          label={name}
+          part="slider"
           min={minimum}
           max={maximum}
           step={multipleOf ?? (plainTypes(schema).includes("integer") ? 1 : (maximum - minimum) / 100)}
-          value={[value === "" ? minimum : Number(value)]}
-          onValueChange={([next]) => onChange(String(next))}
-        >
-          <Slider.Track>
-            <Slider.Range />
-          </Slider.Track>
-          <Slider.Thumb aria-label={name} aria-valuetext={value === "" ? undefined : String(value)} />
-        </Slider.Root>
+          value={value === "" ? String(minimum) : String(value)}
+          valueText={value === "" ? undefined : String(value)}
+          onChange={onChange}
+          // A field holds every position it is moved to: letting go means nothing more.
+          onCommit={() => undefined}
+        />
       );
     }
-    case "tags":
+    case "tags": {
+      const TagsInput = control("TagsInput");
+      const values = value as string[];
       return (
-        <Tags
-          parts={{ tags: "tags", tag: "tag", remove: "tag-remove", input: "input" }}
-          id={id}
+        <TagsInput
+          {...semantics}
+          parts={{ root: "tags", tag: "tag", remove: "tag-remove", input: "input" }}
           type={TYPED.find((type) => type === controlFor(itemsOf(schema))) ?? "text"}
-          values={value as string[]}
-          invalid={invalid}
+          values={values}
+          removeLabels={values.map((each) => say("remove", { label: each }))}
           onChange={onChange}
         />
       );
-    case "textarea":
-      return <textarea {...shared} data-telo-part="textarea" value={String(value)} onChange={(event) => onChange(event.target.value)} />;
-    default:
-      return (
-        <input
-          {...shared}
-          data-telo-part="input"
-          type={widget}
-          step={widget === "number" && !plainTypes(schema).includes("integer") ? "any" : undefined}
-          value={String(value)}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      );
+    }
+    case "textarea": {
+      const TextArea = control("TextArea");
+      return <TextArea {...entry} />;
+    }
+    case "number": {
+      const NumberInput = control("NumberInput");
+      return <NumberInput {...entry} part="input" integer={plainTypes(schema).includes("integer")} />;
+    }
+    case "date": {
+      const DateInput = control("DateInput");
+      return <DateInput {...entry} part="input" lang={lang} />;
+    }
+    case "datetime-local": {
+      const DateTimeInput = control("DateTimeInput");
+      return <DateTimeInput {...entry} lang={lang} />;
+    }
+    case "time": {
+      const TimeInput = control("TimeInput");
+      return <TimeInput {...entry} lang={lang} />;
+    }
+    default: {
+      const TextInput = control("TextInput");
+      return <TextInput {...entry} part="input" type="text" />;
+    }
   }
+}
+
+/** A date range field's control: its presets as the ranges they set today, in
+ *  the viewer's time zone. */
+function DateRangeField({ semantics, field, value, onChange }: ControlProps) {
+  const text = useText();
+  const say = useSay();
+  const { lang } = useContext(RendererContext);
+  const DateRangeInput = useControl("DateRangeInput");
+  const weekStart = field.weekStart ?? "monday";
+  const today = new Date();
+  return (
+    <DateRangeInput
+      id={semantics.id}
+      label={text(field.label)}
+      describedBy={semantics.describedBy}
+      invalid={semantics.invalid}
+      required={semantics.required}
+      disabled={semantics.disabled}
+      fromLabel={say("rangeFrom")}
+      toLabel={say("rangeTo")}
+      presets={(field.presets ?? []).map((preset) => ({ label: text(preset.label), ...presetRange(preset, weekStart, today) }))}
+      lang={lang}
+      weekStart={weekStart}
+      value={value as Range}
+      onChange={onChange}
+    />
+  );
 }
 
 /** One labelled field. */
@@ -495,14 +513,22 @@ function FieldControl({ id, schema, field, values, roots, errors, onChange }: Om
   const controlId = `${id}-${field.property}`;
   const value = values[field.property];
   const set = (next: unknown) => onChange(field.property, next);
-  const props: ControlProps = { id: controlId, field, schema: property, roots, value, invalid: error !== undefined, onChange: set };
-  const ownLabel = field.type === "input" && ["checkbox", "switch"].includes(widgetOf(field, property));
   const range = field.type === "dateRange" ? (value as Range) : undefined;
   const longer = range && field.warnLongerThan && rangeLongerThan(range, field.warnLongerThan);
+  const described = field.description != null;
+  const semantics: Semantics = {
+    id: controlId,
+    describedBy: [described && `${controlId}-description`, error !== undefined && `${controlId}-error`].filter(Boolean).join(" ") || undefined,
+    invalid: error !== undefined,
+    required: Array.isArray(schema.required) && schema.required.includes(field.property),
+    disabled: false,
+  };
+  const props: ControlProps = { semantics, field, schema: property, roots, value, onChange: set };
+  const ownLabel = field.type === "input" && ["checkbox", "switch"].includes(widgetOf(field, property));
   const label = (
-    <Label.Root data-telo-part="label" htmlFor={controlId}>
+    <label data-telo-part="label" htmlFor={controlId}>
       {name}
-    </Label.Root>
+    </label>
   );
   return (
     <div data-telo-part="field" data-invalid={error ? "true" : undefined}>
@@ -522,13 +548,21 @@ function FieldControl({ id, schema, field, values, roots, errors, onChange }: Om
           onChange={set}
         />
       ) : field.type === "dateRange" ? (
-        <DateRange id={controlId} label={name} presets={field.presets ?? []} weekStart={field.weekStart ?? "monday"} value={range!} invalid={error !== undefined} onChange={set} />
+        <DateRangeField {...props} />
       ) : (
         <Input {...props} />
       )}
       {ownLabel && label}
-      {field.description != null && <span data-telo-part="field-description">{text(field.description)}</span>}
-      {error && <span data-telo-part="field-error">{error}</span>}
+      {described && (
+        <span data-telo-part="field-description" id={`${controlId}-description`}>
+          {text(field.description!)}
+        </span>
+      )}
+      {error && (
+        <span data-telo-part="field-error" id={`${controlId}-error`}>
+          {error}
+        </span>
+      )}
       {!error && longer && (
         <span data-telo-part="field-warning">
           {say(LONGER_THAN[field.warnLongerThan!.unit], { count: field.warnLongerThan!.count })}

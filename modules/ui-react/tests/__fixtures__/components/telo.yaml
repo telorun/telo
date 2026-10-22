@@ -5,11 +5,13 @@ metadata:
   description: >-
     Test fixture: browser components written against the UI host — one using
     every host capability, one holding state, a status pill, one built for a
-    newer host and one importing something the host does not supply.
+    newer host and one importing something the host does not supply — and two
+    control sets over one entry that both implement the box control.
 imports:
   Ui: ../../../../ui
+  UiReact: ../../../
 exports:
-  resources: [hostProbe, counter, statusPill, future, unsupplied]
+  resources: [hostProbe, counter, statusPill, future, unsupplied, controls, checkboxes]
   browser:
     - specifier: "@fixture/components"
       path: ./browser/components.js
@@ -29,6 +31,12 @@ exports:
       abi: ui_react-1
       external: [react, react/jsx-runtime, react-dom/client]
       exports: [Unsupplied]
+    - specifier: "@fixture/controls"
+      path: ./browser/controls.js
+      source: ./nodejs/src/controls.tsx
+      abi: ui_react_controls-1
+      external: [react, react/jsx-runtime, react-dom]
+      exports: [Checkbox]
 ---
 kind: Ui.ComponentExport
 metadata:
@@ -90,3 +98,16 @@ export: Unsupplied
 props:
   kind: Telo.JsonSchema
   schema: { type: object, additionalProperties: false }
+---
+kind: UiReact.Controls
+metadata:
+  name: controls
+entry: "@fixture/controls"
+implements: [Checkbox]
+---
+# Implements the box control too: a theme listing it beside `controls` is refused.
+kind: UiReact.Controls
+metadata:
+  name: checkboxes
+entry: "@fixture/controls"
+implements: [Checkbox]

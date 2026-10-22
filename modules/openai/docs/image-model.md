@@ -14,7 +14,7 @@ kind: Telo.Application
 metadata: { name: poster-maker, version: 1.0.0 }
 imports:
   Ai: oci://ghcr.io/telorun/ai@0.18.0
-  OpenAI: oci://ghcr.io/telorun/openai@0.2.0
+  OpenAI: oci://ghcr.io/telorun/openai@<version>
   Http: oci://ghcr.io/telorun/http-client@0.22.0
 secrets:
   openaiApiKey: { env: OPENAI_API_KEY, type: string }
@@ -23,9 +23,8 @@ kind: Http.BearerToken
 metadata: { name: openaiKey }
 token: !cel "secrets.openaiApiKey"
 ---
-kind: Http.Client
+kind: OpenAI.Client
 metadata: { name: openaiClient }
-baseUrl: https://api.openai.com/v1
 credential: !ref openaiKey
 ---
 kind: Http.Request

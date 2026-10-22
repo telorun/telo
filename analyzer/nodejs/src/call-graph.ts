@@ -61,7 +61,7 @@ import {
 import { isStepSlot } from "./step-slot.js";
 import { topologyRoleOf, type TopologyRole } from "./topology-role.js";
 import { isInlineResource, type RefFieldEntry } from "./reference-field-map.js";
-import { enclosingDefault, siteRefEntry, type ReachRef } from "./reference-reach.js";
+import { enclosingDefault, siteRefEntry, type Pattern, type ReachRef } from "./reference-reach.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { moduleCallSites } from "./cel-access-chains.js";
@@ -166,6 +166,9 @@ export interface CallGraphEdge {
   to?: string;
   /** Field-map path of the slot — part of the edge's identity. */
   slot: string;
+  /** The slot's pattern as segments, for an edge the reference reach found —
+   *  exact for a property name holding a dot. */
+  slotKeys?: Pattern;
   /** Concrete path of this site (`routes[2].handler`). */
   path: string;
   /**
@@ -897,7 +900,7 @@ export function buildCallGraph(
             if (site.refs.length === 0) continue;
             const targetName = refTargetName(site.data);
             if (targetName === undefined) continue;
-            const fieldPath = site.refs[0]!.fieldPath;
+            const { fieldPath, fieldKeys } = site.refs[0]!;
             const entry = siteRefEntry(site);
             const { use, unresolved, unresolvedReason } = resolveUseAtSite(
               entry,
@@ -909,6 +912,7 @@ export function buildCallGraph(
               from: scopedNode.id,
               toName: targetName,
               slot: fieldPath,
+              slotKeys: fieldKeys,
               path: site.path,
               use,
             };
@@ -961,6 +965,7 @@ export function buildCallGraph(
           from: sourceId,
           toName: targetName,
           slot: event.fieldPath,
+          ...(event.fieldKeys ? { slotKeys: event.fieldKeys } : {}),
           path: event.concretePath,
           use,
         };

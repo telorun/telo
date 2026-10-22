@@ -106,10 +106,13 @@ export function useHost(): Host;
 
 | | Is relative to | Used by |
 | --- | --- | --- |
-| **The application's** | the mount: `/done` is the page `/done` wherever the application is mounted | `location`, `navigate`, `href`, a `link` node's `href`, an `image` node's `src` |
-| **The origin's** | the origin: `/api/todos` is that path on the server | `fetch`, `notifyChanged`, `onChanged`, `source.basePath` |
+| **The application's** | the mount: `/done` is the page `/done` wherever the application is mounted | `location`, `navigate`, `href`, a `link` node's `href`, an `image` node's `src`, a `source.basePath`, a reader's `source.path` and an action's `path` |
+| **The origin's** | the origin: `/api/todos` is that path on the server | `fetch` |
 
-A page is addressed in the first; a request is made in the second. An
+A page is addressed in the first; `fetch` requests in the second, so a
+component requests a collection the page names with `fetch(href(basePath))`.
+`notifyChanged` and `onChanged` take the `basePath` as written: they compare
+strings and request nothing. An
 app-relative `image.src` is in the first too, so an image an application ships
 is served from a mount beneath its own — `Http.Static` at `/admin/files` for
 an application at `/admin`. A link to such a file is reachable the same way:
@@ -135,6 +138,15 @@ ordinary browser load of `/admin/files/report.pdf`.
    while it loads or suspends, the `loading` part is shown.
 4. **Stylesheets.** A stylesheet the entry's sources import is applied in the
    `telo.component` layer.
+5. **Layers of a component's own.** A component that draws a layer of its own
+   at the end of `<body>` — a popup, a toast — may mark that layer's root with
+   `data-telo-layer`. Opened above the built-in layer controls, it is then
+   left the focus, its presses and keys report nothing to them, and none of
+   its events is cancelled or made unreachable (see
+   [the controls contract](controls-abi.md#the-built-in-stack-and-other-layers)).
+   Nothing checks the mark, and nothing is guaranteed toward a theme's own
+   layer controls, which may be built on a library that traps the focus or
+   cancels Escape across the page.
 
 In the browser a component that cannot be shown is an `error` node, coded
 `ERR_UI_COMPONENT_LOAD_FAILED` (its module did not load),
@@ -177,7 +189,7 @@ export function Chat({ basePath }: { basePath: string }) {
   const [reply, setReply] = useState("");
 
   const send = async (text: string) => {
-    const response = await host.fetch(`${basePath}/${conversation}/messages`, {
+    const response = await host.fetch(host.href(`${basePath}/${conversation}/messages`), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ text }),
@@ -216,7 +228,7 @@ export function Upload({ basePath }: { basePath: string }) {
   const upload = async (file: File) => {
     const body = new FormData();
     body.append("file", file);
-    const response = await host.fetch(basePath, { method: "POST", body });
+    const response = await host.fetch(host.href(basePath), { method: "POST", body });
     if (response.ok) host.notifyChanged(basePath);
   };
   return <input type="file" onChange={(event) => event.target.files?.[0] && upload(event.target.files[0])} />;

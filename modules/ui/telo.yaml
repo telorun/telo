@@ -62,7 +62,7 @@ exports:
     - Collection
     - Component
     - ComponentExport
-    - Theme
+    - DesignTokens
     - Data
     - Field
     - InputField
@@ -529,6 +529,25 @@ schema:
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
+    # A button opening a list of links: choosing one follows its `href` as
+    # clicking the link would. An item whose `style` holds `strong` is the
+    # current choice. Items are delivered by their own `when`.
+    - additionalProperties: false
+      required: [type, text, items]
+      properties:
+        type: { const: menu }
+        text: { $ref: "telo:Ui/BoundText" }
+        # Each a `link` node.
+        items:
+          type: array
+          minItems: 1
+          items:
+            allOf:
+              - $ref: "#"
+              - properties: { type: { const: link } }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
     - additionalProperties: false
       required: [type, src, alt]
       properties:
@@ -643,12 +662,17 @@ schema:
         text: { $ref: "#/$defs/NodeText" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+    - $ref: "#/$defs/Link"
+    # Its items as delivered for the request, never empty.
     - additionalProperties: false
-      required: [type, text, href]
+      required: [type, text, items]
       properties:
-        type: { const: link }
+        type: { const: menu }
         text: { $ref: "#/$defs/NodeText" }
-        href: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://|mailto:)" }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: "#/$defs/Link" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
@@ -881,6 +905,17 @@ schema:
         message: { type: string }
         shown: { $ref: "#/$defs/Shown" }
   $defs:
+    # A `link` node, and each item of a `menu`.
+    Link:
+      type: object
+      additionalProperties: false
+      required: [type, text, href]
+      properties:
+        type: { const: link }
+        text: { $ref: "#/$defs/NodeText" }
+        href: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://|mailto:)" }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
     # A text as the renderer receives it from `ui`: the record a controller
     # was handed (its renderer translates it), or one of the renderer's own
     # words by id.
@@ -2335,7 +2370,8 @@ schema:
           title: After submit
           description: >-
             What the form does once the record is saved: `close`, `again` — stay
-            open, emptied, for another record — or `keep` its values.
+            open, back at the values a new record starts from, for another — or
+            `keep` its values.
           $ref: "telo://Self/AfterCreate"
         unsaved:
           title: Unsaved input
@@ -3808,58 +3844,52 @@ schema:
 ---
 kind: Telo.Definition
 metadata:
-  name: Theme
+  name: DesignTokens
   description: >-
-    Design tokens for an interface: brand and status colours, corner radii,
-    spacing steps, shadows, font sizes, line heights and the typefaces for body
-    text, headings and code. A closed set of names, so a misspelled token is an
-    error rather than a style that silently does nothing.
+    Brand values for an interface, independent of how it is drawn: brand and
+    status colours, corner radii, spacing steps, shadows, font sizes, line
+    heights and the typefaces for body text, headings and code. A closed set of
+    names, so a misspelled token is an error rather than a style that silently
+    does nothing; any look reads the same names.
 capability: Telo.Provider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ThemeController
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DesignTokensController
 schema:
   type: object
   additionalProperties: false
-  required: [tokens]
   properties:
-    tokens:
-      title: Tokens
-      description: Token values by name. Every value but a font is a CSS value.
-      type: object
-      additionalProperties: false
-      properties:
-        color.background: { type: string }
-        color.surface: { type: string }
-        color.text: { type: string }
-        color.muted: { type: string }
-        color.border: { type: string }
-        color.accent: { type: string }
-        color.accent-text: { type: string }
-        color.danger: { type: string }
-        color.warning: { type: string }
-        color.success: { type: string }
-        radius.sm: { type: string }
-        radius.md: { type: string }
-        radius.lg: { type: string }
-        space.xs: { type: string }
-        space.sm: { type: string }
-        space.md: { type: string }
-        space.lg: { type: string }
-        space.xl: { type: string }
-        shadow.sm: { type: string }
-        shadow.md: { type: string }
-        font.body:
-          x-telo-ref: { kind: Font.Family, use: dependency }
-        font.heading:
-          x-telo-ref: { kind: Font.Family, use: dependency }
-        font.mono:
-          x-telo-ref: { kind: Font.Family, use: dependency }
-        font-size.sm: { type: string }
-        font-size.md: { type: string }
-        font-size.lg: { type: string }
-        font-size.xl: { type: string }
-        line-height.body: { type: string }
-        line-height.heading: { type: string }
+    color.background: { type: string }
+    color.surface: { type: string }
+    color.text: { type: string }
+    color.muted: { type: string }
+    color.border: { type: string }
+    color.accent: { type: string }
+    color.accent-text: { type: string }
+    color.danger: { type: string }
+    color.warning: { type: string }
+    color.success: { type: string }
+    radius.sm: { type: string }
+    radius.md: { type: string }
+    radius.lg: { type: string }
+    space.xs: { type: string }
+    space.sm: { type: string }
+    space.md: { type: string }
+    space.lg: { type: string }
+    space.xl: { type: string }
+    shadow.sm: { type: string }
+    shadow.md: { type: string }
+    font.body:
+      x-telo-ref: { kind: Font.Family, use: dependency }
+    font.heading:
+      x-telo-ref: { kind: Font.Family, use: dependency }
+    font.mono:
+      x-telo-ref: { kind: Font.Family, use: dependency }
+    font-size.sm: { type: string }
+    font-size.md: { type: string }
+    font-size.lg: { type: string }
+    font-size.xl: { type: string }
+    line-height.body: { type: string }
+    line-height.heading: { type: string }
 ---
 # The words a renderer of this vocabulary shows of its own — loading, empty
 # states, buttons, confirmations, each profile keyword's validation message, the

@@ -8,7 +8,12 @@ metadata:
     one React and the host module at content-addressed, immutable URLs that
     export what they declare, the application and page documents with their
     digest as an ETag and a 304 for a holder, the breakpoint an application
-    declares or the default one, and JSON 404s under the reserved prefix.
+    declares or the default one, each built-in control's mechanics as a
+    stylesheet of its own in the control layer, and JSON 404s under the
+    reserved prefix. A theme's stylesheets are placed in the theme layer, and a
+    theme's control set is named in the application document, its module
+    served and its stylesheet placed in the control layer, while the mechanics
+    of the built-in it replaces are not served.
 imports:
   App: ../../app
   Probe: ./__fixtures__/probe
@@ -47,7 +52,7 @@ steps:
           lang: !cel "steps.shell.result.body.contains('<html lang=\"en\">')"
           title: !cel "steps.shell.result.body.contains('<title>Fixture Admin</title>')"
           mount: !cel "steps.shell.result.body.contains('data-telo-mount=\"/admin\"')"
-          layers: !cel "steps.shell.result.body.contains('@layer telo.base, telo.theme, telo.component;')"
+          layers: !cel "steps.shell.result.body.contains('@layer telo.base, telo.control, telo.theme, telo.component;')"
           rendererNotMapped: !cel "!steps.shell.result.body.contains('\"@telorun/ui-react-renderer\"')"
         undeclared:
           status: !cel "steps.undeclared.result.status"
@@ -127,6 +132,10 @@ steps:
     invoke: { kind: HttpClient.Request, responseType: text }
     inputs:
       url: !cel "'http://127.0.0.1:19311' + steps.app.result.body.stylesheets[0]"
+  - name: mechanics
+    invoke: { kind: HttpClient.Request, responseType: text }
+    inputs:
+      url: !cel "'http://127.0.0.1:19311' + steps.app.result.body.controls.stylesheets['Select']"
   - name: verifyDocuments
     invoke: { kind: Assert.Equals }
     inputs:
@@ -142,6 +151,8 @@ steps:
           compactBelow: !cel "steps.app.result.body.compactBelow"
           pages: !cel "steps.app.result.body.pages.map(p, p.path)"
           stylesheets: !cel "steps.app.result.body.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1))"
+          controlStylesheets: !cel "sort(steps.app.result.body.controls.stylesheets.map(c, steps.app.result.body.controls.stylesheets[c].substring(steps.app.result.body.controls.stylesheets[c].lastIndexOf('/') + 1)))"
+          controlSets: !cel "steps.app.result.body.controls.sets"
           bundleIsRenderer: !cel "steps.shell.result.body.contains('/_telo/ui/assets/' + steps.app.result.body.bundle + '/renderer.js')"
         appAgain: !cel "steps.appAgain.result.status"
         defaultCompactBelow: !cel "steps.plainApp.result.body.compactBelow"
@@ -164,18 +175,30 @@ steps:
           type: !cel "steps.stylesheet.result.headers['content-type'].startsWith('text/css')"
           cache: !cel "steps.stylesheet.result.headers['cache-control']"
           baseLayer: !cel "steps.stylesheet.result.body.contains('@layer telo.base')"
+        mechanics:
+          status: !cel "steps.mechanics.result.status"
+          type: !cel "steps.mechanics.result.headers['content-type'].startsWith('text/css')"
+          controlLayer: !cel "steps.mechanics.result.body.startsWith('@layer telo.control {')"
       expected:
         app:
           status: 200
           cache: private, no-cache
           etagIsDigest: true
-          keys: [bundle, compactBelow, digest, lang, pages, specVersion, stylesheets, title, words]
+          keys: [bundle, compactBelow, controls, digest, lang, pages, specVersion, stylesheets, title, words]
           compactBelow: 48rem
           specVersion: 1
           title: { lang: en, message: [Fixture Admin] }
           lang: en
           pages: [/, /done, /all, /variants, /new, /components, /gallery]
-          stylesheets: [renderer.css, default-theme.css, theme.css, ui.css]
+          stylesheets: [renderer.css, default-theme.css, tokens.css, ui.css]
+          controlStylesheets:
+            [
+              checkbox.css, confirmation.css, date-input.css, date-range-input.css, date-time-input.css, dialog.css,
+              drawer.css, icon.css, listbox.css, menu.css, multi-select.css, number-input.css, option-group.css,
+              popover.css, select.css, slider.css, switch.css, tags-input.css, text-area.css, text-input.css,
+              time-input.css, tooltip.css,
+            ]
+          controlSets: []
           bundleIsRenderer: true
         appAgain: 304
         defaultCompactBelow: 40rem
@@ -196,3 +219,47 @@ steps:
           type: true
           cache: public, max-age=31536000, immutable
           baseLayer: true
+        mechanics: { status: 200, type: true, controlLayer: true }
+
+  - name: themedApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/themed/_telo/ui/app" }
+  - name: setModule
+    invoke: { kind: HttpClient.Request, responseType: text }
+    inputs:
+      url: !cel "'http://127.0.0.1:19311' + steps.themedApp.result.body.controls.sets[0].module"
+  - name: setSheet
+    invoke: { kind: HttpClient.Request, responseType: text }
+    inputs:
+      url: !cel "'http://127.0.0.1:19311' + steps.themedApp.result.body.stylesheets[1]"
+  - name: lookSheet
+    invoke: { kind: HttpClient.Request, responseType: text }
+    inputs:
+      url: !cel "'http://127.0.0.1:19311' + steps.themedApp.result.body.stylesheets[3]"
+  - name: look
+    invoke: { kind: HttpClient.Request, responseType: text }
+    inputs:
+      url: !cel "'http://127.0.0.1:19311' + steps.lookSheet.result.body.substring(steps.lookSheet.result.body.indexOf('\"') + 1, steps.lookSheet.result.body.lastIndexOf('\"'))"
+  - name: verifyTheme
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        stylesheets: !cel "steps.themedApp.result.body.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1))"
+        setExports: !cel "steps.themedApp.result.body.controls.sets.map(s, s.exports)"
+        setModule:
+          name: !cel "steps.themedApp.result.body.controls.sets[0].module.endsWith('/controls.js')"
+          status: !cel "steps.setModule.result.status"
+          type: !cel "steps.setModule.result.headers['content-type'].startsWith('text/javascript')"
+        checkboxReplaced: !cel "!('Checkbox' in steps.themedApp.result.body.controls.stylesheets)"
+        builtInsKept: !cel "'Select' in steps.themedApp.result.body.controls.stylesheets"
+        setLayer: !cel "steps.setSheet.result.body.startsWith('@import url(\"/themed/_telo/ui/assets/') && steps.setSheet.result.body.endsWith('/controls.css\") layer(telo.control);\\n')"
+        lookLayer: !cel "steps.lookSheet.result.body.endsWith('/look.css\") layer(telo.theme);\\n')"
+        look: !cel "steps.look.result.body"
+      expected:
+        stylesheets: [renderer.css, controls.css, theme-tokens.css, look.css]
+        setExports: [[Checkbox]]
+        setModule: { name: true, status: 200, type: true }
+        checkboxReplaced: true
+        builtInsKept: true
+        setLayer: true
+        lookLayer: true
+        look: "[data-telo-part=\"page-title\"] { color: var(--telo-color-accent); }\n"

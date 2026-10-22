@@ -3,6 +3,7 @@ import { readBinding, type Binding, type Condition } from "./bindings.js";
 import type { Host, HostStore } from "./host.js";
 import { linkAddress } from "./link-address.js";
 import type { Field } from "./record-fields.js";
+import { underMount } from "./renderer-context.js";
 import { requestErrorOf, unansweredError, type RequestError } from "./ui-error.js";
 import { validate, type JsonSchema } from "./validation.js";
 import { findingText, type Say, type WireText } from "./texts.js";
@@ -91,14 +92,21 @@ function textReads(text: unknown): boolean {
 }
 
 /**
- * Send a record to an operation and read what it answered. A success's body is
+ * Send a record to an operation, its path read under the mount `prefix`, and
+ * read what it answered. A success's body is
  * read only when what follows reads it — the `result` tree or a navigation
  * through it — and is then held to the declared answer.
  */
-export async function runOperation(host: Host, action: ActionSpec, input: Record<string, unknown>, say: Say): Promise<Outcome> {
+export async function runOperation(
+  host: Host,
+  prefix: string,
+  action: ActionSpec,
+  input: Record<string, unknown>,
+  say: Say,
+): Promise<Outcome> {
   let response: Response;
   try {
-    response = await requestAction(host, action.path, input);
+    response = await requestAction(host, underMount(prefix, action.path), input);
   } catch (error) {
     return { ok: false, error: unansweredError(error, say), input };
   }

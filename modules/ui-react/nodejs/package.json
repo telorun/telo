@@ -10,12 +10,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@floating-ui/react-dom": "2.1.8",
     "@telorun/i18n": "workspace:*",
     "@telorun/message-format": "workspace:*",
     "@telorun/sse-codec": "workspace:*",
     "@telorun/ui": "workspace:*",
-    "lucide-react": "^1.8.0",
-    "radix-ui": "^1.4.3"
+    "lucide-react": "^1.8.0"
   },
   "devDependencies": {
     "@telorun/cel": "workspace:*",
@@ -26,6 +26,7 @@
     "@types/react-dom": "^19",
     "esbuild": "catalog:",
     "fastify": "^5.12.1",
+    "happy-dom": "catalog:",
     "jsdom": "^25.0.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",

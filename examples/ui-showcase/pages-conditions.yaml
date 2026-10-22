@@ -1,0 +1,147 @@
+# Conditions: what decides that a node is delivered and that it is drawn, one
+# demonstration per keyword of the profile a condition is written in, missing
+# against null, query parameters and an enabled button. Every application
+# places this view on its `/conditions` page.
+kind: Ui.View
+metadata:
+  name: conditionsPage
+content:
+  type: stack
+  children:
+    # Every demonstration but the button reads one project's summary, and the
+    # query parameters this reader declares.
+    - type: composite
+      ref:
+        kind: Ui.Data
+        model: !ref ProjectSummary
+        # The query parameters the page's links set: a string, a list of
+        # strings for a key given more than once, and a string held to a
+        # pattern.
+        query:
+          mode: { type: string, enum: [ compact, detailed ] }
+          tag: { type: array, items: { type: string } }
+          ticket: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+        source: { path: /api/project-summary, params: { code: TEL-42 } }
+        content:
+          type: stack
+          children:
+            # ---- when and shown ----
+            - { type: text, text: Delivered and drawn, style: heading }
+            - type: text
+              style: muted
+              text: A node's when decides on the server whether it is delivered; its shown decides in the browser whether a delivered node is drawn.
+            - type: text
+              text: Never delivered — this node is not in the page document.
+              when: false
+            - type: text
+              style: muted
+              text: "Delivered and never drawn: the status is not paused, so the browser holds this out of sight."
+              shown: { at: !cel "data.status", matches: { const: paused } }
+            - type: text
+              style: success
+              text: Delivered by its when and drawn by its shown.
+              when: true
+              shown: { at: 1, matches: { minimum: 1 } }
+            - type: text
+              style: muted
+              text: A placement's condition around a composite whose node has one of its own is wrapped in a box, and both must hold.
+            - type: composite
+              shown: { at: true, matches: { const: true } }
+              ref:
+                kind: Ui.View
+                content:
+                  type: text
+                  style: success
+                  text: Both conditions hold.
+                  shown: { at: 2, matches: { minimum: 1 } }
+            - type: text
+              style: muted
+              text: A view whose content is switched off by its own when provides no node, so the composite placing it is left out.
+            - type: composite
+              ref:
+                kind: Ui.View
+                content: { type: text, text: Never provided., when: false }
+
+            # ---- Every keyword ----
+            - { type: text, text: Every keyword of a condition, style: heading }
+            - type: text
+              style: muted
+              text: "Each line below is drawn because its condition holds over the summary of project TEL-42 this page read: status active, four members, velocity 2.5, tags design and web, its lead a manager, a null note and no codename."
+            - { type: text, style: success, text: "type: the status is a string.", shown: { at: !cel "data.status", matches: { type: string } } }
+            - { type: text, style: success, text: "type, as a list: the note is a string or null.", shown: { at: !cel "data.note", matches: { type: [ string, "null" ] } } }
+            - { type: text, style: success, text: "const: the status is active.", shown: { at: !cel "data.status", matches: { const: active } } }
+            - { type: text, style: success, text: "enum: the status is active or paused.", shown: { at: !cel "data.status", matches: { enum: [ active, paused ] } } }
+            - { type: text, style: success, text: "not: the status is not paused.", shown: { at: !cel "data.status", matches: { not: { const: paused } } } }
+            - { type: text, style: success, text: "allOf: between 1 and 10 people work on it.", shown: { at: !cel "data.memberCount", matches: { allOf: [ { minimum: 1 }, { maximum: 10 } ] } } }
+            - { type: text, style: success, text: "anyOf: the code starts with TEL or OPS.", shown: { at: !cel "data.code", matches: { anyOf: [ { pattern: "^TEL-" }, { pattern: "^OPS-" } ] } } }
+            - { type: text, style: success, text: "required: the lead has an e-mail.", shown: { at: !cel "data.lead", matches: { required: [ email ] } } }
+            - { type: text, style: success, text: "properties: the lead is a manager.", shown: { at: !cel "data.lead", matches: { properties: { role: { const: manager } } } } }
+            - { type: text, style: success, text: "items: every tag has at least two letters.", shown: { at: !cel "data.tags", matches: { items: { minLength: 2 } } } }
+            - { type: text, style: success, text: "minItems: there are at least two tags.", shown: { at: !cel "data.tags", matches: { minItems: 2 } } }
+            - { type: text, style: success, text: "maxItems: there are at most five tags.", shown: { at: !cel "data.tags", matches: { maxItems: 5 } } }
+            - { type: text, style: success, text: "uniqueItems: no tag repeats.", shown: { at: !cel "data.tags", matches: { uniqueItems: true } } }
+            - { type: text, style: success, text: "minLength: the code has at least three characters.", shown: { at: !cel "data.code", matches: { minLength: 3 } } }
+            - { type: text, style: success, text: "maxLength: the code has at most ten characters.", shown: { at: !cel "data.code", matches: { maxLength: 10 } } }
+            - { type: text, style: success, text: "pattern: the code is letters, a dash and digits.", shown: { at: !cel "data.code", matches: { pattern: "^[A-Z]+-[0-9]+$" } } }
+            - { type: text, style: success, text: "minimum: at least three people work on it.", shown: { at: !cel "data.memberCount", matches: { minimum: 3 } } }
+            - { type: text, style: success, text: "maximum: at most nine people work on it.", shown: { at: !cel "data.memberCount", matches: { maximum: 9 } } }
+            - { type: text, style: success, text: "exclusiveMinimum: the velocity is greater than 2.", shown: { at: !cel "data.velocity", matches: { exclusiveMinimum: 2 } } }
+            - { type: text, style: success, text: "exclusiveMaximum: the velocity is less than 3.", shown: { at: !cel "data.velocity", matches: { exclusiveMaximum: 3 } } }
+            - { type: text, style: success, text: "multipleOf: the velocity is a multiple of 0.5.", shown: { at: !cel "data.velocity", matches: { multipleOf: 0.5 } } }
+
+            # ---- Missing against null ----
+            - { type: text, text: Missing and null, style: heading }
+            - type: text
+              style: muted
+              text: Null is a present value. A missing value satisfies no condition, not even one under not, so absence is tested on the parent.
+            - { type: text, style: success, text: "The note is present and null.", shown: { at: !cel "data.note", matches: { type: "null" } } }
+            - { type: text, style: danger, text: "Never drawn: a missing codename does not satisfy not.", shown: { at: !cel "data.codename", matches: { not: { type: string } } } }
+            - { type: text, style: success, text: "The project has no codename, tested on the summary.", shown: { at: !cel "data", matches: { not: { required: [ codename ] } } } }
+
+            # ---- Query parameters ----
+            - { type: text, text: Query parameters, style: heading }
+            - type: text
+              style: muted
+              text: This reader declares mode, a list of tag values and a ticket held to a pattern. A parameter the address leaves out, a single one given twice or a value its declaration refuses counts as missing.
+            - type: columns
+              children:
+                - { type: link, text: Mode detailed, href: "/conditions?mode=detailed" }
+                - { type: link, text: Two tags, href: "/conditions?tag=red&tag=blue" }
+                - { type: link, text: A valid ticket, href: "/conditions?ticket=OPS-7" }
+                - { type: link, text: A refused ticket, href: "/conditions?ticket=nope" }
+                - { type: link, text: Mode given twice, href: "/conditions?mode=detailed&mode=compact" }
+                - { type: link, text: Clear the query, href: /conditions }
+            - { type: text, style: success, text: "mode is detailed.", shown: { at: !cel "query.mode", matches: { const: detailed } } }
+            - { type: text, style: success, text: "There are two tag values or more.", shown: { at: !cel "query.tag", matches: { minItems: 2 } } }
+            - { type: text, style: success, text: "The ticket matches its pattern.", shown: { at: !cel "query", matches: { required: [ ticket ] } } }
+            - { type: text, style: muted, text: "No ticket, or one its pattern refuses.", shown: { at: !cel "query", matches: { not: { required: [ ticket ] } } } }
+            - type: value
+              value: !cel "query.ticket"
+
+    # ---- An enabled button ----
+    - { type: text, text: Enablement, style: heading }
+    - type: text
+      style: muted
+      text: The button can be pressed only while its condition over what the form holds is met, and says why while it is not. A tag the project already has is refused, and the lines above read the summary again after a tag is added.
+    - type: composite
+      ref:
+        kind: Ui.Action
+        inputModel: !ref NewTag
+        outputModel: !ref TagAnswer
+        source: { path: /api/tags }
+        label: Tag TEL-42
+        enabled:
+          at: !cel "values.tag"
+          matches: { minLength: 3 }
+          disabledText: Type a tag of three letters or more.
+        onSuccess: { refreshes: [ /api/project-summary ] }
+        result:
+          type: text
+          style: success
+          text:
+            text:
+              plural: count
+              cases:
+                one: "Tagged {$tag}: TEL-42 has {$count} tag now."
+                other: "Tagged {$tag}: TEL-42 has {$count} tags now."
+            values: { tag: !cel "result.tag", count: !cel "result.count" }

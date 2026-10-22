@@ -935,8 +935,10 @@ export { BROWSER_FORMAT, readBrowserEntries } from "./module-browser.js";
 export type { BrowserEntries, BrowserEntry, BrowserEntryProblem } from "./module-browser.js";
 export {
   BROWSER_EXPORT_ANNOTATION,
+  browserExportAnnotationProblems,
   browserExportProblems,
   browserExportSites,
+  type BrowserExportAnnotationProblem,
   type BrowserExportProblem,
   type BrowserExportSite,
 } from "./browser-export-slot.js";

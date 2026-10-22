@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  controllerBrowserEntryModule,
+  directImportSources,
   resolveBrowserEntryFiles,
   type BrowserEntryHost,
   type BrowserEntryModule,
@@ -237,5 +239,66 @@ describe("resolving a browser entry", () => {
       host(await published(files)),
     );
     expect(fromLayer.answer.siblings).toEqual(["browser/chunks/shared.js"]);
+  });
+});
+
+describe("the module a controller's browser entry is resolved against", () => {
+  const declaring = (name: string, ...specifiers: string[]): BrowserEntryModule => ({
+    source: `file:///${name}/telo.yaml`,
+    name,
+    browser: readBrowserEntries({
+      exports: { browser: specifiers.map((specifier) => ({ specifier, path: "./entry.js" })) },
+    }).entries,
+  });
+  /** `Themes` imports `Contract` from its owner file and `Renderer` from an
+   *  `include:` partial, and `Contract` imports `Deep`. */
+  const graph = {
+    modules: new Map(
+      ["Themes", "Contract", "Renderer", "Deep"].map((name) => [
+        `file:///${name}/telo.yaml`,
+        {
+          owner: { source: `file:///${name}/telo.yaml` },
+          partials: name === "Themes" ? [{ source: "file:///Themes/partial.yaml" }] : [],
+        },
+      ]),
+    ),
+    importEdges: new Map([
+      ["file:///Themes/telo.yaml", new Map([["Contract", { targetSource: "file:///Contract/telo.yaml" }]])],
+      ["file:///Themes/partial.yaml", new Map([["Renderer", { targetSource: "file:///Renderer/telo.yaml" }]])],
+      ["file:///Contract/telo.yaml", new Map([["Deep", { targetSource: "file:///Deep/telo.yaml" }]])],
+    ]),
+  } as unknown as Parameters<typeof directImportSources>[0];
+  const modules = new Map(
+    [
+      declaring("Themes", "@acme/own"),
+      declaring("Contract", "@acme/own", "@acme/contract", "@acme/both"),
+      declaring("Renderer", "@acme/both"),
+      declaring("Deep", "@acme/deep"),
+    ].map((module) => [module.source, module]),
+  );
+  const themes = modules.get("file:///Themes/telo.yaml")!;
+  const importsOfThemes = directImportSources(graph)
+    .get(themes.source)!
+    .map((source) => modules.get(source)!);
+  const moduleFor = (specifier: string) =>
+    controllerBrowserEntryModule(specifier, themes, importsOfThemes, "Themes.Theme/look").name;
+
+  it("is the kind's own module first, then the one direct import declaring the entry", () => {
+    expect(moduleFor("@acme/own")).toBe("Themes");
+    expect(moduleFor("@acme/contract")).toBe("Contract");
+    expect(() => moduleFor("@acme/deep")).toThrow(
+      expect.objectContaining({ code: "ERR_BROWSER_ENTRY_UNKNOWN" }),
+    );
+  });
+
+  it("refuses two direct imports declaring the entry, naming both", () => {
+    expect(() => moduleFor("@acme/both")).toThrow(
+      expect.objectContaining({
+        code: "ERR_BROWSER_ENTRY_AMBIGUOUS",
+        message: expect.stringContaining(
+          "'Contract' (file:///Contract/telo.yaml) and 'Renderer' (file:///Renderer/telo.yaml)",
+        ),
+      }),
+    );
   });
 });

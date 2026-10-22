@@ -1,0 +1,81 @@
+kind: Telo.Library
+metadata:
+  name: UiReactRadix
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [UI]
+  description: >-
+    A complete look for web interfaces built from page descriptions, with its
+    selects, multi-selects, option lists, checkboxes, dialogs, drawers,
+    popovers, confirmations, menus, tooltips and icons drawn by Radix's
+    accessible primitives. Picked by one theme reference; a theme of another
+    module can take its controls whole and give them a look of its own.
+imports:
+  Ui: ../ui
+  UiReact: ../ui-react
+exports:
+  resources:
+    - controls
+    - theme
+  # The eleven controls, on one copy of the primitives: every layer a page
+  # opens is drawn by it, so its layers compose among themselves.
+  browser:
+    - specifier: "@telorun/ui-react-radix"
+      path: ./browser/ui-react-radix.js
+      source: ./nodejs/src/controls/index.ts
+      abi: ui_react_controls-1
+      external: [react, react/jsx-runtime, react-dom]
+      exports:
+        [
+        Select, MultiSelect, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu,
+        Tooltip, Icon,
+        ]
+---
+kind: UiReact.Controls
+metadata:
+  name: controls
+entry: "@telorun/ui-react-radix"
+implements:
+  [
+  Select, MultiSelect, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip,
+  Icon,
+  ]
+---
+# Every part styled over the renderer's part names, light and dark, with the
+# brand's defaults below; an application's own tokens apply over them.
+kind: UiReact.Theme
+metadata:
+  name: theme
+tokens:
+  kind: Ui.DesignTokens
+  color.background: oklch(0.985 0 0)
+  color.surface: oklch(1 0 0)
+  color.text: oklch(0.145 0 0)
+  color.muted: oklch(0.556 0 0)
+  color.border: oklch(0.922 0 0)
+  color.accent: oklch(0.52 0.18 260)
+  color.accent-text: oklch(0.985 0 0)
+  color.danger: oklch(0.577 0.245 27.325)
+  color.warning: oklch(0.666 0.179 58.318)
+  color.success: oklch(0.596 0.145 163.225)
+  radius.sm: 0.375rem
+  radius.md: 0.5rem
+  radius.lg: 0.625rem
+  space.xs: 0.25rem
+  space.sm: 0.5rem
+  space.md: 0.75rem
+  space.lg: 1rem
+  space.xl: 1.5rem
+  shadow.sm: 0 1px 2px 0 rgb(0 0 0 / 5%)
+  shadow.md: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%)
+  font-size.sm: 0.75rem
+  font-size.md: 0.875rem
+  font-size.lg: 1rem
+  font-size.xl: 1.125rem
+  line-height.body: "1.5"
+  line-height.heading: "1.25"
+stylesheets:
+  - !module-path ./themes/radix-theme.css
+controls:
+  - !ref controls

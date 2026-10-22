@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: UiReactDefaultThemeConformanceTest
+  version: 1.0.0
+  description: |
+    The built-in look meets the renderer's contract with nothing left out:
+    every part the renderer draws is styled, no rule sets a reserved layout
+    property, and every scene draws with it.
+imports:
+  UiReact: ../
+  Conformance: ../../ui-react-conformance
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref checkDefaultTheme
+---
+kind: Run.Sequence
+metadata: { name: checkDefaultTheme }
+steps:
+  - name: check
+    invoke:
+      kind: Conformance.CheckTheme
+      theme: !ref UiReact.defaultTheme
+  - name: conforms
+    inputs:
+      actual: !cel "steps.check.result.problems"
+      expected: []
+    invoke:
+      kind: Assert.Equals

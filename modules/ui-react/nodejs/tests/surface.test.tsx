@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useRef } from "react";
+import { createPortal } from "react-dom";
+import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
+import { Surface } from "../src/browser/surface.js";
 import { loadFixtureComponents, render, type Page, type Rendered } from "./harness.js";
 import { component, dialogSurface, opener, tableNode, todos } from "./spec-nodes.js";
 
@@ -163,6 +166,45 @@ describe("a popover", () => {
     expect(surface(rendered)).toBeDefined();
     await rendered.click(within(rendered, "cancel"));
     expect(surface(rendered)).toBeUndefined();
+  });
+});
+
+describe("what a surface holds", () => {
+  it("is still inside it when a press there moves the focus within it before the press reaches the page", async () => {
+    // A component's own list, drawn unmarked at the end of <body>, whose press focuses the
+    // component's search input; the surface's initial focus is on the input before it.
+    function Picker() {
+      const input = useRef<HTMLInputElement>(null);
+      return (
+        <>
+          <input />
+          <input id="search" ref={input} />
+          {createPortal(
+            <button id="pick" type="button" onPointerDown={() => input.current?.focus()}>
+              Pick
+            </button>,
+            document.body,
+          )}
+        </>
+      );
+    }
+    document.body.innerHTML = "";
+    const container = document.body.appendChild(document.createElement("div"));
+    const anchor = { current: container };
+    const closes: string[] = [];
+    const root = createRoot(container);
+    await act(async () =>
+      root.render(
+        <Surface spec={popover as never} title="Held" anchor={anchor} onClose={() => closes.push("closed")}>
+          <Picker />
+        </Surface>,
+      ),
+    );
+    await act(async () => {
+      document.getElementById("pick")!.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }));
+    });
+    expect([closes, document.activeElement?.id]).toEqual([[], "search"]);
+    await act(async () => root.unmount());
   });
 });
 

@@ -1,0 +1,46 @@
+kind: Telo.Application
+metadata:
+  name: UiReactRadixConformanceTest
+  version: 1.0.0
+  description: |
+    The Radix theme meets the renderer's contract with nothing left out: every
+    part styled, no reserved layout property set, every design token given a
+    value and read, every scene drawn with its controls, and every vector of
+    its eleven controls met. A theme of another module that takes its controls
+    whole and gives them a look of its own meets it too.
+imports:
+  Radix: ../
+  Derived: ./__fixtures__/derived
+  Conformance: ../../ui-react-conformance
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref checkRadix
+---
+kind: Run.Sequence
+metadata: { name: checkRadix }
+steps:
+  - name: theme
+    invoke:
+      kind: Conformance.CheckTheme
+      theme: !ref Radix.theme
+  - name: controls
+    invoke:
+      kind: Conformance.CheckControls
+      controls: !ref Radix.controls
+  - name: derived
+    invoke:
+      kind: Conformance.CheckTheme
+      theme: !ref Derived.theme
+  - name: conform
+    inputs:
+      actual:
+        theme: !cel "steps.theme.result.problems"
+        controls: !cel "steps.controls.result.problems"
+        derived: !cel "steps.derived.result.problems"
+      expected:
+        theme: []
+        controls: []
+        derived: []
+    invoke:
+      kind: Assert.Equals

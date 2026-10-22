@@ -1,0 +1,20 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "files": [],
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "compilerOptions": {
+    "strict": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "types": ["node"],
+    "paths": {
+      "@telorun/ui-react-contract": ["../../ui-react/nodejs/src/contract/index.ts"]
+    }
+  },
+  "references": [
+    {
+      "path": "tsconfig.lib.json"
+    }
+  ]
+}

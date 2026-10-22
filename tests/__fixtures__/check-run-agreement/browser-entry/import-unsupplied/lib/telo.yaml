@@ -1,0 +1,26 @@
+# A control naming a browser entry that leaves to its host a specifier its kind
+# does not supply.
+kind: Telo.Library
+metadata:
+  name: BrowserImportUnsuppliedLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose control names a browser entry importing a host
+    specifier the control's kind does not supply.
+imports:
+  Kinds: ../../kinds
+exports:
+  resources: [control]
+  browser:
+    - specifier: "@fixture/own"
+      path: ./browser/own.js
+      source: ./browser/src/own.js
+      abi: fixture_controls-1
+      external: ["@fixture/runtime", "@fixture/router"]
+      exports: [Own]
+---
+kind: Kinds.Control
+metadata:
+  name: control
+entry: "@fixture/own"
+export: Own

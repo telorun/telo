@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
+import { presetRange } from "../src/browser/date-range.js";
 import { controlFor } from "../src/browser/record-fields.js";
 import { render, type Rendered } from "./harness.js";
-import { formNode, memoryState, opener, tableNode, todos } from "./spec-nodes.js";
+import { formNode, memoryState, opener, tableNode, todos, todoSchema } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -102,6 +103,45 @@ describe("a form", () => {
     expect(bodies).toEqual([{ text: "Plan the launch", isDone: true, priority: 4, status: "blocked", dueOn: "2026-11-02", notes: "Two\nlines" }]);
     expect((rendered.part("input") as HTMLInputElement).value).toBe("");
     expect(rendered.part("form").getAttribute("data-state")).toBe("idle");
+  });
+
+  it("posts under the mount", async () => {
+    rendered = await render({ path: "/", prefix: "/admin", required: ["text"], collections: { "/api/todos": todos }, pages: { "/": { title: "New", children: [formNode()] } } });
+    await rendered.enter(rendered.part("input"), "Plan the launch");
+    await rendered.click(rendered.part("submit"));
+    expect(rendered.requests.filter((request) => request.startsWith("POST"))).toEqual(["POST /admin/api/todos"]);
+  });
+
+  it("starts again from the model's defaults and a date range's initial preset after a save", async () => {
+    const thisMonth = { label: "This month", unit: "month" as const, offset: 0 };
+    const schema = {
+      ...todoSchema,
+      properties: {
+        ...todoSchema.properties,
+        priority: { ...todoSchema.properties.priority, default: 3 },
+        status: { ...todoSchema.properties.status, default: "blocked" },
+        period: { type: "object", title: "Period", properties: { from: { type: "string", format: "date" }, to: { type: "string", format: "date" } } },
+      },
+    };
+    const range = { type: "dateRange", property: "period", label: "Period", presets: [thisMonth], initialPreset: 0, weekStart: "monday" };
+    const form = { ...formNode(), schema, fields: [...formNode().fields.slice(0, 4), range], state: memoryState(["text", "isDone", "priority", "status", "period"]) };
+    rendered = await render({ path: "/", required: ["text"], collections: { "/api/todos": todos }, pages: { "/": { title: "New", children: [form] } } });
+    const started = () => [
+      (rendered!.parts("input")[1] as HTMLInputElement).value,
+      rendered!.part("select").textContent,
+      (rendered!.part("date-range-from") as HTMLInputElement).value,
+      (rendered!.part("date-range-to") as HTMLInputElement).value,
+    ];
+    const { from, to } = presetRange({ unit: "month", offset: 0 } as Parameters<typeof presetRange>[0], "monday", new Date());
+    expect(started()).toEqual(["3", "blocked", from, to]);
+    await rendered.enter(rendered.part("input"), "Plan the launch");
+    await rendered.enter(rendered.parts("input")[1], "5");
+    await rendered.choose(rendered.part("select"), "open");
+    await rendered.enter(rendered.part("date-range-from"), "2020-01-01");
+    await rendered.click(rendered.part("submit"));
+    expect(rendered.requests.filter((request) => request.startsWith("POST"))).toEqual(["POST /api/todos"]);
+    expect((rendered.part("input") as HTMLInputElement).value).toBe("");
+    expect(started()).toEqual(["3", "blocked", from, to]);
   });
 
   it("puts the API's refusals on the fields they name, and the rest on the form", async () => {

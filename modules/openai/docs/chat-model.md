@@ -11,16 +11,15 @@ OpenAI-compatible provider for the model abstracts, as **two kinds**: `OpenAI.Ch
 
 For reasoning — especially reasoning with tools — use [`OpenAI.ResponsesModel`](./responses-model.md) instead: `/chat/completions` refuses a non-`none` reasoning effort alongside function tools.
 
-The account is a plain `Http.Client`, so the key and the base URL are declared once for every OpenAI kind in the app and the 401 re-acquire-and-retry is inherited rather than re-implemented here.
+The account is an `OpenAI.Client` — an `Http.Client` preset with OpenAI's endpoint and a ten-minute timeout — so the key and the base URL are declared once for every OpenAI kind in the app and the 401 re-acquire-and-retry is inherited rather than re-implemented here.
 
 ```yaml
 kind: Http.BearerToken
 metadata: { name: openaiKey }
 token: !cel "secrets.openaiApiKey"
 ---
-kind: Http.Client
+kind: OpenAI.Client
 metadata: { name: openaiClient }
-baseUrl: https://api.openai.com/v1
 credential: !ref openaiKey
 ---
 kind: Http.Request
@@ -177,9 +176,9 @@ The request this kind is handed is asked for its body as text (as a stream on th
 Point the client at the endpoint — the controller appends `/chat/completions`. A server that requires no auth needs no `credential`:
 
 ```yaml
-kind: Http.Client
+kind: OpenAI.Client
 metadata: { name: localClient }
-baseUrl: http://localhost:11434/v1        # Ollama, vLLM, LM Studio, …
+baseUrl: http://localhost:11434/v1        # Ollama, vLLM, LM Studio, …; no credential
 ---
 kind: Http.Request
 metadata: { name: localRequest }

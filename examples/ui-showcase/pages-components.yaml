@@ -1,0 +1,66 @@
+# Components: browser code of the example's own (`components/`), placed on a
+# page and drawn in a table's cell. Every application places this view on its
+# `/components` page.
+kind: Ui.View
+metadata:
+  name: componentsPage
+content:
+  type: stack
+  children:
+    # ---- A component on the page ----
+    - { type: text, text: A component on the page, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        A component written in TSX and shipped by a library of this example, placed with fixed properties. It
+        uses everything the host gives it: it shows where the page is, keeps which panel is open in the address,
+        moves to another page by navigate and by a link from href, and is refused an https address. It reads
+        how TEL-42 stands and adds a task with fetch, says the tasks changed with notifyChanged — so the table
+        below reads again — and counts every change it hears of with onChanged, the table's own edits and
+        deletes included. A task it adds is announced in a layer of its own at the corner of the page.
+    - type: composite
+      ref:
+        kind: Ui.Component
+        component: !ref Components.taskDesk
+        props: { basePath: /api/tasks, countsPath: /api/task-counts, project: TEL-42 }
+
+    # ---- A component in a cell ----
+    - { type: text, text: A component in a cell, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The priority column is drawn by a component given each row's priority and whether the task is blocked.
+        The table lists TEL-42's tasks over the same collection the component writes to, so it reads again when
+        a task is added above; its edits and deletes are heard by the component.
+    - type: composite
+      ref:
+        kind: Ui.Table
+        model: !ref Task
+        collection: !ref taskModel
+        source:
+          basePath: /api/tasks
+          filters: { projectCode: TEL-42 }
+        pageSize: 6
+        columns:
+          - value: !cel "row.title"
+          - value: !cel "row.status"
+          - header: Priority
+            cell:
+              kind: Ui.Component
+              component: !ref Components.priorityMeter
+              model: !ref Task
+              props:
+                priority: !cel "row.priority"
+                blocked: !cel "row.blocked"
+          - value: !cel "row.assigneeEmail"
+        edit: { form: !ref taskForm }
+        delete: true
+
+    # ---- Its stylesheet ----
+    - { type: text, text: Its stylesheet, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The components' sources import a stylesheet of their own, which the application places in the
+        telo.component layer: after the theme and the brand, before the application's own stylesheet. Every
+        value in it reads a design token, so the desk and the meter take each mount's look.

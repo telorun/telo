@@ -10,7 +10,7 @@ metadata:
     Fixture library whose widget kind names a browser entry export and reports
     what each browser entry it can reach resolves to.
 exports:
-  kinds: [Widget]
+  kinds: [Widget, Control]
   browser:
     - specifier: "@fixture/shell"
       path: ./browser/shell.js
@@ -37,3 +37,29 @@ schema:
       x-telo-browser-export: { entry: /entry }
     beside:
       type: string
+---
+# A kind accepting one generation of browser entry and supplying one host
+# specifier. Its `entry` may be computed, which `telo check` leaves to creation.
+kind: Telo.Definition
+metadata:
+  name: Control
+  description: >-
+    Names an export of a browser entry written against the fixture's control
+    generation that imports nothing from its host but the fixture runtime.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Widget
+schema:
+  type: object
+  additionalProperties: false
+  required: [entry, export]
+  properties:
+    entry:
+      type: string
+      x-telo-eval: compile
+    export:
+      type: string
+      x-telo-browser-export:
+        entry: /entry
+        abi: [fixture_controls-1]
+        external: ["@fixture/runtime"]

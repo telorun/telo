@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { collectModuleDocuments, flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
 import { Loader } from "../src/manifest-loader.js";
+import { expandManifestFragments } from "../src/manifest-schemas.js";
+import { renderValuePath, textSites } from "../src/text-slot.js";
 import type { ManifestSource } from "../src/types.js";
 
 /**
@@ -573,6 +575,40 @@ label:
 `,
       }),
     ).toEqual([]);
+  });
+});
+
+describe("the text walk", () => {
+  /** A text, or a text with the values it is formatted with — beside the
+   *  members a resource's own value carries. */
+  const textOrBound = () => {
+    const bound = {
+      anyOf: [
+        { $ref: "telo://manifest#/$defs/Text" },
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["text", "values"],
+          properties: {
+            text: { $ref: "telo://manifest#/$defs/Text" },
+            values: { type: "object", "x-telo-text-values-for": "/text" },
+          },
+        },
+      ],
+    };
+    const schema = {
+      anyOf: [{ type: "object", additionalProperties: false, properties: { label: bound } }],
+    };
+    expandManifestFragments(schema);
+    return schema;
+  };
+  const sitesOf = (value: unknown) =>
+    textSites(textOrBound(), value, { isExpression: () => false }).texts.map((site) => renderValuePath(site.path));
+
+  it("reads a value only through the union branches it can hold", () => {
+    const resource = { kind: "Lib.Label", metadata: { name: "label" } };
+    expect(sitesOf({ ...resource, label: { text: "Open", context: "page" } })).toEqual(["label"]);
+    expect(sitesOf({ ...resource, label: { text: "{$n} items", values: { n: 3 } } })).toEqual(["label.text"]);
   });
 });
 

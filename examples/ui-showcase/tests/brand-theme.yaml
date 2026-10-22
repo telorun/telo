@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: UiShowcaseBrandThemeTest
+  version: 1.0.0
+  description: >-
+    The theme the `/brand` mount of `examples/ui-showcase` draws with meets the
+    renderer's contract with nothing left out: every part styled, no reserved
+    layout property set, every design token given a value and read, every
+    scene drawn with Radix's controls, and every vector of those controls met.
+imports:
+  Brand: ../brand
+  Conformance: ../../../modules/ui-react-conformance
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref checkBrandTheme
+---
+kind: Run.Sequence
+metadata: { name: checkBrandTheme }
+steps:
+  - name: check
+    invoke:
+      kind: Conformance.CheckTheme
+      theme: !ref Brand.theme
+  - name: conforms
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.check.result.problems"
+      expected: []
