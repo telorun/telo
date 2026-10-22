@@ -3178,6 +3178,23 @@ to say.
   resources, so NEVER name a router like a need (`siteApi`, not `site`,
   beside a `site` need). Build an absolute link from the need
   (`resources.site.url`, `resources.tenants.pattern.replace('*', id)`).
+
+  PERSISTENT STORAGE ON DISK is a need of the kernel-declared type
+  `Telo.DurableDirectory`, written with no import: `needs: { data: { kind:
+  Telo.DurableDirectory, parameters: { size: 5Gi } } }` (`size` a whole
+  number with `Mi` / `Gi` / `Ti`, default `1Gi`; `access` `single-writer`, the
+  default, or `shared`). Its one field `path` is a `Telo.HostPath`: put a file
+  in it with `resources.data.path.joinPath('app.db')` (an `SQLite.Connection`'s
+  `file`, an Fs kind's `cwd: !cel "resources.data.path"`), never with string
+  concatenation. NEVER write a data directory as a variable or a literal path
+  when the files must survive redeployment — the host supplies the directory
+  (`TELO_NEED_DATA__PATH`, or once for every need with `TELO_HOST_STATE_DIR`).
+  Keep SQLite on `single-writer`; on `shared` the app coordinates its own
+  writes. A library declares its own and the application may forward one whole
+  (`needs: { files: !ref data }`) — a `shared` one into a `single-writer` need
+  or a smaller `size` into a larger one is `NEED_FORWARD_INCOMPATIBLE`, one
+  directory forwarded to two needs `NEED_DIRECTORY_FORWARDED_TWICE`. An app
+  declaring one needs `requires: { telo: ">=0.121.0" }`.
 - `kind: Telo.NeedType` — declares a need type a library exports through
   `exports.kinds` (`telo builtins NeedType` prints its fields). A credential
   field is `type: string` with `x-telo-sensitive: true`, and is then redacted
@@ -3318,14 +3335,22 @@ to say.
   it stays a host path), read it as text with `string(path)`, and never build
   one with `+` — a plain string is refused where a host path is required.
   Host-path slots include `Http.Static.root`, every Fs kind's `cwd`,
-  `SQLite.Connection.file` (`:memory:` or a host path) and a durable
-  journal's `directory`. The variable feeding one MUST itself be declared
+  `SQLite.Connection.file` (`:memory:` or a host path), a durable
+  journal's `directory` and a file blob store's `root`. The variable feeding one MUST itself be declared
   `x-telo-type: Telo.HostPath` — a plain `type: string` one is an error
   (`HOST_PATH_UNTYPED_SOURCE`) — and only an APPLICATION variable resolves a
   relative value: a library or a blueprint takes the path from its importer,
   so a blueprint's path field (`AgentApp.App.history`,
   `ApprovalApp.App.journal`) is required and the app passes its own
   host-path variable into it.
+  A host-path slot may say what it names —
+  `x-telo-type: { name: Telo.HostPath, entry: directory }` (or `entry: file`):
+  `Http.Static.root`, every Fs `cwd`, a journal `directory` and a blob
+  store's `root` take a directory, `SQLite.Connection.file` a file. Declare the same `entry` on the
+  variable feeding one (`dbFile` → `file`, `reportsDir` → `directory`), with
+  `requires: { telo: ">=0.121.0" }`; a variable or a `!module-path` naming the
+  other kind is `HOST_PATH_ENTRY_MISMATCH`, and a database file inside a
+  directory is `dir.joinPath('app.db')`, never the directory itself.
 - CEL scopes: `variables`, `secrets` (always); `ports.X` (root app);
   `module.<field>` (always); `resources.X` (after that resource snapshots);
   `steps.<name>.result` (inside a Run.Sequence step); `request` (inside an

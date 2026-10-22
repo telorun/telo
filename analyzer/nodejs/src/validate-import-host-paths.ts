@@ -1,6 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isTaggedSentinel, plainChainOf, producedTypeOf } from "@telorun/templating";
-import { holdsHostPath } from "./host-path-slot.js";
+import { describeHostEntry, holdsHostPath, hostEntryAt, type HostPathInput } from "./host-path-slot.js";
 import type { KernelGlobalsIndex } from "./kernel-globals.js";
 import { navigateSchemaToExprPath } from "./schema-compat.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -40,7 +40,7 @@ export function validateImportHostPaths(
       resource: { kind: manifest.kind, name: String(metadata.name ?? "") },
       filePath: typeof metadata.source === "string" ? metadata.source : undefined,
     };
-    for (const input of Object.keys(inputs as Record<string, string[]>)) {
+    for (const [input, declared] of Object.entries(inputs as Record<string, HostPathInput>)) {
       const [block, name] = input.split(".") as ["variables" | "secrets", string];
       const supplied = (manifest as Record<string, any>)[block]?.[name];
       // A literal is held to the library's declaration by the import-inputs
@@ -62,7 +62,23 @@ export function validateImportHostPaths(
       const chain = plainChainOf(supplied);
       if (!chain) continue;
       const source = navigateSchemaToExprPath(kernelGlobals.forResource(manifest), chain);
-      if (!source || holdsHostPath(source)) continue;
+      if (!source) continue;
+      if (holdsHostPath(source)) {
+        const named = hostEntryAt(source);
+        if (declared.entry !== undefined && named !== undefined && named !== declared.entry) {
+          out.push({
+            severity: DiagnosticSeverity.Error,
+            code: "HOST_PATH_ENTRY_MISMATCH",
+            source: SOURCE,
+            message:
+              `Telo.Import/${String(metadata.name ?? "")}: '${input}' is the path of ` +
+              `${describeHostEntry(declared.entry)} in the imported library, but '${chain}' is ` +
+              `declared to name ${describeHostEntry(named)} (entry: ${named}).`,
+            data: { ...where, path: input },
+          });
+        }
+        continue;
+      }
       if (source.type === undefined && source["x-telo-type"] === undefined) continue;
       out.push({
         severity: DiagnosticSeverity.Error,

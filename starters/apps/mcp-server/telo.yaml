@@ -26,6 +26,9 @@ metadata:
           -H 'authorization: Bearer local-dev-token' \
           -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
         curl -s 'localhost:8067/api/notes?q=milk' -H 'authorization: Bearer local-dev-token'
+requires:
+  # A host-path variable declaring `entry:` needs 0.121.0.
+  telo: ">=0.121.0"
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
   Mcp: oci://ghcr.io/telorun/mcp-server@0.19.0#sha256-JczHRE8f0y-yyxl83FnOOsvlRj4AjwJUfyP-mCkC5ns
@@ -51,7 +54,7 @@ variables:
     env: DB_FILE
     arg: db-file
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: notes.db
   logLevel:
     env: LOG_LEVEL

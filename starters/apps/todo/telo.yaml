@@ -44,7 +44,7 @@ variables:
   dbFile:
     env: DB_FILE
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: todo.db
 ---
 # What creates a todo: its title alone. A new todo is not done — the column's

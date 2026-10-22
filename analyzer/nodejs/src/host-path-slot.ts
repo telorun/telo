@@ -1,4 +1,4 @@
-import { hostAnchorOf, isAbsoluteHostPath } from "@telorun/sdk";
+import { hostAnchorOf, hostEntryOf, isAbsoluteHostPath, type HostEntryKind } from "@telorun/sdk";
 import { unionBranches } from "./schema-compat.js";
 
 /**
@@ -12,6 +12,25 @@ export function holdsHostPath(schema: Record<string, any> | undefined): boolean 
     hostAnchorOf(schema) !== undefined ||
     (unionBranches(schema) ?? []).some((branch) => hostAnchorOf(branch) !== undefined)
   );
+}
+
+/**
+ * What a host-path node says its path names (`entry: file | directory`) — the
+ * node's own, or a union's host-path branch's — or undefined when it says
+ * nothing, which matches either.
+ */
+export function hostEntryAt(schema: Record<string, any> | undefined): HostEntryKind | undefined {
+  if (!schema) return undefined;
+  if (hostAnchorOf(schema) !== undefined) return hostEntryOf(schema);
+  for (const branch of unionBranches(schema) ?? []) {
+    if (hostAnchorOf(branch) !== undefined) return hostEntryOf(branch);
+  }
+  return undefined;
+}
+
+/** How a host entry reads in a message. */
+export function describeHostEntry(entry: HostEntryKind): string {
+  return entry === "directory" ? "a directory" : "a file";
 }
 
 /**
@@ -110,11 +129,18 @@ export function hostPathBranchesFor(
   return { ...slot, ...(slot.anyOf ? { anyOf: paths } : { oneOf: paths }) };
 }
 
+/** One host-path input of a library, as its importer must supply it. */
+export interface HostPathInput {
+  /** The constants a union beside the path accepts (`":memory:"`), which are not paths. */
+  constants: string[];
+  /** What the path names, when the input says. */
+  entry?: HostEntryKind;
+}
+
 /** A module doc's `variables:` / `secrets:` entries that hold a host path — what
- *  an importer must supply as one — keyed `variables.<name>`, each with the
- *  constants a union beside the path accepts (`":memory:"`), which are not paths. */
-export function hostPathInputs(moduleDoc: Record<string, unknown>): Record<string, string[]> {
-  const inputs: Record<string, string[]> = {};
+ *  an importer must supply as one — keyed `variables.<name>`. */
+export function hostPathInputs(moduleDoc: Record<string, unknown>): Record<string, HostPathInput> {
+  const inputs: Record<string, HostPathInput> = {};
   for (const block of ["variables", "secrets"] as const) {
     const entries = moduleDoc[block];
     if (!entries || typeof entries !== "object" || Array.isArray(entries)) continue;
@@ -122,9 +148,13 @@ export function hostPathInputs(moduleDoc: Record<string, unknown>): Record<strin
       if (!entry || typeof entry !== "object" || !holdsHostPath(entry as Record<string, any>)) {
         continue;
       }
-      inputs[`${block}.${name}`] = (unionBranches(entry as Record<string, any>) ?? [])
-        .filter((branch) => typeof branch.const === "string")
-        .map((branch) => branch.const as string);
+      const kind = hostEntryAt(entry as Record<string, any>);
+      inputs[`${block}.${name}`] = {
+        constants: (unionBranches(entry as Record<string, any>) ?? [])
+          .filter((branch) => typeof branch.const === "string")
+          .map((branch) => branch.const as string),
+        ...(kind !== undefined ? { entry: kind } : {}),
+      };
     }
   }
   return inputs;

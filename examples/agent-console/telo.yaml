@@ -15,6 +15,9 @@ metadata:
     Run with the OpenAI key in a sibling `.env.local` file:
         OPENAI_API_KEY=sk-...
   version: 1.0.0
+requires:
+  # A host-path variable declaring `entry:` needs 0.121.0.
+  telo: ">=0.121.0"
 imports:
   OpenAI: oci://ghcr.io/telorun/openai@0.13.0#sha256-Tt9DaH254A972an-WTH_mtJOy9HAuUuH_SK1_bfOvHM
   Ai: oci://ghcr.io/telorun/ai@0.28.0#sha256-zpi3w-6zWjD3HGhxoMJKItuFM4ELZa-NTVHOtFacRII
@@ -36,7 +39,7 @@ variables:
   historyFile:
     env: HISTORY_FILE
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: ./tmp/agent-history.sqlite
 
 ---

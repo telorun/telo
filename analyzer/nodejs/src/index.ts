@@ -93,6 +93,7 @@ export {
   isTextFieldSchema,
   NEED_TYPE_CONTROLLER_ENTRY,
   NEED_TYPE_KIND,
+  needParametersWithDefaults,
   needReadingSchema,
   needSupplyOf,
   needTypeOf,
@@ -149,6 +150,14 @@ export {
   PUBLIC_URL_TYPE,
 } from "./public-address.js";
 export type { HostPattern } from "./public-address.js";
+export {
+  directoryForwardRefusal,
+  directorySizeBytes,
+  DURABLE_DIRECTORY_TYPE,
+  durableDirectoryParameters,
+  STATE_DIR_HOST_VALUE,
+} from "./durable-directory.js";
+export type { DirectoryAccess, DurableDirectoryParameters } from "./durable-directory.js";
 export { derivedNeedEnvName, envNameSegment, NEED_ENV_PREFIX } from "./need-env-name.js";
 export {
   BINDINGS_ANNOTATION,
@@ -837,7 +846,7 @@ export {
   readMembersValue,
   type MembersSlot,
 } from "./members-value-slot.js";
-export { holdsHostPath, hostAnchorFor } from "./host-path-slot.js";
+export { describeHostEntry, holdsHostPath, hostAnchorFor, hostEntryAt } from "./host-path-slot.js";
 export {
   compiledResultSlots,
   formatSlotPath,

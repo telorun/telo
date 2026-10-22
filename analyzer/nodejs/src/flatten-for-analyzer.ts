@@ -3,7 +3,7 @@ import { isKindDocument } from "./kind-declaration.js";
 import type { LoadedGraph, LoadedModule } from "./loaded-types.js";
 import type { LoadedFile } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
-import { hostPathInputs as hostPathInputsOf } from "./host-path-slot.js";
+import { hostPathInputs as hostPathInputsOf, type HostPathInput } from "./host-path-slot.js";
 import {
   injectedDeclarations,
   readLibraryLifecycle,
@@ -584,7 +584,7 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
   const declaredResources = new Map<string, readonly string[]>();
   /** Each library's `variables.<name>` / `secrets.<name>` holding a host path,
    *  with the non-path constants each also accepts. */
-  const hostPathInputs = new Map<string, Record<string, string[]>>();
+  const hostPathInputs = new Map<string, Record<string, HostPathInput>>();
   for (const [source, mod] of graph.modules) {
     if (source === graph.rootSource) continue; // root is an Application — no exports
     const libDoc = mod.owner.manifests.find((m) => m && isModuleKind(m.kind)) as

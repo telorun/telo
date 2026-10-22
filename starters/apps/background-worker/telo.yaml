@@ -71,7 +71,7 @@ variables:
     env: DB_FILE
     arg: db-file
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: ./worker-queue.db
     description: The queue every replica shares.
   tickEvery:

@@ -1,0 +1,146 @@
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "root": {
+        "type": "string",
+        "x-telo-type": {
+          "name": "Telo.HostPath",
+          "entry": "directory"
+        }
+      },
+      "file": {
+        "anyOf": [
+          {
+            "const": ":memory:"
+          },
+          {
+            "type": "string",
+            "x-telo-type": {
+              "name": "Telo.HostPath",
+              "entry": "file"
+            }
+          }
+        ]
+      },
+      "roots": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Root"
+        }
+      },
+      "anywhere": {
+        "type": "string",
+        "x-telo-type": "Telo.HostPath"
+      }
+    },
+    "$defs": {
+      "Root": {
+        "type": "string",
+        "x-telo-type": {
+          "name": "Telo.HostPath",
+          "entry": "directory"
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "entry/directory-slot-given-a-file",
+      "value": {
+        "root": "{file}"
+      },
+      "code": "ERR_HOST_PATH_ENTRY_MISMATCH",
+      "message": "'/root' takes the path of a directory, but '{file}' is a file."
+    },
+    {
+      "id": "entry/file-branch-of-a-union-given-a-directory",
+      "value": {
+        "file": "{directory}"
+      },
+      "code": "ERR_HOST_PATH_ENTRY_MISMATCH",
+      "message": "'/file' takes the path of a file, but '{directory}' is a directory."
+    },
+    {
+      "id": "entry/list-item-through-a-reference",
+      "value": {
+        "roots": [
+          "{directory}",
+          "{file}"
+        ]
+      },
+      "code": "ERR_HOST_PATH_ENTRY_MISMATCH",
+      "message": "'/roots/1' takes the path of a directory, but '{file}' is a file."
+    },
+    {
+      "id": "entry/before-a-relative-path",
+      "value": {
+        "file": "data.db",
+        "root": "{file}"
+      },
+      "code": "ERR_HOST_PATH_ENTRY_MISMATCH",
+      "message": "'/root' takes the path of a directory, but '{file}' is a file."
+    },
+    {
+      "id": "unreadable/a-path-the-filesystem-will-not-answer-for",
+      "value": {
+        "root": "{unreadable}"
+      },
+      "code": "ERR_HOST_PATH_UNREADABLE",
+      "message": "'/root' takes the path of a directory, but what is at '{unreadable}' cannot be read ({reason})."
+    },
+    {
+      "id": "relative/literal",
+      "value": {
+        "root": "data"
+      },
+      "code": "ERR_HOST_PATH_RELATIVE",
+      "message": "'data' must be an absolute Telo.HostPath — a relative path names nothing fixed here. Write a file that ships with the module as !module-path <path>, or read a location on the host from a variable declared x-telo-type: Telo.HostPath, which resolves a relative value against the working directory."
+    },
+    {
+      "id": "relative/union-branch",
+      "value": {
+        "file": "./app.db"
+      },
+      "code": "ERR_HOST_PATH_RELATIVE",
+      "message": "'./app.db' must be an absolute Telo.HostPath — a relative path names nothing fixed here. Write a file that ships with the module as !module-path <path>, or read a location on the host from a variable declared x-telo-type: Telo.HostPath, which resolves a relative value against the working directory."
+    },
+    {
+      "id": "accepted/matching-entries",
+      "value": {
+        "root": "{directory}",
+        "file": "{file}",
+        "roots": [
+          "{directory}"
+        ]
+      },
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "accepted/absent-path",
+      "value": {
+        "root": "{absent}",
+        "file": "{absent}"
+      },
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "accepted/entry-unsaid",
+      "value": {
+        "anywhere": "{file}"
+      },
+      "code": null,
+      "message": null
+    },
+    {
+      "id": "accepted/union-constant",
+      "value": {
+        "file": ":memory:"
+      },
+      "code": null,
+      "message": null
+    }
+  ]
+}

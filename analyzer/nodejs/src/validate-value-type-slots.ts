@@ -20,12 +20,22 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import { readValueTypeSlot, VALUE_TYPES, X_TELO_TYPE, type ResourceManifest } from "@telorun/sdk";
+import {
+  HOST_ENTRY_KINDS,
+  readValueTypeSlot,
+  VALUE_TYPES,
+  X_TELO_TYPE,
+  type ResourceManifest,
+} from "@telorun/sdk";
 import { distance } from "./levenshtein.js";
 import { isInSchemaRegion } from "./schema-region.js";
 
 export interface ValueTypeSlotIssue {
-  code: "X_TELO_TYPE_UNKNOWN" | "X_TELO_TYPE_ARGUMENT_UNKNOWN" | "X_TELO_TYPE_BASE_MISMATCH";
+  code:
+    | "X_TELO_TYPE_UNKNOWN"
+    | "X_TELO_TYPE_ARGUMENT_UNKNOWN"
+    | "X_TELO_TYPE_ARGUMENT_INVALID"
+    | "X_TELO_TYPE_BASE_MISMATCH";
   manifest: ResourceManifest;
   /** Dotted path to the annotated schema node, e.g. `schema.properties.body`. */
   path: string;
@@ -67,6 +77,25 @@ function suggestValueType(name: string): string | undefined {
     }
   }
   return !best || bestDist > threshold || tied ? undefined : best;
+}
+
+/** The closest token within an edit-distance threshold, silent on a tie. */
+function suggestToken(token: string, vocabulary: readonly string[]): string | undefined {
+  const threshold = Math.max(1, Math.min(3, Math.floor(token.length / 3)));
+  let best: string | undefined;
+  let bestDist = threshold + 1;
+  let tied = false;
+  for (const candidate of vocabulary) {
+    const d = distance(token, candidate);
+    if (d < bestDist) {
+      best = candidate;
+      bestDist = d;
+      tied = false;
+    } else if (d === bestDist) {
+      tied = true;
+    }
+  }
+  return !best || tied ? undefined : best;
 }
 
 function declaredNames(): string {
@@ -137,6 +166,22 @@ function checkNode(
 
   const declared = new Set(slot.entry.parameters.map((p) => p.name));
   for (const argument of Object.keys(slot.args)) {
+    const parameter = slot.entry.parameters.find((p) => p.name === argument);
+    if (parameter?.hostEntry) {
+      const token = slot.args[argument];
+      if ((HOST_ENTRY_KINDS as readonly unknown[]).includes(token)) continue;
+      const suggestion = typeof token === "string" ? suggestToken(token, HOST_ENTRY_KINDS) : undefined;
+      issues.push({
+        code: "X_TELO_TYPE_ARGUMENT_INVALID",
+        manifest,
+        path,
+        message:
+          `'${slot.entry.name}' parameter '${argument}' takes ${HOST_ENTRY_KINDS.map((k) => `'${k}'`).join(" or ")}, ` +
+          `not ${JSON.stringify(token)}.` +
+          (suggestion ? ` Did you mean '${suggestion}'?` : ""),
+      });
+      continue;
+    }
     if (declared.has(argument)) continue;
     issues.push({
       code: "X_TELO_TYPE_ARGUMENT_UNKNOWN",

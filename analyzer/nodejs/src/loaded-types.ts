@@ -123,7 +123,8 @@ export interface LoadedGraph {
    *  a filesystem-path import — asked of each module's source at load, since
    *  existence needs a filesystem and analysis runs without one. A path at or
    *  above a module file the module's `sources:` stages counts as present. Empty
-   *  for a module whose source cannot answer (`ManifestSource.exists`). */
+   *  for a module whose source cannot answer (`ManifestSource.entryAt`). A value
+   *  whose one claim names something is stamped with what it names (`FOUND_ENTRY`). */
   moduleFileDiagnostics: AnalysisDiagnostic[];
   /** YAML parse failures aggregated from every file's `parseErrors`. A file
    *  that fails to parse yields a mangled `toJSON()` projection, so these are

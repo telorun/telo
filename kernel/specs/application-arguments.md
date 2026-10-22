@@ -113,7 +113,8 @@ nothing.
      root's own needs and those bubbling up from imported libraries;
    - each missing required field of a need set only in part;
    - a `Telo.PublicUrl` field once neither its environment name nor the host's templates
-     answer it.
+     answer it, and a `Telo.DurableDirectory` field once neither its environment name nor
+     `TELO_HOST_STATE_DIR` answers it.
 
    An entry with a `default:`, an optional need with nothing set, an optional field of any
    need and an entry whose supplied value is invalid are never asked for.

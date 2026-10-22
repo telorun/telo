@@ -15,7 +15,7 @@ import { celCompletions } from "./cel-completions.js";
 import { docIdentity } from "../doc-identity.js";
 import { detectContext, lookupRefSlot, navigateSchema } from "./detect-context.js";
 import { importSourceCompletions } from "./import-source.js";
-import { moduleFileCompletions } from "./module-file-completions.js";
+import { moduleFileCompletions, moduleFileEntry, narrowedNames } from "./module-file-completions.js";
 import { valueTagCompletions } from "./value-tag-completions.js";
 import { propKeyCompletions } from "./prop-keys.js";
 
@@ -224,7 +224,12 @@ export async function buildCompletions(
   if (ctx.type === "capability") return capabilityCompletions();
   if (ctx.type === "value-tag") return valueTagCompletions(ctx, registry);
   if (ctx.type === "module-file") {
-    return moduleFileCompletions(ctx.names, ctx.prefix, ctx.replaceRange, adapter);
+    return moduleFileCompletions(
+      narrowedNames(ctx.names, moduleFileEntry(ctx, registry)),
+      ctx.prefix,
+      ctx.replaceRange,
+      adapter,
+    );
   }
   if (ctx.type === "value-suggestions") {
     return valueSuggestions(registry, ctx.docKind, ctx.yamlPath, ctx.replaceRange);

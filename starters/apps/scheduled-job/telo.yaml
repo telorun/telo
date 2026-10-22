@@ -72,13 +72,13 @@ variables:
     env: SCAN_PATH
     arg: scan-path
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: directory }
     default: "."
   dbFile:
     env: DB_FILE
     arg: db-file
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: job-runs.db
   maxRunTime:
     env: MAX_RUN_TIME

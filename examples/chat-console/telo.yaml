@@ -11,6 +11,9 @@ metadata:
     Run with the OpenAI key in a sibling `.env.local` file:
         OPENAI_API_KEY=sk-...
     The CLI loads `.env.local` from the manifest's directory automatically.
+requires:
+  # A host-path variable declaring `entry:` needs 0.121.0.
+  telo: ">=0.121.0"
 imports:
   OpenAI: oci://ghcr.io/telorun/openai@0.13.0#sha256-Tt9DaH254A972an-WTH_mtJOy9HAuUuH_SK1_bfOvHM
   Http: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
@@ -32,7 +35,7 @@ variables:
   historyFile:
     env: HISTORY_FILE
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: ./tmp/chat-history.sqlite
 
 ---

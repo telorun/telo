@@ -15,9 +15,9 @@ The abstract every model kind extends, with capability `Telo.Provider`.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `data` | `Telo.HostPath`, required | The `.traineddata` file, gzip-compressed or raw. |
+| `data` | `Telo.HostPath` (`entry: file`), required | The `.traineddata` file, gzip-compressed or raw. |
 
-`data` is an absolute path on the host. Write `!module-path` for a file that ships with your module, or bind it to an application variable typed `Telo.HostPath`; a relative string is refused (`HOST_PATH_RELATIVE`). The recognizer tells gzip from raw by the file's header, so both work without saying which. A raw file is what a custom or fine-tuned model usually is.
+`data` is an absolute path on the host. Write `!module-path` for a file that ships with your module, or bind it to an application variable typed `Telo.HostPath`; a relative string is refused (`HOST_PATH_RELATIVE`), and a path naming a directory (`HOST_PATH_ENTRY_MISMATCH`). The recognizer tells gzip from raw by the file's header, so both work without saying which. A raw file is what a custom or fine-tuned model usually is.
 
 ## `TesseractModel.Language`
 

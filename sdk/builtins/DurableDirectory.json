@@ -1,0 +1,39 @@
+{
+  "kind": "Telo.NeedType",
+  "metadata": {
+    "name": "DurableDirectory",
+    "description": "Persistent storage on disk: a writable directory whose files survive restarts, reloads, redeployments and new versions of the application, for as long as whoever runs it keeps the storage. Asks for a minimum size and for single-writer or shared access; the directory is empty the first time and is no backup."
+  },
+  "fields": {
+    "path": {
+      "description": "The directory, an absolute path the application can write to. It exists and is writable before any resource initializes; a full directory is reported by the operating system's own error (`ENOSPC`).",
+      "x-telo-type": {
+        "name": "Telo.HostPath",
+        "entry": "directory"
+      }
+    }
+  },
+  "required": [
+    "path"
+  ],
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "size": {
+        "type": "string",
+        "pattern": "^[1-9][0-9]*(Mi|Gi|Ti)$",
+        "default": "1Gi",
+        "description": "The least space the application needs: a whole number followed by `Mi`, `Gi` or `Ti` (`512Mi`, `5Gi`, `1Ti`). A host may give more, and may refuse a size it cannot give; nothing measures it."
+      },
+      "access": {
+        "enum": [
+          "single-writer",
+          "shared"
+        ],
+        "default": "single-writer",
+        "description": "`single-writer`: at most one running instance of the application has the directory at any moment, a rollout or a restart included, and the application may rely on that. `shared`: every instance has it at once, on different machines; file locking across them is not reliable, so the application coordinates its own writes, and SQLite is not safe there."
+      }
+    },
+    "additionalProperties": false
+  }
+}

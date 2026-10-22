@@ -30,6 +30,9 @@ metadata:
     Kill whichever replica is working. Within `LEASE_TTL` another one takes over
     — a lease expires on its own, so a holder that dies frees it rather than
     wedging the queue.
+requires:
+  # A host-path variable declaring `entry:` needs 0.121.0.
+  telo: ">=0.121.0"
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
   Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
@@ -65,7 +68,7 @@ variables:
   dbFile:
     env: DB_FILE
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: ./exclusive-worker.db
 ---
 # One file, shared by every replica — that is what makes the lease mean

@@ -78,13 +78,13 @@ variables:
     env: DB_FILE
     arg: db-file
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: sales.db
   reportsDir:
     env: REPORTS_DIR
     arg: reports-dir
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: directory }
     default: reports
     description: Where built reports are kept.
 ---

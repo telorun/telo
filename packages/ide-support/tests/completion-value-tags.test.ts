@@ -25,6 +25,8 @@ const THING: ResourceDefinition = {
       when: { type: "boolean", "x-telo-eval": "runtime" },
       key: { "x-telo-type": "Telo.Bytes" },
       root: { type: "string", "x-telo-type": "Telo.HostPath" },
+      dir: { type: "string", "x-telo-type": { name: "Telo.HostPath", entry: "directory" } },
+      db: { type: "string", "x-telo-type": { name: "Telo.HostPath", entry: "file" } },
       size: { anyOf: [{ type: "integer" }, { "x-telo-type": "Telo.Bytes" }] },
       keys: { type: "array", items: { "x-telo-type": "Telo.Bytes" } },
       handler: { "x-telo-ref": { kind: "Telo.Invocable", use: "call" } },
@@ -183,6 +185,19 @@ describe("module path completion", () => {
   it("lists dot-entries once the typed name starts with a dot", async () => {
     const results = await complete([...HEAD, "text: !include-text ."], registry(), adapter({ ".": ROOT }));
     expect(results.map((r) => r.label)).toEqual([".env"]);
+  });
+
+  it("offers only directories where the host path names a directory", async () => {
+    const results = await complete([...HEAD, "dir: !module-path "], registry(), adapter({ ".": ROOT }));
+    expect(results.map((r) => [r.label, r.retrigger])).toEqual([["public/", false]]);
+  });
+
+  it("offers a directory only as a way down where the host path names a file", async () => {
+    const results = await complete([...HEAD, "db: !module-path "], registry(), adapter({ ".": ROOT }));
+    expect(results.map((r) => [r.insertText, r.retrigger])).toEqual([
+      ["public/", true],
+      ["telo.yaml", false],
+    ]);
   });
 
   it("offers nothing above the module root or for an absolute path", async () => {

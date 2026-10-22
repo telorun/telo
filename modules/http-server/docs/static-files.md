@@ -28,9 +28,12 @@ the API. Mount order does not matter — each mount owns its path prefix.
 
 ## What `root` names
 
-`root` is a `Telo.HostPath`: an absolute directory on the machine running the
-application. There are two ways to write one, and which you use says where the
-files come from.
+`root` is a `Telo.HostPath` declaring `entry: directory`: an absolute directory
+on the machine running the application. A path naming a file there — a
+`!module-path ./public/index.html`, or a variable declared `entry: file` — is
+refused by `telo check` (`HOST_PATH_ENTRY_MISMATCH`), and an existing file reached
+any other way when the server is created (`ERR_HOST_PATH_ENTRY_MISMATCH`). There
+are two ways to write one, and which you use says where the files come from.
 
 **Files that ship with the module** — a frontend, a built SPA — are written with
 `!module-path`, relative to the module root (the directory holding `telo.yaml`):
@@ -56,7 +59,7 @@ variables:
   reportsDir:
     env: REPORTS_DIR
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: directory }
     default: reports
 ---
 kind: Http.Static
@@ -86,7 +89,7 @@ files nothing names.
 
 | Field | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `root` | `Telo.HostPath` (required) | — | Directory of files to serve — `!module-path` for one that ships with the module. |
+| `root` | `Telo.HostPath`, `entry: directory` (required) | — | Directory of files to serve — `!module-path` for one that ships with the module. |
 | `index` | string | `index.html` | File served for a directory root request. |
 | `spaFallback` | boolean | `false` | Serve `index` for any path that does not match a file. |
 | `maxAge` | integer (seconds) | — | `Cache-Control: max-age`; omit for no caching directive. |

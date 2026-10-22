@@ -1,4 +1,5 @@
-import { defaultRegistry, walkCelExpressions } from "@telorun/templating";
+import { defaultRegistry, isTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
+import type { HostEntryKind } from "@telorun/sdk";
 import type { ImportEdge, LoadedModule } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
 import { nearestName } from "./nearest-name.js";
@@ -46,25 +47,69 @@ function isPathImport(ref: string): boolean {
 }
 
 /**
+ * The key the loader stamps on a tagged value whose one file claim names
+ * something: what it found there, `file` or `directory` — what analysis holds
+ * the value to where its slot says what the path must name
+ * (`HOST_PATH_ENTRY_MISMATCH`). Absent when the source cannot answer.
+ */
+export const FOUND_ENTRY = "foundEntry";
+
+/** What the loader found at a tagged value's one file claim, when it stamped it. */
+export function foundEntryOf(value: unknown): HostEntryKind | undefined {
+  if (!isTaggedSentinel(value)) return undefined;
+  const found = (value as unknown as Record<string, unknown>)[FOUND_ENTRY];
+  return found === "file" || found === "directory" ? found : undefined;
+}
+
+/** Every tagged value beneath `value`, with its dotted path. */
+function walkSentinels(
+  value: unknown,
+  path: string,
+  cb: (sentinel: TaggedSentinel, path: string) => void,
+): void {
+  if (isTaggedSentinel(value)) {
+    cb(value, path);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => walkSentinels(v, `${path}[${i}]`, cb));
+    return;
+  }
+  if (value !== null && typeof value === "object" && !(value as { __compiled?: unknown }).__compiled) {
+    for (const [k, v] of Object.entries(value)) walkSentinels(v, path ? `${path}.${k}` : k, cb);
+  }
+}
+
+/** What `relative` names among the files a module's `sources:` stages: one of
+ *  them is a file, a path above one a directory. */
+function stagedEntry(staged: readonly string[], relative: string): HostEntryKind | undefined {
+  const beneath = pathsAtOrBeneath(staged, relative);
+  if (beneath.length === 0) return undefined;
+  return beneath.includes(relative.replace(/^\.\//, "")) ? "file" : "directory";
+}
+
+/**
  * One diagnostic for every tagged value in `module` whose file claim names
  * nothing — the static half of the kernel's refusal at resource creation. Each
  * engine declares its claims and the code reporting a missing one
  * (`TemplatingEngine.fileClaims`), so no tag is recognised here by name.
  *
- * Existence needs a filesystem, which the analyzer never touches, so the
- * question is put to the module's own `ManifestSource` — every host that loads
- * from disk answers it, and one that cannot (an in-browser store) reports
- * nothing rather than guessing. Well-formedness is the engine's own diagnostic;
- * a malformed path claims nothing.
+ * What a claim names needs a filesystem, which the analyzer never touches, so
+ * the question is put to the module's own `ManifestSource` (`entryAt`) — every
+ * host that loads from disk answers it, and one that cannot (an in-browser
+ * store) reports nothing rather than guessing. Well-formedness is the engine's
+ * own diagnostic; a malformed path claims nothing. A value with exactly one
+ * claim that names something is stamped with what it names ({@link FOUND_ENTRY}).
  *
- * A path at or above a module file the module's own `sources:` block stages is
- * present: the kernel stages it on first use, so a fresh checkout has no copy yet.
+ * A path a module file the module's own `sources:` block stages is present at
+ * — a file when it is one, a directory when it sits above one: the kernel stages
+ * it on first use, so a fresh checkout has no copy yet.
  */
 export async function collectModuleFileDiagnostics(
   module: LoadedModule,
   source: ManifestSource | undefined,
 ): Promise<AnalysisDiagnostic[]> {
-  if (!source?.exists) return [];
+  if (!source?.entryAt) return [];
   const registry = defaultRegistry();
   const out: AnalysisDiagnostic[] = [];
   const ownerSource = module.owner.source;
@@ -73,25 +118,31 @@ export async function collectModuleFileDiagnostics(
     const found: Array<{
       index: number;
       at: string;
-      engine: string;
-      written: string;
+      sentinel: TaggedSentinel;
+      claims: number;
       relative: string;
       code: string;
     }> = [];
     file.manifests.forEach((manifest, index) => {
       // Never resolved there, so the engine's `*_OUTSIDE_RESOURCE` is the finding.
       if (!manifest || isNeverInstantiated(manifest.kind)) return;
-      walkCelExpressions(manifest, "", (written, at, engine) => {
-        for (const claim of registry.get(engine)?.fileClaims?.(written) ?? []) {
-          found.push({ index, at, engine, written, relative: claim.path, code: claim.notFoundCode });
+      walkSentinels(manifest, "", (sentinel, at) => {
+        const claims = registry.get(sentinel.engine)?.fileClaims?.(sentinel.source) ?? [];
+        for (const claim of claims) {
+          found.push({ index, at, sentinel, claims: claims.length, relative: claim.path, code: claim.notFoundCode });
         }
       });
     });
-    for (const { index, at, engine, written, relative, code } of found) {
+    for (const { index, at, sentinel, claims, relative, code } of found) {
       staged ??= stagedFilesOf(module.owner.manifests.find((m) => m && isModuleKind(m.kind)));
-      if (pathsAtOrBeneath(staged, relative).length > 0) continue;
       // Module-root-relative: resolved against the OWNER, never the partial.
-      if (await source.exists(ownerSource, relative)) continue;
+      const entry = stagedEntry(staged, relative) ?? (await source.entryAt(ownerSource, relative));
+      if (entry !== undefined) {
+        if (claims === 1) (sentinel as unknown as Record<string, unknown>)[FOUND_ENTRY] = entry;
+        continue;
+      }
+      const written = sentinel.source;
+      const engine = sentinel.engine;
       const manifest = file.manifests[index]!;
       const name = (manifest.metadata as { name?: string } | undefined)?.name;
       const range = file.positions[index]?.positionIndex?.get(at);

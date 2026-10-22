@@ -36,7 +36,7 @@ variables:
   blobRoot:
     env: BLOB_ROOT
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: directory }
     default: data/blobs
 ---
 kind: BlobFs.Store

@@ -1,0 +1,14 @@
+# Names a file of its own where a directory is wanted: an Fs kind's `cwd`
+# declares `entry: directory`.
+kind: Telo.Library
+metadata:
+  name: HostPathEntryLib
+  version: 1.0.0
+requires:
+  telo: ">=0.121.0"
+imports:
+  Fs: ../../../../../modules/fs
+---
+kind: Fs.File
+metadata: { name: notes }
+cwd: !module-path ./notes.txt

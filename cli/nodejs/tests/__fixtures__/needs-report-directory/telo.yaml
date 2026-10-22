@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: Uploads
+  version: 1.0.0
+needs:
+  uploads:
+    kind: Telo.DurableDirectory
+  archive:
+    kind: Telo.DurableDirectory
+    parameters: { size: 5Gi, access: shared }

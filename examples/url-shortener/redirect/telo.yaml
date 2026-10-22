@@ -11,7 +11,7 @@ metadata:
 requires:
   # 0.118.0: `site` is a `Telo.PublicUrl` need, a kind an older analyzer does not
   # declare.
-  telo: ">=0.118.0"
+  telo: ">=0.121.0"
 needs:
   # The address the short links are served at, which the importing application
   # forwards from its own root need.
@@ -20,7 +20,7 @@ needs:
 variables:
   dbFile:
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     description: Path to the shared SQLite database file.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA

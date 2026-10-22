@@ -40,7 +40,9 @@ requires:
   # does not export that name it is undefined and a route dies at creation with
   # a TypeError naming this module. Verified by execution: the published 0.107.0
   # tarball exports no such name.
-  telo: ">=0.108.0"
+  # 0.121.0: `Http.Static.root` declares `entry: directory`, which 0.120.1 rejects as
+  # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
+  telo: ">=0.121.0"
 imports:
   # Single source of truth for the returns:/catches: schema. EVERY slot anchors at
   # HttpDispatch.Outcomes/$defs/{Returns,Catches} — Server.notFoundHandler, the
@@ -1039,7 +1041,7 @@ schema:
         directory on the host (files the application writes at runtime) from a
         variable declared `x-telo-type: Telo.HostPath`.
       type: "string"
-      x-telo-type: Telo.HostPath
+      x-telo-type: { name: Telo.HostPath, entry: directory }
       x-telo-eval: compile
     index:
       title: Index

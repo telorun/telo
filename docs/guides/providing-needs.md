@@ -77,10 +77,10 @@ version, never changed:
 |---|---|
 | `path` | The need path: its name beneath each importer's alias, `.`-separated. A `lifecycle: shared` library's needs sit beneath its own name, directly under the root. |
 | `declaredBy` | The module declaring the need. |
-| `type.module`, `type.name` | The need type: the module declaring it, and its name there — `Telo` for a type the kernel declares (`Telo.PublicUrl`, `Telo.PublicHostPattern`). A type's identity does not depend on the module's version. |
+| `type.module`, `type.name` | The need type: the module declaring it, and its name there — `Telo` for a type the kernel declares (`Telo.PublicUrl`, `Telo.PublicHostPattern`, `Telo.DurableDirectory`). A type's identity does not depend on the module's version. |
 | `version` | The version range the fulfilment must be within (`>=16.0.0`), or `null` when the need states none. A consumer of the need reports the real version and the kernel refuses one outside it with `ERR_NEED_UNMET`, naming the variable it was read from. |
 | `features` | The features the fulfilment must carry, `[]` when it asks for none. Checked the same way. |
-| `parameters` | What the need asks of its fulfilment, as the need type's `parameters` schema admits — `{}` when it states none. |
+| `parameters` | What the need asks of its fulfilment, as the need type's `parameters` schema admits, with every default that schema declares filled in — so a host reads `size: 1Gi` from a `Telo.DurableDirectory` that wrote no parameters, and never restates a type's defaults. `{}` when the type declares none. |
 | `optional` | Whether the application runs without it. |
 | `fields.<field>.env` | The one environment variable the field is read from. |
 | `fields.<field>.envSource` | `bound` — named by the application's `env:`; `derived` — from the need path. |
@@ -251,6 +251,89 @@ Set each address need's variable: `TELO_NEED_SITE__URL=http://localhost:8080`,
 `TELO_NEED_ADMIN__URL=http://admin.localhost:8080`, and for a pattern
 `TELO_NEED_TENANTS__PATTERN=http://*.tenants.localhost:8080` — browsers resolve
 `*.localhost` to loopback.
+
+## Durable directories
+
+An application asks for persistent storage on disk as a need of the
+kernel-declared type `Telo.DurableDirectory` (see
+[Writing a need type](/extend/need-types#kernel-declared-durable-directories)).
+Its one field, `path`, is a directory; the application reads it as
+`resources.<need>.path`.
+
+### What the application may rely on
+
+- **`size`** — `parameters.size`, a whole number followed by `Mi`, `Gi` or `Ti`
+  (`512Mi`, `5Gi`, `1Ti`), default `1Gi`. It is the least the application
+  needs: a host may give more, and may refuse a size it cannot give. Nothing
+  measures it; a full directory reaches the application as the operating
+  system's own error (`ENOSPC`). Any other spelling (`5GB`) is refused before
+  the application runs.
+- **`access`** — `single-writer` (default) or `shared`.
+  - `single-writer`: at most one running instance of the application has the
+    directory at any moment, a rollout or a restart included. A host never runs
+    two at once over it, and the application may rely on that — SQLite does.
+  - `shared`: every instance has the directory at once, on different machines.
+    File locking across them is not reliable, so the application coordinates
+    its own writes. SQLite is not safe on a `shared` directory.
+- **What persists** — the contents survive restarts, reloads, new deployments
+  and new versions of the application, for as long as the host keeps the
+  storage. The directory is empty the first time. Nothing here is a backup.
+- **Usable before it is used** — however the path was supplied, the kernel
+  checks that it names a directory the process can write to, and creates it
+  when absent: before any resource initializes for one read from its variable
+  or the state directory below, when the import initializes for one an import
+  supplies field by field, and when it is created for a fulfilment the
+  manifest writes. Otherwise it is refused with `ERR_NEED_DIRECTORY_UNUSABLE`,
+  naming the need, where the path came from and what was wrong — not a
+  directory, not writable, cannot be created — never what the directory holds.
+
+### What a host does
+
+A host supplies a durable directory in one of two ways.
+
+**Per need** — each need gets storage of its own, with its own size and
+access. The host reads `telo needs report -o json`, mounts a volume for each
+`Telo.DurableDirectory`, and sets the variable the report lists for its `path`
+field to the mount (`TELO_NEED_UPLOADS__PATH`, or the name `env:` binds). It
+sets no `TELO_HOST_STATE_DIR`. A renamed need gets a new path and a new
+variable, so the host sees a need it has no storage for; recovering the old
+storage under the new name is the host's job.
+
+**One state directory** — the host sets `TELO_HOST_STATE_DIR` to a directory
+it owns for this one application. Every `Telo.DurableDirectory` whose variable
+is not set is then the directory `<state dir>/needs/<need path>`, the need path
+written `.`-separated (`needs/uploads`, `needs/Orders.uploads`), created at load
+when absent. Nothing is stored beside it, so the same state directory gives the
+same directories on every restart, reload and redeployment.
+
+A state directory serves exactly one application: two applications sharing
+one would read each other's directories. `TELO_HOST_STATE_DIR` is hidden from
+the running application, as a need's variables are, and an application started
+with `App.Instance` does not inherit it.
+
+### Renamed needs under a state directory
+
+Renaming a need, or the import alias it is reached through, gives it a new
+path, and so a new, empty directory. At load, an entry under
+`<state dir>/needs/` that no `Telo.DurableDirectory` need of the application
+names is an orphan:
+
+- when the load would create a fresh directory while an orphan exists, it is
+  refused with `ERR_NEED_ORPHANED` before any resource initializes, naming both
+  paths. Move the old directory to the new path to keep its files, or delete it;
+- otherwise the orphan is reported as a warning (`NEED_ORPHANED`).
+
+Nothing is moved or deleted automatically.
+
+### Locally
+
+Set the need's variable to a directory — `TELO_NEED_UPLOADS__PATH=./data/uploads`,
+read against the working directory — or set the state directory once for
+every need:
+
+```bash
+TELO_HOST_STATE_DIR=./data telo run ./shop
+```
 
 ## See also
 

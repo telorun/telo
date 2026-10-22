@@ -43,6 +43,8 @@ pub struct Definition {
     /// against the same schema, so recompiling per resource pays a JSON Schema
     /// build for something that cannot have changed.
     author_schema: OnceCell<Option<Rc<SchemaValidator>>>,
+    /// Whether the schema declares a host path anywhere, read once.
+    declares_host_path: OnceCell<bool>,
 }
 
 impl Definition {
@@ -67,7 +69,18 @@ impl Definition {
             policy,
             controller: RefCell::new(None),
             author_schema: OnceCell::new(),
+            declares_host_path: OnceCell::new(),
         }
+    }
+
+    /// Whether a resource of this kind can hold a host path, so one that cannot
+    /// walks nothing at creation.
+    pub fn declares_host_path(&self) -> bool {
+        *self.declares_host_path.get_or_init(|| {
+            self.manifest
+                .get("schema")
+                .is_some_and(crate::host_paths::declares_host_path)
+        })
     }
 
     /// The compiled author-facing schema, or `None` when the kind declares none.

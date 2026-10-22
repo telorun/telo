@@ -1,0 +1,7 @@
+modules:
+  modules/fs: Added
+  modules/http-server: Added
+  modules/durable-journal-file: Added
+body: "Directory slots declare entry: directory, so telo check refuses a file wired
+  where a directory is wanted (HOST_PATH_ENTRY_MISMATCH) and the kernel refuses an
+  existing file there when the resource is created. Requires telo 0.121.0."

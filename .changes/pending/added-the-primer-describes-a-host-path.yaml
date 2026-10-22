@@ -1,0 +1,4 @@
+modules:
+  apps/authoring-agent: Added
+body: "The primer describes a host path's entry argument (entry: directory | file),
+  which variables feeding the stdlib's path slots declare."

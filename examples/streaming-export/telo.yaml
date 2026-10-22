@@ -30,7 +30,7 @@ metadata:
 requires:
   # 0.98.0: the database file is a host path, and 0.97.0 refuses the
   # expression at the in-repo sqlite's `file`.
-  telo: ">=0.98.0"
+  telo: ">=0.121.0"
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
   Multipart: oci://ghcr.io/telorun/multipart@0.4.0#sha256-RjPcqJs2rTd4hWLUbQ-SGcqkhYW3GIDCgWbi_bk8kt0
@@ -52,7 +52,7 @@ variables:
   dbFile:
     env: DB_FILE
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: accounts.db
 ---
 kind: SQLite.Connection

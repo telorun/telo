@@ -29,7 +29,8 @@ import {
   observationDeadline,
   needGraphScopeOf,
   needTypeOf,
-  PUBLIC_URL_HOST_VALUES,
+  DURABLE_DIRECTORY_TYPE,
+  STATE_DIR_HOST_VALUE,
   nodeIdFor,
   Loader,
   resolveNeedTable,
@@ -100,6 +101,13 @@ import { createLockedEnv, hostEnv, lockControllerEnv } from "./host-env.js";
 import { setEnvironmentNeeds } from "./controllers/module/environment-needs.js";
 import { needFulfilment, needFulfilmentController, type RedactionHost } from "./need-fulfilment.js";
 import { publicUrlsByPort, resolveAddresses, type ResolvedAddress } from "./public-urls.js";
+import {
+  environmentDirectories,
+  refuseUnusableDirectories,
+  scanStateDirectory,
+  stateDirectoryAnswers,
+} from "./durable-directories.js";
+import { KERNEL_HOST_VALUES } from "./host-values.js";
 
 /** One resolved inbound port of the root Application, as a runner is told it. */
 export interface ResolvedPort {
@@ -161,7 +169,7 @@ import {
 import { NeedObservations, trackNeedObservations } from "./need-observation.js";
 import { observingPointers } from "./need-resolution.js";
 import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-sentinels.js";
-import { refuseRelativeHostPaths } from "./host-paths.js";
+import { refuseMisplacedHostEntries, refuseRelativeHostPaths } from "./host-paths.js";
 import { refuseMalformedFormats } from "./telo-format-results.js";
 import { refuseComputedRefSlots } from "./refuse-computed-ref-slots.js";
 import { resolveBrowserEntryFiles } from "./browser-entry-resolution.js";
@@ -1408,11 +1416,11 @@ export class Kernel implements IKernel {
 
     if (rootApplicationManifest) {
       const environment = this._needTable?.environment ?? [];
-      // The host values that answer the address needs are hidden like a need's
-      // names: they are the kernel's to read, never a controller's.
+      // The host values that answer kernel-declared needs are hidden like a
+      // need's names: they are the kernel's to read, never a controller's.
       this._needEnvKeys = new Set([
         ...environment.flatMap((entry) => Object.values(entry.fields ?? {}).map((field) => field.env)),
-        ...PUBLIC_URL_HOST_VALUES,
+        ...KERNEL_HOST_VALUES,
       ]);
       this._declaredEnvKeys = [
         ...collectDeclaredEnvKeys(rootApplicationManifest as Record<string, any>),
@@ -1433,9 +1441,23 @@ export class Kernel implements IKernel {
         this._applicationHelp = help;
         return;
       }
+      const fromEnvironment = needs ?? new Map<string, Record<string, unknown> | null>();
+      // Every durable directory read from the environment is checked before any
+      // resource initializes: first that the state directory strands no files a
+      // fresh directory would replace, then that each one is usable.
+      const stateAnswers = stateDirectoryAnswers(environment, this.env);
+      const { orphans } = scanStateDirectory(this.env, stateAnswers, this._needTable?.entries ?? []);
+      for (const orphan of orphans) {
+        this.logging.kernelLogger().warn(
+          `${STATE_DIR_HOST_VALUE} holds '${orphan}', which no ${DURABLE_DIRECTORY_TYPE} need of this ` +
+            `application names — left by a renamed need or import alias, or by another application ` +
+            `sharing the state directory. Nothing is moved or deleted.`,
+          { "telo.diagnostic.code": "NEED_ORPHANED" },
+        );
+      }
+      refuseUnusableDirectories(environmentDirectories(environment, fromEnvironment, stateAnswers));
       // A library's need is bound by the import that reaches it; the root's own
       // are bound here, before anything that could read or forward one exists.
-      const fromEnvironment = needs ?? new Map<string, Record<string, unknown> | null>();
       setEnvironmentNeeds(this.rootContext, fromEnvironment);
       for (const entry of environment) {
         if (entry.via) continue;
@@ -2261,10 +2283,10 @@ export class Kernel implements IKernel {
     this.logging
       .kernelLogger()
       .warn(
-        (PUBLIC_URL_HOST_VALUES as readonly string[]).includes(key)
+        KERNEL_HOST_VALUES.includes(key)
           ? `controller read ${through}.${key} — ${key} is a host value the kernel answers the ` +
-            `application's address needs from, hidden from every controller; an address is read ` +
-            `as resources.<need>.url in the module that declares the need.`
+            `application's needs from, hidden from every controller; a need's fields are read as ` +
+            `resources.<need>.<field> in the module that declares it.`
           : `controller read ${through}.${key} — ${key} is a need's environment name, hidden from ` +
             `every controller; the need's fields are read as resources.<need>.<field> in the ` +
             `module that declares it.`,
@@ -2622,6 +2644,14 @@ export class Kernel implements IKernel {
         `${resourceLabel}: ${unbuilt.pointer} is not a ${unbuilt.type}: ${unbuilt.reason}`,
       );
     }
+    // A host path that exists as the other kind of entry than its slot names —
+    // a module file, an expression's result or a variable's value alike.
+    refuseMisplacedHostEntries(
+      expandedResource as Record<string, unknown>,
+      configSchema as Record<string, any>,
+      resourceLabel,
+      schemaForRef,
+    );
     // Validation saw an expression's placeholder; its result is known only now.
     if (compile.length) {
       refuseRelativeHostPaths(

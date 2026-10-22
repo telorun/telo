@@ -84,12 +84,12 @@ export class LocalFileSource implements ManifestSource {
     return null;
   }
 
-  async exists(base: string, relative: string): Promise<boolean> {
+  async entryAt(base: string, relative: string): Promise<"file" | "directory" | undefined> {
     try {
-      await fs.stat(this.locate(base, relative));
-      return true;
+      return (await fs.stat(this.locate(base, relative))).isDirectory() ? "directory" : "file";
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") return undefined;
       throw error;
     }
   }

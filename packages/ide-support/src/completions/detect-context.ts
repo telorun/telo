@@ -113,6 +113,10 @@ export type CompletionCtx =
        *  (`!module-path ./pu|`). */
       type: "module-file";
       names: "file" | "file-or-directory";
+      /** The field the value fills, so a host path's `entry` can narrow the listing. */
+      kind?: string;
+      yamlPath: string[];
+      isItem: boolean;
       /** Text from the start of the value to the cursor. */
       prefix: string;
       replaceRange: ReplaceRange;
@@ -418,6 +422,9 @@ export function detectContext(
       return {
         type: "module-file",
         names,
+        kind: resolved.resourceKind ?? docKind,
+        yamlPath: resolved.path.slice(resolved.resourceDepth ?? 0),
+        isItem: resolved.container === undefined,
         prefix: resolved.prefix ?? "",
         replaceRange: resolved.replaceRange,
       };

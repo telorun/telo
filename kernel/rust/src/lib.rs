@@ -19,6 +19,7 @@ pub mod controllers;
 pub mod directory_lock;
 pub mod error;
 pub mod evaluation_context;
+pub mod host_paths;
 pub mod invocation_contract_binding;
 pub mod invoke_dispatch;
 pub mod kernel;

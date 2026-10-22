@@ -16,6 +16,9 @@ metadata:
         curl -s -XPOST localhost:8850/requests/<id>/approve -H 'content-type: application/json' \
           -d '{"decidedBy":"grace","note":"ok"}'
         curl -s localhost:8850/requests/<id>                  # completed, approved
+requires:
+  # A host-path variable declaring `entry:` needs 0.121.0.
+  telo: ">=0.121.0"
 imports:
   ApprovalApp: ..
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
@@ -31,7 +34,7 @@ variables:
   journal:
     env: EXPENSES_JOURNAL
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: directory }
     default: .telo/expenses
   reviewDeadline:
     env: REVIEW_DEADLINE

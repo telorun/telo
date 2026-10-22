@@ -5,7 +5,6 @@ import {
   normalizeHost,
   parseHostPatternOrigin,
   PUBLIC_HOST_PATTERN_TYPE,
-  PUBLIC_URL_HOST_VALUES,
   PUBLIC_URL_SECONDARY_TEMPLATE_ENV,
   PUBLIC_URL_TEMPLATE_ENV,
   PUBLIC_URL_TYPE,
@@ -259,16 +258,5 @@ export function publicUrlsByPort(
     if (address.type !== PUBLIC_URL_TYPE) continue;
     out.set(address.port, [...(out.get(address.port) ?? []), { need: address.need, host: address.host }]);
   }
-  return out;
-}
-
-/** The environment a started child application inherits: the host values that
- *  answer the parent's addresses are the parent's, never the child's. */
-export function withoutPublicUrlHostValues(
-  env: Record<string, string | undefined>,
-): Record<string, string | undefined> {
-  if (!PUBLIC_URL_HOST_VALUES.some((name) => name in env)) return env;
-  const out = { ...env };
-  for (const name of PUBLIC_URL_HOST_VALUES) delete out[name];
   return out;
 }

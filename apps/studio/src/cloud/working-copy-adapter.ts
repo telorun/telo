@@ -130,8 +130,14 @@ export class WorkingCopyAdapter implements ManifestSource, WorkspaceAdapter {
     });
   }
 
-  async exists(base: string, relative: string): Promise<boolean> {
+  async entryAt(base: string, relative: string): Promise<"file" | "directory" | undefined> {
     const target = this.treePath(pathResolve(base, relative));
-    return target !== null && this.store.exists(target);
+    if (target === null || !(await this.store.exists(target))) return undefined;
+    if (target === "") return "directory";
+    const slash = target.lastIndexOf("/");
+    const parent = slash === -1 ? "" : target.slice(0, slash);
+    const name = target.slice(slash + 1);
+    const entry = (await this.store.list(parent)).find((e) => e.name === name);
+    return entry?.isDirectory ? "directory" : "file";
   }
 }

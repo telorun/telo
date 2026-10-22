@@ -33,7 +33,7 @@ An entry declares **how the value is represented** and nothing about any runtime
 | `live`           | An instance whose consumption has effects, so it is exempt from validation.    |
 | `members`        | Non-live `instance` only: the members a value holds, each a JSON Schema. They are the CEL fields of its type, its object authoring form beside its text, and — through `x-telo-sensitive: true` — what of it is redacted. Its encoding must build a value from them. |
 | `acceptsText`    | Non-live `instance` with an `encoding` only: `{ code }`. A CEL `string` stands at a slot of the type and is read through the encoding when the resource holding it is created, or — at a contract — when the call is dispatched. Every refusal of the type is `code` statically, at every site a literal is written (a resource field, a call's `inputs:`, a schema-derived slot, a need supply, an import's `variables:` / `secrets:`, a `default:`), and `ERR_<code>` at runtime: raised as itself at creation and at an import, carried as an entry inside `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` at a contract boundary and inside `ERR_MANIFEST_VALIDATION_FAILED` at load. |
-| `parameters`     | Named type parameters. Each is optional and defaults to *any*. A parameter's own keys: `name`, `description`, `element` (its argument is what iterating a value yields) and `member` (its argument is a schema the member of that name must satisfy). |
+| `parameters`     | Named type parameters. Each is optional and defaults to *any*. A parameter's own keys: `name`, `description`, `element` (its argument is what iterating a value yields), `member` (its argument is a schema the member of that name must satisfy) and `hostEntry` (its argument is a token, `file` or `directory`, saying what a host path names — only on a `fromHost` type, at most one). |
 | `description`    | What `telo cel types` and the generated docs section print.                    |
 
 `binding` is deliberately **not** a constructor name — that is a fact about one
@@ -75,6 +75,33 @@ at all until `!module-path` resolves it to one. A host path is extended with
 `.joinPath('sub/dir')`, which keeps it a host path and joins with the separator of
 the machine running it; `+` would make it a plain string, which is refused where
 a host path is required.
+
+### What a host path names
+
+A host-path slot may say what its path names when something is there:
+`x-telo-type: { name: Telo.HostPath, entry: directory }` (or `entry: file`).
+The parameter is found by its `hostEntry` flag, never by its name, and its
+argument is a token from a closed vocabulary — `directory` names a directory,
+`file` anything that is not one, links followed — which each runtime maps to its
+own filesystem query (one it cannot map is a startup error, as for an anchor).
+Omitted means either, in both directions, and two arguments compare by equality.
+Existence is not part of the type: an absent path is never refused by it, since
+what uses the path may create it.
+
+It is checked wherever the kind of entry is known:
+
+- a `!module-path` the module ships, whose entry the loader records, at a slot
+  naming the other kind — `HOST_PATH_ENTRY_MISMATCH`;
+- a plain chain from a variable declaring the other `entry`, at a resource field
+  (`HOST_PATH_ENTRY_MISMATCH`), at an import's `variables:` against the library's
+  input (`HOST_PATH_ENTRY_MISMATCH`), and at a call's `inputs:`
+  (`CEL_TYPE_ARGUMENT_MISMATCH`);
+- an existing path of the other kind, when the resource holding it is created
+  (`ERR_HOST_PATH_ENTRY_MISMATCH`), and when an Application variable or secret
+  declaring `entry` is read at load (inside `ERR_MANIFEST_VALIDATION_FAILED`,
+  naming the variable and its environment variable) — and a path the filesystem
+  will not answer for the same way (`ERR_HOST_PATH_UNREADABLE`);
+- a token outside the vocabulary is `X_TELO_TYPE_ARGUMENT_INVALID`.
 
 ## Types with members
 

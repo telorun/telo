@@ -16,8 +16,10 @@ function source(files: Record<string, string>, present: string[], canAnswer = tr
     resolveRelative: (base, relative) => dirOf(base) + relative.replace(/^\.\//, ""),
     ...(canAnswer
       ? {
-          async exists(base: string, relative: string) {
-            return present.includes(dirOf(base) + relative);
+          async entryAt(base: string, relative: string) {
+            const path = dirOf(base) + relative;
+            if (present.includes(path)) return "file" as const;
+            return present.some((p) => p.startsWith(`${path}/`)) ? ("directory" as const) : undefined;
           },
         }
       : {}),

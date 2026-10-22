@@ -7,7 +7,7 @@ variables:
   journalDir:
     env: JOURNAL_DIR
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: directory }
     default: .telo/durable     # resolved against the working directory
 ---
 kind: Journal.Journal
@@ -15,8 +15,11 @@ metadata: { name: runs }
 directory: !cel "variables.journalDir"
 ```
 
-`directory` is a `Telo.HostPath`: an absolute path, so a relative literal is
-refused (`HOST_PATH_RELATIVE`) — read it from a host-path variable, as above.
+`directory` is a `Telo.HostPath` declaring `entry: directory`: an absolute path,
+so a relative literal is refused (`HOST_PATH_RELATIVE`) — read it from a
+host-path variable, as above — and a file there is refused
+(`HOST_PATH_ENTRY_MISMATCH`, or `ERR_HOST_PATH_ENTRY_MISMATCH` when the journal is
+created).
 
 Point a [`DurableLocal.Workflow`](../durable-local/README.md) at it and its runs survive the process.
 

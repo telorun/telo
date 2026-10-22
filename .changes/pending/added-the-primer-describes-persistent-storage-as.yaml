@@ -1,0 +1,4 @@
+modules:
+  apps/authoring-agent: Added
+body: The primer describes persistent storage as a Telo.DurableDirectory need (size,
+  access, a file in it through path.joinPath) and its two forwarding refusals.

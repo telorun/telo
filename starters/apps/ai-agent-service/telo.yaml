@@ -24,6 +24,9 @@ metadata:
         curl -s -XPOST localhost:8103/conversations/c1/messages -H 'content-type: application/json' \
           -d '{"message":"Where is my order A-1001?"}'
         curl -s localhost:8103/conversations/c1/messages
+requires:
+  # A host-path variable declaring `entry:` needs 0.121.0.
+  telo: ">=0.121.0"
 imports:
   AgentApp: oci://ghcr.io/telorun/blueprints/agent-app@0.3.4#sha256-uGcDpwSm0osPnidgDHWWv95SYyg6zsks0Twug5G4xhA
   # The same versions the blueprint itself imports.
@@ -58,12 +61,12 @@ variables:
   history:
     env: CONVERSATIONS_FILE
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: .telo/shop-conversations.sqlite
   shopFile:
     env: SHOP_FILE
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: shop.db
 ---
 # The shop's own data: what the tools read and write. It is a separate file

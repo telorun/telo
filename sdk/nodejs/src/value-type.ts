@@ -64,8 +64,18 @@ export interface ValueTypeParameter {
    *  member's value must satisfy, while the member's CEL type stays what `members`
    *  declares. Only on an entry declaring `members`. */
   readonly member?: string;
+  /** This parameter's argument is a TOKEN from {@link HOST_ENTRY_KINDS} saying what
+   *  a host path names when something is there — only on a `fromHost` entry, at
+   *  most one per entry. Found by this flag, never by the parameter's name. */
+  readonly hostEntry?: boolean;
   readonly description?: string;
 }
+
+/** The closed vocabulary of a host-entry argument: `directory` names a directory,
+ *  `file` anything that is not one, links followed. Each runtime maps a token to
+ *  its own filesystem query; a runtime that cannot map one fails at startup. */
+export const HOST_ENTRY_KINDS = ["file", "directory"] as const;
+export type HostEntryKind = (typeof HOST_ENTRY_KINDS)[number];
 
 /** One value type, exactly as its entry file declares it. */
 export interface ValueTypeEntry {
@@ -341,18 +351,28 @@ function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
       throw new ValueTypeEntryError(file, `parameters[${i}] must be a mapping`);
     }
     for (const key of Object.keys(entry)) {
-      if (key !== "name" && key !== "description" && key !== "element" && key !== "member") {
+      if (
+        key !== "name" &&
+        key !== "description" &&
+        key !== "element" &&
+        key !== "member" &&
+        key !== "hostEntry"
+      ) {
         throw new ValueTypeEntryError(file, `parameters[${i}] has no key '${key}'`);
       }
     }
     if (entry.element !== undefined && typeof entry.element !== "boolean") {
       throw new ValueTypeEntryError(file, `parameters[${i}].element must be a boolean when present`);
     }
+    if (entry.hostEntry !== undefined && typeof entry.hostEntry !== "boolean") {
+      throw new ValueTypeEntryError(file, `parameters[${i}].hostEntry must be a boolean when present`);
+    }
     const name = requireString(file, entry, "name");
     return {
       name,
       ...(entry.element === true ? { element: true as const } : {}),
       ...(entry.member === undefined ? {} : { member: requireString(file, entry, "member") }),
+      ...(entry.hostEntry === true ? { hostEntry: true as const } : {}),
       ...(entry.description === undefined
         ? {}
         : { description: requireString(file, entry, "description") }),
@@ -363,6 +383,9 @@ function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
   // first match and would silently pick one.
   if (params.filter((p) => p.element).length > 1) {
     throw new ValueTypeEntryError(file, "at most one parameter may declare 'element'");
+  }
+  if (params.filter((p) => p.hostEntry).length > 1) {
+    throw new ValueTypeEntryError(file, "at most one parameter may declare 'hostEntry'");
   }
   return params;
 }
@@ -475,6 +498,9 @@ export function parseValueTypeEntry(file: string, data: unknown): ValueTypeEntry
   const members = readMembers(file, data, representation);
   const acceptsText = readAcceptsText(file, data, representation);
   const parameters = readParameters(file, data.parameters);
+  if (parameters.some((p) => p.hostEntry) && data.fromHost === undefined) {
+    throw new ValueTypeEntryError(file, "'hostEntry' belongs to a parameter of a type declaring 'fromHost'");
+  }
   for (const parameter of parameters) {
     if (parameter.member !== undefined && !(members && parameter.member in members)) {
       throw new ValueTypeEntryError(
@@ -636,9 +662,15 @@ export function readValueTypeSlot(schema: unknown): ValueTypeSlot | undefined {
   }
   if (isPlainObject(raw)) {
     const name = typeof raw.name === "string" ? raw.name : "";
+    const entry = VALUE_TYPES.get(name);
     const args: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(raw)) {
       if (key === "name") continue;
+      // A host-entry argument is a token, never a schema.
+      if (entry?.parameters.some((p) => p.hostEntry && p.name === key)) {
+        args[key] = value;
+        continue;
+      }
       // A bare NAME as an argument is sugar for a schema node carrying only that
       // annotation, so `of: Telo.Bytes` and `of: { x-telo-type: Telo.Bytes }`
       // are one thing. Normalized HERE, in the single reader, so no consumer
@@ -646,9 +678,24 @@ export function readValueTypeSlot(schema: unknown): ValueTypeSlot | undefined {
       // string against a schema and quietly conclude nothing.
       args[key] = typeof value === "string" ? { [X_TELO_TYPE]: value } : value;
     }
-    return { name, entry: VALUE_TYPES.get(name), args };
+    return { name, entry, args };
   }
   return { name: "", entry: undefined, args: {} };
+}
+
+/** The host-entry parameter of a slot's declared type, when it has one. */
+export function hostEntryParameter(slot: ValueTypeSlot | undefined): ValueTypeParameter | undefined {
+  return slot?.entry?.parameters.find((p) => p.hostEntry);
+}
+
+/** What a host-path slot says its path names — `file` or `directory` — or
+ *  undefined when it says nothing (or something outside the vocabulary, which
+ *  `X_TELO_TYPE_ARGUMENT_INVALID` reports). */
+export function hostEntryOf(schema: unknown): HostEntryKind | undefined {
+  const slot = readValueTypeSlot(schema);
+  const parameter = hostEntryParameter(slot);
+  const token = parameter ? slot!.args[parameter.name] : undefined;
+  return (HOST_ENTRY_KINDS as readonly unknown[]).includes(token) ? (token as HostEntryKind) : undefined;
 }
 
 /** The entry a schema node declares, or undefined. The common read. */

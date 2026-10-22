@@ -55,8 +55,17 @@ pub struct Parameter {
     /// The member this parameter's argument constrains — a schema the member's value
     /// must satisfy. Only on an entry declaring `members`.
     pub member: Option<String>,
+    /// This parameter's argument is a token from [`HOST_ENTRY_KINDS`] saying what
+    /// a host path names when something is there — only on a `fromHost` entry, at
+    /// most one per entry. Found by this flag, never by the parameter's name.
+    pub host_entry: bool,
     pub description: Option<String>,
 }
+
+/// The closed vocabulary of a host-entry argument: `directory` names a directory,
+/// `file` anything that is not one, links followed. Each runtime maps a token to
+/// its own filesystem query.
+pub const HOST_ENTRY_KINDS: &[&str] = &["file", "directory"];
 
 /// One value type, exactly as its entry file declares it.
 #[derive(Debug, Clone)]
@@ -270,7 +279,7 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
                     if let Some(map) = item.as_object() {
                         for key in map.keys() {
                             assert!(
-                                matches!(key.as_str(), "name" | "description" | "element" | "member"),
+                                matches!(key.as_str(), "name" | "description" | "element" | "member" | "hostEntry"),
                                 "Invalid value-type entry '{file}': a parameter has no key '{key}'"
                             );
                         }
@@ -288,6 +297,13 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
                         .and_then(Value::as_bool)
                         .unwrap_or(false),
                     member: item.get("member").and_then(Value::as_str).map(str::to_owned),
+                    host_entry: match item.get("hostEntry") {
+                        None => false,
+                        Some(Value::Bool(flag)) => *flag,
+                        Some(_) => panic!(
+                            "Invalid value-type entry '{file}': a parameter's 'hostEntry' must be a boolean when present"
+                        ),
+                    },
                     description: item
                         .get("description")
                         .and_then(Value::as_str)
@@ -306,6 +322,14 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
     // first.
     if parameters.iter().filter(|p: &&Parameter| p.element).count() > 1 {
         panic!("Invalid value-type entry '{file}': at most one parameter may declare 'element'");
+    }
+    // A host-entry token says what a host path names, so it belongs to a host
+    // path alone, and two would make "what this path names" ambiguous.
+    if parameters.iter().any(|p| p.host_entry) && from_host.is_none() {
+        panic!("Invalid value-type entry '{file}': 'hostEntry' belongs to a parameter of a type declaring 'fromHost'");
+    }
+    if parameters.iter().filter(|p: &&Parameter| p.host_entry).count() > 1 {
+        panic!("Invalid value-type entry '{file}': at most one parameter may declare 'hostEntry'");
     }
 
     // `members` and `acceptsText`, by the Node reader's rules: an entry refused on one
@@ -418,6 +442,34 @@ pub fn declared_name(schema: &Value) -> Option<&str> {
 /// The entry a schema node declares, or `None`.
 pub fn value_type_of(schema: &Value) -> Option<&'static ValueType> {
     value_types().get(declared_name(schema)?)
+}
+
+/// What a host-path slot says its path names — a token of [`HOST_ENTRY_KINDS`] —
+/// or `None` when it says nothing, or something outside the vocabulary (which the
+/// analyzer reports).
+pub fn host_entry_of(schema: &Value) -> Option<&'static str> {
+    let entry = value_type_of(schema)?;
+    let parameter = entry.parameters.iter().find(|p| p.host_entry)?;
+    let token = schema.get(X_TELO_TYPE)?.as_object()?.get(&parameter.name)?.as_str()?;
+    HOST_ENTRY_KINDS.iter().copied().find(|kind| *kind == token)
+}
+
+/// The `fromHost` anchor ([`HOST_ANCHORS`]) of the type a schema node declares,
+/// or `None`. Its presence makes the node a host path.
+pub fn host_anchor_of(schema: &Value) -> Option<&'static str> {
+    value_type_of(schema)?.from_host.as_deref()
+}
+
+/// True when `text` is an absolute path on SOME host: POSIX `/…`, a drive letter
+/// (`C:\…`, `C:/…`) or a UNC share (`\\server\…`). Host-neutral on purpose, so a
+/// manifest is judged alike wherever it is checked or run.
+pub fn is_absolute_host_path(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    match bytes {
+        [b'/', ..] | [b'\\', b'\\', ..] => true,
+        [drive, b':', b'\\' | b'/', ..] => drive.is_ascii_alphabetic(),
+        _ => false,
+    }
 }
 
 /// True when the node declares a type represented as a runtime instance — the
@@ -589,5 +641,41 @@ mod tests {
         assert!(is_bytes_slot(&json!({ "x-telo-type": "Telo.Bytes" })));
         assert!(!is_bytes_slot(&json!({ "x-telo-type": "Telo.Stream" })));
         assert!(!is_bytes_slot(&json!({ "type": "string" })));
+    }
+
+    #[test]
+    #[should_panic(expected = "'hostEntry' must be a boolean when present")]
+    fn a_host_entry_flag_that_is_not_a_boolean_is_refused() {
+        read_entry(
+            "host-entry-text.json",
+            &json!({
+                "name": "Telo.WrongPath",
+                "representation": "json",
+                "base": "string",
+                "fromHost": "working-directory",
+                "parameters": [{ "name": "entry", "hostEntry": "yes" }],
+                "description": "x"
+            }),
+        );
+    }
+
+    #[test]
+    fn a_host_path_node_names_its_anchor() {
+        assert_eq!(host_anchor_of(&json!({ "x-telo-type": "Telo.HostPath" })), Some("working-directory"));
+        assert_eq!(
+            host_anchor_of(&json!({ "x-telo-type": { "name": "Telo.HostPath", "entry": "file" } })),
+            Some("working-directory")
+        );
+        assert_eq!(host_anchor_of(&json!({ "x-telo-type": "Telo.Url" })), None);
+    }
+
+    #[test]
+    fn an_absolute_path_is_absolute_on_some_host() {
+        for text in ["/srv/data", "C:\\data", "c:/data", "\\\\server\\share"] {
+            assert!(is_absolute_host_path(text), "{text}");
+        }
+        for text in ["data", "./data", "../data", "C:data", "", ":memory:"] {
+            assert!(!is_absolute_host_path(text), "{text}");
+        }
     }
 }

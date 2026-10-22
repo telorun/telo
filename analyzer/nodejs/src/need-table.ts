@@ -36,6 +36,11 @@ import type { ReachSite } from "./reference-reach.js";
 import type { NeedConstraint } from "./ref-slot.js";
 import { isUnsatisfiable, parseVersionRange, rangeWithin, type VersionRange } from "./version-range.js";
 import { isAddressNeedType, PUBLIC_URL_TYPE } from "./public-address.js";
+import {
+  directoryForwardRefusal,
+  DURABLE_DIRECTORY_TYPE,
+  durableDirectoryParameters,
+} from "./durable-directory.js";
 
 /**
  * THE NEED TABLE — every need of a loaded application, where it sits in the
@@ -581,6 +586,7 @@ function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report):
     if (!target) continue;
     checkSupply(graph, module, imp, target, report);
   }
+  checkDirectoriesForwardedOnce(graph, module, report);
 }
 
 function checkParameters(
@@ -985,6 +991,67 @@ function checkSupply(
           `${needFeatures(need).map((f) => `'${f}'`).join(", ")}, and '${source}' does not ask for ` +
           `${missing.map((f) => `'${f}'`).join(", ")}. Add ${missing.length === 1 ? "it" : "them"} to its 'features:'.`,
         { ...anchor, path },
+      );
+    }
+    if (need.type === DURABLE_DIRECTORY_TYPE) {
+      const why = directoryForwardRefusal(
+        durableDirectoryParameters(shape, ownNeed.parameters),
+        durableDirectoryParameters(shape, need.parameters),
+      );
+      if (why) {
+        report(
+          module,
+          "NEED_FORWARD_INCOMPATIBLE",
+          `Import '${imp.alias}': need '${key}' of module '${target.name}' cannot be supplied by ` +
+            `'${source}': ${why}. Change the parameters of '${source}', or supply '${key}' another way.`,
+          { ...anchor, path },
+        );
+      }
+    }
+  }
+}
+
+/**
+ * One durable directory — a need or a fulfilment of the module — forwarded whole
+ * to two or more needs would have two libraries writing over each other's files,
+ * so it is refused at every supply after the first, each naming every target. A
+ * `shared` library's need is one need however many imports reach it.
+ */
+function checkDirectoriesForwardedOnce(graph: NeedGraph, module: NeedGraphModule, report: Report): void {
+  const forwards = new Map<string, Array<{ imp: NeedGraphImport; key: string; target: string }>>();
+  for (const imp of module.imports) {
+    const target = imp.target ? graph.modules.get(imp.target) : undefined;
+    if (!target) continue;
+    for (const [key, value] of Object.entries(imp.supplied)) {
+      const supply = needSupplyOf(value);
+      if (supply.form !== "whole") continue;
+      if (supply.target.alias !== undefined && supply.target.alias !== "Self") continue;
+      const name = supply.target.name;
+      const type =
+        module.needs.find((n) => n.name === name)?.type ??
+        module.declarations?.find((d) => d.name === name)?.type;
+      if (type !== DURABLE_DIRECTORY_TYPE) continue;
+      const label = target.shared ? `${target.name}.${key}` : `${imp.alias}.${key}`;
+      const sites = forwards.get(name) ?? [];
+      if (!sites.some((site) => site.target === label)) sites.push({ imp, key, target: label });
+      forwards.set(name, sites);
+    }
+  }
+  for (const [name, sites] of forwards) {
+    if (sites.length < 2) continue;
+    const targets = sites.map((site) => `'${site.target}'`).join(", ");
+    for (const site of sites.slice(1)) {
+      report(
+        module,
+        "NEED_DIRECTORY_FORWARDED_TWICE",
+        `Durable directory '${name}' is forwarded whole to ${sites.length} needs — ${targets} — and ` +
+          `each would write over the others' files. Give each its own directory; a library that ` +
+          `must share one with another declares that in one library, not by forwarding.`,
+        {
+          manifest: site.imp.manifest,
+          resource: { kind: "Telo.Import", name: site.imp.alias },
+          path: `needs.${site.key}`,
+        },
       );
     }
   }

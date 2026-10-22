@@ -251,6 +251,8 @@ import { validateInputDefaults } from "./validate-input-defaults.js";
 import { validateUntaggedInterpolation } from "./untagged-interpolation.js";
 import {
   alsoAccepts,
+  describeHostEntry,
+  hostEntryAt,
   HOST_PATH_SOURCES,
   holdsHostPath,
   holdsOnlyConstants,
@@ -258,6 +260,7 @@ import {
   leadingRelativeLiteral,
 } from "./host-path-slot.js";
 import { validateImportHostPaths } from "./validate-import-host-paths.js";
+import { moduleFileEntryMismatches } from "./validate-host-path-entries.js";
 import { validateImportInputs } from "./validate-import-inputs.js";
 import { importInputsJoinSchema } from "./import-inputs.js";
 import { validateModuleMetadata } from "./validate-module-metadata.js";
@@ -2968,6 +2971,15 @@ export class StaticAnalyzer {
           }
         }
         const issues = [...ajvIssues, ...valueSchemaIssues];
+        // A module file named at a host-path slot that says what the path
+        // names, where the loader found the other kind of entry.
+        if (!ownModule || rootModules.has(ownModule)) {
+          diagnostics.push(
+            ...moduleFileEntryMismatches(m as ResourceManifest, (path) =>
+              navigateSchemaToExprPath(projected, path),
+            ),
+          );
+        }
         // WHY A FIELD THIS KIND EXISTS TO SUPPLY IS STILL REQUIRED OF ITS
         // CONSUMER. A child that `extends` and declares no `base:` is authored
         // against merge(parent, own), so the parent's `required` stays on the
@@ -4416,6 +4428,25 @@ export class StaticAnalyzer {
             `absolute one.`,
           data,
         };
+      }
+      // A host path declared to name one kind of entry, read where the other is
+      // wanted, is refused by what it names; at a call site the generic argument
+      // comparison below reports it as the call's argument mismatch.
+      if (slot.callTarget === undefined && holdsHostPath(target) && holdsHostPath(produced)) {
+        const wanted = hostEntryAt(target);
+        const declared = hostEntryAt(produced);
+        if (wanted !== undefined && declared !== undefined && wanted !== declared) {
+          return {
+            severity: DiagnosticSeverity.Error,
+            code: "HOST_PATH_ENTRY_MISMATCH",
+            source: SOURCE,
+            message:
+              `${slot.resource.kind}/${slot.resource.name}: '${slot.path}' takes the path of ` +
+              `${describeHostEntry(wanted)}, but '${expression.trim()}' is declared to name ` +
+              `${describeHostEntry(declared)} (entry: ${declared}).`,
+            data,
+          };
+        }
       }
       const { compatible, issues, conflicts } = checkSchemaCompatibility(
         produced,

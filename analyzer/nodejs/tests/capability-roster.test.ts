@@ -62,7 +62,16 @@ describe("the roster", () => {
       (d) => d.metadata.name,
     );
     expect(marked.sort()).toEqual(
-      ["ConsoleSink", "FileSink", "Function", "JsonSchema", "LogTraceSink", "PublicHostPattern", "PublicUrl"].sort(),
+      [
+        "ConsoleSink",
+        "DurableDirectory",
+        "FileSink",
+        "Function",
+        "JsonSchema",
+        "LogTraceSink",
+        "PublicHostPattern",
+        "PublicUrl",
+      ].sort(),
     );
   });
 });

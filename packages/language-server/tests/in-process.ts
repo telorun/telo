@@ -26,8 +26,10 @@ class DiskSource implements ManifestSource {
   resolveRelative(base: string, relative: string): string {
     return resolve(dirname(base), relative);
   }
-  async exists(base: string, relative: string) {
-    return existsSync(resolve(dirname(base), relative));
+  async entryAt(base: string, relative: string) {
+    const path = resolve(dirname(base), relative);
+    if (!existsSync(path)) return undefined;
+    return statSync(path).isDirectory() ? ("directory" as const) : ("file" as const);
   }
   async resolveOwnerOf(file: string) {
     for (let dir = dirname(file); ; dir = dirname(dir)) {

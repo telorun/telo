@@ -11,12 +11,21 @@
  *    `x-telo-type` keyword at validation; a compile-eval expression is only a
  *    placeholder then, so its RESULT is checked here, once it exists.
  */
+import fs from "node:fs";
 import path from "node:path";
-import { isAbsoluteHostPath, RuntimeError, VALUE_TYPES } from "@telorun/sdk";
+import {
+  HOST_ENTRY_KINDS,
+  isAbsoluteHostPath,
+  RuntimeError,
+  VALUE_TYPES,
+  type HostEntryKind,
+} from "@telorun/sdk";
 import {
   decodePlainLiterals,
+  describeHostEntry,
   type ExternalSchemaResolver,
   hostAnchorFor,
+  hostEntryAt,
   hostPathRelativeMessage,
   mapTextLeaves,
 } from "@telorun/analyzer";
@@ -39,6 +48,127 @@ for (const entry of VALUE_TYPES.values()) {
         `kernel cannot resolve (it knows: ${Object.keys(HOST_ANCHOR_RESOLVERS).join(", ")}).`,
     );
   }
+}
+
+/** Each host-entry token mapped to this runtime's filesystem query, links followed. */
+const HOST_ENTRY_QUERIES: Readonly<Record<string, (stat: fs.Stats) => boolean>> = {
+  file: (stat) => !stat.isDirectory(),
+  directory: (stat) => stat.isDirectory(),
+};
+
+// A token this runtime cannot map would leave every slot declaring it unchecked.
+for (const kind of HOST_ENTRY_KINDS) {
+  if (!(kind in HOST_ENTRY_QUERIES)) {
+    throw new Error(`Host-entry '${kind}' has no filesystem query in this kernel.`);
+  }
+}
+
+/** What is at an absolute path: the token whose query it answers, undefined
+ *  when nothing is there, or why the filesystem would not say. */
+function hostEntryAtPath(text: string): HostEntryKind | { unreadable: string } | undefined {
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(text);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+    return { unreadable: code ?? (error as Error).message };
+  }
+  return HOST_ENTRY_KINDS.find((kind) => HOST_ENTRY_QUERIES[kind]!(stat));
+}
+
+/** One host path in a value whose slot says what it names, and that is the
+ *  other kind of entry — or that the filesystem would not tell about. */
+export interface HostEntryMismatch {
+  pointer: string;
+  text: string;
+  wanted: HostEntryKind;
+  /** What is there, when the path could be read. */
+  found?: HostEntryKind;
+  /** Why the path could not be read (`EACCES`), when it could not. */
+  unreadable?: string;
+}
+
+/**
+ * Every absolute host path in `value` whose slot declares what it names
+ * (`entry: file | directory`) and that exists as the other kind, or cannot be
+ * read. An absent path is never one: what uses it may create it.
+ */
+export function hostEntryMismatches(
+  value: unknown,
+  schema: Record<string, any>,
+  external?: ExternalSchemaResolver,
+): HostEntryMismatch[] {
+  const out: HostEntryMismatch[] = [];
+  mapTextLeaves(
+    value,
+    schema,
+    (slot, text, pointer) => {
+      if (hostAnchorFor(slot, text) === undefined || !isAbsoluteHostPath(text)) return text;
+      const wanted = hostEntryAt(slot);
+      if (wanted === undefined) return text;
+      const found = hostEntryAtPath(text);
+      if (typeof found === "object") out.push({ pointer, text, wanted, unreadable: found.unreadable });
+      else if (found !== undefined && found !== wanted) out.push({ pointer, text, wanted, found });
+      return text;
+    },
+    external,
+  );
+  return out;
+}
+
+const declaringSchemas = new WeakMap<object, boolean>();
+
+/** Whether a schema — through every reference it makes — declares a host path's
+ *  entry anywhere, so a kind declaring none walks nothing at creation. */
+function declaresHostEntry(schema: Record<string, any>, external?: ExternalSchemaResolver): boolean {
+  const known = declaringSchemas.get(schema);
+  if (known !== undefined) return known;
+  const seen = new Set<object>();
+  const visit = (node: unknown): boolean => {
+    if (!node || typeof node !== "object" || seen.has(node)) return false;
+    seen.add(node);
+    if (!Array.isArray(node)) {
+      const record = node as Record<string, unknown>;
+      if (hostEntryAt(record) !== undefined) return true;
+      if (typeof record.$ref === "string" && !record.$ref.startsWith("#") && visit(external?.(record.$ref))) {
+        return true;
+      }
+    }
+    return Object.values(node).some(visit);
+  };
+  const declares = visit(schema);
+  declaringSchemas.set(schema, declares);
+  return declares;
+}
+
+/** How a mismatch reads after its subject. */
+export function hostEntryMismatchText(mismatch: HostEntryMismatch): string {
+  const wanted = `takes the path of ${describeHostEntry(mismatch.wanted)}`;
+  return mismatch.found === undefined
+    ? `${wanted}, but what is at '${mismatch.text}' cannot be read (${mismatch.unreadable})`
+    : `${wanted}, but '${mismatch.text}' is ${describeHostEntry(mismatch.found)}`;
+}
+
+/**
+ * Refuse a host path a resource holds — written as a module file, computed by a
+ * compile-eval expression, or read from a variable — that exists and is the
+ * other kind of entry than its slot names (`ERR_HOST_PATH_ENTRY_MISMATCH`), or
+ * that the filesystem would not tell about (`ERR_HOST_PATH_UNREADABLE`).
+ */
+export function refuseMisplacedHostEntries(
+  resource: Record<string, unknown>,
+  schema: Record<string, any>,
+  label: string,
+  external?: ExternalSchemaResolver,
+): void {
+  if (!declaresHostEntry(schema, external)) return;
+  const [mismatch] = hostEntryMismatches(resource, schema, external);
+  if (!mismatch) return;
+  throw new RuntimeError(
+    mismatch.found === undefined ? "ERR_HOST_PATH_UNREADABLE" : "ERR_HOST_PATH_ENTRY_MISMATCH",
+    `${label}: '${mismatch.pointer}' ${hostEntryMismatchText(mismatch)}.`,
+  );
 }
 
 /**

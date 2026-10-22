@@ -92,9 +92,11 @@ export class TauriFsAdapter implements ManifestSource, WorkspaceAdapter {
     });
   }
 
-  async exists(base: string, relative: string): Promise<boolean> {
-    const { exists } = await import("@tauri-apps/plugin-fs");
-    return exists(pathResolve(base, relative));
+  async entryAt(base: string, relative: string): Promise<"file" | "directory" | undefined> {
+    const { exists, stat } = await import("@tauri-apps/plugin-fs");
+    const target = pathResolve(base, relative);
+    if (!(await exists(target))) return undefined;
+    return (await stat(target)).isDirectory ? "directory" : "file";
   }
 }
 

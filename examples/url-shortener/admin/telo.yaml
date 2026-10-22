@@ -11,11 +11,11 @@ metadata:
 requires:
   # 0.98.0: `dbFile` is a `Telo.HostPath`, which an older analyzer rejects as
   # X_TELO_TYPE_UNKNOWN.
-  telo: ">=0.98.0"
+  telo: ">=0.121.0"
 variables:
   dbFile:
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     description: Path to the shared SQLite database file.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA

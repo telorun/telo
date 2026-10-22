@@ -21,11 +21,12 @@ import type {
 import { RuntimeError } from "@telorun/sdk";
 import { parseApplicationArguments } from "./application-arguments.js";
 import { create as createJsonSchemaType } from "./controllers/type/json-schema-controller.js";
-import { decodeHostValue } from "./host-paths.js";
+import { decodeHostValue, hostEntryMismatches, hostEntryMismatchText } from "./host-paths.js";
 import { acceptsBy, membersEntryText, membersRefusalEntry, settleMembersValue } from "./members-values.js";
 import { needRefusalError } from "./need-refusals.js";
 import { SchemaValidator } from "./schema-validator.js";
 import { publicUrlsAwaitingPorts, withDerivedPublicUrls } from "./public-urls.js";
+import { withStateDirectories } from "./durable-directories.js";
 import {
   type ApplicationInputResolver,
   type UnresolvedApplicationInput,
@@ -264,9 +265,10 @@ function readApplicationInputs(
   reading.result = { variables, secrets, ports };
   if (needs) {
     // A `Telo.PublicUrl` nothing else supplies is answered from the host's
-    // templates, read as if its env name held the derived address; one whose
+    // templates, and a `Telo.DurableDirectory` from the host's state directory,
+    // each read as if its env name held the derived value; an address whose
     // port has no value yet waits for it rather than being asked.
-    const derived = withDerivedPublicUrls(needs.entries, env, ports);
+    const derived = withStateDirectories(needs.entries, withDerivedPublicUrls(needs.entries, env, ports));
     const awaiting = publicUrlsAwaitingPorts(needs.entries, env, ports);
     reading.result.needs = resolveNeedEnvironment(needs, derived, validator, findings, reading, awaiting);
   }
@@ -757,7 +759,9 @@ function resolveBlock(
       // Decoded on a copy: the default is the manifest's own literal.
       const fallback = decodeFromOutside(structuredClone(entry.default), residual, validator);
       const validation =
-        membersEnvRefusal(fallback, residual, validator) ?? validateResidual(fallback, residual, validator);
+        membersEnvRefusal(fallback, residual, validator) ??
+        validateResidual(fallback, residual, validator) ??
+        hostEntryRefusal(fallback, residual, validator);
       if (validation) findings.fail(`${name}: ${validation}`);
       else out[name] = fallback;
       continue;
@@ -787,10 +791,32 @@ function resolveBlock(
       report(`${name}: ${validation}`);
       continue;
     }
+    const misplaced = hostEntryRefusal(coerced, residual, validator);
+    if (misplaced) {
+      report(`${name}: ${read.source}: ${misplaced}`);
+      continue;
+    }
 
     out[name] = coerced;
   }
   return out;
+}
+
+/** Why a value's host path that exists is not the entry its declaration names
+ *  (`entry: file | directory`), or cannot be read, or undefined. Never the value of a secret: a
+ *  host path is a location, which the message names. */
+function hostEntryRefusal(
+  value: unknown,
+  residual: Record<string, unknown>,
+  validator: SchemaValidator,
+): string | undefined {
+  const [mismatch] = hostEntryMismatches(
+    value,
+    residual,
+    (ref) => validator.getSchema(ref) as Record<string, any> | undefined,
+  );
+  if (!mismatch) return undefined;
+  return `${mismatch.pointer ? `'${mismatch.pointer}' ` : "it "}${hostEntryMismatchText(mismatch)}`;
 }
 
 /** A `variables:` / `secrets:` / `ports:` entry as a host is asked for it. */

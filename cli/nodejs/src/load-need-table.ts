@@ -6,6 +6,7 @@ import {
   type AnalysisDiagnostic,
   type LoadedGraph,
   type NeedTable,
+  type NeedTypeShape,
 } from "@telorun/analyzer";
 import { loadAnalyzedGraph, printRefusals } from "./analyzed-graph.js";
 import type { Logger } from "./logger.js";
@@ -20,6 +21,8 @@ export interface LoadedNeedTable {
   /** The root `Telo.Application` document. */
   root: Record<string, any>;
   table: NeedTable;
+  /** The need type a canonical kind registers, in the graph's registry. */
+  needType(kind: string): NeedTypeShape | undefined;
 }
 
 /**
@@ -48,12 +51,8 @@ export async function loadNeedTable(
     return undefined;
   }
 
-  const table = resolveNeedTable(
-    needGraphFromLoadedGraph(
-      graph,
-      needGraphScopeOf(registry, root.metadata?.name as string | undefined),
-    ),
-  );
+  const scope = needGraphScopeOf(registry, root.metadata?.name as string | undefined);
+  const table = resolveNeedTable(needGraphFromLoadedGraph(graph, scope));
   const refusals: AnalysisDiagnostic[] = [
     ...errors,
     ...table.problems
@@ -74,5 +73,5 @@ export async function loadNeedTable(
     printRefusals(analyzed, refusals, log, "application", product);
     return undefined;
   }
-  return { input, entryPath, graph, root, table };
+  return { input, entryPath, graph, root, table, needType: scope.needType };
 }

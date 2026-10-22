@@ -159,6 +159,32 @@ export function needReadingSchema(
   return optional ? { ...reading, type: ["object", "null"] } : reading;
 }
 
+/**
+ * A need's `parameters:` with every `default:` its type's `parameters` schema
+ * declares filled in where the need leaves the key out, through `properties` at
+ * any depth — what a host reads, so no host reimplements a type's defaults. A
+ * copy: the need is unchanged. A value that is not a map is returned as written,
+ * for `NEED_PARAMETERS_INVALID` to refuse.
+ */
+export function needParametersWithDefaults(shape: NeedTypeShape | undefined, parameters: unknown): unknown {
+  const written = parameters ?? {};
+  return shape?.parameters ? withSchemaDefaults(written, shape.parameters) : written;
+}
+
+function withSchemaDefaults(value: unknown, schema: Record<string, unknown>): unknown {
+  const properties = schema.properties;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  if (!properties || typeof properties !== "object") return value;
+  const out: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+  for (const [key, node] of Object.entries(properties as Record<string, unknown>)) {
+    if (!node || typeof node !== "object") continue;
+    const child = node as Record<string, unknown>;
+    if (Object.hasOwn(out, key)) out[key] = withSchemaDefaults(out[key], child);
+    else if (Object.hasOwn(child, "default")) out[key] = structuredClone(child.default);
+  }
+  return out;
+}
+
 /** The field names whose values are sensitive — marked `x-telo-sensitive`. */
 export function sensitiveNeedFields(shape: NeedTypeShape): string[] {
   return Object.entries(shape.fields)

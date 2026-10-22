@@ -160,8 +160,8 @@ const source: ManifestSource = {
     }
     return parts.join("/");
   },
-  async exists(base, relative) {
-    return this.resolveRelative(base, relative) in FILES;
+  async entryAt(base, relative) {
+    return this.resolveRelative(base, relative) in FILES ? "file" : undefined;
   },
 };
 

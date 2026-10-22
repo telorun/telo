@@ -1,5 +1,6 @@
 import {
   authoredModuleMetadata,
+  DURABLE_DIRECTORY_TYPE,
   celResourceReads,
   foldIntegrity,
   isInjectedDeclaration,
@@ -32,6 +33,7 @@ import { isDefaultPolicy, normalizeRuntime } from "../../runtime-registry.js";
 import { loadLibraryTarget, resolveLibraryScope } from "./library-scope.js";
 import { isDefinitionRegistered } from "../resource-definition/registered-definitions.js";
 import { isNeedFulfilment, needFulfilment, type NeedFulfilment } from "../../need-fulfilment.js";
+import { refuseUnusableDirectories } from "../../durable-directories.js";
 import { environmentNeed } from "./environment-needs.js";
 import {
   assertNoSharedOverride,
@@ -1006,6 +1008,15 @@ function bindNeedSupplies(
         `Import '${alias}': need '${need.name}' does not match need type '${type}': ` +
           `${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+    if (type === DURABLE_DIRECTORY_TYPE) {
+      refuseUnusableDirectories([
+        {
+          subject: `need '${[...needPath, need.name].join(".")}'`,
+          directory: values.path,
+          source: `the field-by-field supply at import '${alias}'`,
+        },
+      ]);
     }
     const fulfilment = needFulfilment(type, shape, values);
     // An anonymous fulfilment is the importer's, so its values are redacted

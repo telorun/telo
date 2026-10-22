@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Kernel } from "../src/kernel.js";
 import { MemorySource } from "../src/manifest-sources/memory-source.js";
-import { withoutPublicUrlHostValues } from "../src/public-urls.js";
+import { withoutHostValues } from "../src/host-values.js";
 
 const app = (needs: string, ports = "  http: { env: PORT, default: 8080 }\n  admin: { env: ADMIN_PORT, default: 8081 }\n") =>
   `kind: Telo.Application
@@ -233,6 +233,6 @@ describe("a URL that is not an origin", () => {
 
 describe("a started child application", () => {
   it("inherits no address host value of its parent", () => {
-    expect(withoutPublicUrlHostValues({ ...TEMPLATES, PATH: "/bin" })).toEqual({ PATH: "/bin" });
+    expect(withoutHostValues({ ...TEMPLATES, PATH: "/bin" })).toEqual({ PATH: "/bin" });
   });
 });

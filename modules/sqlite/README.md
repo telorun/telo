@@ -14,7 +14,7 @@ variables:
   dbFile:
     env: DB_FILE
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: data.db          # resolved against the working directory
 ---
 kind: SQLite.Connection
@@ -32,7 +32,28 @@ inputs:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `file` | `:memory:` or `Telo.HostPath` | no | Absolute database file path, usually read from a variable declared `x-telo-type: Telo.HostPath` (which resolves a relative value against the working directory); the parent directory is auto-created. A relative literal is refused (`HOST_PATH_RELATIVE`). Omit, or use `:memory:`, for an in-memory database. |
+| `file` | `:memory:` or `Telo.HostPath` (`entry: file`) | no | Absolute database file path, usually read from a variable declared `x-telo-type: Telo.HostPath` (which resolves a relative value against the working directory); the parent directory is auto-created. A relative literal is refused (`HOST_PATH_RELATIVE`), and so is a path naming a directory (`HOST_PATH_ENTRY_MISMATCH`) — for a database inside a directory, join it: `resources.data.path.joinPath('app.db')`. Omit, or use `:memory:`, for an in-memory database. |
+
+### Keeping the database in a durable directory
+
+An application that asks whoever runs it for storage declares a
+`Telo.DurableDirectory` need and puts the database file inside it:
+
+```yaml
+needs:
+  data:
+    kind: Telo.DurableDirectory
+    parameters: { size: 1Gi }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "resources.data.path.joinPath('app.db')"
+```
+
+Keep the need's `access` at its default, `single-writer`: SQLite relies on its
+file locks, which only hold while one running instance has the directory. On a
+`shared` directory — every instance at once, on different machines — locking
+across machines is not reliable and the database can be corrupted.
 
 The connection's bind-placeholder style is fixed to SQLite anonymous `?`, so inline `${{ }}` parameters stay dialect-neutral. Migrations run with transactional DDL (a transactional-SQLite adapter wraps the batch), matching PostgreSQL. Every connection enforces foreign keys on both drivers (see [Declarative schema](#declarative-schema)).
 

@@ -186,3 +186,76 @@ describe("schema issue reduction", () => {
     expect(issues.map((i) => i.keyword)).toEqual(["type"]);
   });
 });
+
+describe("what a host path names (`entry`)", () => {
+  const ENTRY_KIND = {
+    kind: "Telo.Definition",
+    metadata: { name: "Store", module: "App" },
+    capability: "Telo.Service",
+    schema: {
+      type: "object",
+      properties: {
+        root: {
+          type: "string",
+          "x-telo-type": { name: "Telo.HostPath", entry: "directory" },
+          "x-telo-eval": "compile",
+        },
+        file: {
+          "x-telo-eval": "compile",
+          anyOf: [{ const: ":memory:" }, { type: "string", "x-telo-type": { name: "Telo.HostPath", entry: "file" } }],
+        },
+      },
+    },
+  };
+  const variable = (entry?: string) => ({
+    env: "P",
+    type: "string",
+    "x-telo-type": entry ? { name: "Telo.HostPath", entry } : "Telo.HostPath",
+    default: "a",
+  });
+  const check = (variables: Record<string, unknown>, fields: Record<string, unknown>) => {
+    const store = { kind: "App.Store", metadata: { name: "store" }, ...fields };
+    return new StaticAnalyzer()
+      .analyze(withSyntheticPositions([app(variables), ENTRY_KIND, store] as unknown as ResourceManifest[]))
+      .filter((d) => d.severity === 1)
+      .map((d) => ({ code: d.code, message: d.message }));
+  };
+
+  it("refuses a variable declared to name the other kind of entry", () => {
+    expect(check({ p: variable("file") }, { root: cel("variables.p") })).toEqual([
+      {
+        code: "HOST_PATH_ENTRY_MISMATCH",
+        message:
+          "App.Store/store: 'root' takes the path of a directory, but 'variables.p' is declared to name a file (entry: file).",
+      },
+    ]);
+    expect(check({ p: variable("directory") }, { file: cel("variables.p") }).map((d) => d.code)).toEqual([
+      "HOST_PATH_ENTRY_MISMATCH",
+    ]);
+  });
+
+  it("accepts the same entry, and a variable or slot that says nothing", () => {
+    expect(check({ p: variable("directory") }, { root: cel("variables.p") })).toEqual([]);
+    expect(check({ p: variable() }, { root: cel("variables.p") })).toEqual([]);
+    expect(check({ p: variable("file") }, { root: cel("variables.p.joinPath('x')") })).toEqual([]);
+  });
+
+  it("refuses a token outside the vocabulary, suggesting the near one", () => {
+    expect(check({ p: variable("directroy") }, {})).toEqual([
+      {
+        code: "X_TELO_TYPE_ARGUMENT_INVALID",
+        message: "'Telo.HostPath' parameter 'entry' takes 'file' or 'directory', not \"directroy\". Did you mean 'directory'?",
+      },
+    ]);
+  });
+
+  it("compares two entries by equality, an omitted one matching either", () => {
+    const dir = { type: "string", "x-telo-type": { name: "Telo.HostPath", entry: "directory" } };
+    const file = { type: "string", "x-telo-type": { name: "Telo.HostPath", entry: "file" } };
+    const any = { type: "string", "x-telo-type": "Telo.HostPath" };
+    expect(checkSchemaCompatibility(file, dir).compatible).toBe(false);
+    expect(checkSchemaCompatibility(dir, dir).compatible).toBe(true);
+    expect(checkSchemaCompatibility(any, dir).compatible).toBe(true);
+    expect(checkSchemaCompatibility(file, any).compatible).toBe(true);
+  });
+});

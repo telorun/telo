@@ -1,5 +1,6 @@
 //! The kernel's side of a resource's construction: resolve the kind, load its
-//! controller, validate the document against the kind's schema, bind the
+//! controller, validate the document against the kind's schema, refuse a host
+//! path it holds that is relative or names the wrong kind of entry, bind the
 //! invocation contract, and hand the manifest to the controller.
 //! Mirrors `../../nodejs/src/resource-context.ts`.
 //!
@@ -18,6 +19,7 @@ use crate::controller_loaders::native_abi::host_vtable;
 use crate::controller_registry::Definition;
 use crate::error::KernelError;
 use crate::evaluation_context::ResourceInstance;
+use crate::host_paths::{refuse_misplaced_host_entries, refuse_relative_host_paths};
 use crate::invocation_contract_binding::InvocationContract;
 
 /// Build one resource instance from its document.
@@ -42,6 +44,7 @@ pub fn create_resource(
     refuse_text_fields(&definition, name)?;
     refuse_catalog_sets(&definition, name)?;
     validate_against_kind_schema(&definition, manifest, name)?;
+    refuse_misplaced_host_paths(&definition, manifest, name)?;
 
     let contract = InvocationContract::resolve(&definition.manifest, manifest)?;
     let controller = definition.controller(loader)?;
@@ -124,6 +127,21 @@ fn reaches_text(schema: &Value) -> bool {
         Value::Array(items) => items.iter().any(reaches_text),
         _ => false,
     }
+}
+
+/// A host path that is relative, that exists as the other kind of entry than its
+/// slot names, or that cannot be read — checked in the order the Node kernel
+/// checks them at creation.
+fn refuse_misplaced_host_paths(definition: &Definition, manifest: &Value, name: &str) -> Result<(), KernelError> {
+    let Some(schema) = definition.manifest.get("schema") else {
+        return Ok(());
+    };
+    if !definition.declares_host_path() {
+        return Ok(());
+    }
+    let label = format!("{}/{name}", definition.kind);
+    refuse_misplaced_host_entries(manifest, schema, &label)?;
+    refuse_relative_host_paths(manifest, schema, &label)
 }
 
 /// Check the document against the kind's author-facing schema, compiled once per
