@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: HostPathEntry
+  version: 1.0.0
+  description: |
+    A module file that is a file, at a slot taking a directory: creating the
+    resource fails naming both, before its controller is built.
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/unbuilt-store?local_path=./unbuilt#Store
+schema:
+  type: object
+  properties:
+    root: { type: string, x-telo-type: { name: Telo.HostPath, entry: directory } }
+---
+kind: Self.Store
+metadata:
+  name: store
+root: !module-path ./notes.txt

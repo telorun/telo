@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata:
+  name: DirectoryForwardedTwiceInner
+  version: 0.0.0
+  description: A library asking for a directory of its own.
+needs:
+  files:
+    kind: Telo.DurableDirectory

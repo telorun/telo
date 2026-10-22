@@ -12,8 +12,9 @@ metadata:
     and a write is committed by a single rename, so a crash or a failed upload
     never leaves a half-written object behind.
 requires:
-  # The release this module was first checked against; nothing older has read it.
-  telo: ">=0.114.0"
+  # 0.121.0: `Store.root` declares `entry: directory`, which 0.120.1 rejects as
+  # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
+  telo: ">=0.121.0"
 imports:
   Blob: ../blob
 exports:
@@ -52,9 +53,9 @@ schema:
         Absolute directory the blobs are kept under, created on the first write.
         Every process given the same directory shares one store. It comes from
         a variable declared `x-telo-type: Telo.HostPath`; nothing else should
-        write inside it.
+        write inside it. A file at this path is refused.
       type: string
-      x-telo-type: Telo.HostPath
+      x-telo-type: { name: Telo.HostPath, entry: directory }
       x-telo-eval: compile
   examples:
     - root: !cel "variables.blobRoot"

@@ -15,7 +15,7 @@ async function runReport(argv: { manifest: string }): Promise<void> {
   const loaded = await loadNeedTable(argv.manifest, log, "needs report");
   if (!loaded) return;
 
-  const report = buildNeedsReport(loaded.graph, loaded.table);
+  const report = buildNeedsReport(loaded.graph, loaded.table, loaded.needType);
   if (output().isJson) {
     output().document(report);
     return;

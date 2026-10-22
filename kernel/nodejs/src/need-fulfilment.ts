@@ -1,6 +1,7 @@
-import { sensitiveNeedFields, type NeedTypeShape } from "@telorun/analyzer";
+import { DURABLE_DIRECTORY_TYPE, sensitiveNeedFields, type NeedTypeShape } from "@telorun/analyzer";
 import type { ControllerInstance, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { membersEntryOfValue, plainScalar, redactedTextsOf, RuntimeError } from "@telorun/sdk";
+import { refuseUnusableDirectories } from "./durable-directories.js";
 
 /**
  * A FULFILMENT — the values that satisfy a need, as one instance of the kernel's
@@ -98,7 +99,17 @@ export function needFulfilmentController(type: string, shape: NeedTypeShape): Co
           `${type}/${resource.metadata.name}: 'fields' must be a map of the type's fields.`,
         );
       }
-      const fulfilment = needFulfilment(type, shape, (written ?? {}) as Record<string, unknown>);
+      const fields = (written ?? {}) as Record<string, unknown>;
+      if (type === DURABLE_DIRECTORY_TYPE) {
+        refuseUnusableDirectories([
+          {
+            subject: `fulfilment '${resource.metadata.name}'`,
+            directory: fields.path,
+            source: "its 'fields.path'",
+          },
+        ]);
+      }
+      const fulfilment = needFulfilment(type, shape, fields);
       (ctx.moduleContext as unknown as RedactionHost).addRedactedValues(fulfilment.sensitiveValues);
       return fulfilment;
     },

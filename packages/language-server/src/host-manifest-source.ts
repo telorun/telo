@@ -81,6 +81,17 @@ export class HostManifestSource implements ManifestSource {
     return this.host.request(TeloMethod.exists, { base: uriOfSource(base), relative });
   }
 
+  /** What is at `relative`, over the protocol's two questions: whether anything
+   *  is there (`telo/exists`), then whether it lists as a directory
+   *  (`telo/listDirectory`, `null` for a file). */
+  async entryAt(base: string, relative: string): Promise<"file" | "directory" | undefined> {
+    if (!(await this.exists(base, relative))) return undefined;
+    const entries = await this.host.request(TeloMethod.listDirectory, {
+      uri: uriOfSource(resolveAgainst(base, relative)),
+    });
+    return entries === null ? "file" : "directory";
+  }
+
   /** The nearest `telo.yaml` above `fileUrl`, an open buffer counting as
    *  present. A remote module has no enclosing workspace to walk. */
   async resolveOwnerOf(fileUrl: string): Promise<string | null> {

@@ -13,7 +13,9 @@ metadata:
 requires:
   # 0.98.0: `data` is a `Telo.HostPath`, which an older analyzer rejects as
   # X_TELO_TYPE_UNKNOWN.
-  telo: ">=0.98.0"
+  # 0.121.0: `data` declares `entry: file`, which 0.120.1 rejects as
+  # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
+  telo: ">=0.121.0"
 exports:
   kinds:
     - Model
@@ -47,7 +49,7 @@ schema:
         The `.traineddata` file, gzip-compressed or raw; the recognizer tells them
         apart by the gzip header. Write `!module-path` for a file that ships with
         the module, or use a host-path variable.
-      x-telo-type: Telo.HostPath
+      x-telo-type: { name: Telo.HostPath, entry: file }
 ---
 kind: Telo.Definition
 metadata:

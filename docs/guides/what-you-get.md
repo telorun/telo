@@ -32,8 +32,9 @@ grows with every release.
 - **Libraries can't read your environment.** Only the application reads environment variables and arguments; a library declaring one is refused, and receives values from its importer instead.
 - **Command-line arguments.** `arg:` turns an input into a flag or positional, with one precedence (argument, then environment, then `default:`) and unknown arguments refused. A secret can never be an argument.
 - **`.env` files.** `.env` and `.env.local` are collected up to the workspace marker by `telo run` and Studio alike. `.env` may be committed; `.env.local` holds secrets.
+- **Persistent storage without a path in the manifest.** A `Telo.DurableDirectory` need asks for a directory that survives restarts and redeployments, with a minimum `size` and `single-writer` or `shared` access. A host mounts one per need, or sets `TELO_HOST_STATE_DIR` once and every need gets its own directory under it; a directory the app cannot write to, or a rename that would strand the old one's files, is refused before anything starts.
 - **Public URLs without hard-coding.** `Telo.PublicUrl` is derived from host templates, so no domain is written in a manifest; two addresses no host could route apart are refused at start.
-- **Paths that don't depend on the working directory.** A relative path in configuration is refused before the app runs, and files a module ships are found wherever it is unpacked and checked to exist.
+- **Paths that don't depend on the working directory.** A relative path in configuration is refused before the app runs, and files a module ships are found wherever it is unpacked and checked to exist. A path slot says whether it takes a file or a directory (`entry: directory`), so a file wired where a directory is wanted is refused before the app runs, or at start when the path comes from the environment.
 - **Ports known before boot.** `ports:` are typed TCP or UDP and known to a runner before the app starts.
 
 ### Checked before it runs

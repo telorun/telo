@@ -66,14 +66,14 @@ variables:
     env: APPROVALS_JOURNAL
     arg: journal
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: directory }
     default: .telo/approvals
     description: Directory the requests and their progress are recorded in.
   ledgerFile:
     env: LEDGER_FILE
     arg: ledger-file
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: purchases.db
   reviewDeadline:
     env: REVIEW_DEADLINE

@@ -217,6 +217,33 @@ are in [Writing a need type](/extend/need-types#kernel-declared-address-types);
 how a host supplies the addresses — or lets the kernel derive them from its
 templates — in [Providing needs](/learn/providing-needs#public-addresses).
 
+## Persistent storage
+
+Files that must survive restarts and redeployments go in a directory the
+application asks for as a need of the kernel-declared type
+`Telo.DurableDirectory`, written with no import:
+
+```yaml
+needs:
+  data:
+    kind: Telo.DurableDirectory
+    parameters: { size: 5Gi, access: single-writer }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "resources.data.path.joinPath('app.db')"
+```
+
+`size` is the least the application needs (default `1Gi`) and `access` is
+`single-writer` (default — at most one running instance has the directory) or
+`shared`. The directory is the host's to provide, so no path to it is written
+in the manifest; under `telo run` set `TELO_NEED_DATA__PATH`, or
+`TELO_HOST_STATE_DIR` once for every need. A library declares its own and the
+application may forward one whole, as long as it gives at least what the
+library asks for. What each parameter promises and how a host supplies the
+directory are in
+[Providing needs](/learn/providing-needs#durable-directories).
+
 ## One fulfilment per module instance
 
 Each import of an `isolated` library (the default) is a module instance of its

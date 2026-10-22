@@ -35,6 +35,9 @@ metadata:
     A `404 without a device_code` from the start step means GitHub does not know
     that client id, or the app has device flow switched off — it answers 404
     rather than naming either.
+requires:
+  # A host-path variable declaring `entry:` needs 0.121.0.
+  telo: ">=0.121.0"
 imports:
   OAuth: oci://ghcr.io/telorun/oauth-client@0.9.0#sha256-SJrbgqaNLDvxqbJLqFUJRM24vUxj8jWy-pAJByPnB90
   HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
@@ -68,7 +71,7 @@ variables:
   grantsFile:
     env: GRANTS_FILE
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: file }
     default: ./grants.db
 ---
 # Where the grant lives between runs. A memory store would work and would make

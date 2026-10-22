@@ -77,7 +77,9 @@ default, not an error. `TreeSnapshot` with no `paths` snapshots `cwd`. It is **n
 security boundary: nothing confines paths to `cwd`. Real isolation comes from
 where the kernel runs (the runner sandbox), not this field.
 
-`cwd` is a `Telo.HostPath`, so it is absolute. A directory that ships with the
+`cwd` is a `Telo.HostPath` declaring `entry: directory`, so it is absolute and
+names a directory — a file there is refused (`HOST_PATH_ENTRY_MISMATCH` at check,
+`ERR_HOST_PATH_ENTRY_MISMATCH` when the resource is created). A directory that ships with the
 module is `cwd: !module-path ./fixtures`; a directory on the host comes from a
 variable declared `x-telo-type: Telo.HostPath`, whose value — relative or not —
 resolves against the working directory:
@@ -87,7 +89,7 @@ variables:
   workspace:
     env: WORKSPACE_DIR
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: directory }
     default: workspace
 ---
 kind: Fs.File
@@ -158,7 +160,7 @@ imports:
   Fs: oci://ghcr.io/telorun/fs@0.1.0
 
 variables:
-  workspace: { env: WORKSPACE_DIR, type: string, x-telo-type: Telo.HostPath, default: workspace }
+  workspace: { env: WORKSPACE_DIR, type: string, x-telo-type: { name: Telo.HostPath, entry: directory }, default: workspace }
 ---
 kind: Fs.File
 metadata: { name: ReadFile }

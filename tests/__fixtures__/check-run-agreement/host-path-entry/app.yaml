@@ -1,0 +1,11 @@
+# Consumes the library next door. Its analysis is entry-scoped, so the
+# library's misplaced module file is invisible here by design — the kernel is
+# what refuses it when it creates the resource.
+kind: Telo.Application
+metadata:
+  name: HostPathEntryApp
+  version: 1.0.0
+requires:
+  telo: ">=0.121.0"
+imports:
+  Lib: ./lib

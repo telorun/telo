@@ -4,6 +4,7 @@ import { PLAIN_ENCODINGS } from "../src/plain-encoding.js";
 import {
   CEL_SCALAR_FORMS,
   holdsSensitiveMember,
+  hostEntryOf,
   hostAnchorOf,
   isAbsoluteHostPath,
   markExactRendering,
@@ -225,5 +226,41 @@ describe("plain encodings", () => {
     expect(celDuration.encode(celDuration.decode("20000000000s"))).toBe("20000000000s");
     expect(celDuration.decode("315576000001s")).toBeUndefined();
     expect(celDuration.decode(`1${"0".repeat(40)}h`)).toBeUndefined();
+  });
+});
+
+describe("a host path's entry parameter", () => {
+  const hostPath = (parameters: unknown[], extra: Record<string, unknown> = {}) => ({
+    name: "Telo.Path2",
+    representation: "json",
+    base: "string",
+    description: "x",
+    parameters,
+    ...extra,
+  });
+
+  it("is read as a token, found by its flag", () => {
+    expect(hostEntryOf({ "x-telo-type": { name: "Telo.HostPath", entry: "directory" } })).toBe("directory");
+    expect(hostEntryOf({ "x-telo-type": { name: "Telo.HostPath", entry: "file" } })).toBe("file");
+    expect(hostEntryOf({ "x-telo-type": "Telo.HostPath" })).toBeUndefined();
+    expect(hostEntryOf({ "x-telo-type": { name: "Telo.HostPath", entry: "folder" } })).toBeUndefined();
+  });
+
+  it("belongs to a type declaring fromHost, at most once", () => {
+    expect(() => parseValueTypeEntry("no-anchor.json", hostPath([{ name: "entry", hostEntry: true }]))).toThrow(
+      /'hostEntry' belongs to a parameter of a type declaring 'fromHost'/,
+    );
+    expect(() =>
+      parseValueTypeEntry(
+        "two.json",
+        hostPath(
+          [
+            { name: "a", hostEntry: true },
+            { name: "b", hostEntry: true },
+          ],
+          { fromHost: "working-directory" },
+        ),
+      ),
+    ).toThrow(/at most one parameter may declare 'hostEntry'/);
   });
 });

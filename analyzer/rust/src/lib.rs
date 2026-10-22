@@ -1,8 +1,10 @@
 //! Telo manifest loading and reference resolution for the Rust kernel.
 //!
 //! Mirrors the part of `analyzer/nodejs` the kernel depends on at runtime:
-//! reading a manifest file, parsing its documents, and rewriting `!ref`
-//! sentinels. The static-analysis passes that make up the rest of the Node
+//! reading a manifest file, parsing its documents, rewriting `!ref` sentinels,
+//! and reading what a schema node says of the value at it (the host-path slot
+//! readers and the walk pairing each text leaf with its node). The
+//! static-analysis passes that make up the rest of the Node
 //! package have no Rust counterpart yet — this crate is where they belong when
 //! they arrive, which is why loading lives here rather than in the kernel.
 //!
@@ -16,19 +18,24 @@ pub mod builtin_vocabulary;
 pub mod builtin_vocabulary_slices;
 pub mod builtins;
 pub mod capability_roster;
+pub mod host_path_slot;
 pub mod levenshtein;
 pub mod loaded_types;
 pub mod manifest_loader;
+pub mod manifest_navigation;
 pub mod native_entries;
 pub mod nearest_name;
 pub mod parse_loaded_file;
+pub mod plain_literal_decoding;
 pub mod release;
 pub mod reserved_kind_prefix;
 pub mod resolve_ref_sentinels;
+pub mod schema_compat;
 pub mod source_entries;
 pub mod sources;
 pub mod system_kinds;
 pub mod types;
+pub mod value_type_keyword;
 
 pub use loaded_types::{LoadedFile, ParseError};
 pub use manifest_loader::{resolve_source, ManifestLoader};

@@ -17,7 +17,9 @@ metadata:
 # starting two entries through `targets:`, both need a kernel that knows them;
 # `history` being a `Telo.HostPath` needs 0.98.0.
 requires:
-  telo: ">=0.98.0"
+  # 0.121.0: `history` declares `entry: file`, which 0.120.1 rejects as
+  # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
+  telo: ">=0.121.0"
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
@@ -105,7 +107,7 @@ schema:
         from a variable declared `x-telo-type: Telo.HostPath`, which resolves a
         relative value against the working directory.
       type: string
-      x-telo-type: Telo.HostPath
+      x-telo-type: { name: Telo.HostPath, entry: file }
       x-telo-eval: compile
 resources:
   - kind: SQLite.Connection

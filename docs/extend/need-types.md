@@ -169,6 +169,35 @@ need, two primaries and two `customDomains` needs on one port are
 templates, collisions — is in [Providing needs](/learn/providing-needs); how a
 server routes by them is `http-server`'s host-routing guide.
 
+## Kernel-declared durable directories
+
+`Telo.DurableDirectory` asks for persistent storage on disk. It is supplied
+like any need type — whole, field by field, from its variable, or by a
+fulfilment the module writes — and also from the host's state directory.
+
+| Field | Parameters |
+| --- | --- |
+| `path`, a `Telo.HostPath`: a directory the application can write to | `size` (default `1Gi`; a whole number followed by `Mi`, `Gi` or `Ti`), `access` (`single-writer`, the default, or `shared`) |
+
+Read the directory as `resources.<need>.path` and a file in it as
+`resources.<need>.path.joinPath('app.db')`.
+
+Forwarded whole to a library's need, it must give at least what that need asks
+for, on top of the `version` / `features` rule:
+
+- a `shared` directory supplying a `single-writer` need is
+  `NEED_FORWARD_INCOMPATIBLE` — the library's assumption would not hold
+  (`single-writer` into `shared` is allowed);
+- a smaller `size` supplying a larger one is `NEED_FORWARD_INCOMPATIBLE`.
+
+One directory — a need or a fulfilment — forwarded whole to two or more needs
+is `NEED_DIRECTORY_FORWARDED_TWICE`, naming every target, since two libraries
+would write over each other's files; a library that must share one with another
+declares that in one library rather than by forwarding. Each is refused by
+`telo check` and, as `ERR_<code>`, by the kernel at load. What `size` and
+`access` promise, how a host supplies the directory and what the kernel checks
+at load are in [Providing needs](/learn/providing-needs#durable-directories).
+
 ## Naming a need type
 
 A need type is named for what its fulfilment hands over. It is

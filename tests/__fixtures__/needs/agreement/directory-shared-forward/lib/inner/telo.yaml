@@ -1,0 +1,8 @@
+kind: Telo.Library
+metadata:
+  name: DirectorySharedForwardInner
+  version: 0.0.0
+  description: A library relying on being the directory's only writer.
+needs:
+  files:
+    kind: Telo.DurableDirectory

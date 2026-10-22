@@ -2,51 +2,7 @@
 
 Handover for the work left after the probe run over the todo starter's `dbFile` / `SQLite.Connection.file` / `Http.Static.root` wiring. Every design question below is decided; each section says what happens today, what must happen instead, and how to verify it.
 
-Order: 1 and 2 (independent of each other), then 3 last, since it pins releases that carry 1.
-
----
-
-## 1. `Telo.HostPath` says what it names — `entry: directory | file`
-
-**Today.** `root: !module-path ./public/index.html` passes `telo check` (the file exists) and fails or misbehaves only at runtime. Nothing distinguishes a slot that needs a directory from one that needs a file.
-
-**Decision.** `Telo.HostPath` gains one optional type parameter, written `x-telo-type: { name: Telo.HostPath, entry: directory }` or `entry: file`. Omitted means *any* in both directions, so every existing slot and variable keeps working.
-
-- The parameter is found by a FLAG in the value-type data, never by its name: `sdk/value-types/telo-host-path.json` gains `parameters: [{ name: entry, hostEntry: true, description }]`. Both SDK readers (Node and Rust) accept `hostEntry` only on a type declaring `fromHost`, at most one per type. No analyzer or kernel code names `entry`.
-- The argument is a TOKEN from a closed vocabulary, `file | directory`, which each runtime maps to its own filesystem query (a runtime that cannot map one fails at startup, the `fromHost` anchor precedent). `directory` means a directory; `file` means anything that is not one; symlinks are followed. Two arguments compare by equality.
-- **Existence is not part of the type.** `entry` says what the path names *if something is there*. An absent path passes — SQLite creates its file, the journal creates its directory. `!module-path` keeps requiring existence through its own `MODULE_PATH_NOT_FOUND`.
-- The source query `ManifestSource.exists(base, relative) → boolean` is REPLACED by `entryAt(base, relative) → "file" | "directory" | undefined`, in every filesystem-capable source (CLI, kernel, VS Code, studio). A path the module's `sources:` stages counts as `file` when it equals a staged file, `directory` when it sits above one. A source without it records nothing and the kernel's refusal stands.
-
-**Checks.**
-
-| Where | What | Code |
-|---|---|---|
-| analyzer, reading the annotation | an `entry` value outside the vocabulary (Levenshtein-suggested), wherever `X_TELO_TYPE_ARGUMENT_UNKNOWN` is reported | `X_TELO_TYPE_ARGUMENT_INVALID` |
-| loader + analysis | an entry-module `!module-path` whose recorded kind differs from the slot's argument, including a union's host-path branch; entry-module-scoped | `HOST_PATH_ENTRY_MISMATCH` |
-| analysis | a plain chain at a host-path field from a variable declaring the other `entry`; an import's `variables:` against the library's host-path inputs (the flattener's stamp now carries each input's `entry`) | `HOST_PATH_ENTRY_MISMATCH` |
-| analysis, a step's `inputs:` | the generic comparator | `CEL_TYPE_ARGUMENT_MISMATCH` (existing) |
-| kernel, resource creation | a resolved path that exists and is the wrong kind, after `!module-path` and compile-eval resolution; names resource, field, path, found vs declared | `ERR_HOST_PATH_ENTRY_MISMATCH` |
-| kernel, `kernel.load()` | an Application variable / secret declaring `entry`; aggregated, naming the variable and its env var | inside `ERR_MANIFEST_VALIDATION_FAILED` |
-
-The filesystem check never goes into the AJV keyword (which must stay synchronous and browser-safe). The Rust kernel enforces `ERR_HOST_PATH_ENTRY_MISMATCH` wherever it resolves a `!module-path`, and its value-type reader accepts the flag — without that it fails at startup on the shared data.
-
-**Stdlib adoption** (each file writes the new object form, so each needs `requires: telo: ">=<TELO_SURFACE_VERSION of the release carrying it>"`, raised from their current floor and verified by execution per the root guide):
-
-- `entry: directory` — `Http.Static.root`; every Fs kind's `cwd`; `DurableJournalFile.Journal.directory`; the approval-app blueprint's `journal`.
-- `entry: file` — the host-path branch of `SQLite.Connection.file`; tesseract-model's `data`; the agent-app blueprint's `history`.
-- The Application / Library variables feeding those slots in `examples/`, `starters/` and `blueprints/*/example` declare the matching `entry` with the same floor (`dbFile`, `journalDir`, `historyFile`, …).
-
-**Also.** `!module-path` path completion in ide-support offers only directories at a `directory` slot and only files at a `file` slot. `tests/check-run-agreement.yaml` pins a `!module-path` naming a file at a directory slot at a library (`HOST_PATH_ENTRY_MISMATCH`) and from a silent consumer (`runFails:` with `ERR_HOST_PATH_ENTRY_MISMATCH`).
-
-**Verify.**
-- `root: !module-path ./public/index.html` → `HOST_PATH_ENTRY_MISMATCH` on that line; `./public` passes.
-- The variable feeding an Fs `cwd` pointed at a regular file → boot fails at load with `ERR_HOST_PATH_ENTRY_MISMATCH` naming the env var.
-- `SQLite.Connection.file` at a non-existent file boots and creates the database.
-- A variable declared `entry: file` wired to `Http.Static.root` is a static error; an unparameterized one is not.
-- `npx @telorun/cli@<previous> check modules/http-server/telo.yaml` with `requires:` stripped fails, and with it restored reports `MODULE_REQUIRES_NEWER_RUNTIME`.
-- The Rust kernel starts with the updated entry file. Both halves of the agreement suite pass.
-
-**Docs / release.** Root `CLAUDE.md` (Host paths), analyzer and templating guides, `sdk/value-types/README.md`, `docs/reference/diagnostics.md` (three new codes), the five modules' docs, the authoring-agent primer's paths section. Changesets for SDK, analyzer, kernel, CLI; `telo release add` fragments for the five modules and two blueprints.
+Order: 2, then 3 last, since it pins releases that carry `entry`.
 
 ---
 
@@ -90,8 +46,8 @@ Resolution failures keep `ERR_MODULE_PATH_NOT_FOUND` / `ERR_INCLUDE_FILE_NOT_FOU
 
 ## 3. Starters and examples pin modules that predate host paths
 
-**Today.** Every starter and example pins `oci://ghcr.io/telorun/http-server@0.32.0` and `oci://ghcr.io/telorun/sqlite@0.5.1`, whose `root:` / `file:` are plain strings. Their `x-telo-type: Telo.HostPath` variables and `!module-path` values therefore protect nothing on the consuming side, and every host-path check in items 1 and 2 is invisible to them.
+**Today.** Every starter and example pins `oci://ghcr.io/telorun/http-server@0.32.0` and `oci://ghcr.io/telorun/sqlite@0.5.1`, whose `root:` / `file:` are plain strings. Their `x-telo-type: Telo.HostPath` variables and `!module-path` values therefore protect nothing on the consuming side, and every host-path check — `entry` and item 2 — is invisible to them.
 
-**Decision.** Bump every `http-server` and `sqlite` pin in `starters/` and `examples/` to the newest published version, with `telo upgrade` (which rewrites the pin and its digest and checks the `requires:` range). Do it after item 1 is released, so the bump lands on versions carrying `entry`, and add the `entry` argument to the variables feeding those slots in the same change.
+**Decision.** Bump every `http-server` and `sqlite` pin in `starters/` and `examples/` to the newest published version, with `telo upgrade` (which rewrites the pin and its digest and checks the `requires:` range). Do it after the release carrying `entry` (`x-telo-type: { name: Telo.HostPath, entry: directory | file }`) is published, so the bump lands on versions carrying it, and add the `entry` argument to the variables feeding those slots in the same change.
 
 **Verify.** `telo check` over each starter and example is clean; `starters/test-suite.yaml` and `examples/test-suite.yaml` pass; replacing a starter's `dbFile` wiring with `!cel "string(variables.dbFile)"` reports `HOST_PATH_UNTYPED_SOURCE` (proof the pinned schema now declares the host path).

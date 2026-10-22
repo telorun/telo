@@ -22,7 +22,9 @@ requires:
   # as unknown keys on the module doc. Verified by execution against 0.89.0.
   # 0.98.0: `Connection.file` is a `Telo.HostPath`, which an older analyzer
   # rejects as X_TELO_TYPE_UNKNOWN.
-  telo: ">=0.98.0"
+  # 0.121.0: `Connection.file`'s host-path branch declares `entry: file`, which 0.120.1 rejects as
+  # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
+  telo: ">=0.121.0"
 imports:
   Sql: ../sql
 exports:
@@ -136,7 +138,7 @@ schema:
       anyOf:
         - const: ":memory:"
         - type: string
-          x-telo-type: Telo.HostPath
+          x-telo-type: { name: Telo.HostPath, entry: file }
 ---
 # SQLite.Table — SQLite's own vocabulary, which is honestly smaller than
 # PostgreSQL's because the engine is: five storage classes, no arrays, no

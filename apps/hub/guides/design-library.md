@@ -401,7 +401,10 @@ importer.
   host with a mount's `hostnames`) declares `Telo.PublicUrl` /
   `Telo.PublicHostPattern` with no parameters; the application declares its
   own, naming a port, and forwards it whole — anything else is
-  `NEED_ROOT_SUPPLY_REQUIRED`. Never name a router like a need: they share one
+  `NEED_ROOT_SUPPLY_REQUIRED`. A library that keeps files across restarts
+  declares a `Telo.DurableDirectory` need (`size`, `access`) and reads it as
+  `resources.<need>.path` — never a data directory as a variable; one
+  directory forwarded to two needs is `NEED_DIRECTORY_FORWARDED_TWICE`. Never name a router like a need: they share one
   namespace.
 - **`lifecycle`** — `isolated` (the default) gives every import declaration
   its own instantiation: right for a library whose instances are the

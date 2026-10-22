@@ -122,6 +122,33 @@ describe("telo needs report", () => {
     });
   });
 
+  it("lists a need's parameters with its type's defaults filled in", () => {
+    const fixture = path.join(ROOT, "cli/nodejs/tests/__fixtures__/needs-report-directory");
+    const { stdout, status } = runCli(["needs", "report", "-o", "json", fixture]);
+    expect(status).toBe(0);
+    expect(
+      JSON.parse(stdout).needs.map((n: { path: string; type: unknown; parameters: unknown; fields: unknown }) => ({
+        path: n.path,
+        type: n.type,
+        parameters: n.parameters,
+        fields: n.fields,
+      })),
+    ).toEqual([
+      {
+        path: "uploads",
+        type: { module: "Telo", name: "DurableDirectory" },
+        parameters: { size: "1Gi", access: "single-writer" },
+        fields: { path: field("TELO_NEED_UPLOADS__PATH", "derived", true, false) },
+      },
+      {
+        path: "archive",
+        type: { module: "Telo", name: "DurableDirectory" },
+        parameters: { size: "5Gi", access: "shared" },
+        fields: { path: field("TELO_NEED_ARCHIVE__PATH", "derived", true, false) },
+      },
+    ]);
+  });
+
   it("gives no report for an application the kernel would refuse, naming the refusal", () => {
     // The collision is two imports deep, where only the whole-graph table sees it.
     const fixture = path.join(ROOT, "tests/__fixtures__/needs/agreement/env-collision/consumer.yaml");

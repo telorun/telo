@@ -1185,6 +1185,7 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "telo-templating",
+ "telorun-sdk-core",
  "thiserror",
 ]
 
@@ -1213,6 +1214,7 @@ dependencies = [
  "telo-analyzer",
  "telo-templating",
  "telorun-abi",
+ "telorun-sdk-core",
  "tempfile",
  "thiserror",
  "ureq",

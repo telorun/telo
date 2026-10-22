@@ -203,6 +203,7 @@ impl Default for Kernel {
 
 impl Kernel {
     pub fn new() -> Self {
+        crate::host_paths::verify_host_entry_queries();
         Self {
             env: None,
             root: None,

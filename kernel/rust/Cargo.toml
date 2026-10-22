@@ -18,6 +18,9 @@ tar = { version = "0.4", default-features = false }
 telo-analyzer = { path = "../../analyzer/rust" }
 telo-templating = { path = "../../templating/rust" }
 telorun-abi = { path = "../../sdk/rust/abi" }
+# Value types, read as data. The backend-free half of the SDK: `telorun-sdk`
+# itself selects a controller backend by feature and must stay out of the kernel.
+telorun-sdk-core = { path = "../../sdk/rust/core" }
 thiserror = "1"
 # Blocking, because this kernel is synchronous. No `gzip` feature: a registry
 # blob is digested as served, and transparent decoding would change its bytes.

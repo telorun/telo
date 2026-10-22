@@ -131,18 +131,20 @@ export interface ManifestSource {
    *  Optional — only filesystem-capable sources implement this. */
   resolveOwnerOf?(fileUrl: string): Promise<string | null>;
 
-  /** Whether a file or directory exists at `relative`, resolved against the
-   *  directory of the file `base` names. Resolved by the source itself rather
-   *  than through `resolveRelative`, which may map an extension-less path to its
-   *  `telo.yaml`. Optional — only filesystem-capable sources implement this;
-   *  without it a `!module-path` naming nothing is refused by the runtime alone. */
-  exists?(base: string, relative: string): Promise<boolean>;
+  /** What is at `relative`, resolved against the directory of the file `base`
+   *  names: `directory` for a directory, `file` for anything else (links
+   *  followed), `undefined` when nothing is there. Resolved by the source itself
+   *  rather than through `resolveRelative`, which may map an extension-less path
+   *  to its `telo.yaml`. Optional — only filesystem-capable sources implement
+   *  this; without it a `!module-path` naming nothing, or the wrong kind of
+   *  entry, is refused by the runtime alone. */
+  entryAt?(base: string, relative: string): Promise<"file" | "directory" | undefined>;
 
-  /** Where `relative`, resolved as `exists` resolves it, is on this host — for
-   *  a message a reader acts on. Optional, like `exists`. */
+  /** Where `relative`, resolved as `entryAt` resolves it, is on this host — for
+   *  a message a reader acts on. Optional, like `entryAt`. */
   locate?(base: string, relative: string): string;
 
-  /** The entry names of the directory at `relative`, resolved as `exists`
+  /** The entry names of the directory at `relative`, resolved as `entryAt`
    *  resolves it, or `undefined` when there is no directory there. Optional —
    *  without it a missing file is reported with no suggestion. */
   listDirectory?(base: string, relative: string): Promise<string[] | undefined>;

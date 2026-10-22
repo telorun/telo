@@ -1,0 +1,17 @@
+kind: Telo.Library
+metadata:
+  name: DirectoryForwardedTwice
+  version: 0.0.0
+  description: Forwards one durable directory whole to two libraries' needs.
+needs:
+  uploads:
+    kind: Telo.DurableDirectory
+imports:
+  First:
+    source: ./inner
+    needs:
+      files: !ref uploads
+  Second:
+    source: ./inner
+    needs:
+      files: !ref uploads

@@ -100,6 +100,8 @@ targets:
   - !ref providerStatusAtStartup
   - !ref serviceStatusAtStartup
   - !ref serviceStatusAtStartupAtRuntime
+  - !ref hostPathEntryMismatch
+  - !ref hostPathEntryMismatchAtRuntime
   - !ref scopedProviderStatusAtStartup
   - !ref scopedProviderStatusAtStartupAtRuntime
   - !ref moduleCallNotCallable
@@ -349,6 +351,10 @@ targets:
   - !ref needFieldUndeclaredAtRuntime
   - !ref needSlotMismatch
   - !ref needSlotMismatchAtRuntime
+  - !ref needDirectorySharedForward
+  - !ref needDirectorySharedForwardAtRuntime
+  - !ref needDirectoryForwardedTwice
+  - !ref needDirectoryForwardedTwiceAtRuntime
   - !ref resourceInputNeedType
   - !ref resourceInputNeedTypeAtRuntime
   - !ref needUndeclared
@@ -919,6 +925,27 @@ source: ./__fixtures__/check-run-agreement/provider-status/service-app.yaml
 expect:
   errors: []
   runFails: 'Expression !cel "resources.listener.status.port" failed'
+---
+# A module file naming a file where its slot names a directory
+# (`entry: directory`) is refused where it is written…
+kind: Assert.Manifest
+metadata:
+  name: hostPathEntryMismatch
+source: ./__fixtures__/check-run-agreement/host-path-entry/lib/telo.yaml
+expect:
+  errors:
+    - code: HOST_PATH_ENTRY_MISMATCH
+      message: "'cwd' takes the path of a directory, but `!module-path ./notes.txt` names a file"
+---
+# …and by the kernel when it creates the resource, from a consumer whose
+# entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: hostPathEntryMismatchAtRuntime
+source: ./__fixtures__/check-run-agreement/host-path-entry/app.yaml
+expect:
+  errors: []
+  runFails: "[ERR_HOST_PATH_ENTRY_MISMATCH]"
 ---
 # A provider declared in a `with:` scope is created when the scope opens, so its
 # status in a scoped sibling's startup field is refused where the read is
@@ -3828,6 +3855,46 @@ expect:
     - code: NEED_SLOT_MISMATCH
       message: "Imported library 'SlotMismatch', reached through import 'Lib'"
   runFails: "ERR_NEED_SLOT_MISMATCH"
+---
+# A durable directory forwarded whole: one that is `shared` supplying a
+# `single-writer` need, and one forwarded to two needs, are each refused.
+kind: Assert.Manifest
+metadata:
+  name: needDirectorySharedForward
+source: ./__fixtures__/needs/agreement/directory-shared-forward/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_FORWARD_INCOMPATIBLE
+      message: "the need supplying it is 'shared'"
+---
+kind: Assert.Manifest
+metadata:
+  name: needDirectorySharedForwardAtRuntime
+source: ./__fixtures__/needs/agreement/directory-shared-forward/telo.yaml
+expect:
+  errors:
+    - code: NEED_FORWARD_INCOMPATIBLE
+      message: "Imported library 'DirectorySharedForward', reached through import 'Lib'"
+  runFails: "ERR_NEED_FORWARD_INCOMPATIBLE"
+---
+kind: Assert.Manifest
+metadata:
+  name: needDirectoryForwardedTwice
+source: ./__fixtures__/needs/agreement/directory-forwarded-twice/lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_DIRECTORY_FORWARDED_TWICE
+      message: "forwarded whole to 2 needs — 'First.files', 'Second.files'"
+---
+kind: Assert.Manifest
+metadata:
+  name: needDirectoryForwardedTwiceAtRuntime
+source: ./__fixtures__/needs/agreement/directory-forwarded-twice/telo.yaml
+expect:
+  errors:
+    - code: NEED_DIRECTORY_FORWARDED_TWICE
+      message: "Imported library 'DirectoryForwardedTwice', reached through import 'Lib'"
+  runFails: "ERR_NEED_DIRECTORY_FORWARDED_TWICE"
 ---
 kind: Assert.Manifest
 metadata:

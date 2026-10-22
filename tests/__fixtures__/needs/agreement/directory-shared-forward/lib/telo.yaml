@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata:
+  name: DirectorySharedForward
+  version: 0.0.0
+  description: Forwards a shared durable directory to a library relying on a single writer.
+needs:
+  uploads:
+    kind: Telo.DurableDirectory
+    parameters: { access: shared }
+imports:
+  Inner:
+    source: ./inner
+    needs:
+      files: !ref uploads

@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: HostPathRelative
+  version: 1.0.0
+  description: |
+    A relative literal at a host-path slot names nothing fixed, so creating the
+    resource fails naming the path, before its controller is built.
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/unbuilt-store?local_path=./unbuilt#Store
+schema:
+  type: object
+  properties:
+    root: { type: string, x-telo-type: Telo.HostPath }
+---
+kind: Self.Store
+metadata:
+  name: store
+root: data

@@ -219,6 +219,18 @@ function compare(
       // bare `Telo.Stream` flowing into a typed slot and vice versa, so nothing
       // that does not declare its element is forced to.
       if (sourceArg === undefined) continue;
+      // A host-entry argument is a token, compared by equality.
+      if (targetType.entry?.parameters.some((p) => p.hostEntry && p.name === argument)) {
+        if (sourceArg !== targetArg) {
+          conflicts.push({
+            message:
+              `${path}<${argument}>: ${roles.source} names a ${JSON.stringify(sourceArg)}, ` +
+              `${roles.target} expects a ${JSON.stringify(targetArg)}`,
+            beneathTypeArgument: true,
+          });
+        }
+        continue;
+      }
       compare(
         sourceArg as Record<string, any>,
         targetArg as Record<string, any>,

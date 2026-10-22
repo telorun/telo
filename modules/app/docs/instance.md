@@ -43,6 +43,13 @@ variables:
 
 The child validates each value against its own declaration, so it stays the authority on what it accepts. A name it does not declare is refused and it exits non-zero, with the names it does declare in the message — a value silently ignored is the failure this prevents. A name you leave out falls back to the environment, then to the child's default.
 
+A child is an application of its own, so it reads its needs from its own
+environment. It does not inherit the host values its parent's kernel-declared
+needs are answered from (`TELO_HOST_STATE_DIR`, `TELO_HOST_PUBLIC_URL_TEMPLATE`,
+`TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE`): a child that declares a
+`Telo.DurableDirectory` gets no directory under its parent's state directory,
+and is refused with `ERR_NEED_UNMET` unless its own variable is set.
+
 ## Testing an application
 
 An application cannot be imported, so a test reaches one by running it. Declaring it in a sequence's `with:` block ties it to the test:

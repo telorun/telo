@@ -12,9 +12,9 @@ root: !cel "variables.blobRoot"
 
 | Field | Type | Required | Purpose |
 | --- | --- | --- | --- |
-| `root` | `Telo.HostPath` | yes | The directory blobs are kept under. Evaluated once, when the store is created. |
+| `root` | `Telo.HostPath` (`entry: directory`) | yes | The directory blobs are kept under. Evaluated once, when the store is created. |
 
-`root` is an absolute path on the host. It comes from a variable declared `x-telo-type: Telo.HostPath`, whose value — relative or not — resolves against the working directory; a relative literal is refused (`HOST_PATH_RELATIVE`). The directory is created by the first put; a store whose root does not exist yet reads as empty.
+`root` is an absolute path on the host. It comes from a variable declared `x-telo-type: Telo.HostPath`, whose value — relative or not — resolves against the working directory; a relative literal is refused (`HOST_PATH_RELATIVE`). It names a directory: a `!module-path` naming a file, or a variable declared `entry: file`, is refused by `telo check` (`HOST_PATH_ENTRY_MISMATCH`), and an existing file reached any other way when the store is created (`ERR_HOST_PATH_ENTRY_MISMATCH`). The directory is created by the first put; a store whose root does not exist yet reads as empty.
 
 Every process given the same `root` shares one store. Give the directory to this store alone: files it did not write there are not blobs, and it refuses to read one as a blob.
 

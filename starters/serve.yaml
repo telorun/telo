@@ -14,6 +14,9 @@ metadata:
 
     Files are read per request, so an edited starter shows on the next gallery
     open. The starters' own imports stay the published pins they carry.
+requires:
+  # A host-path variable declaring `entry:` needs 0.121.0.
+  telo: ">=0.121.0"
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
 targets:
@@ -35,7 +38,7 @@ variables:
     env: STARTERS_DIR
     arg: dir
     type: string
-    x-telo-type: Telo.HostPath
+    x-telo-type: { name: Telo.HostPath, entry: directory }
     default: starters
     description: The directory holding starters.json, resolved against the working directory.
 ---

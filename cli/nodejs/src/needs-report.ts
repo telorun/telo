@@ -1,9 +1,11 @@
 import {
   needFeatures,
+  needParametersWithDefaults,
   needVersionRange,
   type LoadedGraph,
   type NeedTable,
   type NeedEnvironmentEntry,
+  type NeedTypeShape,
 } from "@telorun/analyzer";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -28,6 +30,7 @@ export interface NeedsReportEntry {
   version: string | null;
   /** The features the need asks for. */
   features: string[];
+  /** As the need states them, with its type's schema defaults filled in. */
   parameters: unknown;
   optional: boolean;
   fields: Record<
@@ -36,14 +39,22 @@ export interface NeedsReportEntry {
   >;
 }
 
-export function buildNeedsReport(graph: LoadedGraph, table: NeedTable): NeedsReport {
+export function buildNeedsReport(
+  graph: LoadedGraph,
+  table: NeedTable,
+  needType: (kind: string) => NeedTypeShape | undefined,
+): NeedsReport {
   return {
     reportVersion: 1,
-    needs: table.environment.map((entry) => reportEntry(graph, entry)),
+    needs: table.environment.map((entry) => reportEntry(graph, entry, needType)),
   };
 }
 
-function reportEntry(graph: LoadedGraph, entry: NeedEnvironmentEntry): NeedsReportEntry {
+function reportEntry(
+  graph: LoadedGraph,
+  entry: NeedEnvironmentEntry,
+  needType: (kind: string) => NeedTypeShape | undefined,
+): NeedsReportEntry {
   const type = entry.need.type ?? entry.need.kind;
   const fields: NeedsReportEntry["fields"] = {};
   for (const [name, field] of Object.entries(entry.fields ?? {})) {
@@ -65,7 +76,10 @@ function reportEntry(graph: LoadedGraph, entry: NeedEnvironmentEntry): NeedsRepo
     },
     version: needVersionRange(entry.need)?.raw ?? null,
     features: needFeatures(entry.need),
-    parameters: entry.need.parameters ?? {},
+    parameters: needParametersWithDefaults(
+      entry.need.type ? needType(entry.need.type) : undefined,
+      entry.need.parameters,
+    ),
     optional: entry.need.optional,
     fields,
   };

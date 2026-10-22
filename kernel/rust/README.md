@@ -26,6 +26,7 @@ The first run builds `modules/console/rust`; later runs hit Cargo's incremental 
 | Capabilities   | `Telo.Invocable`                                                                       |
 | Targets        | inline invoke steps with literal `inputs`                                              |
 | Contracts      | `inputType` / `outputType`, including declared defaults                                |
+| Host paths     | `Telo.HostPath` slots: a relative path, or one existing as the other kind of entry than the slot's `entry: file \| directory`, refused when the resource is created (the vectors in `analyzer/host-path-conformance/`) |
 | Controllers    | `pkg:cargo/<crate>?local_path=<dir>#<entry>`, `pkg:telo/local/dylib?path=<file>&os=…&arch=…[&libc=…]&abi=telo-<ABI>#<entry>` |
 
 Not supported, each failing with a message that names what is missing rather than degrading quietly: CEL and `!cel`, `variables` / `secrets` / `ports`, transports other than local paths and `oci://` (`https://` imports), private OCI registries, streams, `extends`, template-backed definitions, `Run.Sequence`, every capability other than `Telo.Invocable`, and static analysis.
@@ -48,6 +49,7 @@ Only controller layers (with the `library` layer of the same selector and the `c
 Files mirror `kernel/nodejs/src/` one-for-one, kebab-case becoming snake_case. That is a rule, not a coincidence: where a file has no counterpart on the other side, one of the two layouts is wrong. Two consequences worth knowing before looking for something:
 
 - **Manifest loading is not here.** It lives in `analyzer/rust`, because that is where it lives in Node — static analysis and the runtime read manifests through one path.
+- **Schema slot readers are not here either.** What a schema node says of a host path, and the walk pairing each value with its node, live in `analyzer/rust` over the value types of `telorun-sdk-core` (the SDK's backend-free half), as they live in the Node analyzer; `host_paths.rs` holds only the filesystem queries.
 - **`controller_loaders/native_abi.rs` has no Node twin.** It is the host side of the C ABI; the Node.js kernel's equivalent is N-API, supplied by its runtime.
 - **`controller_loaders/dylib_loader.rs` and `controller_loaders/purl.rs` have no Node twin.** The first is the artifact branch of Node's `bundle-loader.ts` for the `dylib` format; the second is the PURL grammar Node takes from a library.
 - **`manifest_sources/oci_source.rs` has no Node twin.** It is the read half of Node's `transports/oci/oci-transport.ts`; this kernel publishes nothing.
