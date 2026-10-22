@@ -1,18 +1,22 @@
-//! An environment: what names, functions, types and namespaces an expression is read
-//! and checked against — `environment.ts`, its registration, declaration, listing and
-//! checking half.
+//! An environment: what names, functions, types and namespaces an expression is read,
+//! checked, compiled and evaluated against — `environment.ts`.
 //!
 //! Everything is registered the same way, the standard library included, so a host can
 //! replace or remove a standard signature. `Clone` inherits everything and then
 //! diverges: a registration on the clone leaves the original as it was.
 //!
-//! Node items with no twin in this file yet, arriving with evaluation: `compile`,
-//! `evaluate`, the `compiledCacheCapacity` option, `DEFAULT_COMPILED_CACHE_CAPACITY` and
-//! the standard constants' values.
+//! **A program compiles against a snapshot.** The registry, the standard constants'
+//! values and each named type's arity and fields are shared with every program compiled
+//! from them and copied before a registration changes them, so a registration never
+//! reaches a program already compiled. A compile from text is memoized in a bounded,
+//! least-recently-used cache keyed by the exact text; every registration that changed
+//! anything forgets it, so a compile after a registration reads the registration. The
+//! cache's lock is held only to look up and to insert.
 //!
 //! Node items with no twin: `emit`, `emittedModule`, `emitterRuntime`, `digest` — there
 //! is no emitter here; the refusal "a declaration is a type expression, a field map or a
-//! schema" — [`TypeDeclaration`] holds nothing else.
+//! schema" — [`TypeDeclaration`] holds nothing else; the `RangeError` of a cache capacity
+//! below one — the capacity is a `NonZeroUsize`.
 //!
 //! Declared here and not in the Node file:
 //! - [`CelRegistrationError`] — every refusal a registration answers, which Node throws
@@ -20,19 +24,28 @@
 //! - [`SignatureDeclaration`], [`NamespaceFunctionForm`], [`WithheldReturns`] — the
 //!   shapes Node writes as a union of a string and an object.
 //! - [`CelEnvironment::clone_with_options`] — Node's `clone(options)`.
-//! - [`CelEnvironment::check_parsed`] — Node's `check` handed a tree; [`CelEnvironment::check`]
-//!   is the same handed text, which is never refused.
+//! - [`CelEnvironment::check_parsed`], [`CelEnvironment::compile_parsed`],
+//!   [`CelEnvironment::evaluate_parsed`] — Node's `check`, `compile` and `evaluate` handed
+//!   a tree; the methods handed text never refuse a namespace set.
+//! - [`CelProgramError`] and [`CelEvaluateError`] — what Node throws from `compile` and
+//!   `evaluate`, as a variant per class.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::sync::Arc;
+use std::num::NonZeroUsize;
+use std::sync::{Arc, Mutex};
 
-use telorun_cel_value::{compare_code_units, json_quote, PropertyMap, CEL_VALUE_KEYS};
+use telorun_cel_value::{compare_code_units, json_quote, CelError, CelValue, PropertyMap, CEL_VALUE_KEYS};
 
+use crate::activation::CelActivation;
+use crate::backend_runtime::{CelCompileError, EnvironmentSnapshot, NominalRuntime};
+use crate::bounded_cache::BoundedCache;
 use crate::cel_expression::{parse_expression, resolved_under, CelExpression, ParseExpressionOptions};
-use crate::cel_type::{format_type, is_dyn, CelType, DYN};
+use crate::cel_type::{format_type, is_dyn, CelType, NominalType, DYN};
+use crate::cel_program::{CelProgram, EvaluateOptions};
 use crate::check_diagnostic::{CelEngineError, CelEngineErrorCode};
 use crate::checker::{check_expression, CheckResult, CheckerContext, CheckerOptions, NamespaceFunction};
+use crate::closure_backend::compile_tree;
 use crate::function_registry::FunctionRegistry;
 use crate::json_schema_type::{
     field_map_type, schema_type, FieldDeclaration, JsonSchemaDocument, RecursiveSchemaReference, SchemaConversion,
@@ -45,6 +58,7 @@ use crate::nominal_type::{
 };
 use crate::parse_limits::CelParseLimits;
 use crate::parser::ParseOptions;
+use crate::runtime_library::standard_constant_values;
 use crate::signature::{format_signature, parse_signature, CallForm, CelSignature, FunctionMetadata};
 use crate::standard_library::{register_standard_library, standard_constants, StandardLibraryOptions};
 use crate::type_expression::{
@@ -67,7 +81,13 @@ pub struct CelEnvironmentOptions {
     pub limits: CelParseLimits,
     /// Whether the standard library is registered. On by default.
     pub standard_library: bool,
+    /// How many compiled expressions the environment keeps. A clone keeps the option and
+    /// starts with none.
+    pub compiled_cache_capacity: NonZeroUsize,
 }
+
+/// How many compiled expressions an environment keeps when nothing says otherwise.
+pub const DEFAULT_COMPILED_CACHE_CAPACITY: usize = 256;
 
 impl PartialEq for CelEnvironmentOptions {
     fn eq(&self, other: &Self) -> bool {
@@ -81,6 +101,7 @@ impl PartialEq for CelEnvironmentOptions {
             }
             && self.limits == other.limits
             && self.standard_library == other.standard_library
+            && self.compiled_cache_capacity == other.compiled_cache_capacity
     }
 }
 
@@ -95,6 +116,7 @@ impl fmt::Debug for CelEnvironmentOptions {
             .field("resolve_schema_type", &self.resolve_schema_type.as_ref().map(|_| "<resolver>"))
             .field("limits", &self.limits)
             .field("standard_library", &self.standard_library)
+            .field("compiled_cache_capacity", &self.compiled_cache_capacity)
             .finish()
     }
 }
@@ -108,6 +130,8 @@ impl Default for CelEnvironmentOptions {
             resolve_schema_type: None,
             limits: CelParseLimits::default(),
             standard_library: true,
+            compiled_cache_capacity: NonZeroUsize::new(DEFAULT_COMPILED_CACHE_CAPACITY)
+                .expect("the default capacity holds at least one program"),
         }
     }
 }
@@ -380,6 +404,75 @@ impl From<CelTypeTextError> for CelRegistrationError {
     }
 }
 
+/// Why an expression could not be compiled.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum CelProgramError {
+    /// A source that did not read whole (`unreadable_expression`), or a tree resolved
+    /// under another namespace set (`namespaces_mismatch`).
+    Engine(CelEngineError),
+    /// A tree no evaluation can be compiled from.
+    Compile(CelCompileError),
+}
+
+impl fmt::Display for CelProgramError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CelProgramError::Engine(error) => error.fmt(f),
+            CelProgramError::Compile(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for CelProgramError {}
+
+impl From<CelEngineError> for CelProgramError {
+    fn from(error: CelEngineError) -> Self {
+        CelProgramError::Engine(error)
+    }
+}
+
+impl From<CelCompileError> for CelProgramError {
+    fn from(error: CelCompileError) -> Self {
+        CelProgramError::Compile(error)
+    }
+}
+
+/// Why an expression answered no value: it could not be compiled, or an error survived
+/// to the top of its evaluation.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum CelEvaluateError {
+    Engine(CelEngineError),
+    Compile(CelCompileError),
+    Evaluation(CelError),
+}
+
+impl fmt::Display for CelEvaluateError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CelEvaluateError::Engine(error) => error.fmt(f),
+            CelEvaluateError::Compile(error) => error.fmt(f),
+            CelEvaluateError::Evaluation(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for CelEvaluateError {}
+
+impl From<CelProgramError> for CelEvaluateError {
+    fn from(error: CelProgramError) -> Self {
+        match error {
+            CelProgramError::Engine(error) => CelEvaluateError::Engine(error),
+            CelProgramError::Compile(error) => CelEvaluateError::Compile(error),
+        }
+    }
+}
+
+impl From<CelError> for CelEvaluateError {
+    fn from(error: CelError) -> Self {
+        CelEvaluateError::Evaluation(error)
+    }
+}
+
 #[derive(Clone)]
 struct VariableRecord {
     ty: CelType,
@@ -453,15 +546,55 @@ fn resolve_nominal(
     Ok(Some(with_arguments(&registered.self_type, args)))
 }
 
+const COMPILED_LOCK: &str = "the compiled cache's lock is held only to read or write an entry";
+
+/// The programs compiled from text. A clone of it holds none.
+struct CompiledCache(Mutex<BoundedCache<Arc<str>, Arc<CelProgram>>>);
+
+impl CompiledCache {
+    fn new(capacity: NonZeroUsize) -> Self {
+        Self(Mutex::new(BoundedCache::new(capacity)))
+    }
+
+    fn get(&self, source: &str) -> Option<Arc<CelProgram>> {
+        self.0.lock().expect(COMPILED_LOCK).get(source).cloned()
+    }
+
+    fn set(&self, source: &str, program: Arc<CelProgram>) {
+        self.0.lock().expect(COMPILED_LOCK).set(Arc::from(source), program);
+    }
+
+    fn clear(&mut self) {
+        self.0.get_mut().expect(COMPILED_LOCK).clear();
+    }
+}
+
+impl Clone for CompiledCache {
+    fn clone(&self) -> Self {
+        Self::new(self.0.lock().expect(COMPILED_LOCK).capacity())
+    }
+}
+
 #[derive(Clone)]
 pub struct CelEnvironment {
     options: CelEnvironmentOptions,
-    registry: FunctionRegistry,
+    /// Shared with every program compiled from it; copied before it changes.
+    registry: Arc<FunctionRegistry>,
     variables: HashMap<String, VariableRecord>,
     types: InsertionOrdered<RegisteredType>,
+    /// Each named type as evaluation reads it, shared and copied as the registry is.
+    runtime_types: Arc<HashMap<String, NominalRuntime>>,
+    /// The values the standard library's constants read as.
+    constants: Arc<PropertyMap<CelValue>>,
     namespace_functions: HashMap<String, InsertionOrdered<NamespaceFunction>>,
     open_namespaces: HashSet<String>,
+    compiled: CompiledCache,
 }
+
+const _: () = {
+    const fn shared_across_threads<T: Send + Sync>() {}
+    shared_across_threads::<CelEnvironment>();
+};
 
 impl Default for CelEnvironment {
     fn default() -> Self {
@@ -474,19 +607,24 @@ impl CelEnvironment {
     pub fn new(options: CelEnvironmentOptions) -> Self {
         let standard_library = options.standard_library;
         let optional_types = options.enable_optional_types;
+        let compiled = CompiledCache::new(options.compiled_cache_capacity);
         let mut environment = Self {
             options,
-            registry: FunctionRegistry::new(),
+            registry: Arc::new(FunctionRegistry::new()),
             variables: HashMap::new(),
             types: InsertionOrdered::default(),
+            runtime_types: Arc::new(HashMap::new()),
+            constants: Arc::new(PropertyMap::new()),
             namespace_functions: HashMap::new(),
             open_namespaces: HashSet::new(),
+            compiled,
         };
         if standard_library {
+            environment.constants = Arc::new(standard_constant_values(optional_types));
             let types = &environment.types;
             let resolver = |name: &str, args: &[CelType]| resolve_nominal(types, name, args);
             register_standard_library(
-                &mut environment.registry,
+                Arc::make_mut(&mut environment.registry),
                 StandardLibraryOptions { optional_types, resolve_nominal: Some(&resolver) },
             );
             for constant in standard_constants(optional_types) {
@@ -508,7 +646,8 @@ impl CelEnvironment {
     /// A clone under other options. Nothing more is registered: on a clone,
     /// `standard_library` and `enable_optional_types` register nothing.
     pub fn clone_with_options(&self, options: CelEnvironmentOptions) -> Self {
-        Self { options, ..self.clone() }
+        let compiled = CompiledCache::new(options.compiled_cache_capacity);
+        Self { options, compiled, ..self.clone() }
     }
 
     pub fn options(&self) -> &CelEnvironmentOptions {
@@ -541,19 +680,25 @@ impl CelEnvironment {
         metadata: FunctionMetadata,
     ) -> Result<(), CelRegistrationError> {
         let signature = self.signature_of(signature.into())?;
-        Ok(self.registry.register(signature, metadata)?)
+        self.compiled.clear();
+        Arc::make_mut(&mut self.registry).register(signature, metadata)?;
+        Ok(())
     }
 
     /// Removes the one registration answering that call. Answers whether it was there.
     pub fn remove_function(&mut self, signature: impl Into<SignatureDeclaration>) -> Result<bool, CelRegistrationError> {
         let signature = self.signature_of(signature.into())?;
-        Ok(self.registry.remove(&signature))
+        self.compiled.clear();
+        let removed = Arc::make_mut(&mut self.registry).remove(&signature);
+        Ok(removed)
     }
 
     /// Removes every registration of a name, so a call to it is unknown. Answers how
     /// many went.
     pub fn remove_functions_named(&mut self, name: &str) -> usize {
-        self.registry.remove_name(name)
+        self.compiled.clear();
+        let removed = Arc::make_mut(&mut self.registry).remove_name(name);
+        removed
     }
 
     /// Registers an operator over the types given, replacing one over the same types.
@@ -567,7 +712,9 @@ impl CelEnvironment {
         let parameters = parameters.iter().map(|text| self.read_type(text.as_ref())).collect::<Result<Vec<_>, _>>()?;
         let returns = self.read_type(returns)?;
         let signature = CelSignature { name: operator.into(), receiver: None, parameters, returns };
-        Ok(self.registry.register(signature, metadata)?)
+        self.compiled.clear();
+        Arc::make_mut(&mut self.registry).register(signature, metadata)?;
+        Ok(())
     }
 
     /// The type a declaration names: a type expression, a type, a field map, or a schema.
@@ -593,9 +740,12 @@ impl CelEnvironment {
         }
     }
 
+    /// A declared name changes which name a dotted chain reads, which a program decides
+    /// when it is compiled — so a declaration forgets what was compiled.
     fn declare(&mut self, name: &str, declared: DeclaredType, description: Option<String>, constant: bool) {
         let DeclaredType { ty, unjudged, recursive } = declared;
         self.variables.insert(name.into(), VariableRecord { ty, description, constant, unjudged, recursive });
+        self.compiled.clear();
     }
 
     pub fn register_variable(
@@ -648,7 +798,8 @@ impl CelEnvironment {
     /// The type is held before its signatures are registered, one by one, and a type
     /// registered again keeps the signatures its earlier registration made — so a
     /// signature refused part way leaves the type and the signatures before it, as on
-    /// Node.
+    /// Node. Once the type is held, what was compiled is forgotten, a refusal part way
+    /// included.
     pub fn register_type(&mut self, definition: NominalTypeDefinition) -> Result<(), CelRegistrationError> {
         // A value of a named type carries its name under the engine's own value key.
         if CEL_VALUE_KEYS.contains(&definition.name.as_str()) {
@@ -664,29 +815,45 @@ impl CelEnvironment {
             build_registered_type(&definition, &resolver)?
         };
         let self_type = registered.self_type.clone();
+        self.compiled.clear();
+        Arc::make_mut(&mut self.runtime_types).insert(
+            definition.name.clone(),
+            NominalRuntime {
+                arity: registered.parameters().len(),
+                fields: self_type.fields.as_ref().map(|fields| fields.keys().map(str::to_owned).collect()),
+            },
+        );
         self.types.set(&definition.name, registered);
+        self.register_type_signatures(&definition, &self_type)
+    }
+
+    fn register_type_signatures(
+        &mut self,
+        definition: &NominalTypeDefinition,
+        self_type: &NominalType,
+    ) -> Result<(), CelRegistrationError> {
         let origin = format!("type:{}", definition.name);
         let metadata = || FunctionMetadata { deterministic: true, origin: Some(origin.clone()), ..FunctionMetadata::default() };
-        for text in nominal_signatures(&definition) {
+        for text in nominal_signatures(definition) {
             let signature = {
                 let types = &self.types;
                 let resolver = |name: &str, args: &[CelType]| {
                     if name == "Self" {
-                        Ok(Some(with_arguments(&self_type, args)))
+                        Ok(Some(with_arguments(self_type, args)))
                     } else {
                         resolve_nominal(types, name, args)
                     }
                 };
                 parse_signature(text, Some(&resolver))?
             };
-            self.registry.register(signature, metadata())?;
+            Arc::make_mut(&mut self.registry).register(signature, metadata())?;
         }
-        for operator in nominal_operators(&definition) {
+        for operator in nominal_operators(definition) {
             let signature = {
                 let types = &self.types;
                 let resolver = |name: &str, args: &[CelType]| {
                     if name == "Self" {
-                        Ok(Some(with_arguments(&self_type, args)))
+                        Ok(Some(with_arguments(self_type, args)))
                     } else {
                         resolve_nominal(types, name, args)
                     }
@@ -700,7 +867,7 @@ impl CelEnvironment {
                 let returns = parse_type_expression(&operator.returns, Some(resolver))?;
                 CelSignature { name: operator.operator.clone(), receiver: None, parameters, returns }
             };
-            self.registry.register(signature, metadata())?;
+            Arc::make_mut(&mut self.registry).register(signature, metadata())?;
         }
         Ok(())
     }
@@ -773,6 +940,7 @@ impl CelEnvironment {
         } else {
             self.open_namespaces.remove(name);
         }
+        self.compiled.clear();
         Ok(())
     }
 
@@ -817,6 +985,79 @@ impl CelEnvironment {
             });
         }
         Ok(check_expression(expression, &self.checker_context()))
+    }
+
+    /// Compiles an expression read against this environment into a program. Nothing is
+    /// type-checked here — the checker decides every verdict — so a compile refuses only
+    /// what cannot be compiled at all. A compile from text is memoized.
+    pub fn compile(&self, source: &str) -> Result<Arc<CelProgram>, CelProgramError> {
+        if let Some(held) = self.compiled.get(source) {
+            return Ok(held);
+        }
+        let program = self.compile_ready(&self.parse(source))?;
+        self.compiled.set(source, Arc::clone(&program));
+        Ok(program)
+    }
+
+    /// Compiles a tree, each time: a tree has no identity to key a cache on.
+    pub fn compile_parsed(&self, expression: &CelExpression) -> Result<Arc<CelProgram>, CelProgramError> {
+        self.compile_ready(expression)
+    }
+
+    /// Compiles an expression and evaluates it against an activation.
+    pub fn evaluate(
+        &self,
+        source: &str,
+        activation: &dyn CelActivation,
+        options: &EvaluateOptions<'_>,
+    ) -> Result<CelValue, CelEvaluateError> {
+        Ok(self.compile(source)?.evaluate(activation, options)?)
+    }
+
+    /// Compiles a tree and evaluates it against an activation.
+    pub fn evaluate_parsed(
+        &self,
+        expression: &CelExpression,
+        activation: &dyn CelActivation,
+        options: &EvaluateOptions<'_>,
+    ) -> Result<CelValue, CelEvaluateError> {
+        Ok(self.compile_parsed(expression)?.evaluate(activation, options)?)
+    }
+
+    /// A program from an expression a backend may compile: read whole, and resolved under
+    /// this environment's own namespaces.
+    fn compile_ready(&self, expression: &CelExpression) -> Result<Arc<CelProgram>, CelProgramError> {
+        if let Some(diagnostic) = &expression.diagnostic {
+            return Err(CelEngineError {
+                code: CelEngineErrorCode::UnreadableExpression,
+                message: format!("{} could not be read: {}", json_quote(&expression.source), diagnostic.message),
+            }
+            .into());
+        }
+        let namespaces = self.namespaces();
+        let same = resolved_under(expression, &namespaces).expect("every registered namespace was validated when it was registered");
+        if !same {
+            return Err(CelEngineError {
+                code: CelEngineErrorCode::NamespacesMismatch,
+                message: format!(
+                    "the expression was resolved under [{}] and this environment has [{}]",
+                    expression.namespaces.join(", "),
+                    namespaces.join(", ")
+                ),
+            }
+            .into());
+        }
+        // A chain splits over the same declarations the checker splits it on; a prefix
+        // longer than every declared name is no declared name.
+        let longest = self.variables.keys().map(String::len).max().unwrap_or(0);
+        let declares = |name: &str| name.len() <= longest && self.variables.contains_key(name);
+        let tree = compile_tree(&expression.root, &declares)?;
+        let snapshot = EnvironmentSnapshot {
+            registry: Arc::clone(&self.registry),
+            constants: Arc::clone(&self.constants),
+            types: Arc::clone(&self.runtime_types),
+        };
+        Ok(Arc::new(CelProgram::new(Arc::clone(&expression.source), tree, Arc::new(snapshot))))
     }
 
     fn checker_context(&self) -> CheckerContext<'_> {

@@ -5,9 +5,6 @@
 //! registers through the same [`FunctionRegistry::register`] a host uses, so a standard
 //! signature can be replaced or removed. A file this engine cannot read is a defect of
 //! the engine, not of any input, and panics naming the entry.
-//!
-//! Node items with no twin in this file yet: `googleTypeNames`, the value `google`
-//! reads as, arriving with evaluation, its only reader.
 
 use std::sync::LazyLock;
 
@@ -206,6 +203,12 @@ pub fn standard_constants(optional_types: bool) -> Vec<StandardConstant> {
         description: entry.description.clone(),
     });
     types.chain(named).collect()
+}
+
+/// The value `google` reads as: the two well-known type names, by the namespace under
+/// `google` that holds them.
+pub fn google_type_names() -> &'static [(&'static str, &'static [&'static str])] {
+    &[("protobuf", &["Duration", "Timestamp"])]
 }
 
 /// What [`register_standard_library`] registers.

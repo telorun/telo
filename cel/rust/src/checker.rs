@@ -51,6 +51,7 @@ use crate::syntax_tree::{
     CelBinaryNode, CelBinaryOperator, CelCallNode, CelConditionalNode, CelIdentNode, CelIndexNode, CelListNode,
     CelLiteral, CelMapNode, CelNode, CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, SourceRange,
 };
+use crate::value_text::es_to_lower_case;
 
 /// A namespaced function the host has declared, as the environment holds it.
 ///
@@ -1057,13 +1058,13 @@ impl<'a> Checker<'a, '_> {
     fn rename_fix(&self, node: &CelNode) -> Option<CelDiagnosticFix> {
         let (name, form, _) = call_parts(node);
         let arity = call_arguments(node).len();
-        let wanted = name.to_lowercase();
+        let wanted = es_to_lower_case(name);
         let mut candidates: Vec<String> = Vec::new();
         for entry in self.context.registry.list() {
             let signature = &entry.signature;
             if signature.form() == form
                 && signature.parameters.len() == arity
-                && signature.name.to_lowercase() == wanted
+                && es_to_lower_case(&signature.name) == wanted
                 && signature.name != name
                 && !candidates.contains(&signature.name)
             {

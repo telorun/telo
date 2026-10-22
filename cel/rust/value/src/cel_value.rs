@@ -3,6 +3,13 @@
 //! A value's identity is its variant. The union is closed: a new kind of value is a
 //! change here.
 //!
+//! **Aggregates are shared.** A string, bytes, a list, a map, a record, an optional's
+//! held value and a host value's entries are each held by an `Arc`, so a clone is O(1)
+//! and a value is immutable once built — what every Node value is, a shared reference.
+//! Releasing, comparing and printing a value run on heap work lists, so a value of any
+//! depth costs no stack; a shared child is let go of through `Arc::into_inner`, which
+//! hands it to exactly one of the holders letting go at the same moment.
+//!
 //! Node exports with no twin in this file:
 //! - `CEL_VALUE_TYPE` and the `isCel*` predicates — the variant is the identity, so
 //!   there is no brand to read.
@@ -16,8 +23,9 @@
 //! Declared here and not in the Node file:
 //! - `SourceRange` — Node imports it from the syntax tree, which this crate sits
 //!   beneath; the engine's tree re-exports this one.
-//! - `CelRecord` and `CelHostValue` as types — Node holds a record as a plain object
-//!   and a host value as any object carrying the host's own key.
+//! - `CelList`, `CelRecord` and `CelHostValue` as types — Node holds a list as an
+//!   array, a record as a plain object and a host value as any object carrying the
+//!   host's own key.
 //! - `PropertyMap` — the order of a JavaScript object's own keys, which Node gets from
 //!   its host; a record is built on it, and so is every engine input Node takes as a
 //!   plain object.
@@ -27,7 +35,8 @@
 use std::any::Any;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
-use std::sync::Arc;
+use std::ops::Deref;
+use std::sync::{Arc, OnceLock};
 
 use crate::cel_map_value::map_key_identity;
 use crate::value_text::json_quote;
@@ -68,7 +77,7 @@ pub struct CelDuration {
 /// A type as a value — what `type(x)` answers and what `int` denotes.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct CelTypeValue {
-    name: String,
+    name: Arc<str>,
 }
 
 impl CelTypeValue {
@@ -77,10 +86,15 @@ impl CelTypeValue {
     }
 }
 
+/// Moves a shared payload out of its slot, answering it when this holder was the last.
+fn take_shared<T>(slot: &mut Option<Arc<T>>) -> Option<T> {
+    slot.take().and_then(Arc::into_inner)
+}
+
 /// `optional.of(v)` and `optional.none()`.
-#[derive(Clone, PartialEq, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct CelOptional {
-    held: Option<Box<CelValue>>,
+    held: Option<Arc<CelValue>>,
 }
 
 impl CelOptional {
@@ -92,8 +106,33 @@ impl CelOptional {
         self.held.as_deref()
     }
 
-    pub fn into_held(self) -> Option<CelValue> {
-        self.held.map(|held| *held)
+    pub fn into_held(mut self) -> Option<CelValue> {
+        self.held.take().map(Arc::unwrap_or_clone)
+    }
+
+    fn unlink(&mut self, pending: &mut Vec<CelValue>) {
+        pending.extend(take_shared(&mut self.held).filter(holds_values));
+    }
+}
+
+impl Drop for CelOptional {
+    fn drop(&mut self) {
+        if self.held.is_some() {
+            release(|pending| self.unlink(pending));
+        }
+    }
+}
+
+impl PartialEq for CelOptional {
+    fn eq(&self, other: &Self) -> bool {
+        let mut pending = Vec::new();
+        optional_pairs(self, other, &mut pending) && equal_pairs(pending)
+    }
+}
+
+impl fmt::Debug for CelOptional {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        print(f, Piece::Optional(self))
     }
 }
 
@@ -101,51 +140,19 @@ impl CelOptional {
 /// uint and a whole double are the one integer CEL equality makes them.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum CelMapKey {
-    String(String),
+    String(Arc<str>),
     Bool(bool),
     Integer(i128),
 }
 
-/// A map with typed keys: int, uint, bool and string keys in one container, in
-/// insertion order, with no two keys CEL equality makes one. Built only by
-/// `cel_map_from_entries`.
+/// A map's entries in insertion order, and where each key identity stands.
 #[derive(Clone, Default)]
-pub struct CelMap {
+pub(crate) struct MapEntries {
     entries: Vec<(CelValue, CelValue)>,
     index: HashMap<CelMapKey, usize>,
 }
 
-impl CelMap {
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    /// The value held under a key identity.
-    pub fn get(&self, identity: &CelMapKey) -> Option<&CelValue> {
-        self.entry(identity).map(|(_, value)| value)
-    }
-
-    /// The key as it was written and its value, under a key identity.
-    pub fn entry(&self, identity: &CelMapKey) -> Option<(&CelValue, &CelValue)> {
-        self.index.get(identity).map(|at| {
-            let (key, value) = &self.entries[*at];
-            (key, value)
-        })
-    }
-
-    pub fn contains_key(&self, identity: &CelMapKey) -> bool {
-        self.index.contains_key(identity)
-    }
-
-    /// Every entry, in insertion order.
-    pub fn iter(&self) -> impl Iterator<Item = (&CelValue, &CelValue)> {
-        self.entries.iter().map(|(key, value)| (key, value))
-    }
-
+impl MapEntries {
     /// Adds an entry, answering `false` and adding nothing when the identity is held.
     pub(crate) fn insert_new(&mut self, identity: CelMapKey, key: CelValue, value: CelValue) -> bool {
         if self.index.contains_key(&identity) {
@@ -157,18 +164,81 @@ impl CelMap {
     }
 }
 
+/// A map with typed keys: int, uint, bool and string keys in one container, in
+/// insertion order, with no two keys CEL equality makes one. Built only by
+/// `cel_map_from_entries`.
+#[derive(Clone, Default)]
+pub struct CelMap {
+    inner: Option<Arc<MapEntries>>,
+}
+
+impl CelMap {
+    pub(crate) fn from_entries(entries: MapEntries) -> Self {
+        Self { inner: (!entries.entries.is_empty()).then(|| Arc::new(entries)) }
+    }
+
+    fn entries(&self) -> &[(CelValue, CelValue)] {
+        self.inner.as_deref().map_or(&[], |inner| &inner.entries)
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries().is_empty()
+    }
+
+    /// The value held under a key identity.
+    pub fn get(&self, identity: &CelMapKey) -> Option<&CelValue> {
+        self.entry(identity).map(|(_, value)| value)
+    }
+
+    /// The key as it was written and its value, under a key identity.
+    pub fn entry(&self, identity: &CelMapKey) -> Option<(&CelValue, &CelValue)> {
+        let inner = self.inner.as_deref()?;
+        inner.index.get(identity).map(|at| {
+            let (key, value) = &inner.entries[*at];
+            (key, value)
+        })
+    }
+
+    pub fn contains_key(&self, identity: &CelMapKey) -> bool {
+        self.inner.as_deref().is_some_and(|inner| inner.index.contains_key(identity))
+    }
+
+    /// Every entry, in insertion order.
+    pub fn iter(&self) -> impl Iterator<Item = (&CelValue, &CelValue)> {
+        self.entries().iter().map(|(key, value)| (key, value))
+    }
+
+    fn unlink(&mut self, pending: &mut Vec<CelValue>) {
+        if let Some(inner) = take_shared(&mut self.inner) {
+            pending.extend(inner.entries.into_iter().map(|(_, value)| value).filter(holds_values));
+        }
+    }
+}
+
+impl Drop for CelMap {
+    fn drop(&mut self) {
+        if self.inner.is_some() {
+            release(|pending| self.unlink(pending));
+        }
+    }
+}
+
 impl IntoIterator for CelMap {
     type Item = (CelValue, CelValue);
     type IntoIter = std::vec::IntoIter<(CelValue, CelValue)>;
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.entries.into_iter()
+    fn into_iter(mut self) -> Self::IntoIter {
+        self.inner.take().map(Arc::unwrap_or_clone).map(|inner| inner.entries).unwrap_or_default().into_iter()
     }
 }
 
 impl fmt::Debug for CelMap {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_map().entries(self.iter()).finish()
+        print(f, Piece::Map(self))
     }
 }
 
@@ -176,12 +246,8 @@ impl PartialEq for CelMap {
     /// The same key/value pairs, in any order. A key is compared as the value it is,
     /// so an int key is not the uint key of the same number.
     fn eq(&self, other: &Self) -> bool {
-        self.len() == other.len()
-            && self.iter().all(|(key, value)| {
-                map_key_identity(key)
-                    .and_then(|identity| other.entry(&identity))
-                    .is_some_and(|(held_key, held)| held_key == key && held == value)
-            })
+        let mut pending = Vec::new();
+        map_pairs(self, other, &mut pending) && equal_pairs(pending)
     }
 }
 
@@ -298,11 +364,99 @@ impl<V: PartialEq> PartialEq for PropertyMap<V> {
     }
 }
 
+/// A list of values, in order.
+#[derive(Clone, Default)]
+pub struct CelList {
+    items: Option<Arc<Vec<CelValue>>>,
+}
+
+impl CelList {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn as_slice(&self) -> &[CelValue] {
+        self.items.as_deref().map_or(&[], Vec::as_slice)
+    }
+
+    fn unlink(&mut self, pending: &mut Vec<CelValue>) {
+        if let Some(items) = take_shared(&mut self.items) {
+            pending.extend(items.into_iter().filter(holds_values));
+        }
+    }
+}
+
+impl Deref for CelList {
+    type Target = [CelValue];
+
+    fn deref(&self) -> &[CelValue] {
+        self.as_slice()
+    }
+}
+
+impl From<Vec<CelValue>> for CelList {
+    fn from(items: Vec<CelValue>) -> Self {
+        Self { items: (!items.is_empty()).then(|| Arc::new(items)) }
+    }
+}
+
+impl FromIterator<CelValue> for CelList {
+    fn from_iter<I: IntoIterator<Item = CelValue>>(items: I) -> Self {
+        items.into_iter().collect::<Vec<_>>().into()
+    }
+}
+
+impl<'a> IntoIterator for &'a CelList {
+    type Item = &'a CelValue;
+    type IntoIter = std::slice::Iter<'a, CelValue>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.as_slice().iter()
+    }
+}
+
+impl IntoIterator for CelList {
+    type Item = CelValue;
+    type IntoIter = std::vec::IntoIter<CelValue>;
+
+    fn into_iter(mut self) -> Self::IntoIter {
+        self.items.take().map(Arc::unwrap_or_clone).unwrap_or_default().into_iter()
+    }
+}
+
+impl Drop for CelList {
+    fn drop(&mut self) {
+        if self.items.is_some() {
+            release(|pending| self.unlink(pending));
+        }
+    }
+}
+
+impl PartialEq for CelList {
+    fn eq(&self, other: &Self) -> bool {
+        let mut pending = Vec::new();
+        list_pairs(self, other, &mut pending) && equal_pairs(pending)
+    }
+}
+
+impl fmt::Debug for CelList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        print(f, Piece::List(self))
+    }
+}
+
 /// A map whose keys are all strings, as a host hands one over. It ranges in
-/// ECMAScript's own-property order — it is a [`PropertyMap`] of values.
-#[derive(Clone, Default, PartialEq)]
+/// ECMAScript's own-property order — it is a [`PropertyMap`] of values. Setting a key
+/// on a record whose entries another value shares copies them first, so no value ever
+/// sees another change.
+#[derive(Clone, Default)]
 pub struct CelRecord {
-    entries: PropertyMap<CelValue>,
+    entries: Option<Arc<PropertyMap<CelValue>>>,
+}
+
+fn no_entries() -> &'static PropertyMap<CelValue> {
+    static EMPTY: OnceLock<PropertyMap<CelValue>> = OnceLock::new();
+    EMPTY.get_or_init(PropertyMap::new)
 }
 
 impl CelRecord {
@@ -310,40 +464,54 @@ impl CelRecord {
         Self::default()
     }
 
+    fn properties(&self) -> &PropertyMap<CelValue> {
+        match self.entries.as_deref() {
+            Some(entries) => entries,
+            None => no_entries(),
+        }
+    }
+
     /// Sets a key, answering the value it held. A key already held keeps its position.
     pub fn insert(&mut self, key: impl Into<String>, value: CelValue) -> Option<CelValue> {
-        self.entries.insert(key, value)
+        Arc::make_mut(self.entries.get_or_insert_with(Default::default)).insert(key, value)
     }
 
     pub fn get(&self, key: &str) -> Option<&CelValue> {
-        self.entries.get(key)
+        self.properties().get(key)
     }
 
     pub fn contains_key(&self, key: &str) -> bool {
-        self.entries.contains_key(key)
+        self.properties().contains_key(key)
     }
 
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.properties().len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.properties().is_empty()
     }
 
     /// Every entry, in the order a comprehension ranges over them.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &CelValue)> {
-        self.entries.iter()
+        self.properties().iter()
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &str> {
-        self.entries.keys()
+        self.properties().keys()
+    }
+
+    fn unlink(&mut self, pending: &mut Vec<CelValue>) {
+        if let Some(entries) = take_shared(&mut self.entries) {
+            pending.extend(entries.into_iter().map(|(_, value)| value).filter(holds_values));
+        }
     }
 }
 
 impl<K: Into<String>> FromIterator<(K, CelValue)> for CelRecord {
     fn from_iter<I: IntoIterator<Item = (K, CelValue)>>(entries: I) -> Self {
-        Self { entries: entries.into_iter().collect() }
+        let entries: PropertyMap<CelValue> = entries.into_iter().collect();
+        Self { entries: (!entries.is_empty()).then(|| Arc::new(entries)) }
     }
 }
 
@@ -351,14 +519,32 @@ impl IntoIterator for CelRecord {
     type Item = (String, CelValue);
     type IntoIter = std::vec::IntoIter<(String, CelValue)>;
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.entries.into_iter()
+    fn into_iter(mut self) -> Self::IntoIter {
+        match self.entries.take() {
+            Some(entries) => Arc::unwrap_or_clone(entries).into_iter(),
+            None => Vec::new().into_iter(),
+        }
+    }
+}
+
+impl Drop for CelRecord {
+    fn drop(&mut self) {
+        if self.entries.is_some() {
+            release(|pending| self.unlink(pending));
+        }
+    }
+}
+
+impl PartialEq for CelRecord {
+    fn eq(&self, other: &Self) -> bool {
+        let mut pending = Vec::new();
+        record_pairs(self, other, &mut pending) && equal_pairs(pending)
     }
 }
 
 impl fmt::Debug for CelRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.entries.fmt(f)
+        print(f, Piece::Record(self))
     }
 }
 
@@ -496,11 +682,24 @@ impl std::error::Error for ReservedTypeName {}
 
 /// A value of no CEL type of the domain's own: a host's named type, or — with no name
 /// — a host object of no CEL type at all, such as a live handle. Two host values are
-/// one value only when they are the same object.
+/// one value only when they are the same object: the same name, payload and entries.
+///
+/// A named value may carry its own **entries**, a [`PropertyMap`] of values. They are
+/// what a member read answers of it, and only for a field the type the host registered
+/// declares: anything else the value holds, its payload included, is unreachable
+/// through CEL.
 #[derive(Clone)]
 pub struct CelHostValue {
-    type_name: Option<String>,
+    type_name: Option<Arc<str>>,
     payload: Arc<dyn Any + Send + Sync>,
+    entries: Option<Arc<PropertyMap<CelValue>>>,
+}
+
+fn reserved(type_name: &str) -> Result<(), ReservedTypeName> {
+    match CEL_VALUE_KEYS.contains(&type_name) {
+        true => Err(ReservedTypeName { name: type_name.to_string() }),
+        false => Ok(()),
+    }
 }
 
 impl CelHostValue {
@@ -510,16 +709,28 @@ impl CelHostValue {
         type_name: impl Into<String>,
         payload: Arc<dyn Any + Send + Sync>,
     ) -> Result<Self, ReservedTypeName> {
+        Self::with_entries(type_name, payload, PropertyMap::new())
+    }
+
+    /// A value of the host's type `type_name` holding its own entries, refused when the
+    /// name is one of `CEL_VALUE_KEYS`.
+    pub fn with_entries(
+        type_name: impl Into<String>,
+        payload: Arc<dyn Any + Send + Sync>,
+        entries: PropertyMap<CelValue>,
+    ) -> Result<Self, ReservedTypeName> {
         let type_name = type_name.into();
-        if CEL_VALUE_KEYS.contains(&type_name.as_str()) {
-            return Err(ReservedTypeName { name: type_name });
-        }
-        Ok(Self { type_name: Some(type_name), payload })
+        reserved(&type_name)?;
+        Ok(Self {
+            type_name: Some(type_name.into()),
+            payload,
+            entries: (!entries.is_empty()).then(|| Arc::new(entries)),
+        })
     }
 
     /// A host object of no CEL type.
     pub fn unnamed(payload: Arc<dyn Any + Send + Sync>) -> Self {
-        Self { type_name: None, payload }
+        Self { type_name: None, payload, entries: None }
     }
 
     pub fn type_name(&self) -> Option<&str> {
@@ -529,32 +740,60 @@ impl CelHostValue {
     pub fn payload(&self) -> &Arc<dyn Any + Send + Sync> {
         &self.payload
     }
+
+    /// The value's own entries; none for a value built without them.
+    pub fn entries(&self) -> &PropertyMap<CelValue> {
+        match self.entries.as_deref() {
+            Some(entries) => entries,
+            None => no_entries(),
+        }
+    }
+
+    fn unlink(&mut self, pending: &mut Vec<CelValue>) {
+        if let Some(entries) = take_shared(&mut self.entries) {
+            pending.extend(entries.into_iter().map(|(_, value)| value).filter(holds_values));
+        }
+    }
+}
+
+impl Drop for CelHostValue {
+    fn drop(&mut self) {
+        if self.entries.is_some() {
+            release(|pending| self.unlink(pending));
+        }
+    }
 }
 
 impl PartialEq for CelHostValue {
     fn eq(&self, other: &Self) -> bool {
+        let same_entries = match (&self.entries, &other.entries) {
+            (None, None) => true,
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        };
         self.type_name == other.type_name
             && std::ptr::eq(Arc::as_ptr(&self.payload) as *const (), Arc::as_ptr(&other.payload) as *const ())
+            && same_entries
     }
 }
 
 impl fmt::Debug for CelHostValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CelHostValue").field("type_name", &self.type_name).finish_non_exhaustive()
+        print(f, Piece::Host(self))
     }
 }
 
 /// A value in the CEL value domain.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum CelValue {
     Null,
     Bool(bool),
     Int(i64),
     Uint(u64),
     Double(f64),
-    String(String),
-    Bytes(Vec<u8>),
-    List(Vec<CelValue>),
+    String(Arc<str>),
+    Bytes(Arc<[u8]>),
+    List(CelList),
     /// A map with typed keys.
     Map(CelMap),
     /// A map whose keys are all strings, as a host hands one over.
@@ -574,30 +813,13 @@ impl PartialEq for CelValue {
     /// all strings and a record holding the same pairs, which are one value written
     /// two ways.
     fn eq(&self, other: &Self) -> bool {
-        use CelValue::*;
-        match (self, other) {
-            (Null, Null) => true,
-            (Bool(a), Bool(b)) => a == b,
-            (Int(a), Int(b)) => a == b,
-            (Uint(a), Uint(b)) => a == b,
-            (Double(a), Double(b)) => (a.is_nan() && b.is_nan()) || a.to_bits() == b.to_bits(),
-            (String(a), String(b)) => a == b,
-            (Bytes(a), Bytes(b)) => a == b,
-            (List(a), List(b)) => a == b,
-            (Map(a), Map(b)) => a == b,
-            (Record(a), Record(b)) => a == b,
-            (Map(map), Record(record)) | (Record(record), Map(map)) => {
-                map.len() == record.len()
-                    && map.iter().all(|(key, value)| matches!(key, String(key) if record.get(key) == Some(value)))
-            }
-            (Timestamp(a), Timestamp(b)) => a == b,
-            (Duration(a), Duration(b)) => a == b,
-            (Type(a), Type(b)) => a == b,
-            (Optional(a), Optional(b)) => a == b,
-            (Error(a), Error(b)) => a == b,
-            (Host(a), Host(b)) => a == b,
-            _ => false,
-        }
+        equal_pairs(vec![(self, other)])
+    }
+}
+
+impl fmt::Debug for CelValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        print(f, Piece::Value(self))
     }
 }
 
@@ -607,10 +829,264 @@ impl From<CelError> for CelValue {
     }
 }
 
+// --- release ---------------------------------------------------------------
+
+/// Whether a value can hold other values, and so has children to let go of.
+fn holds_values(value: &CelValue) -> bool {
+    matches!(
+        value,
+        CelValue::List(_) | CelValue::Map(_) | CelValue::Record(_) | CelValue::Optional(_) | CelValue::Host(_)
+    )
+}
+
+/// Moves every child a value alone holds onto `pending`, leaving it empty.
+fn unlink(value: &mut CelValue, pending: &mut Vec<CelValue>) {
+    match value {
+        CelValue::List(list) => list.unlink(pending),
+        CelValue::Map(map) => map.unlink(pending),
+        CelValue::Record(record) => record.unlink(pending),
+        CelValue::Optional(optional) => optional.unlink(pending),
+        CelValue::Host(host) => host.unlink(pending),
+        _ => {}
+    }
+}
+
+/// Lets go of a value's descendants on a heap list, so releasing a value of any depth
+/// costs no stack. Each value taken off the list is emptied before it is dropped, so
+/// its own release finds nothing to do.
+fn release(start: impl FnOnce(&mut Vec<CelValue>)) {
+    let mut pending = Vec::new();
+    start(&mut pending);
+    while let Some(mut value) = pending.pop() {
+        unlink(&mut value, &mut pending);
+    }
+}
+
+// --- identity --------------------------------------------------------------
+
+type Pairs<'a> = Vec<(&'a CelValue, &'a CelValue)>;
+
+fn shared<T>(left: &Option<Arc<T>>, right: &Option<Arc<T>>) -> bool {
+    matches!((left, right), (Some(a), Some(b)) if Arc::ptr_eq(a, b))
+}
+
+fn list_pairs<'a>(left: &'a CelList, right: &'a CelList, pending: &mut Pairs<'a>) -> bool {
+    if shared(&left.items, &right.items) {
+        return true;
+    }
+    if left.len() != right.len() {
+        return false;
+    }
+    pending.extend(left.iter().zip(right.iter()));
+    true
+}
+
+fn map_pairs<'a>(left: &'a CelMap, right: &'a CelMap, pending: &mut Pairs<'a>) -> bool {
+    if shared(&left.inner, &right.inner) {
+        return true;
+    }
+    if left.len() != right.len() {
+        return false;
+    }
+    for (key, value) in left.iter() {
+        let held = map_key_identity(key).and_then(|identity| right.entry(&identity));
+        match held {
+            // A key is an int, a uint, a bool or a string, so comparing two holds no value.
+            Some((held_key, held)) if scalar_identical(held_key, key) => pending.push((value, held)),
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn record_pairs<'a>(left: &'a CelRecord, right: &'a CelRecord, pending: &mut Pairs<'a>) -> bool {
+    if shared(&left.entries, &right.entries) {
+        return true;
+    }
+    if left.len() != right.len() {
+        return false;
+    }
+    for (key, value) in left.iter() {
+        match right.get(key) {
+            Some(held) => pending.push((value, held)),
+            None => return false,
+        }
+    }
+    true
+}
+
+fn crossing_pairs<'a>(map: &'a CelMap, record: &'a CelRecord, pending: &mut Pairs<'a>) -> bool {
+    if map.len() != record.len() {
+        return false;
+    }
+    for (key, value) in map.iter() {
+        match key {
+            CelValue::String(key) => match record.get(key) {
+                Some(held) => pending.push((value, held)),
+                None => return false,
+            },
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn optional_pairs<'a>(left: &'a CelOptional, right: &'a CelOptional, pending: &mut Pairs<'a>) -> bool {
+    match (left.held(), right.held()) {
+        (None, None) => true,
+        (Some(a), Some(b)) => {
+            pending.push((a, b));
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Two values that hold no other value, compared as themselves.
+fn scalar_identical(left: &CelValue, right: &CelValue) -> bool {
+    use CelValue::*;
+    match (left, right) {
+        (Null, Null) => true,
+        (Bool(a), Bool(b)) => a == b,
+        (Int(a), Int(b)) => a == b,
+        (Uint(a), Uint(b)) => a == b,
+        (Double(a), Double(b)) => (a.is_nan() && b.is_nan()) || a.to_bits() == b.to_bits(),
+        (String(a), String(b)) => a == b,
+        (Bytes(a), Bytes(b)) => a == b,
+        (Timestamp(a), Timestamp(b)) => a == b,
+        (Duration(a), Duration(b)) => a == b,
+        (Type(a), Type(b)) => a == b,
+        (Error(a), Error(b)) => a == b,
+        (Host(a), Host(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// Whether every pair is one value, comparing on a heap list.
+fn equal_pairs(mut pending: Pairs<'_>) -> bool {
+    use CelValue::*;
+    while let Some((left, right)) = pending.pop() {
+        let same = match (left, right) {
+            (List(a), List(b)) => list_pairs(a, b, &mut pending),
+            (Map(a), Map(b)) => map_pairs(a, b, &mut pending),
+            (Record(a), Record(b)) => record_pairs(a, b, &mut pending),
+            (Map(map), Record(record)) | (Record(record), Map(map)) => crossing_pairs(map, record, &mut pending),
+            (Optional(a), Optional(b)) => optional_pairs(a, b, &mut pending),
+            _ => scalar_identical(left, right),
+        };
+        if !same {
+            return false;
+        }
+    }
+    true
+}
+
+// --- printing --------------------------------------------------------------
+
+/// One step of printing: text, or a value or aggregate still to be written.
+enum Piece<'a> {
+    Text(&'static str),
+    Key(&'a str),
+    Value(&'a CelValue),
+    List(&'a CelList),
+    Map(&'a CelMap),
+    Record(&'a CelRecord),
+    Optional(&'a CelOptional),
+    Host(&'a CelHostValue),
+}
+
+/// Pushes `[a, b, …]`-shaped pieces so they print in order: `open`, each item with
+/// `", "` between, `close`.
+fn push_items<'a>(
+    pending: &mut Vec<Piece<'a>>,
+    open: &'static str,
+    close: &'static str,
+    items: Vec<Vec<Piece<'a>>>,
+) {
+    pending.push(Piece::Text(close));
+    for (at, item) in items.into_iter().enumerate().rev() {
+        pending.extend(item.into_iter().rev());
+        if at > 0 {
+            pending.push(Piece::Text(", "));
+        }
+    }
+    pending.push(Piece::Text(open));
+}
+
+/// Writes a value as `#[derive(Debug)]` would, on a heap list.
+fn print(f: &mut fmt::Formatter<'_>, first: Piece<'_>) -> fmt::Result {
+    let mut pending = vec![first];
+    while let Some(piece) = pending.pop() {
+        match piece {
+            Piece::Text(text) => f.write_str(text)?,
+            Piece::Key(key) => write!(f, "{key:?}")?,
+            Piece::List(list) => {
+                push_items(&mut pending, "[", "]", list.iter().map(|item| vec![Piece::Value(item)]).collect());
+            }
+            Piece::Map(map) => push_items(
+                &mut pending,
+                "{",
+                "}",
+                map.iter().map(|(key, value)| vec![Piece::Value(key), Piece::Text(": "), Piece::Value(value)]).collect(),
+            ),
+            Piece::Record(record) => push_items(
+                &mut pending,
+                "{",
+                "}",
+                record.iter().map(|(key, value)| vec![Piece::Key(key), Piece::Text(": "), Piece::Value(value)]).collect(),
+            ),
+            Piece::Optional(optional) => {
+                pending.push(Piece::Text(" }"));
+                match optional.held() {
+                    Some(held) => pending.extend([Piece::Text(")"), Piece::Value(held), Piece::Text("Some(")]),
+                    None => pending.push(Piece::Text("None")),
+                }
+                pending.push(Piece::Text("CelOptional { held: "));
+            }
+            Piece::Host(host) => {
+                write!(f, "CelHostValue {{ type_name: {:?}, entries: ", host.type_name())?;
+                pending.push(Piece::Text(", .. }"));
+                push_items(
+                    &mut pending,
+                    "{",
+                    "}",
+                    host.entries()
+                        .iter()
+                        .map(|(key, value)| vec![Piece::Key(key), Piece::Text(": "), Piece::Value(value)])
+                        .collect(),
+                );
+            }
+            Piece::Value(value) => match value {
+                CelValue::Null => f.write_str("Null")?,
+                CelValue::Bool(held) => write!(f, "Bool({held:?})")?,
+                CelValue::Int(held) => write!(f, "Int({held:?})")?,
+                CelValue::Uint(held) => write!(f, "Uint({held:?})")?,
+                CelValue::Double(held) => write!(f, "Double({held:?})")?,
+                CelValue::String(held) => write!(f, "String({:?})", &**held)?,
+                CelValue::Bytes(held) => write!(f, "Bytes({:?})", &**held)?,
+                CelValue::Timestamp(held) => write!(f, "Timestamp({held:?})")?,
+                CelValue::Duration(held) => write!(f, "Duration({held:?})")?,
+                CelValue::Type(held) => write!(f, "Type({held:?})")?,
+                CelValue::Error(held) => write!(f, "Error({held:?})")?,
+                CelValue::List(list) => pending.extend([Piece::Text(")"), Piece::List(list), Piece::Text("List(")]),
+                CelValue::Map(map) => pending.extend([Piece::Text(")"), Piece::Map(map), Piece::Text("Map(")]),
+                CelValue::Record(record) => {
+                    pending.extend([Piece::Text(")"), Piece::Record(record), Piece::Text("Record(")])
+                }
+                CelValue::Optional(optional) => {
+                    pending.extend([Piece::Text(")"), Piece::Optional(optional), Piece::Text("Optional(")])
+                }
+                CelValue::Host(host) => pending.extend([Piece::Text(")"), Piece::Host(host), Piece::Text("Host(")]),
+            },
+        }
+    }
+    Ok(())
+}
+
 // --- constructors ----------------------------------------------------------
 
 pub fn cel_type_value(name: impl Into<String>) -> CelTypeValue {
-    CelTypeValue { name: name.into() }
+    CelTypeValue { name: name.into().into() }
 }
 
 pub fn cel_none() -> CelOptional {
@@ -618,7 +1094,7 @@ pub fn cel_none() -> CelOptional {
 }
 
 pub fn cel_some(held: CelValue) -> CelOptional {
-    CelOptional { held: Some(Box::new(held)) }
+    CelOptional { held: Some(Arc::new(held)) }
 }
 
 pub fn cel_error(code: CelEvaluationCode, message: impl Into<String>, range: Option<SourceRange>) -> CelError {

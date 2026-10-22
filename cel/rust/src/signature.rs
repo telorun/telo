@@ -14,7 +14,6 @@
 //! Node items with no twin in this file:
 //! - `CelSignature.form` as a field — it is [`CelSignature::form`], derived from the
 //!   receiver, so a form contradicting the receiver has no spelling.
-//! - `FunctionMetadata.implementation` — implementations arrive with evaluation.
 //!
 //! Declared here and not in the Node file:
 //! - `CallForm::as_str` — Node holds the form as the string itself.
@@ -25,6 +24,7 @@ use std::sync::Arc;
 use telorun_cel_value::{es_trim, is_es_whitespace, json_quote, CelValue};
 
 use crate::cel_type::{format_type, CelType};
+use crate::runtime_library::CelImplementation;
 use crate::type_expression::{parse_type_expression, CelTypeExpressionError, CelTypeTextError, NominalResolver};
 
 /// How a call is written: `f(x)`, or on a value, `x.f()`.
@@ -165,6 +165,10 @@ pub type LiteralArgumentCheck = Arc<dyn Fn(&[Option<CelValue>]) -> Option<String
 /// `..FunctionMetadata::default()`.
 #[derive(Clone)]
 pub struct FunctionMetadata {
+    /// What the function does. The standard library's behaviour is looked up by dispatch
+    /// key instead (`implementation_of`), so a registration carries one only where the
+    /// host supplies it.
+    pub implementation: Option<CelImplementation>,
     /// A guard over the arguments written as literals, asked where a call resolves.
     pub check_arguments: Option<LiteralArgumentCheck>,
     /// Whether two calls with the same arguments answer the same thing.
@@ -181,6 +185,7 @@ pub struct FunctionMetadata {
 impl Default for FunctionMetadata {
     fn default() -> Self {
         Self {
+            implementation: None,
             check_arguments: None,
             deterministic: true,
             host_backed: false,
@@ -194,6 +199,7 @@ impl Default for FunctionMetadata {
 impl fmt::Debug for FunctionMetadata {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FunctionMetadata")
+            .field("implementation", &self.implementation.as_ref().map(|_| "implementation"))
             .field("check_arguments", &self.check_arguments.as_ref().map(|_| "guard"))
             .field("deterministic", &self.deterministic)
             .field("host_backed", &self.host_backed)

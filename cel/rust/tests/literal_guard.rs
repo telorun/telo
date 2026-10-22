@@ -26,7 +26,7 @@ fn guard(seen: &Seen) -> LiteralArgumentCheck {
     let seen = Arc::clone(seen);
     Arc::new(move |values: &[Option<CelValue>]| {
         seen.lock().unwrap().push(values.to_vec());
-        matches!(values.first(), Some(Some(CelValue::String(text))) if text == "x").then(|| "f: \"x\" is refused".to_string())
+        matches!(values.first(), Some(Some(CelValue::String(text))) if &**text == "x").then(|| "f: \"x\" is refused".to_string())
     })
 }
 
@@ -67,7 +67,7 @@ fn hands_each_literal_its_value_and_a_minus_over_a_parenthesis_as_no_literal() {
     assert_eq!(
         *seen.lock().unwrap(),
         [
-            vec![Some(CelValue::Int(1)), Some(CelValue::Uint(2)), Some(CelValue::Double(1.5)), Some(CelValue::Bytes(b"ab".to_vec()))],
+            vec![Some(CelValue::Int(1)), Some(CelValue::Uint(2)), Some(CelValue::Double(1.5)), Some(CelValue::Bytes(b"ab".to_vec().into()))],
             vec![Some(CelValue::Bool(true)), Some(CelValue::Null), None, Some(CelValue::Int(-1))],
         ]
     );

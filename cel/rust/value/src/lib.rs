@@ -7,8 +7,12 @@
 //! name the host chose.
 //!
 //! Each file twins the `cel/nodejs/src` file of its name. A Node export that needs the
-//! syntax tree or the zone database belongs to the engine crate's file of the same
-//! name — its `cel_value.rs` exists, its `timestamp_value.rs` not yet — and each header here lists those.
+//! syntax tree, the zone database or the Unicode data belongs to the engine crate's file
+//! of the same name — its `cel_value.rs`, `timestamp_value.rs` and `value_text.rs` — and
+//! each header here lists those.
+//!
+//! A value's aggregates are shared and immutable, and no operation here recurses on a
+//! value's depth: see `cel_value.rs`.
 //!
 //! - `cel_value.rs`       — `cel-value.ts`
 //! - `cel_map_value.rs`   — `cel-map-value.ts`
@@ -25,7 +29,7 @@ mod value_text;
 pub use cel_map_value::{cel_map_from_entries, cel_map_keys, map_key_identity};
 pub use cel_value::{
     cel_error, cel_none, cel_some, cel_type_name_of, cel_type_value, CelDuration, CelError,
-    CelEvaluationCode, CelHostValue, CelMap, CelMapKey, CelOptional, CelRecord, CelTimestamp,
+    CelEvaluationCode, CelHostValue, CelList, CelMap, CelMapKey, CelOptional, CelRecord, CelTimestamp,
     CelTypeValue, CelValue, PropertyMap, ReservedTypeName, SourceRange, CEL_EVALUATION_CODES, CEL_VALUE_KEYS,
 };
 pub use duration_value::{

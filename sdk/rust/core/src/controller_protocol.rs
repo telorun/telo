@@ -96,7 +96,7 @@ mod tests {
         };
         let session = match member("session") {
             CelValue::Null => None,
-            CelValue::String(text) => Some(text.clone()),
+            CelValue::String(text) => Some(text.to_string()),
             _ => return Err("an envelope's session is text or null".into()),
         };
         let CelValue::String(message) = member("type") else {
@@ -104,7 +104,7 @@ mod tests {
         };
         // The payload as plain data, for the schema its message declares.
         let parsed: Json = serde_json::from_str(meta).map_err(|err| err.to_string())?;
-        Ok(Envelope { id, session, message: message.clone(), payload: parsed["payload"].clone() })
+        Ok(Envelope { id, session, message: message.to_string(), payload: parsed["payload"].clone() })
     }
 
     fn decode_frame(bytes: &[u8]) -> Result<Frame, String> {
