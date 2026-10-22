@@ -1,0 +1,26 @@
+# A control whose entry is computed: `telo check` leaves the value to creation,
+# where the kernel holds the entry it names to the kind's generation.
+kind: Telo.Library
+metadata:
+  name: BrowserComputedEntryLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose control computes the name of a browser entry written
+    against a generation the control's kind does not accept.
+imports:
+  Kinds: ../../kinds
+exports:
+  resources: [control]
+  browser:
+    - specifier: "@fixture/own"
+      path: ./browser/own.js
+      source: ./browser/src/own.js
+      abi: fixture_controls-2
+      external: ["@fixture/runtime"]
+      exports: [Own]
+---
+kind: Kinds.Control
+metadata:
+  name: control
+entry: !cel "'@fixture/' + 'own'"
+export: Own

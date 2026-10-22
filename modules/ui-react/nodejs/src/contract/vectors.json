@@ -1,0 +1,862 @@
+{
+  "TextInput": {
+    "props": { "id": "control", "part": "input", "type": "text", "value": "", "invalid": false, "required": false, "disabled": false },
+    "vectors": [
+      {
+        "name": "reports what is typed, and forwards its name, its description and its conditions",
+        "props": { "label": "Name", "describedBy": "hint", "invalid": true, "required": true },
+        "steps": [
+          { "fill": { "id": "control" }, "value": "Ada" },
+          { "expect": { "intents": [["onChange", "Ada"]], "attributes": [{ "of": { "id": "control" }, "name": "autocomplete", "value": "off" }] } }
+        ]
+      },
+      {
+        "name": "means the text on Enter and on leaving it, where the renderer listens for that",
+        "props": { "part": "filter-input" },
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "fill": { "id": "control" }, "value": "plan" },
+          { "expect": { "intents": [["onChange", "plan"]], "present": [{ "part": "filter-input" }] } },
+          { "key": "Enter", "on": { "id": "control" } },
+          { "expect": { "intents": [["onCommit"]] } },
+          { "blur": { "id": "control" } },
+          { "expect": { "intents": [["onCommit"]] } }
+        ]
+      },
+      {
+        "name": "is a search box where the renderer asks for one",
+        "props": { "part": "picker-search", "type": "search", "label": "Search people" },
+        "steps": [{ "expect": { "attributes": [{ "of": { "part": "picker-search" }, "name": "type", "value": "search" }] } }]
+      },
+      {
+        "name": "is disabled where the renderer says so",
+        "props": { "disabled": true },
+        "steps": [{ "expect": { "present": [{ "part": "input" }] } }]
+      }
+    ]
+  },
+  "NumberInput": {
+    "props": { "id": "control", "part": "input", "integer": false, "value": "", "invalid": false, "required": false, "disabled": false },
+    "vectors": [
+      {
+        "name": "reports a number as the text typed",
+        "steps": [
+          { "fill": { "id": "control" }, "value": "3.5" },
+          { "expect": { "intents": [["onChange", "3.5"]], "attributes": [{ "of": { "id": "control" }, "name": "autocomplete", "value": "off" }] } }
+        ]
+      },
+      {
+        "name": "means a filter's number on Enter",
+        "props": { "part": "filter-input", "integer": true, "label": "Priority from" },
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "key": "Enter", "on": { "id": "control" } },
+          { "expect": { "intents": [["onCommit"]], "present": [{ "part": "filter-input" }] } }
+        ]
+      }
+    ]
+  },
+  "TextArea": {
+    "props": { "id": "control", "value": "", "invalid": false, "required": false, "disabled": false },
+    "vectors": [
+      {
+        "name": "reports text of several lines",
+        "props": { "invalid": true, "describedBy": "error" },
+        "steps": [
+          { "fill": { "id": "control" }, "value": "One\nTwo" },
+          { "expect": { "intents": [["onChange", "One\nTwo"]], "present": [{ "part": "textarea" }] } }
+        ]
+      }
+    ]
+  },
+  "DateInput": {
+    "props": { "id": "control", "part": "input", "lang": "en", "value": "", "invalid": false, "required": false, "disabled": false },
+    "vectors": [
+      {
+        "name": "reports a day as YYYY-MM-DD",
+        "props": { "required": true },
+        "steps": [
+          { "fill": { "id": "control" }, "value": "2026-01-05" },
+          { "expect": { "intents": [["onChange", "2026-01-05"]] } }
+        ]
+      },
+      {
+        "name": "means a filter's day on leaving it",
+        "props": { "part": "filter-input", "label": "Due from" },
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "blur": { "id": "control" } },
+          { "expect": { "intents": [["onCommit"]] } }
+        ]
+      }
+    ]
+  },
+  "DateTimeInput": {
+    "props": { "id": "control", "lang": "en", "value": "", "invalid": false, "required": false, "disabled": false },
+    "vectors": [
+      {
+        "name": "reports a day and a time as YYYY-MM-DDTHH:mm",
+        "steps": [
+          { "fill": { "id": "control" }, "value": "2026-01-05T10:30" },
+          { "expect": { "intents": [["onChange", "2026-01-05T10:30"]], "present": [{ "part": "input" }] } }
+        ]
+      }
+    ]
+  },
+  "TimeInput": {
+    "props": { "id": "control", "lang": "en", "value": "", "invalid": false, "required": false, "disabled": false },
+    "vectors": [
+      {
+        "name": "reports a time as HH:mm",
+        "steps": [
+          { "fill": { "id": "control" }, "value": "10:30" },
+          { "expect": { "intents": [["onChange", "10:30"]], "present": [{ "part": "input" }] } }
+        ]
+      }
+    ]
+  },
+  "TagsInput": {
+    "props": {
+      "id": "control",
+      "parts": { "root": "tags", "tag": "tag", "remove": "tag-remove", "input": "input" },
+      "type": "text",
+      "values": [],
+      "removeLabels": [],
+      "invalid": false,
+      "required": false,
+      "disabled": false
+    },
+    "vectors": [
+      {
+        "name": "adds what is typed on Enter, the values a comma separates, each once",
+        "props": { "values": ["a"], "removeLabels": ["Remove a"] },
+        "steps": [
+          { "fill": { "id": "control" }, "value": "b, a, c" },
+          { "key": "Enter", "on": { "id": "control" } },
+          { "expect": { "intents": [["onChange", ["a", "b", "c"]]], "present": [{ "part": "tag", "text": "c" }] } }
+        ]
+      },
+      {
+        "name": "removes a value with its button, and the last one with Backspace in an empty box",
+        "props": { "values": ["a", "b"], "removeLabels": ["Remove a", "Remove b"] },
+        "steps": [
+          { "expect": { "attributes": [{ "of": { "part": "tag-remove", "index": 1 }, "name": "aria-label", "value": "Remove b" }] } },
+          { "click": { "part": "tag-remove", "index": 0 } },
+          { "expect": { "intents": [["onChange", ["b"]]] } },
+          { "props": { "removeLabels": ["Remove b"] } },
+          { "focus": { "id": "control" } },
+          { "key": "Backspace", "on": { "id": "control" } },
+          { "expect": { "intents": [["onChange", []]], "absent": [{ "part": "tag" }] } }
+        ]
+      },
+      {
+        "name": "draws the parts the renderer names, and marks the box it refuses",
+        "props": {
+          "parts": { "root": "filter-tags", "tag": "filter-tag", "remove": "filter-tag-remove", "input": "filter-input" },
+          "values": ["open"],
+          "removeLabels": ["Remove open"],
+          "invalid": true,
+          "label": "Status"
+        },
+        "steps": [
+          {
+            "expect": {
+              "present": [{ "part": "filter-tag", "text": "open" }, { "part": "filter-input" }],
+              "attributes": [{ "of": { "part": "filter-tags" }, "name": "data-invalid", "value": "true" }]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "DateRangeInput": {
+    "props": {
+      "id": "control",
+      "label": "Period",
+      "invalid": false,
+      "required": false,
+      "disabled": false,
+      "fromLabel": "From",
+      "toLabel": "To",
+      "presets": [
+        { "label": "Today", "from": "2026-01-05", "to": "2026-01-05" },
+        { "label": "This week", "from": "2026-01-05", "to": "2026-01-11" }
+      ],
+      "lang": "en",
+      "weekStart": "monday",
+      "value": { "from": "", "to": "" }
+    },
+    "vectors": [
+      {
+        "name": "is a group named by its label",
+        "steps": [
+          {
+            "expect": {
+              "attributes": [
+                { "of": { "part": "date-range" }, "name": "role", "value": "group" },
+                { "of": { "part": "date-range" }, "name": "aria-label", "value": "Period" }
+              ],
+              "present": [{ "part": "label", "text": "From" }, { "part": "label", "text": "To" }]
+            }
+          }
+        ]
+      },
+      {
+        "name": "sets the range a preset names, and shows on the preset the range equals",
+        "steps": [
+          { "click": { "part": "date-range-preset", "text": "This week" } },
+          {
+            "expect": {
+              "intents": [["onChange", { "from": "2026-01-05", "to": "2026-01-11" }]],
+              "attributes": [
+                { "of": { "part": "date-range-preset", "index": 0 }, "name": "data-state", "value": "off" },
+                { "of": { "part": "date-range-preset", "index": 1 }, "name": "data-state", "value": "on" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "reports each day typed with the other as it holds",
+        "props": { "value": { "from": "", "to": "2026-01-31" } },
+        "steps": [
+          { "fill": { "part": "date-range-from" }, "value": "2026-01-01" },
+          { "expect": { "intents": [["onChange", { "from": "2026-01-01", "to": "2026-01-31" }]] } }
+        ]
+      }
+    ]
+  },
+  "Checkbox": {
+    "props": { "id": "control", "checked": false, "invalid": false, "required": false, "disabled": false },
+    "vectors": [
+      {
+        "name": "reports the opposite of what it holds when pressed, and shows what it holds",
+        "props": { "describedBy": "hint", "required": true },
+        "steps": [
+          { "expect": { "attributes": [{ "of": { "id": "control" }, "name": "data-state", "value": "unchecked" }] } },
+          { "click": { "id": "control" } },
+          { "expect": { "intents": [["onChange", true]], "attributes": [{ "of": { "id": "control" }, "name": "data-state", "value": "checked" }] } }
+        ]
+      },
+      {
+        "name": "toggles from the keyboard",
+        "props": { "checked": true, "invalid": true },
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "key": " ", "on": { "id": "control" } },
+          { "expect": { "intents": [["onChange", false]] } }
+        ]
+      }
+    ]
+  },
+  "Switch": {
+    "props": { "id": "control", "part": "switch", "checked": false, "invalid": false, "required": false, "disabled": false },
+    "vectors": [
+      {
+        "name": "reports the opposite of what it holds when pressed",
+        "props": { "part": "filter-toggle", "label": "Done" },
+        "steps": [
+          { "click": { "part": "filter-toggle" } },
+          { "expect": { "intents": [["onChange", true]], "attributes": [{ "of": { "part": "filter-toggle" }, "name": "data-state", "value": "checked" }] } }
+        ]
+      }
+    ]
+  },
+  "Slider": {
+    "props": {
+      "id": "control",
+      "part": "slider",
+      "label": "Effort",
+      "min": 1,
+      "max": 5,
+      "step": 1,
+      "value": "1",
+      "invalid": false,
+      "required": false,
+      "disabled": false
+    },
+    "vectors": [
+      {
+        "name": "moves a step from the keyboard, reporting the move and then that it is let go",
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "key": "ArrowRight", "on": { "id": "control" } },
+          { "expect": { "intents": [["onChange", "2"], ["onCommit"]] } },
+          { "key": "ArrowRight", "on": { "id": "control" } },
+          { "expect": { "intents": [["onChange", "3"], ["onCommit"]] } }
+        ]
+      },
+      {
+        "name": "reads out its position as the renderer words it",
+        "props": { "part": "filter-slider", "valueText": "Any" },
+        "steps": [{ "expect": { "attributes": [{ "of": { "id": "control" }, "name": "aria-valuetext", "value": "Any" }], "present": [{ "part": "filter-slider" }] } }]
+      }
+    ]
+  },
+  "OptionGroup": {
+    "props": {
+      "id": "control",
+      "label": "Letters",
+      "parts": { "root": "options", "option": "option" },
+      "multiple": true,
+      "options": [
+        { "key": "a", "label": "A" },
+        { "key": "b", "label": "B" },
+        { "key": "c", "label": "C" }
+      ],
+      "value": [],
+      "invalid": false,
+      "required": false,
+      "disabled": false
+    },
+    "vectors": [
+      {
+        "name": "chooses any number, each on and off on its own",
+        "steps": [
+          { "click": { "part": "option", "text": "B" } },
+          { "expect": { "intents": [["onChange", ["b"]]], "attributes": [{ "of": { "part": "option", "text": "B" }, "name": "data-state", "value": "on" }] } },
+          { "click": { "part": "option", "text": "A" } },
+          { "expect": { "intents": [["onChange", ["b", "a"]]] } },
+          { "click": { "part": "option", "text": "B" } },
+          { "expect": { "intents": [["onChange", ["a"]]], "attributes": [{ "of": { "part": "option", "text": "B" }, "name": "data-state", "value": "off" }] } }
+        ]
+      },
+      {
+        "name": "chooses at most one, and nothing when the chosen one is pressed again",
+        "props": { "multiple": false, "parts": { "root": "filters-presets", "option": "filters-preset" } },
+        "steps": [
+          { "click": { "part": "filters-preset", "text": "A" } },
+          { "expect": { "intents": [["onChange", ["a"]]] } },
+          { "click": { "part": "filters-preset", "text": "C" } },
+          { "expect": { "intents": [["onChange", ["c"]]] } },
+          { "click": { "part": "filters-preset", "text": "C" } },
+          { "expect": { "intents": [["onChange", []]] } }
+        ]
+      }
+    ]
+  },
+  "Select": {
+    "props": {
+      "id": "control",
+      "part": "select",
+      "options": [
+        { "key": "open", "label": "Open" },
+        { "key": "done", "label": "Done" }
+      ],
+      "value": "",
+      "placeholder": "Choose",
+      "noneLabel": "None",
+      "open": false,
+      "loading": false,
+      "hasMore": false,
+      "invalid": false,
+      "required": false,
+      "disabled": false
+    },
+    "vectors": [
+      {
+        "name": "asks to open from the keyboard, and draws its list outside the application",
+        "props": { "describedBy": "hint", "invalid": true },
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "key": "ArrowDown", "on": { "id": "control" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", true]],
+              "outside": [{ "part": "select-content" }],
+              "attributes": [{ "of": { "id": "control" }, "name": "data-state", "value": "open" }]
+            }
+          }
+        ]
+      },
+      {
+        "name": "reports the entry chosen, then asks to close",
+        "props": { "open": true },
+        "steps": [
+          { "click": { "part": "select-item", "text": "Done" } },
+          { "expect": { "intents": [["onChange", "done"], ["onOpenChange", false, "close"]], "absent": [{ "part": "select-content" }] } }
+        ]
+      },
+      {
+        "name": "chooses nothing from the entry naming nothing",
+        "props": { "open": true, "value": "done" },
+        "steps": [
+          { "click": { "part": "select-item", "text": "None" } },
+          { "expect": { "intents": [["onChange", ""], ["onOpenChange", false, "close"]] } }
+        ]
+      },
+      {
+        "name": "asks to close on Escape, and stays open until the renderer closes it",
+        "props": { "open": true },
+        "hold": ["open"],
+        "steps": [
+          { "key": "Escape" },
+          { "expect": { "intents": [["onOpenChange", false, "escape"]], "present": [{ "part": "select-content" }] } }
+        ]
+      },
+      {
+        "name": "asks to close on a press outside it",
+        "props": { "open": true },
+        "hold": ["open"],
+        "steps": [
+          { "press": { "element": "body" } },
+          { "expect": { "intents": [["onOpenChange", false, "outside"]] } }
+        ]
+      },
+      {
+        "name": "says when its list is scrolled to its end",
+        "props": { "open": true, "hasMore": true },
+        "steps": [
+          { "scroll": { "part": "select-content" } },
+          { "expect": { "intents": [["onEndReached"]] } }
+        ]
+      },
+      {
+        "name": "shows what is chosen, and carries the placeholder mark while nothing is",
+        "steps": [
+          { "expect": { "text": [{ "of": { "id": "control" }, "value": "Choose" }], "attributes": [{ "of": { "id": "control" }, "name": "data-placeholder", "value": "" }] } },
+          { "props": { "value": "done" } },
+          { "expect": { "text": [{ "of": { "id": "control" }, "value": "Done" }], "attributes": [{ "of": { "id": "control" }, "name": "data-placeholder", "value": null }] } }
+        ]
+      }
+    ]
+  },
+  "MultiSelect": {
+    "props": {
+      "id": "control",
+      "part": "filter-select",
+      "options": [
+        { "key": "open", "label": "Open" },
+        { "key": "done", "label": "Done" }
+      ],
+      "value": [],
+      "placeholder": "Any",
+      "open": false,
+      "loading": false,
+      "hasMore": false,
+      "invalid": false,
+      "required": false,
+      "disabled": false
+    },
+    "vectors": [
+      {
+        "name": "asks to open from the keyboard, and draws its list outside the application",
+        "steps": [
+          { "focus": { "id": "control" } },
+          { "key": "ArrowDown", "on": { "id": "control" } },
+          { "expect": { "intents": [["onOpenChange", true]], "outside": [{ "part": "select-content" }] } }
+        ]
+      },
+      {
+        "name": "reports each choice in the options' order, staying open",
+        "props": { "open": true },
+        "steps": [
+          { "click": { "part": "select-item", "text": "Done" } },
+          { "expect": { "intents": [["onChange", ["done"]]], "present": [{ "part": "select-content" }] } },
+          { "click": { "part": "select-item", "text": "Open" } },
+          { "expect": { "intents": [["onChange", ["open", "done"]]] } }
+        ]
+      },
+      {
+        "name": "asks to close on Escape, and stays open until the renderer closes it",
+        "props": { "open": true },
+        "hold": ["open"],
+        "steps": [
+          { "key": "Escape" },
+          { "expect": { "intents": [["onOpenChange", false, "escape"]], "present": [{ "part": "select-content" }] } }
+        ]
+      },
+      {
+        "name": "asks to close on a press outside it",
+        "props": { "open": true },
+        "hold": ["open"],
+        "steps": [
+          { "press": { "element": "body" } },
+          { "expect": { "intents": [["onOpenChange", false, "outside"]] } }
+        ]
+      },
+      {
+        "name": "shows the chosen ones, and carries the placeholder mark while nothing is",
+        "steps": [
+          { "expect": { "text": [{ "of": { "id": "control" }, "value": "Any" }], "attributes": [{ "of": { "id": "control" }, "name": "data-placeholder", "value": "" }] } },
+          { "props": { "value": ["open", "done"] } },
+          { "expect": { "text": [{ "of": { "id": "control" }, "value": "Open, Done" }], "attributes": [{ "of": { "id": "control" }, "name": "data-placeholder", "value": null }] } }
+        ]
+      }
+    ]
+  },
+  "Listbox": {
+    "props": {
+      "label": "People",
+      "multiple": false,
+      "options": [
+        { "key": "p1", "label": "Ada", "hint": "red" },
+        { "key": "p2", "label": "Alan" }
+      ],
+      "value": [],
+      "loading": false,
+      "hasMore": true
+    },
+    "vectors": [
+      {
+        "name": "chooses one option by a press, and one from the keyboard",
+        "steps": [
+          { "expect": { "attributes": [{ "of": { "part": "picker-list" }, "name": "aria-label", "value": "People" }], "text": [{ "of": { "part": "option-hint" }, "value": "red" }] } },
+          { "click": { "part": "picker-option", "index": 1 } },
+          { "expect": { "intents": [["onChange", ["p2"]]], "attributes": [{ "of": { "part": "picker-option", "index": 1 }, "name": "aria-selected", "value": "true" }] } },
+          { "focus": { "part": "picker-option", "index": 0 } },
+          { "key": "Enter", "on": { "part": "picker-option", "index": 0 } },
+          { "expect": { "intents": [["onChange", ["p1"]]] } }
+        ]
+      },
+      {
+        "name": "chooses any number, each on and off on its own",
+        "props": { "multiple": true, "value": ["p1"] },
+        "steps": [
+          { "expect": { "attributes": [{ "of": { "part": "picker-option", "index": 0 }, "name": "data-state", "value": "on" }] } },
+          { "click": { "part": "picker-option", "index": 1 } },
+          { "expect": { "intents": [["onChange", ["p1", "p2"]]] } },
+          { "click": { "part": "picker-option", "index": 0 } },
+          { "expect": { "intents": [["onChange", ["p2"]]] } }
+        ]
+      },
+      {
+        "name": "says when it is scrolled to its end, and that it is reading more",
+        "props": { "loading": true },
+        "steps": [
+          { "expect": { "attributes": [{ "of": { "part": "picker-list" }, "name": "data-state", "value": "loading" }] } },
+          { "scroll": { "part": "picker-list" } },
+          { "expect": { "intents": [["onEndReached"]] } }
+        ]
+      }
+    ]
+  },
+  "Dialog": {
+    "props": {
+      "open": true,
+      "modal": true,
+      "labelledBy": "title",
+      "attributes": { "data-surface": "dialog", "data-size": "medium", "data-modal": "true" },
+      "children": [
+        { "element": "h2", "attributes": { "id": "title" }, "text": "Edit" },
+        { "element": "input", "attributes": { "id": "first", "aria-label": "First" } },
+        { "element": "button", "attributes": { "id": "save" }, "text": "Save" }
+      ]
+    },
+    "vectors": [
+      {
+        "name": "is a dialog named by the renderer's title, outside the application, holding the focus",
+        "steps": [
+          {
+            "expect": {
+              "attributes": [
+                { "of": { "part": "surface" }, "name": "role", "value": "dialog" },
+                { "of": { "part": "surface" }, "name": "aria-labelledby", "value": "title" },
+                { "of": { "part": "surface" }, "name": "data-surface", "value": "dialog" }
+              ],
+              "outside": [{ "part": "surface" }, { "part": "surface-overlay" }],
+              "focusWithin": { "part": "surface" }
+            }
+          },
+          { "key": "Tab" },
+          { "key": "Tab" },
+          { "key": "Tab" },
+          { "expect": { "focusWithin": { "part": "surface" } } },
+          { "key": "Tab", "shift": true },
+          { "key": "Tab", "shift": true },
+          { "key": "Tab", "shift": true },
+          { "expect": { "focusWithin": { "part": "surface" } } }
+        ]
+      },
+      {
+        "name": "asks to close on Escape, and stays open until the renderer closes it",
+        "hold": ["open"],
+        "steps": [
+          { "key": "Escape" },
+          { "expect": { "intents": [["onOpenChange", false, "escape"]], "present": [{ "part": "surface" }] } }
+        ]
+      },
+      {
+        "name": "asks to close on a press outside it",
+        "hold": ["open"],
+        "steps": [
+          { "press": { "part": "surface-overlay" } },
+          { "expect": { "intents": [["onOpenChange", false, "outside"]], "present": [{ "part": "surface" }] } }
+        ]
+      },
+      {
+        "name": "gives the focus back to what had it when the renderer closes it",
+        "steps": [
+          { "props": { "open": false } },
+          { "expect": { "absent": [{ "part": "surface" }], "focus": { "element": "opener" } } }
+        ]
+      },
+      {
+        "name": "leaves the page uncovered when it is not modal",
+        "props": { "modal": false, "attributes": { "data-surface": "dialog", "data-size": "medium", "data-modal": "false" } },
+        "steps": [{ "expect": { "absent": [{ "part": "surface-overlay" }], "present": [{ "part": "surface" }] } }]
+      }
+    ]
+  },
+  "Drawer": {
+    "props": {
+      "open": true,
+      "modal": true,
+      "side": "end",
+      "labelledBy": "title",
+      "attributes": { "data-surface": "drawer", "data-side": "end", "data-size": "large", "data-modal": "true" },
+      "children": [
+        { "element": "h2", "attributes": { "id": "title" }, "text": "Edit" },
+        { "element": "input", "attributes": { "id": "first", "aria-label": "First" } },
+        { "element": "button", "attributes": { "id": "save" }, "text": "Save" }
+      ]
+    },
+    "vectors": [
+      {
+        "name": "is a dialog at its edge, named by the renderer's title, outside the application, holding the focus",
+        "steps": [
+          {
+            "expect": {
+              "attributes": [
+                { "of": { "part": "surface" }, "name": "role", "value": "dialog" },
+                { "of": { "part": "surface" }, "name": "aria-labelledby", "value": "title" },
+                { "of": { "part": "surface" }, "name": "data-side", "value": "end" }
+              ],
+              "outside": [{ "part": "surface" }, { "part": "surface-overlay" }],
+              "focusWithin": { "part": "surface" }
+            }
+          },
+          { "key": "Tab" },
+          { "key": "Tab" },
+          { "key": "Tab" },
+          { "expect": { "focusWithin": { "part": "surface" } } }
+        ]
+      },
+      {
+        "name": "asks to close on Escape and on a press outside it",
+        "hold": ["open"],
+        "steps": [
+          { "key": "Escape" },
+          { "expect": { "intents": [["onOpenChange", false, "escape"]] } },
+          { "press": { "part": "surface-overlay" } },
+          { "expect": { "intents": [["onOpenChange", false, "outside"]], "present": [{ "part": "surface" }] } }
+        ]
+      },
+      {
+        "name": "gives the focus back to what had it when the renderer closes it",
+        "steps": [
+          { "props": { "open": false } },
+          { "expect": { "absent": [{ "part": "surface" }], "focus": { "element": "opener" } } }
+        ]
+      }
+    ]
+  },
+  "Popover": {
+    "props": {
+      "open": true,
+      "anchor": { "$element": "opener" },
+      "side": "bottom",
+      "align": "start",
+      "labelledBy": "title",
+      "attributes": { "data-surface": "popover", "data-side": "bottom", "data-align": "start" },
+      "children": [
+        { "element": "h2", "attributes": { "id": "title" }, "text": "New" },
+        { "element": "input", "attributes": { "id": "first", "aria-label": "First" } }
+      ]
+    },
+    "vectors": [
+      {
+        "name": "is placed outside the application, leaves the page uncovered and takes the focus",
+        "steps": [
+          {
+            "expect": {
+              "attributes": [{ "of": { "part": "surface" }, "name": "data-surface", "value": "popover" }],
+              "outside": [{ "part": "surface" }],
+              "absent": [{ "part": "surface-overlay" }],
+              "focusWithin": { "part": "surface" }
+            }
+          }
+        ]
+      },
+      {
+        "name": "asks to close on Escape, and stays open until the renderer closes it",
+        "hold": ["open"],
+        "steps": [
+          { "key": "Escape" },
+          { "expect": { "intents": [["onOpenChange", false, "escape"]], "present": [{ "part": "surface" }] } }
+        ]
+      },
+      {
+        "name": "asks to close on a press outside it",
+        "hold": ["open"],
+        "steps": [
+          { "press": { "element": "body" } },
+          { "expect": { "intents": [["onOpenChange", false, "outside"]], "present": [{ "part": "surface" }] } }
+        ]
+      },
+      {
+        "name": "gives the focus back to what had it when the renderer closes it",
+        "steps": [
+          { "props": { "open": false } },
+          { "expect": { "absent": [{ "part": "surface" }], "focus": { "element": "opener" } } }
+        ]
+      }
+    ]
+  },
+  "Confirmation": {
+    "props": {
+      "open": true,
+      "labelledBy": "question",
+      "describedBy": "detail",
+      "attributes": { "data-surface": "confirmation" },
+      "children": [
+        { "element": "h2", "attributes": { "id": "question" }, "text": "Discard changes?" },
+        { "element": "p", "attributes": { "id": "detail" }, "text": "What you entered is lost." },
+        { "element": "button", "attributes": { "id": "cancel" }, "text": "Keep editing" },
+        { "element": "button", "attributes": { "id": "confirm" }, "text": "Discard" }
+      ]
+    },
+    "vectors": [
+      {
+        "name": "interrupts: an alert dialog, named and described, the focus on its first button and kept inside",
+        "steps": [
+          {
+            "expect": {
+              "attributes": [
+                { "of": { "part": "surface" }, "name": "role", "value": "alertdialog" },
+                { "of": { "part": "surface" }, "name": "aria-labelledby", "value": "question" },
+                { "of": { "part": "surface" }, "name": "aria-describedby", "value": "detail" }
+              ],
+              "outside": [{ "part": "surface" }, { "part": "surface-overlay" }],
+              "focus": { "id": "cancel" }
+            }
+          },
+          { "key": "Tab" },
+          { "expect": { "focus": { "id": "confirm" } } },
+          { "key": "Tab" },
+          { "expect": { "focusWithin": { "part": "surface" } } }
+        ]
+      },
+      {
+        "name": "asks to close on Escape, and on nothing outside it",
+        "hold": ["open"],
+        "steps": [
+          { "press": { "part": "surface-overlay" } },
+          { "expect": { "intents": [], "present": [{ "part": "surface" }] } },
+          { "key": "Escape" },
+          { "expect": { "intents": [["onOpenChange", false, "escape"]], "present": [{ "part": "surface" }] } }
+        ]
+      },
+      {
+        "name": "gives the focus back to what had it when the renderer closes it",
+        "steps": [
+          { "props": { "open": false } },
+          { "expect": { "absent": [{ "part": "surface" }], "focus": { "element": "opener" } } }
+        ]
+      }
+    ]
+  },
+  "Menu": {
+    "props": {
+      "open": false,
+      "items": [
+        { "key": "done", "label": "Done" },
+        { "key": "priority", "label": "Priority" }
+      ],
+      "children": { "element": "button", "attributes": { "id": "add" }, "text": "Add filter" }
+    },
+    "vectors": [
+      {
+        "name": "asks to open from the renderer's button, and draws its entries outside the application",
+        "steps": [
+          { "focus": { "id": "add" } },
+          { "key": "ArrowDown", "on": { "id": "add" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", true]],
+              "outside": [{ "part": "menu" }],
+              "attributes": [
+                { "of": { "id": "add" }, "name": "aria-expanded", "value": "true" },
+                { "of": { "id": "add" }, "name": "data-state", "value": null }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "reports the entry chosen, then asks to close",
+        "props": { "open": true },
+        "steps": [
+          { "click": { "part": "menu-item", "text": "Priority" } },
+          { "expect": { "intents": [["onChange", "priority"], ["onOpenChange", false, "close"]], "absent": [{ "part": "menu" }] } }
+        ]
+      },
+      {
+        "name": "asks to close on Escape, and stays open until the renderer closes it",
+        "props": { "open": true },
+        "hold": ["open"],
+        "steps": [
+          { "key": "Escape" },
+          { "expect": { "intents": [["onOpenChange", false, "escape"]], "present": [{ "part": "menu" }] } }
+        ]
+      }
+    ]
+  },
+  "Tooltip": {
+    "props": {
+      "open": false,
+      "label": "Edit",
+      "children": { "element": "button", "attributes": { "id": "edit", "aria-label": "Edit" } }
+    },
+    "vectors": [
+      {
+        "name": "asks to open when the renderer's element takes the focus",
+        "steps": [
+          { "focus": { "id": "edit" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", true]],
+              "outside": [{ "part": "tooltip" }],
+              "attributes": [{ "of": { "id": "edit" }, "name": "data-state", "value": null }]
+            }
+          }
+        ]
+      },
+      {
+        "name": "asks to close on Escape",
+        "props": { "open": true },
+        "hold": ["open"],
+        "steps": [
+          { "focus": { "id": "edit" } },
+          { "key": "Escape", "on": { "id": "edit" } },
+          { "expect": { "intents": [["onOpenChange", false, "escape"]] } }
+        ]
+      }
+    ]
+  },
+  "Icon": {
+    "props": { "name": "add" },
+    "vectors": [
+      {
+        "name": "draws each glyph by its name, hidden from assistive technology",
+        "steps": [
+          { "expect": { "attributes": [{ "of": { "part": "icon" }, "name": "aria-hidden", "value": "true" }] } },
+          { "props": { "name": "alert" } },
+          { "props": { "name": "close" } },
+          { "props": { "name": "delete" } },
+          { "props": { "name": "edit" } },
+          { "props": { "name": "filter" } },
+          { "props": { "name": "loading" } },
+          { "props": { "name": "next" } },
+          { "props": { "name": "previous" } },
+          { "props": { "name": "remove" } },
+          { "props": { "name": "reset" } },
+          { "props": { "name": "sort-ascending" } },
+          { "props": { "name": "sort-descending" } },
+          { "props": { "name": "sortable" } },
+          { "expect": { "present": [{ "part": "icon" }] } }
+        ]
+      }
+    ]
+  }
+}

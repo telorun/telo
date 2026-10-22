@@ -4,12 +4,21 @@ Everything the renderer draws is an element carrying `data-telo-part`, and
 state is carried in `data-` attributes. The lists below are closed and are the
 contract: a stylesheet written against them keeps working across releases.
 
-Dialogs, drawers, popovers, confirmations, choice lists, menus, checkboxes,
-switches, sliders, option groups and tooltips are Radix primitives, and icons
-are Lucide's. A dialog, a drawer, a popover, a confirmation, a choice list, a
-menu and a tooltip are drawn at the end of `<body>`, outside the `app` part, so
-select them by their own part and never as a descendant of `app`, `table`,
-`form` or `filters`.
+Every text box, choice, list, overlay, menu, tooltip and glyph is drawn by a
+control — the built-in one, or a theme's that replaces it — under the
+[controls contract](controls-abi.md), which lists the parts and states each
+control draws. The built-ins are drawn on the DOM itself, each in its role's
+WAI-ARIA pattern, with Lucide's icons; the renderer carries no primitive
+library. A dialog, a drawer, a popover, a confirmation, a choice list, a menu
+and a tooltip are drawn at the end of `<body>`, outside the `app` part, each
+in a layer whose root carries `data-telo-layer`, so select them by their own
+part and never as a descendant of `app`, `table`, `form` or `filters`. A
+built-in's mechanics place its list or its popover through custom properties
+of its own (`--ui-react-control-anchor-width`,
+`--ui-react-control-available-height`, `--ui-react-control-origin`), set on
+the layer as it is placed; they are no part of this contract, and a theme
+reads none of them. `--telo-` custom properties are the design tokens'; a
+control's or a theme's own properties use another prefix.
 
 ```css
 [data-telo-part="table-row"][data-style~="muted"] { opacity: 0.6; }
@@ -20,31 +29,57 @@ select them by their own part and never as a descendant of `app`, `table`,
 
 | Order | Layer | Holds |
 | --- | --- | --- |
-| 1 | `telo.base` | the renderer's layout — display, flex, where each surface and a choice list sit |
-| 2 | `telo.theme` | the default theme (omitted with `defaultTheme: false`), then your `Ui.Theme` tokens as custom properties |
-| 3 | `telo.component` | each custom component's stylesheet |
+| 1 | `telo.base` | the layout of the renderer's own composition: the shell, structure nodes, table and list grids, panel and aside placement, field arrangement, filter placements, in-flow surfaces, hiding by state, a surface body's scroll with its actions sticky |
+| 2 | `telo.control` | each control's own mechanics — a choice list's stacking, a slider's track, where a dialog or a drawer sits — one stylesheet per built-in control in use, and the stylesheet of each [control set](theme.md#control-sets) the theme lists in place of the built-ins it replaces |
+| 3 | `telo.theme` | the [theme](theme.md)'s `tokens` as custom properties, then its `stylesheets` in order, then the application's chosen `tokens` |
+| 4 | `telo.component` | each custom component's stylesheet |
 | last | unlayered | the application's `stylesheets` |
 
 Unlayered rules win over every layer whatever their specificity, so your
-stylesheet never has to out-specify the renderer's.
+stylesheet never has to out-specify the renderer's. A theme's stylesheet and a
+control set's are written as plain CSS: the application places each in its
+layer, serving it as written and naming, in the application document, a
+stylesheet that imports it into that layer.
+
+## Reserved properties
+
+A property the base layer declares is reserved when documented behaviour
+depends on it: a theme does not declare it on that part, or the behaviour
+breaks — `UiReact.defaultTheme` declares none.
+
+| Part | Reserved | Because |
+| --- | --- | --- |
+| `filters-bar` | `display` | a closed collapsible bar is hidden |
+| `filters` | `display`, `grid-template-columns` | a bar placed aside sits beside what it filters |
+| `surface-body` | `overflow-y`, `min-height` | a surface's body scrolls while its header stays |
+| `form-actions` | `position`, `bottom` | a form's actions stay at its surface's bottom edge |
+| `table-frame` | `overflow-x` | a grid wider than its table scrolls in its frame |
+| `table` | `display`, `grid-template-columns` | a panel sits beside the frame and the pager |
+| `table-toolbar` | `order` | the toolbar stays above a panel |
+| `surface` | `order` | a panel sits on its side |
 
 ## Tokens
 
-A `Ui.Theme` token is a custom property: `color.accent-text` is
-`--telo-color-accent-text`. The default theme gives every token a value and
-reads them for colours, spacing, radii, shadows and type.
+A [`Ui.DesignTokens`](../../ui/docs/design-tokens.md) token is a custom
+property: `color.accent-text` is `--telo-color-accent-text` (the projection the
+code entry `@telorun/ui-react-contract` exports as `tokenProperty`). A theme gives
+every token a value — from its own `tokens`, or from its stylesheets — and
+reads them for colours, spacing, radii, shadows and type, so an application's
+`tokens` change the brand under any theme.
 
-The default theme is neutral: near-black text and primary buttons on white,
-hairline borders, 2rem controls. It reads the tokens this way:
+The default theme, [`UiReact.defaultTheme`](theme.md#the-default-theme), is
+neutral: near-black text and primary buttons on white, hairline borders, 2rem
+controls. It reads the tokens this way:
 
 - `color.background` is the page; `color.surface` the header, controls,
   surfaces and choice lists.
-- `color.text` is text; `color.muted` secondary text, placeholders and quiet
-  icons.
+- `color.text` is text; `color.muted` secondary text, placeholders, hints and
+  quiet icons.
 - `color.border` is every border and divider.
 - `color.accent` is the primary buttons, a checked checkbox and links, and
   `color.accent-text` what is written on them.
-- `color.danger` is invalid fields, error nodes and the destructive button.
+- `color.danger` is invalid fields, error nodes and the destructive button;
+  `color.warning` a field's warning.
 - `radius.sm` rounds list entries and tooltips; `radius.md` buttons, inputs,
   the table frame, inline surfaces, panels and choice lists; `radius.lg` dialogs,
   popovers and confirmations.
@@ -52,16 +87,16 @@ hairline borders, 2rem controls. It reads the tokens this way:
   when the viewer has them, and the system's faces otherwise.
 
 Hover fills, focus rings and tinted backgrounds are mixed from those tokens
-(the `--telo-derived-*` properties), so setting a token moves them with it.
+(the `--ui-react-derived-*` properties), so setting a token moves them with it.
 The derived properties are the default theme's own and not part of the
 contract.
 
 The default theme follows the viewer's system setting: under
 `prefers-color-scheme: dark` it gives the colour and shadow tokens dark values
-— light text and primary buttons on near-black. A token your `Ui.Theme` sets
-applies in both, so a theme that sets a surface or text colour should set the
-ones that must contrast with it too — or decline the built-in theme with
-`defaultTheme: false` and style both schemes yourself.
+— light text and primary buttons on near-black. A token the application's
+`tokens` set applies in both, so a token set that sets a surface or text
+colour should set the ones that must contrast with it too — or the
+application declares a theme of its own that styles both schemes.
 
 ## Parts
 
@@ -70,10 +105,12 @@ ones that must contrast with it too — or decline the built-in theme with
 | Part | Is |
 | --- | --- |
 | `app` | the whole application |
-| `header` | the bar holding the title and the navigation |
+| `header` | the bar holding the title and the navigation: one row — `header-start`, the title, `nav` taking the room left, `header-end` at its end — while the application is not compact, and wrapping when it is |
+| `header-start` | the application's own [header](app.md#header) nodes before the title; drawn only when there are any |
 | `app-title` | the application's title |
-| `nav` | the navigation |
+| `nav` | the navigation; its links wrap within it |
 | `nav-link` | a link to a page |
+| `header-end` | the application's own header nodes after the navigation; drawn only when there are any |
 | `main` | the area below the header |
 | `page` | the current page |
 | `page-title` | the page's title |
@@ -89,6 +126,7 @@ ones that must contrast with it too — or decline the built-in theme with
 | `text` | a `text` node — `p`, or `h2` / `h3` under `heading` / `subheading` |
 | `badge` | a `badge` node |
 | `link` | a `link` node |
+| `menu-trigger` | a `menu` node: the button opening its links, its text and then an `icon` (`next`, which a theme turns to point down) |
 | `image` | an `image` node |
 | `svg` | an `svg` node, drawn as an image |
 | `value` | a `value` node: one value of a data scope, presented as its schema says — a `format: uri` / `uri-reference` string as a `link` |
@@ -97,6 +135,11 @@ ones that must contrast with it too — or decline the built-in theme with
 | `data` | a `data` node: a reader, holding its `loading` tree before the first answer, its `content` once one is in, its `failure` when the read did not succeed |
 
 A column of a `list` whose `shown` does not hold is left out, header and cells.
+
+A `menu` node's links are drawn by the `Menu` control: its `menu` and one
+`menu-item` per link, the current choice — a link whose style holds `strong` —
+marked `data-current="true"` by the built-in and the Radix controls. Its
+`style` is on `menu-trigger` as `data-style`.
 
 A `data` part carries `data-state`: `loading` before the first answer, `idle`
 once one is drawn, `error` while its `failure` is drawn. A reload keeps the
@@ -162,6 +205,7 @@ inside an element with `display: contents`, which no selector needs to reach.
 | `field-warning` | what a field warns of without blocking — a date range longer than its limit |
 | `switch` | an on/off control, drawn before its label: an input field's `toggle` |
 | `slider` | a number entered by dragging between its `minimum` and `maximum` |
+| `slider-value` | the slider's position as text, after its track |
 | `options-more` | the button reading more options of a choice drawn side by side, while its source has more |
 | `option-hint` | the hint an option source gives beside an option's label |
 
@@ -245,13 +289,14 @@ a `tag` or the `input` inside the box, so one ring is drawn.
 | `filter-bound` | one of them: its caption and its control |
 | `filter-caption` | what tells it from the others: `from`, `to`, `after`, `before`, `is`, `contains`, `one of` |
 | `filter-remove` | the button taking a filter off show and clearing it, an icon; never on a pinned filter |
-| `filter-chip` | under `controls: chips`, the button naming a property's filters and what they hold, which opens them |
+| `filter-chip` | under `controls: chips`, the button naming a property's filters and what they hold, which opens them; its `title` holds the same text whole, for a theme that cuts it short |
 | `filter-input` | a filter typed into, and the box tags are typed into |
 | `filter-select` | a filter chosen from a list: the button showing what is chosen |
 | `filter-options` | a filter's values side by side, under `control: options` |
 | `filter-option` | one of them |
 | `filter-toggle` | a switch, under `control: toggle` |
 | `filter-slider` | a slider, under `control: slider` |
+| `filter-slider-value` | its position as text, after its track: what the filter holds, or `Any` while it holds nothing |
 | `filter-tags` | the values typed so far and the box the next is typed into, under `control: tags` |
 | `filter-tag` | one typed value |
 | `filter-tag-remove` | the button in it that removes that value, an icon |
@@ -283,10 +328,15 @@ Under `controls: chips` a `filter-chip` stands where the `filter` would, and
 the `filter` itself is drawn while the chip is open, inside a `surface` with
 `data-surface="popover"` that has no header and no body part.
 
-A switch's thumb and a slider's inside carry no part. The thumb of
-`filter-toggle` is its `::before`. In `filter-slider` the track is the first
-child, the filled range is the track's child, and the thumb is the element with
-`role="slider"`.
+A switch's thumb and a slider's track and thumb carry no part. In the
+built-ins, the thumb of `filter-toggle` and `switch` is its `::before`; in
+`filter-slider` and `slider` the track is the first child, the filled range is
+the track's child, and the thumb is the element with `role="slider"`. The
+slider's last child is its `slider-value` or `filter-slider-value`, which the
+control's mechanics place just past the root's inline end, so its width never
+moves the track: give the slider a `margin-inline-end` that leaves it room, and
+the value a `min-width` and `font-variant-numeric: tabular-nums` so the text
+holds still as it changes.
 
 ### Surface
 
@@ -346,8 +396,8 @@ listed.
 
 | Attribute | Values | On |
 | --- | --- | --- |
-| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `data`, `table`, `form`, `filters`, `component`, `action`, `row-action`, `picker-list` |
-| `data-invalid="…"` | `true` | `field`, `input`, `textarea`, `select`, `checkbox`, `options`, `tags`, `picker`, `date-range` |
+| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `data`, `table`, `form`, `filters`, `component`, `action`, `row-action` |
+| `data-invalid="…"` | `true`, while what it holds is refused; the control inside carries its own | `field`, `picker` |
 | `data-dirty="…"` | `true`, while it holds input that is not saved | `form` |
 | `data-compact="…"` | `true`, while the viewport is below the application's `compactBelow` | `app` |
 | `data-surface="…"` | `dialog`, `drawer`, `popover`, `inline`, `panel`, `page`, `confirmation` | `surface` |
@@ -362,23 +412,23 @@ listed.
 | `data-current="…"` | `page` | `nav-link` |
 | `data-style="…"` | the node's or the rule's style names, space-separated | wherever a style applies |
 
-The primitives set `data-state` too, with values of their own, on the parts
-they draw. The attribute is the same; the part says whose value it holds, so
+Two parts of the renderer's own carry `data-state` with values of their own,
+and every control carries the states the [controls
+contract](controls-abi.md#states) lists for it — `open` / `closed` on a list
+or an overlay, `on` / `off` on an option, `checked` / `unchecked` on a
+checkbox. The attribute is the same; the part says whose value it holds, so
 always select a state together with its part — `[data-state="error"]` alone
-is safe, `[data-state="closed"]` alone matches a closed choice control and an
-idle tooltip trigger alike.
+is safe, `[data-state="closed"]` alone matches a closed choice control and a
+folded filter bar alike.
 
 | Values | On |
 | --- | --- |
-| `open`, `closed` | `surface`, `surface-overlay`, `select`, `filter-select`, `select-content`, `filters-bar`, `filter-chip`, `menu` |
-| `on`, `off` | `filters-preset`, `filter-option`, `option`, `date-range-preset`, `picker-option` |
-| `checked`, `unchecked` | `checkbox`, `select-item`, `filter-toggle`, `switch` |
-| `closed`, `delayed-open`, `instant-open` | `row-edit`, `row-delete`, `pager-prev`, `pager-next`, `tooltip` |
+| `open`, `closed` | `filters-bar`, `filter-chip` |
 
-A `select` or `filter-select` with nothing chosen carries `data-placeholder`,
-and the `select-item` or `menu-item` under the pointer or the keyboard carries
-`data-highlighted`. `filters-bar` carries `open` / `closed` only in a
-collapsible bar, and `filters-add` carries no state: its list's is on `menu`.
+`filters-bar` carries `open` / `closed` only in a collapsible bar, and a
+`filter-chip` is `open` while its popover is. The element a control opens
+from — `filters-add`, an icon button — carries no state of the control's: its
+list's is on `menu`, its tooltip's on `tooltip`.
 
 An `action` is `idle`, `submitting` while its operation runs, and `error` once
 its record or the operation was refused. A `row-action` carries `data-state`

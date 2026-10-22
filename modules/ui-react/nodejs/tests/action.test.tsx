@@ -15,8 +15,9 @@ afterEach(() => {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const answer = { month: "2026-09", files: [{ name: "2026-09.pdf", url: "/files/2026-09.pdf" }, { name: "2026-09.csv", url: "javascript:alert(1)" }], totals: "none" };
 
+// An action posts to its path under the mount.
 const show = (respond: () => Response | Promise<Response> = () => json(answer), node = actionNode()) =>
-  render({ path: "/", prefix: "/admin", answers: { "/api/reports": respond }, pages: { "/": { title: "Reports", children: [node] } } });
+  render({ path: "/", prefix: "/admin", answers: { "/admin/api/reports": respond }, pages: { "/": { title: "Reports", children: [node] } } });
 
 const state = (r: Rendered) => r.part("action").getAttribute("data-state");
 const posts = (r: Rendered) => r.sent.filter((each) => each.request.startsWith("POST"));
@@ -70,7 +71,7 @@ describe("an action", () => {
     rendered = await show(() => new Promise<Response>((resolve) => (finish = resolve)));
     await enterReport(rendered);
     await rendered.click(rendered.part("submit"));
-    expect(posts(rendered)).toEqual([{ request: "POST /api/reports", contentType: "application/json", body: reportRequest }]);
+    expect(posts(rendered)).toEqual([{ request: "POST /admin/api/reports", contentType: "application/json", body: reportRequest }]);
     expect((rendered.part("submit") as HTMLButtonElement).disabled).toBe(true);
     expect(state(rendered)).toBe("submitting");
     finish(json(answer));
@@ -274,13 +275,13 @@ describe("an action", () => {
     rendered = await render({
       path: "/",
       prefix: "/admin",
-      answers: { "/api/reports": () => json({ next: "https://example.com/report" }) },
+      answers: { "/admin/api/reports": () => json({ next: "https://example.com/report" }) },
       pages: { "/": { title: "Reports", children: [going("https")] }, "/done": { title: "Done", children: [] } },
     });
     await rendered.enter(rendered.part("input"), "2026-09");
     await rendered.click(rendered.part("submit"));
     expect(leave.mock.calls).toEqual([["https://example.com/report"]]);
-    rendered.answer("/api/reports", () => json({ next: "/done" }));
+    rendered.answer("/admin/api/reports", () => json({ next: "/done" }));
     await rendered.click(rendered.part("submit"));
     expect(window.location.pathname).toBe("/admin/done");
     expect(leave.mock.calls).toHaveLength(1);

@@ -1,0 +1,31 @@
+modules:
+  modules/ui-react: Added
+body: "The renderer draws every interactive leaf through one controls contract,
+  ui_react_controls-1: 22 controls (text, number, date, date-time, time, tags and
+  date-range entry; checkbox, switch, slider, option group, select, multi-select and
+  listbox; dialog, drawer, popover, confirmation, menu, tooltip; icon by semantic name),
+  each fully controlled and reporting intents, with its props, parts, states and
+  behaviour vectors as data. The built-in controls are its reference implementation,
+  drawn on the DOM in each role's WAI-ARIA pattern with no primitive library: the
+  renderer no longer carries Radix, and its lists, menus, tooltips and popovers are
+  placed with Floating UI. The eight layer controls (select, multi-select, dialog,
+  drawer, popover, confirmation, menu, tooltip) mark every layer they draw at the end of
+  <body> with data-telo-layer, share one in-house layer stack, and are replaced as one
+  unit: a UiReact.Controls set implementing any of them implements all eight
+  (UI_CONTROLS_LAYERS_PARTIAL / ERR_UI_CONTROLS_LAYERS_PARTIAL). The contract, the
+  scenes that draw every part, a DOM-only interpreter that runs vectors and scenes and
+  tokenProperty, a design token's CSS spelling, ship as the code entry
+  @telorun/ui-react-contract. A new cascade layer, telo.control, sits between telo.base
+  and telo.theme and holds each built-in control's mechanics as a stylesheet of its own,
+  named per control in the application document's new controls field, which also names
+  the control sets a theme supplies; the renderer loads them through the host's module
+  loader (mount takes one), and a set that does not load or a control that throws is an
+  error node, ERR_UI_THEME_CONTROL_LOAD_FAILED or ERR_UI_THEME_CONTROL_FAILED, never the
+  built-in. The styling contract lists the reserved properties a theme must not declare.
+  Breaking: telo.base no longer styles any part only a control draws (input, select,
+  checkbox, option groups, tags, sliders, switches, choice lists, menus, tooltips,
+  overlay positions and the icon's layout move to telo.control); row-edit, row-delete,
+  pager-prev and pager-next no longer carry their tooltip's data-state; data-invalid,
+  data-placeholder and the open, on and checked states of a control's parts are
+  documented with that control; the mechanics read no --radix-* custom property, so a
+  stylesheet reading one gets nothing."

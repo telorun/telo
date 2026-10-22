@@ -1,0 +1,117 @@
+kind: Telo.Application
+metadata:
+  name: ReportConsoleRadixThemeTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/report-console` beside a copy whose only change is its
+    theme — `Radix.theme` instead of `UiReact.defaultTheme` — and reads what
+    each serves: the copy draws eleven controls from the Radix set and serves
+    no built-in mechanics for them, with the Radix stylesheets in place of the
+    built-in look, while its pages, words, forms and routes are the example's
+    own, so nothing the screen sends, checks or keeps differs.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: radix }
+    source: ./__fixtures__/radix/telo.yaml
+    ports:
+      http: 8143
+  - kind: App.Instance
+    metadata: { name: builtIn }
+    source: ../telo.yaml
+    ports:
+      http: 8144
+targets:
+  - !ref radix
+  - !ref builtIn
+steps:
+  - name: radixApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8143/_telo/ui/app" }
+  - name: builtInApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8144/_telo/ui/app" }
+  - name: radixPolishApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8143/_telo/ui/app" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: builtInPolishApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8144/_telo/ui/app" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: radixReports
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8143/_telo/ui/page?path=/" }
+  - name: builtInReports
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8144/_telo/ui/page?path=/" }
+  - name: radixPolishReports
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8143/_telo/ui/page?path=/" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: builtInPolishReports
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8144/_telo/ui/page?path=/" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: radixProjects
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8143/_telo/ui/page?path=/projects" }
+  - name: builtInProjects
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8144/_telo/ui/page?path=/projects" }
+  - name: radixSet
+    invoke: { kind: HttpClient.Request, responseType: text }
+    inputs:
+      url: !cel "'http://127.0.0.1:8143' + steps.radixApp.result.body.controls.sets[0].module"
+
+  # The look: the Radix set draws its eleven controls, the built-ins it does
+  # not replace keep their mechanics, and its stylesheets replace the built-in
+  # look under the console's own.
+  - name: verifyLook
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        sets: !cel "steps.radixApp.result.body.controls.sets.map(s, s.exports)"
+        setModule:
+          name: !cel "steps.radixApp.result.body.controls.sets[0].module.endsWith('/ui-react-radix.js')"
+          status: !cel "steps.radixSet.result.status"
+        mechanics: !cel "sort(steps.radixApp.result.body.controls.stylesheets.map(c, c))"
+        stylesheets: !cel "steps.radixApp.result.body.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1))"
+        builtInSets: !cel "steps.builtInApp.result.body.controls.sets"
+        builtInStylesheets: !cel "steps.builtInApp.result.body.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1))"
+      expected:
+        sets:
+          - [ Select, MultiSelect, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Icon ]
+        setModule: { name: true, status: 200 }
+        mechanics:
+          [
+            DateInput, DateRangeInput, DateTimeInput, NumberInput, OptionGroup, Slider, Switch, TagsInput, TextArea,
+            TextInput, TimeInput,
+          ]
+        stylesheets: [ renderer.css, ui-react-radix.css, theme-tokens.css, radix-theme.css, tokens.css, console.css ]
+        builtInSets: []
+        builtInStylesheets: [ renderer.css, default-theme.css, tokens.css, console.css ]
+
+  # Everything else is the example's own: the application in either language,
+  # and every page with its forms, fields, sources, validation models, kept
+  # values and actions.
+  - name: verifySameScreens
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        app: !cel >-
+          [steps.radixApp.result.body, steps.radixPolishApp.result.body].map(a,
+          {'title': a.title, 'lang': a.lang, 'pages': a.pages, 'words': a.words, 'compactBelow': a.compactBelow, 'bundle': a.bundle})
+        pages: !cel >-
+          [steps.radixReports.result.body, steps.radixPolishReports.result.body, steps.radixProjects.result.body].map(p,
+          {'path': p.path, 'lang': p.lang, 'title': p.title, 'query': p.query, 'children': p.children})
+      expected:
+        app: !cel >-
+          [steps.builtInApp.result.body, steps.builtInPolishApp.result.body].map(a,
+          {'title': a.title, 'lang': a.lang, 'pages': a.pages, 'words': a.words, 'compactBelow': a.compactBelow, 'bundle': a.bundle})
+        pages: !cel >-
+          [steps.builtInReports.result.body, steps.builtInPolishReports.result.body, steps.builtInProjects.result.body].map(p,
+          {'path': p.path, 'lang': p.lang, 'title': p.title, 'query': p.query, 'children': p.children})

@@ -13,7 +13,9 @@ confirmed delete on every row.
 | `edit` | optional | how the edit form opens: the same three, with `afterSubmit` `close` \| `keep` |
 
 It does not reference the `Crud.Resource`: name the same model in both, and
-give `basePath` the path the resource is mounted at.
+give `basePath` the path the resource is served at under the application's
+mount. With the application at `/admin`, `basePath: /api/tasks` reads
+`/admin/api/tasks`.
 
 ```yaml
 kind: Crud.Resource
@@ -27,6 +29,7 @@ kind: UiReact.App
 metadata: { name: admin }
 title: Tasks
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Tasks
@@ -39,7 +42,7 @@ metadata: { name: server }
 listen:
   port: !cel "ports.http"
 mounts:
-  - { path: /api/tasks, mount: !ref tasks }
+  - { path: /admin/api/tasks, mount: !ref tasks }
   - { path: /admin, mount: !ref admin }
 ```
 

@@ -1,0 +1,546 @@
+kind: Telo.Application
+metadata:
+  name: UiShowcase
+  version: 1.0.0
+  categories: [ UI ]
+  description: |
+    A tour of everything a declarative screen can do, with no hand-written
+    frontend, in English and Polish: every node type and text form, conditions
+    and query parameters, data readers with loading and failure states and a
+    sign-in gate, data grids, filter bars, forms, actions, custom components,
+    a generated admin screen and themes. The same pages are served three times
+    — under the built-in look with a brand chosen per request, under a Radix
+    theme, and under a theme of the example's own with a bundled typeface. The
+    data is a small studio's team, people, projects, tasks, requests, bookings
+    and comments in SQLite, with real sessions behind a sign-in gate.
+# Module `lang:`, `UiReact.App.words` and every key of the data-driven screen
+# vocabulary are read from 0.121.0.
+requires:
+  telo: ">=0.121.0"
+lang: en
+# The UI modules and `crud` come from this repository while their changes are
+# unreleased, and `http-server` and `sql` with them, because `crud` imports
+# this repository's copies (and `sqlite` with `sql`, so the two run as one
+# module scope); `telo upgrade --pin-local` pins them again once they ship.
+imports:
+  Http: ../../modules/http-server
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Sql: ../../modules/sql
+  SQLite: ../../modules/sqlite
+  Crud: ../../modules/crud
+  Font: ../../modules/font
+  I18n: ../../modules/i18n
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
+  Radix: ../../modules/ui-react-radix
+  # Two libraries of the example's own: its browser components, and the theme
+  # the `/brand` mount draws with.
+  Components: ./components
+  Brand: ./brand
+# The database, the routes crud does not give, the Polish translation, and one
+# file per page holding the view every application places there.
+include:
+  - ./data.yaml
+  - ./api.yaml
+  - ./polish.yaml
+  - ./pages-overview.yaml
+  - ./pages-conditions.yaml
+  - ./pages-data.yaml
+  - ./pages-tables.yaml
+  - ./pages-filters.yaml
+  - ./pages-forms.yaml
+  - ./pages-actions.yaml
+  - ./pages-components.yaml
+  - ./pages-crud.yaml
+  - ./pages-themes.yaml
+targets:
+  - !ref migrate
+  - !ref server
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8150
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./showcase.db
+---
+# A composite kind of the example's own, with no controller: a heading and a
+# line under it, in one of the styles that carry a colour. It provides through
+# a view, as any composite with no code of its own does.
+kind: Telo.Definition
+metadata:
+  name: Callout
+  description: >-
+    A highlighted note for a page: a heading and one line under it, drawn in an
+    accent, warning, success or danger colour.
+capability: Telo.Provider
+extends: Ui.Composite
+schema:
+  type: object
+  additionalProperties: false
+  required: [ heading, body, tone ]
+  properties:
+    heading: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    body: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    tone: { type: string, enum: [ accent, warning, success, danger ] }
+resources:
+  - kind: Ui.View
+    metadata: { name: view }
+    content:
+      type: box
+      style: !cel "self.tone"
+      children:
+        - { type: text, text: !cel "self.heading", style: subheading }
+        - { type: text, text: !cel "self.body" }
+provide: !ref view
+---
+# The showcase's mark, placed before the title of all three applications. An
+# image's `src` resolves under the mount it is drawn in, and the files are
+# served under each mount, so one view serves all three.
+kind: Ui.View
+metadata:
+  name: logo
+content: { type: image, src: /files/mark.svg, alt: UI showcase logo }
+---
+# The language a request is answered in, chosen from the translator's catalogs.
+kind: I18n.Negotiator
+metadata:
+  name: language
+translator: !ref t
+default: en
+---
+# The showcase under the built-in look. Its brand follows the request: with the
+# `showcase-brand=acme` cookie (set by `/api/brand?set=acme`) the Acme tokens
+# apply, and with none the theme's own values do. Two pages carry nodes of
+# their own beside the shared view — the per-request nodes and the page's
+# query — because a view is resolved once at start and reads neither.
+#
+# Each of the three applications is answered in the language
+# `Self.chosenLanguage` picks — the `showcase-lang` cookie (set by
+# `/api/lang?set=pl` under its mount), else the Accept-Language header — and
+# draws the same header: the mark, then two menus, Language with the language
+# in effect marked, and Theme with the three mounts' home pages — another
+# mount's by an absolute address built from the request's `Self.origin`, since an app-relative
+# link resolves under the mount it is drawn in — and this mount marked. This
+# one adds the brand switch to its Theme menu, each item delivered only while
+# it changes something.
+kind: UiReact.App
+metadata:
+  name: showcase
+title: UI showcase
+words: !ref Ui.words
+translator: !ref t
+lang: !cel >-
+  Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+  'accept-language' in request.headers ? request.headers['accept-language'] : '')
+theme: !ref UiReact.defaultTheme
+tokens:
+  - when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
+    tokens:
+      kind: Ui.DesignTokens
+      color.accent: "#b4232a"
+      color.accent-text: "#fff8f0"
+      color.background: "#fff8f0"
+      radius.sm: "2px"
+      radius.md: "2px"
+      radius.lg: "4px"
+stylesheets:
+  - !module-path ./showcase.css
+compactBelow: 48rem
+header:
+  start:
+    - { type: composite, ref: !ref logo }
+  end:
+    - type: menu
+      text: Language
+      items:
+        - type: link
+          text: English
+          href: "/api/lang?set=en"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
+        - type: link
+          text: Polski
+          href: "/api/lang?set=pl"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+    - type: menu
+      text: Theme
+      items:
+        - { type: link, text: Default, href: /, style: strong }
+        - type: link
+          text: Radix
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/radix/'
+        - type: link
+          text: Brand
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/brand/'
+        - type: link
+          text: Use the Acme brand
+          href: "/api/brand?set=acme"
+          when: !cel "!('cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme')"
+        - type: link
+          text: "Use the theme's own values"
+          href: "/api/brand?set=none"
+          when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
+pages:
+  - path: /
+    title: Overview
+    children:
+      - { type: composite, ref: !ref overviewPage }
+      - type: stack
+        children:
+          - { type: text, text: Per request, style: heading }
+          - type: text
+            style: muted
+            text: These nodes are the page's own, so their when and their text are evaluated for every request.
+          - type: text
+            style: accent
+            text: Your browser asked for Polish.
+            when: !cel "'accept-language' in request.headers && Self.language(request.headers['accept-language']) == 'pl'"
+          - type: text
+            text: Your browser did not ask for Polish.
+            when: !cel "!('accept-language' in request.headers) || Self.language(request.headers['accept-language']) != 'pl'"
+          - type: badge
+            style: accent
+            text: The Acme brand is on.
+            when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
+          - type: text
+            style: muted
+            text: A text an expression computes is shown as computed, never translated.
+          - type: text
+            text: !cel "'user-agent' in request.headers ? 'User-Agent: ' + request.headers['user-agent'] : 'No User-Agent header was sent.'"
+          - type: text
+            style: muted
+            text: A link this request makes invalid is replaced by an error node, and the rest of the page is served.
+          - type: link
+            text: Leaves the application
+            href: !cel "'//' + ('host' in request.headers ? request.headers['host'] : 'elsewhere.example')"
+  - path: /conditions
+    title: Conditions
+    query:
+      mode: { type: string, enum: [ compact, detailed ] }
+    children:
+      - { type: composite, ref: !ref conditionsPage }
+      - type: stack
+        children:
+          - { type: text, text: A page's own query, style: heading }
+          - type: text
+            style: muted
+            text: This page declares mode as well, and its own nodes read it.
+          - type: text
+            style: success
+            text: The page reads mode as detailed.
+            shown: { at: !cel "query.mode", matches: { const: detailed } }
+          - type: value
+            value: !cel "query.mode"
+  - { path: /data, title: Data, children: [ { type: composite, ref: !ref dataPage } ] }
+  - { path: /tables, title: Tables, children: [ { type: composite, ref: !ref tablesPage } ] }
+  - { path: /filters, title: Filters, children: [ { type: composite, ref: !ref filtersPage } ] }
+  - { path: /forms, title: Forms, children: [ { type: composite, ref: !ref formsPage } ] }
+  - { path: /actions, title: Actions, children: [ { type: composite, ref: !ref actionsPage } ] }
+  - { path: /components, title: Components, children: [ { type: composite, ref: !ref componentsPage } ] }
+  - { path: /crud, title: CRUD, children: [ { type: composite, ref: !ref crudPage } ] }
+  - path: /themes
+    title: Themes
+    children:
+      - { type: composite, ref: !ref themesPage }
+      - type: stack
+        children:
+          - { type: text, text: Switch the mount or the brand, style: heading }
+          - type: text
+            style: muted
+            text: >-
+              These links are this application's own: a link resolves under the mount it is drawn in, so only the
+              application at the root reaches the other two. Each is an ordinary load of another application.
+          - type: columns
+            children:
+              - { type: link, text: Open the Radix mount, href: /radix/themes }
+              - { type: link, text: Open the brand mount, href: /brand/themes }
+          - type: text
+            style: muted
+            text: >-
+              This application's brand is chosen for every request. The switch sets or clears a cookie and comes
+              back here, and while the cookie is there the Acme token set is used instead of the theme's own.
+          - type: columns
+            children:
+              - { type: link, text: Use the Acme brand, href: "/api/brand?set=acme" }
+              - { type: link, text: "Use the theme's own values", href: "/api/brand?set=none" }
+          - type: badge
+            style: accent
+            text: The Acme brand is on.
+            when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
+---
+# The same pages under the Radix theme: its stylesheet and its eleven controls.
+kind: UiReact.App
+metadata:
+  name: radixShowcase
+title: UI showcase — Radix
+words: !ref Ui.words
+translator: !ref t
+lang: !cel >-
+  Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+  'accept-language' in request.headers ? request.headers['accept-language'] : '')
+theme: !ref Radix.theme
+compactBelow: 48rem
+header:
+  start:
+    - { type: composite, ref: !ref logo }
+  end:
+    - type: menu
+      text: Language
+      items:
+        - type: link
+          text: English
+          href: "/api/lang?set=en"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
+        - type: link
+          text: Polski
+          href: "/api/lang?set=pl"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+    - type: menu
+      text: Theme
+      items:
+        - type: link
+          text: Default
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/'
+        - { type: link, text: Radix, href: /, style: strong }
+        - type: link
+          text: Brand
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/brand/'
+pages:
+  - { path: /, title: Overview, children: [ { type: composite, ref: !ref overviewPage } ] }
+  - { path: /conditions, title: Conditions, children: [ { type: composite, ref: !ref conditionsPage } ] }
+  - { path: /data, title: Data, children: [ { type: composite, ref: !ref dataPage } ] }
+  - { path: /tables, title: Tables, children: [ { type: composite, ref: !ref tablesPage } ] }
+  - { path: /filters, title: Filters, children: [ { type: composite, ref: !ref filtersPage } ] }
+  - { path: /forms, title: Forms, children: [ { type: composite, ref: !ref formsPage } ] }
+  - { path: /actions, title: Actions, children: [ { type: composite, ref: !ref actionsPage } ] }
+  - { path: /components, title: Components, children: [ { type: composite, ref: !ref componentsPage } ] }
+  - { path: /crud, title: CRUD, children: [ { type: composite, ref: !ref crudPage } ] }
+  - { path: /themes, title: Themes, children: [ { type: composite, ref: !ref themesPage } ] }
+---
+# The same pages under a theme of the example's own (`brand/`): Radix's
+# controls under a stylesheet written for this example, with token values of
+# its own. The application's brand is one token set, which ships the Inter
+# faces the theme names.
+kind: UiReact.App
+metadata:
+  name: brandShowcase
+title: UI showcase — brand
+words: !ref Ui.words
+translator: !ref t
+lang: !cel >-
+  Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+  'accept-language' in request.headers ? request.headers['accept-language'] : '')
+theme: !ref Brand.theme
+tokens:
+  kind: Ui.DesignTokens
+  font.body: !ref inter
+  font.heading: !ref inter
+compactBelow: 48rem
+header:
+  start:
+    - { type: composite, ref: !ref logo }
+  end:
+    - type: menu
+      text: Language
+      items:
+        - type: link
+          text: English
+          href: "/api/lang?set=en"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
+        - type: link
+          text: Polski
+          href: "/api/lang?set=pl"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+    - type: menu
+      text: Theme
+      items:
+        - type: link
+          text: Default
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/'
+        - type: link
+          text: Radix
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/radix/'
+        - { type: link, text: Brand, href: /, style: strong }
+pages:
+  - { path: /, title: Overview, children: [ { type: composite, ref: !ref overviewPage } ] }
+  - { path: /conditions, title: Conditions, children: [ { type: composite, ref: !ref conditionsPage } ] }
+  - { path: /data, title: Data, children: [ { type: composite, ref: !ref dataPage } ] }
+  - { path: /tables, title: Tables, children: [ { type: composite, ref: !ref tablesPage } ] }
+  - { path: /filters, title: Filters, children: [ { type: composite, ref: !ref filtersPage } ] }
+  - { path: /forms, title: Forms, children: [ { type: composite, ref: !ref formsPage } ] }
+  - { path: /actions, title: Actions, children: [ { type: composite, ref: !ref actionsPage } ] }
+  - { path: /components, title: Components, children: [ { type: composite, ref: !ref componentsPage } ] }
+  - { path: /crud, title: CRUD, children: [ { type: composite, ref: !ref crudPage } ] }
+  - { path: /themes, title: Themes, children: [ { type: composite, ref: !ref themesPage } ] }
+---
+# The typeface the brand ships. Inter comes with the example (`fonts/`, under
+# the SIL Open Font License), so the `/brand` application serves its four
+# faces with `@font-face`.
+kind: Font.Family
+metadata:
+  name: inter
+family: Inter
+faces:
+  normal: !include-bytes fonts/Inter-Regular.woff2
+  bold: !include-bytes fonts/Inter-Bold.woff2
+  italic: !include-bytes fonts/Inter-Italic.woff2
+  boldItalic: !include-bytes fonts/Inter-BoldItalic.woff2
+---
+# Files served under each application's mount: a link node's `href` and an
+# image's `src` resolve under the mount they are drawn in.
+kind: Http.Static
+metadata:
+  name: files
+root: !module-path ./files
+---
+# The session check behind every `/api/private` mount: a request whose cookie
+# names no row of `sessions` is refused, which each mount answers 401 with no
+# body, a reader shows as ERR_UI_UNAUTHORIZED and the sign-in gate around it
+# reads again on.
+kind: Run.Sequence
+metadata:
+  name: sessionGuard
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ token ]
+    properties:
+      token: { type: string, x-telo-sensitive: true }
+steps:
+  - name: session
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: !sql "SELECT token FROM sessions WHERE token = ${{ inputs.token }}"
+  - name: open
+    if: !cel "size(steps.session.result.rows) == 0"
+    then:
+      - name: refuse
+        throw: { code: UNAUTHORIZED, message: Sign in first. }
+---
+# The projects collection: list, read, create, replace and delete, with
+# paging, sorting and the filters the model declares.
+kind: Crud.Resource
+metadata:
+  name: projectsApi
+connection: !ref db
+singular: project
+plural: projects
+model: !ref projectModel
+---
+# The tasks the tables and filter bars list, page, sort, filter and write.
+kind: Crud.Resource
+metadata:
+  name: tasksApi
+connection: !ref db
+singular: task
+plural: tasks
+model: !ref taskModel
+---
+# The team the forms' pickers and choices offer, searched by name and
+# labelled by e-mail.
+kind: Crud.Resource
+metadata:
+  name: peopleApi
+connection: !ref db
+singular: person
+plural: people
+model: !ref peopleModel
+---
+# The three applications share their pages, whose request paths are
+# app-relative: each application reads and writes them under its own mount, so
+# the API is served under each mount, as the files are. The brand switch
+# belongs to the root application alone.
+kind: Http.Server
+metadata:
+  name: server
+listen:
+  port: !cel "ports.http"
+mounts:
+  - path: /api/private
+    mount: !ref privateApi
+    guard:
+      invoke: !ref sessionGuard
+      inputs:
+        token: !cel "Self.cookie('cookie' in request.headers ? request.headers['cookie'] : '', 'showcase-session')"
+      catches:
+        - when: !cel "error.code == 'UNAUTHORIZED'"
+          status: 401
+  - path: /api/projects
+    mount: !ref projectsApi
+  - path: /api/tasks
+    mount: !ref tasksApi
+  - path: /api/people
+    mount: !ref peopleApi
+  - path: /api
+    mount: !ref showcaseApi
+  - path: /radix/api/private
+    mount: !ref privateApi
+    guard:
+      invoke: !ref sessionGuard
+      inputs:
+        token: !cel "Self.cookie('cookie' in request.headers ? request.headers['cookie'] : '', 'showcase-session')"
+      catches:
+        - when: !cel "error.code == 'UNAUTHORIZED'"
+          status: 401
+  - path: /radix/api/projects
+    mount: !ref projectsApi
+  - path: /radix/api/tasks
+    mount: !ref tasksApi
+  - path: /radix/api/people
+    mount: !ref peopleApi
+  - path: /radix/api
+    mount: !ref showcaseApi
+  - path: /brand/api/private
+    mount: !ref privateApi
+    guard:
+      invoke: !ref sessionGuard
+      inputs:
+        token: !cel "Self.cookie('cookie' in request.headers ? request.headers['cookie'] : '', 'showcase-session')"
+      catches:
+        - when: !cel "error.code == 'UNAUTHORIZED'"
+          status: 401
+  - path: /brand/api/projects
+    mount: !ref projectsApi
+  - path: /brand/api/tasks
+    mount: !ref tasksApi
+  - path: /brand/api/people
+    mount: !ref peopleApi
+  - path: /brand/api
+    mount: !ref showcaseApi
+  - path: /api
+    mount: !ref brandSwitch
+  - path: /files
+    mount: !ref files
+  - path: /radix/files
+    mount: !ref files
+  - path: /brand/files
+    mount: !ref files
+  - path: /radix
+    mount: !ref radixShowcase
+  - path: /brand
+    mount: !ref brandShowcase
+  - path: /
+    mount: !ref showcase

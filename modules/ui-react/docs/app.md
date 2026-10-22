@@ -9,10 +9,11 @@ An application of pages. A `Telo.Mount`: list it under an `Http.Server`'s
 | `words` | required | the [`Ui.Words`](../../ui/docs/texts.md#the-renderers-own-words) the renderer draws on its own — `!ref Ui.words` for English |
 | `translator` | | an [`I18n.Translator`](../../i18n/README.md): every text is looked up in its catalogs |
 | `lang` | | the language a request is served in: a language tag, or an expression over `request` |
-| `theme` | | one [`Ui.Theme`](../../ui/docs/theme.md), or a list of `{ theme, when? }` |
-| `defaultTheme` | `true` | whether the built-in theme is served |
+| `theme` | required | one [`UiReact.Theme`](theme.md): `!ref UiReact.defaultTheme`, a theme another module publishes, or one of your own |
+| `tokens` | | your brand: one [`Ui.DesignTokens`](../../ui/docs/design-tokens.md), or a list of `{ tokens, when? }` |
 | `stylesheets` | | your own stylesheets, as host paths: `!module-path ./ui.css` |
 | `compactBelow` | `40rem` | the viewport width below which every surface's `compact` replacement applies: a CSS length in `px`, `rem` or `em` |
+| `header` | | `{ start?, end? }`: nodes of your own in the header, before the title and after the navigation — see [Header](#header) |
 | `pages` | required, at least one | `{ path, title, query?, children }` each |
 
 ## Pages
@@ -42,6 +43,49 @@ pages:
   string, or a list of strings for a key given more than once. The page
   document carries it, `{}` when none is declared.
 
+## Header
+
+The header holds the application's title and the navigation. `header` adds
+nodes of your own around them, drawn on every page — the not-found page
+included: `start` before the title, `end` after the navigation. Above
+`compactBelow` the built-in layout keeps the header to one row — `start`, the
+title, the navigation taking the room left and wrapping within it, `end` at
+the inline end — and below it the header wraps. A switch belongs in a
+[`menu`](../../ui/docs/nodes.md#menus), which takes one button's room:
+
+```yaml
+header:
+  start:
+    - { type: image, src: /files/logo.svg, alt: Acme }
+  end:
+    - type: menu
+      text: Language
+      items:
+        - type: link
+          text: English
+          href: "/api/lang?set=en"
+          style: !cel "'cookie' in request.headers && request.headers['cookie'].contains('lang=en') ? ['strong'] : []"
+        - type: link
+          text: Polski
+          href: "/api/lang?set=pl"
+          style: !cel "'cookie' in request.headers && request.headers['cookie'].contains('lang=pl') ? ['strong'] : []"
+    - type: badge
+      text: Staff
+      when: !cel "'x-role' in request.headers && request.headers['x-role'] == 'staff'"
+```
+
+- Each is a [`Ui.Node`](../../ui/docs/nodes.md), resolved as a page's own
+  nodes are: its `when:` — and a menu item's — and leaf values are [evaluated per
+  request](#what-is-evaluated-per-request) over `request`, its texts are
+  translated, a composite is resolved once when the application starts, and
+  the headers its expressions read join the application document's `Vary`.
+- A header has no `query`, or any other browser root: a condition or a
+  `value` / `list` node in it reading one is `CEL_UNKNOWN_IDENTIFIER` at
+  `telo check`.
+- The nodes travel in the [application document](urls.md#the-application-document),
+  not in a page's; the renderer draws each side in its own part,
+  `header-start` and `header-end`, only when it holds a node.
+
 ## What the browser decides
 
 A node's `shown` is a [condition](../../ui/docs/conditions.md), and a `value`
@@ -69,7 +113,7 @@ placement's, so both must hold.
 
 ## What is evaluated per request
 
-Inside `children`, each node's `when:` and its leaf values — `text`, `href`,
+Inside `children` and `header`, each node's `when:` and its leaf values — `text`, `href`,
 `src`, `alt`, `markup`, `style` — may be expressions, evaluated for every
 request against the request — and never against `query` or any other root the
 browser holds (`CEL_UNKNOWN_IDENTIFIER`):
@@ -137,8 +181,8 @@ document per effective language — a thousand different `Accept-Language`
 values make at most one more copy than the translator has languages.
 
 Each document's `Vary` names exactly the request headers its per-request
-expressions read — `lang`, a theme's `when`, a page node's `when` and its
-values — read off the expressions themselves: `request.headers.cookie` or
+expressions read — `lang`, a token set's `when`, a page or header node's `when`
+and its values — read off the expressions themselves: `request.headers.cookie` or
 `'cookie' in request.headers` gives `Vary: Cookie`, a header name computed at
 request time `Vary: *`, and an application reading no header sends none. A
 literal `lang` serves every request in that language.
@@ -179,6 +223,11 @@ is started again, under a new address.
 
 ## Tables and filter bars
 
+- A table, a form and an option source read and write their `basePath` under
+  the mount, as a reader reads its `source.path`: mounted at `/admin`,
+  `basePath: /api/todos` lists from `/admin/api/todos` and edits
+  `/admin/api/todos/<key>`. A write announces the change under the
+  `basePath` as written, which is what `onSuccess.refreshes` names.
 - A filter bar shows the filters on one property together: one label, and
   each control captioned by its operator — `from` and `to` for a range
   (`gte`, `lte`), `after` and `before` for `gt` and `lt`.
@@ -221,7 +270,8 @@ each row, showing each action's label in the order declared, before edit and
 delete.
 
 - A press sends the row's bound record at once — `POST`, as JSON, to the
-  action's path. The record is read when the button is pressed.
+  action's path under the mount, as an action's own press does. The record is
+  read when the button is pressed.
 - A row is one entry: until its press is answered — or, for a `serial` action,
   while it waits behind an earlier press of that action on the page — every
   row action and the delete button of that row are disabled, and a press on
@@ -311,9 +361,10 @@ below it what the operation answered.
   same check in the page before anything is sent. The button shows the
   action's `label`.
 - A press sends the entered record — `POST`, `content-type: application/json`
-  — to the action's `path`, which is the origin's own address and is not
-  moved under the application's mount. A field holding nothing is left out; a
-  checkbox is always `true` or `false`.
+  — to the action's `path` under the mount, as a reader reads its
+  `source.path`: mounted at `/admin`, `path: /api/reports` is sent to
+  `/admin/api/reports`. `onSuccess.refreshes` names paths as written. A field
+  holding nothing is left out; a checkbox is always `true` or `false`.
 - Every press clears the last answer, and the form takes no other press until
   the operation answers. A `serial` action's presses on the page — its form's
   and its rows' — are sent one after another, in the order they were made.
@@ -354,8 +405,11 @@ below it what the operation answered.
   undone while the question is open and replayed if the user leaves. Leaving
   the document raises the browser's own prompt. The question is drawn as the
   delete confirmation is.
-- **After a submit.** `close` closes the surface, `again` empties the form for
-  another record, `keep` leaves it open with its values; the list reloads in
+- **After a submit.** `close` closes the surface, `again` returns the form to
+  the values it starts from — the record it edits, else the model's defaults
+  and each date range's initial preset, never the address or the store, which
+  hold the record just saved — for another record, `keep` leaves it open with
+  its values; the list reloads in
   each, and a create returns it to its first page.
 - A popover is anchored to the button that opened it. `start` and `end` follow
   the document's direction.
@@ -366,20 +420,41 @@ below it what the operation answered.
 cannot be started has its connection closed, and one that cannot be released
 when its client leaves is reported; both are logged by the application.
 
-## Themes
+## Look
+
+```yaml
+theme: !ref UiReact.defaultTheme
+tokens:
+  - tokens: !ref acmeBrand
+    when: !cel "'x-tenant' in request.headers && request.headers['x-tenant'] == 'acme'"
+  - tokens: !ref defaultBrand
+stylesheets:
+  - !module-path ./console.css
+```
+
+`theme` is how every screen looks and which controls it is drawn with; it is
+the same for every request. `UiReact.defaultTheme` is the built-in look, and
+any [`UiReact.Theme`](theme.md) — one another module publishes, or one written
+beside the application — takes its place with no other change. An application
+with a look of its own declares a theme holding only stylesheets:
 
 ```yaml
 theme:
-  - theme: !ref acmeTheme
-    when: !cel "'x-tenant' in request.headers && request.headers['x-tenant'] == 'acme'"
-  - theme: !ref defaultBrand
+  kind: UiReact.Theme
+  stylesheets: [!module-path ./look.css]
 ```
 
-One theme applies to every request. In a list, the first entry whose `when`
-holds — or that has none — is used; if none holds, only the default theme
-applies. `when` reads the same `request`.
+`tokens` is the brand over the theme, and may follow the request: in a list,
+the first entry whose `when` holds — or that has none — is used; if none
+holds, the theme's own values apply. `when` reads the same `request`, and the
+headers it reads join the application document's `Vary`.
 
-Each face of a theme's font families that has bytes is served, and its
+What the page loads, in cascade order: the renderer's layout, the mechanics of
+each control in use, the theme's token values, its stylesheets in order and the
+chosen token set, every custom component's stylesheet, then `stylesheets` —
+see [the styling contract](styling.md#layers).
+
+Each face of a token set's font families that has bytes is served, and its
 `@font-face` is written from the family's declaration; a family with no faces
 contributes only its name. A face must be a TrueType, OpenType, WOFF or WOFF2
 file — read from the file's first bytes, so this cannot be checked before the

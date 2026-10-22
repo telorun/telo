@@ -276,9 +276,18 @@ RE2 and the browser match alike — no lookaround, backreferences, `.` or
 
 A string field naming an EXPORT of a browser entry carries
 `x-telo-browser-export: { entry: /<sibling> }`, a JSON Pointer to the sibling
-string holding the entry's `specifier`. The specifier must be one the module
-declaring the RESOURCE lists under `exports.browser:` and the value one of that
-entry's `exports` (`BROWSER_ENTRY_UNKNOWN` / `BROWSER_EXPORT_UNKNOWN`).
+string holding the entry's `specifier`, and optionally `abi: [<family>-<version>…]`
+(the generations the kind accepts) and `external: [<specifier>…]` (what the kind
+supplies to the entry). The specifier must be one the module declaring the
+RESOURCE lists under `exports.browser:`, the entry's own `abi` one the kind
+lists, every specifier of its own `external` one the kind supplies, and the
+value one of that entry's `exports` (`BROWSER_ENTRY_UNKNOWN` /
+`BROWSER_ENTRY_ABI_UNSUPPORTED` / `BROWSER_ENTRY_IMPORT_UNSUPPLIED` /
+`BROWSER_EXPORT_UNKNOWN`; an imported library's are reported at the `imports:`
+entry reaching it). Any other annotation shape is
+`BROWSER_EXPORT_ANNOTATION_INVALID`. A controller's
+`ctx.resolveControllerBrowserEntry` finds an entry in its kind's own module,
+else in the one module that module imports directly declaring it.
 
 A field in a definition's `schema:` that must hold a reference to another
 resource carries `x-telo-ref`, which states BOTH the accepted kind and what
@@ -438,9 +447,23 @@ API — `Ai.Text` and `Ai.Agent` take the first, `Ai.TextStream` and
 `Ai.AgentStream` the second; the two take the same fields and may share one
 `Http.Request`. The stream kind sends its request when the stream is first
 read, so an endpoint failure rejects the iteration, not the call. Like the
-OpenAI kinds they hold no key: `request` names an `Http.Request` whose client has `baseUrl:
-https://api.anthropic.com/v1` and an `Http.ApiKeyHeader` credential on
-`x-api-key` (NOT a bearer token). Fields: `model`, `request`, `maxTokens`
+OpenAI kinds they hold no key: `request` names an `Http.Request` whose client
+holds the endpoint and the credential.
+
+THE CLIENT OF A MODEL IS THE PROVIDER'S OWN: `Anthropic.Client` and
+`OpenAI.Client` (newer versions — check the manifest of the version you pin)
+are `Http.Client` presets with the endpoint filled in and `timeout: 600000`. A
+plain `Http.Client` defaults to 10 seconds, which ends most complete answers
+with `ERR_MODEL_TIMEOUT`, so never put a model behind one; on a version with
+no preset, set `timeout: 600000` on the plain client yourself. Fields:
+`credential` (required for Anthropic — an `Http.ApiKeyHeader` on `x-api-key`,
+NOT a bearer token; optional for OpenAI — an `Http.BearerToken`, left out for a
+self-hosted server asking no key), `baseUrl` (only to override: a gateway,
+Azure, Ollama), `timeout`, `headers`. No `retry` — retry goes on the
+`Http.Request`. Wire it as `request: { kind: Http.Request, client: !ref
+<client> }`.
+
+Anthropic model fields: `model`, `request`, `maxTokens`
 (REQUIRED — the API has no default token cap), `cacheLifetime` (`5m` default, or
 `1h`), `betas` (strings sent as `anthropic-beta`) and `options` (camelCase
 request params: `temperature`, `topP`, `stopSequences`, …). `options` may not

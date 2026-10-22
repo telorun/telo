@@ -1,0 +1,22 @@
+/* The `/` application's own stylesheet: unlayered, so it applies after the
+   theme and the brand, written against the renderer's part names and state
+   attributes alone. */
+
+/* Each section's heading sits clear of what came before it — a first child
+   has nothing before it, so it stays level with its neighbouring columns. */
+h2[data-telo-part="text"]:not(:first-child) { margin-top: 1.5rem; }
+
+/* The demonstration nodes show their part's outline, so a reader sees where a
+   box, a stack and a column begin and end. */
+[data-telo-part="box"],
+[data-telo-part="column"] > [data-telo-part="stack"] {
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--telo-color-border);
+  border-radius: var(--telo-radius-md);
+}
+
+/* An error node stands out from the content around it. */
+[data-telo-part="error"] { border-left: 4px solid var(--telo-color-danger); }
+
+/* The data a reader is waiting for is drawn faded. */
+[data-telo-part="data"][data-state="loading"] { opacity: 0.6; }

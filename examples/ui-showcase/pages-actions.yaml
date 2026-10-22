@@ -1,0 +1,506 @@
+# Actions: buttons that run an operation over the database — a bare one, one
+# drawing its answer with values and a list, failures drawn by a tree of their
+# own and an answer the output model refuses, successes that move the page or
+# read other content again, presses run one after another, and row actions on
+# a table and on a list. Every application places this view on its `/actions`
+# page.
+kind: Ui.View
+metadata:
+  name: actionsPage
+content:
+  type: stack
+  children:
+    # ---- A bare button ----
+    - { type: text, text: A bare button, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        An input model with no properties draws the button alone. This one unblocks every blocked task of TEL-42,
+        and the task counts and the TEL-42 table further down read again.
+    - type: composite
+      ref:
+        kind: Ui.Action
+        inputModel: !ref NoInput
+        source: { path: /api/unblock }
+        label: Unblock TEL-42
+        onSuccess: { refreshes: [ /api/tasks, /api/task-counts ] }
+
+    # ---- An answer drawn from the result ----
+    - { type: text, text: An answer drawn from the result, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The route adds up the estimates of a project's open tasks. Its fields are the input model's, in two
+        sections, the project chosen from the projects collection and the pace on a slider; what is entered is
+        kept in the address. The answer is drawn under the button: sentences over the result and the record
+        sent, the date the work would be done by, and a list of the hours by label.
+    - type: composite
+      ref:
+        kind: Ui.Action
+        inputModel: !ref EstimateRequest
+        outputModel: !ref EstimateAnswer
+        source: { path: /api/estimate }
+        label: { text: Estimate, context: verb }
+        groups:
+          - { name: scope, label: What to count }
+          - { name: speed, label: How fast }
+        fields:
+          - { kind: Ui.ChoiceField, property: projectCode, options: !ref projectOptions, group: scope }
+          - { kind: Ui.InputField, property: labels, group: scope }
+          - { kind: Ui.InputField, property: includeBlocked, group: scope }
+          - { kind: Ui.InputField, property: pace, control: slider, group: speed }
+        state: { key: estimate, address: true }
+        result:
+          type: stack
+          children:
+            - type: text
+              style: subheading
+              text:
+                text:
+                  plural: tasks
+                  cases:
+                    "=0": "{$project} has no open work."
+                    one: "{$hours} hours in {$tasks} open task of {$project}"
+                    other: "{$hours} hours in {$tasks} open tasks of {$project}"
+                values: { hours: !cel "result.hours", tasks: !cel "result.tasks", project: !cel "result.projectCode" }
+            - type: text
+              text:
+                text:
+                  plural: weeks
+                  cases:
+                    one: "About {$weeks} week at {$pace} hours a week, done by"
+                    other: "About {$weeks} weeks at {$pace} hours a week, done by"
+                values: { weeks: !cel "result.weeks", pace: !cel "input.pace" }
+            - { type: value, value: !cel "result.finishBy" }
+            - type: list
+              heading: By label
+              rows: !cel "result.breakdown"
+              columns:
+                - value: !cel "row.label"
+                - value: !cel "row.tasks"
+                - value: !cel "row.hours"
+
+    # ---- When it fails ----
+    - { type: text, text: When it fails, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        A failure tree of the action's own, drawn over the error and the record sent. Give task 4 to
+        jan@northwind.example and it succeeds. Leave the e-mail out, or name nobody on the team, and the refusal
+        lands on the field; task 999 answers 404, and tomas@northwind.example, who has left, 409.
+    - { type: composite, ref: !ref assignTask }
+    - type: text
+      style: muted
+      text: >-
+        This action reads the estimate route's answer as a number of days, which the route does not give: the
+        answer is refused by the action's output model, and its failure tree says so.
+    - type: composite
+      ref:
+        kind: Ui.Action
+        inputModel: !ref EstimateRequest
+        outputModel: !ref EstimateInDays
+        source: { path: /api/estimate }
+        label: Estimate in days
+        fields:
+          - { kind: Ui.ChoiceField, property: projectCode, options: !ref projectOptions }
+          - pace
+        result: { type: value, value: !cel "result.days" }
+        failure:
+          type: stack
+          style: warning
+          children:
+            - type: text
+              style: strong
+              text:
+                text: "{$code}: the answer is not the one this button reads."
+                values: { code: !cel "error.code" }
+            - { type: value, value: !cel "error.message" }
+
+    # ---- Where a success goes ----
+    - { type: text, text: Where a success goes, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The first answers with the page listing a project's tasks, and the application moves there. The second
+        answers with the team's homepage, an https address that replaces the page.
+    - type: columns
+      children:
+        - type: composite
+          ref:
+            kind: Ui.Action
+            inputModel: !ref ProjectPick
+            outputModel: !ref ProjectPage
+            source: { path: /api/project-page }
+            label: Open its tasks
+            fields:
+              - { kind: Ui.ChoiceField, property: code, options: !ref projectOptions }
+            onSuccess: { navigate: !cel "result.page" }
+        - type: composite
+          ref:
+            kind: Ui.Action
+            inputModel: !ref NoInput
+            outputModel: !ref Homepage
+            source: { path: /api/homepage }
+            label: Visit the homepage
+            onSuccess: { navigate: !cel "result.homepage" }
+
+    # ---- Reading again after a success ----
+    - { type: text, text: Reading again after a success, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        Moving a task reads again both the counts below, a reader, and the TEL-42 table further down. The answer
+        names the task and its new status.
+    - type: composite
+      ref:
+        kind: Ui.Data
+        model: !ref TaskCounts
+        source: { path: /api/task-counts, params: { code: TEL-42 } }
+        content:
+          type: text
+          style: strong
+          text:
+            text: "{$code}: {$todo} to do, {$doing} in progress, {$review} in review, {$done} finished, {$blocked} blocked."
+            values:
+              code: !cel "data.code"
+              todo: !cel "data.todo"
+              doing: !cel "data.doing"
+              review: !cel "data.review"
+              done: !cel "data.done"
+              blocked: !cel "data.blocked"
+    - type: composite
+      ref:
+        kind: Ui.Action
+        inputModel: !ref StatusChange
+        outputModel: !ref StatusAnswer
+        source: { path: /api/task-status }
+        label: Move
+        onSuccess: { refreshes: [ /api/task-counts, /api/tasks ] }
+        result:
+          type: columns
+          children:
+            - type: text
+              text:
+                text: "Task {$id}, {$title}, is now"
+                values: { id: !cel "result.id", title: !cel "result.title" }
+            - { type: value, value: !cel "result.status" }
+
+    # ---- One press after another ----
+    - { type: text, text: One press after another, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        Comments are sent one after another, in the order the button is pressed, however quickly. The button
+        waits for three characters and says why; choosing another task clears the last answer. The comments
+        listed at the bottom read again after each one.
+    - type: composite
+      ref:
+        kind: Ui.Action
+        inputModel: !ref NewComment
+        outputModel: !ref CommentAnswer
+        source: { path: /api/comments }
+        label: Add the comment
+        concurrency: serial
+        clearAnswerOn: [ taskId ]
+        enabled:
+          at: !cel "values.body"
+          matches: { minLength: 3 }
+          disabledText: Write three characters or more.
+        onSuccess: { refreshes: [ /api/comments ] }
+        result:
+          type: text
+          style: success
+          text:
+            text:
+              plural: count
+              cases:
+                one: "Comment {$id} is the first on {$title}."
+                other: "Comment {$id} added to {$title}, which has {$count} comments now."
+            values: { id: !cel "result.id", title: !cel "result.taskTitle", count: !cel "result.count" }
+
+    # ---- Row actions on a table ----
+    - { type: text, text: Row actions on a table, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        Every task of TEL-42 offers three buttons, each replaced by its answer once pressed. Start runs at once,
+        only on a task still to do. Close asks first, and is not offered on a finished task. Assign opens a
+        dialog for the e-mail, which the row does not give, and shows the server's refusal on its field.
+    - type: composite
+      ref:
+        kind: Ui.Table
+        model: !ref Task
+        collection: !ref taskModel
+        source:
+          basePath: /api/tasks
+          filters: { projectCode: TEL-42 }
+        pageSize: 8
+        columns:
+          - { header: Number, value: !cel "row.id" }
+          - value: !cel "row.title"
+          - value: !cel "row.status"
+          - value: !cel "row.assigneeEmail"
+          - value: !cel "row.blocked"
+        rowActions:
+          - action:
+              kind: Ui.Action
+              inputModel: !ref StatusChange
+              source: { path: /api/task-status }
+              label: { text: Start, context: verb }
+              result: { type: badge, style: accent, text: Started }
+              onSuccess: { refreshes: [ /api/task-counts ] }
+            inputs: { id: !cel "row.id", status: doing }
+            enabled:
+              at: !cel "row.status"
+              matches: { const: todo }
+              disabledText: Already started.
+          - action:
+              kind: Ui.Action
+              inputModel: !ref StatusChange
+              source: { path: /api/task-status }
+              label: Close
+              result: { type: badge, style: success, text: Closed }
+              onSuccess: { refreshes: [ /api/task-counts ] }
+            inputs: { id: !cel "row.id", status: done }
+            confirm: Close this task?
+            enabled:
+              at: !cel "row.status"
+              matches: { not: { const: done } }
+              disabledText: Already finished.
+          - action: !ref assignTask
+            inputs: { id: !cel "row.id" }
+            prompt: true
+
+    # ---- Row actions on a list ----
+    - { type: text, text: Row actions on a list, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The latest comments, a list a reader draws, pinned ones first. Pin runs at once on a comment not yet
+        pinned, Delete asks first, and Edit asks for the new text in a dialog; leaving it empty is refused on
+        its field. The list reads again after each.
+    - type: composite
+      ref:
+        kind: Ui.Data
+        model: !ref CommentList
+        source: { path: /api/comments }
+        content:
+          type: list
+          heading: Latest comments
+          rows: !cel "data.comments"
+          columns:
+            - value: !cel "row.taskTitle"
+            - value: !cel "row.body"
+            - value: !cel "row.pinned"
+            - value: !cel "row.createdAt"
+          rowActions:
+            - action:
+                kind: Ui.Action
+                inputModel: !ref CommentRef
+                source: { path: /api/comments/pin }
+                label: Pin
+                onSuccess: { refreshes: [ /api/comments ] }
+              inputs: { id: !cel "row.id" }
+              enabled:
+                at: !cel "row.pinned"
+                matches: { const: false }
+                disabledText: Already pinned.
+            - action:
+                kind: Ui.Action
+                inputModel: !ref CommentRef
+                source: { path: /api/comments/delete }
+                label: Delete
+                onSuccess: { refreshes: [ /api/comments ] }
+              inputs: { id: !cel "row.id" }
+              confirm: Delete this comment?
+            - action:
+                kind: Ui.Action
+                inputModel: !ref CommentEdit
+                source: { path: /api/comments/edit }
+                label: Edit
+                onSuccess: { refreshes: [ /api/comments ] }
+              inputs: { id: !cel "row.id" }
+              confirm: Rewrite this comment?
+              prompt: true
+
+    # ---- More places a success goes ----
+    - { type: text, text: More places a success goes, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The first adds a task and moves to the tables page, an address written in the manifest. The second
+        answers with the handbook's address, a file the server serves under the mount, which is an ordinary
+        load. The third answers with the team's mirror, an address a browser reads as another host: it navigates
+        nowhere, and the answer says so.
+    - type: columns
+      children:
+        - type: composite
+          ref:
+            kind: Ui.Action
+            inputModel: !ref TaskDraft
+            source: { path: /api/tasks }
+            label: Add it and open the tables
+            fields:
+              - title
+              - { kind: Ui.ChoiceField, property: projectCode, options: !ref projectOptions }
+            onSuccess: { navigate: /tables, refreshes: [ /api/tasks ] }
+        - type: composite
+          ref:
+            kind: Ui.Action
+            inputModel: !ref NoInput
+            outputModel: !ref TeamLinks
+            source: { path: /api/team-links }
+            label: Open the handbook
+            onSuccess: { navigate: !cel "result.handbook" }
+        - type: composite
+          ref:
+            kind: Ui.Action
+            inputModel: !ref NoInput
+            outputModel: !ref TeamLinks
+            source: { path: /api/team-links }
+            label: Open the mirror
+            onSuccess: { navigate: !cel "result.mirror" }
+            result:
+              type: text
+              style: warning
+              text:
+                text: "The answer was {$mirror}, which is no address to go to, so the page stays."
+                values: { mirror: !cel "result.mirror" }
+
+    # ---- Refused, and unanswered ----
+    - { type: text, text: "Refused, and unanswered", style: heading }
+    - type: text
+      style: muted
+      text: >-
+        Pausing a project is for a manager alone. With no session the guard answers 401. Signed in on the Data
+        page as jan@northwind.example, who is no manager, the route answers 403 with no body; signed in as
+        ada@northwind.example, it pauses the project, and refuses one that is not running in the page's language. The
+        action's default failure tree draws each refusal.
+    - type: composite
+      ref:
+        kind: Ui.Action
+        inputModel: !ref ProjectPick
+        outputModel: !ref ProjectStatus
+        source: { path: /api/private/pause }
+        label: Pause the project
+        fields:
+          - { kind: Ui.ChoiceField, property: code, options: !ref projectOptions }
+        onSuccess: { refreshes: [ /api/projects ] }
+        result:
+          type: text
+          style: success
+          text:
+            text: "{$name} is paused."
+            values: { name: !cel "result.name" }
+    - type: text
+      style: muted
+      text: >-
+        This route sends every request back to itself, so the browser gives up and no answer arrives at all.
+        The failure tree says so: the error carries no status.
+    - type: composite
+      ref:
+        kind: Ui.Action
+        inputModel: !ref NoInput
+        source: { path: /api/loop }
+        label: Call a route that never answers
+        failure:
+          type: stack
+          style: danger
+          children:
+            - type: columns
+              shown: { at: !cel "error", matches: { required: [ status ] } }
+              children:
+                - { type: text, style: strong, text: "The route answered, with the status" }
+                - { type: value, value: !cel "error.status" }
+            - type: text
+              style: strong
+              text: No answer arrived, so there is no status.
+              shown: { at: !cel "error", matches: { not: { required: [ status ] } } }
+            - type: text
+              text:
+                text: "{$code} · {$message}"
+                values: { code: !cel "error.code", message: !cel "error.message" }
+
+    # ---- Row actions that read the address ----
+    - { type: text, text: Row actions that read the address, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The table lists the tasks of the project the address names, and Move sends a task to the status the
+        address names, read from the table's query when it is pressed. The row and the address bind every field
+        of the move, so its dialog asks nothing and is a plain confirmation. Choose a project and a status:
+    - type: columns
+      children:
+        - { type: link, text: TEL-42 into review, href: "/actions?project=TEL-42&moveTo=review" }
+        - { type: link, text: APP-5 to finished, href: "/actions?project=APP-5&moveTo=done" }
+        - { type: link, text: OPS-7 back to in progress, href: "/actions?project=OPS-7&moveTo=doing" }
+        - { type: link, text: Neither, href: /actions }
+    - type: composite
+      ref:
+        kind: Ui.Table
+        model: !ref Task
+        collection: !ref taskModel
+        query:
+          project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+          moveTo: { type: string, enum: [ todo, doing, review, done ] }
+        source:
+          basePath: /api/tasks
+          filters: { projectCode: !cel "query.project" }
+        pageSize: 5
+        columns:
+          - value: !cel "row.title"
+          - value: !cel "row.status"
+          - value: !cel "row.priority"
+        rowActions:
+          - action:
+              kind: Ui.Action
+              inputModel: !ref StatusChange
+              outputModel: !ref StatusAnswer
+              source: { path: /api/task-status }
+              label: Move
+              result:
+                type: columns
+                children:
+                  - { type: text, style: success, text: Moved to }
+                  - { type: value, value: !cel "result.status" }
+              onSuccess: { refreshes: [ /api/task-counts ] }
+            inputs: { id: !cel "row.id", status: !cel "query.moveTo" }
+            confirm: Move this task to the status the address names?
+            prompt: true
+            enabled:
+              at: !cel "query.moveTo"
+              matches: { type: string }
+              disabledText: Choose a status above first.
+---
+# Gives a task to a member of the team: placed on the page with both fields,
+# and on each row of the TEL-42 table, where it asks for the e-mail alone. Its
+# failure tree names the task and the error.
+kind: Ui.Action
+metadata:
+  name: assignTask
+inputModel: !ref Assignment
+outputModel: !ref AssignAnswer
+source: { path: /api/assign }
+label: Assign
+onSuccess: { refreshes: [ /api/tasks ] }
+result:
+  type: text
+  style: success
+  text:
+    text: "{$title} is assigned to {$assignee}."
+    values: { title: !cel "result.title", assignee: !cel "result.assignee" }
+failure:
+  type: stack
+  style: danger
+  children:
+    - type: text
+      style: strong
+      text:
+        text: "Task {$id} is unchanged."
+        values: { id: !cel "input.id" }
+    - type: text
+      text:
+        text: "HTTP {$status} · {$code}"
+        values: { status: !cel "error.status", code: !cel "error.code" }
+      shown: { at: !cel "error", matches: { required: [ status ] } }
+    - { type: value, value: !cel "error.message" }

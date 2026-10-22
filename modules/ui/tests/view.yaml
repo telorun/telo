@@ -4,7 +4,9 @@ metadata:
   version: 1.0.0
   description: |
     A view provides its node tree resolved: every structural node kept as
-    written, a node whose `when:` is false left out, and a composite replaced
+    written with each text as one record (a text with context included), a
+    node whose `when:` is false left out, a menu keeping only the items whose
+    own `when:` holds — and left out when none does — and a composite replaced
     by what it provides, carrying the style of the node that placed it. A view
     whose own content is switched off provides no node, and is left out of its
     parent like any node that is off.
@@ -40,7 +42,19 @@ content:
   children:
     - { type: text, text: Title, style: heading }
     - { type: badge, text: New, style: [accent, strong] }
+    - { type: badge, text: { text: Open, context: state } }
     - { type: link, text: Docs, href: /docs }
+    - type: menu
+      text: Language
+      style: muted
+      items:
+        - { type: link, text: English, href: /lang/en, style: strong }
+        - { type: link, text: Hidden, href: /hidden, when: false }
+        - { type: link, text: Polski, href: "https://example.com/pl" }
+    - type: menu
+      text: Nothing to choose
+      items:
+        - { type: link, text: Hidden, href: /hidden, when: false }
     - { type: image, src: /logo.png, alt: "" }
     - { type: svg, markup: "<svg xmlns='http://www.w3.org/2000/svg'/>", alt: Chart }
     - { type: text, text: Hidden, when: false }
@@ -73,7 +87,14 @@ steps:
           children:
             - { type: text, text: { text: Title, context: null, lang: und, computed: false }, style: heading }
             - { type: badge, text: { text: New, context: null, lang: und, computed: false }, style: [accent, strong] }
+            - { type: badge, text: { text: Open, context: state, lang: und, computed: false } }
             - { type: link, text: { text: Docs, context: null, lang: und, computed: false }, href: /docs }
+            - type: menu
+              text: { text: Language, context: null, lang: und, computed: false }
+              style: muted
+              items:
+                - { type: link, text: { text: English, context: null, lang: und, computed: false }, href: /lang/en, style: strong }
+                - { type: link, text: { text: Polski, context: null, lang: und, computed: false }, href: "https://example.com/pl" }
             - { type: image, src: /logo.png, alt: { text: "", context: null, lang: und, computed: false } }
             - { type: svg, markup: "<svg xmlns='http://www.w3.org/2000/svg'/>", alt: { text: Chart, context: null, lang: und, computed: false } }
             - type: columns

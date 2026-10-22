@@ -1,0 +1,8 @@
+# Imports the library; its check reports the kind's refusal at the import
+# reaching it.
+kind: Telo.Application
+metadata:
+  name: BrowserAnnotationInvalidApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

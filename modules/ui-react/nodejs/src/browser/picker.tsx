@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type UIEvent } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useControls } from "./effective-controls.js";
 import { useHostStore } from "./host.js";
 import { linkAddress } from "./link-address.js";
 import { optionKey, useChosenOptions, useOptionPages, type ChoiceOption, type OptionSourceSpec } from "./option-source.js";
@@ -40,7 +41,10 @@ function ChosenLabel({ option }: { option: ChoiceOption }) {
  */
 export function Picker({ id, label, source, surface, many, roots, chosen, invalid, onChange }: PickerProps) {
   const say = useSay();
+  const control = useControls();
   const [open, setOpen] = useState(false);
+  const TextInput = open && source.search ? control("TextInput") : undefined;
+  const Listbox = open ? control("Listbox") : undefined;
   const [typed, setTyped] = useState("");
   const [search, setSearch] = useState("");
   const pause = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -48,20 +52,23 @@ export function Picker({ id, label, source, surface, many, roots, chosen, invali
   useEffect(() => () => clearTimeout(pause.current), []);
   const pages = useOptionPages(source, roots, search, open);
   const shown = useChosenOptions(source, roots, chosen, pages.options, onChange);
-  const held = new Set(chosen.map(optionKey));
-
-  const choose = (option: ChoiceOption) => {
-    const key = optionKey(option.value);
+  // The list reports keys; each is an option it offers or a value already chosen.
+  const valueOf = (key: string) => {
+    const offered = pages.options.find((option) => optionKey(option.value) === key);
+    return offered ? [offered.value] : chosen.filter((value) => optionKey(value) === key).slice(0, 1);
+  };
+  const choose = (keys: string[]) => {
+    const next = keys.flatMap(valueOf);
     if (!many) {
-      onChange([option.value]);
+      onChange(next.slice(0, 1));
       setOpen(false);
       return;
     }
-    onChange(held.has(key) ? chosen.filter((value) => optionKey(value) !== key) : [...chosen, option.value]);
+    onChange(next);
   };
-  const scrolled = (event: UIEvent<HTMLElement>) => {
-    const list = event.currentTarget;
-    if (list.scrollTop + list.clientHeight >= list.scrollHeight - 8) pages.next();
+  const searchFor = (text: string) => {
+    clearTimeout(pause.current);
+    setSearch(text);
   };
 
   return (
@@ -86,49 +93,36 @@ export function Picker({ id, label, source, surface, many, roots, chosen, invali
       </button>
       {open && (
         <Surface spec={surface} title={label} anchor={anchor} onClose={() => setOpen(false)}>
-          {source.search && (
-            <input
-              data-telo-part="picker-search"
+          {TextInput && (
+            <TextInput
+              id={`${id}-search`}
+              label={say("search", { label })}
+              invalid={false}
+              required={false}
+              disabled={false}
+              part="picker-search"
               type="search"
-              autoComplete="off"
-              aria-label={say("search", { label })}
               value={typed}
-              onChange={(event) => {
-                const text = event.target.value;
+              onChange={(text) => {
                 setTyped(text);
                 clearTimeout(pause.current);
                 pause.current = setTimeout(() => setSearch(text), TYPING_PAUSE);
               }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter") return;
-                event.preventDefault();
-                clearTimeout(pause.current);
-                setSearch(typed);
-              }}
+              onCommit={() => searchFor(typed)}
             />
           )}
-          <ul data-telo-part="picker-list" role="listbox" aria-multiselectable={many} data-state={pages.loading ? "loading" : "idle"} onScroll={scrolled}>
-            {pages.options.map((option) => (
-              <li
-                key={optionKey(option.value)}
-                data-telo-part="picker-option"
-                role="option"
-                aria-selected={held.has(optionKey(option.value))}
-                data-state={held.has(optionKey(option.value)) ? "on" : "off"}
-                tabIndex={0}
-                onClick={() => choose(option)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    choose(option);
-                  }
-                }}
-              >
-                {option.label}
-                {option.hint !== undefined && <span data-telo-part="option-hint">{option.hint}</span>}
-              </li>
-            ))}
-          </ul>
+          {Listbox && (
+            <Listbox
+              label={label}
+              multiple={many}
+              options={pages.options.map((option) => ({ key: optionKey(option.value), label: option.label, ...(option.hint !== undefined ? { hint: option.hint } : {}) }))}
+              value={chosen.map(optionKey)}
+              loading={pages.loading}
+              hasMore={pages.more}
+              onChange={choose}
+              onEndReached={pages.next}
+            />
+          )}
           {!pages.loading && pages.options.length === 0 && <p data-telo-part="picker-empty">{say("nothingFound")}</p>}
         </Surface>
       )}

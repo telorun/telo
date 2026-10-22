@@ -1,0 +1,1577 @@
+kind: Telo.Application
+metadata:
+  name: UiShowcaseScreenTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/ui-showcase` and reads what each of its three mounts serves:
+    the application documents — pages, look, control sets, brand tokens chosen
+    by a cookie, the derived theme's typefaces, the Polish translation, the
+    header with its language and theme menus and the brand switch, a language
+    chosen by a cookie and marked whichever chose it — and
+    the page documents: every node
+    type, values presented by their schema, a list, style rules, texts and
+    composites on the overview with its nodes evaluated per request and its
+    error node; every condition keyword, missing against null, query
+    parameters and an enabled button; readers with parameters, loading and
+    failure trees, nesting, focus reloads and a sign-in gate; tables with
+    derived and written columns, style rules, members behind references,
+    filters from the query and fixed ones, and forms opening on every kind of
+    surface; filter bars covering every placement, policy value, control,
+    presets, pins, defaults and store; forms deriving and choosing every
+    control, over option sources, a date range, groups and kept state; and
+    actions with answer and failure trees, navigation to a page, a file, the
+    web and nowhere, refreshes, serial presses, refusals, no answer, and row
+    actions on a table and a list, one reading the table's query; components
+    of the example's own on a page and in a cell, served with their
+    stylesheet; a generated admin screen sharing a filter state key with the
+    Filters page; and the themes page with its tokens, typefaces and, on `/`,
+    the links between mounts and the brand switch. `/radix` and `/brand` place
+    the very same views. The routes these call are asserted by
+    `answers-every-route.yaml`, `tables-and-filters.yaml`,
+    `forms-and-actions.yaml` and `components-crud-themes.yaml`.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+variables:
+  # The DIRECTORY each run's database goes in, anchored at the working
+  # directory: a value supplied to the app by name must already be an absolute
+  # host path. Named after the key it feeds, since `telo check` reads
+  # `variables` inside an App.Instance's own `variables:` map as that map.
+  dbFile:
+    env: UI_SHOWCASE_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: browser }
+baseUrl: http://127.0.0.1:8151
+headers:
+  user-agent: showcase-test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    # A database of its own for each run, so runs never share state.
+    variables:
+      dbFile: !cel "variables.dbFile.joinPath('ui-showcase-screen-' + uuidv4() + '.db')"
+    ports:
+      http: 8151
+targets:
+  - !ref app
+steps:
+  - name: app
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
+  - name: polishApp
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
+    inputs:
+      headers: { accept-language: "pl-PL, en;q=0.5" }
+  - name: acmeApp
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
+    inputs:
+      headers: { cookie: "theme=dark; showcase-brand=acme" }
+  - name: cookiePolishApp
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
+    inputs:
+      headers: { accept-language: en, cookie: "theme=dark; showcase-lang=pl" }
+  - name: cookieEnglishApp
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
+    inputs:
+      headers: { accept-language: pl, cookie: showcase-lang=en }
+  - name: proxiedApp
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
+    inputs:
+      headers: { x-forwarded-proto: "https,http" }
+  - name: radixApp
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /radix/_telo/ui/app }
+  - name: radixPolishApp
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /radix/_telo/ui/app }
+    inputs:
+      headers: { cookie: showcase-lang=pl }
+  - name: brandApp
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /brand/_telo/ui/app }
+  - name: brandThemeTokens
+    invoke: { kind: HttpClient.Request, client: !ref browser, responseType: text }
+    inputs:
+      url: !cel "steps.brandApp.result.body.stylesheets[2]"
+  - name: brandTokens
+    invoke: { kind: HttpClient.Request, client: !ref browser, responseType: text }
+    inputs:
+      url: !cel "steps.brandApp.result.body.stylesheets[4]"
+
+  - name: overview
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/" }
+  - name: polishOverview
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: acmeOverview
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/" }
+    inputs:
+      headers: { cookie: showcase-brand=acme }
+  - name: conditions
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/conditions" }
+  - name: data
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/data" }
+  - name: tables
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/tables" }
+  - name: polishTables
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/tables" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: filters
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/filters" }
+  - name: polishFilters
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/filters" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: forms
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/forms" }
+  - name: polishForms
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/forms" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: actions
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/actions" }
+  - name: polishActions
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/actions" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: components
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/components" }
+  - name: polishComponents
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/components" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: crud
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/crud" }
+  - name: polishCrud
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/crud" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: themes
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/themes" }
+  - name: polishThemes
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/themes" }
+    inputs:
+      headers: { accept-language: pl }
+  - name: acmeThemes
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/themes" }
+    inputs:
+      headers: { cookie: showcase-brand=acme }
+  - name: radixOverview
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/radix/_telo/ui/page?path=/" }
+  - name: radixConditions
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/radix/_telo/ui/page?path=/conditions" }
+  - name: radixData
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/radix/_telo/ui/page?path=/data" }
+  - name: radixTables
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/radix/_telo/ui/page?path=/tables" }
+  - name: radixFilters
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/radix/_telo/ui/page?path=/filters" }
+  - name: radixForms
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/radix/_telo/ui/page?path=/forms" }
+  - name: radixActions
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/radix/_telo/ui/page?path=/actions" }
+  - name: radixComponents
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/radix/_telo/ui/page?path=/components" }
+  - name: radixCrud
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/radix/_telo/ui/page?path=/crud" }
+  - name: radixThemes
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/radix/_telo/ui/page?path=/themes" }
+  - name: brandOverview
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/" }
+  - name: brandConditions
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/conditions" }
+  - name: brandData
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/data" }
+  - name: brandTables
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/tables" }
+  - name: brandFilters
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/filters" }
+  - name: brandForms
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/forms" }
+  - name: brandActions
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/actions" }
+  - name: brandComponents
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/components" }
+  - name: brandCrud
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/crud" }
+  - name: brandThemes
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/themes" }
+
+  # The components' module and their stylesheet, as the page loads them.
+  - name: componentModule
+    invoke: { kind: HttpClient.Request, client: !ref browser, responseType: text }
+    inputs:
+      url: !cel >-
+        cel.bind(c, steps.components.result.body.children[0].children[2], '/_telo/ui/assets/' + c.module.digest + '/' + c.module.name)
+  - name: componentStylesheet
+    invoke: { kind: HttpClient.Request, client: !ref browser, responseType: text }
+    inputs:
+      url: !cel >-
+        cel.bind(c, steps.components.result.body.children[0].children[2],
+          '/_telo/ui/assets/' + c.stylesheets[0].digest + '/' + c.stylesheets[0].name)
+
+  # The nodes the checks below read, by name.
+  - name: nodes
+    value:
+      overview: !cel "steps.overview.result.body.children[0].children"
+      record: !cel "steps.overview.result.body.children[0].children[13].content.children"
+      perRequest: !cel "steps.overview.result.body.children[1].children"
+      polishPerRequest: !cel "steps.polishOverview.result.body.children[1].children"
+      acmePerRequest: !cel "steps.acmeOverview.result.body.children[1].children"
+      reader: !cel "steps.conditions.result.body.children[0].children[0]"
+      enablement: !cel "steps.conditions.result.body.children[0].children[3]"
+      data: !cel "steps.data.result.body.children[0].children"
+      tables: !cel "steps.tables.result.body.children[0].children"
+      filters: !cel "steps.filters.result.body.children[0].children"
+      forms: !cel "steps.forms.result.body.children[0].children"
+      actions: !cel "steps.actions.result.body.children[0].children"
+      components: !cel "steps.components.result.body.children[0].children"
+      crud: !cel "steps.crud.result.body.children[0].children"
+      themes: !cel "steps.themes.result.body.children[0].children"
+
+  # Three mounts of one design: the same pages, under the built-in look with
+  # the example's stylesheet, under Radix, and under a theme of the example's
+  # own with Radix's controls. Every mount reads a cookie for its language, and
+  # `/` also for its brand.
+  - name: verifyApps
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        title: !cel "steps.app.result.body.title"
+        lang: !cel "steps.app.result.body.lang"
+        pages: !cel "steps.app.result.body.pages.map(p, [p.path, p.title.message[0]])"
+        compactBelow: !cel "[steps.app.result.body.compactBelow, steps.radixApp.result.body.compactBelow, steps.brandApp.result.body.compactBelow]"
+        samePages: !cel "steps.radixApp.result.body.pages == steps.app.result.body.pages && steps.brandApp.result.body.pages == steps.app.result.body.pages"
+        titles: !cel "[steps.radixApp.result.body.title.message[0], steps.brandApp.result.body.title.message[0]]"
+        stylesheets: !cel >-
+          [steps.app.result.body, steps.acmeApp.result.body, steps.radixApp.result.body, steps.brandApp.result.body]
+            .map(a, a.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1)))
+        sets: !cel "[steps.app.result.body, steps.radixApp.result.body, steps.brandApp.result.body].map(a, a.controls.sets.map(s, s.exports))"
+        vary: !cel "[steps.app.result.headers['vary'], steps.radixApp.result.headers['vary'], steps.brandApp.result.headers['vary']]"
+      expected:
+        title: { lang: en, message: [ UI showcase ] }
+        lang: en
+        pages:
+          - [ /, Overview ]
+          - [ /conditions, Conditions ]
+          - [ /data, Data ]
+          - [ /tables, Tables ]
+          - [ /filters, Filters ]
+          - [ /forms, Forms ]
+          - [ /actions, Actions ]
+          - [ /components, Components ]
+          - [ /crud, CRUD ]
+          - [ /themes, Themes ]
+        compactBelow: [ 48rem, 48rem, 48rem ]
+        samePages: true
+        titles: [ UI showcase — Radix, UI showcase — brand ]
+        stylesheets:
+          - [ renderer.css, default-theme.css, showcase.css ]
+          - [ renderer.css, default-theme.css, tokens.css, showcase.css ]
+          - [ renderer.css, ui-react-radix.css, theme-tokens.css, radix-theme.css ]
+          - [ renderer.css, ui-react-radix.css, theme-tokens.css, brand.css, tokens.css ]
+        sets:
+          - []
+          - &radixControls [ [ Select, MultiSelect, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Icon ] ]
+          - *radixControls
+        vary:
+          - &vary "Accept-Language, Cookie, Host, X-Forwarded-Proto"
+          - *vary
+          - *vary
+
+  # The header every application draws on every page: the mark, then two
+  # menus — Language, the language in effect marked, and Theme, the three
+  # mounts' home pages, another mount's by an absolute address, this mount
+  # marked. The root's Theme menu adds the brand switch, each item delivered
+  # only while it changes something.
+  - name: verifyHeader
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        start: !cel "steps.app.result.body.header.start"
+        end: !cel >-
+          steps.app.result.body.header.end.map(n, [n.type, n.text.message[0],
+            n.items.map(i, [i.text.message[0], i.href, has(i.style) ? i.style : null])])
+        acmeTheme: !cel "steps.acmeApp.result.body.header.end[1].items.map(i, i.text.message[0])"
+        radixStart: !cel "steps.radixApp.result.body.header.start == steps.app.result.body.header.start"
+        radixEnd: !cel >-
+          steps.radixApp.result.body.header.end.map(n, [n.text.message[0],
+            n.items.map(i, [i.text.message[0], i.href, has(i.style) ? i.style : null])])
+        brandEnd: !cel >-
+          steps.brandApp.result.body.header.end.map(n, [n.text.message[0],
+            n.items.map(i, [i.text.message[0], i.href, has(i.style) ? i.style : null])])
+        # Behind a proxy chain the first scheme X-Forwarded-Proto lists is the
+        # client's.
+        proxiedTheme: !cel "steps.proxiedApp.result.body.header.end[1].items.map(i, i.href)"
+      expected:
+        start: [ { type: image, src: /files/mark.svg, alt: { lang: en, message: [ UI showcase logo ] } } ]
+        end:
+          - - menu
+            - Language
+            - &languages
+              - [ English, "/api/lang?set=en", [ strong ] ]
+              - [ Polski, "/api/lang?set=pl", [] ]
+          - - menu
+            - Theme
+            - - [ Default, /, strong ]
+              - [ Radix, "http://127.0.0.1:8151/radix/", null ]
+              - [ Brand, "http://127.0.0.1:8151/brand/", null ]
+              - [ Use the Acme brand, "/api/brand?set=acme", null ]
+        acmeTheme: [ Default, Radix, Brand, "Use the theme's own values" ]
+        radixStart: true
+        radixEnd:
+          - [ Language, *languages ]
+          - - Theme
+            - - [ Default, "http://127.0.0.1:8151/", null ]
+              - [ Radix, /, strong ]
+              - [ Brand, "http://127.0.0.1:8151/brand/", null ]
+        brandEnd:
+          - [ Language, *languages ]
+          - - Theme
+            - - [ Default, "http://127.0.0.1:8151/", null ]
+              - [ Radix, "http://127.0.0.1:8151/radix/", null ]
+              - [ Brand, /, strong ]
+        proxiedTheme: [ /, "https://127.0.0.1:8151/radix/", "https://127.0.0.1:8151/brand/", "/api/brand?set=acme" ]
+
+  # The language in effect is the `showcase-lang` cookie's, read before the
+  # Accept-Language header, under every mount; the Language menu marks it
+  # whichever decided it, and English with neither.
+  - name: verifyLanguageCookie
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        polish:
+          lang: !cel "steps.cookiePolishApp.result.body.lang"
+          pages: !cel "steps.cookiePolishApp.result.body.pages.map(p, p.title.message[0])"
+          logo: !cel "steps.cookiePolishApp.result.body.header.start[0].alt"
+          menus: !cel "steps.cookiePolishApp.result.body.header.end.map(n, n.text.message[0])"
+        english:
+          lang: !cel "steps.cookieEnglishApp.result.body.lang"
+          title: !cel "steps.cookieEnglishApp.result.body.title"
+        radix:
+          lang: !cel "steps.radixPolishApp.result.body.lang"
+          title: !cel "steps.radixPolishApp.result.body.title"
+        marked: !cel >-
+          [steps.app, steps.polishApp, steps.cookiePolishApp, steps.cookieEnglishApp, steps.radixPolishApp]
+            .map(a, a.result.body.header.end[0].items.filter(i, size(i.style) > 0).map(i, i.text.message[0]))
+      expected:
+        polish:
+          lang: pl
+          pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Motywy ]
+          logo: { lang: pl, message: [ Logo pokazu interfejsu ] }
+          menus: [ Język, Motyw ]
+        english:
+          lang: en
+          title: { lang: en, message: [ UI showcase ] }
+        radix:
+          lang: pl
+          title: { lang: pl, message: [ Pokaz interfejsu — Radix ] }
+        # No header, Accept-Language Polish, the cookie Polish over English,
+        # the cookie English over Polish, the cookie Polish under /radix.
+        marked: [ [ English ], [ Polski ], [ Polski ], [ English ], [ Polski ] ]
+
+  # The derived theme names its typefaces and serves no face; the `/brand`
+  # application's brand is one token set, which serves Inter's four faces with
+  # `@font-face` and sets the two typeface tokens and nothing else.
+  - name: verifyBrandTokens
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "[steps.brandThemeTokens.result.status, steps.brandTokens.result.status]"
+        theme: !cel >-
+          ['--telo-font-body: "Inter";', '--telo-font-heading: "Inter";', '--telo-font-mono: "Courier New";', '--telo-color-accent: #9a3412;', '@font-face']
+            .map(d, steps.brandThemeTokens.result.body.contains(d))
+        brand: !cel 'regexExtractAll(steps.brandTokens.result.body, "--telo-[a-z-]+")'
+        faces: !cel 'size(regexExtractAll(steps.brandTokens.result.body, "@font-face [{] font-family: \"Inter\"; src: url[(][^)]*[)] format[(]\"woff2\"[)]"))'
+      expected:
+        status: [ 200, 200 ]
+        theme: [ true, true, true, true, false ]
+        brand: [ --telo-font-body, --telo-font-heading ]
+        faces: 4
+
+  # In Polish: the applications' and pages' titles and the renderer's words.
+  - name: verifyPolish
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        lang: !cel "steps.polishApp.result.body.lang"
+        title: !cel "steps.polishApp.result.body.title"
+        pages: !cel "steps.polishApp.result.body.pages.map(p, p.title.message[0])"
+        save: !cel "steps.polishApp.result.body.words.save"
+        heading: !cel "steps.polishOverview.result.body.children[0].children[0].text"
+      expected:
+        lang: pl
+        title: { lang: pl, message: [ Pokaz interfejsu ] }
+        pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Motywy ]
+        save: { lang: pl, message: [ Zapisz ] }
+        heading: { lang: pl, message: [ Każdy rodzaj węzła ] }
+
+  # The overview's structural nodes: the three containers, text in each style,
+  # badges, a link of each address form, images and SVG markup.
+  - name: verifyNodes
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        kinds: !cel "steps.nodes.result.overview.map(c, c.type)"
+        containers: !cel "steps.nodes.result.overview[2].children.map(c, c.type)"
+        styles: !cel "steps.nodes.result.overview[5].children.map(c, c.style)"
+        badges: !cel "steps.nodes.result.overview[6].children.map(c, [c.type, 'style' in c ? c.style : '-'])"
+        links: !cel "steps.nodes.result.overview[9].children.map(c, [c.type, c.href])"
+        images: !cel "steps.nodes.result.overview[12].children.map(c, [c.type, 'src' in c ? c.src : '-', c.alt.message])"
+        markup: !cel "steps.nodes.result.overview[12].children[2].markup.startsWith('<svg')"
+      expected:
+        kinds: [ text, text, columns, text, text, columns, columns, text, text, columns, text, text, columns, data, text, text, table, text, columns, text, text, text, box ]
+        containers: [ box, stack, box ]
+        styles: [ heading, subheading, muted, strong, accent, danger, warning, success, [ strong, accent ] ]
+        badges: [ [ badge, "-" ], [ badge, accent ], [ badge, success ], [ badge, warning ], [ badge, danger ] ]
+        links:
+          - [ link, /conditions ]
+          - [ link, /files/handbook.txt ]
+          - [ link, "https://telo.run" ]
+          - [ link, "mailto:hello@northwind.example" ]
+        images:
+          - [ image, /files/mark.svg, [ The showcase mark ] ]
+          - [ image, /files/mark.svg, [] ]
+          - [ svg, "-", [ Three overlapping circles ] ]
+        markup: true
+
+  # The team record read when the page opens: each value presented by its
+  # schema, the enumeration's labels, a list with a default header, a written
+  # one and a column shown on a condition, and texts over the record.
+  - name: verifyTeam
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        source: !cel "steps.nodes.result.overview[13].source"
+        presented: !cel >-
+          (steps.nodes.result.record[2].children + steps.nodes.result.record[3].children)
+            .map(s, [s.children[1].value.path[0], s.children[1].present])
+        linkText: !cel "steps.nodes.result.record[2].children[0].children[1].text"
+        planLabels: !cel "steps.nodes.result.record[3].children[3].children[1].labels.map(l, [l.value, l.label.message[0]])"
+        list:
+          heading: !cel "steps.nodes.result.record[6].heading"
+          rows: !cel "steps.nodes.result.record[6].rows"
+          columns: !cel "steps.nodes.result.record[6].columns.map(c, [c.header.message[0], c.value, 'shown' in c ? c.shown : null])"
+        plural: !cel "steps.nodes.result.record[9].text"
+        values: !cel "steps.nodes.result.record[10].text"
+      expected:
+        source: { path: /api/team, params: {} }
+        presented:
+          - [ homepage, { type: string, format: uri } ]
+          - [ guide, { type: string, format: uri-reference } ]
+          - [ handbook, { type: string, format: uri-reference } ]
+          - [ contact, { type: string, format: uri } ]
+          - [ mirror, { type: string, format: uri-reference } ]
+          - [ foundedOn, { type: string, format: date } ]
+          - [ updatedAt, { type: string, format: date-time } ]
+          - [ hiring, { type: boolean } ]
+          - [ plan, { type: string } ]
+        linkText: { lang: en, message: [ Visit the team homepage ] }
+        planLabels: [ [ free, Free ], [ team, Team ], [ enterprise, Enterprise ] ]
+        list:
+          heading: { lang: en, message: [ Projects under way ] }
+          rows: { root: data, path: [ projects ] }
+          columns:
+            - [ Code, { root: row, path: [ code ] }, null ]
+            - [ Project, { root: row, path: [ name ] }, null ]
+            - [ Started, { root: row, path: [ startedOn ] }, { at: { root: data, path: [ hiring ] }, matches: { const: true } } ]
+        plural:
+          lang: en
+          message:
+            plural: count
+            cases:
+              "=0": [ No projects yet. ]
+              one: [ { placeholder: count }, " project so far." ]
+              other: [ { placeholder: count }, " projects so far." ]
+          values:
+            count: { root: data, path: [ projectCount ] }
+        values:
+          lang: en
+          message: [ { placeholder: team }, " started ", { placeholder: project }, " most recently." ]
+          values:
+            team: { root: data, path: [ name ] }
+            project: { root: data, path: [ latestProject ] }
+
+  # Style rules on a table's rows and on a column's cells, and one word told
+  # apart by its context in two column headers and in two nodes' own texts.
+  - name: verifyStyleRules
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        basePath: !cel "steps.nodes.result.overview[16].basePath"
+        rowStyle: !cel "steps.nodes.result.overview[16].rowStyle"
+        columns: !cel "steps.nodes.result.overview[16].columns.map(c, [c.header, 'style' in c ? c.style : null])"
+        polishHeaders: !cel "steps.polishOverview.result.body.children[0].children[16].columns.map(c, c.header.message[0])"
+        nodeTexts: !cel "steps.nodes.result.overview[18].children.map(c, [c.type, c.text])"
+        polishNodeTexts: !cel "steps.polishOverview.result.body.children[0].children[18].children.map(c, c.text.message[0])"
+      expected:
+        basePath: /api/projects
+        rowStyle: { by: { root: row, path: [ featured ] }, cases: { "true": strong } }
+        columns:
+          - [ { lang: und, message: [ Code ] }, null ]
+          - [ { lang: und, message: [ Name ] }, null ]
+          - [ { lang: und, message: [ Status ] }, { by: { root: row, path: [ status ] }, cases: { active: success, paused: warning }, default: muted } ]
+          - [ { lang: und, message: [ Budget ] }, null ]
+          - [ { lang: en, message: [ Open ] }, null ]
+          - [ { lang: en, message: [ Open ] }, null ]
+          - [ { lang: und, message: [ Started ] }, null ]
+        polishHeaders: [ Kod, Nazwa, Status, Budżet, Otwarte, Otwórz, Rozpoczęto ]
+        nodeTexts:
+          - [ badge, { lang: en, message: [ Open ] } ]
+          - [ link, { lang: en, message: [ Open ] } ]
+        polishNodeTexts: [ Otwarte, Otwórz ]
+
+  # Composites: a view written inline, and the example's own templated kind,
+  # whose texts are the page's and so are translated.
+  - name: verifyComposites
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        inline: !cel "steps.nodes.result.overview[21]"
+        callout: !cel "steps.nodes.result.overview[22]"
+        polishCallout: !cel "steps.polishOverview.result.body.children[0].children[22].children[0].text"
+      expected:
+        inline: { type: text, text: { lang: en, message: [ A view declared inline at the node that places it. ] } }
+        callout:
+          type: box
+          style: accent
+          children:
+            - { type: text, style: subheading, text: { lang: en, message: [ A callout ] } }
+            - type: text
+              text: { lang: en, message: [ "Declared once as a kind that extends Ui.Composite and provides a view, and placed with fields of its own." ] }
+        polishCallout: { lang: pl, message: [ Wyróżniona uwaga ] }
+
+  # The overview's own nodes, evaluated per request: delivered by the
+  # negotiated language and the brand cookie, a computed text, and a link this
+  # request makes invalid standing as an error node.
+  - name: verifyPerRequest
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        english: !cel "steps.nodes.result.perRequest.map(c, c.type == 'error' ? c.code : c.text.message[0])"
+        polish: !cel "steps.nodes.result.polishPerRequest[2].text"
+        acme: !cel "steps.nodes.result.acmePerRequest.filter(c, c.type == 'badge').map(c, c.text.message[0])"
+        errorMessage: !cel "steps.nodes.result.perRequest[6].message.startsWith(\"A 'link' node is not valid for this request\")"
+        vary: !cel "steps.overview.result.headers['vary']"
+      expected:
+        english:
+          - Per request
+          - These nodes are the page's own, so their when and their text are evaluated for every request.
+          - Your browser did not ask for Polish.
+          - A text an expression computes is shown as computed, never translated.
+          - "User-Agent: showcase-test"
+          - A link this request makes invalid is replaced by an error node, and the rest of the page is served.
+          - ERR_UI_NODE_INVALID
+        polish: { lang: pl, message: [ Twoja przeglądarka poprosiła o polski. ] }
+        acme: [ The Acme brand is on. ]
+        errorMessage: true
+        vary: Accept-Language, Cookie, Host, User-Agent
+
+  # Conditions: delivered against drawn, a placement's condition around a
+  # composite that has its own, every keyword of the profile over one record,
+  # missing against null, and query parameters the reader declares.
+  - name: verifyConditions
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        source: !cel "steps.nodes.result.reader.source"
+        query: !cel "steps.nodes.result.reader.query"
+        neverDelivered: !cel "steps.nodes.result.reader.content.children.exists(c, c.type == 'text' && c.text.message[0].startsWith('Never delivered'))"
+        neverProvided: !cel "steps.nodes.result.reader.content.children.exists(c, c.type == 'text' && c.text.message[0] == 'Never provided.')"
+        hidden: !cel "steps.nodes.result.reader.content.children[2].shown"
+        wrapped: !cel "steps.nodes.result.reader.content.children[5]"
+        keywords: !cel "steps.nodes.result.reader.content.children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'data').map(c, [c.shown.at.path, c.shown.matches])"
+        byQuery: !cel "steps.nodes.result.reader.content.children.filter(c, 'shown' in c && 'root' in c.shown.at && c.shown.at.root == 'query').map(c, [c.shown.at.path, c.shown.matches])"
+        links: !cel "steps.nodes.result.reader.content.children[37].children.map(c, c.href)"
+        pageQuery: !cel "steps.conditions.result.body.query"
+        pageOwn: !cel "steps.conditions.result.body.children[1].children[2].shown"
+      expected:
+        source: { path: /api/project-summary, params: { code: { value: TEL-42 } } }
+        query:
+          mode: { type: string, enum: [ compact, detailed ] }
+          tag: { type: array, items: { type: string } }
+          ticket: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+        neverDelivered: false
+        neverProvided: false
+        hidden: { at: { root: data, path: [ status ] }, matches: { const: paused } }
+        wrapped:
+          type: box
+          shown: { at: { value: true }, matches: { const: true } }
+          children:
+            - type: text
+              style: success
+              text: { lang: en, message: [ Both conditions hold. ] }
+              shown: { at: { value: 2 }, matches: { minimum: 1 } }
+        keywords:
+          - [ [ status ], { const: paused } ]
+          - [ [ status ], { type: string } ]
+          - [ [ note ], { type: [ string, "null" ] } ]
+          - [ [ status ], { const: active } ]
+          - [ [ status ], { enum: [ active, paused ] } ]
+          - [ [ status ], { not: { const: paused } } ]
+          - [ [ memberCount ], { allOf: [ { minimum: 1 }, { maximum: 10 } ] } ]
+          - [ [ code ], { anyOf: [ { pattern: "^TEL-" }, { pattern: "^OPS-" } ] } ]
+          - [ [ lead ], { required: [ email ] } ]
+          - [ [ lead ], { properties: { role: { const: manager } } } ]
+          - [ [ tags ], { items: { minLength: 2 } } ]
+          - [ [ tags ], { minItems: 2 } ]
+          - [ [ tags ], { maxItems: 5 } ]
+          - [ [ tags ], { uniqueItems: true } ]
+          - [ [ code ], { minLength: 3 } ]
+          - [ [ code ], { maxLength: 10 } ]
+          - [ [ code ], { pattern: "^[A-Z]+-[0-9]+$" } ]
+          - [ [ memberCount ], { minimum: 3 } ]
+          - [ [ memberCount ], { maximum: 9 } ]
+          - [ [ velocity ], { exclusiveMinimum: 2 } ]
+          - [ [ velocity ], { exclusiveMaximum: 3 } ]
+          - [ [ velocity ], { multipleOf: 0.5 } ]
+          - [ [ note ], { type: "null" } ]
+          - [ [ codename ], { not: { type: string } } ]
+          - [ [], { not: { required: [ codename ] } } ]
+        byQuery:
+          - [ [ mode ], { const: detailed } ]
+          - [ [ tag ], { minItems: 2 } ]
+          - [ [], { required: [ ticket ] } ]
+          - [ [], { not: { required: [ ticket ] } } ]
+        links:
+          - /conditions?mode=detailed
+          - /conditions?tag=red&tag=blue
+          - /conditions?ticket=OPS-7
+          - /conditions?ticket=nope
+          - /conditions?mode=detailed&mode=compact
+          - /conditions
+        pageQuery:
+          mode: { type: string, enum: [ compact, detailed ] }
+        pageOwn: { at: { root: query, path: [ mode ] }, matches: { const: detailed } }
+
+  # A button enabled only while what the form holds meets its condition, which
+  # reads the summary above again once it has added a tag.
+  - name: verifyEnablement
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        type: !cel "steps.nodes.result.enablement.type"
+        path: !cel "steps.nodes.result.enablement.path"
+        label: !cel "steps.nodes.result.enablement.label"
+        fields: !cel "steps.nodes.result.enablement.fields.map(f, f.property)"
+        enabled: !cel "steps.nodes.result.enablement.enabled"
+        onSuccess: !cel "steps.nodes.result.enablement.onSuccess"
+        result: !cel "steps.nodes.result.enablement.result.text"
+      expected:
+        type: action
+        path: /api/tags
+        label: { lang: en, message: [ Tag TEL-42 ] }
+        fields: [ tag ]
+        enabled:
+          at: { root: values, path: [ tag ] }
+          matches: { minLength: 3 }
+          disabledText: { lang: en, message: [ Type a tag of three letters or more. ] }
+        onSuccess: { refreshes: [ /api/project-summary ] }
+        result:
+          lang: en
+          message:
+            plural: count
+            cases:
+              one: [ "Tagged ", { placeholder: tag }, ": TEL-42 has ", { placeholder: count }, " tag now." ]
+              other: [ "Tagged ", { placeholder: tag }, ": TEL-42 has ", { placeholder: count }, " tags now." ]
+          values:
+            tag: { root: result, path: [ tag ] }
+            count: { root: result, path: [ count ] }
+
+  # Readers: a parameter from the page's query, a loading and a failure tree, a
+  # nested reader, three readers that fail with the default failure, one read
+  # again on focus, and a sign-in gate over a guarded route.
+  - name: verifyData
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        project:
+          source: !cel "steps.nodes.result.data[3].source"
+          query: !cel "steps.nodes.result.data[3].query"
+          loading: !cel "steps.nodes.result.data[3].loading"
+          failure: !cel "steps.nodes.result.data[3].failure.children.map(c, [c.type, 'shown' in c ? c.shown : null])"
+          reloadOn: !cel "steps.nodes.result.data[3].reloadOn"
+        nested:
+          source: !cel "steps.nodes.result.data[3].content.children[2].source"
+          content: !cel "steps.nodes.result.data[3].content.children[2].content.columns.map(c, c.header.message[0])"
+        failing: !cel "steps.nodes.result.data[6].children.map(c, [c.source, c.failure.children.map(f, f.value.path[0])])"
+        clock: !cel "[steps.nodes.result.data[9].source.path, steps.nodes.result.data[9].reloadOn]"
+        gate:
+          source: !cel "steps.nodes.result.data[12].source.path"
+          reloadOn: !cel "steps.nodes.result.data[12].reloadOn"
+          branches: !cel "steps.nodes.result.data[12].content.children.map(c, c.shown)"
+          signIn: !cel "[steps.nodes.result.data[12].content.children[0].children[1].path, steps.nodes.result.data[12].content.children[0].children[1].fields.map(f, f.property), steps.nodes.result.data[12].content.children[0].children[1].onSuccess]"
+          account: !cel "[steps.nodes.result.data[12].content.children[1].children[0].source.path, steps.nodes.result.data[12].content.children[1].children[0].reloadOn]"
+          actions: !cel "steps.nodes.result.data[12].content.children[1].children[1].children.map(a, [a.path, a.label.message[0], a.onSuccess])"
+      expected:
+        project:
+          source:
+            path: /api/project-summary
+            params: { code: { root: query, path: [ project ] } }
+          query:
+            project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+          loading: { type: text, style: muted, text: { lang: en, message: [ Reading the project… ] } }
+          failure:
+            - [ text, { at: { root: error, path: [] }, matches: { required: [ status ] } } ]
+            - [ text, { at: { root: error, path: [] }, matches: { not: { required: [ status ] } } } ]
+            - [ value, null ]
+          reloadOn: []
+        nested:
+          source: { path: /api/project-people, params: { code: { root: query, path: [ project ] } } }
+          content: [ Name, Role, E-mail ]
+        failing:
+          - [ { path: /api/project-summary, params: { code: { value: NOPE-1 } } }, [ code, message ] ]
+          - [ { path: /api/private/account, params: {} }, [ code, message ] ]
+          - [ { path: /api/projects, params: {} }, [ code, message ] ]
+        clock: [ /api/clock, [ focus ] ]
+        gate:
+          source: /api/session
+          reloadOn: [ focus, unauthorized ]
+          branches:
+            - { at: { root: data, path: [ signedIn ] }, matches: { const: false } }
+            - { at: { root: data, path: [ signedIn ] }, matches: { const: true } }
+          signIn: [ /api/session/signin, [ email ], { refreshes: [ /api/session ] } ]
+          account: [ /api/private/account, [ focus ] ]
+          actions:
+            - [ /api/private/ping, Check the session, { refreshes: [ /api/private/account ] } ]
+            - [ /api/session/signout, End the session quietly, { refreshes: [] } ]
+            - [ /api/session/signout, Sign out, { refreshes: [ /api/session ] } ]
+
+  # Tables: columns derived from the model with the default page size and
+  # dialog; written columns with style rules and the sortable ones marked;
+  # members behind references; a filter from the page's query and a fixed one;
+  # and create and edit on every kind of surface, every member filled.
+  - name: verifyTables
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        kinds: !cel "steps.nodes.result.tables.map(c, c.type)"
+        derived:
+          columns: !cel "steps.nodes.result.tables[2].columns.map(c, ['sort' in c ? c.sort : '-', c.header.message[0]])"
+          pageSize: !cel "steps.nodes.result.tables[2].pageSize"
+          create: !cel "[steps.nodes.result.tables[2].create.surface, steps.nodes.result.tables[2].create.afterSubmit, steps.nodes.result.tables[2].create.unsaved]"
+          forms: !cel "[steps.nodes.result.tables[2].create.form.fields.map(f, f.property), steps.nodes.result.tables[2].edit.form.fields.map(f, f.property)]"
+          delete: !cel "steps.nodes.result.tables[2].delete"
+        written:
+          pageSize: !cel "steps.nodes.result.tables[5].pageSize"
+          rowStyle: !cel "steps.nodes.result.tables[5].rowStyle"
+          columns: !cel "steps.nodes.result.tables[5].columns.map(c, [c.header.message[0], 'sort' in c ? c.sort : '-', 'style' in c ? c.style : null])"
+        members:
+          source: !cel "[steps.nodes.result.tables[8].basePath, steps.nodes.result.tables[8].pageSize]"
+          columns: !cel "steps.nodes.result.tables[8].columns.map(c, [c.header.message[0], c.value.path, c.present])"
+        byQuery:
+          links: !cel "steps.nodes.result.tables[11].children.map(c, c.href)"
+          query: !cel "steps.nodes.result.tables[12].query"
+          filters: !cel "steps.nodes.result.tables[12].filters"
+          fixed: !cel "steps.nodes.result.tables[15].filters"
+        surfaces: !cel >-
+          [20, 23, 26, 29, 32, 35, 38].map(i, steps.nodes.result.tables[i]).map(t, [
+            t.create.surface, t.create.afterSubmit, t.create.unsaved,
+            t.edit.surface, t.edit.afterSubmit, t.edit.unsaved, t.delete])
+        polish: !cel "[steps.polishTables.result.body.children[0].children[0].text.message[0], steps.polishTables.result.body.children[0].children[2].columns[3].labels[1].label.message[0]]"
+      expected:
+        kinds:
+          - text
+          - text
+          - table
+          - text
+          - text
+          - table
+          - text
+          - text
+          - table
+          - text
+          - text
+          - columns
+          - table
+          - text
+          - text
+          - table
+          - text
+          - text
+          - text
+          - text
+          - table
+          - text
+          - text
+          - table
+          - text
+          - text
+          - table
+          - text
+          - text
+          - table
+          - text
+          - text
+          - table
+          - text
+          - text
+          - table
+          - text
+          - text
+          - table
+        derived:
+          columns:
+            - [ title, Task ]
+            - [ "-", Project ]
+            - [ "-", Assignee ]
+            - [ status, Status ]
+            - [ priority, Priority ]
+            - [ estimate, Estimate ]
+            - [ dueOn, Due ]
+            - [ "-", Label ]
+            - [ "-", Blocked ]
+          pageSize: 25
+          create:
+            - { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - close
+            - confirm
+          forms:
+            - &taskFields [ title, projectCode, assigneeEmail, status, priority, estimate, dueOn, label, blocked ]
+            - *taskFields
+          delete: true
+        written:
+          pageSize: 8
+          rowStyle: { by: { root: row, path: [ blocked ] }, cases: { "true": [ strong, danger ] } }
+          columns:
+            - [ Task, title, null ]
+            - [ Where, "-", null ]
+            - [ Status, status, { by: { root: row, path: [ status ] }, cases: { todo: muted, doing: accent, review: warning, done: success } } ]
+            - [ Priority, priority, { by: { root: row, path: [ priority ] }, cases: { "5": danger, "4": warning }, default: muted } ]
+            - [ Estimate, estimate, null ]
+            - [ Due, dueOn, null ]
+            - [ Assignee, "-", null ]
+        members:
+          source: [ /api/task-board, 6 ]
+          columns:
+            - [ Task, [ title ], { type: string } ]
+            - [ Assignee, [ assignee, name ], { type: string } ]
+            - [ Contact, [ assignee, contact ], { type: string, format: uri } ]
+            - [ Project, [ project, code ], { type: string } ]
+            - [ Project name, [ project, name ], { type: string } ]
+            - [ Brief, [ project, brief ], { type: string, format: uri-reference } ]
+        byQuery:
+          links: [ "/tables?project=TEL-42", "/tables?project=OPS-7", /tables ]
+          query:
+            project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+          filters:
+            projectCode: { root: query, path: [ project ] }
+          fixed:
+            blocked: { value: true }
+        surfaces:
+          # Dialogs.
+          - - { type: dialog, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - again
+            - confirm
+            - { type: dialog, size: large, modal: false, dismiss: { escape: true, outside: false, closeButton: true }, address: { name: taskDialog } }
+            - keep
+            - discard
+            - true
+          # Drawers.
+          - - { type: drawer, side: start, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - close
+            - confirm
+            - { type: drawer, side: end, size: large, modal: true, dismiss: { escape: true, outside: true, closeButton: false } }
+            - close
+            - confirm
+            - true
+          # Sheets.
+          - - { type: drawer, side: top, size: medium, modal: false, dismiss: { escape: true, outside: true, closeButton: true } }
+            - close
+            - confirm
+            - { type: drawer, side: bottom, size: full, modal: true, dismiss: { escape: true, outside: true, closeButton: true }, address: { name: taskSheet } }
+            - close
+            - confirm
+            - false
+          # Popovers.
+          - - type: popover
+              side: end
+              align: center
+              dismiss: { escape: true, outside: true }
+              compact: { type: dialog, size: full, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - close
+            - confirm
+            - { type: popover, side: bottom, align: end, dismiss: { escape: true, outside: false } }
+            - keep
+            - confirm
+            - false
+          # In line.
+          - - type: inline
+              compact: { type: drawer, side: bottom, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - close
+            - confirm
+            - { type: inline }
+            - close
+            - confirm
+            - true
+          # Panels.
+          - - { type: panel, side: start, size: small, dismiss: { escape: false, closeButton: true } }
+            - close
+            - confirm
+            - type: panel
+              side: end
+              size: large
+              dismiss: { escape: true, closeButton: true }
+              address: { name: taskPanel }
+              compact: { type: drawer, side: bottom, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - close
+            - confirm
+            - false
+          # A page of its own, one address name for both.
+          - - { type: page, address: { name: task } }
+            - close
+            - confirm
+            - { type: page, address: { name: task } }
+            - close
+            - confirm
+            - false
+        polish: [ Kolumny z modelu, W toku ]
+
+  # Filter bars: one deriving everything; one with every control, presets, a
+  # pin and a default kept in the address; and bars between them holding every
+  # placement and every value of the policy, kept in each kind of store.
+  - name: verifyFilters
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        bars: !cel >-
+          steps.nodes.result.filters.filter(c, c.type == 'filters').map(b, [
+            b.show, b.controls, b.apply, b.summary, b.placement, b.state,
+            b.fields.map(f, has(f.default) ? [f.property, f.operator, f.control, f.pinned, f.default] : [f.property, f.operator, f.control, f.pinned]),
+            b.presets.map(p, [p.label.message[0], p.values])])
+        content: !cel "steps.nodes.result.filters.filter(c, c.type == 'filters').map(b, [b.content.type, b.content.basePath, b.content.pageSize])"
+        label: !cel "steps.nodes.result.filters[5].fields[1].label"
+        polish: !cel "[steps.polishFilters.result.body.children[0].children[0].text.message[0], steps.polishFilters.result.body.children[0].children[5].presets[0].label.message[0], steps.polishFilters.result.body.children[0].children[5].fields[1].label.message[0]]"
+      expected:
+        bars:
+          # Every filter the collection accepts.
+          - - all
+            - direct
+            - commit
+            - none
+            - { type: above }
+            - { address: false, store: { type: memory }, fields: [ title, projectCode, assigneeEmail, status, priority, estimate, dueOn, label, blocked ] }
+            - - [ title, contains, auto, false ]
+              - [ projectCode, eq, auto, false ]
+              - [ assigneeEmail, eq, auto, false ]
+              - [ assigneeEmail, in, auto, false ]
+              - [ status, eq, auto, false ]
+              - [ status, in, auto, false ]
+              - [ priority, gte, auto, false ]
+              - [ priority, lte, auto, false ]
+              - [ estimate, gt, auto, false ]
+              - [ estimate, lt, auto, false ]
+              - [ dueOn, gte, auto, false ]
+              - [ dueOn, lte, auto, false ]
+              - [ label, eq, auto, false ]
+              - [ label, in, auto, false ]
+              - [ blocked, eq, auto, false ]
+            - []
+          # Every control.
+          - - all
+            - direct
+            - commit
+            - chips
+            - { type: above, compact: { type: collapsible, open: false } }
+            - { key: board, address: true, store: { type: memory }, fields: [ title, status, label, assigneeEmail, priority, blocked, dueOn, projectCode ] }
+            - - [ title, contains, auto, true ]
+              - [ status, in, options, false, [ todo, doing, review ] ]
+              - [ label, eq, select, false ]
+              - [ assigneeEmail, in, tags, false ]
+              - [ priority, gte, slider, false ]
+              - [ blocked, eq, toggle, false ]
+              - [ dueOn, gte, auto, false ]
+              - [ dueOn, lte, auto, false ]
+              - [ projectCode, eq, none, false ]
+            - - [ Urgent, [ { property: priority, operator: gte, value: [ 4 ] }, { property: status, operator: in, value: [ todo, doing ] } ] ]
+              - [ Atlas only, [ { property: projectCode, operator: eq, value: [ TEL-42 ] } ] ]
+              - [ Stuck, [ { property: blocked, operator: eq, value: [ true ] } ] ]
+          # Beside, as chips, while typing.
+          - - chosen
+            - chips
+            - typing
+            - none
+            - type: aside
+              side: start
+              compact:
+                type: overlay
+                surface: { type: drawer, side: bottom, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - { key: aside, address: false, store: { type: local }, fields: [ title, status, label, estimate, assigneeEmail ] }
+            - - [ title, contains, auto, false ]
+              - [ status, eq, auto, false ]
+              - [ label, in, auto, false ]
+              - [ estimate, gt, auto, false ]
+              - [ estimate, lt, auto, false ]
+              - [ assigneeEmail, eq, auto, false ]
+            - []
+          # Beside at the end, applied by a button.
+          - - all
+            - direct
+            - button
+            - chips
+            - { type: aside, side: end }
+            - { key: review, address: false, store: { type: session }, fields: [ status, assigneeEmail, priority, dueOn ] }
+            - - [ status, in, auto, false ]
+              - [ assigneeEmail, in, auto, false ]
+              - [ priority, lte, auto, false ]
+              - [ dueOn, lte, auto, false ]
+            - - [ Due by October, [ { property: dueOn, operator: lte, value: [ "2026-10-31" ] }, { property: status, operator: in, value: [ todo, doing, review ] } ] ]
+          # Folded, starting open.
+          - - chosen
+            - direct
+            - commit
+            - none
+            - { type: collapsible, open: true }
+            - { key: folded, address: true, store: { type: local }, fields: [ title, status, blocked, label ] }
+            - - [ title, contains, auto, true ]
+              - [ status, eq, auto, false, [ doing ] ]
+              - [ blocked, eq, auto, false ]
+              - [ label, eq, auto, false ]
+            - []
+          # Folded, starting closed.
+          - - all
+            - direct
+            - button
+            - none
+            - { type: collapsible, open: false }
+            - { address: false, store: { type: memory }, fields: [ title, label, status ] }
+            - - [ title, contains, auto, true ]
+              - [ label, in, options, false, [ bug ] ]
+              - [ status, in, select, false ]
+            - []
+          # In a dialog.
+          - - all
+            - direct
+            - commit
+            - chips
+            - type: overlay
+              surface: { type: dialog, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true }, address: { name: taskFilters } }
+            - { address: false, store: { type: memory }, fields: [ title, status, label, blocked ] }
+            - - [ title, contains, auto, true ]
+              - [ status, in, auto, false ]
+              - [ label, in, auto, false ]
+              - [ blocked, eq, auto, false ]
+            - []
+          # In a drawer.
+          - - all
+            - direct
+            - typing
+            - none
+            - type: overlay
+              surface: { type: drawer, side: start, size: small, modal: true, dismiss: { escape: true, outside: false, closeButton: true } }
+            - { address: false, store: { type: memory }, fields: [ priority, estimate, dueOn ] }
+            - - [ priority, gte, slider, false ]
+              - [ estimate, lt, auto, false ]
+              - [ dueOn, gte, auto, false ]
+            - []
+          # In a popover.
+          - - all
+            - direct
+            - commit
+            - none
+            - type: overlay
+              surface:
+                type: popover
+                side: bottom
+                align: end
+                dismiss: { escape: true, outside: true }
+                compact: { type: drawer, side: bottom, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - { address: false, store: { type: memory }, fields: [ status, assigneeEmail ] }
+            - - [ status, eq, options, false ]
+              - [ assigneeEmail, eq, auto, false ]
+            - []
+        content:
+          - &taskList [ table, /api/tasks, 5 ]
+          - *taskList
+          - *taskList
+          - *taskList
+          - *taskList
+          - *taskList
+          - *taskList
+          - *taskList
+          - *taskList
+        label: { lang: und, message: [ Status ] }
+        polish: [ "Każdy filtr, który przyjmuje kolekcja", Pilne, Status ]
+
+  # Forms: one deriving a control per property with a write-only one never
+  # kept, one choosing each control, and a booking form over option sources —
+  # a select and options side by side, pickers on three surfaces, a source
+  # narrowed by the form's values — with a date range, groups and a field
+  # shown on a condition. A list under each reads what they wrote.
+  - name: verifyForms
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        kinds: !cel "steps.nodes.result.forms.map(c, c.type)"
+        derived:
+          basePath: !cel "steps.nodes.result.forms[3].basePath"
+          fields: !cel "steps.nodes.result.forms[3].fields.map(f, [f.type, f.property, f.control, f.label.message[0], f.description == null ? '-' : f.description.message[0]])"
+          kindLabels: !cel "steps.nodes.result.forms[3].fields[1].labels.map(l, [l.value, l.label.message[0]])"
+          # What the renderer derives each control from.
+          schema: !cel >-
+            cel.bind(p, steps.nodes.result.forms[3].schema.properties,
+              [p.kind.default, p.seats.default, p.startOn.format, p.kickoffAt.format, p.callAt.format, p.details.contentMediaType,
+               p.channels.items.enum, p.keywords.items.type, p.accessCode.writeOnly])
+          state: !cel "steps.nodes.result.forms[3].state"
+        byHand:
+          fields: !cel "steps.nodes.result.forms[6].fields.map(f, [f.property, f.control])"
+          state: !cel "steps.nodes.result.forms[6].state"
+        requests: !cel "[steps.nodes.result.forms[9].source, steps.nodes.result.forms[9].content.columns.map(c, c.header.message[0])]"
+        booking:
+          basePath: !cel "steps.nodes.result.forms[13].basePath"
+          groups: !cel "steps.nodes.result.forms[13].groups.map(g, [g.name, g.label.message[0], has(g.description) ? g.description.message[0] : '-', has(g.shown) ? g.shown : null])"
+          fields: !cel >-
+            steps.nodes.result.forms[13].fields.map(f, [f.type, f.property, f.group,
+              f.type == 'picker' ? f.surface.type : (f.type == 'dateRange' ? '-' : f.control),
+              has(f.shown) ? f.shown : null])
+          projectSource: !cel >-
+            cel.bind(o, steps.nodes.result.forms[13].fields[0].options,
+              [o.basePath, o.filters, o.pageSize, o.value, o.label, o.hint, 'href' in o, 'search' in o])
+          lead: !cel >-
+            cel.bind(o, steps.nodes.result.forms[13].fields[2].options,
+              [o.basePath, o.filters, o.pageSize, o.value, o.label, o.hint, o.href, o.search])
+          surfaces: !cel "[steps.nodes.result.forms[13].fields[2].surface, steps.nodes.result.forms[13].fields[3].surface, steps.nodes.result.forms[13].fields[4].surface]"
+          team: !cel "steps.nodes.result.forms[13].fields[3].options == steps.nodes.result.forms[13].fields[4].options && steps.nodes.result.forms[13].fields[3].options.filters == {'active': {'value': true}}"
+          helpers: !cel "[steps.nodes.result.forms[13].fields[5].options.pageSize, steps.nodes.result.forms[13].fields[5].options.filters]"
+          dateRange: !cel >-
+            cel.bind(f, steps.nodes.result.forms[13].fields[6],
+              [f.presets.map(x, [x.label.message[0], x.unit, x.offset]), f.weekStart, f.initialPreset, f.warnLongerThan, f.label.message[0], f.description.message[0]])
+          state: !cel "steps.nodes.result.forms[13].state"
+        bookings: !cel "[steps.nodes.result.forms[16].source, steps.nodes.result.forms[16].content.columns.map(c, c.header.message[0])]"
+        polish: !cel >-
+          cel.bind(f, steps.polishForms.result.body.children[0].children, [
+            f[0].text.message[0], f[3].fields[0].label.message[0], f[3].fields[1].labels[1].label.message[0],
+            f[13].groups[1].label.message[0], f[13].fields[6].presets[3].label.message[0], f[16].content.columns[3].header.message[0]])
+      expected:
+        kinds: [ text, text, text, form, text, text, form, text, text, data, text, text, text, form, text, text, data ]
+        derived:
+          basePath: /api/requests
+          fields:
+            - [ input, title, auto, Title, "-" ]
+            - [ input, kind, auto, Kind of work, "-" ]
+            - [ input, seats, auto, People needed, "-" ]
+            - [ input, budget, auto, Budget, "-" ]
+            - [ input, startOn, auto, Start, "-" ]
+            - [ input, kickoffAt, auto, Kick-off, "-" ]
+            - [ input, callAt, auto, Daily call, "-" ]
+            - [ input, details, auto, Details, Markdown is welcome. ]
+            - [ input, urgent, auto, Urgent, "-" ]
+            - [ input, channels, auto, Keep me posted by, "-" ]
+            - [ input, keywords, auto, Keywords, "Lower-case words; Enter or a comma adds one." ]
+            - [ input, accessCode, auto, Site access code, Never kept between visits. ]
+          kindLabels: [ [ design, Design ], [ build, Building ], [ write, Writing ], [ research, Research ] ]
+          schema: [ design, 2, date, date-time, time, text/markdown, [ email, chat, phone ], string, true ]
+          # Every field but the write-only access code is kept.
+          state:
+            key: request
+            address: true
+            store: { type: local }
+            fields: [ title, kind, seats, budget, startOn, kickoffAt, callAt, details, urgent, channels, keywords ]
+        byHand:
+          fields: [ [ title, auto ], [ kind, options ], [ channels, select ], [ seats, slider ], [ urgent, toggle ], [ keywords, tags ] ]
+          state: { key: quickRequest, address: false, store: { type: session }, fields: [ title, kind, channels, seats, urgent, keywords ] }
+        requests:
+          - { path: /api/requests, params: {} }
+          - [ Title, Kind of work, People needed, Start, Urgent, Received ]
+        booking:
+          basePath: /api/bookings
+          groups:
+            - [ project, The project, "Which project, and who leads the work.", null ]
+            - [ people, Around the lead, "Who reviews the work, who sponsors it and who helps.", { at: { root: values, path: [ leadEmail ] }, matches: { minLength: 1 } } ]
+            - [ dates, When and where, "-", null ]
+          fields:
+            - [ choice, projectCode, project, select, null ]
+            - [ input, leadRole, project, options, null ]
+            - [ picker, leadEmail, project, dialog, null ]
+            - [ picker, reviewerEmails, people, drawer, null ]
+            - [ picker, sponsorEmail, people, popover, null ]
+            - [ choice, helperEmails, people, options, null ]
+            - [ dateRange, period, dates, "-", null ]
+            - [ input, onSite, dates, auto, null ]
+            - [ input, site, dates, auto, { at: { root: values, path: [ onSite ] }, matches: { const: true } } ]
+            - [ input, notes, dates, auto, null ]
+          projectSource:
+            - /api/projects
+            - {}
+            - 25
+            - { root: row, path: [ code ] }
+            - { root: row, path: [ name ] }
+            - { root: row, path: [ code ] }
+            - false
+            - false
+          lead:
+            - /api/people
+            - { role: { root: values, path: [ leadRole ] }, active: { value: true } }
+            - 25
+            - { root: row, path: [ email ] }
+            - { root: row, path: [ name ] }
+            - { root: row, path: [ location ] }
+            - { root: row, path: [ contact ] }
+            - { property: name, operator: contains }
+          surfaces:
+            - { type: dialog, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - { type: drawer, side: end, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+            - { type: popover, side: bottom, align: start, dismiss: { escape: true, outside: true } }
+          team: true
+          helpers: [ 3, { active: { value: true } } ]
+          dateRange:
+            - - [ Tomorrow, day, 1 ]
+              - [ Next week, week, 1 ]
+              - [ This month, month, 0 ]
+              - [ Next month, month, 1 ]
+              - [ Next quarter, quarter, 1 ]
+              - [ Next year, year, 1 ]
+            - sunday
+            - 3
+            - { unit: month, count: 3 }
+            - Period
+            - The studio books a year at most.
+          state: { address: false, store: { type: memory }, fields: [ projectCode, leadRole, leadEmail, reviewerEmails, sponsorEmail, helperEmails, period, onSite, site, notes ] }
+        bookings:
+          - { path: /api/bookings, params: {} }
+          - [ Project, Lead, Sponsor, From, To ]
+        polish: [ Każda kontrolka z modelu, Tytuł, Budowa, Wokół prowadzącego, Przyszły miesiąc, Od ]
+
+  # Actions: a bare button; an answer drawn with values and a list; a failure
+  # tree of an action's own and an answer its output model refuses; successes
+  # moving the page and reading other content again; presses one after
+  # another, enabled by the form and clearing their answer; and row actions —
+  # plain, confirmed, prompting and enabled per row — on a table and a list.
+  - name: verifyActions
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        kinds: !cel "steps.nodes.result.actions.map(c, c.type)"
+        bare: !cel "cel.bind(a, steps.nodes.result.actions[2], [a.path, a.label.message[0], a.fields, a.onSuccess, 'result' in a, 'answer' in a])"
+        estimate:
+          fields: !cel "steps.nodes.result.actions[5].fields.map(f, [f.type, f.property, has(f.control) ? f.control : '-', f.group])"
+          groups: !cel "steps.nodes.result.actions[5].groups.map(g, [g.name, g.label.message[0]])"
+          state: !cel "steps.nodes.result.actions[5].state"
+          answer: !cel "steps.nodes.result.actions[5].answer.required"
+          result: !cel "steps.nodes.result.actions[5].result.children.map(c, c.type)"
+          texts: !cel "steps.nodes.result.actions[5].result.children.filter(c, c.type == 'text').map(c, c.text.values)"
+          value: !cel "[steps.nodes.result.actions[5].result.children[2].value, steps.nodes.result.actions[5].result.children[2].present]"
+          list: !cel "cel.bind(l, steps.nodes.result.actions[5].result.children[3], [l.heading.message[0], l.rows, l.columns.map(c, [c.header.message[0], c.value.path[0], c.labels.size()])])"
+        failure:
+          assign: !cel "cel.bind(a, steps.nodes.result.actions[8], [a.path, a.label.message[0], a.fields.map(f, f.property), a.failure.style, a.failure.children.map(c, [c.type, 'shown' in c ? c.shown : null]), a.failure.children[0].text.values, a.result.text.values])"
+          refused: !cel "cel.bind(a, steps.nodes.result.actions[10], [a.path, a.answer.required, a.result, a.failure.style, a.failure.children[0].text.values, a.failure.children[1].value])"
+        navigate: !cel "steps.nodes.result.actions[13].children.map(a, [a.path, a.fields.map(f, f.type), a.onSuccess])"
+        counts: !cel "[steps.nodes.result.actions[16].source, steps.nodes.result.actions[16].content.text.values.code]"
+        move: !cel "cel.bind(a, steps.nodes.result.actions[17], [a.path, a.fields.map(f, f.property), a.onSuccess, a.result.children.map(c, c.type)])"
+        comment: !cel "cel.bind(a, steps.nodes.result.actions[20], [a.path, a.concurrency, a.clearAnswerOn, a.enabled, a.onSuccess, a.result.text.values])"
+        table:
+          source: !cel "[steps.nodes.result.actions[23].basePath, steps.nodes.result.actions[23].filters, steps.nodes.result.actions[23].pageSize]"
+          rowActions: !cel >-
+            steps.nodes.result.actions[23].rowActions.map(r, [r.action.path, r.action.label.message[0], r.inputs,
+              has(r.confirm) ? r.confirm.message[0] : '-', has(r.prompt) ? r.prompt.fields.map(f, f.property) : [],
+              has(r.enabled) ? [r.enabled.matches, r.enabled.disabledText.message[0]] : [],
+              r.action.result.text.message])
+        list:
+          source: !cel "steps.nodes.result.actions[26].source"
+          rows: !cel "steps.nodes.result.actions[26].content.rows"
+          rowActions: !cel >-
+            steps.nodes.result.actions[26].content.rowActions.map(r, [r.action.path, r.action.label.message[0], r.inputs,
+              has(r.confirm) ? r.confirm.message[0] : '-', has(r.prompt) ? r.prompt.fields.map(f, f.property) : [],
+              has(r.enabled) ? [r.enabled.at, r.enabled.matches] : [], r.action.onSuccess])
+        more: !cel >-
+          steps.nodes.result.actions[29].children.map(a, [a.path, a.label.message[0], a.fields.map(f, [f.type, f.property]),
+            a.onSuccess, 'answer' in a])
+        mirrorResult: !cel "steps.nodes.result.actions[29].children[2].result.text.values"
+        pause: !cel >-
+          cel.bind(a, steps.nodes.result.actions[32], [a.path, a.fields.map(f, [f.type, f.property]), a.answer.required,
+            a.onSuccess, a.failure.children.map(c, c.value)])
+        loop: !cel "cel.bind(a, steps.nodes.result.actions[34], [a.path, 'answer' in a, a.failure.children.map(c, 'shown' in c ? c.shown.matches : null)])"
+        byAddress:
+          links: !cel "steps.nodes.result.actions[37].children.map(c, c.href)"
+          query: !cel "steps.nodes.result.actions[38].query"
+          filters: !cel "steps.nodes.result.actions[38].filters"
+          rowActions: !cel >-
+            steps.nodes.result.actions[38].rowActions.map(r, [r.action.path, r.action.label.message[0], r.inputs,
+              r.confirm.message[0], r.prompt.fields, r.enabled])
+        polish: !cel >-
+          cel.bind(a, steps.polishActions.result.body.children[0].children, [
+            a[0].text.message[0], a[5].label.message[0], a[23].rowActions[0].action.label.message[0],
+            a[23].rowActions[1].confirm.message[0], a[26].content.rowActions[2].prompt.fields[0].label.message[0],
+            a[29].children[0].label.message[0], a[34].failure.children[1].text.message[0],
+            a[38].rowActions[0].confirm.message[0]])
+      expected:
+        kinds:
+          [
+            text, text, action, text, text, action, text, text, action, text, action, text, text, columns, text, text,
+            data, action, text, text, action, text, text, table, text, text, data, text, text, columns, text, text,
+            action, text, action, text, text, columns, table,
+          ]
+        bare: [ /api/unblock, Unblock TEL-42, [], { refreshes: [ /api/tasks, /api/task-counts ] }, false, false ]
+        estimate:
+          fields:
+            - [ choice, projectCode, auto, scope ]
+            - [ input, labels, auto, scope ]
+            - [ input, includeBlocked, auto, scope ]
+            - [ input, pace, slider, speed ]
+          groups: [ [ scope, What to count ], [ speed, How fast ] ]
+          state: { key: estimate, address: true, store: { type: memory }, fields: [ projectCode, labels, includeBlocked, pace ] }
+          answer: [ projectCode, hours, tasks, weeks, finishBy, breakdown ]
+          result: [ text, text, value, list ]
+          texts:
+            - hours: { root: result, path: [ hours ] }
+              tasks: { root: result, path: [ tasks ] }
+              project: { root: result, path: [ projectCode ] }
+            - weeks: { root: result, path: [ weeks ] }
+              pace: { root: input, path: [ pace ] }
+          value: [ { root: result, path: [ finishBy ] }, { type: string, format: date } ]
+          list:
+            - By label
+            - { root: result, path: [ breakdown ] }
+            - [ [ Label, label, 5 ], [ Tasks, tasks, 0 ], [ Hours, hours, 0 ] ]
+        failure:
+          assign:
+            - /api/assign
+            - Assign
+            - [ id, assigneeEmail ]
+            - danger
+            - - [ text, null ]
+              - [ text, { at: { root: error, path: [] }, matches: { required: [ status ] } } ]
+              - [ value, null ]
+            - { id: { root: input, path: [ id ] } }
+            - { title: { root: result, path: [ title ] }, assignee: { root: result, path: [ assignee ] } }
+          refused:
+            - /api/estimate
+            - [ days ]
+            - { type: value, value: { root: result, path: [ days ] }, labels: [], present: { type: integer } }
+            - warning
+            - { code: { root: error, path: [ code ] } }
+            - { root: error, path: [ message ] }
+        navigate:
+          - [ /api/project-page, [ choice ], { navigate: { root: result, path: [ page ] }, refreshes: [] } ]
+          - [ /api/homepage, [], { navigate: { root: result, path: [ homepage ] }, refreshes: [] } ]
+        counts: [ { path: /api/task-counts, params: { code: { value: TEL-42 } } }, { root: data, path: [ code ] } ]
+        move: [ /api/task-status, [ id, status ], { refreshes: [ /api/task-counts, /api/tasks ] }, [ text, value ] ]
+        comment:
+          - /api/comments
+          - serial
+          - [ taskId ]
+          - at: { root: values, path: [ body ] }
+            matches: { minLength: 3 }
+            disabledText: { lang: en, message: [ Write three characters or more. ] }
+          - { refreshes: [ /api/comments ] }
+          - id: { root: result, path: [ id ] }
+            title: { root: result, path: [ taskTitle ] }
+            count: { root: result, path: [ count ] }
+        table:
+          source: [ /api/tasks, { projectCode: { value: TEL-42 } }, 8 ]
+          rowActions:
+            - - /api/task-status
+              - Start
+              - { id: { root: row, path: [ id ] }, status: { value: doing } }
+              - "-"
+              - []
+              - [ { const: todo }, Already started. ]
+              - [ Started ]
+            - - /api/task-status
+              - Close
+              - { id: { root: row, path: [ id ] }, status: { value: done } }
+              - Close this task?
+              - []
+              - [ { not: { const: done } }, Already finished. ]
+              - [ Closed ]
+            - - /api/assign
+              - Assign
+              - { id: { root: row, path: [ id ] } }
+              - "-"
+              - [ assigneeEmail ]
+              - []
+              - [ { placeholder: title }, " is assigned to ", { placeholder: assignee }, "." ]
+        list:
+          source: { path: /api/comments, params: {} }
+          rows: { root: data, path: [ comments ] }
+          rowActions:
+            - - /api/comments/pin
+              - Pin
+              - { id: { root: row, path: [ id ] } }
+              - "-"
+              - []
+              - [ { root: row, path: [ pinned ] }, { const: false } ]
+              - { refreshes: [ /api/comments ] }
+            - - /api/comments/delete
+              - Delete
+              - { id: { root: row, path: [ id ] } }
+              - Delete this comment?
+              - []
+              - []
+              - { refreshes: [ /api/comments ] }
+            - - /api/comments/edit
+              - Edit
+              - { id: { root: row, path: [ id ] } }
+              - Rewrite this comment?
+              - [ body ]
+              - []
+              - { refreshes: [ /api/comments ] }
+        more:
+          - [ /api/tasks, Add it and open the tables, [ [ input, title ], [ choice, projectCode ] ], { navigate: { value: /tables }, refreshes: [ /api/tasks ] }, false ]
+          - [ /api/team-links, Open the handbook, [], { navigate: { root: result, path: [ handbook ] }, refreshes: [] }, true ]
+          - [ /api/team-links, Open the mirror, [], { navigate: { root: result, path: [ mirror ] }, refreshes: [] }, true ]
+        mirrorResult: { mirror: { root: result, path: [ mirror ] } }
+        pause:
+          - /api/private/pause
+          - [ [ choice, code ] ]
+          - [ code, name, status ]
+          - { refreshes: [ /api/projects ] }
+          - [ { root: error, path: [ code ] }, { root: error, path: [ message ] } ]
+        loop: [ /api/loop, false, [ { required: [ status ] }, { not: { required: [ status ] } }, null ] ]
+        byAddress:
+          links:
+            - /actions?project=TEL-42&moveTo=review
+            - /actions?project=APP-5&moveTo=done
+            - /actions?project=OPS-7&moveTo=doing
+            - /actions
+          query:
+            project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+            moveTo: { type: string, enum: [ todo, doing, review, done ] }
+          filters: { projectCode: { root: query, path: [ project ] } }
+          rowActions:
+            - - /api/task-status
+              - Move
+              - { id: { root: row, path: [ id ] }, status: { root: query, path: [ moveTo ] } }
+              - Move this task to the status the address names?
+              - []
+              - at: { root: query, path: [ moveTo ] }
+                matches: { type: string }
+                disabledText: { lang: en, message: [ Choose a status above first. ] }
+        polish:
+          [
+            Sam przycisk, Oszacuj, Rozpocznij, Zamknąć to zadanie?, Nowa treść, Dodaj i otwórz tabele,
+            "Nie nadeszła żadna odpowiedź, więc nie ma statusu.", Przenieść to zadanie do statusu wskazanego w adresie?,
+          ]
+
+  # Components: one of the example's own on the page, given fixed properties,
+  # and one in a table cell, given the row's; both come from one module, served
+  # with the stylesheet its sources import.
+  - name: verifyComponents
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        kinds: !cel "steps.nodes.result.components.map(c, c.type)"
+        desk: !cel >-
+          cel.bind(c, steps.nodes.result.components[2],
+            [c.export, c.abi, c.external, c.module.name, c.props, c.stylesheets.map(s, s.name)])
+        table: !cel "cel.bind(t, steps.nodes.result.components[5], [t.basePath, t.filters, t.pageSize, 'edit' in t, t.delete])"
+        cell: !cel >-
+          cel.bind(c, steps.nodes.result.components[5].columns[2], [c.header.message[0], c.cell.export, c.cell.props,
+            c.cell.module == steps.nodes.result.components[2].module])
+        module: !cel >-
+          [steps.componentModule.result.status, steps.componentModule.result.headers['content-type'],
+            ['TaskDesk', 'PriorityMeter', 'TokenSheet', 'TypefaceSamples'].all(n, steps.componentModule.result.body.contains('export {') && steps.componentModule.result.body.contains(n))]
+        stylesheet: !cel "[steps.componentStylesheet.result.status, steps.componentStylesheet.result.headers['content-type'], steps.componentStylesheet.result.body.contains('.showcase-desk')]"
+        polish: !cel "steps.polishComponents.result.body.children[0].children.filter(c, c.type == 'text' && c.style == 'heading').map(c, c.text.message[0])"
+      expected:
+        kinds: [ text, text, component, text, text, table, text, text ]
+        desk:
+          - TaskDesk
+          - ui_react-1
+          - [ "@telorun/ui-react", react, react-dom, react/jsx-runtime ]
+          - components.js
+          - { basePath: { value: /api/tasks }, countsPath: { value: /api/task-counts }, project: { value: TEL-42 } }
+          - [ components.css ]
+        table: [ /api/tasks, { projectCode: { value: TEL-42 } }, 6, true, true ]
+        cell:
+          - Priority
+          - PriorityMeter
+          - { priority: { root: row, path: [ priority ] }, blocked: { root: row, path: [ blocked ] } }
+          - true
+        module: [ 200, text/javascript, true ]
+        stylesheet: [ 200, text/css, true ]
+        polish: [ Komponent na stronie, Komponent w komórce, Jego arkusz stylów ]
+
+  # The generated admin screen: a bar over the tasks collection with the policy
+  # written, keeping its state under the key the Filters page's aside bar keeps
+  # its own, a table with both forms on their surfaces and a confirmed delete.
+  - name: verifyCrud
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        kinds: !cel "steps.nodes.result.crud.map(c, c.type)"
+        bar: !cel >-
+          cel.bind(f, steps.nodes.result.crud[4], [f.show, f.controls, f.apply, f.summary, f.placement, f.state.key, f.state.address,
+            f.state.store, size(f.fields)])
+        sharedState: !cel "[steps.nodes.result.crud[4].state.key, steps.nodes.result.crud[4].state.store] == [steps.nodes.result.filters[8].state.key, steps.nodes.result.filters[8].state.store]"
+        table: !cel >-
+          cel.bind(t, steps.nodes.result.crud[4].content, [t.basePath, t.rowKey, t.delete, t.columns.map(c, c.value.path[0]),
+            t.create.form.fields.map(f, f.property) == t.edit.form.fields.map(f, f.property)])
+        create: !cel "cel.bind(o, steps.nodes.result.crud[4].content.create, [o.surface.type, o.surface.side, o.afterSubmit, o.unsaved])"
+        edit: !cel "cel.bind(o, steps.nodes.result.crud[4].content.edit, [o.surface.type, o.surface.address, o.afterSubmit, o.unsaved])"
+        polish: !cel "steps.polishCrud.result.body.children[0].children[0].text"
+      expected:
+        kinds: [ text, text, text, text, filters ]
+        bar: [ chosen, chips, commit, chips, { type: aside, side: end }, aside, false, { type: local }, 15 ]
+        sharedState: true
+        table:
+          - /api/tasks
+          - id
+          - true
+          - [ title, projectCode, assigneeEmail, status, priority, estimate, dueOn, label, blocked ]
+          - true
+        create: [ drawer, end, again, confirm ]
+        edit: [ panel, { name: crudTask }, close, confirm ]
+        polish: { lang: pl, message: [ Wygenerowany ekran administracyjny ] }
+
+  # Themes: the three mounts, every design token and the typefaces drawn by
+  # components of the example's own; on `/` only, links to the other two mounts
+  # and the brand switch, with a badge while the brand cookie is set.
+  - name: verifyThemes
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        kinds: !cel "steps.nodes.result.themes.map(c, c.type)"
+        mounts: !cel "steps.nodes.result.themes[2].children.map(b, b.children[0].text.message[0])"
+        components: !cel "[steps.nodes.result.themes[6], steps.nodes.result.themes[9]].map(c, [c.export, c.props, c.module == steps.nodes.result.components[2].module])"
+        rootLinks: !cel "[steps.themes.result.body.children[1].children[2], steps.themes.result.body.children[1].children[4]].map(c, c.children.map(l, l.href))"
+        badge: !cel "[steps.themes, steps.acmeThemes].map(p, p.result.body.children[1].children.exists(c, c.type == 'badge'))"
+        polish: !cel "[steps.polishThemes.result.body.children[0].children[0].text, steps.polishThemes.result.body.children[1].children[0].text]"
+      expected:
+        kinds: [ text, text, columns, text, text, text, component, text, text, component ]
+        mounts: [ At the root, Under /radix, Under /brand ]
+        components:
+          - [ TokenSheet, {}, true ]
+          - [ TypefaceSamples, {}, true ]
+        rootLinks:
+          - [ /radix/themes, /brand/themes ]
+          - [ "/api/brand?set=acme", "/api/brand?set=none" ]
+        badge: [ false, true ]
+        polish:
+          - { lang: pl, message: [ Trzy punkty montowania jednego projektu ] }
+          - { lang: pl, message: [ Przełącz punkt montowania lub markę ] }
+
+  # `/radix` and `/brand` place the very views `/` does.
+  - name: verifySharedPages
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        radix: !cel >-
+          [steps.radixOverview, steps.radixConditions, steps.radixData, steps.radixTables, steps.radixFilters, steps.radixForms,
+            steps.radixActions, steps.radixComponents, steps.radixCrud, steps.radixThemes].map(p, p.result.body.children)
+        brand: !cel >-
+          [steps.brandOverview, steps.brandConditions, steps.brandData, steps.brandTables, steps.brandFilters, steps.brandForms,
+            steps.brandActions, steps.brandComponents, steps.brandCrud, steps.brandThemes].map(p, p.result.body.children)
+      expected:
+        radix: &shared
+          - !cel "[steps.overview.result.body.children[0]]"
+          - !cel "[steps.conditions.result.body.children[0]]"
+          - !cel "steps.data.result.body.children"
+          - !cel "steps.tables.result.body.children"
+          - !cel "steps.filters.result.body.children"
+          - !cel "steps.forms.result.body.children"
+          - !cel "steps.actions.result.body.children"
+          - !cel "steps.components.result.body.children"
+          - !cel "steps.crud.result.body.children"
+          - !cel "[steps.themes.result.body.children[0]]"
+        brand: *shared

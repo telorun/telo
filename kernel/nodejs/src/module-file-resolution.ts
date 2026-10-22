@@ -184,6 +184,8 @@ async function assertStagedFilesAt(
 export interface NativeFileModule {
   /** Canonical source of the module's `telo.yaml` — what its artifact is keyed by. */
   readonly source: string;
+  /** The module's `metadata.name`, when it declares one. */
+  readonly name?: string;
   readonly native: NativeEntries;
   readonly sources: ModuleSources;
   /** The `assets:` patterns, which say which staged entries are module files. */

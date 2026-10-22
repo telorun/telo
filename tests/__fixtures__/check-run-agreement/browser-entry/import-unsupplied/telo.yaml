@@ -1,0 +1,11 @@
+# Invokes the library's control; its check reports the library's refusal at the
+# import reaching it.
+kind: Telo.Application
+metadata:
+  name: BrowserImportUnsuppliedApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - name: probe
+    invoke: !ref Lib.control

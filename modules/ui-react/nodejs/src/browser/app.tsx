@@ -1,8 +1,8 @@
-import { Tooltip } from "radix-ui";
 import { Component, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { BUILT_IN, ControlsContext, loadControls, type ControlsField, type EffectiveControls } from "./effective-controls.js";
 import { HostContext, HostStore, type Host } from "./host.js";
-import { applicationPath } from "./link-address.js";
+import { pageAddress } from "./link-address.js";
 import { ErrorNode, Loading, Nodes, type SpecNode } from "./nodes.js";
 import { PressQueueContext, PressQueues } from "./operation.js";
 import { queryRoot } from "./query-root.js";
@@ -21,9 +21,14 @@ interface AppDocument {
   /** The language the documents are in: a catalog's, else the application's own. */
   lang?: string;
   pages: { path: string; title: TranslatedText }[];
+  /** The application's own header nodes, before its title and after its
+   *  navigation; absent when it declares none. */
+  header?: { start: SpecNode[]; end: SpecNode[] };
   /** The renderer's own words, translated. */
   words: Words;
   stylesheets: string[];
+  /** The mechanics stylesheet of each built-in control in use, and the theme's control sets. */
+  controls: ControlsField;
   /** The viewport width below which every compact surface applies, a CSS length. */
   compactBelow: string;
 }
@@ -105,9 +110,7 @@ class RootBoundary extends Component<{ children: ReactNode }, { error?: ErrorSpe
 export function App(props: AppProps) {
   return (
     <RootBoundary>
-      <Tooltip.Provider delayDuration={300}>
-        <Application {...props} />
-      </Tooltip.Provider>
+      <Application {...props} />
     </RootBoundary>
   );
 }
@@ -123,7 +126,9 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   const asking = useSyncExternalStore(store.subscribe, store.asking);
   const [app, setApp] = useState<AppDocument>();
   const compact = useCompact(app?.compactBelow);
-  const base = useEnvironment(loadModule, prefix, compact, app?.pages);
+  const base = useEnvironment(loadModule, prefix, compact, app?.pages, app?.lang);
+  // The controls the application draws with, once its theme's sets are loaded.
+  const [controls, setControls] = useState<EffectiveControls>();
   // A surface drawn in place of the page's content is drawn here, by whoever opened it.
   const [slotElement, setSlotElement] = useState<HTMLElement | null>(null);
   const [claims, setClaims] = useState(0);
@@ -208,10 +213,20 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     };
   }, [prefix, path, declared !== undefined, refreshes]);
 
+  const sets = JSON.stringify(app?.controls.sets ?? null);
   useEffect(() => {
     if (!app) return;
     let current = true;
-    void applyStylesheets(app.stylesheets).then(() => current && setStyled(true));
+    void loadControls(app.controls.sets, base.loadModule).then((loaded) => current && setControls(loaded));
+    return () => {
+      current = false;
+    };
+  }, [sets]);
+
+  useEffect(() => {
+    if (!app) return;
+    let current = true;
+    void applyStylesheets([...app.stylesheets, ...Object.values(app.controls.stylesheets)]).then(() => current && setStyled(true));
     const title = formatText(app.words, app.title, {});
     document.title = declared ? `${formatText(app.words, declared.title, {})} · ${title}` : title;
     if (app.lang === undefined) document.documentElement.removeAttribute("lang");
@@ -228,11 +243,10 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     const anchor = (event.target as Element).closest?.("a");
     const href = anchor?.getAttribute("href");
     if (!anchor || href == null || anchor.getAttribute("target") || anchor.hasAttribute("download")) return;
-    const target = applicationPath(prefix, href);
-    if (target === undefined || !app?.pages.some((page) => page.path === target)) return;
-    const url = new URL(href, window.location.href);
+    const to = pageAddress(prefix, base.pages, href);
+    if (to === undefined) return;
     event.preventDefault();
-    host.navigate(target + url.search + url.hash);
+    host.navigate(to);
   };
 
   const shown = page?.path === path ? page : undefined;
@@ -241,15 +255,21 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   const queues = useMemo(() => new PressQueues(), [path]);
   const state = failure ? "error" : !app ? "loading" : !declared ? "empty" : shown ? "idle" : "loading";
   // A failure is drawn whatever the styles: it must never be a spinner forever.
-  if (!failure && !styled) return null;
+  if (!failure && (!styled || !controls)) return null;
   const words = app?.words ?? NO_WORDS;
   const say = (id: string, values?: Readonly<Record<string, string>>) => formatWord(words, id, values);
   return (
     <WordsContext.Provider value={words}>
+    <ControlsContext.Provider value={controls ?? BUILT_IN}>
     <HostContext.Provider value={store}>
       <RendererContext.Provider value={base}>
         <div data-telo-part="app" data-compact={compact ? "true" : undefined} onClick={followAnchor}>
           <header data-telo-part="header">
+            {app?.header && app.header.start.length > 0 && (
+              <div data-telo-part="header-start">
+                <Nodes nodes={app.header.start} />
+              </div>
+            )}
             <span data-telo-part="app-title">{app && formatText(words, app.title, {})}</span>
             <nav data-telo-part="nav">
               {app?.pages.map((entry) => {
@@ -270,6 +290,11 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
                 );
               })}
             </nav>
+            {app?.header && app.header.end.length > 0 && (
+              <div data-telo-part="header-end">
+                <Nodes nodes={app.header.end} />
+              </div>
+            )}
           </header>
           <main data-telo-part="main">
             <div data-telo-part="page" data-state={state}>
@@ -314,14 +339,27 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
         )}
       </RendererContext.Provider>
     </HostContext.Provider>
+    </ControlsContext.Provider>
     </WordsContext.Provider>
   );
 }
 
-function useEnvironment(loadModule: AppProps["loadModule"], prefix: string, compact: boolean, declared: AppDocument["pages"] | undefined): RendererEnvironment {
+function useEnvironment(
+  loadModule: AppProps["loadModule"],
+  prefix: string,
+  compact: boolean,
+  declared: AppDocument["pages"] | undefined,
+  lang: string | undefined,
+): RendererEnvironment {
   return useMemo(
-    () => ({ prefix, loadModule: loadModule ?? ((url: string) => import(/* @vite-ignore */ url)), compact, pages: (declared ?? []).map((page) => page.path) }),
-    [prefix, loadModule, compact, declared],
+    () => ({
+      prefix,
+      loadModule: loadModule ?? ((url: string) => import(/* @vite-ignore */ url)),
+      compact,
+      pages: (declared ?? []).map((page) => page.path),
+      lang: lang ?? "und",
+    }),
+    [prefix, loadModule, compact, declared, lang],
   );
 }
 
@@ -339,10 +377,17 @@ function useCompact(below: string | undefined): boolean {
   return compact;
 }
 
+/** What a host mounting the renderer may give it. */
+export interface MountOptions {
+  /** How a browser module — a component library, a theme's controls — is
+   *  loaded by URL; the platform's `import()` when not given. */
+  loadModule?: RendererEnvironment["loadModule"];
+}
+
 /** Render the application into the shell's root element, which says where it
  *  is mounted and which renderer it was served with. */
-export function mount(root: HTMLElement): Root {
+export function mount(root: HTMLElement, options: MountOptions = {}): Root {
   const rendered = createRoot(root);
-  rendered.render(<App prefix={root.dataset.teloMount ?? ""} bundle={root.dataset.teloBundle ?? ""} />);
+  rendered.render(<App prefix={root.dataset.teloMount ?? ""} bundle={root.dataset.teloBundle ?? ""} loadModule={options.loadModule} />);
   return rendered;
 }

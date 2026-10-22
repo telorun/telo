@@ -32,13 +32,14 @@ export interface CollectionView {
   filters: Param[];
 }
 
-export function collectionUrl(basePath: string, view: CollectionView): string {
+/** `url` is the collection's URL as requested: an app-relative `basePath` under the mount. */
+export function collectionUrl(url: string, view: CollectionView): string {
   const query = new URLSearchParams();
   query.set("limit", String(view.limit));
   if (view.cursor !== undefined) query.set("cursor", view.cursor);
   if (view.sort !== undefined) query.set("sort", view.sort);
   for (const [name, value] of view.filters) query.append(name, value);
-  return `${basePath}?${query}`;
+  return `${url}?${query}`;
 }
 
 export interface CollectionPage {
@@ -59,7 +60,7 @@ export async function send(host: Host, url: string, init?: RequestInit): Promise
   return response;
 }
 
-export async function fetchPage(host: Host, basePath: string, view: CollectionView): Promise<CollectionPage> {
-  const response = await send(host, collectionUrl(basePath, view), { headers: { accept: "application/json" } });
+export async function fetchPage(host: Host, url: string, view: CollectionView): Promise<CollectionPage> {
+  const response = await send(host, collectionUrl(url, view), { headers: { accept: "application/json" } });
   return (await response.json()) as CollectionPage;
 }

@@ -860,7 +860,8 @@ schema:
           title: After submit
           description: >-
             What the form does once the record is saved: `close`, `again` — stay
-            open, emptied, for another record — or `keep` its values.
+            open, back at the values a new record starts from, for another — or
+            `keep` its values.
           $ref: "telo://UiKit/AfterCreate"
         unsaved:
           title: Unsaved input

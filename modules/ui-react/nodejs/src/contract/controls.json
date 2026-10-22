@@ -1,0 +1,338 @@
+{
+  "generation": "ui_react_controls-1",
+  "supplied": ["react", "react/jsx-runtime", "react-dom"],
+  "stateAttributes": ["data-state", "data-invalid", "data-placeholder", "data-highlighted", "data-current"],
+  "icons": [
+    "add",
+    "alert",
+    "close",
+    "delete",
+    "edit",
+    "filter",
+    "loading",
+    "next",
+    "previous",
+    "remove",
+    "reset",
+    "sort-ascending",
+    "sort-descending",
+    "sortable"
+  ],
+  "controls": {
+    "TextInput": {
+      "group": "entry",
+      "description": "One line of text: a field's text, a filter typed into, a picker's search.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "part", "name", "type", "value", "onChange", "onCommit"],
+      "roots": ["input", "filter-input", "picker-search"],
+      "rootProp": "part",
+      "subParts": [],
+      "intents": { "onChange": "value", "onCommit": null },
+      "states": [{ "attribute": "data-invalid", "values": ["true"], "on": ["$root"] }],
+      "semantics": true,
+      "portal": []
+    },
+    "NumberInput": {
+      "group": "entry",
+      "description": "A number typed as text: a field's number, a filter's number.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "part", "name", "integer", "value", "onChange", "onCommit"],
+      "roots": ["input", "filter-input"],
+      "rootProp": "part",
+      "subParts": [],
+      "intents": { "onChange": "value", "onCommit": null },
+      "states": [{ "attribute": "data-invalid", "values": ["true"], "on": ["$root"] }],
+      "semantics": true,
+      "portal": []
+    },
+    "TextArea": {
+      "group": "entry",
+      "description": "Text of several lines: a field whose model says the text is a document.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "name", "value", "onChange"],
+      "roots": ["textarea"],
+      "rootProp": null,
+      "subParts": [],
+      "intents": { "onChange": "value" },
+      "states": [{ "attribute": "data-invalid", "values": ["true"], "on": ["$root"] }],
+      "semantics": true,
+      "portal": []
+    },
+    "DateInput": {
+      "group": "entry",
+      "description": "A day: a field's date, a filter's date.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "part", "name", "lang", "value", "onChange", "onCommit"],
+      "roots": ["input", "filter-input"],
+      "rootProp": "part",
+      "subParts": [],
+      "intents": { "onChange": "value", "onCommit": null },
+      "states": [{ "attribute": "data-invalid", "values": ["true"], "on": ["$root"] }],
+      "semantics": true,
+      "portal": []
+    },
+    "DateTimeInput": {
+      "group": "entry",
+      "description": "A day and a time of day: a field's date-time.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "name", "lang", "value", "onChange"],
+      "roots": ["input"],
+      "rootProp": null,
+      "subParts": [],
+      "intents": { "onChange": "value" },
+      "states": [{ "attribute": "data-invalid", "values": ["true"], "on": ["$root"] }],
+      "semantics": true,
+      "portal": []
+    },
+    "TimeInput": {
+      "group": "entry",
+      "description": "A time of day: a field's time.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "name", "lang", "value", "onChange"],
+      "roots": ["input"],
+      "rootProp": null,
+      "subParts": [],
+      "intents": { "onChange": "value" },
+      "states": [{ "attribute": "data-invalid", "values": ["true"], "on": ["$root"] }],
+      "semantics": true,
+      "portal": []
+    },
+    "TagsInput": {
+      "group": "entry",
+      "description": "Values typed one at a time, each removed on its own: a list field's tags, a filter's tags.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "parts", "type", "values", "removeLabels", "onChange"],
+      "roots": ["tags", "filter-tags"],
+      "rootProp": "parts.root",
+      "namedParts": {
+        "tag": ["tag", "filter-tag"],
+        "remove": ["tag-remove", "filter-tag-remove"],
+        "input": ["input", "filter-input"]
+      },
+      "subParts": ["icon"],
+      "intents": { "onChange": "values" },
+      "states": [{ "attribute": "data-invalid", "values": ["true"], "on": ["$root"] }],
+      "semantics": true,
+      "portal": []
+    },
+    "DateRangeInput": {
+      "group": "entry",
+      "description": "Two days and the presets that set them: a date range field.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "fromLabel", "toLabel", "presets", "lang", "weekStart", "value", "onChange"],
+      "roots": ["date-range"],
+      "rootProp": null,
+      "subParts": ["date-range-presets", "date-range-preset", "date-range-from", "date-range-to", "label"],
+      "intents": { "onChange": "value" },
+      "states": [
+        { "attribute": "data-invalid", "values": ["true"], "on": ["$root"] },
+        { "attribute": "data-state", "values": ["on", "off"], "on": ["date-range-preset"] }
+      ],
+      "semantics": false,
+      "portal": []
+    },
+    "Checkbox": {
+      "group": "choice",
+      "description": "Yes or no, drawn before its label: a boolean field.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "name", "checked", "onChange"],
+      "roots": ["checkbox"],
+      "rootProp": null,
+      "subParts": ["icon"],
+      "intents": { "onChange": "checked" },
+      "states": [
+        { "attribute": "data-state", "values": ["checked", "unchecked"], "on": ["$root"] },
+        { "attribute": "data-invalid", "values": ["true"], "on": ["$root"] }
+      ],
+      "semantics": true,
+      "portal": []
+    },
+    "Switch": {
+      "group": "choice",
+      "description": "On or off: a field's toggle, a filter's toggle.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "part", "checked", "onChange"],
+      "roots": ["switch", "filter-toggle"],
+      "rootProp": "part",
+      "subParts": [],
+      "intents": { "onChange": "checked" },
+      "states": [
+        { "attribute": "data-state", "values": ["checked", "unchecked"], "on": ["$root"] },
+        { "attribute": "data-invalid", "values": ["true"], "on": ["$root"] }
+      ],
+      "semantics": true,
+      "portal": []
+    },
+    "Slider": {
+      "group": "choice",
+      "description": "A number dragged between two bounds: a field's slider, a filter's slider, which applies where it is let go.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "part", "min", "max", "step", "value", "valueText", "onChange", "onCommit"],
+      "roots": ["slider", "filter-slider"],
+      "rootProp": "part",
+      "subParts": ["slider-value", "filter-slider-value"],
+      "intents": { "onChange": "value", "onCommit": null },
+      "states": [{ "attribute": "data-invalid", "values": ["true"], "on": ["$root"] }],
+      "semantics": true,
+      "portal": []
+    },
+    "OptionGroup": {
+      "group": "choice",
+      "description": "Options side by side, one or any number chosen: a field's options, a choice field's options, a filter's options, a filter bar's presets.",
+      "props": ["id", "label", "describedBy", "invalid", "required", "disabled", "parts", "multiple", "options", "value", "onChange"],
+      "roots": ["options", "filter-options", "filters-presets"],
+      "rootProp": "parts.root",
+      "namedParts": { "option": ["option", "filter-option", "filters-preset"] },
+      "subParts": [],
+      "intents": { "onChange": "value" },
+      "states": [
+        { "attribute": "data-invalid", "values": ["true"], "on": ["$root"] },
+        { "attribute": "data-state", "values": ["on", "off"], "on": ["$option"] }
+      ],
+      "semantics": true,
+      "portal": []
+    },
+    "Select": {
+      "group": "choice",
+      "layer": true,
+      "description": "One choice from a list that opens over the page: a field's select, a choice field's select, a filter's select.",
+      "props": [
+        "id", "label", "describedBy", "invalid", "required", "disabled", "part", "options", "value", "placeholder", "noneLabel", "open",
+        "loading", "hasMore", "onOpenChange", "onChange", "onEndReached"
+      ],
+      "roots": ["select", "filter-select"],
+      "rootProp": "part",
+      "subParts": ["select-content", "select-item", "icon"],
+      "intents": { "onChange": "value", "onOpenChange": "open", "onEndReached": null },
+      "states": [
+        { "attribute": "data-state", "values": ["open", "closed"], "on": ["$root", "select-content"] },
+        { "attribute": "data-placeholder", "values": [""], "on": ["$root"] },
+        { "attribute": "data-invalid", "values": ["true"], "on": ["$root"] },
+        { "attribute": "data-state", "values": ["checked", "unchecked"], "on": ["select-item"] },
+        { "attribute": "data-highlighted", "values": [""], "on": ["select-item"] }
+      ],
+      "semantics": true,
+      "portal": ["select-content"]
+    },
+    "MultiSelect": {
+      "group": "choice",
+      "layer": true,
+      "description": "Any number of choices from a list that stays open while they are made: a list field's select, a filter's select under `in`.",
+      "props": [
+        "id", "label", "describedBy", "invalid", "required", "disabled", "part", "options", "value", "placeholder", "open", "loading",
+        "hasMore", "onOpenChange", "onChange", "onEndReached"
+      ],
+      "roots": ["select", "filter-select"],
+      "rootProp": "part",
+      "subParts": ["select-content", "select-item", "icon"],
+      "intents": { "onChange": "value", "onOpenChange": "open", "onEndReached": null },
+      "states": [
+        { "attribute": "data-state", "values": ["open", "closed"], "on": ["$root", "select-content"] },
+        { "attribute": "data-placeholder", "values": [""], "on": ["$root"] },
+        { "attribute": "data-invalid", "values": ["true"], "on": ["$root"] },
+        { "attribute": "data-state", "values": ["checked", "unchecked"], "on": ["select-item"] },
+        { "attribute": "data-highlighted", "values": [""], "on": ["select-item"] }
+      ],
+      "semantics": true,
+      "portal": ["select-content"]
+    },
+    "Listbox": {
+      "group": "choice",
+      "description": "The options a picker has read, scrolled for more, chosen one or any number at a time.",
+      "props": ["label", "multiple", "options", "value", "loading", "hasMore", "onChange", "onEndReached"],
+      "roots": ["picker-list"],
+      "rootProp": null,
+      "subParts": ["picker-option", "option-hint"],
+      "intents": { "onChange": "value", "onEndReached": null },
+      "states": [
+        { "attribute": "data-state", "values": ["idle", "loading"], "on": ["$root"] },
+        { "attribute": "data-state", "values": ["on", "off"], "on": ["picker-option"] }
+      ],
+      "semantics": false,
+      "portal": []
+    },
+    "Dialog": {
+      "group": "overlay",
+      "layer": true,
+      "description": "A surface over the page, in its middle: a form's dialog, a picker's, a filter bar's overlay.",
+      "props": ["open", "attributes", "onOpenChange", "children", "modal", "labelledBy", "describedBy"],
+      "roots": ["surface"],
+      "rootProp": null,
+      "subParts": ["surface-overlay"],
+      "intents": { "onOpenChange": "open" },
+      "states": [{ "attribute": "data-state", "values": ["open", "closed"], "on": ["$root", "surface-overlay"] }],
+      "semantics": false,
+      "portal": ["surface", "surface-overlay"]
+    },
+    "Drawer": {
+      "group": "overlay",
+      "layer": true,
+      "description": "A surface over the page, against one of its edges.",
+      "props": ["open", "attributes", "onOpenChange", "children", "modal", "labelledBy", "describedBy", "side"],
+      "roots": ["surface"],
+      "rootProp": null,
+      "subParts": ["surface-overlay"],
+      "intents": { "onOpenChange": "open" },
+      "states": [{ "attribute": "data-state", "values": ["open", "closed"], "on": ["$root", "surface-overlay"] }],
+      "semantics": false,
+      "portal": ["surface", "surface-overlay"]
+    },
+    "Popover": {
+      "group": "overlay",
+      "layer": true,
+      "description": "A surface placed against what opened it, leaving the page uncovered: a form's popover, a filter chip's control.",
+      "props": ["open", "attributes", "onOpenChange", "children", "anchor", "side", "align", "labelledBy"],
+      "roots": ["surface"],
+      "rootProp": null,
+      "subParts": [],
+      "intents": { "onOpenChange": "open" },
+      "states": [{ "attribute": "data-state", "values": ["open", "closed"], "on": ["$root"] }],
+      "semantics": false,
+      "portal": ["surface"]
+    },
+    "Confirmation": {
+      "group": "overlay",
+      "layer": true,
+      "description": "A question that interrupts, answered only by Escape or its buttons: unsaved input, a delete, a prompted row action.",
+      "props": ["open", "attributes", "onOpenChange", "children", "labelledBy", "describedBy"],
+      "roots": ["surface"],
+      "rootProp": null,
+      "subParts": ["surface-overlay"],
+      "intents": { "onOpenChange": "open" },
+      "states": [{ "attribute": "data-state", "values": ["open", "closed"], "on": ["$root", "surface-overlay"] }],
+      "semantics": false,
+      "portal": ["surface", "surface-overlay"]
+    },
+    "Menu": {
+      "group": "overlay",
+      "layer": true,
+      "description": "A list of things to do, opened from the renderer's button: the filters a bar can add, the links of a menu node.",
+      "props": ["open", "items", "onOpenChange", "onChange", "children"],
+      "roots": ["menu"],
+      "rootProp": null,
+      "subParts": ["menu-item"],
+      "intents": { "onOpenChange": "open", "onChange": null },
+      "states": [
+        { "attribute": "data-state", "values": ["open", "closed"], "on": ["$root"] },
+        { "attribute": "data-highlighted", "values": [""], "on": ["menu-item"] },
+        { "attribute": "data-current", "values": ["true"], "on": ["menu-item"] }
+      ],
+      "semantics": false,
+      "portal": ["menu"]
+    },
+    "Tooltip": {
+      "group": "overlay",
+      "layer": true,
+      "description": "The name of an icon-only button, shown on hover and focus.",
+      "props": ["open", "label", "onOpenChange", "children"],
+      "roots": ["tooltip"],
+      "rootProp": null,
+      "subParts": [],
+      "intents": { "onOpenChange": "open" },
+      "states": [{ "attribute": "data-state", "values": ["closed", "delayed-open", "instant-open"], "on": ["$root"] }],
+      "semantics": false,
+      "portal": ["tooltip"]
+    },
+    "Icon": {
+      "group": "glyph",
+      "description": "A glyph the renderer draws by its meaning, hidden from assistive technology.",
+      "props": ["name"],
+      "roots": ["icon"],
+      "rootProp": null,
+      "subParts": [],
+      "intents": {},
+      "states": [],
+      "semantics": false,
+      "portal": []
+    }
+  }
+}

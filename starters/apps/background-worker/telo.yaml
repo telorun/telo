@@ -409,6 +409,7 @@ kind: UiReact.App
 metadata: { name: ui }
 title: !cel "'Worker ' + variables.instanceId"
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Queue

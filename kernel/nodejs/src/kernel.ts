@@ -1,6 +1,7 @@
 import {
   AnalysisRegistry,
   authoredModuleMetadata,
+  browserExportAnnotationProblems,
   browserExportProblems,
   browserExportSites,
   buildAccessorSites,
@@ -172,7 +173,11 @@ import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-se
 import { refuseMisplacedHostEntries, refuseRelativeHostPaths } from "./host-paths.js";
 import { refuseMalformedFormats } from "./telo-format-results.js";
 import { refuseComputedRefSlots } from "./refuse-computed-ref-slots.js";
-import { resolveBrowserEntryFiles } from "./browser-entry-resolution.js";
+import {
+  controllerBrowserEntryModule,
+  directImportSources,
+  resolveBrowserEntryFiles,
+} from "./browser-entry-resolution.js";
 import { refuseNonChainAccessors, withAccessorBindings } from "./accessor-bindings.js";
 import { refuseMistypedResults } from "./compiled-results.js";
 import {
@@ -332,6 +337,8 @@ export class Kernel implements IKernel {
    *  definition's `metadata.source` names the file that declared it. Rebuilt on
    *  every `load()`. */
   private readonly nativeFileModules = new Map<string, NativeFileModule>();
+  /** The owner sources each module imports directly, by its owner's source. */
+  private readonly directImports = new Map<string, string[]>();
   /** Each module file's `lang:` — the language the texts it writes are in — by
    *  the file's source, partials included. */
   private readonly moduleLangs = new Map<string, string | null>();
@@ -482,7 +489,8 @@ export class Kernel implements IKernel {
    * here — the kernel stands a scope up at one top-level field — so a
    * dependency's kind is refused too (`telo check`'s twin: `SCOPE_SLOT_MISPLACED`).
    * So is one typing an accessor field's value by a text fragment, which its
-   * controller would receive as a binding (`TEXT_SLOT_ACCESSOR`).
+   * controller would receive as a binding (`TEXT_SLOT_ACCESSOR`), and one whose
+   * `x-telo-browser-export` is malformed (`BROWSER_EXPORT_ANNOTATION_INVALID`).
    */
   registerResourceDefinition(definition: ResourceDefinition): void {
     const misplaced = scopeSlotProblems(definition);
@@ -511,6 +519,13 @@ export class Kernel implements IKernel {
     );
     if (textValues) {
       throw new RuntimeError("ERR_TEXT_VALUES_INVALID", `${definition.kind} ${textValues.message}`);
+    }
+    const [browserExport] = browserExportAnnotationProblems(String(definition.metadata?.name), definition.schema);
+    if (browserExport) {
+      throw new RuntimeError(
+        "ERR_BROWSER_EXPORT_ANNOTATION_INVALID",
+        `${definition.kind} ${browserExport.message}`,
+      );
     }
     const [catalogSet] = textCatalogSetProblems(String(definition.metadata?.name), definition.schema, (ref) => {
       const schema =
@@ -1991,6 +2006,7 @@ export class Kernel implements IKernel {
     this.moduleArtifacts.clear();
     this.siblingLibraries.clear();
     this.nativeFileModules.clear();
+    this.directImports.clear();
     this.moduleLangs.clear();
     this.nativeFileUris.clear();
     this.stagedEntryMatches.clear();
@@ -2030,6 +2046,7 @@ export class Kernel implements IKernel {
       if (artifact) this.moduleArtifacts.set(file.source, artifact);
       const native: NativeFileModule = {
         source: file.source,
+        ...(owner.name !== undefined ? { name: owner.name } : {}),
         native: owner.native,
         sources: owner.sources,
         assetPatterns: owner.assetPatterns,
@@ -2041,6 +2058,8 @@ export class Kernel implements IKernel {
         this.moduleLangs.set(declaring.source, lang);
       }
     }
+
+    for (const [source, targets] of directImportSources(graph)) this.directImports.set(source, targets);
 
     // The sibling-library join is a pure function of the graph and these three
     // lookups; it lives beside the model it produces (`sibling-libraries.ts`).
@@ -2121,13 +2140,23 @@ export class Kernel implements IKernel {
   }
 
   /** As {@link resolveBrowserEntry}, against the module that declared
-   *  `resolvedKind` — the module whose controller is asking. */
-  resolveControllerBrowserEntry(
+   *  `resolvedKind` — the module whose controller is asking — and, when it
+   *  declares no such entry, the one module it imports directly that does. */
+  async resolveControllerBrowserEntry(
     resolvedKind: string | undefined,
     specifier: string,
     asked: string,
   ): Promise<BrowserEntryFiles> {
-    return resolveBrowserEntryFiles(specifier, this.moduleDeclaringKind(resolvedKind), this, asked);
+    const module = this.moduleDeclaringKind(resolvedKind);
+    const imports = (module ? this.directImports.get(module.source) ?? [] : [])
+      .map((source) => this.nativeFileModules.get(source))
+      .filter((imported): imported is NativeFileModule => imported !== undefined);
+    return resolveBrowserEntryFiles(
+      specifier,
+      controllerBrowserEntryModule(specifier, module, imports, asked),
+      this,
+      asked,
+    );
   }
 
   /** The module one of whose files resolved from `source`: its owner manifest's
@@ -3203,28 +3232,24 @@ export class Kernel implements IKernel {
 /**
  * The JSON pointer to an inline declaration, from the origin the loader stamped.
  *
- * `xTeloOrigin.pathFromParent` is a dotted path with `[N]` indices — the loader's
- * own spelling, which addresses the manifest tree and nothing else. A pointer is
- * what crosses a boundary, so the conversion happens here rather than being left
- * to each recipient to reinvent: segments are identifiers and indices, so the
- * rewrite is mechanical and total.
+ * `xTeloOrigin.keysFromParent` is the place as keys and indices — exact for a
+ * key holding a dot, which the dotted `pathFromParent` spelling is not. A pointer
+ * is what crosses a boundary, so the conversion happens here rather than being
+ * left to each recipient to reinvent.
  */
 function originPointerOf(resource: ResourceManifest): string | undefined {
   const origin = resource.metadata?.xTeloOrigin as
-    | { parentName?: unknown; pathFromParent?: unknown; stepTarget?: unknown }
+    | { parentName?: unknown; keysFromParent?: unknown; stepTarget?: unknown }
     | undefined;
-  if (typeof origin?.parentName !== "string" || typeof origin.pathFromParent !== "string") {
+  if (typeof origin?.parentName !== "string" || !Array.isArray(origin.keysFromParent)) {
     return undefined;
   }
   // A step target is identified by its name alone, which already encodes the
   // step's path: that is the identity the step engine minted before extraction
   // moved to load, and a journal compares it without a pointer.
   if (origin.stepTarget === true) return undefined;
-  const pointer = origin.pathFromParent
-    .replace(/\[(\d+)\]/g, ".$1")
-    .split(".")
-    .filter((segment) => segment.length > 0)
-    .map((segment) => segment.replace(/~/g, "~0").replace(/\//g, "~1"))
+  const pointer = (origin.keysFromParent as unknown[])
+    .map((key) => String(key).replace(/~/g, "~0").replace(/\//g, "~1"))
     .join("/");
   return `${origin.parentName}#/${pointer}`;
 }

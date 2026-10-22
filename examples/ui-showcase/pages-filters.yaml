@@ -1,0 +1,268 @@
+# Filters: several bars over the tasks, between them every placement, every
+# value of the bar's policy, every control a filter is entered with, presets,
+# pinned filters and defaults, and each place a bar keeps its state. Every bar
+# holds the same table, which obeys the bar around it.
+kind: Ui.View
+metadata:
+  name: filtersPage
+content:
+  type: stack
+  children:
+    # ---- Everything derived ----
+    - { type: text, text: Every filter the collection accepts, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        With no fields written, the bar draws one control per filter the collection accepts, in its order and
+        from the model's property: a list for an enumeration or a yes/no value, a typed box otherwise, and one
+        label over the two bounds of a range. It sits above the table, applies a choice at once and typed text
+        on Enter, and keeps nothing between visits.
+    - type: composite
+      ref:
+        kind: Ui.Filters
+        model: !ref Task
+        collection: !ref taskModel
+        content: { type: composite, ref: !ref taskList }
+
+    # ---- Every control ----
+    - { type: text, text: Every control, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        Each way a filter is entered: typed text, options side by side, a list, typed tags, a slider, a switch,
+        and two dates under one label. The project filter is drawn nowhere and only a preset sets it. Status
+        starts at its default, and a preset sets the filters the presets name and clears the others they name.
+        Chips summarise what is chosen, and the values are part of the address. Below the breakpoint the bar
+        folds, and the pinned text filter stays outside the fold.
+    - type: composite
+      ref:
+        kind: Ui.Filters
+        model: !ref Task
+        collection: !ref taskModel
+        fields:
+          - { property: title, operator: contains, pinned: true }
+          - { property: status, operator: in, control: options, default: [ todo, doing, review ] }
+          - { property: label, operator: eq, control: select }
+          - { property: assigneeEmail, operator: in, control: tags }
+          - { property: priority, operator: gte, control: slider }
+          - { property: blocked, operator: eq, control: toggle }
+          - { property: dueOn, operator: gte }
+          - { property: dueOn, operator: lte }
+          - { property: projectCode, operator: eq, control: none }
+        presets:
+          - label: Urgent
+            values:
+              - { property: priority, operator: gte, value: 4 }
+              - { property: status, operator: in, value: [ todo, doing ] }
+          - label: Atlas only
+            values:
+              - { property: projectCode, operator: eq, value: TEL-42 }
+          - label: Stuck
+            values:
+              - { property: blocked, operator: eq, value: true }
+        policy:
+          summary: chips
+          placement: { kind: Ui.AbovePlacement, compact: { kind: Ui.CollapsiblePlacement } }
+          state: { key: board, address: true }
+        content: { type: composite, ref: !ref taskList }
+
+    # ---- Beside, as chips, while typing ----
+    - { type: text, text: "Beside, as chips, while typing", style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The controls sit in a column at the start edge. Only the filters you choose are on show: add one from
+        the bar's list, and removing it clears it. Each filter is a chip naming its value, which opens its
+        control. Typed text applies after a pause, and two bounds of a number are captioned after and before.
+        The choice is kept in this browser across visits. Below the breakpoint the bar opens in a sheet from
+        the bottom.
+    - type: composite
+      ref:
+        kind: Ui.Filters
+        model: !ref Task
+        collection: !ref taskModel
+        fields:
+          - { property: title, operator: contains }
+          - { property: status, operator: eq }
+          - { property: label, operator: in }
+          - { property: estimate, operator: gt }
+          - { property: estimate, operator: lt }
+          - { property: assigneeEmail, operator: eq }
+        policy:
+          show: chosen
+          controls: chips
+          apply: typing
+          placement:
+            kind: Ui.AsidePlacement
+            side: start
+            compact: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Drawer, side: bottom } }
+          state: { key: aside, store: { kind: Ui.LocalStore } }
+        content: { type: composite, ref: !ref taskList }
+
+    # ---- Beside at the end, applied by a button ----
+    - { type: text, text: "Beside at the end, applied by a button", style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The controls sit at the end edge, and a change waits for Apply, while a preset, Reset and removing a
+        summary chip apply at once. Several assignees are typed separated by commas. The choice is kept for
+        this tab only, and survives a reload.
+    - type: composite
+      ref:
+        kind: Ui.Filters
+        model: !ref Task
+        collection: !ref taskModel
+        fields:
+          - { property: status, operator: in }
+          - { property: assigneeEmail, operator: in }
+          - { property: priority, operator: lte }
+          - { property: dueOn, operator: lte }
+        presets:
+          - label: Due by October
+            values:
+              - { property: dueOn, operator: lte, value: "2026-10-31" }
+              - { property: status, operator: in, value: [ todo, doing, review ] }
+        policy:
+          apply: button
+          summary: chips
+          placement: { kind: Ui.AsidePlacement, side: end }
+          state: { key: review, store: { kind: Ui.SessionStore } }
+        content: { type: composite, ref: !ref taskList }
+
+    # ---- Folded, open ----
+    - { type: text, text: "Folded, starting open", style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The controls fold behind a toggle that counts the filters holding a value, and start unfolded. The
+        pinned text filter stays outside the fold, and the others are added from the bar's list. Status
+        starts at in progress; removing it clears that default too, and Reset brings it back. The values are
+        kept both in the address and in this browser, the address winning, and the fold you choose is
+        remembered.
+    - type: composite
+      ref:
+        kind: Ui.Filters
+        model: !ref Task
+        collection: !ref taskModel
+        fields:
+          - { property: title, operator: contains, pinned: true }
+          - { property: status, operator: eq, default: doing }
+          - { property: blocked, operator: eq }
+          - { property: label, operator: eq }
+        policy:
+          show: chosen
+          placement: { kind: Ui.CollapsiblePlacement, open: true }
+          state: { key: folded, address: true, store: { kind: Ui.LocalStore } }
+        content: { type: composite, ref: !ref taskList }
+
+    # ---- Folded, closed ----
+    - { type: text, text: "Folded, starting closed", style: heading }
+    - type: text
+      style: muted
+      text: >-
+        Folded to begin with. The pinned text filter, Apply and Reset stay outside the fold. The label starts
+        at its default, bugs, until it is changed, and Reset brings the default back.
+    - type: composite
+      ref:
+        kind: Ui.Filters
+        model: !ref Task
+        collection: !ref taskModel
+        fields:
+          - { property: title, operator: contains, pinned: true }
+          - { property: label, operator: in, control: options, default: [ bug ] }
+          - { property: status, operator: in, control: select }
+        policy:
+          apply: button
+          placement: { kind: Ui.CollapsiblePlacement, open: false }
+        content: { type: composite, ref: !ref taskList }
+
+    # ---- In a dialog ----
+    - { type: text, text: In a dialog, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The controls open in a small dialog from a button that counts the filters holding a value, and close
+        with Done. The open dialog is part of the address, so a link opens it. The pinned text filter stays
+        beside the button, and chips summarise what is chosen.
+    - type: composite
+      ref:
+        kind: Ui.Filters
+        model: !ref Task
+        collection: !ref taskModel
+        fields:
+          - { property: title, operator: contains, pinned: true }
+          - { property: status, operator: in }
+          - { property: label, operator: in }
+          - { property: blocked, operator: eq }
+        policy:
+          summary: chips
+          placement:
+            kind: Ui.OverlayPlacement
+            surface: { kind: Ui.Dialog, size: small, address: { name: taskFilters } }
+        content: { type: composite, ref: !ref taskList }
+
+    # ---- In a drawer ----
+    - { type: text, text: In a drawer, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The controls open in a drawer from the start edge, which a click outside does not close. Typed values
+        apply after a pause.
+    - type: composite
+      ref:
+        kind: Ui.Filters
+        model: !ref Task
+        collection: !ref taskModel
+        fields:
+          - { property: priority, operator: gte, control: slider }
+          - { property: estimate, operator: lt }
+          - { property: dueOn, operator: gte }
+        policy:
+          apply: typing
+          placement:
+            kind: Ui.OverlayPlacement
+            surface: { kind: Ui.Drawer, side: start, size: small, dismiss: { outside: false } }
+        content: { type: composite, ref: !ref taskList }
+
+    # ---- In a popover ----
+    - { type: text, text: In a popover, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The controls open in a card under the button, aligned to its end; below the breakpoint, in a sheet from
+        the bottom.
+    - type: composite
+      ref:
+        kind: Ui.Filters
+        model: !ref Task
+        collection: !ref taskModel
+        fields:
+          - { property: status, operator: eq, control: options }
+          - { property: assigneeEmail, operator: eq }
+        policy:
+          placement:
+            kind: Ui.OverlayPlacement
+            surface:
+              kind: Ui.Popover
+              side: bottom
+              align: end
+              compact: { kind: Ui.Drawer, side: bottom }
+        content: { type: composite, ref: !ref taskList }
+---
+# The table every bar on the page holds: five tasks to a page, sortable by the
+# columns the collection sorts by.
+kind: Ui.Table
+metadata:
+  name: taskList
+model: !ref Task
+collection: !ref taskModel
+source: { basePath: /api/tasks }
+pageSize: 5
+columns:
+  - value: !cel "row.title"
+  - value: !cel "row.status"
+  - value: !cel "row.label"
+  - value: !cel "row.priority"
+  - value: !cel "row.estimate"
+  - value: !cel "row.dueOn"
+  - value: !cel "row.assigneeEmail"

@@ -3,7 +3,7 @@ import { readBinding, styleAttribute, type Binding } from "./bindings.js";
 import { ResponseWatchContext, useHost, type ResponseWatcher } from "./host.js";
 import { Node, type SpecNode } from "./nodes.js";
 import { queryRoot } from "./query-root.js";
-import { RendererContext, RootsContext, VisibleContext } from "./renderer-context.js";
+import { RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
 import { requestErrorOf, unansweredError, type RequestError } from "./ui-error.js";
 import { findingText, useSay, type Say } from "./texts.js";
 import { validate, type JsonSchema } from "./validation.js";
@@ -44,7 +44,7 @@ function addressOf(prefix: string, path: string, params: Record<string, Binding>
     if (value.present && ["string", "number", "boolean"].includes(typeof value.value)) search.set(name, String(value.value));
   }
   const query = search.toString();
-  return `${path.startsWith("/") ? prefix : ""}${path}${query ? `?${query}` : ""}`;
+  return `${underMount(prefix, path)}${query ? `?${query}` : ""}`;
 }
 
 /**

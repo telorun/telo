@@ -1,0 +1,67 @@
+kind: Telo.Library
+metadata:
+  name: UiShowcaseBrand
+  version: 1.0.0
+  description: >-
+    A complete look for declarative screens in warm paper, ink and a rust
+    accent: every part the renderer draws is styled, its brand values are
+    design tokens, and its choice lists, dialogs, drawers, menus and tooltips
+    are drawn with Radix. The importer may ship the typeface the look names.
+# A library rather than a theme written inline at the application, so the
+# example's tests can check the very theme the `/brand` mount draws with.
+imports:
+  Ui: ../../../modules/ui
+  UiReact: ../../../modules/ui-react
+  Radix: ../../../modules/ui-react-radix
+  Font: ../../../modules/font
+exports:
+  resources: [ theme ]
+---
+# Radix's eleven controls under this library's own stylesheet and token values.
+# The typefaces are named here and shipped by whoever draws with the theme: the
+# example's `/brand` application serves Inter's faces through its own tokens.
+kind: UiReact.Theme
+metadata:
+  name: theme
+tokens:
+  kind: Ui.DesignTokens
+  color.background: "#f8f4ec"
+  color.surface: "#fffdf8"
+  color.text: "#2b2118"
+  color.muted: "#7a6a5a"
+  color.border: "#e3d8c6"
+  color.accent: "#9a3412"
+  color.accent-text: "#fff7ed"
+  color.danger: "#b91c1c"
+  color.warning: "#b45309"
+  color.success: "#3f6212"
+  radius.sm: "3px"
+  radius.md: "6px"
+  radius.lg: "12px"
+  space.xs: "0.25rem"
+  space.sm: "0.5rem"
+  space.md: "0.875rem"
+  space.lg: "1.25rem"
+  space.xl: "2rem"
+  shadow.sm: "0 1px 2px rgb(43 33 24 / 10%)"
+  shadow.md: "0 8px 24px rgb(43 33 24 / 14%)"
+  font.body: !ref inter
+  font.heading: !ref inter
+  font.mono: { kind: Font.Family, family: Courier New }
+  font-size.sm: "0.8125rem"
+  font-size.md: "0.9375rem"
+  font-size.lg: "1.125rem"
+  font-size.xl: "1.375rem"
+  line-height.body: "1.6"
+  line-height.heading: "1.2"
+stylesheets:
+  - !module-path ./brand.css
+controls:
+  - !ref Radix.controls
+---
+# The typefaces by name alone: a family with no faces is drawn from what the
+# viewer has. Named because two tokens use it.
+kind: Font.Family
+metadata:
+  name: inter
+family: Inter

@@ -12,6 +12,10 @@ metadata: { name: direct }
 text: { text: Open, context: verb }
 peer: !ref computed
 ---
+kind: Lib.BoundLabel
+metadata: { name: bound }
+text: { text: Open, context: noun }
+---
 kind: Lib.Label
 metadata: { name: computed }
 text: !cel "'Hello ' + 'there'"

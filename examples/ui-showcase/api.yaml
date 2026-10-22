@@ -1,0 +1,2056 @@
+# The routes crud does not give, over the same database: the records the
+# readers show, the operations the buttons run, the session the sign-in gate
+# reads, and the language and brand switches. Each speaks the contract its
+# screen reads — the record contract for a reader, the action contract for a
+# button.
+#
+# Three cookies carry state between requests: `showcase-session`, the token of
+# a row in `sessions` that signing in writes and signing out deletes,
+# `showcase-lang`, which every application's `lang` reads before the
+# Accept-Language header, and `showcase-brand`, which picks the brand tokens of
+# the `/` application.
+
+# ---- Shapes the routes answer and the screens read ----
+# The studio, as the overview reads it: one value of each shape a `value` node
+# presents its own way, and the projects still running.
+kind: Telo.JsonSchema
+metadata:
+  name: Team
+schema:
+  type: object
+  required: [ name, homepage, guide, handbook, contact, mirror, foundedOn, updatedAt, hiring, plan, projectCount, latestProject, projects ]
+  properties:
+    name: { type: string, title: Team }
+    homepage: { type: string, title: Homepage, format: uri }
+    guide: { type: string, title: Guide, format: uri-reference }
+    handbook: { type: string, title: Handbook, format: uri-reference }
+    contact: { type: string, title: Contact, format: uri }
+    mirror: { type: string, title: Mirror, format: uri-reference }
+    foundedOn: { type: string, title: Founded, format: date }
+    updatedAt: { type: string, title: Updated, format: date-time }
+    hiring: { type: boolean, title: Hiring }
+    plan:
+      type: string
+      title: Plan
+      x-telo-text-context: subscription
+      enum: [ free, team, enterprise ]
+      oneOf:
+        - { const: free, title: Free, x-telo-text-context: subscription }
+        - { const: team, title: Team, x-telo-text-context: subscription }
+        - { const: enterprise, title: Enterprise, x-telo-text-context: subscription }
+    projectCount: { type: integer, title: Projects }
+    latestProject: { type: string, title: Latest project }
+    # Each a project as the projects collection reads it, members inherited
+    # along `extends` included.
+    projects: { type: array, items: !ref Project }
+---
+# One project as the conditions and data pages read it. `note` is null when the
+# project has none; `codename` is left out when it has none.
+kind: Telo.JsonSchema
+metadata:
+  name: ProjectSummary
+schema:
+  type: object
+  required: [ code, name, status, memberCount, velocity, tags, note, lead ]
+  properties:
+    code: { type: string, title: Code }
+    name: { type: string, title: Name }
+    status: { type: string, enum: [ active, paused, done ] }
+    memberCount: { type: integer, title: Members }
+    velocity: { type: number, title: Velocity }
+    tags: { type: array, items: { type: string } }
+    note: { type: [ string, "null" ] }
+    codename: { type: string }
+    lead:
+      type: object
+      required: [ name, email, role ]
+      properties:
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: ProjectPeople
+schema:
+  type: object
+  required: [ people ]
+  properties:
+    people:
+      type: array
+      items:
+        type: object
+        required: [ name, email, role ]
+        properties:
+          name: { type: string, title: Name }
+          email: { type: string, title: E-mail }
+          role: { type: string, title: Role }
+---
+# A tag added to the featured project. The route restates it as its body.
+kind: Telo.JsonSchema
+metadata:
+  name: NewTag
+schema:
+  type: object
+  additionalProperties: false
+  required: [ tag ]
+  properties:
+    tag: { type: string, title: Tag, pattern: "^[a-z][a-z0-9-]*$", maxLength: 20 }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: TagAnswer
+schema:
+  type: object
+  required: [ tag, count ]
+  properties:
+    tag: { type: string }
+    count: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Clock
+schema:
+  type: object
+  required: [ readAt ]
+  properties:
+    readAt: { type: string, title: Read at, format: date-time }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Session
+schema:
+  type: object
+  required: [ signedIn ]
+  properties:
+    signedIn: { type: boolean }
+---
+# Who signs in: a member of the team, by e-mail.
+kind: Telo.JsonSchema
+metadata:
+  name: SignIn
+schema:
+  type: object
+  additionalProperties: false
+  required: [ email ]
+  properties:
+    email: { type: string, title: E-mail, minLength: 3, default: ada@northwind.example }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Account
+schema:
+  type: object
+  required: [ name, email, memberSince ]
+  properties:
+    name: { type: string, title: Name }
+    email: { type: string, title: E-mail }
+    memberSince: { type: string, title: Member since, format: date }
+---
+# Who a task is assigned to, as the task board nests it.
+kind: Telo.JsonSchema
+metadata:
+  name: Member
+schema:
+  type: object
+  required: [ name, contact ]
+  properties:
+    name: { type: string, title: Assignee }
+    contact: { type: string, title: Contact, format: uri }
+---
+# One task on the task board, its assignee and project nested in it: the
+# assignee through a named shape, the project through one of this shape's own
+# definitions, whose brief is a further reference titled where it is used.
+kind: Telo.JsonSchema
+metadata:
+  name: TaskCard
+schema:
+  type: object
+  required: [ id, title, project ]
+  $defs:
+    ProjectRef:
+      type: object
+      required: [ code, name ]
+      properties:
+        code: { type: string, title: Project }
+        name: { type: string, title: Project name }
+        brief: { $ref: "#/$defs/PageAddress", title: Brief }
+    PageAddress: { type: string, title: Address, format: uri-reference }
+  properties:
+    id: { type: integer }
+    title: { type: string, title: Task }
+    assignee: !ref Member
+    project: { $ref: "#/$defs/ProjectRef" }
+---
+# A button that sends nothing.
+kind: Telo.JsonSchema
+metadata:
+  name: NoInput
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+---
+# ---- Shapes of the forms page ----
+# Work asked of the studio: one property of each type a form derives a control
+# for, and an access code the form never keeps.
+kind: Telo.JsonSchema
+metadata:
+  name: Request
+schema:
+  type: object
+  additionalProperties: false
+  required: [ title, kind ]
+  properties:
+    title: { type: string, title: Title, minLength: 3, maxLength: 60 }
+    kind:
+      type: string
+      title: Kind of work
+      enum: [ design, build, write, research ]
+      oneOf:
+        - { const: design, title: Design }
+        - { const: build, title: Building }
+        - { const: write, title: Writing }
+        - { const: research, title: Research }
+      default: design
+    seats: { type: integer, title: People needed, minimum: 1, maximum: 8, default: 2 }
+    budget: { type: number, title: Budget, minimum: 0, multipleOf: 50 }
+    startOn: { type: string, title: Start, format: date }
+    kickoffAt: { type: string, title: Kick-off, format: date-time }
+    callAt: { type: string, title: Daily call, format: time }
+    details: { type: string, title: Details, description: Markdown is welcome., contentMediaType: text/markdown, maxLength: 2000 }
+    urgent: { type: boolean, title: Urgent }
+    channels:
+      type: array
+      title: Keep me posted by
+      uniqueItems: true
+      items:
+        type: string
+        enum: [ email, chat, phone ]
+        oneOf:
+          - { const: email, title: E-mail }
+          - { const: chat, title: Chat }
+          - { const: phone, title: Phone }
+    keywords:
+      type: array
+      title: Keywords
+      description: Lower-case words; Enter or a comma adds one.
+      maxItems: 5
+      items: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
+    accessCode: { type: string, title: Site access code, description: Never kept between visits., minLength: 4, writeOnly: true }
+---
+# The latest requests, as the forms page lists them.
+kind: Telo.JsonSchema
+metadata:
+  name: RequestList
+schema:
+  type: object
+  required: [ requests ]
+  properties:
+    requests:
+      type: array
+      items:
+        type: object
+        required: [ id, title, kind, urgent, receivedAt ]
+        properties:
+          id: { type: integer }
+          title: { type: string, title: Title }
+          kind:
+            type: string
+            title: Kind of work
+            enum: [ design, build, write, research ]
+            oneOf:
+              - { const: design, title: Design }
+              - { const: build, title: Building }
+              - { const: write, title: Writing }
+              - { const: research, title: Research }
+          seats: { type: integer, title: People needed }
+          startOn: { type: string, title: Start, format: date }
+          urgent: { type: boolean, title: Urgent }
+          receivedAt: { type: string, title: Received, format: date-time }
+---
+# Who works on a project and when: a project, a lead of a role, the people
+# around the lead, and a period of dates.
+kind: Telo.JsonSchema
+metadata:
+  name: Booking
+schema:
+  type: object
+  additionalProperties: false
+  required: [ projectCode, leadRole, leadEmail, sponsorEmail, period ]
+  properties:
+    projectCode: { type: string, title: Project, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+    leadRole:
+      type: string
+      title: Lead's role
+      enum: [ manager, engineer, designer, writer ]
+      oneOf:
+        - { const: manager, title: Manager }
+        - { const: engineer, title: Engineer }
+        - { const: designer, title: Designer }
+        - { const: writer, title: Writer }
+      default: engineer
+    leadEmail: { type: string, title: Lead }
+    reviewerEmails: { type: array, title: Reviewers, maxItems: 3, uniqueItems: true, items: { type: string } }
+    sponsorEmail: { type: string, title: Sponsor, default: ada@northwind.example }
+    helperEmails: { type: array, title: Helpers, uniqueItems: true, items: { type: string } }
+    period:
+      type: object
+      title: Period
+      description: The studio books a year at most.
+      required: [ from, to ]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+    onSite: { type: boolean, title: On site, default: false }
+    site: { type: string, title: Site address, minLength: 3 }
+    notes: { type: string, title: Notes, contentMediaType: text/plain, maxLength: 500 }
+---
+# The latest bookings, with the names of the people booked.
+kind: Telo.JsonSchema
+metadata:
+  name: BookingList
+schema:
+  type: object
+  required: [ bookings ]
+  properties:
+    bookings:
+      type: array
+      items:
+        type: object
+        required: [ id, project, lead, sponsor, from, to ]
+        properties:
+          id: { type: integer }
+          project: { type: string, title: Project }
+          lead: { type: string, title: Lead }
+          sponsor: { type: string, title: Sponsor }
+          from: { type: string, title: From, format: date }
+          to: { type: string, title: To, format: date }
+---
+# ---- Shapes of the actions page ----
+# What a computed estimate is asked for, and what it answers.
+kind: Telo.JsonSchema
+metadata:
+  name: EstimateRequest
+schema:
+  type: object
+  additionalProperties: false
+  required: [ projectCode, pace ]
+  properties:
+    projectCode: { type: string, title: Project, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+    labels:
+      type: array
+      title: Only these labels
+      uniqueItems: true
+      items:
+        type: string
+        enum: [ bug, feature, chore, docs ]
+        oneOf:
+          - { const: bug, title: Bug }
+          - { const: feature, title: Feature }
+          - { const: chore, title: Chore }
+          - { const: docs, title: Docs }
+    includeBlocked: { type: boolean, title: Count blocked tasks }
+    pace: { type: integer, title: Hours a week, minimum: 4, maximum: 40, multipleOf: 4, default: 20 }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: EstimateAnswer
+schema:
+  type: object
+  required: [ projectCode, hours, tasks, weeks, finishBy, breakdown ]
+  properties:
+    projectCode: { type: string }
+    hours: { type: number }
+    tasks: { type: integer }
+    weeks: { type: integer }
+    finishBy: { type: string, title: Done by, format: date }
+    breakdown:
+      type: array
+      items:
+        type: object
+        required: [ label, tasks, hours ]
+        properties:
+          label:
+            type: string
+            title: Label
+            enum: [ bug, feature, chore, docs, none ]
+            oneOf:
+              - { const: bug, title: Bug }
+              - { const: feature, title: Feature }
+              - { const: chore, title: Chore }
+              - { const: docs, title: Docs }
+              - { const: none, title: No label }
+          tasks: { type: integer, title: Tasks }
+          hours: { type: number, title: Hours }
+---
+# An answer in days, which the estimate route does not give: an action reading
+# its answer through this shape is refused what the route sends.
+kind: Telo.JsonSchema
+metadata:
+  name: EstimateInDays
+schema:
+  type: object
+  required: [ days ]
+  properties:
+    days: { type: integer, title: Days }
+---
+# A task given to someone. Only the task is required, so a row asks for the
+# person in a dialog; the route refuses an assignment that names nobody.
+kind: Telo.JsonSchema
+metadata:
+  name: Assignment
+schema:
+  type: object
+  additionalProperties: false
+  required: [ id ]
+  properties:
+    id: { type: integer, title: Task number, minimum: 1 }
+    assigneeEmail: { type: string, title: Assignee's e-mail, minLength: 3 }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: AssignAnswer
+schema:
+  type: object
+  required: [ id, title, assignee ]
+  properties:
+    id: { type: integer }
+    title: { type: string }
+    assignee: { type: string }
+---
+# A task moved to another status.
+kind: Telo.JsonSchema
+metadata:
+  name: StatusChange
+schema:
+  type: object
+  additionalProperties: false
+  required: [ id, status ]
+  properties:
+    id: { type: integer, title: Task number, minimum: 1 }
+    status:
+      type: string
+      title: Status
+      enum: [ todo, doing, review, done ]
+      oneOf:
+        - { const: todo, title: To do }
+        - { const: doing, title: In progress }
+        - { const: review, title: In review }
+        - { const: done, title: Finished }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: StatusAnswer
+schema:
+  type: object
+  required: [ id, title, status ]
+  properties:
+    id: { type: integer }
+    title: { type: string }
+    status:
+      type: string
+      title: Status
+      enum: [ todo, doing, review, done ]
+      oneOf:
+        - { const: todo, title: To do }
+        - { const: doing, title: In progress }
+        - { const: review, title: In review }
+        - { const: done, title: Finished }
+---
+# How a project's tasks stand.
+kind: Telo.JsonSchema
+metadata:
+  name: TaskCounts
+schema:
+  type: object
+  required: [ code, todo, doing, review, done, blocked ]
+  properties:
+    code: { type: string }
+    todo: { type: integer }
+    doing: { type: integer }
+    review: { type: integer }
+    done: { type: integer }
+    blocked: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: ProjectPick
+schema:
+  type: object
+  additionalProperties: false
+  required: [ code ]
+  properties:
+    code: { type: string, title: Project, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+---
+# Where a project's tasks are listed: a page of this application.
+kind: Telo.JsonSchema
+metadata:
+  name: ProjectPage
+schema:
+  type: object
+  required: [ page, name ]
+  properties:
+    page: { type: string, format: uri-reference }
+    name: { type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Homepage
+schema:
+  type: object
+  required: [ homepage ]
+  properties:
+    homepage: { type: string, format: uri }
+---
+# Two addresses from the team record: the handbook the server serves, and a
+# mirror written the way a browser reads as another host.
+kind: Telo.JsonSchema
+metadata:
+  name: TeamLinks
+schema:
+  type: object
+  required: [ handbook, mirror ]
+  properties:
+    handbook: { type: string, format: uri-reference }
+    mirror: { type: string }
+---
+# A project after a manager paused it.
+kind: Telo.JsonSchema
+metadata:
+  name: ProjectStatus
+schema:
+  type: object
+  required: [ code, name, status ]
+  properties:
+    code: { type: string, title: Code }
+    name: { type: string, title: Name }
+    status:
+      type: string
+      title: Status
+      enum: [ active, paused, done ]
+      oneOf:
+        - { const: active, title: Active }
+        - { const: paused, title: Paused }
+        - { const: done, title: Finished }
+---
+# A comment on a task, and what adding one answers.
+kind: Telo.JsonSchema
+metadata:
+  name: NewComment
+schema:
+  type: object
+  additionalProperties: false
+  required: [ taskId, body ]
+  properties:
+    taskId: { type: integer, title: Task number, minimum: 1, default: 3 }
+    body: { type: string, title: Comment, contentMediaType: text/plain, minLength: 3, maxLength: 280 }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: CommentAnswer
+schema:
+  type: object
+  required: [ id, taskId, taskTitle, count ]
+  properties:
+    id: { type: integer }
+    taskId: { type: integer }
+    taskTitle: { type: string }
+    count: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: CommentList
+schema:
+  type: object
+  required: [ comments ]
+  properties:
+    comments:
+      type: array
+      items:
+        type: object
+        required: [ id, taskId, taskTitle, body, pinned, createdAt ]
+        properties:
+          id: { type: integer }
+          taskId: { type: integer }
+          taskTitle: { type: string, title: Task }
+          body: { type: string, title: Comment }
+          pinned: { type: boolean, title: Pinned }
+          createdAt: { type: string, title: Written, format: date-time }
+---
+# One comment, named by its number.
+kind: Telo.JsonSchema
+metadata:
+  name: CommentRef
+schema:
+  type: object
+  additionalProperties: false
+  required: [ id ]
+  properties:
+    id: { type: integer, title: Comment number, minimum: 1 }
+---
+# A comment rewritten. The new text is optional, so a row asks for it in a
+# dialog, and the route refuses an edit that leaves it out.
+kind: Telo.JsonSchema
+metadata:
+  name: CommentEdit
+schema:
+  type: object
+  additionalProperties: false
+  required: [ id ]
+  properties:
+    id: { type: integer, title: Comment number, minimum: 1 }
+    body: { type: string, title: New text, contentMediaType: text/plain, minLength: 3, maxLength: 280 }
+---
+kind: Telo.Function
+metadata:
+  name: cookie
+  description: The value a Cookie header holds under one name; empty when it holds none.
+params:
+  - name: header
+    schema: { type: string }
+  - name: name
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "cel.bind(found, regexGroups(header, '(?:^|;[ ]*)' + name + '=([^;]*)'), size(found) > 0 ? found[0] : '')"
+---
+# The language a request is answered in, the one rule every application's
+# `lang` and its language menu share: the `showcase-lang` cookie when it names
+# a language the showcase speaks, else the Accept-Language negotiation, else
+# English. Each header is handed over as its own argument (empty when absent),
+# so the headers a call reads stay visible to the documents' `Vary`.
+kind: Telo.Function
+metadata:
+  name: chosenLanguage
+  description: The language a request is answered in, from its Cookie and Accept-Language headers.
+params:
+  - name: cookie
+    schema: { type: string }
+  - name: acceptLanguage
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel >-
+  cel.bind(chosen, Self.cookie(cookie, 'showcase-lang'),
+  chosen in ['en', 'pl'] ? chosen : acceptLanguage != '' ? Self.language(acceptLanguage) : 'en')
+---
+# The origin a request was made to, from its Host and X-Forwarded-Proto headers
+# (each empty when absent). A proxy chain may list several schemes; the first
+# is the client's, and anything but http or https is read as http, so a header
+# no proxy should send cannot turn a link into another scheme.
+kind: Telo.Function
+metadata:
+  name: origin
+  description: The scheme and host a request was made to, from its Host and X-Forwarded-Proto headers.
+params:
+  - name: host
+    schema: { type: string }
+  - name: proto
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel >-
+  cel.bind(scheme, trim(split(proto, ',')[0]), cel.bind(name, trim(host),
+  (scheme in ['http', 'https'] ? scheme : 'http') + '://' + (name != '' ? name : 'localhost')))
+---
+# Where a redirect back to `url` may go: its path and query when `url` is of
+# `origin`, else empty. A path a browser would read as another host (`//x`,
+# `/\x`) is empty too.
+kind: Telo.Function
+metadata:
+  name: sameOriginTarget
+  description: The path and query of a URL when it is of the given origin, else an empty string.
+params:
+  - name: url
+    schema: { type: string }
+  - name: origin
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel >-
+  cel.bind(parts, regexGroups(url, '^([A-Za-z][A-Za-z0-9+.-]*://[^/?#]*)(/[^?#]*)?(\\?[^#]*)?'),
+  size(parts) == 0 || parts[0] != origin || parts[1].matches('^/[/\\\\]') ? ''
+  : (parts[1] != '' ? parts[1] : '/') + parts[2])
+---
+# ---- Routes under /api ----
+kind: Http.Api
+metadata:
+  name: showcaseApi
+routes:
+  # The studio and the projects still running, for the overview.
+  - request: { method: GET, path: /team }
+    handler:
+      kind: Run.Sequence
+      outputType: !ref Team
+      steps:
+        - name: team
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: SELECT name, homepage, guide, handbook, contact, mirror, founded_on, updated_at, hiring, plan FROM team ORDER BY id LIMIT 1
+        - name: projects
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: >-
+              SELECT id, code, name, status, lead_email, budget, velocity, featured, open, brief, started_on
+              FROM projects ORDER BY started_on DESC, id
+      outputs: !cel >-
+        cel.bind(t, steps.team.result.rows[0],
+        cel.bind(all, steps.projects.result.rows.map(p, compact({
+          'id': p.id, 'code': p.code, 'name': p.name, 'status': p.status, 'leadEmail': p.lead_email,
+          'budget': p.budget, 'velocity': p.velocity, 'featured': dyn(p.featured == 1), 'open': dyn(p.open == 1),
+          'brief': p.brief, 'startedOn': p.started_on})),
+        {
+          'name': t.name, 'homepage': t.homepage, 'guide': t.guide, 'handbook': t.handbook,
+          'contact': t.contact, 'mirror': t.mirror, 'foundedOn': t.founded_on, 'updatedAt': t.updated_at,
+          'hiring': dyn(t.hiring == 1), 'plan': t.plan, 'projectCount': dyn(size(all)),
+          'latestProject': all[0].name, 'projects': dyn(all.filter(p, p.status != 'done'))
+        }))
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # One project's summary: its lead, how many people work on it, its tags.
+  - request:
+      method: GET
+      path: /project-summary
+      schema:
+        query:
+          type: object
+          additionalProperties: false
+          properties:
+            code: { type: string, default: TEL-42 }
+    inputs: { code: !cel "request.query.code" }
+    handler:
+      kind: Run.Sequence
+      inputType: &projectCode
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ code ]
+          properties:
+            code: { type: string }
+      outputType: !ref ProjectSummary
+      steps:
+        - name: project
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql >-
+              SELECT p.code, p.name, p.status, p.velocity, p.note, p.codename,
+              l.name AS lead_name, l.email AS lead_email, l.role AS lead_role
+              FROM projects p LEFT JOIN people l ON l.email = p.lead_email
+              WHERE p.code = ${{ inputs.code }}
+        - name: known
+          if: !cel "size(steps.project.result.rows) == 0"
+          then:
+            - name: unknown
+              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.code }}'." }
+        - name: members
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT COUNT(*) AS n FROM project_members WHERE project_code = ${{ inputs.code }}"
+        - name: tags
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT tag FROM project_tags WHERE project_code = ${{ inputs.code }} ORDER BY tag"
+      outputs: !cel >-
+        cel.bind(p, steps.project.result.rows[0],
+        merge(compact({
+          'code': p.code, 'name': p.name, 'status': p.status,
+          'memberCount': steps.members.result.rows[0].n, 'velocity': p.velocity,
+          'tags': dyn(steps.tags.result.rows.map(t, t.tag)), 'codename': p.codename,
+          'lead': dyn({'name': p.lead_name, 'email': p.lead_email, 'role': p.lead_role})
+        }), {'note': p.note}))
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - &projectUnknown
+        when: !cel "error.code == 'PROJECT_UNKNOWN'"
+        status: 404
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+
+  # The people working on one project.
+  - request:
+      method: GET
+      path: /project-people
+      schema:
+        query:
+          type: object
+          additionalProperties: false
+          properties:
+            code: { type: string, default: TEL-42 }
+    inputs: { code: !cel "request.query.code" }
+    handler:
+      kind: Run.Sequence
+      inputType: *projectCode
+      outputType: !ref ProjectPeople
+      steps:
+        - name: project
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT code FROM projects WHERE code = ${{ inputs.code }}"
+        - name: known
+          if: !cel "size(steps.project.result.rows) == 0"
+          then:
+            - name: unknown
+              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.code }}'." }
+        - name: people
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql >-
+              SELECT pe.name, pe.email, m.role FROM project_members m
+              JOIN people pe ON pe.email = m.person_email
+              WHERE m.project_code = ${{ inputs.code }} ORDER BY pe.name
+      outputs:
+        people: !cel "steps.people.result.rows.map(r, {'name': r.name, 'email': r.email, 'role': r.role})"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - *projectUnknown
+
+  # Tags the featured project TEL-42. A tag it already has is refused with a
+  # `{ code, message }` body; one the body schema refuses is the 400 envelope.
+  - request:
+      method: POST
+      path: /tags
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ tag ]
+          properties:
+            tag: { type: string, pattern: "^[a-z][a-z0-9-]*$", maxLength: 20 }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref NewTag
+      outputType: !ref TagAnswer
+      steps:
+        - name: existing
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT tag FROM project_tags WHERE project_code = 'TEL-42' AND tag = ${{ inputs.tag }}"
+        - name: fresh
+          if: !cel "size(steps.existing.result.rows) > 0"
+          then:
+            - name: duplicate
+              throw: { code: TAG_EXISTS, message: !interpolate "TEL-42 is already tagged '${{ inputs.tag }}'." }
+        - name: insert
+          invoke: { kind: Sql.Command, connection: !ref db }
+          inputs:
+            sql: !sql "INSERT INTO project_tags (project_code, tag) VALUES ('TEL-42', ${{ inputs.tag }})"
+        - name: count
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: SELECT COUNT(*) AS n FROM project_tags WHERE project_code = 'TEL-42'
+      outputs:
+        tag: !cel "inputs.tag"
+        count: !cel "steps.count.result.rows[0].n"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - when: !cel "error.code == 'TAG_EXISTS'"
+        status: 409
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+
+  # The task board: every task with its assignee and project nested in it,
+  # a page at a time under the collection contract. It accepts no filter and
+  # no sort; its cursor is the offset of the next page.
+  - request:
+      method: GET
+      path: /task-board
+      schema:
+        query:
+          type: object
+          additionalProperties: false
+          properties:
+            limit: { type: integer, minimum: 1, maximum: 100, default: 25 }
+            cursor: { type: string, pattern: "^[0-9]{1,9}$", default: "0" }
+    inputs:
+      limit: !cel "request.query.limit"
+      offset: !cel "int(request.query.cursor)"
+    handler:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ limit, offset ]
+          properties:
+            limit: { type: integer }
+            offset: { type: integer }
+      outputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ rows, total, next ]
+          properties:
+            rows: { type: array, items: !ref TaskCard }
+            total: { type: integer }
+            next: { type: [ string, "null" ] }
+      steps:
+        - name: page
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql >-
+              SELECT t.id, t.title, pe.name AS assignee_name, pe.email AS assignee_email,
+              pr.code AS project_code, pr.name AS project_name, pr.brief AS project_brief
+              FROM tasks t JOIN projects pr ON pr.code = t.project_code
+              LEFT JOIN people pe ON pe.email = t.assignee_email
+              ORDER BY t.id LIMIT ${{ inputs.limit }} OFFSET ${{ inputs.offset }}
+        - name: count
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: SELECT COUNT(*) AS n FROM tasks t JOIN projects pr ON pr.code = t.project_code
+      outputs:
+        rows: !cel >-
+          steps.page.result.rows.map(r, compact({
+            'id': r.id, 'title': r.title,
+            'assignee': r.assignee_name == null ? null : dyn({'name': r.assignee_name, 'contact': 'mailto:' + r.assignee_email}),
+            'project': dyn(compact({'code': r.project_code, 'name': r.project_name, 'brief': r.project_brief}))
+          }))
+        total: !cel "steps.count.result.rows[0].n"
+        next: !cel "inputs.offset + inputs.limit < steps.count.result.rows[0].n ? dyn(string(inputs.offset + inputs.limit)) : null"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # The server's time, read again whenever the window regains focus.
+  - request: { method: GET, path: /clock }
+    handler:
+      kind: Run.Value
+      outputType: !ref Clock
+      value: { readAt: !cel "nowIso()" }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # Whether the cookie's token names an open session. Not guarded: it is what
+  # a visitor with no session reaches.
+  - request: { method: GET, path: /session }
+    inputs: &sessionCookie
+      token: !cel "Self.cookie('cookie' in request.headers ? request.headers['cookie'] : '', 'showcase-session')"
+    handler:
+      kind: Run.Sequence
+      inputType: &tokenInput
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ token ]
+          properties:
+            token: { type: string, x-telo-sensitive: true }
+      outputType: !ref Session
+      steps:
+        - name: session
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT token FROM sessions WHERE token = ${{ inputs.token }}"
+      outputs:
+        signedIn: !cel "size(steps.session.result.rows) > 0"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # Opens a session for an active member of the team: a row in `sessions` and
+  # its token in an http-only cookie. An e-mail no member has is the 400
+  # envelope on the field; a member who left is refused with 403.
+  - request:
+      method: POST
+      path: /session/signin
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ email ]
+          properties:
+            email: { type: string, minLength: 3 }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref SignIn
+      outputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ token ]
+          properties:
+            token: { type: string, x-telo-sensitive: true }
+      steps:
+        - name: person
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT email, active FROM people WHERE email = ${{ inputs.email }}"
+        - name: member
+          if: !cel "size(steps.person.result.rows) == 0"
+          then:
+            - name: stranger
+              throw: { code: NOT_A_MEMBER, message: is not the e-mail of anyone on the team }
+        - name: current
+          if: !cel "steps.person.result.rows[0].active == 0"
+          then:
+            - name: left
+              throw: { code: ACCOUNT_INACTIVE, message: !interpolate "${{ inputs.email }} has left the team." }
+        - name: token
+          value: !cel "uuidv4()"
+        - name: open
+          invoke: { kind: Sql.Command, connection: !ref db }
+          inputs:
+            sql: !sql "INSERT INTO sessions (token, person_email) VALUES (${{ steps.token.result }}, ${{ inputs.email }})"
+      outputs:
+        token: !cel "steps.token.result"
+    returns:
+      - status: 200
+        headers:
+          Set-Cookie: !interpolate "showcase-session=${{ result.token }}; Path=/; HttpOnly; SameSite=Lax"
+        content:
+          application/json:
+            body: {}
+    catches:
+      - when: !cel "error.code == 'NOT_A_MEMBER'"
+        status: 400
+        content:
+          application/json:
+            body:
+              error: ValidationError
+              message: Request validation failed
+              status: 400
+              details:
+                - { location: body, path: email, message: !cel "error.message" }
+      - when: !cel "error.code == 'ACCOUNT_INACTIVE'"
+        status: 403
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+
+  # Deletes the cookie's session and clears the cookie.
+  - request:
+      method: POST
+      path: /session/signout
+      schema:
+        body: { type: object, additionalProperties: false, properties: {} }
+    inputs: *sessionCookie
+    handler:
+      kind: Run.Sequence
+      inputType: *tokenInput
+      steps:
+        - name: close
+          invoke: { kind: Sql.Command, connection: !ref db }
+          inputs:
+            sql: !sql "DELETE FROM sessions WHERE token = ${{ inputs.token }}"
+    returns:
+      - status: 200
+        headers:
+          Set-Cookie: showcase-session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax
+        content:
+          application/json:
+            body: {}
+
+  # ---- The forms page ----
+  # Stores a request. A title another request has is the 400 envelope on the
+  # title field. The daily call is held to a pattern rather than `format: time`,
+  # which wants seconds and an offset the browser's time control does not send.
+  - request:
+      method: POST
+      path: /requests
+      schema:
+        body: &requestBody
+          type: object
+          additionalProperties: false
+          required: [ title, kind ]
+          properties:
+            title: { type: string, minLength: 3, maxLength: 60 }
+            kind: { type: string, enum: [ design, build, write, research ] }
+            seats: { type: integer, minimum: 1, maximum: 8 }
+            budget: { type: number, minimum: 0, multipleOf: 50 }
+            startOn: { type: string, format: date }
+            kickoffAt: { type: string, format: date-time }
+            callAt: { type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+            details: { type: string, maxLength: 2000 }
+            urgent: { type: boolean }
+            channels: { type: array, uniqueItems: true, items: { type: string, enum: [ email, chat, phone ] } }
+            keywords: { type: array, maxItems: 5, items: { type: string, pattern: "^[a-z][a-z0-9-]*$" } }
+            accessCode: { type: string, minLength: 4 }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: { kind: Telo.JsonSchema, schema: *requestBody }
+      outputType: &createdAnswer
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ id ]
+          properties:
+            id: { type: integer }
+      steps:
+        - name: same
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT id FROM requests WHERE title = ${{ inputs.title }}"
+        - name: fresh
+          if: !cel "size(steps.same.result.rows) > 0"
+          then:
+            - name: taken
+              throw: { code: TITLE_TAKEN, message: is the title of another request }
+        - name: insert
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql >-
+              INSERT INTO requests (title, kind, seats, budget, start_on, kickoff_at, call_at, details, urgent, channels, keywords, access_code)
+              VALUES (${{ inputs.title }}, ${{ inputs.kind }},
+              ${{ has(inputs.seats) ? dyn(inputs.seats) : null }}, ${{ has(inputs.budget) ? dyn(inputs.budget) : null }},
+              ${{ has(inputs.startOn) ? dyn(inputs.startOn) : null }}, ${{ has(inputs.kickoffAt) ? dyn(inputs.kickoffAt) : null }},
+              ${{ has(inputs.callAt) ? dyn(inputs.callAt) : null }}, ${{ has(inputs.details) ? dyn(inputs.details) : null }},
+              ${{ has(inputs.urgent) && inputs.urgent ? 1 : 0 }},
+              ${{ has(inputs.channels) ? dyn(json(inputs.channels)) : null }}, ${{ has(inputs.keywords) ? dyn(json(inputs.keywords)) : null }},
+              ${{ has(inputs.accessCode) ? dyn(inputs.accessCode) : null }})
+              RETURNING id
+      outputs:
+        id: !cel "steps.insert.result.rows[0].id"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - when: !cel "error.code == 'TITLE_TAKEN'"
+        status: 400
+        content:
+          application/json:
+            body:
+              error: ValidationError
+              message: Request validation failed
+              status: 400
+              details:
+                - { location: body, path: title, message: !cel "error.message" }
+
+  # The five requests received last, as the forms page lists them.
+  - request: { method: GET, path: /requests }
+    handler:
+      kind: Run.Sequence
+      outputType: !ref RequestList
+      steps:
+        - name: latest
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: SELECT id, title, kind, seats, start_on, urgent, received_at FROM requests ORDER BY received_at DESC, id DESC LIMIT 5
+      outputs:
+        requests: !cel >-
+          steps.latest.result.rows.map(r, compact({
+            'id': r.id, 'title': r.title, 'kind': r.kind, 'seats': r.seats, 'startOn': r.start_on,
+            'urgent': dyn(r.urgent == 1), 'receivedAt': r.received_at}))
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # Books a lead and the people around them on a project. A period that starts
+  # after it ends, or runs past a year, is the 400 envelope on one of its
+  # dates, which marks the period field.
+  - request:
+      method: POST
+      path: /bookings
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ projectCode, leadRole, leadEmail, sponsorEmail, period ]
+          properties:
+            projectCode: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+            leadRole: { type: string, enum: [ manager, engineer, designer, writer ] }
+            leadEmail: { type: string }
+            reviewerEmails: { type: array, maxItems: 3, uniqueItems: true, items: { type: string } }
+            sponsorEmail: { type: string }
+            helperEmails: { type: array, uniqueItems: true, items: { type: string } }
+            period:
+              type: object
+              required: [ from, to ]
+              properties:
+                from: { type: string, format: date }
+                to: { type: string, format: date }
+            onSite: { type: boolean }
+            site: { type: string, minLength: 3 }
+            notes: { type: string, maxLength: 500 }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref Booking
+      outputType: *createdAnswer
+      steps:
+        - name: project
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT code FROM projects WHERE code = ${{ inputs.projectCode }}"
+        - name: known
+          if: !cel "size(steps.project.result.rows) == 0"
+          then:
+            - name: unknown
+              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.projectCode }}'." }
+        - name: ordered
+          if: !cel "inputs.period.from > inputs.period.to"
+          then:
+            - name: reversed
+              throw: { code: PERIOD_REVERSED, message: must not be after the end }
+        - name: bounded
+          if: !cel "timestamp(inputs.period.to + 'T00:00:00Z') - timestamp(inputs.period.from + 'T00:00:00Z') > duration('8784h')"
+          then:
+            - name: tooLong
+              throw: { code: PERIOD_TOO_LONG, message: is more than a year after the start }
+        - name: insert
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql >-
+              INSERT INTO bookings (project_code, lead_role, lead_email, reviewer_emails, sponsor_email, helper_emails, period_from, period_to, on_site, site, notes)
+              VALUES (${{ inputs.projectCode }}, ${{ inputs.leadRole }}, ${{ inputs.leadEmail }},
+              ${{ has(inputs.reviewerEmails) ? dyn(json(inputs.reviewerEmails)) : null }}, ${{ inputs.sponsorEmail }},
+              ${{ has(inputs.helperEmails) ? dyn(json(inputs.helperEmails)) : null }},
+              ${{ inputs.period.from }}, ${{ inputs.period.to }}, ${{ has(inputs.onSite) && inputs.onSite ? 1 : 0 }},
+              ${{ has(inputs.site) ? dyn(inputs.site) : null }}, ${{ has(inputs.notes) ? dyn(inputs.notes) : null }})
+              RETURNING id
+      outputs:
+        id: !cel "steps.insert.result.rows[0].id"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - *projectUnknown
+      - when: !cel "error.code == 'PERIOD_REVERSED'"
+        status: 400
+        content:
+          application/json:
+            body:
+              error: ValidationError
+              message: Request validation failed
+              status: 400
+              details:
+                - { location: body, path: period.from, message: !cel "error.message" }
+      - when: !cel "error.code == 'PERIOD_TOO_LONG'"
+        status: 400
+        content:
+          application/json:
+            body:
+              error: ValidationError
+              message: Request validation failed
+              status: 400
+              details:
+                - { location: body, path: period.to, message: !cel "error.message" }
+
+  # The five bookings made last, with the names of the people booked.
+  - request: { method: GET, path: /bookings }
+    handler:
+      kind: Run.Sequence
+      outputType: !ref BookingList
+      steps:
+        - name: latest
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: >-
+              SELECT b.id, p.name AS project, l.name AS lead, s.name AS sponsor, b.period_from, b.period_to
+              FROM bookings b JOIN projects p ON p.code = b.project_code
+              LEFT JOIN people l ON l.email = b.lead_email LEFT JOIN people s ON s.email = b.sponsor_email
+              ORDER BY b.id DESC LIMIT 5
+      outputs:
+        bookings: !cel >-
+          steps.latest.result.rows.map(r, {
+            'id': r.id, 'project': r.project, 'lead': r.lead == null ? 'Someone outside the team' : r.lead,
+            'sponsor': r.sponsor == null ? 'Someone outside the team' : r.sponsor, 'from': r.period_from, 'to': r.period_to})
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # ---- The actions page ----
+  # Unblocks every blocked task of TEL-42. Sends nothing and answers nothing.
+  - request:
+      method: POST
+      path: /unblock
+      schema:
+        body: { type: object, additionalProperties: false, properties: {} }
+    handler:
+      kind: Sql.Command
+      connection: !ref db
+    inputs:
+      sql: UPDATE tasks SET blocked = 0 WHERE project_code = 'TEL-42' AND blocked = 1
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: {}
+
+  # Estimates the open work of a project from its tasks' own estimates: the
+  # hours by label, and how many weeks they take at a pace, ending on a date.
+  - request:
+      method: POST
+      path: /estimate
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ projectCode, pace ]
+          properties:
+            projectCode: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+            labels: { type: array, uniqueItems: true, items: { type: string, enum: [ bug, feature, chore, docs ] } }
+            includeBlocked: { type: boolean }
+            pace: { type: integer, minimum: 4, maximum: 40, multipleOf: 4 }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref EstimateRequest
+      outputType: !ref EstimateAnswer
+      steps:
+        - name: project
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT code FROM projects WHERE code = ${{ inputs.projectCode }}"
+        - name: known
+          if: !cel "size(steps.project.result.rows) == 0"
+          then:
+            - name: unknown
+              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.projectCode }}'." }
+        - name: open
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql >-
+              SELECT COALESCE(label, 'none') AS label, COUNT(*) AS tasks, COALESCE(SUM(estimate), 0) AS hours
+              FROM tasks WHERE project_code = ${{ inputs.projectCode }} AND status != 'done'
+              AND blocked <= ${{ has(inputs.includeBlocked) && inputs.includeBlocked ? 1 : 0 }}
+              GROUP BY COALESCE(label, 'none') ORDER BY 1
+        - name: breakdown
+          value: !cel >-
+            steps.open.result.rows
+              .filter(r, !has(inputs.labels) || r.label in inputs.labels)
+              .map(r, {'label': r.label, 'tasks': r.tasks, 'hours': double(r.hours)})
+        - name: hours
+          value: !cel "sum(steps.breakdown.result.map(r, r.hours))"
+        - name: weeks
+          value: !cel "int(ceil(steps.hours.result / double(inputs.pace)))"
+      outputs:
+        projectCode: !cel "inputs.projectCode"
+        hours: !cel "steps.hours.result"
+        tasks: !cel "int(sum(steps.breakdown.result.map(r, r.tasks)))"
+        weeks: !cel "steps.weeks.result"
+        finishBy: !cel "dateIn(timestamp(today() + 'T00:00:00Z') + duration(string(steps.weeks.result * 168) + 'h'))"
+        breakdown: !cel "steps.breakdown.result"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - *projectUnknown
+
+  # Gives a task to an active member of the team. Naming nobody, or an e-mail
+  # no member has, is the 400 envelope on the e-mail; an unknown task is 404
+  # and a member who left 409, each with a `{ code, message }` body.
+  - request:
+      method: POST
+      path: /assign
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ id ]
+          properties:
+            id: { type: integer, minimum: 1 }
+            assigneeEmail: { type: string, minLength: 3 }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref Assignment
+      outputType: !ref AssignAnswer
+      steps:
+        - name: named
+          if: !cel "!has(inputs.assigneeEmail)"
+          then:
+            - name: nobody
+              throw: { code: ASSIGNEE_MISSING, message: names nobody to give the task to }
+        - name: task
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT id, title FROM tasks WHERE id = ${{ inputs.id }}"
+        - name: taskKnown
+          if: !cel "size(steps.task.result.rows) == 0"
+          then:
+            - name: noTask
+              throw: { code: TASK_UNKNOWN, message: !interpolate "There is no task ${{ inputs.id }}." }
+        - name: person
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT name, active FROM people WHERE email = ${{ inputs.assigneeEmail }}"
+        - name: member
+          if: !cel "size(steps.person.result.rows) == 0"
+          then:
+            - name: stranger
+              throw: { code: NOT_A_MEMBER, message: is not the e-mail of anyone on the team }
+        - name: current
+          if: !cel "steps.person.result.rows[0].active == 0"
+          then:
+            - name: left
+              throw: { code: ASSIGNEE_INACTIVE, message: !interpolate "${{ steps.person.result.rows[0].name }} has left the team." }
+        - name: assign
+          invoke: { kind: Sql.Command, connection: !ref db }
+          inputs:
+            sql: !sql "UPDATE tasks SET assignee_email = ${{ inputs.assigneeEmail }} WHERE id = ${{ inputs.id }}"
+      outputs:
+        id: !cel "inputs.id"
+        title: !cel "steps.task.result.rows[0].title"
+        assignee: !cel "steps.person.result.rows[0].name"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - when: !cel "error.code == 'ASSIGNEE_MISSING' || error.code == 'NOT_A_MEMBER'"
+        status: 400
+        content:
+          application/json:
+            body:
+              error: ValidationError
+              message: Request validation failed
+              status: 400
+              details:
+                - { location: body, path: assigneeEmail, message: !cel "error.message" }
+      - &taskUnknown
+        when: !cel "error.code == 'TASK_UNKNOWN'"
+        status: 404
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+      - when: !cel "error.code == 'ASSIGNEE_INACTIVE'"
+        status: 409
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+
+  # Moves a task to another status. A task already there is refused with 409.
+  - request:
+      method: POST
+      path: /task-status
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ id, status ]
+          properties:
+            id: { type: integer, minimum: 1 }
+            status: { type: string, enum: [ todo, doing, review, done ] }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref StatusChange
+      outputType: !ref StatusAnswer
+      steps:
+        - name: task
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT id, title, status FROM tasks WHERE id = ${{ inputs.id }}"
+        - name: taskKnown
+          if: !cel "size(steps.task.result.rows) == 0"
+          then:
+            - name: noTask
+              throw: { code: TASK_UNKNOWN, message: !interpolate "There is no task ${{ inputs.id }}." }
+        - name: moved
+          if: !cel "steps.task.result.rows[0].status == inputs.status"
+          then:
+            - name: unchanged
+              throw: { code: STATUS_UNCHANGED, message: !interpolate "Task ${{ inputs.id }} is already ${{ inputs.status }}." }
+        - name: move
+          invoke: { kind: Sql.Command, connection: !ref db }
+          inputs:
+            sql: !sql "UPDATE tasks SET status = ${{ inputs.status }} WHERE id = ${{ inputs.id }}"
+      outputs:
+        id: !cel "inputs.id"
+        title: !cel "steps.task.result.rows[0].title"
+        status: !cel "inputs.status"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - *taskUnknown
+      - when: !cel "error.code == 'STATUS_UNCHANGED'"
+        status: 409
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+
+  # How one project's tasks stand, read again after a task moves.
+  - request:
+      method: GET
+      path: /task-counts
+      schema:
+        query:
+          type: object
+          additionalProperties: false
+          properties:
+            code: { type: string, default: TEL-42 }
+    inputs: { code: !cel "request.query.code" }
+    handler:
+      kind: Run.Sequence
+      inputType: *projectCode
+      outputType: !ref TaskCounts
+      steps:
+        - name: counts
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql >-
+              SELECT COALESCE(SUM(status = 'todo'), 0) AS todo, COALESCE(SUM(status = 'doing'), 0) AS doing,
+              COALESCE(SUM(status = 'review'), 0) AS review, COALESCE(SUM(status = 'done'), 0) AS done,
+              COALESCE(SUM(blocked), 0) AS blocked FROM tasks WHERE project_code = ${{ inputs.code }}
+      outputs: !cel >-
+        cel.bind(c, steps.counts.result.rows[0],
+          {'code': dyn(inputs.code), 'todo': c.todo, 'doing': c.doing, 'review': c.review, 'done': c.done, 'blocked': c.blocked})
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # Where a project's tasks are listed: the tables page, narrowed to it.
+  - request:
+      method: POST
+      path: /project-page
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ code ]
+          properties:
+            code: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref ProjectPick
+      outputType: !ref ProjectPage
+      steps:
+        - name: project
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT code, name FROM projects WHERE code = ${{ inputs.code }}"
+        - name: known
+          if: !cel "size(steps.project.result.rows) == 0"
+          then:
+            - name: unknown
+              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.code }}'." }
+      outputs:
+        page: !cel "'/tables?project=' + steps.project.result.rows[0].code"
+        name: !cel "steps.project.result.rows[0].name"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - *projectUnknown
+
+  # The team's homepage, read from its record.
+  - request:
+      method: POST
+      path: /homepage
+      schema:
+        body: { type: object, additionalProperties: false, properties: {} }
+    handler:
+      kind: Run.Sequence
+      outputType: !ref Homepage
+      steps:
+        - name: team
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: SELECT homepage FROM team ORDER BY id LIMIT 1
+      outputs:
+        homepage: !cel "steps.team.result.rows[0].homepage"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # The team's handbook and mirror addresses, read from its record.
+  - request:
+      method: POST
+      path: /team-links
+      schema:
+        body: { type: object, additionalProperties: false, properties: {} }
+    handler:
+      kind: Run.Sequence
+      outputType: !ref TeamLinks
+      steps:
+        - name: team
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: SELECT handbook, mirror FROM team ORDER BY id LIMIT 1
+      outputs:
+        handbook: !cel "steps.team.result.rows[0].handbook"
+        mirror: !cel "steps.team.result.rows[0].mirror"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # A route that sends every request back to itself. A browser gives up after
+  # twenty redirects, so whoever calls it gets no answer at all.
+  - request:
+      method: POST
+      path: /loop
+      schema:
+        body: { type: object, additionalProperties: false, properties: {} }
+    handler:
+      kind: Run.Value
+      value: {}
+    returns:
+      - status: 307
+        headers:
+          Location: /api/loop
+
+  # The ten comments written last, pinned ones first.
+  - request: { method: GET, path: /comments }
+    handler:
+      kind: Run.Sequence
+      outputType: !ref CommentList
+      steps:
+        - name: latest
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: >-
+              SELECT c.id, c.task_id, t.title, c.body, c.pinned, c.created_at FROM comments c
+              JOIN tasks t ON t.id = c.task_id ORDER BY c.pinned DESC, c.created_at DESC, c.id DESC LIMIT 10
+      outputs:
+        comments: !cel >-
+          steps.latest.result.rows.map(r, {
+            'id': r.id, 'taskId': r.task_id, 'taskTitle': r.title, 'body': r.body,
+            'pinned': dyn(r.pinned == 1), 'createdAt': r.created_at})
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+
+  # Adds a comment to a task, and answers how many the task has now.
+  - request:
+      method: POST
+      path: /comments
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ taskId, body ]
+          properties:
+            taskId: { type: integer, minimum: 1 }
+            body: { type: string, minLength: 3, maxLength: 280 }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref NewComment
+      outputType: !ref CommentAnswer
+      steps:
+        - name: task
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT id, title FROM tasks WHERE id = ${{ inputs.taskId }}"
+        - name: taskKnown
+          if: !cel "size(steps.task.result.rows) == 0"
+          then:
+            - name: noTask
+              throw: { code: TASK_UNKNOWN, message: !interpolate "There is no task ${{ inputs.taskId }}." }
+        - name: insert
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "INSERT INTO comments (task_id, body) VALUES (${{ inputs.taskId }}, ${{ inputs.body }}) RETURNING id"
+        - name: count
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT COUNT(*) AS n FROM comments WHERE task_id = ${{ inputs.taskId }}"
+      outputs:
+        id: !cel "steps.insert.result.rows[0].id"
+        taskId: !cel "inputs.taskId"
+        taskTitle: !cel "steps.task.result.rows[0].title"
+        count: !cel "steps.count.result.rows[0].n"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - *taskUnknown
+
+  # Pins a comment, so it is listed first.
+  - request:
+      method: POST
+      path: /comments/pin
+      schema:
+        body: &commentRef
+          type: object
+          additionalProperties: false
+          required: [ id ]
+          properties:
+            id: { type: integer, minimum: 1 }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref CommentRef
+      outputType: *createdAnswer
+      steps:
+        - name: pin
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "UPDATE comments SET pinned = 1 WHERE id = ${{ inputs.id }} RETURNING id"
+        - name: known
+          if: !cel "size(steps.pin.result.rows) == 0"
+          then:
+            - name: noComment
+              throw: { code: COMMENT_UNKNOWN, message: !interpolate "There is no comment ${{ inputs.id }}." }
+      outputs:
+        id: !cel "inputs.id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - &commentUnknown
+        when: !cel "error.code == 'COMMENT_UNKNOWN'"
+        status: 404
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+
+  # Deletes a comment.
+  - request:
+      method: POST
+      path: /comments/delete
+      schema:
+        body: *commentRef
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref CommentRef
+      outputType: *createdAnswer
+      steps:
+        - name: remove
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "DELETE FROM comments WHERE id = ${{ inputs.id }} RETURNING id"
+        - name: known
+          if: !cel "size(steps.remove.result.rows) == 0"
+          then:
+            - name: noComment
+              throw: { code: COMMENT_UNKNOWN, message: !interpolate "There is no comment ${{ inputs.id }}." }
+      outputs:
+        id: !cel "inputs.id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - *commentUnknown
+
+  # Rewrites a comment. Leaving the new text out is the 400 envelope on it.
+  - request:
+      method: POST
+      path: /comments/edit
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ id ]
+          properties:
+            id: { type: integer, minimum: 1 }
+            body: { type: string, minLength: 3, maxLength: 280 }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref CommentEdit
+      outputType: *createdAnswer
+      steps:
+        - name: written
+          if: !cel "!has(inputs.body)"
+          then:
+            - name: empty
+              throw: { code: COMMENT_EMPTY, message: is needed to change the comment }
+        - name: edit
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "UPDATE comments SET body = ${{ inputs.body }} WHERE id = ${{ inputs.id }} RETURNING id"
+        - name: known
+          if: !cel "size(steps.edit.result.rows) == 0"
+          then:
+            - name: noComment
+              throw: { code: COMMENT_UNKNOWN, message: !interpolate "There is no comment ${{ inputs.id }}." }
+      outputs:
+        id: !cel "inputs.id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - when: !cel "error.code == 'COMMENT_EMPTY'"
+        status: 400
+        content:
+          application/json:
+            body:
+              error: ValidationError
+              message: Request validation failed
+              status: 400
+              details:
+                - { location: body, path: body, message: !cel "error.message" }
+      - *commentUnknown
+
+  # ---- The language switch ----
+  # Sets the cookie every application's `lang` reads first, or clears it for
+  # any other value, and goes back to the page it was pressed on — the
+  # Referer's path and query when the Referer is of this request's own origin,
+  # else the mount's home, so the switch never redirects to another site.
+  - request:
+      method: GET
+      path: /lang
+      schema:
+        query:
+          type: object
+          additionalProperties: false
+          required: [ set ]
+          properties:
+            set: { type: string }
+    inputs:
+      set: !cel "request.query.set"
+      back: !cel >-
+        cel.bind(target, Self.sameOriginTarget('referer' in request.headers ? request.headers['referer'] : '',
+        Self.origin('host' in request.headers ? request.headers['host'] : '',
+        'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '')),
+        target != '' ? target : request.path.substring(0, request.path.indexOf('/api/lang')) + '/')
+    handler:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ set, back ]
+          properties:
+            set: { type: string }
+            back: { type: string }
+      value: { set: !cel "inputs.set", back: !cel "inputs.back" }
+    returns:
+      - status: 302
+        when: !cel "result.set in ['en', 'pl']"
+        headers:
+          Location: !cel "result.back"
+          Set-Cookie: !interpolate "showcase-lang=${{ result.set }}; Path=/; Max-Age=31536000; SameSite=Lax"
+      - status: 302
+        headers:
+          Location: !cel "result.back"
+          Set-Cookie: showcase-lang=; Path=/; Max-Age=0; SameSite=Lax
+---
+# ---- The brand switch, under /api of the root application only ----
+# The other two mounts draw with a brand of their own, so this route is not
+# served under them.
+kind: Http.Api
+metadata:
+  name: brandSwitch
+routes:
+  # The brand switch: sets or clears the cookie the `/` application's token
+  # list reads, and goes to the themes page.
+  - request:
+      method: GET
+      path: /brand
+      schema:
+        query:
+          type: object
+          additionalProperties: false
+          required: [ set ]
+          properties:
+            set: { type: string, enum: [ acme, none ] }
+    inputs: { set: !cel "request.query.set" }
+    handler:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ set ]
+          properties:
+            set: { type: string }
+      value: { set: !cel "inputs.set" }
+    returns:
+      - status: 302
+        when: !cel "result.set == 'acme'"
+        headers:
+          Location: /themes
+          Set-Cookie: showcase-brand=acme; Path=/; Max-Age=31536000; SameSite=Lax
+      - status: 302
+        headers:
+          Location: /themes
+          Set-Cookie: showcase-brand=; Path=/; Max-Age=0; SameSite=Lax
+---
+# ---- Routes under /api/private, behind the session guard ----
+kind: Http.Api
+metadata:
+  name: privateApi
+routes:
+  # Who the session belongs to.
+  - request: { method: GET, path: /account }
+    inputs:
+      token: !cel "Self.cookie('cookie' in request.headers ? request.headers['cookie'] : '', 'showcase-session')"
+    handler:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ token ]
+          properties:
+            token: { type: string, x-telo-sensitive: true }
+      outputType: !ref Account
+      steps:
+        - name: person
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql >-
+              SELECT p.name, p.email, p.joined_on FROM sessions s
+              JOIN people p ON p.email = s.person_email WHERE s.token = ${{ inputs.token }}
+      outputs:
+        name: !cel "steps.person.result.rows[0].name"
+        email: !cel "steps.person.result.rows[0].email"
+        memberSince: !cel "steps.person.result.rows[0].joined_on"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  # Pauses a project: open to a manager alone. The guard has let a session
+  # through; a session whose person is no manager is answered 403 with no body.
+  # A refusal is worded in the language the applications answer in, which the
+  # answer names.
+  - request:
+      method: POST
+      path: /pause
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [ code ]
+          properties:
+            code: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+    inputs:
+      code: !cel "request.body.code"
+      token: !cel "Self.cookie('cookie' in request.headers ? request.headers['cookie'] : '', 'showcase-session')"
+      lang: !cel >-
+        Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+        'accept-language' in request.headers ? request.headers['accept-language'] : '')
+    handler:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ code, token, lang ]
+          properties:
+            code: { type: string }
+            token: { type: string, x-telo-sensitive: true }
+            lang: { type: string }
+      outputType: !ref ProjectStatus
+      steps:
+        - name: person
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql >-
+              SELECT p.role FROM sessions s JOIN people p ON p.email = s.person_email
+              WHERE s.token = ${{ inputs.token }}
+        - name: signedIn
+          if: !cel "size(steps.person.result.rows) == 0"
+          then:
+            - name: closed
+              throw: { code: UNAUTHORIZED, message: The session closed. }
+        - name: manager
+          if: !cel "steps.person.result.rows[0].role != 'manager'"
+          then:
+            - name: forbidden
+              throw: { code: FORBIDDEN, message: Only a manager may pause a project. }
+        - name: project
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT code, name, status FROM projects WHERE code = ${{ inputs.code }}"
+        - name: known
+          if: !cel "size(steps.project.result.rows) == 0"
+          then:
+            - name: unknown
+              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.code }}'." }
+        - name: running
+          if: !cel "steps.project.result.rows[0].status != 'active'"
+          then:
+            - name: notRunning
+              throw:
+                code: PROJECT_NOT_ACTIVE
+                message: !cel "Self.t('{$code} is not running, so it cannot be paused.', inputs.lang, {'code': inputs.code})"
+                data: { lang: !cel "inputs.lang" }
+        - name: pause
+          invoke: { kind: Sql.Command, connection: !ref db }
+          inputs:
+            sql: !sql "UPDATE projects SET status = 'paused' WHERE code = ${{ inputs.code }}"
+      outputs:
+        code: !cel "steps.project.result.rows[0].code"
+        name: !cel "steps.project.result.rows[0].name"
+        status: paused
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - when: !cel "error.code == 'UNAUTHORIZED'"
+        status: 401
+      - when: !cel "error.code == 'FORBIDDEN'"
+        status: 403
+      - when: !cel "error.code == 'PROJECT_UNKNOWN'"
+        status: 404
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+      - when: !cel "error.code == 'PROJECT_NOT_ACTIVE'"
+        status: 409
+        headers:
+          Content-Language: !cel "error.data.lang"
+        content:
+          application/json:
+            body: { code: !cel "error.code", message: !cel "error.message" }
+  # Sends nothing and answers nothing: whether it is let through is the guard's.
+  - request:
+      method: POST
+      path: /ping
+      schema:
+        body: { type: object, additionalProperties: false, properties: {} }
+    handler:
+      kind: Run.Value
+      value: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: {}

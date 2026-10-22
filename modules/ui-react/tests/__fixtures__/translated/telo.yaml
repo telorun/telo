@@ -1,8 +1,8 @@
 # An application translated into Polish: a catalog for its own texts — a page
-# title, a heading, a text with values, a field's label from its model, an enum
-# value's label — and one for the renderer's own words. Each application picks
-# its language its own way: from the Accept-Language header, from a cookie,
-# and as one fixed tag. Start it with
+# title, a heading, a text with values, a text with context, a field's label
+# from its model, an enum value's label — and one for the renderer's own words.
+# Each application picks its language its own way: from the Accept-Language
+# header, from a cookie, and as one fixed tag. Start it with
 #   pnpm run telo ./modules/ui-react/tests/__fixtures__/translated/telo.yaml
 # and open http://127.0.0.1:8130/ with the browser's language set to Polish.
 kind: Telo.Application
@@ -49,8 +49,11 @@ texts:
     translation: { plural: n, cases: { one: "{$n} nieopłacona pozycja", few: "{$n} nieopłacone pozycje", other: "{$n} nieopłaconych pozycji" } }
   - { text: Number, translation: Numer }
   - { text: Open, translation: Otwarta }
+  - { text: Open, context: state, translation: Otwarte }
   - { text: Paid, translation: Opłacona }
   - { text: Save, translation: Zapisz }
+  - { text: Help, translation: Pomoc }
+  - { text: Staff, translation: Personel }
   - text: { plural: limit, cases: { one: "Must be at least {$limit} character", other: "Must be at least {$limit} characters" } }
     translation: { plural: limit, cases: { one: "Co najmniej {$limit} znak", few: "Co najmniej {$limit} znaki", other: "Co najmniej {$limit} znaków" } }
 ---
@@ -72,14 +75,38 @@ metadata:
 model: !ref Invoice
 source: { basePath: /api/invoices }
 ---
-# The language the Accept-Language header asks for.
+kind: Ui.View
+metadata:
+  name: helpLink
+content: { type: link, text: Help, href: /help }
+---
+# The language the Accept-Language header asks for. Its header holds a logo, a
+# composite, a menu with an item delivered per request, and a badge delivered
+# per request.
 kind: UiReact.App
 metadata:
   name: byHeader
 title: Invoices
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 translator: !ref t
 lang: !cel "'accept-language' in request.headers ? Self.language(request.headers['accept-language']) : 'en'"
+header:
+  start:
+    - { type: image, src: /logo.svg, alt: Invoices }
+  end:
+    - { type: composite, ref: !ref helpLink }
+    - type: menu
+      text: Help
+      items:
+        - { type: link, text: Help, href: /help, style: strong }
+        - type: link
+          text: Staff
+          href: /staff
+          when: !cel "'x-role' in request.headers && request.headers['x-role'] == 'staff'"
+    - type: badge
+      text: Staff
+      when: !cel "'x-role' in request.headers && request.headers['x-role'] == 'staff'"
 pages:
   - path: /
     title: Invoices
@@ -90,6 +117,7 @@ pages:
           text: { plural: n, cases: { one: "{$n} unpaid item", other: "{$n} unpaid items" } }
           values: { n: 3 }
       - { type: composite, ref: !ref invoiceForm }
+      - { type: badge, text: { text: Open, context: state } }
 ---
 # The language a cookie names.
 kind: UiReact.App
@@ -97,6 +125,7 @@ metadata:
   name: byCookie
 title: Invoices
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 translator: !ref t
 lang: !cel "'cookie' in request.headers && request.headers['cookie'].contains('lang=pl') ? 'pl' : 'en'"
 pages:
@@ -111,6 +140,7 @@ metadata:
   name: fixed
 title: Invoices
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 translator: !ref t
 lang: pl
 pages:

@@ -493,6 +493,12 @@ export interface ResourceContext extends ControllerContext {
    * controller this resource runs — found as {@link resolveNativeFile} finds
    * it. This is how a controller reaches the browser code its own module ships.
    *
+   * When that module declares no such specifier, the one module it imports
+   * directly that does is resolved against instead, so a controller can serve
+   * an entry a library it imports ships. Rejects with
+   * `ERR_BROWSER_ENTRY_AMBIGUOUS`, naming both, when two direct imports declare
+   * it, and with `ERR_BROWSER_ENTRY_UNKNOWN` when none does.
+   *
    * Polyglot debt: served by the Node kernel only, as above.
    */
   resolveControllerBrowserEntry(specifier: string): Promise<BrowserEntryFiles>;

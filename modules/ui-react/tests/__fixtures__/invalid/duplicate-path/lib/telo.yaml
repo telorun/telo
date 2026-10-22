@@ -17,6 +17,7 @@ metadata:
   name: twice
 title: Twice
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /reports
     title: Reports

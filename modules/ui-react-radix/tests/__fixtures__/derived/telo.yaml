@@ -1,0 +1,22 @@
+# A theme of its own over the Radix controls: the set taken whole, the look
+# written anew.
+kind: Telo.Library
+metadata:
+  name: UiReactRadixDerivedTheme
+  version: 1.0.0
+  description: >-
+    Test fixture: a theme drawing with the Radix controls under a stylesheet of
+    its own.
+imports:
+  UiReact: ../../../../ui-react
+  Radix: ../../../
+exports:
+  resources: [theme]
+---
+kind: UiReact.Theme
+metadata:
+  name: theme
+stylesheets:
+  - !module-path ./derived.css
+controls:
+  - !ref Radix.controls

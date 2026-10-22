@@ -28,13 +28,15 @@ const show = (
   });
 
 /** The query the list was last asked with, the page size aside. */
+const listing = /^GET (\/[a-z]+)?\/api\/todos\?/;
 const asked = (r: Rendered) =>
   r.requests
-    .filter((request) => request.startsWith("GET /api/todos?"))
+    .filter((request) => listing.test(request))
     .at(-1)!
-    .replace("GET /api/todos?limit=2", "")
+    .replace(listing, "")
+    .replace("limit=2", "")
     .replace(/^&/, "");
-const lists = (r: Rendered) => r.requests.filter((request) => request.startsWith("GET /api/todos?")).length;
+const lists = (r: Rendered) => r.requests.filter((request) => listing.test(request)).length;
 const labels = (r: Rendered) => r.parts("filter-label").map((label) => label.textContent);
 const filterOf = (r: Rendered, label: string) => r.parts("filter").find((filter) => filter.querySelector('[data-telo-part="filter-label"]')?.textContent === label)!;
 const within = (element: Element, part: string) => element.querySelector(`[data-telo-part="${part}"]`) as HTMLElement;
@@ -231,7 +233,7 @@ describe("a filter bar", () => {
     expect(rendered.parts("filters-toggle")).toEqual([]);
   });
 
-  it("draws each filter as a chip naming it and its value, which opens its control in a popover", async () => {
+  it("draws each filter as a chip naming it and its value, titled with its whole text, which opens its control in a popover", async () => {
     rendered = await show({ controls: "chips", fields: [task(), done({ control: "options" })] });
     expect(rendered.parts("filter")).toEqual([]);
     const chip = rendered.parts("filter-chip")[1];
@@ -245,7 +247,7 @@ describe("a filter bar", () => {
     expect(labels(rendered)).toEqual(["Done"]);
     await pick(rendered, "filter-option", "No");
     expect(asked(rendered)).toBe("isDone=false");
-    expect([chip.textContent, chip.getAttribute("data-state"), chip.getAttribute("data-active")]).toEqual(["Done: No", "open", "true"]);
+    expect([chip.textContent, chip.getAttribute("title"), chip.getAttribute("data-state"), chip.getAttribute("data-active")]).toEqual(["Done: No", "Done: No", "open", "true"]);
     expect(rendered.part("filter").getAttribute("data-active")).toBe("true");
   });
 
@@ -280,13 +282,16 @@ describe("a filter bar", () => {
     expect(asked(rendered)).toBe("");
   });
 
-  it("sends the number a `slider` is moved to, within the property's bounds", async () => {
+  it("sends the number a `slider` is moved to, within the property's bounds, showing the position as it moves", async () => {
     rendered = await show({ fields: [filterField("priority", "gte", { control: "slider" })] });
     const thumb = rendered.part("filter-slider").querySelector('[role="slider"]') as HTMLElement;
+    const shown = rendered.part("filter-slider-value");
     expect(["aria-valuemin", "aria-valuemax", "aria-valuetext"].map((name) => thumb.getAttribute(name))).toEqual(["1", "5", "Any"]);
+    expect([shown.textContent, shown.getAttribute("aria-hidden")]).toEqual(["Any", "true"]);
     await key(rendered, thumb, "ArrowRight");
+    expect(shown.textContent).toBe("2");
     await key(rendered, thumb, "ArrowRight");
-    expect(asked(rendered)).toBe("priority.gte=3");
+    expect([asked(rendered), shown.textContent]).toEqual(["priority.gte=3", "3"]);
   });
 
   it("collects `tags` typed one at a time, each removed on its own", async () => {

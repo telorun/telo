@@ -120,6 +120,22 @@ describe("a picker", () => {
   });
 });
 
+describe("an option source under a mount", () => {
+  it("reads its pages and labels chosen values under the mount", async () => {
+    const form = { type: "form", schema: taskSchema, basePath: "/api/tasks", fields: [picker()], groups: [], state: memoryState(["watchers"]) };
+    rendered = await render({
+      path: "/",
+      prefix: "/admin",
+      collections: { "/api/people": people, "/api/tasks": [{ id: 1, text: "Plan", watchers: ["p5"] }] },
+      pages: { "/": { title: "Tasks", children: [tableNode({ basePath: "/api/tasks", columns: [], edit: opener({ form }) })] } },
+    });
+    await rendered.click(rendered.part("row-edit"));
+    await rendered.click(rendered.part("picker-trigger"));
+    expect(rendered.requests.filter((request) => request.includes("/api/people"))).toEqual(["GET /admin/api/people?limit=2&id.in=p5", "GET /admin/api/people?limit=2"]);
+    expect(rendered.parts("picker-chosen").map((chosen) => chosen.textContent)).toEqual(["Barbara"]);
+  });
+});
+
 describe("an option source reading the form's values", () => {
   const owners = {
     type: "choice",

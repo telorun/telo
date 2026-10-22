@@ -212,3 +212,25 @@ describe("step retry — unretryable kernel verdicts", () => {
     expect(calls()).toBe(1);
   });
 });
+
+describe("step timeout", () => {
+  it("is a timeout when the answer arrives past the deadline before the timer has run", async () => {
+    // The target holds the thread past the bound and then answers, so the
+    // deadline timer cannot have run when the answer is read.
+    const { step } = stepCalling(() => {
+      const until = performance.now() + 20;
+      while (performance.now() < until);
+      return "late";
+    });
+    await expect(executeInvokeStep({ ...step, timeout: 5 }, fakeContext(), state())).rejects.toMatchObject({
+      code: "ERR_STEP_TIMEOUT",
+    });
+  });
+
+  it("returns an answer that arrives within the deadline", async () => {
+    const { step } = stepCalling(() => "on time");
+    const s = state();
+    await executeInvokeStep({ ...step, timeout: 1000 }, fakeContext(), s);
+    expect(s.steps.Target).toEqual({ result: "on time" });
+  });
+});

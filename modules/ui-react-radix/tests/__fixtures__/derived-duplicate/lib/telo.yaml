@@ -1,0 +1,34 @@
+# A theme over the Radix controls that also lists a set of its own drawing the
+# dialog, and with it every other layer control.
+kind: Telo.Library
+metadata:
+  name: UiReactRadixDerivedDuplicate
+  version: 1.0.0
+  description: >-
+    Test fixture exporting a theme that lists the Radix controls beside a set
+    of its own implementing the same layer controls.
+imports:
+  UiReact: ../../../../../ui-react
+  Radix: ../../../../
+exports:
+  resources: [theme]
+  browser:
+    - specifier: "@fixture/layer-controls"
+      path: ./browser/layer-controls.js
+      source: ./src/layer-controls.js
+      abi: ui_react_controls-1
+      external: [react, react/jsx-runtime, react-dom]
+      exports: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip]
+---
+kind: UiReact.Controls
+metadata:
+  name: layerControls
+entry: "@fixture/layer-controls"
+implements: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip]
+---
+kind: UiReact.Theme
+metadata:
+  name: theme
+controls:
+  - !ref Radix.controls
+  - !ref layerControls

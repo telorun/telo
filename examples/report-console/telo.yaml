@@ -312,15 +312,16 @@ title: Reports
 words: !ref Ui.words
 translator: !ref t
 lang: !cel "'accept-language' in request.headers ? Self.language(request.headers['accept-language']) : 'en'"
-theme:
-  kind: Ui.Theme
-  tokens:
-    color.background: "#f7f8fa"
-    color.surface: "#ffffff"
-    color.text: "#16202e"
-    color.accent: "#1d4ed8"
-    color.accent-text: "#ffffff"
-    radius.md: 6px
+# The built-in look, under the console's brand.
+theme: !ref UiReact.defaultTheme
+tokens:
+  kind: Ui.DesignTokens
+  color.background: "#f7f8fa"
+  color.surface: "#ffffff"
+  color.text: "#16202e"
+  color.accent: "#1d4ed8"
+  color.accent-text: "#ffffff"
+  radius.md: 6px
 # The dark-blue header of every table and list is styled over the renderer's
 # part names.
 stylesheets:

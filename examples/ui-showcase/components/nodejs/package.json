@@ -1,0 +1,18 @@
+{
+  "name": "@telorun/ui-showcase-components",
+  "version": "1.0.0",
+  "license": "MIT",
+  "private": true,
+  "description": "Type-check only package for the ui-showcase example's browser components, written against the ui_react-1 ABI. Never published; the kernel builds the browser entry from source.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "typescript": "^5.0.0"
+  }
+}

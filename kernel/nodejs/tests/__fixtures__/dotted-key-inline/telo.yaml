@@ -1,0 +1,13 @@
+kind: Telo.Application
+metadata:
+  name: DottedKeyInline
+  version: 1.0.0
+imports:
+  Ui: ../../../../../modules/ui
+  Font: ../../../../../modules/font
+---
+kind: Ui.DesignTokens
+metadata:
+  name: brand
+color.accent: "#1f8fff"
+font.body: { kind: Font.Family, family: Inter }

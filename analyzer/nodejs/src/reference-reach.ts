@@ -21,6 +21,12 @@
  * - a pattern keeps EVERY slot any branch declares there, and each slot keeps
  *   its non-reference alternatives there as value branches.
  *
+ * A pattern is a list of segments ({@link Pattern}): a property name exactly as
+ * written — a dot or a bracket inside it is part of the name — or a wildcard
+ * object for every item of a list (`[]`) or every undeclared key of a map
+ * (`{}`). The dotted text (`routes[].handler`) is only ever derived from it, for
+ * display and for the string fields consumers already read.
+ *
  * Every schema node entered at a pattern is one of its DECLARATIONS, recorded
  * with the `anyOf` / `oneOf` branches it was entered through. Two declarations
  * are ALTERNATIVES when they were entered through different branches of one
@@ -52,8 +58,59 @@ import type {
   ScopeFieldEntry,
 } from "./reference-field-map.js";
 
+/** A wildcard segment of a {@link Pattern}: every item of a list (`[]`) or
+ *  every undeclared key of a map (`{}`). An object, so no property name — not
+ *  even one spelled `[]` or `{}` — is ever read as one. */
+export interface PatternWildcard {
+  readonly wildcard: "[]" | "{}";
+}
+
+export const ITEMS: PatternWildcard = Object.freeze({ wildcard: "[]" });
+export const MAP_VALUES: PatternWildcard = Object.freeze({ wildcard: "{}" });
+
+/** One step of a pattern: a property name, or a wildcard. */
+export type PatternSegment = string | PatternWildcard;
+
+/** Where a slot sits relative to a schema's root, one segment per step. */
+export type Pattern = readonly PatternSegment[];
+
+const isWildcard = (segment: PatternSegment, wildcard: "[]" | "{}"): boolean =>
+  typeof segment !== "string" && segment.wildcard === wildcard;
+
+/** An injective string for a pattern — the key every per-pattern map uses. */
+export function patternKey(pattern: Pattern): string {
+  return JSON.stringify(
+    pattern.map((segment) => (typeof segment === "string" ? segment : segment.wildcard === "[]" ? 0 : 1)),
+  );
+}
+
+/** A pattern's dotted spelling (`routes[].handler`, `content.{}.encoder`), for
+ *  display only: a property name holding a dot reads the same as two. */
+export function patternText(pattern: Pattern): string {
+  let out = "";
+  for (const segment of pattern) {
+    if (isWildcard(segment, "[]")) {
+      out += "[]";
+      continue;
+    }
+    const text = typeof segment === "string" ? segment : "{}";
+    out = out ? `${out}.${text}` : text;
+  }
+  return out;
+}
+
+/** True when two patterns name the same place. */
+export const samePattern = (a: Pattern, b: Pattern): boolean =>
+  a.length === b.length && a.every((segment, i) => sameSegment(segment, b[i]!));
+
+const sameSegment = (a: PatternSegment, b: PatternSegment): boolean =>
+  typeof a === "string" ? a === b : typeof b !== "string" && a.wildcard === b.wildcard;
+
+const holdsItems = (pattern: Pattern): boolean => pattern.some((s) => isWildcard(s, "[]"));
+
 /** Everything the traversal records at one pattern that drives another. */
 export interface ReachPath {
+  pattern: Pattern;
   /** Every reference slot declared here, by any branch. */
   refs: RefFieldEntry[];
   /** Every step body declared here, by any branch. */
@@ -61,11 +118,12 @@ export interface ReachPath {
   /** Back-edges of a recursive schema: the node here is also the one entered at
    *  each of these patterns, so everything below them applies again below this
    *  one, as deep as a resource's data goes. */
-  recurse: string[];
+  recurse: Pattern[];
 }
 
 /** The stops recorded at one pattern: where the traversal hands off. */
 export interface ReachStop {
+  pattern: Pattern;
   scopes: ScopeFieldEntry[];
   schemaFrom: SchemaFromFieldEntry[];
   /** The ids of the non-local `$ref`s written here. */
@@ -76,20 +134,22 @@ export interface ReachStop {
 export interface SchemaReach {
   document: Record<string, any>;
   node: Record<string, any>;
-  /** Patterns (`routes[].handler`, `content.{}.encoder`) relative to `node`. */
+  /** Per pattern relative to `node`, keyed by {@link patternKey}. */
   paths: Map<string, ReachPath>;
   stops: Map<string, ReachStop>;
   /** Per `{}` pattern, the keys its `additionalProperties` does not apply to:
    *  those the same schema declares under `properties`, plus the resource
    *  envelope at a resource root. Where several schemas meet at one `{}`
-   *  pattern, only keys every one of them declares are skipped. */
+   *  pattern, only keys every one of them declares are skipped. Keyed by
+   *  {@link patternKey}. */
   declaredKeys: Map<string, Set<string>>;
   /** True when some pattern holds a step or reference slot. */
   drives: boolean;
   /** Every `x-telo-scope` node reached, with the pattern it applies at and
    *  where it is written in `document` (`properties.with`, `$defs.With`). */
   scopeNodes: ScopeNode[];
-  /** Per pattern, every schema node entered there, in the order entered. */
+  /** Per pattern ({@link patternKey}), every schema node entered there, in the
+   *  order entered. */
   declarations: Map<string, Declaration[]>;
 }
 
@@ -99,7 +159,7 @@ export interface BranchChoice {
   union: object;
   index: number;
   /** The pattern the union is written at, relative to the reach's node. */
-  path: string;
+  path: Pattern;
 }
 
 /** A schema node entered at a pattern, with the union branches that led to it. */
@@ -115,7 +175,7 @@ export function areAlternatives(a: Declaration, b: Declaration): boolean {
 }
 
 export interface ScopeNode {
-  path: string;
+  path: Pattern;
   node: Record<string, any>;
   location: string;
 }
@@ -164,12 +224,12 @@ export function resolveLocalReference(
 export function refFieldEntryOf(
   slot: RefSlot,
   node: Record<string, any>,
-  path: string,
+  path: Pattern,
 ): RefFieldEntry {
   const entry: RefFieldEntry = {
     refs: slot.kinds,
     uses: slot.uses,
-    isArray: path.includes("[]"),
+    isArray: holdsItems(path),
   };
   if (slot.useCases) entry.useCases = slot.useCases;
   if (slot.inputs !== undefined) entry.inputs = slot.inputs;
@@ -264,11 +324,12 @@ export function reachOfNode(document: Record<string, any>, node: Record<string, 
 interface Walk {
   reach: SchemaReach;
   envelope: boolean;
-  /** Per pattern, the schema nodes already recorded there: one node reached
-   *  twice at one pattern (two branches `$ref`-ing one definition) is one slot. */
+  /** Per pattern ({@link patternKey}), the schema nodes already recorded there:
+   *  one node reached twice at one pattern (two branches `$ref`-ing one
+   *  definition) is one slot. */
   recorded: Map<string, Set<object>>;
   /** Each node on the current descent, with the pattern it was entered at. */
-  onStack: Map<object, string>;
+  onStack: Map<object, Pattern>;
   /** The `anyOf` / `oneOf` branches the current descent went through. */
   branches: BranchChoice[];
   /** Per pattern, the nodes already recorded as declarations there. */
@@ -294,20 +355,21 @@ function traverse(
     reach,
     envelope,
     recorded: new Map(),
-    onStack: new Map([[node, ""]]),
+    onStack: new Map([[node, []]]),
     branches: [],
     declared: new Map(),
   };
-  visitNode(node, "", locationIn(document, node), walk);
+  visitNode(node, [], locationIn(document, node), walk);
   addValueAlternatives(reach);
   return reach;
 }
 
-function declare(walk: Walk, path: string, node: Record<string, any>): Declaration {
-  let nodes = walk.declared.get(path);
-  if (!nodes) walk.declared.set(path, (nodes = new Set()));
-  let list = walk.reach.declarations.get(path);
-  if (!list) walk.reach.declarations.set(path, (list = []));
+function declare(walk: Walk, path: Pattern, node: Record<string, any>): Declaration {
+  const key = patternKey(path);
+  let nodes = walk.declared.get(key);
+  if (!nodes) walk.declared.set(key, (nodes = new Set()));
+  let list = walk.reach.declarations.get(key);
+  if (!list) walk.reach.declarations.set(key, (list = []));
   if (nodes.has(node)) return list.find((d) => d.node === node)!;
   nodes.add(node);
   const declaration: Declaration = { node, branches: [...walk.branches] };
@@ -333,11 +395,11 @@ function isReferenceNode(node: Record<string, any>, document: Record<string, any
  *  each diverged through; every value branch and member records the document it
  *  resolves against. */
 function addValueAlternatives(reach: SchemaReach): void {
-  for (const [path, at] of reach.paths) {
+  for (const [key, at] of reach.paths) {
     for (const entry of at.refs) {
       const own = entryDeclarations.get(entry);
       const alternatives = own
-        ? (reach.declarations.get(path) ?? []).filter(
+        ? (reach.declarations.get(key) ?? []).filter(
             (d) => areAlternatives(d, own) && !isReferenceNode(d.node, reach.document),
           )
         : [];
@@ -372,9 +434,10 @@ function unionMember(choice: BranchChoice): Record<string, any> {
 
 /** The pattern of the object enclosing `path`'s value: `routes[].handler` →
  *  `routes[]`, `targets[]` → the root, `a.{}` → `a`. */
-function enclosingPattern(path: string): string {
-  const dot = path.lastIndexOf(".");
-  return dot === -1 ? "" : path.slice(0, dot);
+function enclosingPattern(path: Pattern): Pattern {
+  let end = path.length;
+  while (end > 0 && isWildcard(path[end - 1]!, "[]")) end--;
+  return path.slice(0, Math.max(end - 1, 0));
 }
 
 const enclosingMemo = new WeakMap<RefFieldEntry, Record<string, any>[]>();
@@ -382,19 +445,20 @@ const enclosingMemo = new WeakMap<RefFieldEntry, Record<string, any>[]>();
 /** The conjunct declarations of the object enclosing a slot, in entry order. */
 function enclosingDeclarations(
   reach: SchemaReach,
-  declaredPath: string,
+  declaredPath: Pattern,
   entry: RefFieldEntry,
 ): Record<string, any>[] {
   let out = enclosingMemo.get(entry);
   if (out) return out;
   const own = entryDeclarations.get(entry);
-  out = (reach.declarations.get(enclosingPattern(declaredPath)) ?? [])
+  out = (reach.declarations.get(patternKey(enclosingPattern(declaredPath))) ?? [])
     .filter((d) => !own || !areAlternatives(d, own))
     .map((d) => d.node);
   enclosingMemo.set(entry, out);
   return out;
 }
 
+/** A dotted location or concrete path one key further — display spelling. */
 const joinKey = (path: string, key: string): string => (path ? `${path}.${key}` : key);
 
 /** Where `node` sits in `document`, found by identity; "" for the root. A node
@@ -432,27 +496,32 @@ function pointerLocation(ref: string): string {
     .join(".");
 }
 
-function firstTime(walk: Walk, path: string, node: object): boolean {
-  let nodes = walk.recorded.get(path);
-  if (!nodes) walk.recorded.set(path, (nodes = new Set()));
+function firstTime(walk: Walk, path: Pattern, node: object): boolean {
+  const key = patternKey(path);
+  let nodes = walk.recorded.get(key);
+  if (!nodes) walk.recorded.set(key, (nodes = new Set()));
   if (nodes.has(node)) return false;
   nodes.add(node);
   return true;
 }
 
-function pathAt(walk: Walk, path: string): ReachPath {
-  let entry = walk.reach.paths.get(path);
-  if (!entry) walk.reach.paths.set(path, (entry = { refs: [], steps: [], recurse: [] }));
+function pathAt(walk: Walk, path: Pattern): ReachPath {
+  const key = patternKey(path);
+  let entry = walk.reach.paths.get(key);
+  if (!entry) walk.reach.paths.set(key, (entry = { pattern: path, refs: [], steps: [], recurse: [] }));
   return entry;
 }
 
-function stopAt(walk: Walk, path: string): ReachStop {
-  let entry = walk.reach.stops.get(path);
-  if (!entry) walk.reach.stops.set(path, (entry = { scopes: [], schemaFrom: [], shapes: [] }));
+function stopAt(walk: Walk, path: Pattern): ReachStop {
+  const key = patternKey(path);
+  let entry = walk.reach.stops.get(key);
+  if (!entry) {
+    walk.reach.stops.set(key, (entry = { pattern: path, scopes: [], schemaFrom: [], shapes: [] }));
+  }
   return entry;
 }
 
-function visitNode(node: unknown, path: string, loc: string, walk: Walk): void {
+function visitNode(node: unknown, path: Pattern, loc: string, walk: Walk): void {
   if (!node || typeof node !== "object" || Array.isArray(node)) return;
   const schema = node as Record<string, any>;
   const declaration = declare(walk, path, schema);
@@ -479,7 +548,7 @@ function visitNode(node: unknown, path: string, loc: string, walk: Walk): void {
     // bare reference, or an object whose branches hold further slots) is walked
     // as any slot is; a list of step objects stays a stop.
     if (itemsAreReferenceSlot(schema.items, walk)) {
-      visitNode(schema.items, `${path}[]`, joinKey(loc, "items"), walk);
+      visitNode(schema.items, [...path, ITEMS], joinKey(loc, "items"), walk);
     }
     return;
   }
@@ -501,7 +570,7 @@ function visitNode(node: unknown, path: string, loc: string, walk: Walk): void {
     return;
   }
   if (schema.type === "array" && schema.items) {
-    visitNode(schema.items, `${path}[]`, joinKey(loc, "items"), walk);
+    visitNode(schema.items, [...path, ITEMS], joinKey(loc, "items"), walk);
   }
   visitProperties(schema, path, loc, walk);
   visitVariants(schema, path, loc, walk);
@@ -522,15 +591,15 @@ function itemsAreReferenceSlot(items: unknown, walk: Walk): boolean {
   return !!slot && slot.kinds.length > 0;
 }
 
-function visitProperties(schema: Record<string, any>, path: string, loc: string, walk: Walk): void {
+function visitProperties(schema: Record<string, any>, path: Pattern, loc: string, walk: Walk): void {
   const properties = schema.properties;
   if (!properties || typeof properties !== "object") return;
   for (const [key, propSchema] of Object.entries(properties)) {
-    visitNode(propSchema, joinKey(path, key), joinKey(joinKey(loc, "properties"), key), walk);
+    visitNode(propSchema, [...path, key], joinKey(joinKey(loc, "properties"), key), walk);
   }
 }
 
-function visitVariants(schema: Record<string, any>, path: string, loc: string, walk: Walk): void {
+function visitVariants(schema: Record<string, any>, path: Pattern, loc: string, walk: Walk): void {
   for (const variantKey of ["oneOf", "anyOf", "allOf"] as const) {
     const variants = schema[variantKey];
     if (!Array.isArray(variants)) continue;
@@ -550,7 +619,7 @@ function visitVariants(schema: Record<string, any>, path: string, loc: string, w
 /** One branch of a union. Its own root is not a slot — `readRefSlot` already
  *  unioned an `anyOf` of reference branches at the parent — so only what lies
  *  below it is walked, and a `$ref` branch is followed as a node of its own. */
-function visitVariant(variant: Record<string, any>, path: string, loc: string, walk: Walk): void {
+function visitVariant(variant: Record<string, any>, path: Pattern, loc: string, walk: Walk): void {
   declare(walk, path, variant);
   if (typeof variant.$ref === "string" || isRefSentinel(variant)) {
     followRef(variant, path, walk);
@@ -558,7 +627,7 @@ function visitVariant(variant: Record<string, any>, path: string, loc: string, w
   }
   visitProperties(variant, path, loc, walk);
   if (variant.type === "array" && variant.items) {
-    visitNode(variant.items, `${path}[]`, joinKey(loc, "items"), walk);
+    visitNode(variant.items, [...path, ITEMS], joinKey(loc, "items"), walk);
   }
   visitMapValue(variant, path, loc, walk);
 }
@@ -566,7 +635,7 @@ function visitVariant(variant: Record<string, any>, path: string, loc: string, w
 /** A local `$ref` is followed; a non-local one is recorded as a stop, and so is
  *  a `!ref <Shape>` still unresolved where a schema belongs — in the authoring
  *  spelling `telo://<authority>/<Shape>` names the same shape by. */
-function followRef(node: Record<string, any>, path: string, walk: Walk): void {
+function followRef(node: Record<string, any>, path: Pattern, walk: Walk): void {
   const ref = isRefSentinel(node) ? shapeRefOfSentinel(node) : (node.$ref as string);
   if (ref === undefined) return;
   if (ref.startsWith("#")) {
@@ -585,14 +654,14 @@ function shapeRefOfSentinel(sentinel: unknown): string | undefined {
 /** A reference to a node already on the descent records a back-edge to the
  *  pattern it was entered at; a cycle that made no structural progress (same
  *  pattern) records nothing, since its body is already recorded there. */
-function followLocalRef(node: Record<string, any>, path: string, walk: Walk): void {
+function followLocalRef(node: Record<string, any>, path: Pattern, walk: Walk): void {
   const target = resolveLocalReference(node, walk.reach.document);
   if (!target || target.node === node) return;
   const entered = walk.onStack.get(target.node);
   if (entered !== undefined) {
-    if (entered !== path) {
+    if (!samePattern(entered, path)) {
       const at = pathAt(walk, path);
-      if (!at.recurse.includes(entered)) at.recurse.push(entered);
+      if (!at.recurse.some((to) => samePattern(to, entered))) at.recurse.push(entered);
     }
     return;
   }
@@ -604,16 +673,17 @@ function followLocalRef(node: Record<string, any>, path: string, walk: Walk): vo
   }
 }
 
-function visitMapValue(owner: Record<string, any>, path: string, loc: string, walk: Walk): void {
+function visitMapValue(owner: Record<string, any>, path: Pattern, loc: string, walk: Walk): void {
   const valueSchema = owner.additionalProperties;
   if (!valueSchema || typeof valueSchema !== "object" || Array.isArray(valueSchema)) return;
-  const mapPath = joinKey(path, "{}");
+  const mapPath = [...path, MAP_VALUES];
+  const mapKey = patternKey(mapPath);
   const declared =
     owner.properties && typeof owner.properties === "object" ? Object.keys(owner.properties) : [];
-  if (path === "" && walk.envelope) declared.push(...RESOURCE_ENVELOPE_KEYS);
-  const previous = walk.reach.declaredKeys.get(mapPath);
+  if (path.length === 0 && walk.envelope) declared.push(...RESOURCE_ENVELOPE_KEYS);
+  const previous = walk.reach.declaredKeys.get(mapKey);
   walk.reach.declaredKeys.set(
-    mapPath,
+    mapKey,
     new Set(previous ? declared.filter((key) => previous.has(key)) : declared),
   );
   visitNode(valueSchema, mapPath, joinKey(loc, "additionalProperties"), walk);
@@ -648,8 +718,10 @@ function expansionsAt(
 /** A reference pattern a kind's schema declares, with every slot any branch
  *  declares there. */
 export interface DeclaredReference {
-  /** The pattern, relative to the resource root. */
+  /** The pattern, relative to the resource root, in its dotted spelling. */
   path: string;
+  /** The same pattern as segments — exact for a key holding a dot. */
+  fieldKeys: Pattern;
   isArray: boolean;
   /** Every accepted kind, unioned across the entries in declaration order. */
   kinds: string[];
@@ -688,27 +760,39 @@ export function declaredReach(
   const stops: DeclaredStop[] = [];
   const expanding = new Set<SchemaReach>();
 
-  const collect = (reach: SchemaReach, base: string, anchored: boolean): void => {
+  const collect = (reach: SchemaReach, base: Pattern, anchored: boolean): void => {
     expanding.add(reach);
-    for (const [rel, at] of reach.paths) {
+    for (const at of reach.paths.values()) {
       if (at.refs.length === 0) continue;
-      const path = joinPattern(base, rel);
-      let declared = references.get(path);
+      const fieldKeys = [...base, ...at.pattern];
+      const key = patternKey(fieldKeys);
+      let declared = references.get(key);
       if (!declared) {
-        declared = { path, isArray: path.includes("[]"), kinds: [], entries: [] };
-        references.set(path, declared);
+        declared = {
+          path: patternText(fieldKeys),
+          fieldKeys,
+          isArray: holdsItems(fieldKeys),
+          kinds: [],
+          entries: [],
+        };
+        references.set(key, declared);
       }
       for (const entry of at.refs) {
-        declared.entries.push(base ? { ...entry, isArray: declared.isArray } : entry);
+        declared.entries.push(base.length > 0 ? { ...entry, isArray: declared.isArray } : entry);
         for (const kind of entry.refs) {
           if (!declared.kinds.includes(kind)) declared.kinds.push(kind);
         }
       }
     }
-    for (const [rel, stop] of reach.stops) {
-      const path = joinPattern(base, rel);
+    for (const stop of reach.stops.values()) {
+      const path = [...base, ...stop.pattern];
       if (stop.scopes.length > 0 || stop.schemaFrom.length > 0) {
-        stops.push({ path, scopes: stop.scopes, schemaFrom: stop.schemaFrom, viaAnchor: anchored });
+        stops.push({
+          path: patternText(path),
+          scopes: stop.scopes,
+          schemaFrom: stop.schemaFrom,
+          viaAnchor: anchored,
+        });
       }
       for (const next of expansionsAt(stop, reach, schemaFrom, shapes)) {
         if (!expanding.has(next.reach)) collect(next.reach, path, anchored || next.anchor);
@@ -716,7 +800,7 @@ export function declaredReach(
     }
     expanding.delete(reach);
   };
-  collect(reachOfSchema(schema), "", false);
+  collect(reachOfSchema(schema), [], false);
   return { references: [...references.values()], stops };
 }
 
@@ -739,7 +823,7 @@ export interface MisplacedScope {
  */
 export function misplacedScopeSlots(schema: Record<string, any>): MisplacedScope[] {
   const reach = reachOfSchema(schema);
-  const recursesToRoot = [...reach.paths.values()].some((at) => at.recurse.includes(""));
+  const recursesToRoot = [...reach.paths.values()].some((at) => at.recurse.some((to) => to.length === 0));
   const legal = new Set<object>();
   const out: MisplacedScope[] = [];
   const reported = new Set<string>();
@@ -749,15 +833,16 @@ export function misplacedScopeSlots(schema: Record<string, any>): MisplacedScope
     out.push({ location, reason });
   };
   for (const { path, node, location } of reach.scopeNodes) {
+    const text = patternText(path);
     const reason =
-      path === ""
+      path.length === 0
         ? "it is the resource root itself"
-        : path.includes("{}")
-          ? `it applies to the values of an open-keyed map ('${path}')`
-          : path.includes("[]")
-            ? `it applies to the items of an array ('${path}')`
-            : path.includes(".")
-              ? `it is nested under an object ('${path}')`
+        : path.some((segment) => isWildcard(segment, "{}"))
+          ? `it applies to the values of an open-keyed map ('${text}')`
+          : holdsItems(path)
+            ? `it applies to the items of an array ('${text}')`
+            : path.length > 1
+              ? `it is nested under an object ('${text}')`
               : recursesToRoot
                 ? "the schema refers back to its own root, so it recurs below the top level"
                 : undefined;
@@ -789,13 +874,16 @@ export function misplacedScopeSlots(schema: Record<string, any>): MisplacedScope
 /** A reference slot at a concrete site, with where it was declared. */
 export interface ReachRef {
   slot: RefSlot;
-  /** The declared pattern, relative to the resource root. */
+  /** The declared pattern, relative to the resource root, in its dotted
+   *  spelling. */
   fieldPath: string;
+  /** The same pattern as segments — exact for a key holding a dot. */
+  fieldKeys: Pattern;
   /** The reach that declares the slot — the kind's own, or a schema-from
    *  anchor's — and the pattern relative to it, which is what a schema default
    *  at the slot is read against. */
   declaredIn: SchemaReach;
-  declaredPath: string;
+  declaredPath: Pattern;
   /** True when a schema-from anchor's schema declares the slot. */
   viaAnchor: boolean;
   /** The slot's `x-telo-context`, when it declares one. */
@@ -873,8 +961,10 @@ export interface ReachSite {
 /** An `x-telo-schema-from` slot at a concrete site. */
 export interface ReachSchemaFrom {
   entry: SchemaFromFieldEntry;
-  /** The declared pattern, relative to the resource root. */
+  /** The declared pattern, relative to the resource root, in its dotted
+   *  spelling. */
   fieldPath: string;
+  fieldKeys: Pattern;
   /** The document the annotation is written in. */
   document: Record<string, any>;
   /** True when a schema-from anchor's schema writes it, not the kind's own. */
@@ -889,7 +979,7 @@ export function siteRefEntry(site: ReachSite): RefFieldEntry {
   const entry: RefFieldEntry = {
     refs: [],
     uses: [],
-    isArray: first.fieldPath.includes("[]"),
+    isArray: holdsItems(first.fieldKeys),
   };
   const valueBranches: Record<string, any>[] = [];
   for (const { slot, context } of site.refs) {
@@ -962,7 +1052,8 @@ function enumerateSites(
   const expanded = new Map<unknown, Set<SchemaReach>>();
 
   const siteAt = (path: string, keys: (string | number)[], found: Site) => {
-    let site = sites.get(path);
+    const id = JSON.stringify(keys);
+    let site = sites.get(id);
     if (!site) {
       site = {
         path,
@@ -978,25 +1069,26 @@ function enumerateSites(
         site.holder = found.holder;
         site.key = found.key;
       }
-      sites.set(path, site);
+      sites.set(id, site);
     }
     return site;
   };
 
   const walk = (
     reach: SchemaReach,
-    prefix: string,
+    prefix: Pattern,
     at0: Site,
     base: string,
     baseKeys: (string | number)[],
-    patternBase: string,
+    patternBase: Pattern,
     anchored: boolean,
   ): void => {
-    for (const [declaredPath, at] of reach.paths) {
+    for (const at of reach.paths.values()) {
+      const declaredPath = at.pattern;
       const rel = relativeFieldPath(declaredPath, prefix);
       if (rel === undefined) continue;
       for (const found of resolveSites(at0, rel, prefix, reach)) {
-        const path = joinPattern(base, found.path);
+        const path = joinConcrete(base, found.path);
         const keys = [...baseKeys, ...found.keys];
         if (at.steps.length > 0 || at.refs.length > 0) {
           const site = siteAt(path, keys, found);
@@ -1008,9 +1100,11 @@ function enumerateSites(
           for (const entry of at.refs) {
             if (site.from.has(entry)) continue;
             site.from.add(entry);
+            const fieldKeys = [...patternBase, ...declaredPath];
             const ref: ReachRef = {
               slot: refSlotOfEntry(entry),
-              fieldPath: joinPattern(patternBase, declaredPath),
+              fieldPath: patternText(fieldKeys),
+              fieldKeys,
               declaredIn: reach,
               declaredPath,
               viaAnchor: anchored,
@@ -1030,11 +1124,12 @@ function enumerateSites(
       }
     }
     if (!followsStops || reach.stops.size === 0) return;
-    for (const [declaredPath, stop] of reach.stops) {
+    for (const stop of reach.stops.values()) {
+      const declaredPath = stop.pattern;
       const rel = relativeFieldPath(declaredPath, prefix);
       if (rel === undefined) continue;
       for (const found of resolveSites(at0, rel, prefix, reach)) {
-        const path = joinPattern(base, found.path);
+        const path = joinConcrete(base, found.path);
         const keys = [...baseKeys, ...found.keys];
         if (keepStops && (stop.scopes.length > 0 || (withSchemaFrom && stop.schemaFrom.length > 0))) {
           const site = siteAt(path, keys, found);
@@ -1046,9 +1141,11 @@ function enumerateSites(
           for (const entry of withSchemaFrom ? stop.schemaFrom : []) {
             if (site.from.has(entry)) continue;
             site.from.add(entry);
+            const fieldKeys = [...patternBase, ...declaredPath];
             site.schemaFrom.push({
               entry,
-              fieldPath: joinPattern(patternBase, declaredPath),
+              fieldPath: patternText(fieldKeys),
+              fieldKeys,
               document: reach.document,
               viaAnchor: anchored,
             });
@@ -1061,11 +1158,11 @@ function enumerateSites(
           entered.add(next.reach);
           walk(
             next.reach,
-            "",
+            [],
             found,
             path,
             keys,
-            joinPattern(patternBase, declaredPath),
+            [...patternBase, ...declaredPath],
             anchored || next.anchor,
           );
           entered.delete(next.reach);
@@ -1073,7 +1170,7 @@ function enumerateSites(
       }
     }
   };
-  walk(root, "", { value: data, path: "", keys: [] }, "", [], "", false);
+  walk(root, [], { value: data, path: "", keys: [] }, "", [], [], false);
 
   return [...sites.values()].map(({ from, ...site }) => site);
 }
@@ -1084,7 +1181,7 @@ function enumerateSites(
 function siteAlternatives(
   entry: RefFieldEntry,
   reach: SchemaReach,
-  prefix: string,
+  prefix: Pattern,
   start: Site,
   found: Site,
 ): ReachRef["alternatives"] {
@@ -1093,7 +1190,7 @@ function siteAlternatives(
   return declared.map(({ node, diverging }) => {
     const members: { member: Record<string, any>; document: Record<string, any>; value: unknown }[] = [];
     for (const choice of diverging) {
-      const rel = choice.path === prefix ? "" : relativeFieldPath(choice.path, prefix);
+      const rel = samePattern(choice.path, prefix) ? [] : relativeFieldPath(choice.path, prefix);
       const position =
         rel === undefined
           ? undefined
@@ -1113,8 +1210,11 @@ function siteAlternatives(
 export interface ReachPosition {
   path: string;
   value: unknown;
-  /** The declared pattern of a slot the position leads to (or is). */
+  /** The declared pattern of a slot the position leads to (or is), in its
+   *  dotted spelling. */
   fieldPath: string;
+  /** The same pattern as segments — exact for a key holding a dot. */
+  fieldKeys: Pattern;
 }
 
 /**
@@ -1138,40 +1238,65 @@ export function reachPositions(
   const onData = new Set<unknown>([data]);
   const expanded = new Map<unknown, Set<SchemaReach>>();
 
-  const emit = (reach: SchemaReach, prefix: string, at0: Site, base: string, rel: string, fieldPath: string) => {
+  const emit = (
+    reach: SchemaReach,
+    prefix: Pattern,
+    at0: Site,
+    base: string,
+    baseKeys: (string | number)[],
+    rel: Pattern,
+    fieldKeys: Pattern,
+  ) => {
     for (const relPrefix of patternPrefixes(rel)) {
       for (const found of resolveSites(at0, relPrefix, prefix, reach)) {
-        const path = joinPattern(base, found.path);
-        if (!positions.has(path)) positions.set(path, { path, value: found.value, fieldPath });
+        const id = JSON.stringify([...baseKeys, ...found.keys]);
+        if (positions.has(id)) continue;
+        positions.set(id, {
+          path: joinConcrete(base, found.path),
+          value: found.value,
+          fieldPath: patternText(fieldKeys),
+          fieldKeys,
+        });
       }
     }
   };
 
-  const walk = (reach: SchemaReach, prefix: string, at0: Site, base: string, patternBase: string): void => {
-    for (const [declaredPath, at] of reach.paths) {
+  const walk = (
+    reach: SchemaReach,
+    prefix: Pattern,
+    at0: Site,
+    base: string,
+    baseKeys: (string | number)[],
+    patternBase: Pattern,
+  ): void => {
+    for (const at of reach.paths.values()) {
       if (at.refs.length === 0 && at.recurse.length === 0) continue;
+      const declaredPath = at.pattern;
       const rel = relativeFieldPath(declaredPath, prefix);
       if (rel === undefined) continue;
       // A back-edge's position leads to the slots below the node it re-enters.
       const leadsTo =
         at.refs.length > 0
           ? declaredPath
-          : [...reach.paths].find(
-              ([pattern, below]) =>
-                below.refs.length > 0 && at.recurse.some((to) => relativeFieldPath(pattern, to) !== undefined),
-            )?.[0];
-      if (leadsTo !== undefined) emit(reach, prefix, at0, base, rel, joinPattern(patternBase, leadsTo));
+          : [...reach.paths.values()].find(
+              (below) =>
+                below.refs.length > 0 &&
+                at.recurse.some((to) => relativeFieldPath(below.pattern, to) !== undefined),
+            )?.pattern;
+      if (leadsTo !== undefined) emit(reach, prefix, at0, base, baseKeys, rel, [...patternBase, ...leadsTo]);
       if (at.recurse.length === 0) continue;
       for (const found of resolveSites(at0, rel, prefix, reach)) {
         if (!found.value || typeof found.value !== "object" || onData.has(found.value)) continue;
         onData.add(found.value);
-        const path = joinPattern(base, found.path);
-        for (const to of at.recurse) walk(reach, to, found, path, patternBase);
+        const path = joinConcrete(base, found.path);
+        const keys = [...baseKeys, ...found.keys];
+        for (const to of at.recurse) walk(reach, to, found, path, keys, patternBase);
         onData.delete(found.value);
       }
     }
     if (!schemaFrom && !shapes) return;
-    for (const [declaredPath, stop] of reach.stops) {
+    for (const stop of reach.stops.values()) {
+      const declaredPath = stop.pattern;
       const rel = relativeFieldPath(declaredPath, prefix);
       if (rel === undefined) continue;
       for (const { reach: anchored, anchor } of expansionsAt(stop, reach, schemaFrom, shapes)) {
@@ -1180,24 +1305,30 @@ export function reachPositions(
         // above it leads to the first slot the shape declares.
         const firstSlot = anchor
           ? undefined
-          : [...anchored.paths].find(([, at]) => at.refs.length > 0)?.[0];
-        const anchoredBase = joinPattern(patternBase, declaredPath);
+          : [...anchored.paths.values()].find((at) => at.refs.length > 0)?.pattern;
+        const anchoredBase = [...patternBase, ...declaredPath];
         // Emitted with or without a concrete site at the stop: a value computed
         // above it leaves none, yet holds the slot's value.
-        emit(reach, prefix, at0, base, rel, joinPattern(anchoredBase, firstSlot ?? ""));
+        emit(reach, prefix, at0, base, baseKeys, rel, [...anchoredBase, ...(firstSlot ?? [])]);
         for (const found of resolveSites(at0, rel, prefix, reach)) {
           let entered = expanded.get(found.value);
           if (!entered) expanded.set(found.value, (entered = new Set()));
           if (entered.has(anchored)) continue;
           entered.add(anchored);
-          const path = joinPattern(base, found.path);
-          walk(anchored, "", found, path, anchoredBase);
+          walk(
+            anchored,
+            [],
+            found,
+            joinConcrete(base, found.path),
+            [...baseKeys, ...found.keys],
+            anchoredBase,
+          );
           entered.delete(anchored);
         }
       }
     }
   };
-  walk(root, "", { value: data, path: "", keys: [] }, "", "");
+  walk(root, [], { value: data, path: "", keys: [] }, "", [], []);
   return [...positions.values()];
 }
 
@@ -1222,15 +1353,9 @@ function leadsToSlot(
 
 /** Every non-empty prefix of a relative pattern, one per step a walk takes:
  *  `a.b[].c` → `a`, `a.b`, `a.b[]`, `a.b[].c`. */
-function patternPrefixes(rel: string): string[] {
-  const out: string[] = [];
-  let acc = "";
-  for (const part of rel.split(".")) {
-    if (part === "") continue;
-    const key = part.replace(/(\[\])+$/, "");
-    if (key) out.push((acc = joinKey(acc, key)));
-    for (let d = 0; d < (part.length - key.length) / 2; d++) out.push((acc = `${acc}[]`));
-  }
+function patternPrefixes(rel: Pattern): Pattern[] {
+  const out: Pattern[] = [];
+  for (let i = 1; i <= rel.length; i++) out.push(rel.slice(0, i));
   return out;
 }
 
@@ -1244,17 +1369,29 @@ interface Site {
 
 /** The values at `rel` below `start`, where `rel` is relative to the pattern
  *  `prefix`. A `{}` segment skips the keys the reach records as declared for
- *  that pattern; each `[]` iterates one array level. Paths are relative to
- *  `start`. */
-function resolveSites(start: Site, rel: string, prefix: string, reach: SchemaReach): Site[] {
+ *  that pattern; each `[]` iterates one array level; any other segment is one
+ *  property name, read as written. Paths are relative to `start`. */
+function resolveSites(start: Site, rel: Pattern, prefix: Pattern, reach: SchemaReach): Site[] {
   let sites: Site[] = [{ ...start, path: "", keys: [] }];
-  if (rel === "") return sites;
-  let field = prefix;
-  for (const part of rel.split(".")) {
+  const field: PatternSegment[] = [...prefix];
+  for (const segment of rel) {
+    field.push(segment);
     const next: Site[] = [];
-    if (part === "{}") {
-      field = joinKey(field, "{}");
-      const declared = reach.declaredKeys.get(field);
+    if (typeof segment === "string") {
+      for (const site of sites) {
+        if (!site.value || typeof site.value !== "object") continue;
+        const entry = (site.value as Record<string, unknown>)[segment];
+        if (entry == null) continue;
+        next.push({
+          value: entry,
+          path: joinKey(site.path, segment),
+          keys: [...site.keys, segment],
+          holder: site.value as Record<string, unknown>,
+          key: segment,
+        });
+      }
+    } else if (segment.wildcard === "{}") {
+      const declared = reach.declaredKeys.get(patternKey(field));
       for (const site of sites) {
         if (!site.value || typeof site.value !== "object" || Array.isArray(site.value)) continue;
         for (const [key, entry] of Object.entries(site.value as Record<string, unknown>)) {
@@ -1269,47 +1406,20 @@ function resolveSites(start: Site, rel: string, prefix: string, reach: SchemaRea
         }
       }
     } else {
-      const key = part.replace(/(\[\])+$/, "");
-      const depth = (part.length - key.length) / 2;
-      field = key ? joinKey(field, part) : `${field}${part}`;
-      for (const site of sites) {
-        let level: Site[];
-        if (key) {
-          if (!site.value || typeof site.value !== "object") continue;
-          const entry = (site.value as Record<string, unknown>)[key];
-          if (entry == null) continue;
-          level = [
-            {
-              value: entry,
-              path: joinKey(site.path, key),
-              keys: [...site.keys, key],
-              holder: site.value as Record<string, unknown>,
-              key,
-            },
-          ];
-        } else {
-          level = [site];
-        }
-        for (let d = 0; d < depth; d++) {
-          const items: Site[] = [];
-          for (const holder of level) {
-            if (!Array.isArray(holder.value)) continue;
-            const array = holder.value;
-            array.forEach((item, i) => {
-              if (item != null) {
-                items.push({
-                  value: item,
-                  path: `${holder.path}[${i}]`,
-                  keys: [...holder.keys, i],
-                  holder: array,
-                  key: i,
-                });
-              }
+      for (const holder of sites) {
+        if (!Array.isArray(holder.value)) continue;
+        const array = holder.value;
+        array.forEach((item, i) => {
+          if (item != null) {
+            next.push({
+              value: item,
+              path: `${holder.path}[${i}]`,
+              keys: [...holder.keys, i],
+              holder: array,
+              key: i,
             });
           }
-          level = items;
-        }
-        next.push(...level);
+        });
       }
     }
     sites = next;
@@ -1319,15 +1429,17 @@ function resolveSites(start: Site, rel: string, prefix: string, reach: SchemaRea
 
 /** `pattern` relative to `prefix`, or undefined when it is not strictly below
  *  it. A result starting `[]` iterates the value at `prefix` itself. */
-function relativeFieldPath(pattern: string, prefix: string): string | undefined {
-  if (prefix === "") return pattern;
-  if (pattern.startsWith(`${prefix}.`)) return pattern.slice(prefix.length + 1);
-  if (pattern.startsWith(`${prefix}[]`)) return pattern.slice(prefix.length);
-  return undefined;
+function relativeFieldPath(pattern: Pattern, prefix: Pattern): Pattern | undefined {
+  if (prefix.length === 0) return pattern;
+  if (pattern.length <= prefix.length) return undefined;
+  for (let i = 0; i < prefix.length; i++) {
+    if (!sameSegment(pattern[i]!, prefix[i]!)) return undefined;
+  }
+  return pattern.slice(prefix.length);
 }
 
-/** `rel` below `base`, for concrete paths and patterns alike. */
-function joinPattern(base: string, rel: string): string {
+/** A concrete path `rel` below `base`, in the dotted display spelling. */
+function joinConcrete(base: string, rel: string): string {
   if (!base) return rel;
   if (!rel) return base;
   return rel.startsWith("[") ? `${base}${rel}` : `${base}.${rel}`;

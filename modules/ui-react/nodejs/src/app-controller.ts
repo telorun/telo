@@ -17,14 +17,15 @@ import { basename } from "node:path";
 import { isWords, modelShape, presented, SpecTranslator, type AuthoredNode, type Words } from "@telorun/ui";
 import abi from "./contract/abi.json" with { type: "json" };
 import { AssetStore, entryAssets, type Asset, type AssetRef } from "./asset-store.js";
+import { CONTROL_MECHANICS, mechanicsFileName } from "./browser/controls/mechanics.js";
 import { withUnhostedComponentsReplaced, type Hosted, type SpecNode } from "./component-abi.js";
-import { DEFAULT_THEME_CSS } from "./default-theme.js";
 import { holdsCurrent, servedDocument, SPEC_VERSION } from "./documents.js";
 import { EventStreams } from "./event-streams.js";
 import { headerReads, unionReads, varyHeader, type HeaderReads } from "./header-reads.js";
 import { judgedComposite, producedNode, type EvaluatedNode } from "./page-nodes.js";
 import { shellHtml } from "./shell.js";
-import { themeStylesheet, type ProvidedTheme } from "./theme-stylesheet.js";
+import type { ProvidedTheme } from "./theme-controller.js";
+import { tokensStylesheet, type ProvidedTokens } from "./tokens-stylesheet.js";
 
 interface PageConfig {
   path: string;
@@ -33,7 +34,16 @@ interface PageConfig {
   children: unknown;
 }
 
-type ThemeEntry = { theme: unknown; when?: unknown };
+type TokensEntry = { tokens: unknown; when?: unknown };
+
+/** The nodes of the application's own in its header, by side. */
+interface HeaderConfig {
+  start?: unknown;
+  end?: unknown;
+}
+
+const HEADER_SIDES = ["start", "end"] as const;
+type HeaderSide = (typeof HEADER_SIDES)[number];
 
 export type AppResource = RuntimeResource & {
   title: TextRecord;
@@ -41,10 +51,11 @@ export type AppResource = RuntimeResource & {
   lang?: unknown;
   translator?: unknown;
   words: unknown;
-  theme?: unknown;
-  defaultTheme?: boolean;
+  theme: unknown;
+  tokens?: unknown;
   stylesheets?: string[];
   compactBelow?: string;
+  header?: HeaderConfig | null;
   pages: PageConfig[];
 };
 
@@ -107,11 +118,17 @@ interface Started {
   /** Each page's children as written, every composite's `ref` replaced by its
    *  place in `composites`. */
   pages: unknown[];
-  /** The stylesheet of each theme, by instance. */
-  themes: Map<unknown, string>;
-  /** Stylesheets every request gets, before and after its theme's. */
+  /** The header's nodes by side, numbered as the pages' are; nothing when the
+   *  application declares no header. */
+  header?: Record<HeaderSide, unknown>;
+  /** The stylesheet of each of the application's token sets, by instance. */
+  tokens: Map<unknown, string>;
+  /** Stylesheets every request gets, before and after its token set's. */
   leading: string[];
   trailing: string[];
+  /** What the application document says of the controls: each built-in's
+   *  mechanics stylesheet by control, and the sets replacing built-ins. */
+  controls: { stylesheets: Record<string, string>; sets: { module: string; exports: string[] }[] };
   validator: DataValidator;
 }
 
@@ -222,6 +239,16 @@ export class UiReactApp {
     const pages = this.resource.pages.map((page, index) =>
       withCompositesNumbered(this.presentedChildren(page, index), placed),
     );
+    const declaredHeader = this.resource.header ?? undefined;
+    const header =
+      declaredHeader === undefined
+        ? undefined
+        : (Object.fromEntries(
+            HEADER_SIDES.map((side) => [
+              side,
+              withCompositesNumbered(this.presentedNodes(declaredHeader[side] ?? [], {}, `${this.owner} header.${side}`), placed),
+            ]),
+          ) as Record<HeaderSide, unknown>);
     const validator = this.ctx.createTypeValidator(canonicalTypeSchemaId("Ui", "SpecNode"));
     const composites: (SpecNode | null)[] = [];
     for (const instance of placed) {
@@ -249,25 +276,56 @@ export class UiReactApp {
       );
     }
 
-    const themes = new Map<unknown, string>();
-    for (const instance of this.themeEntries().map((entry) => entry.theme)) {
-      if (themes.has(instance)) continue;
-      const theme = await this.ctx
-        .resolveRef(instance, provides<ProvidedTheme>, () => `'theme' of ${this.owner}`, "Ui.Theme")
-        .provide();
-      const css = themeStylesheet(theme, this.owner, (name, format, bytes) =>
-        urlOf(store.addBytes(name, format.mediaType, Buffer.from(bytes))),
-      );
-      themes.set(instance, urlOf(store.addBytes("theme.css", "text/css", Buffer.from(css))));
+    const serveFont = (name: string, format: { mediaType: string }, bytes: Uint8Array) =>
+      urlOf(store.addBytes(name, format.mediaType, Buffer.from(bytes)));
+    const tokensSheet = (tokens: ProvidedTokens, name: string, owner: string) =>
+      urlOf(store.addBytes(name, "text/css", Buffer.from(tokensStylesheet(tokens, owner, serveFont))));
+    /** A stylesheet placed in a layer: served as it is, and named in the
+     *  document by a stylesheet importing it into the layer. */
+    const layered = (layer: string, ref: AssetRef) =>
+      urlOf(store.addBytes(ref.name, "text/css", Buffer.from(`@import url(${JSON.stringify(urlOf(ref))}) layer(${layer});\n`)));
+
+    const theme = await this.ctx
+      .resolveRef(this.resource.theme, provides<ProvidedTheme>, () => `'theme' of ${this.owner}`, "UiReact.Theme")
+      .provide();
+    // Each control set the theme lists: its module and chunks served, its own
+    // stylesheet in the control layer, and the built-in it replaces left unserved.
+    const sets: Started["controls"]["sets"] = [];
+    const setSheets: string[] = [];
+    const replaced = new Set<string>();
+    for (const set of theme.controls) {
+      const { module, assets } = entryAssets(set.files);
+      for (const asset of assets) await store.hold(asset);
+      sets.push({ module: urlOf(module), exports: set.implements });
+      for (const sheet of assets.filter((asset) => asset.mediaType === "text/css")) setSheets.push(layered("telo.control", sheet));
+      for (const control of set.implements) replaced.add(control);
+    }
+    const themeSheets: string[] = [];
+    if (theme.tokens !== undefined) themeSheets.push(tokensSheet(theme.tokens, "theme-tokens.css", theme.owner));
+    for (const file of theme.stylesheets) {
+      themeSheets.push(layered("telo.theme", store.addBytes(basename(file), "text/css", await store.bytesOf(file))));
     }
 
-    const leading = stylesheets[RENDERER].map(urlOf);
-    if (this.resource.defaultTheme !== false) {
-      leading.push(urlOf(store.addBytes("default-theme.css", "text/css", Buffer.from(DEFAULT_THEME_CSS))));
+    const tokens = new Map<unknown, string>();
+    for (const instance of this.tokenEntries().map((entry) => entry.tokens)) {
+      if (tokens.has(instance)) continue;
+      const provided = await this.ctx
+        .resolveRef(instance, provides<ProvidedTokens>, () => `'tokens' of ${this.owner}`, "Ui.DesignTokens")
+        .provide();
+      tokens.set(instance, tokensSheet(provided, "tokens.css", this.owner));
     }
+
+    const leading = [...stylesheets[RENDERER].map(urlOf), ...setSheets, ...themeSheets];
     const trailing: string[] = [];
     for (const file of this.resource.stylesheets ?? []) {
       trailing.push(urlOf(store.addBytes(basename(file), "text/css", await store.bytesOf(file))));
+    }
+    // Each built-in control's mechanics, served on its own and named per
+    // control — except a control the theme's sets replace.
+    const controlStylesheets: Record<string, string> = {};
+    for (const [control, css] of Object.entries(CONTROL_MECHANICS)) {
+      if (replaced.has(control)) continue;
+      controlStylesheets[control] = urlOf(store.addBytes(mechanicsFileName(control), "text/css", Buffer.from(css as string)));
     }
 
     const bundle = modules[RENDERER].digest;
@@ -286,7 +344,7 @@ export class UiReactApp {
     const langReads = headerReads(this.resource.lang);
     const vary = {
       shell: langReads,
-      app: unionReads(langReads, headerReads(this.themeEntries().map((entry) => entry.when))),
+      app: unionReads(langReads, headerReads(this.tokenEntries().map((entry) => entry.when)), headerReads(header)),
       pages: pages.map((page) => unionReads(langReads, headerReads(page))),
     };
     return {
@@ -302,9 +360,11 @@ export class UiReactApp {
       languages: new Map(),
       composites,
       pages,
-      themes,
+      header,
+      tokens,
       leading,
       trailing,
+      controls: { stylesheets: controlStylesheets, sets },
       validator,
     };
   }
@@ -315,15 +375,20 @@ export class UiReactApp {
     const where = `${this.owner} pages[${index}]`;
     const reader = { ctx: this.ctx, owner: where };
     const query = modelShape({ type: "object", properties: page.query ?? {}, additionalProperties: false }, reader, "query");
-    return (page.children as AuthoredNode[]).map((child, at) =>
-      presented(child, { query }, reader, `${where}.children[${at}]`),
-    );
+    return this.presentedNodes(page.children, { query }, `${where}.children`);
   }
 
-  private themeEntries(): ThemeEntry[] {
-    const theme = this.resource.theme;
-    if (theme === undefined) return [];
-    return Array.isArray(theme) ? (theme as ThemeEntry[]) : [{ theme }];
+  /** Nodes with what the roots in scope say about the values their `value`
+   *  and `list` nodes name. */
+  private presentedNodes(nodes: unknown, roots: Parameters<typeof presented>[1], where: string): unknown {
+    const reader = { ctx: this.ctx, owner: where };
+    return (nodes as AuthoredNode[]).map((child, at) => presented(child, roots, reader, `${where}[${at}]`));
+  }
+
+  private tokenEntries(): TokensEntry[] {
+    const tokens = this.resource.tokens;
+    if (tokens === undefined) return [];
+    return Array.isArray(tokens) ? (tokens as TokensEntry[]) : [{ tokens }];
   }
 
   private requestOf(request: FastifyRequest): Record<string, unknown> {
@@ -403,12 +468,19 @@ export class UiReactApp {
 
   private serveApp(started: Started, request: FastifyRequest, reply: FastifyReply) {
     const scope = { request: this.requestOf(request) };
-    const chosen = this.themeEntries().find(
+    const chosen = this.tokenEntries().find(
       (entry) => entry.when === undefined || this.ctx.expandValue(entry.when, scope) === true,
     );
-    const theme = chosen === undefined ? [] : [started.themes.get(chosen.theme) as string];
+    const tokens = chosen === undefined ? [] : [started.tokens.get(chosen.tokens) as string];
     const tag = this.effectiveTag(started, scope.request);
     const language = this.inLanguage(started, tag);
+    const evaluated = started.header === undefined ? undefined : (this.ctx.expandValue(started.header, scope) as Record<HeaderSide, EvaluatedNode[]>);
+    const header =
+      evaluated === undefined
+        ? undefined
+        : Object.fromEntries(
+            HEADER_SIDES.map((side) => [side, this.producedNodes(started, evaluated[side], language, { header: side })]),
+          );
     return this.send(
       request,
       reply,
@@ -418,8 +490,10 @@ export class UiReactApp {
         title: language.title,
         ...(tag === undefined ? {} : { lang: tag }),
         pages: this.resource.pages.map(({ path }, index) => ({ path, title: language.pageTitles[index] })),
+        ...(header === undefined ? {} : { header }),
         words: language.words,
-        stylesheets: [...started.leading, ...theme, ...started.trailing],
+        stylesheets: [...started.leading, ...tokens, ...started.trailing],
+        controls: started.controls,
         compactBelow: this.resource.compactBelow ?? "40rem",
       },
       started.vary.app,
@@ -440,23 +514,7 @@ export class UiReactApp {
     const evaluated = this.ctx.expandValue(started.pages[index], scope) as EvaluatedNode[];
     const tag = this.effectiveTag(started, scope.request);
     const language = this.inLanguage(started, tag);
-    const children = evaluated
-      .map((node) =>
-        producedNode(
-          node,
-          (ref) => started.composites[ref as number],
-          started.validator,
-          (invalid, reason) =>
-            this.ctx.log.error("A page node is not valid for this request and is shown as an error", {
-              code: "ERR_UI_NODE_INVALID",
-              page: page.path,
-              type: String(invalid.type),
-              reason,
-            }),
-        ),
-      )
-      .filter((node) => node !== undefined)
-      .map((node) => language.translator.node(node));
+    const children = this.producedNodes(started, evaluated, language, { page: page.path });
     return this.send(
       request,
       reply,
@@ -471,6 +529,29 @@ export class UiReactApp {
       },
       started.vary.pages[index],
     );
+  }
+
+  /** Nodes evaluated for a request, produced and translated: a node switched
+   *  off left out, one not valid replaced by an error node and logged with
+   *  `where` it sits. */
+  private producedNodes(started: Started, evaluated: EvaluatedNode[], language: InLanguage, where: Record<string, string>) {
+    return evaluated
+      .map((node) =>
+        producedNode(
+          node,
+          (ref) => started.composites[ref as number],
+          started.validator,
+          (invalid, reason) =>
+            this.ctx.log.error("A node is not valid for this request and is shown as an error", {
+              code: "ERR_UI_NODE_INVALID",
+              ...where,
+              type: String(invalid.type),
+              reason,
+            }),
+        ),
+      )
+      .filter((node) => node !== undefined)
+      .map((node) => language.translator.node(node));
   }
 
   private serveAsset(started: Started, request: FastifyRequest, reply: FastifyReply) {

@@ -22,8 +22,59 @@ imports:
   SseCodec: ../sse-codec
 exports:
   kinds:
+    - Client
     - MessagesModel
     - MessagesModelStream
+---
+# The account as an Http.Client: Anthropic's endpoint and a timeout sized for
+# inference. A complete answer arrives in one response, so the HTTP client's own
+# 10-second default ends most long answers early.
+kind: Telo.Definition
+metadata:
+  name: Client
+  description: >-
+    An HTTP client preset for Anthropic's API: its endpoint, a ten-minute timeout
+    that fits a long model answer, and the credential every call carries, usually
+    the API key on `x-api-key`. Reference it from the request a Claude model calls
+    through, so an account is declared once; override the base URL to go through
+    a gateway.
+extends: Http.Client
+schema:
+  type: object
+  required: [credential]
+  properties:
+    credential:
+      title: Credential
+      description: >-
+        Authenticates every call — an `Http.ApiKeyHeader` with `header: x-api-key`
+        and the key.
+      x-telo-ref:
+        kind: Http.Credential
+        use: call
+    baseUrl:
+      title: Base URL
+      type: string
+      default: https://api.anthropic.com/v1
+      description: The Messages API endpoint, or a gateway's.
+    timeout:
+      title: Timeout
+      type: integer
+      minimum: 1
+      default: 600000
+      description: >-
+        Milliseconds a call may take. A complete answer must arrive within it; a
+        streamed one must start within it.
+    headers:
+      title: Headers
+      type: object
+      additionalProperties:
+        type: string
+      description: Headers added to every call.
+base:
+  baseUrl: !cel "self.?baseUrl.orValue('https://api.anthropic.com/v1')"
+  timeout: !cel "self.?timeout.orValue(600000)"
+  credential: !cel "self.credential"
+  headers: !cel "self.headers"
 ---
 # The Messages API as an `Ai.Model`. The account is not this kind's: `request`
 # names an Http.Request whose client carries the base URL and the `x-api-key`

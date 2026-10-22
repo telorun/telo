@@ -88,10 +88,14 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   "x-telo-browser-export": {
     title: "Browser export",
     description:
-      "This string names an export of a browser entry. `entry` is a JSON Pointer, relative to the enclosing object, to the sibling string holding the entry's specifier — one the module declaring the resource lists under `exports.browser`.",
+      "This string names an export of a browser entry. `entry` is a JSON Pointer, relative to the enclosing object, to the sibling string holding the entry's specifier — one the module declaring the resource lists under `exports.browser`. `abi` lists the generations the kind accepts and `external` the specifiers it supplies; the named entry's own `abi` and `external` are held to them.",
     type: "object",
     required: ["entry"],
-    properties: { entry: { type: "string" } },
+    properties: {
+      entry: { type: "string" },
+      abi: { type: "array", minItems: 1, items: { type: "string" } },
+      external: { type: "array", items: { type: "string" } },
+    },
     additionalProperties: false,
   },
   "x-telo-ref": {

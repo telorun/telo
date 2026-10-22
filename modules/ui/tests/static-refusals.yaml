@@ -10,7 +10,8 @@ metadata:
     source filter the collection does not accept, and a bar showing every
     accepted filter over a model that lacks one of their properties, types it
     so the operator does not fit, or declares no property at all. A
-    misspelled node type lists the valid ones, a stray key is named, and a
+    misspelled node type lists the valid ones, a stray key is named, a link's
+    address and a menu item's are held to the same rule, and a
     component's properties are held to what its export declares. A surface
     takes only its own kind's keys, a page surface needs its address, a surface
     slot and a compact slot take only the kinds they name, an edit cannot ask
@@ -268,9 +269,13 @@ source: ./__fixtures__/invalid/shapes/telo.yaml
 expect:
   errors:
     - code: SCHEMA_VIOLATION
-      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | image | svg | value | list | composite)"
+      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | menu | image | svg | value | list | composite)"
     - code: SCHEMA_VIOLATION
       message: "Ui.View/strayKey: /content/children/0 must NOT have additional properties ('gap' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: 'Ui.View/offsiteLink: /content/href must match pattern "^(/([^/\\\u0000-\u001f\u007f][^\u0000-\u001f\u007f]*)?$|https://|http://|mailto:)"'
+    - code: SCHEMA_VIOLATION
+      message: 'Ui.View/offsiteItem: /content/items/1/href must match pattern "^(/([^/\\\u0000-\u001f\u007f][^\u0000-\u001f\u007f]*)?$|https://|http://|mailto:)"'
     - code: SCHEMA_VIOLATION
       message: "Ui.Component/pill: `props` does not satisfy the type declared at `/component/props`: / must NOT have additional properties ('colour' is not allowed)"
     - code: SCHEMA_VIOLATION

@@ -574,6 +574,7 @@ kind: UiReact.App
 metadata: { name: ui }
 title: Purchase requests
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Requests

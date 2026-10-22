@@ -5,9 +5,9 @@ metadata:
   description: |
     What a page and the application document hold depends on the request: two
     tables under complementary conditions on a header give page documents one
-    column apart, two themes chosen by a header give different stylesheets,
-    and equal headers give equal digests. A theme's face is served as a font
-    and declared from the family. A section from a library with no controller
+    column apart, two token sets chosen by a header give different
+    stylesheets, and equal headers give equal digests. A token set's face is
+    served as a font and declared from the family. A section from a library with no controller
     serves its nodes; a component the application cannot host is an error node
     beside the ones it can; a value that is not a valid node once evaluated is
     replaced by an error node — a link whose address is a script, and one a
@@ -75,7 +75,7 @@ steps:
     invoke: { kind: HttpClient.Request, responseType: bytes }
     inputs:
       url: !cel "'http://127.0.0.1:19312' + steps.redCss.result.body.substring(steps.redCss.result.body.indexOf('url(\"') + 5, steps.redCss.result.body.indexOf('\") format'))"
-  - name: verifyThemes
+  - name: verifyTokens
     invoke: { kind: Assert.Equals }
     inputs:
       actual:

@@ -164,30 +164,29 @@ metadata:
   name: systemMono
 family: Menlo
 ---
-kind: Ui.Theme
+kind: Ui.DesignTokens
 metadata:
-  name: redTheme
-tokens:
-  color.accent: "#c4341b"
-  font.body: !ref testSans
-  font.mono: !ref systemMono
+  name: redBrand
+color.accent: "#c4341b"
+font.body: !ref testSans
+font.mono: !ref systemMono
 ---
-kind: Ui.Theme
+kind: Ui.DesignTokens
 metadata:
-  name: blueTheme
-tokens:
-  color.accent: "#1f8fff"
-  radius.md: 2px
+  name: blueBrand
+color.accent: "#1f8fff"
+radius.md: 2px
 ---
 kind: UiReact.App
 metadata:
   name: admin
 title: Fixture Admin
 words: !ref Ui.words
-theme:
-  - theme: !ref redTheme
+theme: !ref UiReact.defaultTheme
+tokens:
+  - tokens: !ref redBrand
     when: !cel "'x-tenant' in request.headers && request.headers['x-tenant'] == 'red'"
-  - theme: !ref blueTheme
+  - tokens: !ref blueBrand
 stylesheets:
   - !module-path ./ui.css
 compactBelow: 48rem
@@ -275,11 +274,32 @@ metadata:
   name: plain
 title: Plain
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Home
     children:
       - { type: text, text: Nothing else }
+---
+# A look of its own: a stylesheet, token defaults and a control set drawing
+# the box control in place of the built-in.
+kind: UiReact.App
+metadata:
+  name: themed
+title: Themed
+words: !ref Ui.words
+theme:
+  kind: UiReact.Theme
+  tokens: { kind: Ui.DesignTokens, color.accent: "#1f8a4c" }
+  stylesheets:
+    - !module-path ./look.css
+  controls:
+    - !ref Widgets.controls
+pages:
+  - path: /
+    title: New todo
+    children:
+      - { type: composite, ref: !ref todoForm }
 ---
 kind: Http.Server
 metadata:
@@ -298,3 +318,5 @@ mounts:
     mount: !ref admin
   - path: /plain
     mount: !ref plain
+  - path: /themed
+    mount: !ref themed

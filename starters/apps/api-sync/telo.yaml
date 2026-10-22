@@ -523,6 +523,7 @@ kind: UiReact.App
 metadata: { name: ui }
 title: API sync
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Sync

@@ -541,6 +541,10 @@ function isRetryable(err: unknown, nonRetryable?: string[]): boolean {
  * because the two want opposite follow-ups: a cancelled run was asked to stop,
  * while a timed-out step is a target that is too slow for this call site — and
  * `catches:` can only tell them apart if they carry different codes.
+ *
+ * The bound is also checked when the answer arrives: a reply can be delivered
+ * before the overdue timer runs, so an answer at or past the deadline is a
+ * timeout too, whichever of the two the event loop happened to process first.
  */
 async function withStepTimeout<T>(
   step: InvokeStep,
@@ -559,21 +563,24 @@ async function withStepTimeout<T>(
   const unlink = invokeCtx?.cancellation.onCancelled((reason) => source.cancel(reason));
 
   let elapsed = false;
+  const startedAt = performance.now();
   source.cancelAfter(ms);
   const timedOut = source.token.onCancelled(() => {
     if (!invokeCtx?.cancellation.isCancelled) elapsed = true;
   });
+  const exceeded = () =>
+    new InvokeError("ERR_STEP_TIMEOUT", `Step '${step.name}' exceeded its timeout of ${ms}ms and was cancelled`, {
+      step: step.name,
+      timeout: ms,
+    });
+  const overdue = () => elapsed || (!invokeCtx?.cancellation.isCancelled && performance.now() - startedAt >= ms);
 
   try {
-    return await dispatch(scoped);
+    const result = await dispatch(scoped);
+    if (overdue()) throw exceeded();
+    return result;
   } catch (err) {
-    if (elapsed && isCancellationError(err)) {
-      throw new InvokeError(
-        "ERR_STEP_TIMEOUT",
-        `Step '${step.name}' exceeded its timeout of ${ms}ms and was cancelled`,
-        { step: step.name, timeout: ms },
-      );
-    }
+    if (isCancellationError(err) && overdue()) throw exceeded();
     throw err;
   } finally {
     timedOut();

@@ -1,0 +1,82 @@
+/* The components' own look, applied in the `telo.component` layer: after the
+   theme and the brand, before the application's own stylesheet. Every value
+   reads a design token, so each mount draws them in its own brand. */
+
+.showcase-desk {
+  display: grid;
+  gap: var(--telo-space-sm);
+  padding: var(--telo-space-md);
+  border: 1px solid var(--telo-color-accent);
+  border-radius: var(--telo-radius-md);
+  background: var(--telo-color-surface);
+  color: var(--telo-color-text);
+}
+.showcase-desk p { margin: 0; }
+.showcase-desk-nav { display: flex; flex-wrap: wrap; align-items: center; gap: var(--telo-space-sm); }
+.showcase-desk button {
+  padding: var(--telo-space-xs) var(--telo-space-sm);
+  border: 1px solid var(--telo-color-border);
+  border-radius: var(--telo-radius-sm);
+  background: var(--telo-color-background);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.showcase-desk button[aria-pressed="true"] { border-color: var(--telo-color-accent); color: var(--telo-color-accent); }
+.showcase-desk a { color: var(--telo-color-accent); }
+.showcase-desk-form { display: flex; flex-wrap: wrap; align-items: end; gap: var(--telo-space-sm); }
+.showcase-desk-form label { display: grid; gap: var(--telo-space-xs); }
+.showcase-desk-form input {
+  padding: var(--telo-space-xs) var(--telo-space-sm);
+  border: 1px solid var(--telo-color-border);
+  border-radius: var(--telo-radius-sm);
+  font: inherit;
+}
+.showcase-desk-outcome { flex-basis: 100%; }
+.showcase-desk-outcome[data-outcome="added"] { color: var(--telo-color-success); }
+.showcase-desk-outcome:not([data-outcome="added"]), .showcase-desk-note { color: var(--telo-color-danger); }
+.showcase-desk-changes, .showcase-desk-where { color: var(--telo-color-muted); font-size: var(--telo-font-size-sm); }
+
+/* A layer of the component's own, at the end of the page: a toast. */
+.showcase-toast {
+  position: fixed;
+  inset-block-end: var(--telo-space-lg);
+  inset-inline-end: var(--telo-space-lg);
+  padding: var(--telo-space-sm) var(--telo-space-md);
+  border-radius: var(--telo-radius-md);
+  background: var(--telo-color-accent);
+  color: var(--telo-color-accent-text);
+  box-shadow: var(--telo-shadow-md);
+}
+
+.showcase-meter { display: inline-flex; align-items: center; gap: var(--telo-space-xs); }
+.showcase-meter-pips { display: inline-flex; gap: 2px; }
+.showcase-meter-pips i { inline-size: 0.5rem; block-size: 0.75rem; border-radius: 2px; background: var(--telo-color-border); }
+.showcase-meter-pips i[data-on="true"] { background: var(--telo-color-accent); }
+.showcase-meter[data-blocked="true"] .showcase-meter-pips i[data-on="true"] { background: var(--telo-color-danger); }
+.showcase-meter-blocked { color: var(--telo-color-danger); font-size: var(--telo-font-size-sm); }
+
+.showcase-tokens { border-collapse: collapse; inline-size: 100%; }
+.showcase-tokens th, .showcase-tokens td {
+  padding: var(--telo-space-xs) var(--telo-space-sm);
+  border-block-end: 1px solid var(--telo-color-border);
+  text-align: start;
+  vertical-align: middle;
+}
+.showcase-tokens tbody + tbody { border-block-start: 2px solid var(--telo-color-border); }
+.showcase-swatch, .showcase-corner, .showcase-shadow {
+  display: inline-block;
+  inline-size: 2.5rem;
+  block-size: 1.5rem;
+  border: 1px solid var(--telo-color-border);
+}
+.showcase-corner { background: var(--telo-color-accent); border: none; }
+.showcase-shadow { background: var(--telo-color-surface); border: none; }
+.showcase-space { display: inline-block; block-size: 0.75rem; background: var(--telo-color-accent); }
+.showcase-leading { display: block; max-inline-size: 16rem; }
+
+.showcase-type { display: grid; gap: var(--telo-space-md); }
+.showcase-type h4 { margin: 0; }
+.showcase-type ul { display: grid; gap: var(--telo-space-xs); margin: 0; padding: 0; list-style: none; }
+.showcase-type-face { display: inline-block; min-inline-size: 8rem; color: var(--telo-color-muted); }
+.showcase-type small { display: block; color: var(--telo-color-muted); font-style: normal; font-weight: 400; }

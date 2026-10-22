@@ -1,0 +1,32 @@
+kind: Telo.Application
+metadata:
+  name: UiReactConformanceCheckControlsTest
+  version: 1.0.0
+  description: |
+    A control set is held to its controls' vectors: one implementing the eight
+    layer controls whose Select closes on Escape on its own, without asking the
+    renderer, fails exactly that vector.
+imports:
+  Conformance: ../
+  Fixture: ./__fixtures__/controls
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref checkBrokenSelect
+---
+kind: Run.Sequence
+metadata: { name: checkBrokenSelect }
+steps:
+  - name: check
+    invoke:
+      kind: Conformance.CheckControls
+      controls: !ref Fixture.brokenSelect
+  - name: failsTheEscapeVector
+    inputs:
+      actual: !cel "steps.check.result.problems"
+      expected:
+        - check: vector-failed
+          subject: "Select: asks to close on Escape, and stays open until the renderer closes it"
+          message: 'step 2: the intents reported were [], not [["onOpenChange",false,"escape"]]; step 2: nothing is drawn as {"part":"select-content"}'
+    invoke:
+      kind: Assert.Equals

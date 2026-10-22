@@ -1,0 +1,10 @@
+/* A light console with dark-blue table headers, over the renderer's part names. */
+[data-telo-part="table-head"] {
+  background: #0b2a5b;
+  color: #ffffff;
+}
+
+[data-telo-part="table-header-cell"] {
+  color: inherit;
+  font-weight: 600;
+}

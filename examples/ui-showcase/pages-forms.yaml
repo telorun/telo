@@ -1,0 +1,213 @@
+# Forms: a form deriving a control for every type of property, the same record
+# with each control chosen by hand, and a booking form choosing from option
+# sources — select lists and options side by side, pickers in a dialog, a
+# drawer and a popover — with a date range, groups and fields shown on a
+# condition. Each form writes for real, and the lists under them read again
+# after every save. Every application places this view on its `/forms` page.
+kind: Ui.View
+metadata:
+  name: formsPage
+content:
+  type: stack
+  children:
+    # ---- Every control from the model ----
+    - { type: text, text: Every control from the model, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        With no fields written, the form draws one control per property, chosen from its schema: a text box, a
+        list for an enumeration, number boxes, a date, a date and time, a time, a multi-line box for a document,
+        a checkbox, options side by side for a list of an enumeration, and typed tags for a list of words. A
+        description is a hint under its field, and a default the starting value.
+    - type: text
+      style: muted
+      text: >-
+        Each field is checked against the model once it has been touched: the title's length, the number of
+        people, the budget in steps of 50, the keywords' spelling. The server refuses a title another request
+        has, and its answer lands on the title. What is typed is kept in the address and in this browser — all
+        but the access code, which the model marks write-only.
+    - type: composite
+      ref:
+        kind: Ui.Form
+        model: !ref Request
+        source: { basePath: /api/requests }
+        state: { key: request, address: true, store: { kind: Ui.LocalStore } }
+
+    # ---- Each control chosen by hand ----
+    - { type: text, text: Each control chosen by hand, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The same request with a control written for each field: the title left to its derived control, the kind
+        as options side by side, the channels as a list choosing several, the number of people on a slider,
+        urgent as a switch and the keywords as tags. What is typed is kept for this tab only.
+    - type: composite
+      ref:
+        kind: Ui.Form
+        model: !ref Request
+        source: { basePath: /api/requests }
+        fields:
+          - { kind: Ui.InputField, property: title, control: auto }
+          - { kind: Ui.InputField, property: kind, control: options }
+          - { kind: Ui.InputField, property: channels, control: select }
+          - { kind: Ui.InputField, property: seats, control: slider }
+          - { kind: Ui.InputField, property: urgent, control: toggle }
+          - { kind: Ui.InputField, property: keywords, control: tags }
+        state: { key: quickRequest, store: { kind: Ui.SessionStore } }
+    - { type: text, text: Requests received, style: subheading }
+    - type: text
+      style: muted
+      text: The latest requests the two forms sent, read again after every save.
+    - type: composite
+      ref:
+        kind: Ui.Data
+        model: !ref RequestList
+        source: { path: /api/requests }
+        content:
+          type: list
+          rows: !cel "data.requests"
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.kind"
+            - value: !cel "row.seats"
+            - value: !cel "row.startOn"
+            - value: !cel "row.urgent"
+            - value: !cel "row.receivedAt"
+
+    # ---- Choices, pickers and dates ----
+    - { type: text, text: "Choices, pickers and dates", style: heading }
+    - type: text
+      style: muted
+      text: >-
+        Booking people on a project. The project is chosen from a list read from the projects collection, each
+        option with its code as a hint. The lead is picked in a dialog, searched by name, among the active
+        members of the role chosen above it; choosing another role reads the options again and keeps the lead
+        only if they still fit. Reviewers are picked in a drawer, several at once, and the sponsor in a popover;
+        the sponsor starts at a default e-mail, shown as the person's name by one lookup. Helpers are offered
+        side by side, three at a time, with More for the rest. A picked person links to their e-mail.
+    - type: text
+      style: muted
+      text: >-
+        The period is two dates with presets, its weeks starting on Sunday, starting at next month and warning
+        past three months. The server refuses a period that ends before it starts or runs past a year, and its
+        answer lands on the period. The people around the lead are shown once a lead is chosen, and the site
+        address only for work on site.
+    - type: composite
+      ref:
+        kind: Ui.Form
+        model: !ref Booking
+        source: { basePath: /api/bookings }
+        groups:
+          - { name: project, label: The project, description: "Which project, and who leads the work." }
+          - name: people
+            label: Around the lead
+            description: Who reviews the work, who sponsors it and who helps.
+            shown: { at: !cel "values.leadEmail", matches: { minLength: 1 } }
+          - { name: dates, label: When and where }
+        fields:
+          - { kind: Ui.ChoiceField, property: projectCode, options: !ref projectOptions, control: select, group: project }
+          - { kind: Ui.InputField, property: leadRole, control: options, group: project }
+          - kind: Ui.PickerField
+            property: leadEmail
+            group: project
+            surface: { kind: Ui.Dialog, size: small }
+            options:
+              kind: Ui.CollectionOptions
+              model: !ref Person
+              value: !cel "row.email"
+              label: !cel "row.name"
+              hint: !cel "row.location"
+              href: !cel "row.contact"
+              collection: !ref peopleModel
+              source:
+                basePath: /api/people
+                filters: { role: !cel "values.leadRole", active: true }
+              search: { property: name, operator: contains }
+          - kind: Ui.PickerField
+            property: reviewerEmails
+            group: people
+            options: !ref teamOptions
+            surface: { kind: Ui.Drawer, side: end }
+          - kind: Ui.PickerField
+            property: sponsorEmail
+            group: people
+            options: !ref teamOptions
+            surface: { kind: Ui.Popover, side: bottom, align: start }
+          - kind: Ui.ChoiceField
+            property: helperEmails
+            group: people
+            control: options
+            options:
+              kind: Ui.CollectionOptions
+              model: !ref Person
+              value: !cel "row.email"
+              label: !cel "row.name"
+              hint: !cel "row.location"
+              collection: !ref peopleModel
+              source: { basePath: /api/people, filters: { active: true } }
+              pageSize: 3
+          - kind: Ui.DateRangeField
+            property: period
+            group: dates
+            presets:
+              - { label: Tomorrow, unit: day, offset: 1 }
+              - { label: Next week, unit: week, offset: 1 }
+              - { label: This month, unit: month, offset: 0 }
+              - { label: Next month, unit: month, offset: 1 }
+              - { label: Next quarter, unit: quarter, offset: 1 }
+              - { label: Next year, unit: year, offset: 1 }
+            weekStart: sunday
+            initialPreset: Next month
+            warnLongerThan: { unit: month, count: 3 }
+          - { kind: Ui.InputField, property: onSite, group: dates }
+          - kind: Ui.InputField
+            property: site
+            group: dates
+            shown: { at: !cel "values.onSite", matches: { const: true } }
+          - { kind: Ui.InputField, property: notes, group: dates }
+    - { type: text, text: Bookings, style: subheading }
+    - type: text
+      style: muted
+      text: The latest bookings, read again after every save.
+    - type: composite
+      ref:
+        kind: Ui.Data
+        model: !ref BookingList
+        source: { path: /api/bookings }
+        content:
+          type: list
+          rows: !cel "data.bookings"
+          columns:
+            - value: !cel "row.project"
+            - value: !cel "row.lead"
+            - value: !cel "row.sponsor"
+            - value: !cel "row.from"
+            - value: !cel "row.to"
+---
+# The active members of the team, searched by name and linked to their e-mail.
+# The booking form's reviewers and sponsor are both picked from it.
+kind: Ui.CollectionOptions
+metadata:
+  name: teamOptions
+model: !ref Person
+value: !cel "row.email"
+label: !cel "row.name"
+hint: !cel "row.location"
+href: !cel "row.contact"
+collection: !ref peopleModel
+source:
+  basePath: /api/people
+  filters: { active: true }
+search: { property: name, operator: contains }
+---
+# The projects, each offered by its name with its code as a hint. The booking
+# form and the actions page's project fields choose from it.
+kind: Ui.CollectionOptions
+metadata:
+  name: projectOptions
+model: !ref Project
+value: !cel "row.code"
+label: !cel "row.name"
+hint: !cel "row.code"
+collection: !ref projectModel
+source: { basePath: /api/projects }

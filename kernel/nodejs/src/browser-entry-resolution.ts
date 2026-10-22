@@ -1,7 +1,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
-import type { BrowserEntry } from "@telorun/analyzer";
+import type { BrowserEntry, LoadedGraph } from "@telorun/analyzer";
 import { RuntimeError, type BrowserEntryFiles } from "@telorun/sdk";
 
 import { computeFilesIntegrity } from "./bundle/files-integrity.js";
@@ -17,6 +17,8 @@ import {
 export interface BrowserEntryModule {
   /** Canonical source of the module's `telo.yaml`. */
   readonly source: string;
+  /** The module's `metadata.name`, when it declares one. */
+  readonly name?: string;
   readonly browser: readonly BrowserEntry[];
 }
 
@@ -43,6 +45,73 @@ function unknownEntry(specifier: string, module: BrowserEntryModule | undefined,
         : declared.length > 0
           ? `Its module declares ${declared.join(", ")} under exports.browser.`
           : `Its module declares no exports.browser entry.`),
+  );
+}
+
+const describeModule = (module: BrowserEntryModule) =>
+  module.name === undefined ? `'${module.source}'` : `'${module.name}' (${module.source})`;
+
+/**
+ * The canonical sources of the modules each module imports directly, keyed by
+ * its owner's source: an import declared in an `include:` partial is the
+ * module's own.
+ */
+export function directImportSources(graph: Pick<LoadedGraph, "modules" | "importEdges">): Map<string, string[]> {
+  const ownerOf = new Map<string, string>();
+  for (const [, module] of graph.modules) {
+    ownerOf.set(module.owner.source, module.owner.source);
+    for (const partial of module.partials) ownerOf.set(partial.source, module.owner.source);
+  }
+  const out = new Map<string, string[]>();
+  for (const [declaringFile, edges] of graph.importEdges) {
+    const owner = ownerOf.get(declaringFile) ?? declaringFile;
+    const targets = out.get(owner) ?? [];
+    for (const [, edge] of edges) {
+      const target = graph.modules.get(edge.targetSource)?.owner.source ?? edge.targetSource;
+      if (!targets.includes(target)) targets.push(target);
+    }
+    out.set(owner, targets);
+  }
+  return out;
+}
+
+/**
+ * The module a controller's browser entry is resolved against: the module
+ * declaring the controller's kind when it declares `specifier`, otherwise the
+ * one module among its direct imports that does. Two such imports is
+ * `ERR_BROWSER_ENTRY_AMBIGUOUS`, naming both; none is `ERR_BROWSER_ENTRY_UNKNOWN`.
+ */
+export function controllerBrowserEntryModule(
+  specifier: string,
+  module: BrowserEntryModule | undefined,
+  imports: readonly BrowserEntryModule[],
+  asked: string,
+): BrowserEntryModule {
+  const declares = (candidate: BrowserEntryModule) =>
+    candidate.browser.some((entry) => entry.specifier === specifier);
+  if (!module) throw unknownEntry(specifier, module, asked);
+  if (declares(module)) return module;
+  const declaring = imports.filter(declares);
+  if (declaring.length === 1) return declaring[0]!;
+  if (declaring.length > 1) {
+    throw new RuntimeError(
+      "ERR_BROWSER_ENTRY_AMBIGUOUS",
+      `${asked}: browser entry '${specifier}' is not declared by the module declaring this ` +
+        `kind, and ${declaring.length} of the modules it imports declare it: ` +
+        `${declaring.map(describeModule).join(" and ")}. Declare the entry in the module ` +
+        `itself, or import only one module that declares it.`,
+    );
+  }
+  const reachable = imports.flatMap((imported) => imported.browser.map((entry) => `'${entry.specifier}'`));
+  throw new RuntimeError(
+    "ERR_BROWSER_ENTRY_UNKNOWN",
+    `${asked}: no browser entry '${specifier}'. ` +
+      (module.browser.length > 0
+        ? `Its module declares ${module.browser.map((entry) => `'${entry.specifier}'`).join(", ")} under exports.browser`
+        : `Its module declares no exports.browser entry`) +
+      (reachable.length > 0
+        ? `, and the modules it imports declare ${reachable.join(", ")}.`
+        : `, and none of the modules it imports declares one.`),
   );
 }
 

@@ -159,6 +159,7 @@ with:
           kind: UiReact.App
           title: Tasks
           words: !ref Ui.words
+          theme: !ref UiReact.defaultTheme
           pages:
             - path: /
               title: Tasks
@@ -226,6 +227,7 @@ with:
           kind: UiReact.App
           title: Tasks
           words: !ref Ui.words
+          theme: !ref UiReact.defaultTheme
           pages:
             - path: /
               title: Tasks

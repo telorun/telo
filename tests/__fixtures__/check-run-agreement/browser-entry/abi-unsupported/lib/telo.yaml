@@ -1,0 +1,26 @@
+# A control naming a browser entry written against a generation its kind does
+# not accept.
+kind: Telo.Library
+metadata:
+  name: BrowserAbiUnsupportedLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose control names a browser entry written against a
+    generation the control's kind does not accept.
+imports:
+  Kinds: ../../kinds
+exports:
+  resources: [control]
+  browser:
+    - specifier: "@fixture/own"
+      path: ./browser/own.js
+      source: ./browser/src/own.js
+      abi: fixture_controls-2
+      external: ["@fixture/runtime"]
+      exports: [Own]
+---
+kind: Kinds.Control
+metadata:
+  name: control
+entry: "@fixture/own"
+export: Own

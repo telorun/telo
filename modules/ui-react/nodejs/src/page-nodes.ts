@@ -1,5 +1,5 @@
 import type { DataValidator } from "@telorun/sdk";
-import { placed, placedRowAction } from "@telorun/ui";
+import { deliveredMenu, placed, placedRowAction } from "@telorun/ui";
 import { errorNode, type SpecNode } from "./component-abi.js";
 
 /** A page node as written, after its expressions were evaluated for a request. */
@@ -36,7 +36,8 @@ type Invalid = (node: SpecNode, reason: string) => void;
 
 /**
  * Produce one page node for a request: a node whose `when` is false is left
- * out, a composite stands as the node it provided at start — placed as `ui`
+ * out, a menu keeps the items whose own `when` holds — left out when none
+ * does, and replaced whole when an item is not valid — a composite stands as the node it provided at start — placed as `ui`
  * places it, the placement's style and `shown` over it — or is left out when
  * it provided none, a list's row action carries the node its action provided
  * at start, and every node that is not a valid `Ui.SpecNode` once
@@ -67,6 +68,13 @@ export function producedNode(
     );
     const reason = refusalOf(shell.type === "box" ? { ...shell, children: [JUDGED] } : shell, validator);
     return reason === undefined ? placed(composite, node) : refuse(rest as SpecNode, reason, invalid);
+  }
+  if (node.type === "menu") {
+    // Its items are delivered by their own `when`, and judged with it.
+    const menu = Array.isArray(node.items) ? deliveredMenu(rest) : rest;
+    if (menu === undefined) return undefined;
+    const reason = refusalOf(menu as SpecNode, validator);
+    return reason === undefined ? (menu as SpecNode) : refuse(menu as SpecNode, reason, invalid);
   }
   if (Array.isArray(node.rowActions)) {
     // A row action's action stands as the node it provided at start, judged

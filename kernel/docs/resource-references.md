@@ -613,7 +613,7 @@ handler         → { refs: [Http.Middleware, Js.Script],     false   }
 with            → { scope: "/steps" }
 ```
 
-The `[]` suffix means the field is an array — a concrete site names one element (`mounts[1].mount`).
+The `[]` suffix means the field is an array — a concrete site names one element (`mounts[1].mount`). The dotted spelling is for display: a pattern is held as a list of segments — a property name exactly as written, or a wildcard for every item (`[]`) or every undeclared key (`{}`) — so a property whose name holds a dot (`font.body`) is one key, never a path of two, and no property name is mistaken for a wildcard.
 
 ### Phase 2 — Inline resource normalization
 
@@ -621,7 +621,7 @@ After all manifests are loaded and all definitions registered, the kernel normal
 
 Two kinds of slot hold an inline declaration (a value with a `kind` and no `name`), and each is extracted as a new manifest that inherits `metadata.module` from its parent and replaces the inline value with `{kind, name}`:
 
-- **A reference site** of the resource's reach. The name is built from the parent resource name and the site's path (underscores as separators; array items use the item's `name` field or index).
+- **A reference site** of the resource's reach. The name is built from the parent resource name and the site's path (underscores as separators; array items use the item's `name` field or index). It is stamped `xTeloOrigin.keysFromParent`, the site's keys and indices, from which the kernel builds the declaration pointer of its identity (`brand#/font.body`).
 - **A step's dispatch target**, found through the kind's step-body slot at any nesting depth (`walkStepArray`), never through the reach — the reach stops at a step body, since a step target resolves at dispatch rather than by Phase-5 substitution. The name is `inlineStepTargetName` (`@telorun/sdk`): the owner kind — the kind whose controller runs the body — the owner's name, the step's path and the step's name, which is the name the step engine has always registered it under and so its durable identity. It is stamped `xTeloOrigin.stepTarget`, and carries no declaration pointer.
 
 Where an extraction is created: a reference slot lying in a region of a scope its owner declares (a sequence's `targets:`) resolves against that scope, so the extraction joins the scope's declaration array and is created per scope run. Everything else — step targets included — is created where its owner is: the global set, or the scope array holding a scope member; never in a scope the owner itself declares, which would make every step target of a sequence with a `with:` block a scoped resource and move its identity. A declaration written inside a scope's region but created outside it records the scope as `xTeloOrigin.outsideScopes`, and a reference from it to a name the scope declares — by `!ref` or as `resources.<name>` in CEL — is reported as `SCOPED_NAME_OUT_OF_REACH`.

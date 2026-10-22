@@ -1,0 +1,492 @@
+kind: Telo.Application
+metadata:
+  name: UiShowcaseRoutesTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/ui-showcase` on a database of its own and calls the project,
+    record, tag, session and brand routes its pages call, with the records the
+    pages would send: the team record,
+    project summaries and their people, the projects collection a page at a
+    time, sorted, filtered and labelled by `in`, and a create, read, replace
+    and delete round trip with the 400 envelope for a refused record; tagging a
+    project and its two refusals; the clock; a whole session — refused
+    sign-ins, signing in, the guarded routes with and without it, signing out —
+    the language switch under each mount, and the brand switch; and a reader's route, a listing, an action's route,
+    the task desk component's counts and tasks and the guard under the
+    `/radix` and `/brand` mounts, which have no brand switch.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+variables:
+  # The DIRECTORY each run's database goes in; see `serves-the-showcase.yaml`.
+  dbFile:
+    env: UI_SHOWCASE_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo
+targets:
+  - !ref test
+---
+# A browser with no session. Redirects are read, not followed.
+kind: HttpClient.Client
+metadata: { name: visitor }
+baseUrl: http://127.0.0.1:8152
+followRedirects: false
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    variables:
+      dbFile: !cel "variables.dbFile.joinPath('ui-showcase-routes-' + uuidv4() + '.db')"
+    ports:
+      http: 8152
+targets:
+  - !ref app
+steps:
+  # ---- Records the readers show ----
+  - name: team
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/team }
+  - name: summary
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/project-summary }
+  - name: opsSummary
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/project-summary?code=OPS-7" }
+  - name: unknownSummary
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/project-summary?code=NOPE-1" }
+  - name: people
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/project-people?code=TEL-42" }
+  - name: unknownPeople
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/project-people?code=NOPE-1" }
+  - name: clock
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/clock }
+  - name: verifyRecords
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        team: !cel "steps.team.result.body"
+        summary: !cel "steps.summary.result.body"
+        opsCodename: !cel "steps.opsSummary.result.body.codename"
+        unknownSummary: [ !cel "steps.unknownSummary.result.status", !cel "steps.unknownSummary.result.body" ]
+        people: !cel "steps.people.result.body.people.map(p, [p.name, p.role])"
+        unknownPeople: !cel "steps.unknownPeople.result.status"
+        clock: !cel "[steps.clock.result.status, steps.clock.result.body.readAt.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}T')]"
+      expected:
+        team:
+          name: Northwind Studio
+          homepage: https://telo.run
+          guide: /data
+          handbook: /files/handbook.txt
+          contact: mailto:hello@northwind.example
+          mirror: //mirror.northwind.example/handbook
+          foundedOn: "2019-05-14"
+          updatedAt: "2026-10-21T09:30:00Z"
+          hiring: true
+          plan: team
+          projectCount: 6
+          latestProject: Mobile app
+          projects:
+            - id: 5
+              code: APP-5
+              name: Mobile app
+              status: active
+              leadEmail: jan@northwind.example
+              budget: 75000
+              velocity: 3
+              featured: false
+              open: true
+              brief: /data?project=APP-5
+              startedOn: "2026-08-18"
+            - id: 1
+              code: TEL-42
+              name: Atlas redesign
+              status: active
+              leadEmail: ada@northwind.example
+              budget: 48000
+              velocity: 2.5
+              featured: true
+              open: true
+              brief: /data?project=TEL-42
+              startedOn: "2026-06-01"
+            - id: 2
+              code: OPS-7
+              name: Billing migration
+              status: active
+              leadEmail: liam@northwind.example
+              budget: 32000
+              velocity: 1.5
+              featured: false
+              open: true
+              brief: /data?project=OPS-7
+              startedOn: "2026-04-14"
+            - id: 3
+              code: WEB-3
+              name: Marketing site
+              status: paused
+              leadEmail: maja@northwind.example
+              budget: 12000
+              velocity: 0.5
+              featured: false
+              open: false
+              brief: /data?project=WEB-3
+              startedOn: "2026-02-20"
+        summary:
+          code: TEL-42
+          name: Atlas redesign
+          status: active
+          memberCount: 4
+          velocity: 2.5
+          tags: [ design, web ]
+          note: null
+          lead: { name: Ada Nowak, email: ada@northwind.example, role: manager }
+        opsCodename: Ledger
+        unknownSummary: [ 404, { code: PROJECT_UNKNOWN, message: There is no project 'NOPE-1'. } ]
+        people:
+          - [ Ada Nowak, Lead ]
+          - [ Jan Kowalski, Front end ]
+          - [ Maja Wiśniewska, Design ]
+          - [ Sofia Rossi, Copy ]
+        unknownPeople: 404
+        clock: [ 200, true ]
+
+  # ---- The projects collection, a page at a time ----
+  - name: firstPage
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/projects?limit=4" }
+  - name: secondPage
+    invoke: { kind: HttpClient.Request, client: !ref visitor }
+    inputs:
+      url: !cel "'/api/projects?limit=4&cursor=' + steps.firstPage.result.body.next"
+  - name: byBudget
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/projects?sort=-budget&limit=3" }
+  - name: labelled
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/projects?code.in=TEL-42&code.in=OPS-7" }
+  - name: stopped
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/projects?status.in=paused&status.in=done&sort=code" }
+  - name: refusedQuery
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/projects?velocity.gt=1" }
+  - name: verifyListing
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        firstPage: !cel "[steps.firstPage.result.body.rows.map(r, r.code), steps.firstPage.result.body.total, steps.firstPage.result.body.next != null]"
+        secondPage: !cel "[steps.secondPage.result.body.rows.map(r, r.code), steps.secondPage.result.body.next]"
+        row: !cel "steps.firstPage.result.body.rows[0]"
+        byBudget: !cel "steps.byBudget.result.body.rows.map(r, [r.code, r.budget])"
+        labelled: !cel "steps.labelled.result.body.rows.map(r, [r.code, r.name])"
+        stopped: !cel "steps.stopped.result.body.rows.map(r, [r.code, r.status])"
+        refusedQuery: !cel "steps.refusedQuery.result.status"
+      expected:
+        firstPage: [ [ TEL-42, OPS-7, WEB-3, DOC-12 ], 6, true ]
+        secondPage: [ [ APP-5, OPS-9 ], null ]
+        row:
+          id: 1
+          code: TEL-42
+          name: Atlas redesign
+          status: active
+          leadEmail: ada@northwind.example
+          budget: 48000
+          velocity: 2.5
+          featured: true
+          open: true
+          brief: /data?project=TEL-42
+          startedOn: "2026-06-01"
+        byBudget: [ [ APP-5, 75000 ], [ OPS-9, 54000 ], [ TEL-42, 48000 ] ]
+        labelled: [ [ TEL-42, Atlas redesign ], [ OPS-7, Billing migration ] ]
+        stopped: [ [ DOC-12, done ], [ OPS-9, done ], [ WEB-3, paused ] ]
+        refusedQuery: 400
+
+  # ---- A create, read, replace and delete round trip ----
+  - name: create
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/projects, method: POST }
+    inputs:
+      body: { code: QA-1, name: Release checklist, status: active, budget: 2500, leadEmail: sofia@northwind.example }
+  - name: refusedCreate
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/projects, method: POST }
+    inputs:
+      body: { code: not a code, name: Broken, status: active }
+  - name: replace
+    invoke: { kind: HttpClient.Request, client: !ref visitor, method: PUT }
+    inputs:
+      url: !cel "'/api/projects/' + string(steps.create.result.body.id)"
+      body: { code: QA-1, name: Release checklist, status: paused, budget: 3000, velocity: 1, featured: true, open: false }
+  - name: read
+    invoke: { kind: HttpClient.Request, client: !ref visitor }
+    inputs:
+      url: !cel "'/api/projects/' + string(steps.create.result.body.id)"
+  - name: remove
+    invoke: { kind: HttpClient.Request, client: !ref visitor, method: DELETE }
+    inputs:
+      url: !cel "'/api/projects/' + string(steps.create.result.body.id)"
+  - name: gone
+    invoke: { kind: HttpClient.Request, client: !ref visitor }
+    inputs:
+      url: !cel "'/api/projects/' + string(steps.create.result.body.id)"
+  - name: verifyRoundTrip
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        created: !cel "[steps.create.result.status, steps.create.result.body.id, steps.create.result.body.featured, steps.create.result.body.open]"
+        refused: !cel "[steps.refusedCreate.result.status, steps.refusedCreate.result.body.error, steps.refusedCreate.result.body.details.map(d, [d.location, d.path])]"
+        replaced: !cel "[steps.replace.result.status, steps.replace.result.body.status, steps.replace.result.body.featured, has(steps.replace.result.body.leadEmail)]"
+        read: !cel "steps.read.result.body"
+        removed: !cel "[steps.remove.result.status, steps.gone.result.status]"
+      expected:
+        created: [ 201, 7, false, true ]
+        refused: [ 400, ValidationError, [ [ body, code ] ] ]
+        # A replace clears what the body leaves out: here, the lead.
+        replaced: [ 200, paused, true, false ]
+        read: { id: 7, code: QA-1, name: Release checklist, status: paused, featured: true, open: false, budget: 3000, velocity: 1 }
+        removed: [ 204, 404 ]
+
+  # ---- Tagging a project ----
+  - name: tag
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/tags, method: POST }
+    inputs:
+      body: { tag: brand }
+  - name: tagAgain
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/tags, method: POST }
+    inputs:
+      body: { tag: brand }
+  - name: badTag
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/tags, method: POST }
+    inputs:
+      body: { tag: Brand }
+  - name: taggedSummary
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/project-summary }
+  - name: verifyTags
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        tag: [ !cel "steps.tag.result.status", !cel "steps.tag.result.body" ]
+        tagAgain: [ !cel "steps.tagAgain.result.status", !cel "steps.tagAgain.result.body" ]
+        badTag: !cel "[steps.badTag.result.status, steps.badTag.result.body.details.map(d, [d.location, d.path])]"
+        tags: !cel "steps.taggedSummary.result.body.tags"
+      expected:
+        tag: [ 201, { tag: brand, count: 3 } ]
+        tagAgain: [ 409, { code: TAG_EXISTS, message: TEL-42 is already tagged 'brand'. } ]
+        badTag: [ 400, [ [ body, tag ] ] ]
+        tags: [ brand, design, web ]
+
+  # ---- A session ----
+  - name: anonymous
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/session }
+  - name: anonymousAccount
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/private/account, responseType: text }
+  - name: anonymousPing
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/private/ping, method: POST, responseType: text }
+    inputs:
+      body: {}
+  - name: stranger
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/session/signin, method: POST }
+    inputs:
+      body: { email: nobody@example.com }
+  - name: formerMember
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/session/signin, method: POST }
+    inputs:
+      body: { email: tomas@northwind.example }
+  - name: signIn
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/session/signin, method: POST }
+    inputs:
+      body: { email: ada@northwind.example }
+  - name: session
+    value:
+      cookie: !cel "'theme=dark; ' + string(steps.signIn.result.headers['set-cookie']).split(';')[0]"
+  - name: signedIn
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/session }
+    inputs:
+      headers: { cookie: !cel "steps.session.result.cookie" }
+  - name: account
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/private/account }
+    inputs:
+      headers: { cookie: !cel "steps.session.result.cookie" }
+  - name: ping
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/private/ping, method: POST }
+    inputs:
+      headers: { cookie: !cel "steps.session.result.cookie" }
+      body: {}
+  - name: signOut
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/session/signout, method: POST }
+    inputs:
+      headers: { cookie: !cel "steps.session.result.cookie" }
+      body: {}
+  - name: afterSignOut
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/private/account, responseType: text }
+    inputs:
+      headers: { cookie: !cel "steps.session.result.cookie" }
+  - name: closedSession
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/session }
+    inputs:
+      headers: { cookie: !cel "steps.session.result.cookie" }
+  - name: verifySession
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        anonymous: !cel "steps.anonymous.result.body"
+        anonymousAccount: [ !cel "steps.anonymousAccount.result.status", !cel "steps.anonymousAccount.result.body" ]
+        anonymousPing: !cel "steps.anonymousPing.result.status"
+        stranger: [ !cel "steps.stranger.result.status", !cel "steps.stranger.result.body" ]
+        formerMember: [ !cel "steps.formerMember.result.status", !cel "steps.formerMember.result.body" ]
+        signIn:
+          status: !cel "steps.signIn.result.status"
+          cookie: !cel "string(steps.signIn.result.headers['set-cookie']).matches('^showcase-session=[0-9a-f-]{36}; Path=/; HttpOnly; SameSite=Lax$')"
+        signedIn: !cel "steps.signedIn.result.body"
+        account: !cel "steps.account.result.body"
+        ping: !cel "steps.ping.result.status"
+        signOut: [ !cel "steps.signOut.result.status", !cel "steps.signOut.result.headers['set-cookie']" ]
+        afterSignOut: !cel "steps.afterSignOut.result.status"
+        closedSession: !cel "steps.closedSession.result.body"
+      expected:
+        anonymous: { signedIn: false }
+        anonymousAccount: [ 401, "" ]
+        anonymousPing: 401
+        stranger:
+          - 400
+          - error: ValidationError
+            message: Request validation failed
+            status: 400
+            details: [ { location: body, path: email, message: is not the e-mail of anyone on the team } ]
+        formerMember: [ 403, { code: ACCOUNT_INACTIVE, message: tomas@northwind.example has left the team. } ]
+        signIn: { status: 200, cookie: true }
+        signedIn: { signedIn: true }
+        account: { name: Ada Nowak, email: ada@northwind.example, memberSince: "2021-03-01" }
+        ping: 200
+        signOut: [ 200, showcase-session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax ]
+        afterSignOut: 401
+        closedSession: { signedIn: false }
+
+  # ---- The language switch ----
+  # Back to the page it was pressed on — the Referer's path and query, when the
+  # Referer is of the request's own origin — else the home of the mount it is
+  # served under.
+  - name: langPolish
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/lang?set=pl" }
+    inputs:
+      headers: { referer: "http://127.0.0.1:8152/tables?mode=compact#top" }
+  - name: langElsewhere
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/radix/api/lang?set=pl" }
+    inputs:
+      headers: { referer: "http://elsewhere.example/tables" }
+  - name: langOtherHost
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/lang?set=pl" }
+    inputs:
+      headers: { referer: "http://127.0.0.1:8152//elsewhere.example/tables" }
+  - name: langEnglish
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/radix/api/lang?set=en" }
+  - name: langOther
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/lang?set=de" }
+  - name: langMissing
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/lang }
+  - name: verifyLanguage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - [ !cel "steps.langPolish.result.status", !cel "steps.langPolish.result.headers['location']", !cel "steps.langPolish.result.headers['set-cookie']" ]
+        - !cel "steps.langElsewhere.result.headers['location']"
+        - !cel "steps.langOtherHost.result.headers['location']"
+        - [ !cel "steps.langEnglish.result.status", !cel "steps.langEnglish.result.headers['location']", !cel "steps.langEnglish.result.headers['set-cookie']" ]
+        - [ !cel "steps.langOther.result.status", !cel "steps.langOther.result.headers['location']", !cel "steps.langOther.result.headers['set-cookie']" ]
+        - !cel "steps.langMissing.result.status"
+      expected:
+        - [ 302, "/tables?mode=compact", showcase-lang=pl; Path=/; Max-Age=31536000; SameSite=Lax ]
+        - /radix/
+        - /
+        - [ 302, /radix/, showcase-lang=en; Path=/; Max-Age=31536000; SameSite=Lax ]
+        - [ 302, /brand/, showcase-lang=; Path=/; Max-Age=0; SameSite=Lax ]
+        - 400
+
+  # ---- The brand switch ----
+  - name: brandOn
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/brand?set=acme" }
+  - name: brandOff
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/brand?set=none" }
+  - name: brandUnknown
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/brand?set=other" }
+  - name: verifyBrand
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - [ !cel "steps.brandOn.result.status", !cel "steps.brandOn.result.headers['location']", !cel "steps.brandOn.result.headers['set-cookie']" ]
+        - [ !cel "steps.brandOff.result.status", !cel "steps.brandOff.result.headers['location']", !cel "steps.brandOff.result.headers['set-cookie']" ]
+        - !cel "steps.brandUnknown.result.status"
+      expected:
+        - [ 302, /themes, showcase-brand=acme; Path=/; Max-Age=31536000; SameSite=Lax ]
+        - [ 302, /themes, showcase-brand=; Path=/; Max-Age=0; SameSite=Lax ]
+        - 400
+
+  # ---- The same API under the other two mounts ----
+  # Their pages read and write under their own mount, so every route the root
+  # serves is served under `/radix` and `/brand` too — guarded the same way —
+  # except the brand switch, which belongs to the root application alone.
+  - name: radixTeam
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /radix/api/team }
+  - name: radixProjects
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/radix/api/projects?limit=4" }
+  - name: radixTag
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /radix/api/tags, method: POST }
+    inputs:
+      body: { tag: radix }
+  - name: radixCounts
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/radix/api/task-counts?code=OPS-7" }
+  - name: radixTasks
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/radix/api/tasks?limit=1" }
+  - name: radixAccount
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /radix/api/private/account, responseType: text }
+  - name: radixBrand
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/radix/api/brand?set=acme", responseType: text }
+  - name: brandTeam
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /brand/api/team }
+  - name: brandProjects
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/projects?limit=4" }
+  - name: brandTag
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /brand/api/tags, method: POST }
+    inputs:
+      body: { tag: mounted }
+  - name: brandCounts
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/task-counts?code=OPS-7" }
+  - name: brandTasks
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/tasks?limit=1" }
+  - name: brandAccount
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /brand/api/private/account, responseType: text }
+  - name: brandBrand
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/brand?set=acme", responseType: text }
+  - name: verifyMounts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        radix:
+          team: !cel "[steps.radixTeam.result.status, steps.radixTeam.result.body.name]"
+          projects: !cel "steps.radixProjects.result.body.rows.map(r, r.code)"
+          tag: [ !cel "steps.radixTag.result.status", !cel "steps.radixTag.result.body" ]
+          counts: !cel "[steps.radixCounts.result.status, steps.radixCounts.result.body.code]"
+          tasks: !cel "[steps.radixTasks.result.status, size(steps.radixTasks.result.body.rows)]"
+          account: !cel "steps.radixAccount.result.status"
+          brandSwitch: !cel "steps.radixBrand.result.status"
+        brand:
+          team: !cel "[steps.brandTeam.result.status, steps.brandTeam.result.body.name]"
+          projects: !cel "steps.brandProjects.result.body.rows.map(r, r.code)"
+          tag: [ !cel "steps.brandTag.result.status", !cel "steps.brandTag.result.body" ]
+          counts: !cel "[steps.brandCounts.result.status, steps.brandCounts.result.body.code]"
+          tasks: !cel "[steps.brandTasks.result.status, size(steps.brandTasks.result.body.rows)]"
+          account: !cel "steps.brandAccount.result.status"
+          brandSwitch: !cel "steps.brandBrand.result.status"
+      expected:
+        radix:
+          team: [ 200, Northwind Studio ]
+          projects: [ TEL-42, OPS-7, WEB-3, DOC-12 ]
+          tag: [ 201, { tag: radix, count: 4 } ]
+          counts: [ 200, OPS-7 ]
+          tasks: [ 200, 1 ]
+          account: 401
+          # Not a route there: the `/radix` application answers with its shell.
+          brandSwitch: 404
+        brand:
+          team: [ 200, Northwind Studio ]
+          projects: [ TEL-42, OPS-7, WEB-3, DOC-12 ]
+          tag: [ 201, { tag: mounted, count: 5 } ]
+          counts: [ 200, OPS-7 ]
+          tasks: [ 200, 1 ]
+          account: 401
+          brandSwitch: 404

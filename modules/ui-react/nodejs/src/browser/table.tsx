@@ -1,14 +1,13 @@
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Pencil, Plus, Trash2 } from "lucide-react";
 import { Fragment, useContext, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { resolveBinding, ruleStyle, styleAttribute, type Binding, type StyleRule } from "./bindings.js";
 import { boundFilters, fetchPage, send, type CollectionPage } from "./collection.js";
 import { Form } from "./form.js";
 import { useHost, useHostStore, type HostLocation, type UnsavedGuard } from "./host.js";
-import { Icon } from "./icon.js";
+import { useControl } from "./effective-controls.js";
 import { IconButton } from "./icon-button.js";
 import { ErrorNode, Loading, Node, type SpecNode } from "./nodes.js";
 import { openValue } from "./open-address.js";
-import { FilterContext, RendererContext, RootsContext, RowContext, VisibleContext } from "./renderer-context.js";
+import { FilterContext, RendererContext, RootsContext, RowContext, underMount, VisibleContext } from "./renderer-context.js";
 import type { RowActionSpec } from "./operation.js";
 import { queryRoot } from "./query-root.js";
 import { useRowActions } from "./row-actions.js";
@@ -102,11 +101,12 @@ function ItemForm({ node, url, opened }: { node: SpecNode; url: string; opened: 
 
 /** A data grid over a collection. */
 export function Table({ node }: { node: SpecNode }) {
+  const Icon = useControl("Icon");
   const host = useHost();
   const say = useSay();
   const text = useText();
   const store = useHostStore();
-  const { compact } = useContext(RendererContext);
+  const { compact, prefix } = useContext(RendererContext);
   const filterParams = useContext(FilterContext);
   const visible = useContext(VisibleContext);
   const roots = useContext(RootsContext);
@@ -117,7 +117,9 @@ export function Table({ node }: { node: SpecNode }) {
   // hidden completes into the kept state.
   const latestRead = useRef(0);
   const columns = node.columns as Column[];
+  // What a change is announced under is the path as written; what is requested, that path under the mount.
   const basePath = node.basePath as string;
+  const collectionAt = underMount(prefix, basePath);
   // A row action reads the row, and the query parameters the table declares;
   // the source's own filters read the same roots.
   const query = useMemo(() => queryRoot(node.query as Record<string, JsonSchema>, host.location.search), [node.query, host.location.search]);
@@ -163,7 +165,7 @@ export function Table({ node }: { node: SpecNode }) {
     }
     const current = () => read === latestRead.current;
     setLoading(true);
-    fetchPage(host, basePath, { limit: node.pageSize, cursor, sort: view.sort, filters }).then(
+    fetchPage(host, collectionAt, { limit: node.pageSize, cursor, sort: view.sort, filters }).then(
       (fetched) => {
         if (!current()) return;
         setPage(fetched);
@@ -190,7 +192,7 @@ export function Table({ node }: { node: SpecNode }) {
   const sortBy = (property: string) =>
     setView(firstPage(filterKey, view.sort === property ? `-${property}` : property));
   const keyOf = (row: Row) => String(row[node.rowKey]);
-  const itemUrl = (key: string) => `${basePath}/${encodeURIComponent(key)}`;
+  const itemUrl = (key: string) => `${collectionAt}/${encodeURIComponent(key)}`;
   const rows = page?.rows ?? [];
   const start = view.starts[view.page] ?? 0;
   const creates = node.create as Opener | undefined;
@@ -306,7 +308,7 @@ export function Table({ node }: { node: SpecNode }) {
           <Form
             key="create"
             node={opener.form}
-            target={{ method: "POST", url: basePath }}
+            target={{ method: "POST", url: collectionAt }}
             {...opened}
             onSaved={() => setView(firstPage(filterKey, view.sort))}
           />
@@ -322,7 +324,7 @@ export function Table({ node }: { node: SpecNode }) {
       {creates && (
         <div data-telo-part="table-toolbar">
           <button data-telo-part="table-create" type="button" onClick={(event) => show({ kind: "create" }, createName, "", event.currentTarget)}>
-            <Icon of={Plus} />
+            <Icon name="add" />
             {say("newRecord")}
           </button>
         </div>
@@ -345,7 +347,7 @@ export function Table({ node }: { node: SpecNode }) {
                         ) : (
                           <button data-telo-part="table-sort" type="button" onClick={() => sortBy(column.sort as string)}>
                             {text(column.header)}
-                            <Icon of={sorted === "asc" ? ArrowUp : sorted === "desc" ? ArrowDown : ChevronsUpDown} />
+                            <Icon name={sorted === "asc" ? "sort-ascending" : sorted === "desc" ? "sort-descending" : "sortable"} />
                           </button>
                         )}
                       </th>
@@ -372,8 +374,8 @@ export function Table({ node }: { node: SpecNode }) {
                       {actions && (
                         <td data-telo-part="row-actions">
                           {rowActions.cell(row, keyOf(row), deleting)}
-                          {edits && <IconButton part="row-edit" label={say("edit")} icon={Pencil} onClick={(button) => show({ kind: "edit", key: keyOf(row) }, editName, keyOf(row), button)} />}
-                          {node.delete && <IconButton part="row-delete" label={say("delete")} icon={Trash2} disabled={rowActions.busy(keyOf(row))} onClick={() => rowActions.busy(keyOf(row)) || confirmDelete(row)} />}
+                          {edits && <IconButton part="row-edit" label={say("edit")} icon="edit" onClick={(button) => show({ kind: "edit", key: keyOf(row) }, editName, keyOf(row), button)} />}
+                          {node.delete && <IconButton part="row-delete" label={say("delete")} icon="delete" disabled={rowActions.busy(keyOf(row))} onClick={() => rowActions.busy(keyOf(row)) || confirmDelete(row)} />}
                         </td>
                       )}
                     </tr>
@@ -410,8 +412,8 @@ export function Table({ node }: { node: SpecNode }) {
                 : say("pagerRange", { first: start + 1, last: start + rows.length, total: page.total })
               : ""}
           </span>
-          <IconButton part="pager-prev" label={say("previousPage")} icon={ChevronLeft} disabled={view.page === 0} onClick={() => setView({ ...view, page: view.page - 1 })} />
-          <IconButton part="pager-next" label={say("nextPage")} icon={ChevronRight} disabled={!page || page.next === null} onClick={() => setView({ ...view, page: view.page + 1 })} />
+          <IconButton part="pager-prev" label={say("previousPage")} icon="previous" disabled={view.page === 0} onClick={() => setView({ ...view, page: view.page - 1 })} />
+          <IconButton part="pager-next" label={say("nextPage")} icon="next" disabled={!page || page.next === null} onClick={() => setView({ ...view, page: view.page + 1 })} />
         </div>
       </div>
       {!above && drawn}

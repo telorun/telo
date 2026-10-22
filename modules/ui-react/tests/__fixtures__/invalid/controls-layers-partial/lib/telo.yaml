@@ -1,0 +1,25 @@
+# A control set replacing one layer control and not the other seven.
+kind: Telo.Library
+metadata:
+  name: UiReactControlsLayersPartial
+  version: 1.0.0
+  description: >-
+    Test fixture exporting a control set that implements the select alone,
+    without the other layer controls.
+imports:
+  UiReact: ../../../../../
+exports:
+  resources: [selectOnly]
+  browser:
+    - specifier: "@fixture/select-only"
+      path: ./browser/select.js
+      source: ./select.js
+      abi: ui_react_controls-1
+      external: [react, react/jsx-runtime, react-dom]
+      exports: [Select]
+---
+kind: UiReact.Controls
+metadata:
+  name: selectOnly
+entry: "@fixture/select-only"
+implements: [Select]

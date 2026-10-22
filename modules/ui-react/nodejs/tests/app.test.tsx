@@ -17,6 +17,16 @@ describe("the application shell", () => {
     expect(links).toEqual(["/admin/_telo/ui/assets/aa/base.css"]);
   });
 
+  it("draws the application's own header nodes before its title and after its navigation, on every page", async () => {
+    const header = { start: [{ type: "image", src: "/logo.svg", alt: "Logo" }], end: [{ type: "link", text: "Help", href: "/help" }] };
+    rendered = await render({ path: "/nowhere", prefix: "/admin", pages, header });
+    const parts = [...rendered.part("header").children].map((child) => child.getAttribute("data-telo-part"));
+    expect(parts).toEqual(["header-start", "app-title", "nav", "header-end"]);
+    expect(rendered.part("header-start").querySelector("img")?.getAttribute("src")).toBe("/admin/logo.svg");
+    expect(rendered.part("header-end").querySelector("a")?.getAttribute("href")).toBe("/admin/help");
+    expect(rendered.part("page-title").textContent).toBe("Not found");
+  });
+
   it("draws nothing until its stylesheets have loaded, so the shell's spinner stays", async () => {
     rendered = await render({ path: "/", pages, holdStylesheets: true });
     expect(document.head.querySelectorAll("link[data-telo-stylesheet]")).toHaveLength(1);

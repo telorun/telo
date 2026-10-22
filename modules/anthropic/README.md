@@ -1,11 +1,12 @@
 # Anthropic
 
-Claude models over Anthropic's Messages API. Calls the HTTP API directly — no vendor SDK — through an `Http.Request` you declare, so the API key and the base URL live on an ordinary `Http.Client`.
+Claude models over Anthropic's Messages API. Calls the HTTP API directly — no vendor SDK — through an `Http.Request` you declare, whose client holds the API key and the base URL — `Anthropic.Client`, an `Http.Client` preset for Anthropic.
 
 ## Kinds
 
 | Kind | Implements | Purpose |
 | --- | --- | --- |
+| `Anthropic.Client` | `Http.Client` | The account: Anthropic's endpoint, a ten-minute timeout and your credential. |
 | `Anthropic.MessagesModel` | `Ai.Model` | A Claude model called for a complete answer, over `POST /v1/messages`. |
 | `Anthropic.MessagesModelStream` | `Ai.ModelStream` | The same model called for a stream: text and thinking deltas, tool calls as they are written, then usage. |
 
@@ -25,9 +26,8 @@ secrets:
     env: ANTHROPIC_API_KEY
     type: string
 ---
-kind: Http.Client
+kind: Anthropic.Client
 metadata: { name: anthropicClient }
-baseUrl: https://api.anthropic.com/v1
 credential:
   kind: Http.ApiKeyHeader
   header: x-api-key
@@ -52,13 +52,18 @@ system:
 
 Replace each `<version>` with a published one from the [hub](https://hub.telo.run).
 
-## The account is an `Http.Client`
+## The account is an `Anthropic.Client`
 
-A model kind carries **no credential and no base URL**. It references an `Http.Request`, whose client holds both:
+A model kind carries **no credential and no base URL**. It references an `Http.Request`, whose client holds both. `Anthropic.Client` is that client with Anthropic's settings filled in; it is an `Http.Client`, so it fits every slot one does.
 
-- `baseUrl` is the endpoint up to its version segment — `https://api.anthropic.com/v1`, or a gateway's. The kind posts to `/messages` beneath it.
-- `credential` is an `Http.ApiKeyHeader` on `x-api-key`. Its returned header is marked sensitive, so the key is redacted in trace payloads; nothing on the model kind can leak it.
-- The client's `timeout` and the request's `retry:` policy are the only timeout and retry there are. Nothing here retries. A complete answer arrives in one response, so give the client a timeout that fits the longest answer you allow.
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `credential` | ref | yes | An `Http.ApiKeyHeader` on `x-api-key`. Its returned header is marked sensitive, so the key is redacted in trace payloads; nothing on the model kind can leak it. |
+| `baseUrl` | string | no (`https://api.anthropic.com/v1`) | The endpoint up to its version segment, or a gateway's. The kind posts to `/messages` beneath it. |
+| `timeout` | integer ≥ 1 | no (`600000`) | Milliseconds a call may take. A complete answer arrives in one response and must arrive within it; a streamed answer must start within it. |
+| `headers` | map | no | Headers added to every call. |
+
+The client's `timeout` and the request's `retry:` policy are the only timeout and retry there are; nothing here retries. A plain `Http.Client` works too, but its 10-second default timeout ends most long answers early.
 
 What a model kind itself adds to every call is two headers: `anthropic-version: 2023-06-01`, the dialect its translation is written against, and `anthropic-beta`, the comma-joined `betas` list when you declare one.
 

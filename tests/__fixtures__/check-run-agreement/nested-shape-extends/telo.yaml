@@ -1,0 +1,60 @@
+# `Item` extends `Named`, which extends the library's `Keyed` by its module
+# name; `Page` holds a list of `Item` through a nested `!ref`. A read of each
+# inherited member is typed by the folded shape, as the kernel registers it.
+kind: Telo.Application
+metadata:
+  name: NestedShapeExtendsApp
+  version: 1.0.0
+imports:
+  Shapes: ./lib
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Named
+extends: NestedShapeExtendsLib.Keyed
+schema:
+  type: object
+  required: [name]
+  properties:
+    name: { type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Item
+extends: Named
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    note: { type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Page
+schema:
+  type: object
+  required: [items]
+  properties:
+    items:
+      type: array
+      items: !ref Item
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: page
+    invoke:
+      kind: Run.Value
+      outputType: !ref Page
+      value:
+        items: [ { id: 7, name: first, note: kept } ]
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.page.result.items[0].id, steps.page.result.items[0].name, steps.page.result.items[0].note]"
+      expected: [7, first, kept]

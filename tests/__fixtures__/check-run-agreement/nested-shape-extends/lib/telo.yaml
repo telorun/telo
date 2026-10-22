@@ -1,0 +1,14 @@
+# The parent shape, in a library of its own.
+kind: Telo.Library
+metadata:
+  name: NestedShapeExtendsLib
+  version: 1.0.0
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Keyed
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }

@@ -18,6 +18,7 @@ metadata:
   name: mixed
 title: Mixed
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Home

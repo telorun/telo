@@ -8,16 +8,18 @@ metadata:
   description: >-
     Serves a declarative user interface as a web application: pages with
     navigation, data grids with sorting, paging and inline create, edit and
-    delete, validated forms, filter bars, theming with design tokens and custom
-    fonts, and custom React components. Mounted on an HTTP server, it turns
-    page descriptions into a working admin panel or internal tool with no
-    frontend build step.
+    delete, validated forms, filter bars, swappable themes that restyle every
+    screen and replace its interactive controls, brand tokens, custom fonts and
+    custom React components. Mounted on an HTTP server, it turns page
+    descriptions into a working admin panel or internal tool with no frontend
+    build step.
 requires:
   # 0.120.1 refuses this file: it does not know `x-telo-context-eval`, which
   # keeps a page's `request` out of what the browser names and its `query` out
   # of what the server evaluates, nor the `Text` fragment and
   # `x-telo-text-values` an application's titles are typed with. Verified by
-  # execution (`check` of this file) against 0.120.1.
+  # execution (`check` of this file) against 0.120.1. The `abi` and `external`
+  # a control set's `implements` is checked against ship in the same release.
   telo: ">=0.121.0"
 imports:
   Ui: ../ui
@@ -26,6 +28,19 @@ imports:
 exports:
   kinds:
     - App
+    - Theme
+    - Controls
+  resources:
+    - defaultTheme
+  # The renderer's controls contract as data — the parts, the reserved
+  # properties, the controls of `ui_react_controls-1` with their vectors, the
+  # scenes drawing every part — and the DOM-only interpreter that runs them:
+  # what a module checking a theme against the renderer imports.
+  code:
+    - specifier: "@telorun/ui-react-contract"
+      format: js
+      path: ./nodejs/ui-react-contract.mjs
+      source: ./nodejs/src/contract/index.ts
   # Six entries, two builds. The four React entries declare no `external`, so
   # they are one build and the page holds one React. The renderer and the host
   # module declare the same `external` list, so they are one build too and
@@ -105,7 +120,7 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required: [title, words, pages]
+  required: [title, words, theme, pages]
   properties:
     title:
       title: Title
@@ -149,18 +164,27 @@ schema:
     theme:
       title: Theme
       description: >-
-        One theme, or an ordered list of themes each with a condition: the first
-        entry whose `when` holds for the request is used.
+        How every screen looks and which controls it is drawn with:
+        `UiReact.defaultTheme`, a theme another module publishes, or one of the
+        application's own.
+      x-telo-ref: { kind: Self.Theme, use: dependency }
+    tokens:
+      title: Tokens
+      description: >-
+        The application's brand over its theme: one design token set, or an
+        ordered list of sets each with a condition — the first entry whose
+        `when` holds for the request is used, and with none the theme's own
+        values apply.
       anyOf:
-        - x-telo-ref: { kind: Ui.Theme, use: dependency }
+        - x-telo-ref: { kind: Ui.DesignTokens, use: dependency }
         - type: array
           items:
             type: object
             additionalProperties: false
-            required: [theme]
+            required: [tokens]
             properties:
-              theme:
-                x-telo-ref: { kind: Ui.Theme, use: dependency }
+              tokens:
+                x-telo-ref: { kind: Ui.DesignTokens, use: dependency }
               when:
                 type: boolean
                 default: true
@@ -174,11 +198,6 @@ schema:
                           type: object
                           additionalProperties: { type: string }
                         ip: { type: string }
-    defaultTheme:
-      title: Default theme
-      description: Whether the built-in theme's stylesheet is served.
-      type: boolean
-      default: true
     stylesheets:
       title: Stylesheets
       description: Stylesheets of the application's own, applied after everything else.
@@ -193,6 +212,48 @@ schema:
       type: string
       pattern: "^(0|[0-9]+(\\.[0-9]+)?|\\.[0-9]+)(px|rem|em)$"
       default: 40rem
+    header:
+      title: Header
+      description: >-
+        Nodes of the application's own in its header, drawn on every page:
+        `start` before the title, `end` after the navigation. Each node's
+        `when:` and text values may read the request, evaluated per request;
+        no browser root is in scope.
+      type: object
+      additionalProperties: false
+      properties:
+        start:
+          title: Start
+          description: Nodes before the application's title, such as a logo.
+          type: array
+          items: { $ref: "telo://Ui/Node" }
+          x-telo-context:
+            type: object
+            properties:
+              request:
+                x-telo-context-eval: runtime
+                type: object
+                properties:
+                  headers:
+                    type: object
+                    additionalProperties: { type: string }
+                  ip: { type: string }
+        end:
+          title: End
+          description: Nodes after the navigation, such as language or theme switches.
+          type: array
+          items: { $ref: "telo://Ui/Node" }
+          x-telo-context:
+            type: object
+            properties:
+              request:
+                x-telo-context-eval: runtime
+                type: object
+                properties:
+                  headers:
+                    type: object
+                    additionalProperties: { type: string }
+                  ip: { type: string }
     pages:
       title: Pages
       type: array
@@ -254,3 +315,127 @@ schema:
       message: >-
         declares a path another page already has. Give each page a path of its
         own.
+---
+# A theme is the look of every part the renderer draws and, optionally, the
+# controls it draws with; brand values stay a separate `Ui.DesignTokens` set,
+# so switching the theme keeps the brand. The application places the theme's
+# tokens, then its stylesheets in order, in the `telo.theme` layer, and each
+# control set's own stylesheet in `telo.control`.
+kind: Telo.Definition
+metadata:
+  name: Theme
+  description: >-
+    A complete look for a web interface: stylesheets styling every element the
+    renderer draws, default values for the brand tokens, and optionally its own
+    implementation of interactive controls such as selects, menus, dialogs and
+    date pickers. Picked by an application with one reference, so swapping it
+    restyles every screen while the brand stays.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#ThemeController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    tokens:
+      title: Tokens
+      description: >-
+        The theme's own token values and typefaces, under any the application
+        sets.
+      x-telo-ref: { kind: Ui.DesignTokens, use: dependency }
+    stylesheets:
+      title: Stylesheets
+      description: >-
+        The theme's look, in order, written against the styling contract.
+      type: array
+      items:
+        x-telo-type: Telo.HostPath
+    controls:
+      title: Controls
+      description: >-
+        Sets of controls drawn in place of the built-in ones. No two entries
+        may implement the same control, the same set listed through two
+        aliases included; a control no entry implements is the built-in.
+      type: array
+      uniqueItems: true
+      items:
+        x-telo-ref: { kind: Self.Controls, use: dependency }
+  # Entries are counted, never compared: the same declaration reached twice is
+  # two entries, as it is for the theme's controller.
+  x-telo-resource-rules:
+    - resolve: [/controls]
+      in: /controls
+      condition: !cel >-
+        this.implements.all(n, size(self.controls.filter(c, n in
+        c.implements)) == 1)
+      code: UI_THEME_CONTROL_DUPLICATE
+      message: >-
+        implements a control another entry of controls implements too. Give
+        each control one implementation.
+---
+# What a module ships to draw some of the renderer's controls, declared beside
+# the code: its browser entry, written against `ui_react_controls-1`, and the
+# controls it exports, each under its own name.
+kind: Telo.Definition
+metadata:
+  name: Controls
+  description: >-
+    A set of interactive controls for a web interface — text boxes, selects,
+    multi-selects, checkboxes, dialogs, drawers, menus, tooltips, date pickers
+    and icons — shipped as browser code by a module and drawn in place of the
+    built-in ones by any theme listing it. Checked against the controls
+    contract before the application starts.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#ControlsController
+schema:
+  type: object
+  additionalProperties: false
+  required: [entry, implements]
+  properties:
+    entry:
+      title: Entry
+      description: >-
+        The specifier of one of the declaring module's browser entries,
+        written against `ui_react_controls-1`.
+      type: string
+    implements:
+      title: Implements
+      description: The controls the entry exports, each under its own name.
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items:
+        type: string
+        enum:
+          [
+          TextInput, NumberInput, TextArea, DateInput, DateTimeInput, TimeInput, TagsInput,
+          DateRangeInput, Checkbox, Switch, Slider, OptionGroup, Select, MultiSelect, Listbox,
+          Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Icon,
+          ]
+        x-telo-browser-export:
+          entry: /entry
+          abi: [ui_react_controls-1]
+          external: [react, react/jsx-runtime, react-dom]
+  # The eight controls drawing a layer at the end of `<body>` are replaced as
+  # one unit, so every layer on a page comes from one implementation: a layer
+  # stack cannot be made to cooperate with another library's.
+  x-telo-resource-rules:
+    - condition: !cel >-
+        !self.implements.exists(n, n in ['Select', 'MultiSelect', 'Dialog',
+        'Drawer', 'Popover', 'Confirmation', 'Menu', 'Tooltip']) ||
+        ['Select', 'MultiSelect', 'Dialog', 'Drawer', 'Popover', 'Confirmation',
+        'Menu', 'Tooltip'].all(n, n in self.implements)
+      code: UI_CONTROLS_LAYERS_PARTIAL
+      message: >-
+        implements some of the layer controls but not all of them. A set
+        implementing any of Select, MultiSelect, Dialog, Drawer, Popover,
+        Confirmation, Menu and Tooltip implements all eight.
+---
+# The built-in look: one stylesheet styling every part, with every token's
+# default and its dark-scheme value. It replaces no control.
+kind: Self.Theme
+metadata:
+  name: defaultTheme
+stylesheets:
+  - !module-path ./themes/default/default-theme.css

@@ -1,0 +1,22 @@
+# A theme listing one shared control set through two aliases: one instance,
+# two entries.
+kind: Telo.Library
+metadata:
+  name: UiReactThemeControlShared
+  version: 1.0.0
+  description: >-
+    Test fixture exporting a theme that lists the same shared control set
+    through two aliases.
+imports:
+  UiReact: ../../../../../
+  Boxes: ../set
+  MoreBoxes: ../set
+exports:
+  resources: [aliased]
+---
+kind: UiReact.Theme
+metadata:
+  name: aliased
+controls:
+  - !ref Boxes.boxes
+  - !ref MoreBoxes.boxes

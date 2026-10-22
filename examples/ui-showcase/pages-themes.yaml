@@ -1,0 +1,69 @@
+# Themes: the three mounts of one design, every design token as the page's
+# theme and brand give it, and the typefaces in use. Every application places
+# this view on its `/themes` page; the `/` application adds the links between
+# the mounts and the brand switch.
+kind: Ui.View
+metadata:
+  name: themesPage
+content:
+  type: stack
+  children:
+    # ---- Three mounts ----
+    - { type: text, text: Three mounts of one design, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The same pages are served three times, each application naming its own theme and brand. The pages are
+        one set of views, placed by reference from all three, so only the look differs.
+    - type: columns
+      children:
+        - type: box
+          children:
+            - { type: text, text: At the root, style: subheading }
+            - type: text
+              text: >-
+                The built-in look, this example's own stylesheet over it, and a brand chosen for every request:
+                the Acme token set while a cookie asks for it, the theme's own values otherwise.
+        - type: box
+          children:
+            - { type: text, text: Under /radix, style: subheading }
+            - type: text
+              text: >-
+                The Radix theme: its stylesheet and its eleven controls — the choice lists, dialogs, drawers,
+                popovers, menus and tooltips — with the brand left to the theme.
+        - type: box
+          children:
+            - { type: text, text: Under /brand, style: subheading }
+            - type: text
+              text: >-
+                A theme of this example's own: Radix's controls under a stylesheet written here, with token values
+                of its own. The application's brand is one token set, which ships the Inter typeface the theme
+                names.
+    - type: text
+      style: muted
+      text: >-
+        A link resolves under the mount it is drawn in, so the links between the mounts and the brand switch are
+        on the root application's Themes page.
+
+    # ---- Every design token ----
+    - { type: text, text: Every design token, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        Each token of the closed set as this page's theme and brand give it, read from the custom property the
+        renderer projects it to, with a sample drawn in it. Open another mount, or switch the brand at the root,
+        and the values change.
+    - type: composite
+      ref: { kind: Ui.Component, component: !ref Components.tokenSheet }
+
+    # ---- Typefaces ----
+    - { type: text, text: Typefaces, style: heading }
+    - type: text
+      style: muted
+      text: >-
+        The body and heading typefaces in each of their four faces, and for each face whether this application
+        serves it. Under /brand they are Inter's regular, bold, italic and bold italic faces, which ship with the
+        example and are served with the page; the other two mounts serve none and draw from the viewer's own
+        fonts.
+    - type: composite
+      ref: { kind: Ui.Component, component: !ref Components.typefaceSamples }

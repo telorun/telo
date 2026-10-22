@@ -8,8 +8,8 @@ metadata:
     their operators — around the node it filters, and nothing at all when that
     node is switched off. A standalone
     form lists every property a control can enter, a list of scalars included.
-    A theme provides its tokens by name, its typefaces apart from its CSS
-    values.
+    A design token set provides its tokens by name, its typefaces apart from
+    its CSS values.
 imports:
   Ui: ../
   Font: ../../font
@@ -84,13 +84,12 @@ metadata:
   name: inter
 family: Inter
 ---
-kind: Ui.Theme
+kind: Ui.DesignTokens
 metadata:
   name: brand
-tokens:
-  color.accent: "#1f8fff"
-  radius.md: 6px
-  font.body: !ref inter
+color.accent: "#1f8fff"
+radius.md: 6px
+font.body: !ref inter
 ---
 kind: Run.Sequence
 metadata:

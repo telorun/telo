@@ -27,7 +27,7 @@ export function Action({ node }: { node: SpecNode }) {
   const say = useSay();
   const text = useText();
   const store = useHostStore();
-  const { pages } = useContext(RendererContext);
+  const { pages, prefix } = useContext(RendererContext);
   const queues = useContext(PressQueueContext);
   const id = useId();
   const entry = useRecordEntry(action as unknown as EntrySpec);
@@ -51,7 +51,7 @@ export function Action({ node }: { node: SpecNode }) {
     const input = checked.record;
     setState("submitting");
     pending.current = true;
-    const outcome = await queues.run(action, () => runOperation(host, action, input, say));
+    const outcome = await queues.run(action, () => runOperation(host, prefix, action, input, say));
     pending.current = false;
     setAnswer(outcome);
     if (!outcome.ok) {

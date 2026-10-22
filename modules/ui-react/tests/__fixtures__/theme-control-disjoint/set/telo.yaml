@@ -1,0 +1,25 @@
+# A control set implementing only the switch control.
+kind: Telo.Library
+metadata:
+  name: UiReactSwitchControls
+  version: 1.0.0
+  description: >-
+    Test fixture: a library exporting one control set implementing the switch
+    control.
+imports:
+  UiReact: ../../../../
+exports:
+  resources: [switches]
+  browser:
+    - specifier: "@fixture/switches"
+      path: ./browser/switch.js
+      source: ./switch.js
+      abi: ui_react_controls-1
+      external: [react, react/jsx-runtime, react-dom]
+      exports: [Switch]
+---
+kind: UiReact.Controls
+metadata:
+  name: switches
+entry: "@fixture/switches"
+implements: [Switch]

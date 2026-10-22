@@ -52,7 +52,7 @@ It **narrows** the loop rather than disabling it: a code the list does not name 
 
 ## Bounding one attempt: `timeout:`
 
-`timeout:` (milliseconds) says how long **one attempt** may take. On elapse the dispatch is cancelled and the step fails `ERR_STEP_TIMEOUT`:
+`timeout:` (milliseconds) says how long **one attempt** may take. On elapse the dispatch is cancelled and the step fails `ERR_STEP_TIMEOUT` — and so does an answer that arrives at or past the deadline before the timer has run, so the outcome never depends on which of the two the runtime happened to process first:
 
 ```yaml
 - name: Fetch

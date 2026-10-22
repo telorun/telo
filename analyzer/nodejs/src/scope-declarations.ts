@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import type { ReachSite } from "./reference-reach.js";
+import { pointerSegments } from "./resource-rule.js";
 
 /**
  * The execution scopes ONE resource declares — the `x-telo-scope` arrays it
@@ -16,10 +17,13 @@ import type { ReachSite } from "./reference-reach.js";
 export interface DeclaredScope {
   /** Concrete path of the scope slot on its resource (`with`). */
   path: string;
+  /** The same path as its keys. */
+  keys: readonly (string | number)[];
   /** The declaration array itself — what a scope run registers and tears down. */
   declarations: unknown[];
-  /** Dot-form prefixes of every region its names resolve in (`steps`, `targets`). */
-  regions: string[];
+  /** Every region its names resolve in (`steps`, `targets`), as keys from the
+   *  resource root. */
+  regions: readonly (readonly string[])[];
 }
 
 export type ScopeMember = ResourceManifest & { metadata: { name: string } };
@@ -31,23 +35,31 @@ export function declaredScopes(sites: readonly ReachSite[]): DeclaredScope[] {
   const out: DeclaredScope[] = [];
   for (const site of sites) {
     if (site.scopes.length === 0 || !Array.isArray(site.data)) continue;
-    const regions = new Set<string>();
+    const regions = new Map<string, readonly string[]>();
     for (const { scope } of site.scopes) {
       for (const pointer of Array.isArray(scope) ? scope : [scope]) {
-        regions.add(pointer.replace(/^\//, "").replace(/\//g, "."));
+        const keys = pointerSegments(pointer.startsWith("/") ? pointer : `/${pointer}`);
+        if (keys) regions.set(JSON.stringify(keys), keys);
       }
     }
-    out.push({ path: site.path, declarations: site.data, regions: [...regions] });
+    out.push({ path: site.path, keys: site.keys, declarations: site.data, regions: [...regions.values()] });
   }
   return out;
 }
 
-/** True when `path` — a pattern (`steps[].invoke`) or a concrete one
- *  (`steps[0].invoke`) — lies inside one of the scope's regions. */
-export function scopeEncloses(scope: DeclaredScope, path: string): boolean {
-  return scope.regions.some(
-    (region) => path === region || path.startsWith(`${region}.`) || path.startsWith(`${region}[`),
-  );
+/** True when the concrete place `keys` (`["steps", 0, "invoke"]`) lies inside
+ *  one of the scope's regions. */
+export function scopeEncloses(scope: DeclaredScope, keys: readonly (string | number)[]): boolean {
+  return scope.regions.some((region) => keysUnder(keys, region));
+}
+
+/** True when `keys` is `prefix` or lies beneath it; an index matches the
+ *  pointer segment spelling it. */
+export function keysUnder(
+  keys: readonly (string | number)[],
+  prefix: readonly (string | number)[],
+): boolean {
+  return prefix.length <= keys.length && prefix.every((key, i) => String(keys[i]) === String(key));
 }
 
 /** A scope's inline resource declarations. A `!ref` entry is a category error

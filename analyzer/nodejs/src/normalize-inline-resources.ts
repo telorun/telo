@@ -14,6 +14,7 @@ import { siteRefEntry, type ReachSite } from "./reference-reach.js";
 import { gatherPropertySchemas } from "./schema-walk.js";
 import {
   declaredScopes,
+  keysUnder,
   outsideScopesOf,
   scopeEncloses,
   scopeMembers,
@@ -101,6 +102,9 @@ interface Origin {
   /** Concrete dotted path with `[N]` indices, matching `buildPositionIndex` keys
    *  (e.g. `routes[0].handler`). */
   pathFromParent: string;
+  /** The same place as its keys and indices — exact for a key holding a dot.
+   *  Absent on a step's dispatch target, which is identified by name. */
+  keysFromParent?: (string | number)[];
   /** Set on a step's dispatch target, whose identity is its path-derived name
    *  alone — see `inlineStepTargetName`. */
   stepTarget?: true;
@@ -243,10 +247,10 @@ export function normalizeInlineResources(
         queue.push({ manifest: member, home: scope.declarations, outside, ...inherit });
       }
     }
-    const outsideAt = (slotPath: string, createdIn?: DeclaredScope): OutsideScope[] => [
+    const outsideAt = (slotKeys: readonly (string | number)[], createdIn?: DeclaredScope): OutsideScope[] => [
       ...outside,
       ...scopes
-        .filter((scope) => scope !== createdIn && scopeEncloses(scope, slotPath))
+        .filter((scope) => scope !== createdIn && scopeEncloses(scope, slotKeys))
         .map((scope) => ({
           ownerKind: resource.kind,
           ownerName: parentName,
@@ -256,28 +260,28 @@ export function normalizeInlineResources(
         .filter((scope) => scope.names.length > 0),
     ];
 
-    const extractedAt: string[] = [];
+    const extractedAt: (readonly (string | number)[])[] = [];
     for (const site of sites) {
       if (site.refs.length === 0) continue;
       const entry = siteRefEntry(site);
       if (!acceptsInline(resource.kind, entry)) continue;
       if (current.inBody && entry.uses.includes("schema")) continue;
       // A site below one already extracted belongs to that declaration now.
-      if (extractedAt.some((at) => site.path.startsWith(`${at}.`) || site.path.startsWith(`${at}[`))) {
+      if (extractedAt.some((at) => at.length < site.keys.length && keysUnder(site.keys, at))) {
         continue;
       }
-      const scope = scopes.find((s) => scopeEncloses(s, site.path));
+      const scope = scopes.find((s) => scopeEncloses(s, site.keys));
       const manifest = extractInlineAt(
         resource,
         site,
         parentName,
         resource.kind,
         inherit,
-        outsideAt(site.path, scope),
+        outsideAt(site.keys, scope),
         entry.context,
       );
       if (!manifest) continue;
-      extractedAt.push(site.path);
+      extractedAt.push(site.keys);
       place(manifest, scope?.declarations ?? home, parentModule, current.inBody);
     }
 
@@ -326,7 +330,7 @@ function extractStepTargets(
   aliases: AliasResolver | undefined,
   aliasesByModule: Map<string, AliasResolver> | undefined,
   inherit: Provenance,
-  outsideAt: (slotPath: string) => OutsideScope[],
+  outsideAt: (slotKeys: readonly (string | number)[]) => OutsideScope[],
   emit: (manifest: ResourceManifest) => void,
 ): void {
   const definition = definitionInScope<ResourceDefinition>(
@@ -350,7 +354,7 @@ function extractStepTargets(
   for (const body of stepBodiesOf(resource, schema)) {
     const root = base === undefined ? body.field : mappedStepField(base, body.field, runner, registry);
     if (root === undefined) continue;
-    const outsideScopes = outsideAt(body.field);
+    const outsideScopes = outsideAt([body.field]);
 
     forEachStep(body, schema, (step, stepPath) => {
       const target = step[body.invokeField];
@@ -465,6 +469,7 @@ function extractInlineAt(
       parentKind,
       parentName,
       pathFromParent: site.path,
+      keysFromParent: [...site.keys],
       ...(outsideScopes.length > 0 ? { outsideScopes } : {}),
     },
     inherit,

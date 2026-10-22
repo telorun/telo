@@ -1,0 +1,4 @@
+modules:
+  apps/hub: Added
+body: "The build-ui guide names UiReact.App's header slot: nodes on every page before
+  the title and after the navigation, evaluated per request with no query in scope."

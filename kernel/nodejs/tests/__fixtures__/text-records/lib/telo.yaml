@@ -1,13 +1,14 @@
-# A library writing in Polish: a kind holding a `Text`, a child mapping its own
-# field onto it with `base:`, a template whose body writes one text and forwards
-# another, and a function taking a `Text`.
+# A library writing in Polish: a kind holding a `Text`, one holding a text or a
+# text with values, a child mapping its own field onto it with `base:`, a
+# template whose body writes one text and forwards another, and a function
+# taking a `Text`.
 kind: Telo.Library
 metadata:
   name: TextRecordLib
   version: 1.0.0
 lang: pl
 exports:
-  kinds: [Label, Caption, Banner, Show]
+  kinds: [Label, BoundLabel, Caption, Banner, Show]
   resources: [t]
 ---
 kind: Telo.Definition
@@ -22,6 +23,25 @@ schema:
     text: { $ref: "telo://manifest#/$defs/Text" }
     peer:
       x-telo-ref: { kind: Self.Label, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: BoundLabel
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./controllers.mjs#Label
+schema:
+  type: object
+  properties:
+    text:
+      anyOf:
+        - $ref: "telo://manifest#/$defs/Text"
+        - type: object
+          additionalProperties: false
+          required: [text, values]
+          properties:
+            text: { $ref: "telo://manifest#/$defs/Text" }
+            values: { type: object, x-telo-text-values-for: /text }
 ---
 kind: Telo.Definition
 metadata:

@@ -1,0 +1,67 @@
+/* A look of its own over the Radix controls: warm paper, ink, and a serif
+   face, written over the renderer's part names. Every token has a value
+   here. */
+:root {
+  --telo-color-background: #f6f1e7;
+  --telo-color-surface: #fffdf8;
+  --telo-color-text: #2b2118;
+  --telo-color-muted: #7a6a58;
+  --telo-color-border: #e2d6c3;
+  --telo-color-accent: #9a3412;
+  --telo-color-accent-text: #fffdf8;
+  --telo-color-danger: #b91c1c;
+  --telo-color-warning: #a16207;
+  --telo-color-success: #15803d;
+  --telo-radius-sm: 2px;
+  --telo-radius-md: 4px;
+  --telo-radius-lg: 6px;
+  --telo-space-xs: 0.25rem;
+  --telo-space-sm: 0.5rem;
+  --telo-space-md: 0.75rem;
+  --telo-space-lg: 1rem;
+  --telo-space-xl: 1.75rem;
+  --telo-shadow-sm: 0 1px 0 rgb(43 33 24 / 8%);
+  --telo-shadow-md: 0 6px 18px rgb(43 33 24 / 14%);
+  --telo-font-body: Georgia, "Times New Roman", serif;
+  --telo-font-heading: Georgia, "Times New Roman", serif;
+  --telo-font-mono: ui-monospace, Menlo, monospace;
+  --telo-font-size-sm: 0.8125rem;
+  --telo-font-size-md: 0.9375rem;
+  --telo-font-size-lg: 1.0625rem;
+  --telo-font-size-xl: 1.375rem;
+  --telo-line-height-body: 1.55;
+  --telo-line-height-heading: 1.2;
+}
+body { margin: 0; background: var(--telo-color-background); color: var(--telo-color-text); font-family: var(--telo-font-body); font-size: var(--telo-font-size-md); line-height: var(--telo-line-height-body); }
+
+/* shell */
+[data-telo-part="app"], [data-telo-part="header"], [data-telo-part="header-start"], [data-telo-part="app-title"], [data-telo-part="nav"], [data-telo-part="nav-link"], [data-telo-part="header-end"], [data-telo-part="main"], [data-telo-part="page"], [data-telo-part="page-title"] { gap: var(--telo-space-md); font-family: var(--telo-font-heading); line-height: var(--telo-line-height-heading); }
+
+/* structure */
+[data-telo-part="box"], [data-telo-part="stack"], [data-telo-part="columns"], [data-telo-part="column"], [data-telo-part="text"], [data-telo-part="badge"], [data-telo-part="link"], [data-telo-part="menu-trigger"], [data-telo-part="image"], [data-telo-part="svg"], [data-telo-part="value"], [data-telo-part="list"], [data-telo-part="list-heading"], [data-telo-part="data"] { gap: var(--telo-space-sm); margin: 0; font-size: var(--telo-font-size-md); }
+
+/* table */
+[data-telo-part="table"], [data-telo-part="table-toolbar"], [data-telo-part="table-create"], [data-telo-part="table-main"], [data-telo-part="table-frame"], [data-telo-part="table-grid"], [data-telo-part="table-head"], [data-telo-part="table-body"], [data-telo-part="table-row"], [data-telo-part="table-header-cell"], [data-telo-part="table-sort"], [data-telo-part="table-cell"], [data-telo-part="row-actions"], [data-telo-part="row-action"], [data-telo-part="row-edit"], [data-telo-part="row-delete"], [data-telo-part="table-detail"], [data-telo-part="table-empty"], [data-telo-part="table-loading"], [data-telo-part="pager"], [data-telo-part="pager-status"], [data-telo-part="pager-prev"], [data-telo-part="pager-next"] { gap: var(--telo-space-sm); padding: var(--telo-space-xs) var(--telo-space-sm); border-color: var(--telo-color-border); font-size: var(--telo-font-size-sm); }
+
+/* form */
+[data-telo-part="form"], [data-telo-part="field"], [data-telo-part="label"], [data-telo-part="input"], [data-telo-part="textarea"], [data-telo-part="select"], [data-telo-part="checkbox"], [data-telo-part="options"], [data-telo-part="option"], [data-telo-part="tags"], [data-telo-part="tag"], [data-telo-part="tag-remove"], [data-telo-part="field-error"], [data-telo-part="form-error"], [data-telo-part="form-actions"], [data-telo-part="submit"], [data-telo-part="cancel"], [data-telo-part="field-group"], [data-telo-part="field-group-label"], [data-telo-part="field-group-description"], [data-telo-part="field-description"], [data-telo-part="field-warning"], [data-telo-part="switch"], [data-telo-part="slider"], [data-telo-part="slider-value"], [data-telo-part="options-more"], [data-telo-part="option-hint"] { gap: var(--telo-space-sm); border-color: var(--telo-color-border); border-radius: var(--telo-radius-sm); font-family: var(--telo-font-body); }
+
+/* picker */
+[data-telo-part="picker"], [data-telo-part="picker-value"], [data-telo-part="picker-chosen"], [data-telo-part="picker-trigger"], [data-telo-part="picker-search"], [data-telo-part="picker-list"], [data-telo-part="picker-option"], [data-telo-part="picker-empty"], [data-telo-part="date-range"], [data-telo-part="date-range-presets"], [data-telo-part="date-range-preset"], [data-telo-part="date-range-from"], [data-telo-part="date-range-to"] { gap: var(--telo-space-xs); border-radius: var(--telo-radius-md); background: var(--telo-color-surface); }
+
+/* action */
+[data-telo-part="action"], [data-telo-part="action-result"], [data-telo-part="action-failure"], [data-telo-part="row-answer"], [data-telo-part="row-failure"], [data-telo-part="disabled-text"], [data-telo-part="component"], [data-telo-part="error"], [data-telo-part="error-code"], [data-telo-part="error-message"], [data-telo-part="loading"] { gap: var(--telo-space-md); color: var(--telo-color-text); font-family: var(--telo-font-mono); }
+
+/* filters */
+[data-telo-part="filters"], [data-telo-part="filters-bar"], [data-telo-part="filters-content"], [data-telo-part="filters-toggle"], [data-telo-part="filters-count"], [data-telo-part="filters-add"], [data-telo-part="filters-apply"], [data-telo-part="filters-reset"], [data-telo-part="filters-presets"], [data-telo-part="filters-preset"], [data-telo-part="filters-summary"], [data-telo-part="summary-chip"], [data-telo-part="summary-chip-remove"], [data-telo-part="filter"], [data-telo-part="filter-label"], [data-telo-part="filter-group"], [data-telo-part="filter-bound"], [data-telo-part="filter-caption"], [data-telo-part="filter-remove"], [data-telo-part="filter-chip"], [data-telo-part="filter-input"], [data-telo-part="filter-select"], [data-telo-part="filter-options"], [data-telo-part="filter-option"], [data-telo-part="filter-toggle"], [data-telo-part="filter-slider"], [data-telo-part="filter-slider-value"], [data-telo-part="filter-tags"], [data-telo-part="filter-tag"], [data-telo-part="filter-tag-remove"] { gap: var(--telo-space-sm); color: var(--telo-color-muted); font-size: var(--telo-font-size-sm); }
+
+/* surface */
+[data-telo-part="surface-overlay"], [data-telo-part="surface"], [data-telo-part="surface-header"], [data-telo-part="surface-title"], [data-telo-part="surface-description"], [data-telo-part="surface-body"], [data-telo-part="surface-close"], [data-telo-part="icon"], [data-telo-part="select-content"], [data-telo-part="select-item"], [data-telo-part="menu"], [data-telo-part="menu-item"], [data-telo-part="tooltip"] { border-radius: var(--telo-radius-lg); background: var(--telo-color-surface); box-shadow: var(--telo-shadow-md); padding: var(--telo-space-lg); }
+
+[data-telo-part="page-title"] { margin-bottom: var(--telo-space-xl); font-size: var(--telo-font-size-xl); }
+[data-telo-part="submit"], [data-telo-part="table-create"], [data-telo-part="filters-apply"] { background: var(--telo-color-accent); color: var(--telo-color-accent-text); box-shadow: var(--telo-shadow-sm); }
+[data-telo-part="surface-title"] { font-size: var(--telo-font-size-lg); }
+[data-style~="danger"], [data-telo-part="field-error"] { color: var(--telo-color-danger); }
+[data-style~="warning"] { color: var(--telo-color-warning); }
+[data-style~="success"] { color: var(--telo-color-success); }
+[data-telo-part="surface-overlay"] { background: rgb(43 33 24 / 40%); box-shadow: none; padding: 0; }

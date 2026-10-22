@@ -73,7 +73,7 @@ export function useRowActions(entries: RowActionSpec[], roots: Roots, succeeded:
   const store = useHostStore();
   const say = useSay();
   const text = useText();
-  const { pages } = useContext(RendererContext);
+  const { pages, prefix } = useContext(RendererContext);
   const queues = useContext(PressQueueContext);
   const promptId = useId();
   const [answers, setAnswers] = useState<ReadonlyMap<string, Outcome>>(new Map());
@@ -116,7 +116,7 @@ export function useRowActions(entries: RowActionSpec[], roots: Roots, succeeded:
     hold(key, index);
     answer(answerKey(index, key), undefined);
     if (inDialog) setAsking({ index, row, key, values, busy: true, fieldErrors: {} });
-    const outcome = await queues.run(action, () => runOperation(host, action, input, say));
+    const outcome = await queues.run(action, () => runOperation(host, prefix, action, input, say));
     hold(key, undefined);
     if (outcome.ok) {
       setAsking(undefined);

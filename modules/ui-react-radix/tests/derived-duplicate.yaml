@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: UiReactRadixDerivedDuplicateTest
+  version: 1.0.0
+  description: |
+    A theme over the Radix controls cannot add layer controls of its own: one
+    listing a set that draws the dialog beside them is refused where it is
+    declared and by the theme itself.
+imports:
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref refusedWhereDeclared
+  - !ref refusedAtRuntime
+---
+kind: Assert.Manifest
+metadata:
+  name: refusedWhereDeclared
+source: ./__fixtures__/derived-duplicate/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.Theme/theme at 'controls[0]': implements a control another entry of controls implements too"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.Theme/theme at 'controls[1]': implements a control another entry of controls implements too"
+---
+kind: Assert.Manifest
+metadata:
+  name: refusedAtRuntime
+source: ./__fixtures__/derived-duplicate/telo.yaml
+expect:
+  errors: []
+  runFails: "UiReact.Theme 'theme': 'controls[1]' (UiReact.Controls 'layerControls') implements 'Select', which 'controls[0]' (UiReact.Controls 'controls') already implements"

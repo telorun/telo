@@ -32,10 +32,24 @@ export interface EntrySpec {
   state: KeptState;
 }
 
+/** A new record: the model's defaults and each date range's initial preset —
+ *  computed in the viewer's time zone. */
+function newRecord(entry: EntrySpec): Record<string, unknown> {
+  const record: Record<string, unknown> = {};
+  for (const field of entry.fields) {
+    const declared = (entry.schema.properties as Record<string, JsonSchema> | undefined)?.[field.property];
+    if (declared?.default !== undefined) record[field.property] = declared.default;
+    else if (field.type === "dateRange" && field.initialPreset != null) {
+      const preset = field.presets?.[field.initialPreset];
+      if (preset) record[field.property] = presetRange(preset, field.weekStart ?? "monday", new Date());
+    }
+  }
+  return record;
+}
+
 /**
  * The record a form starts from: the one it edits, else what the address
- * keeps, else what the store keeps, else the model's defaults and each date
- * range's initial preset — computed in the viewer's time zone.
+ * keeps, else what the store keeps, else a new record.
  */
 function startRecord(entry: EntrySpec, initial: Record<string, unknown> | undefined, search: string, storedAt: string | undefined): Record<string, unknown> {
   if (initial) return initial;
@@ -44,16 +58,8 @@ function startRecord(entry: EntrySpec, initial: Record<string, unknown> | undefi
     readValueAddress(search, entry.schema, entry.state) ??
     (storage && storedAt ? readValueStore(storage, storedAt, entry.schema, entry.state) : undefined) ??
     {};
-  const record: Record<string, unknown> = {};
-  for (const field of entry.fields) {
-    const declared = (entry.schema.properties as Record<string, JsonSchema> | undefined)?.[field.property];
-    if (Object.hasOwn(kept, field.property)) record[field.property] = kept[field.property];
-    else if (declared?.default !== undefined) record[field.property] = declared.default;
-    else if (field.type === "dateRange" && field.initialPreset != null) {
-      const preset = field.presets?.[field.initialPreset];
-      if (preset) record[field.property] = presetRange(preset, field.weekStart ?? "monday", new Date());
-    }
-  }
+  const record = newRecord(entry);
+  for (const field of entry.fields) if (Object.hasOwn(kept, field.property)) record[field.property] = kept[field.property];
   return record;
 }
 
@@ -147,6 +153,11 @@ export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknow
     refuse(byField: Record<string, string>, other: string[]) {
       setServed(byField);
       setFormError(other.length > 0 ? other.join(" ") : undefined);
+    },
+    /** The values the form starts from with neither the address nor the store:
+     *  the record it edits, else a new record. */
+    restarted(): EnteredValues {
+      return enteredValues(schema, fields, initial ?? newRecord(entry));
     },
     /** Start again from these values, nothing touched. */
     reset(next: EnteredValues) {

@@ -1,0 +1,494 @@
+kind: Telo.Application
+metadata:
+  name: UiShowcaseFormsActionsTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/ui-showcase` on a database of its own and calls the routes
+    its forms and actions call, as they call them: the two forms' writes with
+    the server's refusals landing on a field; the option sources a page at a
+    time, narrowed by another field's value, searched, and labelling chosen
+    values by `in`; every action's route with its success, its 400 envelope
+    and its `{ code, message }` failures, the answer an action's output model
+    refuses, and each row action's route on a table and on a list.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+variables:
+  # The DIRECTORY each run's database goes in; see `serves-the-showcase.yaml`.
+  dbFile:
+    env: UI_SHOWCASE_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: page }
+baseUrl: http://127.0.0.1:8154
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    variables:
+      dbFile: !cel "variables.dbFile.joinPath('ui-showcase-forms-' + uuidv4() + '.db')"
+    ports:
+      http: 8154
+targets:
+  - !ref app
+steps:
+  # ---- The request forms ----
+  - name: requestsBefore
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/requests }
+  - name: request
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/requests, method: POST }
+    inputs:
+      body:
+        title: Plan the launch
+        kind: research
+        seats: 3
+        budget: 250
+        startOn: "2026-12-01"
+        kickoffAt: "2026-12-01T09:00:00.000Z"
+        callAt: "09:30"
+        details: "**Big** news"
+        urgent: true
+        channels: [ chat ]
+        keywords: [ launch, press ]
+        accessCode: "4711"
+  # What the second form sends: no access code, no dates.
+  - name: quickRequest
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/requests, method: POST }
+    inputs:
+      body: { title: Fix the footer, kind: build, channels: [ email, phone ], seats: 1, urgent: false, keywords: [ footer ] }
+  - name: titleTaken
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/requests, method: POST }
+    inputs:
+      body: { title: Refresh the logo, kind: design }
+  - name: titleShort
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/requests, method: POST }
+    inputs:
+      body: { title: Go, kind: design }
+  - name: budgetOff
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/requests, method: POST }
+    inputs:
+      body: { title: Paint the office, kind: design, budget: 75 }
+  - name: requestsAfter
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/requests }
+  - name: verifyRequests
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        before: !cel "steps.requestsBefore.result.body"
+        created: !cel "[[steps.request.result.status, steps.request.result.body], [steps.quickRequest.result.status, steps.quickRequest.result.body]]"
+        # A taken title is the route's own refusal; a short title and a budget
+        # off its steps of 50 are the body schema's.
+        titleTaken: !cel "[steps.titleTaken.result.status, steps.titleTaken.result.body]"
+        titleShort: !cel "[steps.titleShort.result.status, steps.titleShort.result.body.details.map(d, [d.location, d.path])]"
+        budgetOff: !cel "[steps.budgetOff.result.status, steps.budgetOff.result.body.details.map(d, [d.location, d.path])]"
+        after: !cel "steps.requestsAfter.result.body.requests.map(r, [r.id, r.title, r.kind, has(r.seats) ? r.seats : 0, has(r.startOn) ? r.startOn : '-', r.urgent])"
+      expected:
+        before:
+          requests:
+            - { id: 2, title: Write the API guide, kind: write, seats: 2, startOn: "2026-11-16", urgent: true, receivedAt: "2026-10-20T14:05:00Z" }
+            - { id: 1, title: Refresh the logo, kind: design, seats: 1, startOn: "2026-11-02", urgent: false, receivedAt: "2026-10-19T08:30:00Z" }
+        created: [ [ 201, { id: 3 } ], [ 201, { id: 4 } ] ]
+        titleTaken:
+          - 400
+          - error: ValidationError
+            message: Request validation failed
+            status: 400
+            details: [ { location: body, path: title, message: is the title of another request } ]
+        titleShort: [ 400, [ [ body, title ] ] ]
+        budgetOff: [ 400, [ [ body, budget ] ] ]
+        after:
+          - [ 4, Fix the footer, build, 1, "-", false ]
+          - [ 3, Plan the launch, research, 3, "2026-12-01", true ]
+          - [ 2, Write the API guide, write, 2, "2026-11-16", true ]
+          - [ 1, Refresh the logo, design, 1, "2026-11-02", false ]
+
+  # ---- The booking form ----
+  - name: bookingsBefore
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/bookings }
+  - name: booking
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/bookings, method: POST }
+    inputs:
+      body:
+        projectCode: TEL-42
+        leadRole: designer
+        leadEmail: maja@northwind.example
+        reviewerEmails: [ jan@northwind.example, sofia@northwind.example ]
+        sponsorEmail: ada@northwind.example
+        helperEmails: [ liam@northwind.example ]
+        period: { from: "2026-11-01", to: "2026-12-31" }
+        onSite: true
+        site: Warsaw office
+        notes: Two weeks on site, then remote.
+  - name: tooLong
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/bookings, method: POST }
+    inputs:
+      body:
+        projectCode: TEL-42
+        leadRole: designer
+        leadEmail: maja@northwind.example
+        sponsorEmail: ada@northwind.example
+        period: { from: "2026-01-01", to: "2027-06-30" }
+  - name: reversed
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/bookings, method: POST }
+    inputs:
+      body:
+        projectCode: OPS-7
+        leadRole: engineer
+        leadEmail: liam@northwind.example
+        sponsorEmail: ada@northwind.example
+        period: { from: "2026-05-01", to: "2026-04-30" }
+  - name: unknownProject
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/bookings, method: POST }
+    inputs:
+      body:
+        projectCode: NOPE-1
+        leadRole: engineer
+        leadEmail: liam@northwind.example
+        sponsorEmail: ada@northwind.example
+        period: { from: "2026-05-01", to: "2026-05-30" }
+  - name: bookingsAfter
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/bookings }
+  - name: verifyBookings
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        before: !cel "steps.bookingsBefore.result.body"
+        created: !cel "[steps.booking.result.status, steps.booking.result.body]"
+        # Each refusal names one of the period's dates, which marks the field.
+        tooLong: !cel "[steps.tooLong.result.status, steps.tooLong.result.body.details]"
+        reversed: !cel "[steps.reversed.result.status, steps.reversed.result.body.details]"
+        unknownProject: !cel "[steps.unknownProject.result.status, steps.unknownProject.result.body]"
+        after: !cel "steps.bookingsAfter.result.body.bookings"
+      expected:
+        before:
+          bookings:
+            - { id: 1, project: Billing migration, lead: Liam Carter, sponsor: Ada Nowak, from: "2026-11-01", to: "2026-11-30" }
+        created: [ 201, { id: 2 } ]
+        tooLong: [ 400, [ { location: body, path: period.to, message: is more than a year after the start } ] ]
+        reversed: [ 400, [ { location: body, path: period.from, message: must not be after the end } ] ]
+        unknownProject: [ 404, { code: PROJECT_UNKNOWN, message: "There is no project 'NOPE-1'." } ]
+        after:
+          - { id: 2, project: Atlas redesign, lead: Maja Wiśniewska, sponsor: Ada Nowak, from: "2026-11-01", to: "2026-12-31" }
+          - { id: 1, project: Billing migration, lead: Liam Carter, sponsor: Ada Nowak, from: "2026-11-01", to: "2026-11-30" }
+
+  # ---- The option sources, as the fields read them ----
+  - name: projects
+    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/projects?limit=25" }
+  # The lead's options: the role chosen in the form and active members only.
+  - name: engineers
+    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/people?limit=25&role=engineer&active=true" }
+  - name: writers
+    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/people?limit=25&role=writer&active=true" }
+  - name: searched
+    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/people?limit=25&role=engineer&active=true&name.contains=li" }
+  # The helpers, three at a time.
+  - name: helpersFirst
+    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/people?limit=3&active=true" }
+  - name: helpersMore
+    invoke: { kind: HttpClient.Request, client: !ref page }
+    inputs:
+      url: !cel "'/api/people?limit=3&cursor=' + steps.helpersFirst.result.body.next + '&active=true'"
+  # The sponsor's default labelled by one lookup; kept reviewers labelled
+  # together, the one who left dropped by the source's own filter.
+  - name: sponsorLabel
+    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/people?limit=25&active=true&email.in=ada%40northwind.example" }
+  - name: reviewerLabels
+    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/people?limit=25&active=true&email.in=jan%40northwind.example&email.in=tomas%40northwind.example&email.in=sofia%40northwind.example" }
+  - name: verifyOptions
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        projects: !cel "steps.projects.result.body.rows.map(r, [r.code, r.name])"
+        engineers: !cel "steps.engineers.result.body.rows.map(r, [r.email, r.name, r.location, r.contact])"
+        writers: !cel "steps.writers.result.body.rows.map(r, r.email)"
+        searched: !cel "steps.searched.result.body.rows.map(r, r.name)"
+        helpersFirst: !cel "[steps.helpersFirst.result.body.total, steps.helpersFirst.result.body.rows.map(r, r.name), steps.helpersFirst.result.body.next != null]"
+        helpersMore: !cel "[steps.helpersMore.result.body.rows.map(r, r.name), steps.helpersMore.result.body.next]"
+        sponsorLabel: !cel "steps.sponsorLabel.result.body.rows.map(r, [r.email, r.name])"
+        reviewerLabels: !cel "steps.reviewerLabels.result.body.rows.map(r, [r.email, r.name])"
+      expected:
+        projects:
+          - [ TEL-42, Atlas redesign ]
+          - [ OPS-7, Billing migration ]
+          - [ WEB-3, Marketing site ]
+          - [ DOC-12, Handbook rewrite ]
+          - [ APP-5, Mobile app ]
+          - [ OPS-9, Data warehouse ]
+        engineers:
+          - [ jan@northwind.example, Jan Kowalski, Kraków, "mailto:jan@northwind.example" ]
+          - [ liam@northwind.example, Liam Carter, London, "mailto:liam@northwind.example" ]
+        writers: [ sofia@northwind.example ]
+        searched: [ Liam Carter ]
+        helpersFirst: [ 5, [ Ada Nowak, Jan Kowalski, Maja Wiśniewska ], true ]
+        helpersMore: [ [ Liam Carter, Sofia Rossi ], null ]
+        sponsorLabel: [ [ ada@northwind.example, Ada Nowak ] ]
+        reviewerLabels:
+          - [ jan@northwind.example, Jan Kowalski ]
+          - [ sofia@northwind.example, Sofia Rossi ]
+
+  # ---- An answer drawn from the result, and one the output model refuses ----
+  - name: estimate
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/estimate, method: POST }
+    inputs:
+      body: { projectCode: TEL-42, pace: 8 }
+  - name: narrowEstimate
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/estimate, method: POST }
+    inputs:
+      body: { projectCode: TEL-42, pace: 20, labels: [ bug, feature ], includeBlocked: true }
+  - name: estimateRefused
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/estimate, method: POST }
+    inputs:
+      body: { projectCode: TEL-42, pace: 6 }
+  - name: estimateUnknown
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/estimate, method: POST }
+    inputs:
+      body: { projectCode: NOPE-1, pace: 8 }
+  - name: verifyEstimate
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        estimate: !cel "[steps.estimate.result.status, steps.estimate.result.body.projectCode, steps.estimate.result.body.hours, steps.estimate.result.body.tasks, steps.estimate.result.body.weeks, steps.estimate.result.body.breakdown]"
+        # Three weeks from today, in the server's calendar.
+        finishBy: !cel "steps.estimate.result.body.finishBy == dateIn(timestamp(today() + 'T00:00:00Z') + duration('504h'))"
+        narrow: !cel "[steps.narrowEstimate.result.body.hours, steps.narrowEstimate.result.body.tasks, steps.narrowEstimate.result.body.weeks, steps.narrowEstimate.result.body.breakdown]"
+        # What the days action reads: the answer has no `days`, so its output
+        # model refuses it in the page.
+        days: !cel "'days' in steps.estimate.result.body"
+        refused: !cel "[steps.estimateRefused.result.status, steps.estimateRefused.result.body.details.map(d, [d.location, d.path])]"
+        unknown: !cel "[steps.estimateUnknown.result.status, steps.estimateUnknown.result.body]"
+      expected:
+        estimate:
+          - 200
+          - TEL-42
+          - 17
+          - 5
+          - 3
+          - - { label: bug, tasks: 1, hours: 1 }
+            - { label: docs, tasks: 1, hours: 2 }
+            - { label: feature, tasks: 2, hours: 14 }
+            - { label: none, tasks: 1, hours: 0 }
+        finishBy: true
+        narrow:
+          - 18
+          - 4
+          - 1
+          - - { label: bug, tasks: 2, hours: 4 }
+            - { label: feature, tasks: 2, hours: 14 }
+        days: false
+        refused: [ 400, [ [ body, pace ] ] ]
+        unknown: [ 404, { code: PROJECT_UNKNOWN, message: "There is no project 'NOPE-1'." } ]
+
+  # ---- A failure tree: assigning a task ----
+  - name: assignNobody
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
+    inputs:
+      body: { id: 4 }
+  - name: assignStranger
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
+    inputs:
+      body: { id: 4, assigneeEmail: who@elsewhere.example }
+  - name: assignNoTask
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
+    inputs:
+      body: { id: 999, assigneeEmail: jan@northwind.example }
+  - name: assignLeft
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
+    inputs:
+      body: { id: 4, assigneeEmail: tomas@northwind.example }
+  - name: assign
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
+    inputs:
+      body: { id: 4, assigneeEmail: jan@northwind.example }
+  - name: assigned
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/tasks/4 }
+  - name: verifyAssign
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        nobody: !cel "[steps.assignNobody.result.status, steps.assignNobody.result.body.details]"
+        stranger: !cel "[steps.assignStranger.result.status, steps.assignStranger.result.body.details]"
+        noTask: !cel "[steps.assignNoTask.result.status, steps.assignNoTask.result.body]"
+        left: !cel "[steps.assignLeft.result.status, steps.assignLeft.result.body]"
+        assign: !cel "[steps.assign.result.status, steps.assign.result.body]"
+        assigned: !cel "steps.assigned.result.body.assigneeEmail"
+      expected:
+        nobody: [ 400, [ { location: body, path: assigneeEmail, message: names nobody to give the task to } ] ]
+        stranger: [ 400, [ { location: body, path: assigneeEmail, message: is not the e-mail of anyone on the team } ] ]
+        noTask: [ 404, { code: TASK_UNKNOWN, message: There is no task 999. } ]
+        left: [ 409, { code: ASSIGNEE_INACTIVE, message: Tomás Ortega has left the team. } ]
+        assign: [ 200, { id: 4, title: Write the release notes, assignee: Jan Kowalski } ]
+        assigned: jan@northwind.example
+
+  # ---- The bare button, moving tasks, and the counts read again ----
+  - name: countsBefore
+    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/task-counts?code=TEL-42" }
+  - name: unblock
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/unblock, method: POST }
+    inputs:
+      body: {}
+  # The Start row action, then Close, as the table's rows send them.
+  - name: start
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/task-status, method: POST }
+    inputs:
+      body: { id: 29, status: doing }
+  - name: startAgain
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/task-status, method: POST }
+    inputs:
+      body: { id: 29, status: doing }
+  - name: close
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/task-status, method: POST }
+    inputs:
+      body: { id: 4, status: done }
+  - name: moveUnknown
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/task-status, method: POST }
+    inputs:
+      body: { id: 999, status: review }
+  - name: moveRefused
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/task-status, method: POST }
+    inputs:
+      body: { id: 4, status: archived }
+  - name: countsAfter
+    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/task-counts?code=TEL-42" }
+  - name: otherCounts
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/task-counts }
+  - name: verifyMoves
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        before: !cel "steps.countsBefore.result.body"
+        unblock: !cel "[steps.unblock.result.status, steps.unblock.result.body]"
+        start: !cel "[steps.start.result.status, steps.start.result.body]"
+        startAgain: !cel "[steps.startAgain.result.status, steps.startAgain.result.body]"
+        close: !cel "[steps.close.result.status, steps.close.result.body]"
+        moveUnknown: !cel "[steps.moveUnknown.result.status, steps.moveUnknown.result.body]"
+        moveRefused: !cel "[steps.moveRefused.result.status, steps.moveRefused.result.body.details.map(d, [d.location, d.path])]"
+        after: !cel "steps.countsAfter.result.body"
+        # With no code the counts are TEL-42's.
+        defaulted: !cel "steps.otherCounts.result.body == steps.countsAfter.result.body"
+      expected:
+        before: { code: TEL-42, todo: 4, doing: 1, review: 1, done: 2, blocked: 1 }
+        unblock: [ 200, {} ]
+        start: [ 200, { id: 29, title: Check colour contrast, status: doing } ]
+        startAgain: [ 409, { code: STATUS_UNCHANGED, message: Task 29 is already doing. } ]
+        close: [ 200, { id: 4, title: Write the release notes, status: done } ]
+        moveUnknown: [ 404, { code: TASK_UNKNOWN, message: There is no task 999. } ]
+        moveRefused: [ 400, [ [ body, status ] ] ]
+        after: { code: TEL-42, todo: 2, doing: 2, review: 1, done: 3, blocked: 0 }
+        defaulted: true
+
+  # ---- Where a success goes ----
+  - name: projectPage
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/project-page, method: POST }
+    inputs:
+      body: { code: OPS-7 }
+  - name: noProjectPage
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/project-page, method: POST }
+    inputs:
+      body: { code: NOPE-1 }
+  - name: homepage
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/homepage, method: POST }
+    inputs:
+      body: {}
+  - name: verifyNavigation
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        projectPage: !cel "[steps.projectPage.result.status, steps.projectPage.result.body]"
+        noProjectPage: !cel "[steps.noProjectPage.result.status, steps.noProjectPage.result.body.code]"
+        homepage: !cel "[steps.homepage.result.status, steps.homepage.result.body]"
+      expected:
+        projectPage: [ 200, { page: "/tables?project=OPS-7", name: Billing migration } ]
+        noProjectPage: [ 404, PROJECT_UNKNOWN ]
+        homepage: [ 200, { homepage: "https://telo.run" } ]
+
+  # ---- Comments: added one after another, and the list's row actions ----
+  - name: commentsBefore
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments }
+  - name: comment
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments, method: POST }
+    inputs:
+      body: { taskId: 3, body: The logo landed. }
+  - name: firstComment
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments, method: POST }
+    inputs:
+      body: { taskId: 30, body: Retire them after the migration. }
+  - name: commentShort
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments, method: POST }
+    inputs:
+      body: { taskId: 3, body: ok }
+  - name: commentNoTask
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments, method: POST }
+    inputs:
+      body: { taskId: 999, body: Anyone there? }
+  - name: pin
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/pin, method: POST }
+    inputs:
+      body: { id: 1 }
+  - name: pinMissing
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/pin, method: POST }
+    inputs:
+      body: { id: 99 }
+  # The Edit row action's dialog left empty, then filled.
+  - name: editEmpty
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/edit, method: POST }
+    inputs:
+      body: { id: 3 }
+  - name: edit
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/edit, method: POST }
+    inputs:
+      body: { id: 3, body: Three header variants are ready. }
+  - name: remove
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/delete, method: POST }
+    inputs:
+      body: { id: 4 }
+  - name: removeAgain
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments/delete, method: POST }
+    inputs:
+      body: { id: 4 }
+  - name: commentsAfter
+    invoke: { kind: HttpClient.Request, client: !ref page, url: /api/comments }
+  - name: verifyComments
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        before: !cel "steps.commentsBefore.result.body.comments.map(c, [c.id, c.taskId, c.taskTitle, c.body, c.pinned, c.createdAt])"
+        comment: !cel "[steps.comment.result.status, steps.comment.result.body]"
+        firstComment: !cel "[steps.firstComment.result.status, steps.firstComment.result.body]"
+        commentShort: !cel "[steps.commentShort.result.status, steps.commentShort.result.body.details.map(d, [d.location, d.path])]"
+        commentNoTask: !cel "[steps.commentNoTask.result.status, steps.commentNoTask.result.body]"
+        pin: !cel "[steps.pin.result.status, steps.pin.result.body]"
+        pinMissing: !cel "[steps.pinMissing.result.status, steps.pinMissing.result.body]"
+        editEmpty: !cel "[steps.editEmpty.result.status, steps.editEmpty.result.body.details]"
+        edit: !cel "[steps.edit.result.status, steps.edit.result.body]"
+        remove: !cel "[steps.remove.result.status, steps.remove.result.body, steps.removeAgain.result.status]"
+        after: !cel "steps.commentsAfter.result.body.comments.map(c, [c.id, c.body, c.pinned])"
+      expected:
+        before:
+          - [ 2, 5, Fix the menu focus trap, Blocked until the focus library ships its fix., true, "2026-10-20T11:40:00Z" ]
+          - [ 3, 2, Sketch the new header, Two header variants are ready for review., false, "2026-10-21T16:02:00Z" ]
+          - [ 1, 3, Build the header component, The header waits for the new logo., false, "2026-10-20T09:15:00Z" ]
+        comment: [ 201, { id: 4, taskId: 3, taskTitle: Build the header component, count: 2 } ]
+        firstComment: [ 201, { id: 5, taskId: 30, taskTitle: Retire the old billing jobs, count: 1 } ]
+        commentShort: [ 400, [ [ body, body ] ] ]
+        commentNoTask: [ 404, { code: TASK_UNKNOWN, message: There is no task 999. } ]
+        pin: [ 200, { id: 1 } ]
+        pinMissing: [ 404, { code: COMMENT_UNKNOWN, message: There is no comment 99. } ]
+        editEmpty: [ 400, [ { location: body, path: body, message: is needed to change the comment } ] ]
+        edit: [ 200, { id: 3 } ]
+        remove: [ 200, { id: 4 }, 404 ]
+        # Pinned first, then the newest; the comment deleted is gone.
+        after:
+          - [ 2, Blocked until the focus library ships its fix., true ]
+          - [ 1, The header waits for the new logo., true ]
+          - [ 5, Retire them after the migration., false ]
+          - [ 3, Three header variants are ready., false ]

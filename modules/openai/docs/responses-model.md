@@ -27,16 +27,15 @@ They are separate kinds rather than one kind with a dialect switch because they 
 
 ## Declaring one
 
-The account is a plain `Http.Client`: it carries the base URL and the credential, so the key is declared once for every OpenAI kind in the app and the 401 re-acquire-and-retry is inherited rather than re-implemented.
+The account is an `OpenAI.Client` — an `Http.Client` preset with OpenAI's endpoint and a ten-minute timeout: it carries the base URL and the credential, so the key is declared once for every OpenAI kind in the app and the 401 re-acquire-and-retry is inherited rather than re-implemented.
 
 ```yaml
 kind: Http.BearerToken
 metadata: { name: openaiKey }
 token: !cel "secrets.openaiApiKey"
 ---
-kind: Http.Client
+kind: OpenAI.Client
 metadata: { name: openaiClient }
-baseUrl: https://api.openai.com/v1
 credential: !ref openaiKey
 ---
 kind: Http.Request

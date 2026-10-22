@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { judgedComposite, producedNode, type EvaluatedNode } from "../src/page-nodes.js";
 
-/** Refuses a `link` with no `href`, and records everything it was asked about. */
+/** Refuses a `link` with no `href`, a menu holding one, and an item that
+ *  still carries `when`; records everything it was asked about. */
 function validator() {
   const judged: unknown[] = [];
   return {
     judged,
-    validate(node: { type: string; href?: unknown }) {
+    validate(node: { type: string; href?: unknown; items?: { href?: unknown; when?: unknown }[] }) {
       judged.push(node);
       if (node.type === "link" && typeof node.href !== "string") throw new Error("must have an href");
+      if (node.items?.some((item) => typeof item.href !== "string")) throw new Error("an item must have an href");
+      if (node.items?.some((item) => "when" in item)) throw new Error("an item takes no when");
     },
     isValid: () => true,
   };
@@ -96,5 +99,20 @@ describe("a page's nodes for a request", () => {
       producedNode({ type: "composite", ref, shown: condition("query") }, (index) => composites[index as number], validator(), () => {});
     expect(produced(0)).toEqual({ type: "text", text: "plain", shown: condition("query") });
     expect(produced(1)).toEqual({ type: "box", children: [composites[1]], shown: condition("query") });
+  });
+
+  it("keep a menu's items delivered for this request, leave out a menu with none, and replace one holding an item not valid", () => {
+    const link = (text: string, when?: boolean, href: string | null = "/x") => ({ type: "link", text, href, ...(when === undefined ? {} : { when }) });
+    const produce = (items: Record<string, unknown>[]) =>
+      producedNode({ type: "menu", text: "Theme", items, when: true }, () => undefined, validator(), () => {});
+    expect(produce([link("Default", true), link("Brand", false), link("Radix")])).toEqual({
+      type: "menu",
+      text: "Theme",
+      items: [link("Default"), link("Radix")],
+    });
+    expect(produce([link("Brand", false)])).toBeUndefined();
+    expect(produce([link("Default"), link("Nowhere", true, null)])).toEqual(
+      expect.objectContaining({ type: "error", code: "ERR_UI_NODE_INVALID" }),
+    );
   });
 });

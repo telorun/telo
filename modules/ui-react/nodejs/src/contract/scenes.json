@@ -1,0 +1,4022 @@
+{
+  "words": {
+    "loading": {"message":["Loading…"],"lang":"en"},
+    "noRows": {"message":["No rows."],"lang":"en"},
+    "nothingFound": {"message":["Nothing found."],"lang":"en"},
+    "save": {"message":["Save"],"lang":"en"},
+    "cancel": {"message":["Cancel"],"lang":"en"},
+    "close": {"message":["Close"],"lang":"en"},
+    "newRecord": {"message":["New"],"lang":"en"},
+    "edit": {"message":["Edit"],"lang":"en"},
+    "delete": {"message":["Delete"],"lang":"en"},
+    "deleteRowQuestion": {"message":["Delete this row?"],"lang":"en"},
+    "deleteRowDetail": {"message":["This cannot be undone."],"lang":"en"},
+    "previousPage": {"message":["Previous page"],"lang":"en"},
+    "pagerRange": {
+      "message": [{"placeholder":"first"},"–",{"placeholder":"last"}," of ",{"placeholder":"total"}],
+      "lang": "en"
+    },
+    "pagerEmpty": {"message":["0 of ",{"placeholder":"total"}],"lang":"en"},
+    "nextPage": {"message":["Next page"],"lang":"en"},
+    "yes": {"message":["Yes"],"lang":"en"},
+    "no": {"message":["No"],"lang":"en"},
+    "none": {"message":["None"],"lang":"en"},
+    "any": {"message":["Any"],"lang":"en"},
+    "select": {"message":["Select…"],"lang":"en"},
+    "choose": {"message":["Choose…"],"lang":"en"},
+    "more": {"message":["More"],"lang":"en"},
+    "search": {"message":["Search ",{"placeholder":"label"}],"lang":"en"},
+    "remove": {"message":["Remove ",{"placeholder":"label"}],"lang":"en"},
+    "clear": {"message":["Clear ",{"placeholder":"label"}],"lang":"en"},
+    "filters": {"message":["Filters"],"lang":"en"},
+    "addFilter": {"message":["Add filter"],"lang":"en"},
+    "apply": {"message":["Apply"],"lang":"en"},
+    "reset": {"message":["Reset"],"lang":"en"},
+    "done": {"message":["Done"],"lang":"en"},
+    "presets": {"message":["Presets"],"lang":"en"},
+    "operatorEq": {"message":["is"],"lang":"en"},
+    "operatorContains": {"message":["contains"],"lang":"en"},
+    "operatorGt": {"message":["after"],"lang":"en"},
+    "operatorGte": {"message":["from"],"lang":"en"},
+    "operatorLt": {"message":["before"],"lang":"en"},
+    "operatorLte": {"message":["to"],"lang":"en"},
+    "operatorIn": {"message":["one of"],"lang":"en"},
+    "filterControl": {"message":[{"placeholder":"label"}," ",{"placeholder":"operator"}],"lang":"en"},
+    "filterChip": {
+      "message": [{"placeholder":"label"}," ",{"placeholder":"operator"}," ",{"placeholder":"value"}],
+      "lang": "en"
+    },
+    "filterGroupSummary": {"message":[{"placeholder":"label"},": ",{"placeholder":"summary"}],"lang":"en"},
+    "rangeFrom": {"message":["From"],"lang":"en"},
+    "rangeTo": {"message":["To"],"lang":"en"},
+    "rangeStartsAfterEnd": {"message":["Must not start after it ends"],"lang":"en"},
+    "rangeLongerThanDays": {
+      "message": {
+        "plural": "count",
+        "cases": {
+          "one": ["Longer than ",{"placeholder":"count"}," day"],
+          "other": ["Longer than ",{"placeholder":"count"}," days"]
+        }
+      },
+      "lang": "en"
+    },
+    "rangeLongerThanWeeks": {
+      "message": {
+        "plural": "count",
+        "cases": {
+          "one": ["Longer than ",{"placeholder":"count"}," week"],
+          "other": ["Longer than ",{"placeholder":"count"}," weeks"]
+        }
+      },
+      "lang": "en"
+    },
+    "rangeLongerThanMonths": {
+      "message": {
+        "plural": "count",
+        "cases": {
+          "one": ["Longer than ",{"placeholder":"count"}," month"],
+          "other": ["Longer than ",{"placeholder":"count"}," months"]
+        }
+      },
+      "lang": "en"
+    },
+    "rangeLongerThanQuarters": {
+      "message": {
+        "plural": "count",
+        "cases": {
+          "one": ["Longer than ",{"placeholder":"count"}," quarter"],
+          "other": ["Longer than ",{"placeholder":"count"}," quarters"]
+        }
+      },
+      "lang": "en"
+    },
+    "rangeLongerThanYears": {
+      "message": {
+        "plural": "count",
+        "cases": {
+          "one": ["Longer than ",{"placeholder":"count"}," year"],
+          "other": ["Longer than ",{"placeholder":"count"}," years"]
+        }
+      },
+      "lang": "en"
+    },
+    "notFound": {"message":["Not found"],"lang":"en"},
+    "noPageAt": {"message":["This application has no page at ",{"placeholder":"path"},"."],"lang":"en"},
+    "unsavedQuestion": {"message":["Discard unsaved changes?"],"lang":"en"},
+    "unsavedDetail": {"message":["What you entered has not been saved."],"lang":"en"},
+    "discard": {"message":["Discard"],"lang":"en"},
+    "keepEditing": {"message":["Keep editing"],"lang":"en"},
+    "requestUnauthorized": {"message":["You are not signed in, or your session has ended."],"lang":"en"},
+    "requestForbidden": {"message":["You are not allowed to do this."],"lang":"en"},
+    "requestFailedStatus": {"message":["The request failed with status ",{"placeholder":"status"},"."],"lang":"en"},
+    "requestFailed": {"message":["The request failed: ",{"placeholder":"reason"}],"lang":"en"},
+    "recordRefused": {"message":["The record was refused."],"lang":"en"},
+    "answerNotJson": {"message":["The answer is not JSON."],"lang":"en"},
+    "answerNotObject": {"message":["The answer is not a JSON object."],"lang":"en"},
+    "answerNotModel": {"message":["The answer does not fit its model: ",{"placeholder":"detail"}],"lang":"en"},
+    "invalid": {"message":["Is not valid"],"lang":"en"},
+    "required": {"message":["Is required"],"lang":"en"},
+    "type": {"message":["Must be ",{"placeholder":"types"}],"lang":"en"},
+    "enum": {"message":["Must be one of: ",{"placeholder":"allowed"}],"lang":"en"},
+    "const": {"message":["Must be ",{"placeholder":"value"}],"lang":"en"},
+    "not": {"message":["Is not allowed"],"lang":"en"},
+    "anyOf": {"message":["Is not one of the allowed forms"],"lang":"en"},
+    "minLength": {
+      "message": {
+        "plural": "limit",
+        "cases": {
+          "one": ["Must be at least ",{"placeholder":"limit"}," character"],
+          "other": ["Must be at least ",{"placeholder":"limit"}," characters"]
+        }
+      },
+      "lang": "en"
+    },
+    "maxLength": {
+      "message": {
+        "plural": "limit",
+        "cases": {
+          "one": ["Must be at most ",{"placeholder":"limit"}," character"],
+          "other": ["Must be at most ",{"placeholder":"limit"}," characters"]
+        }
+      },
+      "lang": "en"
+    },
+    "pattern": {"message":["Is not in the expected format"],"lang":"en"},
+    "minimum": {"message":["Must be at least ",{"placeholder":"limit"}],"lang":"en"},
+    "maximum": {"message":["Must be at most ",{"placeholder":"limit"}],"lang":"en"},
+    "exclusiveMinimum": {"message":["Must be greater than ",{"placeholder":"limit"}],"lang":"en"},
+    "exclusiveMaximum": {"message":["Must be less than ",{"placeholder":"limit"}],"lang":"en"},
+    "multipleOf": {"message":["Must be a multiple of ",{"placeholder":"limit"}],"lang":"en"},
+    "minItems": {
+      "message": {
+        "plural": "limit",
+        "cases": {
+          "one": ["Must have at least ",{"placeholder":"limit"}," item"],
+          "other": ["Must have at least ",{"placeholder":"limit"}," items"]
+        }
+      },
+      "lang": "en"
+    },
+    "maxItems": {
+      "message": {
+        "plural": "limit",
+        "cases": {
+          "one": ["Must have at most ",{"placeholder":"limit"}," item"],
+          "other": ["Must have at most ",{"placeholder":"limit"}," items"]
+        }
+      },
+      "lang": "en"
+    },
+    "uniqueItems": {"message":["Must not repeat an item"],"lang":"en"}
+  },
+  "scenes": [
+    {
+      "name": "every node, a filter bar of every policy, and a table's dialogs",
+      "path": "/",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Everything"],"lang":"en"}}],
+        "header": {
+          "start": [{"type":"badge","text":{"message":["Beta"],"lang":"en"}}],
+          "end": [
+            {"type":"link","text":{"message":["Help"],"lang":"en"},"href":"/"},
+            {
+              "type": "menu",
+              "text": {"message":["Language"],"lang":"en"},
+              "items": [
+                {"type":"link","text":{"message":["English"],"lang":"en"},"href":"/","style":"strong"},
+                {"type":"link","text":{"message":["Polski"],"lang":"en"},"href":"/?lang=pl"}
+              ]
+            }
+          ]
+        },
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Everything"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "stack",
+              "style": ["strong"],
+              "children": [
+                {"type":"text","text":{"message":["Heading"],"lang":"en"},"style":"heading"},
+                {"type":"badge","text":{"message":["New"],"lang":"en"}}
+              ]
+            },
+            {
+              "type": "columns",
+              "children": [
+                {"type":"box","children":[{"type":"link","text":{"message":["Docs"],"lang":"en"},"href":"/docs"}]},
+                {"type":"image","src":"/logo.png","alt":{"message":[],"lang":"en"}}
+              ]
+            },
+            {"type":"svg","markup":"<svg xmlns='http://www.w3.org/2000/svg'/>","alt":{"message":["Chart"],"lang":"en"}},
+            {
+              "type": "filters",
+              "fields": [
+                {
+                  "property": "text",
+                  "operator": "contains",
+                  "label": {"message":["Task"],"lang":"en"},
+                  "schema": {"type":"string","title":"Task","minLength":2},
+                  "pinned": false,
+                  "control": "auto"
+                },
+                {
+                  "property": "isDone",
+                  "operator": "eq",
+                  "label": {"message":["Done"],"lang":"en"},
+                  "schema": {"type":"boolean","title":"Done"},
+                  "pinned": false,
+                  "control": "auto"
+                },
+                {
+                  "property": "status",
+                  "operator": "in",
+                  "label": {"message":["Status"],"lang":"en"},
+                  "schema": {"title":"Status","enum":["open","blocked","done"]},
+                  "pinned": false,
+                  "control": "auto"
+                },
+                {
+                  "property": "priority",
+                  "operator": "gte",
+                  "label": {"message":["Priority"],"lang":"en"},
+                  "schema": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "pinned": false,
+                  "control": "auto"
+                },
+                {
+                  "property": "dueOn",
+                  "operator": "gte",
+                  "label": {"message":["Due"],"lang":"en"},
+                  "schema": {"type":"string","title":"Due","format":"date"},
+                  "pinned": false,
+                  "control": "auto"
+                },
+                {
+                  "property": "dueOn",
+                  "operator": "lte",
+                  "label": {"message":["Due"],"lang":"en"},
+                  "schema": {"type":"string","title":"Due","format":"date"},
+                  "pinned": false,
+                  "control": "auto"
+                }
+              ],
+              "content": {
+                "type": "table",
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "id": {"type":"integer"},
+                    "text": {"type":"string","title":"Task","minLength":2},
+                    "isDone": {"type":"boolean","title":"Done"},
+                    "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                    "status": {"title":"Status","enum":["open","blocked","done"]},
+                    "dueOn": {"type":"string","title":"Due","format":"date"},
+                    "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                  }
+                },
+                "basePath": "/api/todos",
+                "query": {},
+                "rowKey": "id",
+                "pageSize": 2,
+                "rowActions": [],
+                "delete": true,
+                "create": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "edit": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+                "columns": [
+                  {
+                    "header": {"message":["Task"],"lang":"en"},
+                    "value": {"root":"row","path":["text"]},
+                    "sort": "text",
+                    "present": {"type":"string"}
+                  },
+                  {
+                    "header": {"message":["Priority"],"lang":"en"},
+                    "value": {"root":"row","path":["priority"]},
+                    "sort": "priority",
+                    "present": {"type":"integer"},
+                    "style": {"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"}
+                  },
+                  {
+                    "header": {"message":["Due"],"lang":"en"},
+                    "value": {"root":"row","path":["dueOn"]},
+                    "sort": "dueOn",
+                    "present": {"type":"string","format":"date"}
+                  },
+                  {
+                    "header": {"message":["State"],"lang":"en"},
+                    "cell": {
+                      "type": "component",
+                      "module": {"digest":"cc","name":"components.js"},
+                      "export": "StatusPill",
+                      "abi": "ui_react-1",
+                      "external": ["react"],
+                      "stylesheets": [{"digest":"cc","name":"components.css"}],
+                      "props": {"done":{"root":"row","path":["isDone"]}}
+                    }
+                  }
+                ]
+              },
+              "show": "all",
+              "placement": {"type":"above"},
+              "controls": "direct",
+              "apply": "commit",
+              "summary": "none",
+              "state": {
+                "address": false,
+                "store": {"type":"memory"},
+                "fields": ["id","text","isDone","priority","status","dueOn","notes"]
+              },
+              "presets": []
+            },
+            {
+              "type": "filters",
+              "fields": [
+                {
+                  "property": "status",
+                  "operator": "in",
+                  "label": {"message":["Status"],"lang":"en"},
+                  "schema": {"title":"Status","enum":["open","blocked","done"]},
+                  "pinned": false,
+                  "control": "options",
+                  "default": ["open"]
+                },
+                {
+                  "property": "isDone",
+                  "operator": "eq",
+                  "label": {"message":["Done"],"lang":"en"},
+                  "schema": {"type":"boolean","title":"Done"},
+                  "pinned": false,
+                  "control": "toggle",
+                  "default": [true]
+                },
+                {
+                  "property": "priority",
+                  "operator": "gte",
+                  "label": {"message":["Priority"],"lang":"en"},
+                  "schema": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "pinned": false,
+                  "control": "slider",
+                  "default": [2]
+                },
+                {
+                  "property": "text",
+                  "operator": "in",
+                  "label": {"message":["Task"],"lang":"en"},
+                  "schema": {"type":"string","title":"Task","minLength":2},
+                  "pinned": false,
+                  "control": "tags",
+                  "default": ["plan"]
+                },
+                {
+                  "property": "dueOn",
+                  "operator": "gte",
+                  "label": {"message":["Due"],"lang":"en"},
+                  "schema": {"type":"string","title":"Due","format":"date"},
+                  "pinned": false,
+                  "control": "auto"
+                }
+              ],
+              "content": {
+                "type": "table",
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "id": {"type":"integer"},
+                    "text": {"type":"string","title":"Task","minLength":2},
+                    "isDone": {"type":"boolean","title":"Done"},
+                    "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                    "status": {"title":"Status","enum":["open","blocked","done"]},
+                    "dueOn": {"type":"string","title":"Due","format":"date"},
+                    "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                  }
+                },
+                "basePath": "/api/todos",
+                "query": {},
+                "rowKey": "id",
+                "pageSize": 2,
+                "rowActions": [],
+                "delete": true,
+                "create": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "edit": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+                "columns": [
+                  {
+                    "header": {"message":["Task"],"lang":"en"},
+                    "value": {"root":"row","path":["text"]},
+                    "sort": "text",
+                    "present": {"type":"string"}
+                  },
+                  {
+                    "header": {"message":["Priority"],"lang":"en"},
+                    "value": {"root":"row","path":["priority"]},
+                    "sort": "priority",
+                    "present": {"type":"integer"},
+                    "style": {"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"}
+                  },
+                  {
+                    "header": {"message":["Due"],"lang":"en"},
+                    "value": {"root":"row","path":["dueOn"]},
+                    "sort": "dueOn",
+                    "present": {"type":"string","format":"date"}
+                  },
+                  {
+                    "header": {"message":["State"],"lang":"en"},
+                    "cell": {
+                      "type": "component",
+                      "module": {"digest":"cc","name":"components.js"},
+                      "export": "StatusPill",
+                      "abi": "ui_react-1",
+                      "external": ["react"],
+                      "stylesheets": [{"digest":"cc","name":"components.css"}],
+                      "props": {"done":{"root":"row","path":["isDone"]}}
+                    }
+                  }
+                ]
+              },
+              "show": "chosen",
+              "placement": {"type":"collapsible","open":true},
+              "controls": "direct",
+              "apply": "button",
+              "summary": "chips",
+              "state": {
+                "address": false,
+                "store": {"type":"memory"},
+                "fields": ["id","text","isDone","priority","status","dueOn","notes"]
+              },
+              "presets": [
+                {
+                  "label": {"message":["Open"],"lang":"en"},
+                  "values": [{"property":"status","operator":"in","value":["open"]}]
+                }
+              ]
+            },
+            {
+              "type": "filters",
+              "fields": [
+                {
+                  "property": "isDone",
+                  "operator": "eq",
+                  "label": {"message":["Done"],"lang":"en"},
+                  "schema": {"type":"boolean","title":"Done"},
+                  "pinned": false,
+                  "control": "auto",
+                  "default": [false]
+                }
+              ],
+              "content": {
+                "type": "table",
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "id": {"type":"integer"},
+                    "text": {"type":"string","title":"Task","minLength":2},
+                    "isDone": {"type":"boolean","title":"Done"},
+                    "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                    "status": {"title":"Status","enum":["open","blocked","done"]},
+                    "dueOn": {"type":"string","title":"Due","format":"date"},
+                    "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                  }
+                },
+                "basePath": "/api/todos",
+                "query": {},
+                "rowKey": "id",
+                "pageSize": 2,
+                "rowActions": [],
+                "delete": true,
+                "create": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "edit": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+                "columns": [
+                  {
+                    "header": {"message":["Task"],"lang":"en"},
+                    "value": {"root":"row","path":["text"]},
+                    "sort": "text",
+                    "present": {"type":"string"}
+                  },
+                  {
+                    "header": {"message":["Priority"],"lang":"en"},
+                    "value": {"root":"row","path":["priority"]},
+                    "sort": "priority",
+                    "present": {"type":"integer"},
+                    "style": {"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"}
+                  },
+                  {
+                    "header": {"message":["Due"],"lang":"en"},
+                    "value": {"root":"row","path":["dueOn"]},
+                    "sort": "dueOn",
+                    "present": {"type":"string","format":"date"}
+                  },
+                  {
+                    "header": {"message":["State"],"lang":"en"},
+                    "cell": {
+                      "type": "component",
+                      "module": {"digest":"cc","name":"components.js"},
+                      "export": "StatusPill",
+                      "abi": "ui_react-1",
+                      "external": ["react"],
+                      "stylesheets": [{"digest":"cc","name":"components.css"}],
+                      "props": {"done":{"root":"row","path":["isDone"]}}
+                    }
+                  }
+                ]
+              },
+              "show": "all",
+              "placement": {"type":"above"},
+              "controls": "chips",
+              "apply": "commit",
+              "summary": "none",
+              "state": {
+                "address": false,
+                "store": {"type":"memory"},
+                "fields": ["id","text","isDone","priority","status","dueOn","notes"]
+              },
+              "presets": []
+            },
+            {
+              "type": "table",
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "id": {"type":"integer"},
+                  "text": {"type":"string","title":"Task","minLength":2},
+                  "isDone": {"type":"boolean","title":"Done"},
+                  "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "status": {"title":"Status","enum":["open","blocked","done"]},
+                  "dueOn": {"type":"string","title":"Due","format":"date"},
+                  "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                }
+              },
+              "basePath": "/api/empty",
+              "query": {},
+              "rowKey": "id",
+              "pageSize": 2,
+              "rowActions": [],
+              "delete": true,
+              "create": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "edit": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+              "columns": [
+                {
+                  "header": {"message":["Task"],"lang":"en"},
+                  "value": {"root":"row","path":["text"]},
+                  "sort": "text",
+                  "present": {"type":"string"}
+                },
+                {
+                  "header": {"message":["Priority"],"lang":"en"},
+                  "value": {"root":"row","path":["priority"]},
+                  "sort": "priority",
+                  "present": {"type":"integer"},
+                  "style": {"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"}
+                },
+                {
+                  "header": {"message":["Due"],"lang":"en"},
+                  "value": {"root":"row","path":["dueOn"]},
+                  "sort": "dueOn",
+                  "present": {"type":"string","format":"date"}
+                },
+                {
+                  "header": {"message":["State"],"lang":"en"},
+                  "cell": {
+                    "type": "component",
+                    "module": {"digest":"cc","name":"components.js"},
+                    "export": "StatusPill",
+                    "abi": "ui_react-1",
+                    "external": ["react"],
+                    "stylesheets": [{"digest":"cc","name":"components.css"}],
+                    "props": {"done":{"root":"row","path":["isDone"]}}
+                  }
+                }
+              ]
+            },
+            {
+              "type": "component",
+              "module": {"digest":"cc","name":"components.js"},
+              "export": "Counter",
+              "abi": "ui_react-1",
+              "external": ["react"],
+              "stylesheets": [{"digest":"cc","name":"components.css"}],
+              "props": {"step":{"value":1}}
+            },
+            {"type":"error","code":"ERR_EXAMPLE","message":"An error node."}
+          ]
+        }
+      },
+      "responses": {
+        "GET /api/todos": {
+          "status": 200,
+          "body": {
+            "rows": [
+              {"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"},
+              {"id":2,"text":"Review the plan","isDone":false,"priority":1,"status":"open","dueOn":"2026-10-07"}
+            ],
+            "total": 5,
+            "next": "Mg"
+          }
+        },
+        "GET /api/todos/*": {
+          "status": 200,
+          "body": {"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"}
+        },
+        "POST /api/todos": {
+          "status": 201,
+          "body": {"id":6,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"}
+        },
+        "DELETE /api/todos/*": {"status":204},
+        "GET /api/empty": {"status":200,"body":{"rows":[],"total":0,"next":null}}
+      },
+      "modules": {"/_telo/ui/assets/cc/components.js":["Counter","StatusPill","HostProbe"]},
+      "steps": [
+        {"key":"ArrowDown","on":{"part":"menu-trigger"}},
+        {"expect":{"present":[{"part":"menu-item","text":"Polski"}]}},
+        {"key":"Escape"},
+        {"key":"ArrowDown","on":{"part":"filters-add"}},
+        {"expect":{"present":[{"part":"menu-item"}]}},
+        {"key":"Escape"},
+        {"click":{"part":"table-create"}},
+        {"click":{"part":"submit"}},
+        {"expect":{"present":[{"part":"field-error"}]}},
+        {
+          "respond": {
+            "POST /api/todos": {
+              "status": 400,
+              "body": {"details":[{"location":"body","path":"elsewhere","message":"is refused"}]}
+            }
+          }
+        },
+        {"fill":{"part":"input"},"value":"Long enough"},
+        {"click":{"part":"submit"}},
+        {"expect":{"present":[{"part":"form-error"}]}},
+        {"key":"ArrowDown","on":{"part":"select"}},
+        {"expect":{"present":[{"part":"select-content"}]}},
+        {"key":"Escape"},
+        {"click":{"part":"surface-close"}},
+        {"click":{"part":"submit","within":{"part":"surface","attributes":{"data-surface":"confirmation"}}}},
+        {"expect":{"absent":[{"part":"surface"}]}},
+        {"click":{"part":"row-delete"}},
+        {"expect":{"present":[{"part":"surface-description"}]}},
+        {"click":{"part":"cancel"}},
+        {"focus":{"part":"row-edit"}},
+        {"expect":{"present":[{"part":"tooltip"}]}}
+      ]
+    },
+    {
+      "name": "an edit form opened in line, under its row",
+      "path": "/",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Inline"],"lang":"en"}}],
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Inline"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "table",
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "id": {"type":"integer"},
+                  "text": {"type":"string","title":"Task","minLength":2},
+                  "isDone": {"type":"boolean","title":"Done"},
+                  "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "status": {"title":"Status","enum":["open","blocked","done"]},
+                  "dueOn": {"type":"string","title":"Due","format":"date"},
+                  "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                }
+              },
+              "basePath": "/api/todos",
+              "query": {},
+              "rowKey": "id",
+              "pageSize": 2,
+              "rowActions": [],
+              "delete": true,
+              "create": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "edit": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {"type":"inline"},
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+              "columns": []
+            }
+          ]
+        }
+      },
+      "responses": {
+        "GET /api/todos": {
+          "status": 200,
+          "body": {
+            "rows": [
+              {"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"},
+              {"id":2,"text":"Review the plan","isDone":false,"priority":1,"status":"open","dueOn":"2026-10-07"}
+            ],
+            "total": 5,
+            "next": "Mg"
+          }
+        },
+        "GET /api/todos/*": {
+          "status": 200,
+          "body": {"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"}
+        }
+      },
+      "steps": [{"click":{"part":"row-edit"}},{"expect":{"present":[{"part":"table-detail"}]}}]
+    },
+    {
+      "name": "an action that has answered, beside a table whose rows offer an operation",
+      "path": "/",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Action"],"lang":"en"}}],
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Action"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "action",
+              "schema": {
+                "type": "object",
+                "required": ["month"],
+                "properties": {
+                  "month": {"type":"string","title":"Month","pattern":"^[0-9]{4}-[0-9]{2}$"},
+                  "copies": {"type":"integer","title":"Copies","minimum":1},
+                  "formats": {"type":"array","title":"Formats","items":{"enum":["pdf","csv"]}},
+                  "recipients": {"type":"array","title":"Recipients","items":{"type":"string","minLength":3}}
+                }
+              },
+              "path": "/api/reports",
+              "label": {"message":["Generate"],"lang":"en"},
+              "fields": [
+                {"type":"input","property":"month","label":{"message":["Month"],"lang":"en"},"control":"auto"},
+                {"type":"input","property":"copies","label":{"message":["Copies"],"lang":"en"},"control":"auto"},
+                {"type":"input","property":"formats","label":{"message":["Formats"],"lang":"en"},"control":"auto"},
+                {"type":"input","property":"recipients","label":{"message":["Recipients"],"lang":"en"},"control":"auto"}
+              ],
+              "groups": [],
+              "state": {"address":false,"store":{"type":"memory"},"fields":["month","copies","formats","recipients"]},
+              "failure": {
+                "type": "stack",
+                "style": "danger",
+                "children": [
+                  {"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},
+                  {"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}
+                ]
+              },
+              "onSuccess": {"refreshes":[]},
+              "concurrency": "parallel",
+              "clearAnswerOn": [],
+              "result": {
+                "type": "stack",
+                "children": [
+                  {
+                    "type": "list",
+                    "heading": {"message":["Files"],"lang":"en"},
+                    "rows": {"root":"result","path":["files"]},
+                    "columns": [
+                      {
+                        "header": {"message":["File"],"lang":"en"},
+                        "value": {"root":"row","path":["name"]},
+                        "present": {"type":"string"}
+                      },
+                      {
+                        "header": {"message":["Download"],"lang":"en"},
+                        "value": {"root":"row","path":["url"]},
+                        "present": {"type":"string","format":"uri-reference"}
+                      },
+                      {
+                        "header": {"message":["Month"],"lang":"en"},
+                        "value": {"root":"result","path":["month"]},
+                        "present": {"type":"string"}
+                      },
+                      {"header":{"message":["Kind"],"lang":"en"},"value":{"value":"report"}}
+                    ]
+                  },
+                  {
+                    "type": "list",
+                    "rows": {"root":"result","path":["totals"]},
+                    "columns": [
+                      {
+                        "header": {"message":["Made"],"lang":"en"},
+                        "value": {"root":"row","path":["at"]},
+                        "present": {"type":"string","format":"date"}
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "table",
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "id": {"type":"integer"},
+                  "text": {"type":"string","title":"Task","minLength":2},
+                  "isDone": {"type":"boolean","title":"Done"},
+                  "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "status": {"title":"Status","enum":["open","blocked","done"]},
+                  "dueOn": {"type":"string","title":"Due","format":"date"},
+                  "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                }
+              },
+              "basePath": "/api/todos",
+              "query": {},
+              "rowKey": "id",
+              "pageSize": 2,
+              "rowActions": [
+                {
+                  "action": {
+                    "type": "action",
+                    "schema": {"type":"object","properties":{"id":{"type":"integer"}}},
+                    "path": "/api/todos/archive",
+                    "label": {"message":["Archive"],"lang":"en"},
+                    "fields": [{"type":"input","property":"id","label":{"message":["id"],"lang":"en"},"control":"auto"}],
+                    "groups": [],
+                    "state": {"address":false,"store":{"type":"memory"},"fields":["id"]},
+                    "failure": {
+                      "type": "stack",
+                      "style": "danger",
+                      "children": [
+                        {
+                          "type": "value",
+                          "value": {"root":"error","path":["code"]},
+                          "present": {"type":"string"},
+                          "style": "strong"
+                        },
+                        {"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}
+                      ]
+                    },
+                    "onSuccess": {"refreshes":[]},
+                    "concurrency": "parallel",
+                    "clearAnswerOn": []
+                  },
+                  "inputs": {"id":{"root":"row","path":["id"]}}
+                }
+              ],
+              "delete": true,
+              "create": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "edit": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+              "columns": []
+            }
+          ]
+        }
+      },
+      "responses": {
+        "GET /api/todos": {
+          "status": 200,
+          "body": {
+            "rows": [
+              {"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"},
+              {"id":2,"text":"Review the plan","isDone":false,"priority":1,"status":"open","dueOn":"2026-10-07"}
+            ],
+            "total": 5,
+            "next": "Mg"
+          }
+        },
+        "POST /api/reports": {"status":200,"body":{"files":[{"name":"a.pdf","url":"/files/a.pdf"}]}}
+      },
+      "steps": [
+        {"fill":{"part":"input"},"value":"2026-09"},
+        {"fill":{"part":"input","index":2},"value":"ada@example.com"},
+        {"key":"Enter","on":{"part":"input","index":2}},
+        {"click":{"part":"submit"}},
+        {"expect":{"present":[{"part":"action-result"},{"part":"list-heading"}]}}
+      ]
+    },
+    {
+      "name": "an action that failed, beside a table whose rows' operations answered and failed",
+      "path": "/",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Answers"],"lang":"en"}}],
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Answers"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "action",
+              "schema": {
+                "type": "object",
+                "required": ["month"],
+                "properties": {
+                  "month": {"type":"string","title":"Month","pattern":"^[0-9]{4}-[0-9]{2}$"},
+                  "copies": {"type":"integer","title":"Copies","minimum":1},
+                  "formats": {"type":"array","title":"Formats","items":{"enum":["pdf","csv"]}},
+                  "recipients": {"type":"array","title":"Recipients","items":{"type":"string","minLength":3}}
+                }
+              },
+              "path": "/api/reports",
+              "label": {"message":["Generate"],"lang":"en"},
+              "fields": [
+                {"type":"input","property":"month","label":{"message":["Month"],"lang":"en"},"control":"auto"},
+                {"type":"input","property":"copies","label":{"message":["Copies"],"lang":"en"},"control":"auto"},
+                {"type":"input","property":"formats","label":{"message":["Formats"],"lang":"en"},"control":"auto"},
+                {"type":"input","property":"recipients","label":{"message":["Recipients"],"lang":"en"},"control":"auto"}
+              ],
+              "groups": [],
+              "state": {"address":false,"store":{"type":"memory"},"fields":["month","copies","formats","recipients"]},
+              "failure": {
+                "type": "stack",
+                "style": "danger",
+                "children": [
+                  {"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},
+                  {"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}
+                ]
+              },
+              "onSuccess": {"refreshes":[]},
+              "concurrency": "parallel",
+              "clearAnswerOn": [],
+              "result": {
+                "type": "stack",
+                "children": [
+                  {
+                    "type": "list",
+                    "heading": {"message":["Files"],"lang":"en"},
+                    "rows": {"root":"result","path":["files"]},
+                    "columns": [
+                      {
+                        "header": {"message":["File"],"lang":"en"},
+                        "value": {"root":"row","path":["name"]},
+                        "present": {"type":"string"}
+                      },
+                      {
+                        "header": {"message":["Download"],"lang":"en"},
+                        "value": {"root":"row","path":["url"]},
+                        "present": {"type":"string","format":"uri-reference"}
+                      },
+                      {
+                        "header": {"message":["Month"],"lang":"en"},
+                        "value": {"root":"result","path":["month"]},
+                        "present": {"type":"string"}
+                      },
+                      {"header":{"message":["Kind"],"lang":"en"},"value":{"value":"report"}}
+                    ]
+                  },
+                  {
+                    "type": "list",
+                    "rows": {"root":"result","path":["totals"]},
+                    "columns": [
+                      {
+                        "header": {"message":["Made"],"lang":"en"},
+                        "value": {"root":"row","path":["at"]},
+                        "present": {"type":"string","format":"date"}
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "table",
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "id": {"type":"integer"},
+                  "text": {"type":"string","title":"Task","minLength":2},
+                  "isDone": {"type":"boolean","title":"Done"},
+                  "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "status": {"title":"Status","enum":["open","blocked","done"]},
+                  "dueOn": {"type":"string","title":"Due","format":"date"},
+                  "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                }
+              },
+              "basePath": "/api/todos",
+              "query": {},
+              "rowKey": "id",
+              "pageSize": 2,
+              "rowActions": [
+                {
+                  "action": {
+                    "type": "action",
+                    "schema": {"type":"object","properties":{"id":{"type":"integer"}}},
+                    "path": "/api/todos/archive",
+                    "label": {"message":["Archive"],"lang":"en"},
+                    "fields": [{"type":"input","property":"id","label":{"message":["id"],"lang":"en"},"control":"auto"}],
+                    "groups": [],
+                    "state": {"address":false,"store":{"type":"memory"},"fields":["id"]},
+                    "failure": {
+                      "type": "stack",
+                      "style": "danger",
+                      "children": [
+                        {
+                          "type": "value",
+                          "value": {"root":"error","path":["code"]},
+                          "present": {"type":"string"},
+                          "style": "strong"
+                        },
+                        {"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}
+                      ]
+                    },
+                    "onSuccess": {"refreshes":[]},
+                    "concurrency": "parallel",
+                    "clearAnswerOn": [],
+                    "result": {"type":"text","text":{"message":["Archived"],"lang":"en"}}
+                  },
+                  "inputs": {"id":{"root":"row","path":["id"]}}
+                },
+                {
+                  "action": {
+                    "type": "action",
+                    "schema": {"type":"object","properties":{"id":{"type":"integer"}}},
+                    "path": "/api/todos/reject",
+                    "label": {"message":["Reject"],"lang":"en"},
+                    "fields": [{"type":"input","property":"id","label":{"message":["id"],"lang":"en"},"control":"auto"}],
+                    "groups": [],
+                    "state": {"address":false,"store":{"type":"memory"},"fields":["id"]},
+                    "failure": {
+                      "type": "stack",
+                      "style": "danger",
+                      "children": [
+                        {
+                          "type": "value",
+                          "value": {"root":"error","path":["code"]},
+                          "present": {"type":"string"},
+                          "style": "strong"
+                        },
+                        {"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}
+                      ]
+                    },
+                    "onSuccess": {"refreshes":[]},
+                    "concurrency": "parallel",
+                    "clearAnswerOn": []
+                  },
+                  "inputs": {"id":{"root":"row","path":["id"]}}
+                }
+              ],
+              "delete": true,
+              "create": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "edit": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+              "columns": []
+            }
+          ]
+        }
+      },
+      "responses": {
+        "GET /api/todos": {
+          "status": 200,
+          "body": {
+            "rows": [
+              {"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"},
+              {"id":2,"text":"Review the plan","isDone":false,"priority":1,"status":"open","dueOn":"2026-10-07"}
+            ],
+            "total": 5,
+            "next": "Mg"
+          }
+        },
+        "POST /api/reports": {"status":500},
+        "POST /api/todos/archive": {"status":204},
+        "POST /api/todos/reject": {"status":500}
+      },
+      "steps": [
+        {"fill":{"part":"input"},"value":"2026-09"},
+        {"click":{"part":"submit"}},
+        {"click":{"part":"row-action","text":"Archive"}},
+        {"click":{"part":"row-action","text":"Reject"}},
+        {"expect":{"present":[{"part":"action-failure"},{"part":"row-answer"},{"part":"row-failure"}]}}
+      ]
+    },
+    {
+      "name": "a reader that has answered, and an action whose condition does not hold",
+      "path": "/",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Data"],"lang":"en"}}],
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Data"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "data",
+              "schema": {
+                "type": "object",
+                "required": ["authorized"],
+                "properties": {
+                  "authorized": {"type":"boolean"},
+                  "email": {"type":"string"},
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {"name":{"type":"string"},"url":{"type":"string","format":"uri-reference"}}
+                    }
+                  }
+                }
+              },
+              "source": {"path":"/api/account","params":{}},
+              "query": {},
+              "content": {
+                "type": "stack",
+                "children": [
+                  {
+                    "type": "value",
+                    "value": {"root":"data","path":["email"]},
+                    "present": {"type":"string"},
+                    "shown": {"at":{"root":"data","path":["authorized"]},"matches":{"const":true}}
+                  },
+                  {
+                    "type": "list",
+                    "heading": {"message":["Files"],"lang":"en"},
+                    "rows": {"root":"data","path":["files"]},
+                    "columns": [
+                      {
+                        "header": {"message":["Name"],"lang":"en"},
+                        "value": {"root":"row","path":["name"]},
+                        "present": {"type":"string"}
+                      }
+                    ],
+                    "shown": {"at":{"root":"data","path":["authorized"]},"matches":{"const":true}}
+                  },
+                  {
+                    "type": "text",
+                    "text": {"message":["Sign in first."],"lang":"en"},
+                    "shown": {"at":{"root":"data","path":["authorized"]},"matches":{"const":false}}
+                  }
+                ]
+              },
+              "loading": {"type":"text","text":{"message":["Loading…"],"lang":"en"},"style":"muted"},
+              "failure": {
+                "type": "stack",
+                "style": "danger",
+                "children": [
+                  {"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},
+                  {"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}
+                ]
+              },
+              "reloadOn": []
+            },
+            {
+              "type": "action",
+              "schema": {
+                "type": "object",
+                "required": ["month"],
+                "properties": {
+                  "month": {"type":"string","title":"Month","pattern":"^[0-9]{4}-[0-9]{2}$"},
+                  "copies": {"type":"integer","title":"Copies","minimum":1},
+                  "formats": {"type":"array","title":"Formats","items":{"enum":["pdf","csv"]}},
+                  "recipients": {"type":"array","title":"Recipients","items":{"type":"string","minLength":3}}
+                }
+              },
+              "path": "/api/reports",
+              "label": {"message":["Generate"],"lang":"en"},
+              "fields": [
+                {"type":"input","property":"month","label":{"message":["Month"],"lang":"en"},"control":"auto"},
+                {"type":"input","property":"copies","label":{"message":["Copies"],"lang":"en"},"control":"auto"},
+                {"type":"input","property":"formats","label":{"message":["Formats"],"lang":"en"},"control":"auto"},
+                {"type":"input","property":"recipients","label":{"message":["Recipients"],"lang":"en"},"control":"auto"}
+              ],
+              "groups": [],
+              "state": {"address":false,"store":{"type":"memory"},"fields":["month","copies","formats","recipients"]},
+              "failure": {
+                "type": "stack",
+                "style": "danger",
+                "children": [
+                  {"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},
+                  {"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}
+                ]
+              },
+              "onSuccess": {"refreshes":[]},
+              "concurrency": "parallel",
+              "clearAnswerOn": [],
+              "result": {
+                "type": "stack",
+                "children": [
+                  {
+                    "type": "list",
+                    "heading": {"message":["Files"],"lang":"en"},
+                    "rows": {"root":"result","path":["files"]},
+                    "columns": [
+                      {
+                        "header": {"message":["File"],"lang":"en"},
+                        "value": {"root":"row","path":["name"]},
+                        "present": {"type":"string"}
+                      },
+                      {
+                        "header": {"message":["Download"],"lang":"en"},
+                        "value": {"root":"row","path":["url"]},
+                        "present": {"type":"string","format":"uri-reference"}
+                      },
+                      {
+                        "header": {"message":["Month"],"lang":"en"},
+                        "value": {"root":"result","path":["month"]},
+                        "present": {"type":"string"}
+                      },
+                      {"header":{"message":["Kind"],"lang":"en"},"value":{"value":"report"}}
+                    ]
+                  },
+                  {
+                    "type": "list",
+                    "rows": {"root":"result","path":["totals"]},
+                    "columns": [
+                      {
+                        "header": {"message":["Made"],"lang":"en"},
+                        "value": {"root":"row","path":["at"]},
+                        "present": {"type":"string","format":"date"}
+                      }
+                    ]
+                  }
+                ]
+              },
+              "enabled": {
+                "at": {"root":"values","path":["month"]},
+                "matches": {"minLength":7},
+                "disabledText": {"message":["Choose a month first."],"lang":"en"}
+              }
+            }
+          ]
+        }
+      },
+      "responses": {
+        "GET /api/account": {
+          "status": 200,
+          "body": {"authorized":true,"email":"ada@example.com","files":[{"name":"a.pdf"}]}
+        }
+      },
+      "steps": [{"expect":{"present":[{"part":"value"},{"part":"disabled-text"}]}}]
+    },
+    {
+      "name": "every field kind, in a group, over an option source with hints and links",
+      "path": "/",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Fields"],"lang":"en"}}],
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Fields"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "action",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "urgent": {"type":"boolean"},
+                  "effort": {"type":"integer","minimum":1,"maximum":5},
+                  "owner": {"type":"string"},
+                  "watchers": {"type":"array","items":{"type":"string"}},
+                  "reviewers": {"type":"array","items":{"type":"string"}},
+                  "period": {
+                    "type": "object",
+                    "properties": {"from":{"type":"string","format":"date"},"to":{"type":"string","format":"date"}}
+                  }
+                }
+              },
+              "path": "/api/tasks",
+              "label": {"message":["Send"],"lang":"en"},
+              "fields": [
+                {
+                  "type": "input",
+                  "property": "urgent",
+                  "label": {"message":["Urgent"],"lang":"en"},
+                  "description": {"message":["Drop everything else."],"lang":"en"},
+                  "control": "toggle",
+                  "group": "how"
+                },
+                {
+                  "type": "input",
+                  "property": "effort",
+                  "label": {"message":["Effort"],"lang":"en"},
+                  "control": "slider",
+                  "group": "how"
+                },
+                {
+                  "type": "choice",
+                  "property": "owner",
+                  "label": {"message":["Owner"],"lang":"en"},
+                  "control": "options",
+                  "options": {
+                    "type": "collection",
+                    "schema": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type":"string"},
+                        "name": {"type":"string"},
+                        "team": {"type":"string"},
+                        "page": {"type":"string"}
+                      }
+                    },
+                    "value": {"root":"row","path":["id"]},
+                    "label": {"root":"row","path":["name"]},
+                    "hint": {"root":"row","path":["team"]},
+                    "href": {"root":"row","path":["page"]},
+                    "basePath": "/api/people",
+                    "filters": {},
+                    "pageSize": 1,
+                    "search": {"property":"name","operator":"contains"}
+                  }
+                },
+                {
+                  "type": "picker",
+                  "property": "watchers",
+                  "label": {"message":["Watchers"],"lang":"en"},
+                  "options": {
+                    "type": "collection",
+                    "schema": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type":"string"},
+                        "name": {"type":"string"},
+                        "team": {"type":"string"},
+                        "page": {"type":"string"}
+                      }
+                    },
+                    "value": {"root":"row","path":["id"]},
+                    "label": {"root":"row","path":["name"]},
+                    "hint": {"root":"row","path":["team"]},
+                    "href": {"root":"row","path":["page"]},
+                    "basePath": "/api/people",
+                    "filters": {},
+                    "pageSize": 1,
+                    "search": {"property":"name","operator":"contains"}
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  }
+                },
+                {
+                  "type": "picker",
+                  "property": "reviewers",
+                  "label": {"message":["Reviewers"],"lang":"en"},
+                  "options": {
+                    "type": "collection",
+                    "schema": {
+                      "type": "object",
+                      "properties": {
+                        "id": {"type":"string"},
+                        "name": {"type":"string"},
+                        "team": {"type":"string"},
+                        "page": {"type":"string"}
+                      }
+                    },
+                    "value": {"root":"row","path":["id"]},
+                    "label": {"root":"row","path":["name"]},
+                    "hint": {"root":"row","path":["team"]},
+                    "href": {"root":"row","path":["page"]},
+                    "basePath": "/api/nobody",
+                    "filters": {},
+                    "pageSize": 1,
+                    "search": {"property":"name","operator":"contains"}
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  }
+                },
+                {
+                  "type": "dateRange",
+                  "property": "period",
+                  "label": {"message":["Period"],"lang":"en"},
+                  "presets": [{"label":{"message":["Today"],"lang":"en"},"unit":"day","offset":0}],
+                  "weekStart": "monday",
+                  "warnLongerThan": {"unit":"day","count":1}
+                }
+              ],
+              "groups": [
+                {
+                  "name": "how",
+                  "label": {"message":["How"],"lang":"en"},
+                  "description": {"message":["How it is done."],"lang":"en"}
+                }
+              ],
+              "state": {
+                "address": false,
+                "store": {"type":"memory"},
+                "fields": ["urgent","effort","owner","watchers","reviewers","period"]
+              },
+              "failure": {
+                "type": "stack",
+                "style": "danger",
+                "children": [
+                  {"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},
+                  {"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}
+                ]
+              },
+              "onSuccess": {"refreshes":[]},
+              "concurrency": "parallel",
+              "clearAnswerOn": []
+            }
+          ]
+        }
+      },
+      "responses": {
+        "GET /api/people": {
+          "status": 200,
+          "body": {
+            "rows": [
+              {"id":"p1","name":"Ada","team":"red","page":"/people/p1"},
+              {"id":"p2","name":"Alan","team":"red","page":"/people/p2"}
+            ],
+            "total": 2,
+            "next": "Mg"
+          }
+        },
+        "GET /api/nobody": {"status":200,"body":{"rows":[],"total":0,"next":null}}
+      },
+      "steps": [
+        {"fill":{"part":"date-range-from"},"value":"2026-01-01"},
+        {"fill":{"part":"date-range-to"},"value":"2026-01-05"},
+        {"expect":{"present":[{"part":"field-warning"},{"part":"options-more"}]}},
+        {"click":{"part":"picker-trigger"}},
+        {"click":{"part":"picker-option"}},
+        {"click":{"part":"picker-trigger"}},
+        {"expect":{"present":[{"part":"picker-chosen"},{"part":"option-hint"},{"part":"picker-search"}]}},
+        {"key":"Escape"},
+        {"click":{"part":"picker-trigger","index":1}},
+        {"expect":{"present":[{"part":"picker-empty"}]}}
+      ]
+    },
+    {
+      "name": "forms open at the address they are opened under, in a dialog and a drawer",
+      "path": "/?_telo.open.created=&_telo.open.edited=1",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Opened"],"lang":"en"}}],
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Opened"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "table",
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "id": {"type":"integer"},
+                  "text": {"type":"string","title":"Task","minLength":2},
+                  "isDone": {"type":"boolean","title":"Done"},
+                  "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "status": {"title":"Status","enum":["open","blocked","done"]},
+                  "dueOn": {"type":"string","title":"Due","format":"date"},
+                  "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                }
+              },
+              "basePath": "/api/todos",
+              "query": {},
+              "rowKey": "id",
+              "pageSize": 2,
+              "rowActions": [],
+              "delete": true,
+              "create": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true},
+                  "address": {"name":"created"}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+              "columns": []
+            },
+            {
+              "type": "table",
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "id": {"type":"integer"},
+                  "text": {"type":"string","title":"Task","minLength":2},
+                  "isDone": {"type":"boolean","title":"Done"},
+                  "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "status": {"title":"Status","enum":["open","blocked","done"]},
+                  "dueOn": {"type":"string","title":"Due","format":"date"},
+                  "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                }
+              },
+              "basePath": "/api/todos",
+              "query": {},
+              "rowKey": "id",
+              "pageSize": 2,
+              "rowActions": [],
+              "delete": true,
+              "edit": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "drawer",
+                  "side": "end",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true},
+                  "address": {"name":"edited"}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+              "columns": []
+            }
+          ]
+        }
+      },
+      "responses": {
+        "GET /api/todos": {
+          "status": 200,
+          "body": {
+            "rows": [
+              {"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"},
+              {"id":2,"text":"Review the plan","isDone":false,"priority":1,"status":"open","dueOn":"2026-10-07"}
+            ],
+            "total": 5,
+            "next": "Mg"
+          }
+        },
+        "GET /api/todos/*": {
+          "status": 200,
+          "body": {"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"}
+        }
+      },
+      "steps": [
+        {
+          "expect": {
+            "present": [
+              {"part":"surface","attributes":{"data-surface":"dialog"}},
+              {"part":"surface","attributes":{"data-surface":"drawer"}}
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a table whose first page has not arrived",
+      "path": "/",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Slow"],"lang":"en"}}],
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Slow"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "table",
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "id": {"type":"integer"},
+                  "text": {"type":"string","title":"Task","minLength":2},
+                  "isDone": {"type":"boolean","title":"Done"},
+                  "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "status": {"title":"Status","enum":["open","blocked","done"]},
+                  "dueOn": {"type":"string","title":"Due","format":"date"},
+                  "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                }
+              },
+              "basePath": "/api/todos",
+              "query": {},
+              "rowKey": "id",
+              "pageSize": 2,
+              "rowActions": [],
+              "delete": true,
+              "create": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "edit": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+              "columns": [
+                {
+                  "header": {"message":["Task"],"lang":"en"},
+                  "value": {"root":"row","path":["text"]},
+                  "sort": "text",
+                  "present": {"type":"string"}
+                },
+                {
+                  "header": {"message":["Priority"],"lang":"en"},
+                  "value": {"root":"row","path":["priority"]},
+                  "sort": "priority",
+                  "present": {"type":"integer"},
+                  "style": {"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"}
+                },
+                {
+                  "header": {"message":["Due"],"lang":"en"},
+                  "value": {"root":"row","path":["dueOn"]},
+                  "sort": "dueOn",
+                  "present": {"type":"string","format":"date"}
+                },
+                {
+                  "header": {"message":["State"],"lang":"en"},
+                  "cell": {
+                    "type": "component",
+                    "module": {"digest":"cc","name":"components.js"},
+                    "export": "StatusPill",
+                    "abi": "ui_react-1",
+                    "external": ["react"],
+                    "stylesheets": [{"digest":"cc","name":"components.css"}],
+                    "props": {"done":{"root":"row","path":["isDone"]}}
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "responses": {"GET /api/todos":{"pending":true}},
+      "modules": {"/_telo/ui/assets/cc/components.js":["Counter","StatusPill","HostProbe"]},
+      "steps": [{"expect":{"present":[{"part":"table-loading"}]}}]
+    },
+    {
+      "name": "every state the renderer sets, below the breakpoint",
+      "path": "/",
+      "compact": true,
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [
+          {"path":"/","title":{"message":["States"],"lang":"en"}},
+          {"path":"/other","title":{"message":["Other"],"lang":"en"}}
+        ],
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["States"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "filters",
+              "fields": [
+                {
+                  "property": "text",
+                  "operator": "contains",
+                  "label": {"message":["Task"],"lang":"en"},
+                  "schema": {"type":"string","title":"Task","minLength":2},
+                  "pinned": false,
+                  "control": "auto"
+                },
+                {
+                  "property": "isDone",
+                  "operator": "eq",
+                  "label": {"message":["Done"],"lang":"en"},
+                  "schema": {"type":"boolean","title":"Done"},
+                  "pinned": false,
+                  "control": "auto"
+                },
+                {
+                  "property": "status",
+                  "operator": "in",
+                  "label": {"message":["Status"],"lang":"en"},
+                  "schema": {"title":"Status","enum":["open","blocked","done"]},
+                  "pinned": false,
+                  "control": "auto"
+                },
+                {
+                  "property": "priority",
+                  "operator": "gte",
+                  "label": {"message":["Priority"],"lang":"en"},
+                  "schema": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "pinned": false,
+                  "control": "auto"
+                },
+                {
+                  "property": "dueOn",
+                  "operator": "gte",
+                  "label": {"message":["Due"],"lang":"en"},
+                  "schema": {"type":"string","title":"Due","format":"date"},
+                  "pinned": false,
+                  "control": "auto"
+                },
+                {
+                  "property": "dueOn",
+                  "operator": "lte",
+                  "label": {"message":["Due"],"lang":"en"},
+                  "schema": {"type":"string","title":"Due","format":"date"},
+                  "pinned": false,
+                  "control": "auto"
+                }
+              ],
+              "content": {
+                "type": "table",
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "id": {"type":"integer"},
+                    "text": {"type":"string","title":"Task","minLength":2},
+                    "isDone": {"type":"boolean","title":"Done"},
+                    "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                    "status": {"title":"Status","enum":["open","blocked","done"]},
+                    "dueOn": {"type":"string","title":"Due","format":"date"},
+                    "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                  }
+                },
+                "basePath": "/api/todos",
+                "query": {},
+                "rowKey": "id",
+                "pageSize": 2,
+                "rowActions": [],
+                "delete": true,
+                "create": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "edit": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+                "columns": [
+                  {
+                    "header": {"message":["Task"],"lang":"en"},
+                    "value": {"root":"row","path":["text"]},
+                    "sort": "text",
+                    "present": {"type":"string"}
+                  },
+                  {
+                    "header": {"message":["Priority"],"lang":"en"},
+                    "value": {"root":"row","path":["priority"]},
+                    "sort": "priority",
+                    "present": {"type":"integer"},
+                    "style": {"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"}
+                  },
+                  {
+                    "header": {"message":["Due"],"lang":"en"},
+                    "value": {"root":"row","path":["dueOn"]},
+                    "sort": "dueOn",
+                    "present": {"type":"string","format":"date"}
+                  },
+                  {
+                    "header": {"message":["State"],"lang":"en"},
+                    "cell": {
+                      "type": "component",
+                      "module": {"digest":"cc","name":"components.js"},
+                      "export": "StatusPill",
+                      "abi": "ui_react-1",
+                      "external": ["react"],
+                      "stylesheets": [{"digest":"cc","name":"components.css"}],
+                      "props": {"done":{"root":"row","path":["isDone"]}}
+                    }
+                  }
+                ]
+              },
+              "show": "all",
+              "placement": {"type":"above"},
+              "controls": "direct",
+              "apply": "commit",
+              "summary": "none",
+              "state": {
+                "address": false,
+                "store": {"type":"memory"},
+                "fields": ["id","text","isDone","priority","status","dueOn","notes"]
+              },
+              "presets": []
+            },
+            {
+              "type": "table",
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "id": {"type":"integer"},
+                  "text": {"type":"string","title":"Task","minLength":2},
+                  "isDone": {"type":"boolean","title":"Done"},
+                  "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "status": {"title":"Status","enum":["open","blocked","done"]},
+                  "dueOn": {"type":"string","title":"Due","format":"date"},
+                  "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                }
+              },
+              "basePath": "/api/todos",
+              "query": {},
+              "rowKey": "id",
+              "pageSize": 2,
+              "rowActions": [],
+              "delete": true,
+              "create": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {"type":"popover","side":"bottom","align":"start","dismiss":{"escape":true,"outside":false}},
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "edit": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "isDone": {"type":"boolean","title":"Done"},
+                      "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "dueOn": {"type":"string","title":"Due","format":"date"},
+                      "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                    {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                  ],
+                  "groups": [],
+                  "state": {
+                    "address": false,
+                    "store": {"type":"memory"},
+                    "fields": ["text","isDone","priority","status","dueOn","notes"]
+                  }
+                },
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+              "columns": [
+                {
+                  "header": {"message":["Task"],"lang":"en"},
+                  "value": {"root":"row","path":["text"]},
+                  "sort": "text",
+                  "present": {"type":"string"}
+                },
+                {
+                  "header": {"message":["Priority"],"lang":"en"},
+                  "value": {"root":"row","path":["priority"]},
+                  "sort": "priority",
+                  "present": {"type":"integer"},
+                  "style": {"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"}
+                },
+                {
+                  "header": {"message":["Due"],"lang":"en"},
+                  "value": {"root":"row","path":["dueOn"]},
+                  "sort": "dueOn",
+                  "present": {"type":"string","format":"date"}
+                },
+                {
+                  "header": {"message":["State"],"lang":"en"},
+                  "cell": {
+                    "type": "component",
+                    "module": {"digest":"cc","name":"components.js"},
+                    "export": "StatusPill",
+                    "abi": "ui_react-1",
+                    "external": ["react"],
+                    "stylesheets": [{"digest":"cc","name":"components.css"}],
+                    "props": {"done":{"root":"row","path":["isDone"]}}
+                  }
+                }
+              ]
+            },
+            {
+              "type": "filters",
+              "fields": [
+                {
+                  "property": "status",
+                  "operator": "in",
+                  "label": {"message":["Status"],"lang":"en"},
+                  "schema": {"title":"Status","enum":["open","blocked","done"]},
+                  "pinned": false,
+                  "control": "options",
+                  "default": ["open"]
+                },
+                {
+                  "property": "isDone",
+                  "operator": "eq",
+                  "label": {"message":["Done"],"lang":"en"},
+                  "schema": {"type":"boolean","title":"Done"},
+                  "pinned": false,
+                  "control": "toggle",
+                  "default": [true]
+                },
+                {
+                  "property": "priority",
+                  "operator": "gte",
+                  "label": {"message":["Priority"],"lang":"en"},
+                  "schema": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                  "pinned": false,
+                  "control": "slider",
+                  "default": [2]
+                },
+                {
+                  "property": "text",
+                  "operator": "in",
+                  "label": {"message":["Task"],"lang":"en"},
+                  "schema": {"type":"string","title":"Task","minLength":2},
+                  "pinned": false,
+                  "control": "tags",
+                  "default": ["plan"]
+                },
+                {
+                  "property": "dueOn",
+                  "operator": "gte",
+                  "label": {"message":["Due"],"lang":"en"},
+                  "schema": {"type":"string","title":"Due","format":"date"},
+                  "pinned": false,
+                  "control": "auto"
+                }
+              ],
+              "content": {
+                "type": "table",
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "id": {"type":"integer"},
+                    "text": {"type":"string","title":"Task","minLength":2},
+                    "isDone": {"type":"boolean","title":"Done"},
+                    "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                    "status": {"title":"Status","enum":["open","blocked","done"]},
+                    "dueOn": {"type":"string","title":"Due","format":"date"},
+                    "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                  }
+                },
+                "basePath": "/api/todos",
+                "query": {},
+                "rowKey": "id",
+                "pageSize": 2,
+                "rowActions": [],
+                "delete": true,
+                "create": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "edit": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+                "columns": [
+                  {
+                    "header": {"message":["Task"],"lang":"en"},
+                    "value": {"root":"row","path":["text"]},
+                    "sort": "text",
+                    "present": {"type":"string"}
+                  },
+                  {
+                    "header": {"message":["Priority"],"lang":"en"},
+                    "value": {"root":"row","path":["priority"]},
+                    "sort": "priority",
+                    "present": {"type":"integer"},
+                    "style": {"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"}
+                  },
+                  {
+                    "header": {"message":["Due"],"lang":"en"},
+                    "value": {"root":"row","path":["dueOn"]},
+                    "sort": "dueOn",
+                    "present": {"type":"string","format":"date"}
+                  },
+                  {
+                    "header": {"message":["State"],"lang":"en"},
+                    "cell": {
+                      "type": "component",
+                      "module": {"digest":"cc","name":"components.js"},
+                      "export": "StatusPill",
+                      "abi": "ui_react-1",
+                      "external": ["react"],
+                      "stylesheets": [{"digest":"cc","name":"components.css"}],
+                      "props": {"done":{"root":"row","path":["isDone"]}}
+                    }
+                  }
+                ]
+              },
+              "show": "chosen",
+              "placement": {"type":"collapsible","open":true},
+              "controls": "direct",
+              "apply": "button",
+              "summary": "chips",
+              "state": {
+                "address": false,
+                "store": {"type":"memory"},
+                "fields": ["id","text","isDone","priority","status","dueOn","notes"]
+              },
+              "presets": [
+                {
+                  "label": {"message":["Open"],"lang":"en"},
+                  "values": [{"property":"status","operator":"in","value":["open"]}]
+                }
+              ]
+            },
+            {
+              "type": "filters",
+              "fields": [
+                {
+                  "property": "isDone",
+                  "operator": "eq",
+                  "label": {"message":["Done"],"lang":"en"},
+                  "schema": {"type":"boolean","title":"Done"},
+                  "pinned": false,
+                  "control": "auto",
+                  "default": [false]
+                }
+              ],
+              "content": {
+                "type": "table",
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "id": {"type":"integer"},
+                    "text": {"type":"string","title":"Task","minLength":2},
+                    "isDone": {"type":"boolean","title":"Done"},
+                    "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                    "status": {"title":"Status","enum":["open","blocked","done"]},
+                    "dueOn": {"type":"string","title":"Due","format":"date"},
+                    "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                  }
+                },
+                "basePath": "/api/todos",
+                "query": {},
+                "rowKey": "id",
+                "pageSize": 2,
+                "rowActions": [],
+                "delete": true,
+                "create": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "edit": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "isDone": {"type":"boolean","title":"Done"},
+                        "priority": {"type":"integer","title":"Priority","minimum":1,"maximum":5},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "dueOn": {"type":"string","title":"Due","format":"date"},
+                        "notes": {"type":"string","title":"Notes","contentMediaType":"text/plain"}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},
+                      {
+                        "type": "input",
+                        "property": "priority",
+                        "label": {"message":["Priority"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},
+                      {"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}
+                    ],
+                    "groups": [],
+                    "state": {
+                      "address": false,
+                      "store": {"type":"memory"},
+                      "fields": ["text","isDone","priority","status","dueOn","notes"]
+                    }
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
+                "columns": [
+                  {
+                    "header": {"message":["Task"],"lang":"en"},
+                    "value": {"root":"row","path":["text"]},
+                    "sort": "text",
+                    "present": {"type":"string"}
+                  },
+                  {
+                    "header": {"message":["Priority"],"lang":"en"},
+                    "value": {"root":"row","path":["priority"]},
+                    "sort": "priority",
+                    "present": {"type":"integer"},
+                    "style": {"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"}
+                  },
+                  {
+                    "header": {"message":["Due"],"lang":"en"},
+                    "value": {"root":"row","path":["dueOn"]},
+                    "sort": "dueOn",
+                    "present": {"type":"string","format":"date"}
+                  },
+                  {
+                    "header": {"message":["State"],"lang":"en"},
+                    "cell": {
+                      "type": "component",
+                      "module": {"digest":"cc","name":"components.js"},
+                      "export": "StatusPill",
+                      "abi": "ui_react-1",
+                      "external": ["react"],
+                      "stylesheets": [{"digest":"cc","name":"components.css"}],
+                      "props": {"done":{"root":"row","path":["isDone"]}}
+                    }
+                  }
+                ]
+              },
+              "show": "all",
+              "placement": {"type":"above"},
+              "controls": "chips",
+              "apply": "commit",
+              "summary": "none",
+              "state": {
+                "address": false,
+                "store": {"type":"memory"},
+                "fields": ["id","text","isDone","priority","status","dueOn","notes"]
+              },
+              "presets": []
+            },
+            {
+              "type": "component",
+              "module": {"digest":"cc","name":"components.js"},
+              "export": "Counter",
+              "abi": "ui_react-1",
+              "external": ["react"],
+              "stylesheets": [{"digest":"cc","name":"components.css"}],
+              "props": {"step":{"value":1}}
+            },
+            {
+              "type": "data",
+              "schema": {
+                "type": "object",
+                "required": ["authorized"],
+                "properties": {
+                  "authorized": {"type":"boolean"},
+                  "email": {"type":"string"},
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {"name":{"type":"string"},"url":{"type":"string","format":"uri-reference"}}
+                    }
+                  }
+                }
+              },
+              "source": {"path":"/api/account","params":{}},
+              "query": {},
+              "content": {
+                "type": "stack",
+                "children": [
+                  {
+                    "type": "value",
+                    "value": {"root":"data","path":["email"]},
+                    "present": {"type":"string"},
+                    "shown": {"at":{"root":"data","path":["authorized"]},"matches":{"const":true}}
+                  },
+                  {
+                    "type": "list",
+                    "heading": {"message":["Files"],"lang":"en"},
+                    "rows": {"root":"data","path":["files"]},
+                    "columns": [
+                      {
+                        "header": {"message":["Name"],"lang":"en"},
+                        "value": {"root":"row","path":["name"]},
+                        "present": {"type":"string"}
+                      }
+                    ],
+                    "shown": {"at":{"root":"data","path":["authorized"]},"matches":{"const":true}}
+                  },
+                  {
+                    "type": "text",
+                    "text": {"message":["Sign in first."],"lang":"en"},
+                    "shown": {"at":{"root":"data","path":["authorized"]},"matches":{"const":false}}
+                  }
+                ]
+              },
+              "loading": {"type":"text","text":{"message":["Loading…"],"lang":"en"},"style":"muted"},
+              "failure": {
+                "type": "stack",
+                "style": "danger",
+                "children": [
+                  {"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},
+                  {"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}
+                ]
+              },
+              "reloadOn": []
+            }
+          ]
+        },
+        "/other": {"specVersion":1,"title":{"message":["Other"],"lang":"en"},"lang":"en","query":{},"children":[]}
+      },
+      "responses": {
+        "GET /api/todos": {
+          "status": 200,
+          "body": {
+            "rows": [
+              {"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"},
+              {"id":2,"text":"Review the plan","isDone":false,"priority":1,"status":"open","dueOn":"2026-10-07"}
+            ],
+            "total": 5,
+            "next": "Mg"
+          }
+        },
+        "GET /api/account": {"status":200,"body":{"authorized":true,"email":"ada@example.com","files":[]}}
+      },
+      "modules": {"/_telo/ui/assets/cc/components.js":["Counter","StatusPill","HostProbe"]},
+      "steps": [
+        {"click":{"part":"table-sort"}},
+        {"fill":{"part":"filter-input"},"value":"the"},
+        {"click":{"part":"table-create","index":1}},
+        {"click":{"part":"table-create"}},
+        {"click":{"part":"submit","within":{"part":"surface","attributes":{"data-surface":"dialog"}}}},
+        {"fill":{"part":"input","within":{"part":"surface","attributes":{"data-surface":"dialog"}}},"value":"x"},
+        {"key":"ArrowDown","on":{"part":"select","within":{"part":"surface","attributes":{"data-surface":"dialog"}}}},
+        {"expect":{"present":[{"part":"select-content"},{"part":"surface","attributes":{"data-surface":"popover"}}]}}
+      ]
+    },
+    {
+      "name": "a select, a multi-select and the unsaved-input question over a drawer, each closing alone",
+      "path": "/",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Layers"],"lang":"en"}}],
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Layers"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "table",
+              "schema": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "id": {"type":"integer"},
+                  "text": {"type":"string","title":"Task","minLength":2},
+                  "status": {"title":"Status","enum":["open","blocked","done"]},
+                  "labels": {"type":"array","title":"Labels","items":{"enum":["urgent","later"]},"uniqueItems":true}
+                }
+              },
+              "basePath": "/api/todos",
+              "query": {},
+              "rowKey": "id",
+              "pageSize": 2,
+              "rowActions": [],
+              "delete": false,
+              "create": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "labels": {"type":"array","title":"Labels","items":{"enum":["urgent","later"]},"uniqueItems":true}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {
+                      "type": "input",
+                      "property": "text",
+                      "label": {"message":["Task"],"lang":"en"},
+                      "control": "auto"
+                    },
+                    {
+                      "type": "input",
+                      "property": "status",
+                      "label": {"message":["Status"],"lang":"en"},
+                      "control": "auto"
+                    },
+                    {
+                      "type": "input",
+                      "property": "labels",
+                      "label": {"message":["Labels"],"lang":"en"},
+                      "control": "select"
+                    }
+                  ],
+                  "groups": [],
+                  "state": {"address":false,"store":{"type":"memory"},"fields":["text","status","labels"]}
+                },
+                "surface": {
+                  "type": "drawer",
+                  "side": "end",
+                  "size": "large",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "edit": {
+                "form": {
+                  "type": "form",
+                  "schema": {
+                    "type": "object",
+                    "required": ["text"],
+                    "properties": {
+                      "id": {"type":"integer"},
+                      "text": {"type":"string","title":"Task","minLength":2},
+                      "status": {"title":"Status","enum":["open","blocked","done"]},
+                      "labels": {"type":"array","title":"Labels","items":{"enum":["urgent","later"]},"uniqueItems":true}
+                    }
+                  },
+                  "basePath": "/api/todos",
+                  "fields": [
+                    {
+                      "type": "input",
+                      "property": "text",
+                      "label": {"message":["Task"],"lang":"en"},
+                      "control": "auto"
+                    },
+                    {
+                      "type": "input",
+                      "property": "status",
+                      "label": {"message":["Status"],"lang":"en"},
+                      "control": "auto"
+                    },
+                    {
+                      "type": "input",
+                      "property": "labels",
+                      "label": {"message":["Labels"],"lang":"en"},
+                      "control": "select"
+                    }
+                  ],
+                  "groups": [],
+                  "state": {"address":false,"store":{"type":"memory"},"fields":["text","status","labels"]}
+                },
+                "surface": {
+                  "type": "drawer",
+                  "side": "end",
+                  "size": "large",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                },
+                "afterSubmit": "close",
+                "unsaved": "confirm"
+              },
+              "columns": [
+                {
+                  "header": {"message":["Task"],"lang":"en"},
+                  "value": {"root":"row","path":["text"]},
+                  "sort": "text",
+                  "present": {"type":"string"}
+                },
+                {
+                  "header": {"message":["Status"],"lang":"en"},
+                  "value": {"root":"row","path":["status"]},
+                  "present": {"title":"Status","enum":["open","blocked","done"]}
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "responses": {
+        "GET /api/todos": {
+          "status": 200,
+          "body": {
+            "rows": [
+              {"id":1,"text":"Write the plan","status":"done","labels":[]},
+              {"id":2,"text":"Review the plan","status":"open","labels":["urgent"]}
+            ],
+            "total": 2,
+            "next": null
+          }
+        }
+      },
+      "steps": [
+        {"click":{"part":"table-create"}},
+        {
+          "fill": {"part":"input","within":{"part":"surface","attributes":{"data-surface":"drawer"}}},
+          "value": "Draft"
+        },
+        {
+          "key": "ArrowDown",
+          "on": {"part":"select","within":{"part":"surface","attributes":{"data-surface":"drawer"}}}
+        },
+        {
+          "expect": {"present":[{"part":"select-content"},{"part":"surface","attributes":{"data-surface":"drawer"}}]}
+        },
+        {"key":"Escape"},
+        {
+          "expect": {
+            "absent": [{"part":"select-content"}],
+            "present": [{"part":"surface","attributes":{"data-surface":"drawer"}}]
+          }
+        },
+        {
+          "key": "ArrowDown",
+          "on": {"part":"select","within":{"part":"surface","attributes":{"data-surface":"drawer"}}}
+        },
+        {"press":{"part":"surface-title","within":{"part":"surface","attributes":{"data-surface":"drawer"}}}},
+        {
+          "expect": {
+            "absent": [{"part":"select-content"}],
+            "present": [{"part":"surface","attributes":{"data-surface":"drawer"}}]
+          }
+        },
+        {
+          "key": "ArrowDown",
+          "on": {"part":"select","within":{"part":"surface","attributes":{"data-surface":"drawer"}},"index":1}
+        },
+        {"click":{"part":"select-item","text":"urgent"}},
+        {
+          "expect": {"present":[{"part":"select-content"},{"part":"surface","attributes":{"data-surface":"drawer"}}]}
+        },
+        {"key":"Escape"},
+        {
+          "expect": {
+            "absent": [{"part":"select-content"}],
+            "present": [{"part":"surface","attributes":{"data-surface":"drawer"}}]
+          }
+        },
+        {"key":"Escape"},
+        {
+          "expect": {
+            "present": [
+              {"part":"surface","attributes":{"data-surface":"confirmation"}},
+              {"part":"surface","attributes":{"data-surface":"drawer"}}
+            ]
+          }
+        },
+        {"key":"Escape"},
+        {
+          "expect": {
+            "absent": [{"part":"surface","attributes":{"data-surface":"confirmation"}}],
+            "present": [{"part":"surface","attributes":{"data-surface":"drawer"}}]
+          }
+        },
+        {"press":{"part":"surface-overlay"}},
+        {
+          "expect": {
+            "present": [
+              {"part":"surface","attributes":{"data-surface":"confirmation"}},
+              {"part":"surface","attributes":{"data-surface":"drawer"}}
+            ]
+          }
+        },
+        {"click":{"part":"submit","within":{"part":"surface","attributes":{"data-surface":"confirmation"}}}},
+        {"expect":{"absent":[{"part":"surface"}]}}
+      ]
+    },
+    {
+      "name": "a select and a multi-select in a popover, and a tooltip over it, each closing alone; a chip's popover over a popover filter overlay, closed together by a press outside both unless a list is open",
+      "path": "/",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Layers"],"lang":"en"}}],
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Layers"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "filters",
+              "fields": [
+                {
+                  "property": "status",
+                  "operator": "in",
+                  "label": {"message":["Status"],"lang":"en"},
+                  "schema": {"title":"Status","enum":["open","blocked","done"]},
+                  "pinned": false,
+                  "control": "select"
+                }
+              ],
+              "content": {
+                "type": "table",
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "id": {"type":"integer"},
+                    "text": {"type":"string","title":"Task","minLength":2},
+                    "status": {"title":"Status","enum":["open","blocked","done"]},
+                    "labels": {"type":"array","title":"Labels","items":{"enum":["urgent","later"]},"uniqueItems":true}
+                  }
+                },
+                "basePath": "/api/todos",
+                "query": {},
+                "rowKey": "id",
+                "pageSize": 2,
+                "rowActions": [],
+                "delete": false,
+                "create": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "labels": {"type":"array","title":"Labels","items":{"enum":["urgent","later"]},"uniqueItems":true}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {
+                        "type": "input",
+                        "property": "text",
+                        "label": {"message":["Task"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {
+                        "type": "input",
+                        "property": "status",
+                        "label": {"message":["Status"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {
+                        "type": "input",
+                        "property": "labels",
+                        "label": {"message":["Labels"],"lang":"en"},
+                        "control": "select"
+                      }
+                    ],
+                    "groups": [],
+                    "state": {"address":false,"store":{"type":"memory"},"fields":["text","status","labels"]}
+                  },
+                  "surface": {"type":"popover","side":"bottom","align":"start","dismiss":{"escape":true,"outside":false}},
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "edit": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "labels": {"type":"array","title":"Labels","items":{"enum":["urgent","later"]},"uniqueItems":true}
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {
+                        "type": "input",
+                        "property": "text",
+                        "label": {"message":["Task"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {
+                        "type": "input",
+                        "property": "status",
+                        "label": {"message":["Status"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {
+                        "type": "input",
+                        "property": "labels",
+                        "label": {"message":["Labels"],"lang":"en"},
+                        "control": "select"
+                      }
+                    ],
+                    "groups": [],
+                    "state": {"address":false,"store":{"type":"memory"},"fields":["text","status","labels"]}
+                  },
+                  "surface": {"type":"popover","side":"bottom","align":"start","dismiss":{"escape":true,"outside":false}},
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "columns": [
+                  {
+                    "header": {"message":["Task"],"lang":"en"},
+                    "value": {"root":"row","path":["text"]},
+                    "sort": "text",
+                    "present": {"type":"string"}
+                  },
+                  {
+                    "header": {"message":["Status"],"lang":"en"},
+                    "value": {"root":"row","path":["status"]},
+                    "present": {"title":"Status","enum":["open","blocked","done"]}
+                  }
+                ]
+              },
+              "show": "all",
+              "placement": {
+                "type": "overlay",
+                "surface": {"type":"popover","side":"bottom","align":"start","dismiss":{"escape":true,"outside":true}}
+              },
+              "controls": "chips",
+              "apply": "commit",
+              "summary": "none",
+              "state": {"address":false,"store":{"type":"memory"},"fields":["id","text","status","labels"]},
+              "presets": []
+            }
+          ]
+        }
+      },
+      "responses": {
+        "GET /api/todos": {
+          "status": 200,
+          "body": {
+            "rows": [
+              {"id":1,"text":"Write the plan","status":"done","labels":[]},
+              {"id":2,"text":"Review the plan","status":"open","labels":["urgent"]}
+            ],
+            "total": 2,
+            "next": null
+          }
+        }
+      },
+      "steps": [
+        {"click":{"part":"table-create"}},
+        {
+          "key": "ArrowDown",
+          "on": {"part":"select","within":{"part":"surface","attributes":{"data-surface":"popover"}}}
+        },
+        {
+          "expect": {"present":[{"part":"select-content"},{"part":"surface","attributes":{"data-surface":"popover"}}]}
+        },
+        {"key":"Escape"},
+        {
+          "expect": {
+            "absent": [{"part":"select-content"}],
+            "present": [{"part":"surface","attributes":{"data-surface":"popover"}}]
+          }
+        },
+        {
+          "key": "ArrowDown",
+          "on": {"part":"select","within":{"part":"surface","attributes":{"data-surface":"popover"}},"index":1}
+        },
+        {"expect":{"present":[{"part":"select-content"}]}},
+        {"press":{"part":"surface-title","within":{"part":"surface","attributes":{"data-surface":"popover"}}}},
+        {
+          "expect": {
+            "absent": [{"part":"select-content"}],
+            "present": [{"part":"surface","attributes":{"data-surface":"popover"}}]
+          }
+        },
+        {"focus":{"part":"row-edit"}},
+        {"expect":{"present":[{"part":"tooltip"},{"part":"surface","attributes":{"data-surface":"popover"}}]}},
+        {"key":"Escape"},
+        {
+          "expect": {
+            "absent": [{"part":"tooltip"}],
+            "present": [{"part":"surface","attributes":{"data-surface":"popover"}}]
+          }
+        },
+        {"key":"Escape"},
+        {"expect":{"absent":[{"part":"surface","attributes":{"data-surface":"popover"}}]}},
+        {"click":{"part":"filters-toggle"}},
+        {"click":{"part":"filter-chip"}},
+        {
+          "expect": {"present":[{"part":"filter-select"},{"part":"surface-title","within":{"part":"surface","attributes":{"data-surface":"popover"}}}]}
+        },
+        {"press":{"part":"page-title"}},
+        {"expect":{"absent":[{"part":"surface"}]}},
+        {"click":{"part":"filters-toggle"}},
+        {"click":{"part":"filter-chip"}},
+        {"key":"ArrowDown","on":{"part":"filter-select"}},
+        {"expect":{"present":[{"part":"select-content"}]}},
+        {"press":{"part":"page-title"}},
+        {
+          "expect": {
+            "absent": [{"part":"select-content"}],
+            "present": [{"part":"filter-select"},{"part":"surface-title","within":{"part":"surface","attributes":{"data-surface":"popover"}}}]
+          }
+        },
+        {"key":"Escape"},
+        {
+          "expect": {
+            "absent": [{"part":"filter-select"}],
+            "present": [{"part":"surface-title","within":{"part":"surface","attributes":{"data-surface":"popover"}}}]
+          }
+        },
+        {"key":"Escape"},
+        {"expect":{"absent":[{"part":"surface"}]}}
+      ]
+    },
+    {
+      "name": "a menu and a multi-select in a filter overlay, and the unsaved-input question over a dialog, each closing alone",
+      "path": "/",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Layers"],"lang":"en"}}],
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Layers"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "filters",
+              "fields": [
+                {
+                  "property": "status",
+                  "operator": "in",
+                  "label": {"message":["Status"],"lang":"en"},
+                  "schema": {"title":"Status","enum":["open","blocked","done"]},
+                  "pinned": false,
+                  "control": "select"
+                }
+              ],
+              "content": {
+                "type": "table",
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "id": {"type":"integer"},
+                    "text": {"type":"string","title":"Task","minLength":2},
+                    "status": {"title":"Status","enum":["open","blocked","done"]},
+                    "labels": {"type":"array","title":"Labels","items":{"enum":["urgent","later"]},"uniqueItems":true}
+                  }
+                },
+                "basePath": "/api/todos",
+                "query": {},
+                "rowKey": "id",
+                "pageSize": 2,
+                "rowActions": [],
+                "delete": false,
+                "create": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "labels": {
+                          "type": "array",
+                          "title": "Labels",
+                          "items": {"enum":["urgent","later"]},
+                          "uniqueItems": true
+                        }
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {
+                        "type": "input",
+                        "property": "text",
+                        "label": {"message":["Task"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {
+                        "type": "input",
+                        "property": "status",
+                        "label": {"message":["Status"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {
+                        "type": "input",
+                        "property": "labels",
+                        "label": {"message":["Labels"],"lang":"en"},
+                        "control": "select"
+                      }
+                    ],
+                    "groups": [],
+                    "state": {"address":false,"store":{"type":"memory"},"fields":["text","status","labels"]}
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "edit": {
+                  "form": {
+                    "type": "form",
+                    "schema": {
+                      "type": "object",
+                      "required": ["text"],
+                      "properties": {
+                        "id": {"type":"integer"},
+                        "text": {"type":"string","title":"Task","minLength":2},
+                        "status": {"title":"Status","enum":["open","blocked","done"]},
+                        "labels": {
+                          "type": "array",
+                          "title": "Labels",
+                          "items": {"enum":["urgent","later"]},
+                          "uniqueItems": true
+                        }
+                      }
+                    },
+                    "basePath": "/api/todos",
+                    "fields": [
+                      {
+                        "type": "input",
+                        "property": "text",
+                        "label": {"message":["Task"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {
+                        "type": "input",
+                        "property": "status",
+                        "label": {"message":["Status"],"lang":"en"},
+                        "control": "auto"
+                      },
+                      {
+                        "type": "input",
+                        "property": "labels",
+                        "label": {"message":["Labels"],"lang":"en"},
+                        "control": "select"
+                      }
+                    ],
+                    "groups": [],
+                    "state": {"address":false,"store":{"type":"memory"},"fields":["text","status","labels"]}
+                  },
+                  "surface": {
+                    "type": "dialog",
+                    "size": "medium",
+                    "modal": true,
+                    "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                  },
+                  "afterSubmit": "close",
+                  "unsaved": "confirm"
+                },
+                "columns": [
+                  {
+                    "header": {"message":["Task"],"lang":"en"},
+                    "value": {"root":"row","path":["text"]},
+                    "sort": "text",
+                    "present": {"type":"string"}
+                  },
+                  {
+                    "header": {"message":["Status"],"lang":"en"},
+                    "value": {"root":"row","path":["status"]},
+                    "present": {"title":"Status","enum":["open","blocked","done"]}
+                  }
+                ]
+              },
+              "show": "chosen",
+              "placement": {
+                "type": "overlay",
+                "surface": {
+                  "type": "dialog",
+                  "size": "medium",
+                  "modal": true,
+                  "dismiss": {"escape":true,"outside":true,"closeButton":true}
+                }
+              },
+              "controls": "direct",
+              "apply": "commit",
+              "summary": "none",
+              "state": {"address":false,"store":{"type":"memory"},"fields":["id","text","status","labels"]},
+              "presets": []
+            }
+          ]
+        }
+      },
+      "responses": {
+        "GET /api/todos": {
+          "status": 200,
+          "body": {
+            "rows": [
+              {"id":1,"text":"Write the plan","status":"done","labels":[]},
+              {"id":2,"text":"Review the plan","status":"open","labels":["urgent"]}
+            ],
+            "total": 2,
+            "next": null
+          }
+        }
+      },
+      "steps": [
+        {"click":{"part":"filters-toggle"}},
+        {"key":"ArrowDown","on":{"part":"filters-add"}},
+        {"expect":{"present":[{"part":"menu"},{"part":"surface","attributes":{"data-surface":"dialog"}}]}},
+        {"key":"Escape"},
+        {
+          "expect": {"absent":[{"part":"menu"}],"present":[{"part":"surface","attributes":{"data-surface":"dialog"}}]}
+        },
+        {"key":"ArrowDown","on":{"part":"filters-add"}},
+        {"click":{"part":"menu-item","text":"Status"}},
+        {"key":"ArrowDown","on":{"part":"filter-select"}},
+        {
+          "expect": {"present":[{"part":"select-content"},{"part":"surface","attributes":{"data-surface":"dialog"}}]}
+        },
+        {"press":{"part":"surface-title","within":{"part":"surface","attributes":{"data-surface":"dialog"}}}},
+        {
+          "expect": {
+            "absent": [{"part":"select-content"}],
+            "present": [{"part":"surface","attributes":{"data-surface":"dialog"}}]
+          }
+        },
+        {"key":"Escape"},
+        {"expect":{"absent":[{"part":"surface","attributes":{"data-surface":"dialog"}}]}},
+        {"click":{"part":"table-create"}},
+        {
+          "fill": {"part":"input","within":{"part":"surface","attributes":{"data-surface":"dialog"}}},
+          "value": "Draft"
+        },
+        {
+          "key": "ArrowDown",
+          "on": {"part":"select","within":{"part":"surface","attributes":{"data-surface":"dialog"}},"index":1}
+        },
+        {
+          "expect": {"present":[{"part":"select-content"},{"part":"surface","attributes":{"data-surface":"dialog"}}]}
+        },
+        {"key":"Escape"},
+        {
+          "expect": {
+            "absent": [{"part":"select-content"}],
+            "present": [{"part":"surface","attributes":{"data-surface":"dialog"}}]
+          }
+        },
+        {"key":"Escape"},
+        {
+          "expect": {
+            "present": [
+              {"part":"surface","attributes":{"data-surface":"confirmation"}},
+              {"part":"surface","attributes":{"data-surface":"dialog"}}
+            ]
+          }
+        },
+        {"press":{"part":"surface-overlay","index":1}},
+        {
+          "expect": {
+            "present": [
+              {"part":"surface","attributes":{"data-surface":"confirmation"}},
+              {"part":"surface","attributes":{"data-surface":"dialog"}}
+            ]
+          }
+        },
+        {"key":"Escape"},
+        {
+          "expect": {
+            "absent": [{"part":"surface","attributes":{"data-surface":"confirmation"}}],
+            "present": [{"part":"surface","attributes":{"data-surface":"dialog"}}]
+          }
+        },
+        {"click":{"part":"surface-close"}},
+        {"click":{"part":"submit","within":{"part":"surface","attributes":{"data-surface":"confirmation"}}}},
+        {"expect":{"absent":[{"part":"surface"}]}}
+      ]
+    }
+  ]
+}

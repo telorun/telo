@@ -1,0 +1,21 @@
+# A theme listing two control sets that implement different controls.
+kind: Telo.Library
+metadata:
+  name: UiReactThemeControlDisjoint
+  version: 1.0.0
+  description: >-
+    Test fixture exporting a theme whose two control sets implement different
+    controls.
+imports:
+  UiReact: ../../../../
+  Boxes: ../../components
+  Switches: ../set
+exports:
+  resources: [disjoint]
+---
+kind: UiReact.Theme
+metadata:
+  name: disjoint
+controls:
+  - !ref Boxes.controls
+  - !ref Switches.switches

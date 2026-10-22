@@ -1,0 +1,274 @@
+kind: Telo.Application
+metadata:
+  name: UiShowcaseTablesTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/ui-showcase` on a database of its own and calls the routes
+    its tables and filter bars call, as they call them: the tasks collection a
+    page at a time with its cursor, sorted both ways, narrowed by every
+    operator a bar sends — `contains`, equality, both bounds of a range,
+    greater and less than, and `in` repeated per value — and refusing a sort it
+    does not declare; a create, read, replace and delete round trip with the
+    400 envelope for a refused record; and the task board, whose rows nest
+    their assignee and project, paged by its own cursor.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+variables:
+  # The DIRECTORY each run's database goes in; see `serves-the-showcase.yaml`.
+  dbFile:
+    env: UI_SHOWCASE_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: grid }
+baseUrl: http://127.0.0.1:8153
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    variables:
+      dbFile: !cel "variables.dbFile.joinPath('ui-showcase-tables-' + uuidv4() + '.db')"
+    ports:
+      http: 8153
+targets:
+  - !ref app
+steps:
+  # ---- A page at a time, sorted ----
+  - name: firstPage
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?limit=5" }
+  - name: secondPage
+    invoke: { kind: HttpClient.Request, client: !ref grid }
+    inputs:
+      url: !cel "'/api/tasks?limit=5&cursor=' + steps.firstPage.result.body.next"
+  - name: lastPage
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?limit=10&sort=-dueOn" }
+  - name: lastPageNext
+    invoke: { kind: HttpClient.Request, client: !ref grid }
+    inputs:
+      url: !cel "'/api/tasks?limit=10&sort=-dueOn&cursor=' + steps.lastPage.result.body.next"
+  - name: byTitle
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?sort=title&limit=3" }
+  - name: byPriority
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?sort=-priority&limit=4" }
+  - name: unsortable
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?sort=label" }
+  - name: verifyPaging
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        firstPage: !cel "[steps.firstPage.result.body.total, steps.firstPage.result.body.rows.map(r, r.id), steps.firstPage.result.body.next != null]"
+        secondPage: !cel "[steps.secondPage.result.body.total, steps.secondPage.result.body.rows.map(r, r.id)]"
+        row: !cel "steps.firstPage.result.body.rows[0]"
+        # The latest due dates first; the tasks with none come last.
+        dueFirst: !cel "steps.lastPage.result.body.rows.map(r, [r.id, r.dueOn])"
+        dueRest: !cel "steps.lastPageNext.result.body.rows.map(r, r.id)"
+        byTitle: !cel "steps.byTitle.result.body.rows.map(r, r.title)"
+        byPriority: !cel "steps.byPriority.result.body.rows.map(r, [r.id, r.priority])"
+        unsortable: !cel "[steps.unsortable.result.status, steps.unsortable.result.body.details]"
+      expected:
+        firstPage: [ 32, [ 1, 2, 3, 4, 5 ], true ]
+        secondPage: [ 32, [ 6, 7, 8, 9, 10 ] ]
+        row:
+          id: 1
+          title: Audit the current navigation
+          projectCode: TEL-42
+          assigneeEmail: ada@northwind.example
+          status: done
+          priority: 3
+          estimate: 4
+          dueOn: "2026-09-28"
+          label: chore
+          blocked: false
+        dueFirst:
+          - [ 24, "2026-12-15" ]
+          - [ 30, "2026-12-12" ]
+          - [ 23, "2026-12-10" ]
+          - [ 25, "2026-12-05" ]
+          - [ 15, "2026-12-01" ]
+          - [ 21, "2026-11-28" ]
+          - [ 11, "2026-11-20" ]
+          - [ 13, "2026-11-14" ]
+          - [ 4, "2026-11-10" ]
+          - [ 12, "2026-11-06" ]
+        dueRest: [ 8, 29, 3, 10, 5, 14, 22, 9, 20, 2 ]
+        byTitle: [ Add push notifications, Add the case studies page, Audit the current navigation ]
+        byPriority: [ [ 5, 5 ], [ 8, 5 ], [ 10, 5 ], [ 21, 5 ] ]
+        unsortable:
+          - 400
+          - [ { location: query, path: sort, message: is not a property this collection sorts by } ]
+
+  # ---- Every operator the filter bars send ----
+  - name: contains
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?title.contains=FIX&sort=title" }
+  - name: statusIs
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?status=review" }
+  - name: statusIn
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?status.in=doing&status.in=review&sort=-priority" }
+  - name: labelIs
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?label=bug" }
+  - name: labelIn
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?label.in=docs&label.in=chore&limit=100" }
+  - name: assigneeIs
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?assigneeEmail=jan@northwind.example" }
+  - name: assigneeIn
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?assigneeEmail.in=jan@northwind.example&assigneeEmail.in=maja@northwind.example&limit=100" }
+  - name: projectIs
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?projectCode=OPS-9" }
+  - name: blockedIs
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?blocked=true" }
+  - name: priorityRange
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?priority.gte=2&priority.lte=2" }
+  - name: dueRange
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?dueOn.gte=2026-10-20&dueOn.lte=2026-10-25&sort=dueOn" }
+  - name: estimateBetween
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?estimate.gt=10&estimate.lt=20&sort=-estimate" }
+  # Several filters at once, as the bar's presets set them.
+  - name: urgent
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?priority.gte=4&status.in=todo&status.in=doing&sort=dueOn" }
+  - name: undeclared
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?title=Build offline sync&estimate.gte=1" }
+  - name: verifyFilters
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        contains: !cel "steps.contains.result.body.rows.map(r, r.title)"
+        statusIs: !cel "steps.statusIs.result.body.rows.map(r, r.id)"
+        statusIn: !cel "steps.statusIn.result.body.rows.map(r, [r.id, r.status, r.priority])"
+        labelIs: !cel "steps.labelIs.result.body.rows.map(r, r.id)"
+        labelIn: !cel "[steps.labelIn.result.body.total, steps.labelIn.result.body.rows.all(r, r.label in ['docs', 'chore'])]"
+        assigneeIs: !cel "steps.assigneeIs.result.body.rows.map(r, r.id)"
+        assigneeIn: !cel "[steps.assigneeIn.result.body.total, steps.assigneeIn.result.body.rows.all(r, r.assigneeEmail in ['jan@northwind.example', 'maja@northwind.example'])]"
+        projectIs: !cel "steps.projectIs.result.body.rows.map(r, r.title)"
+        blockedIs: !cel "steps.blockedIs.result.body.rows.map(r, r.id)"
+        priorityRange: !cel "steps.priorityRange.result.body.rows.map(r, r.id)"
+        dueRange: !cel "steps.dueRange.result.body.rows.map(r, [r.id, r.dueOn])"
+        estimateBetween: !cel "steps.estimateBetween.result.body.rows.map(r, [r.id, r.estimate])"
+        urgent: !cel "steps.urgent.result.body.rows.map(r, r.id)"
+        undeclared: !cel "[steps.undeclared.result.status, steps.undeclared.result.body.details.map(d, d.path)]"
+      expected:
+        contains: [ Fix duplicate customers, Fix rounding on refunds, Fix the broken pricing link, Fix the crash on rotate, Fix the menu focus trap ]
+        statusIs: [ 2, 9, 20 ]
+        statusIn: [ [ 8, doing, 5 ], [ 21, doing, 5 ], [ 22, doing, 5 ], [ 2, review, 4 ], [ 3, doing, 4 ], [ 9, review, 4 ], [ 20, review, 4 ], [ 12, doing, 3 ] ]
+        labelIs: [ 5, 10, 14, 22, 28, 29 ]
+        labelIn: [ 15, true ]
+        assigneeIs: [ 3, 5, 19, 22, 24, 31 ]
+        assigneeIn: [ 11, true ]
+        projectIs: [ Model the sales tables, Load three years of orders, Fix duplicate customers ]
+        blockedIs: [ 5, 9, 12, 15, 24 ]
+        priorityRange: [ 4, 11, 13, 17, 23, 32 ]
+        dueRange:
+          - [ 2, "2026-10-20" ]
+          - [ 20, "2026-10-21" ]
+          - [ 9, "2026-10-22" ]
+          - [ 14, "2026-10-23" ]
+          - [ 22, "2026-10-23" ]
+          - [ 5, "2026-10-24" ]
+          - [ 10, "2026-10-25" ]
+        estimateBetween: [ [ 8, 16 ], [ 27, 14 ], [ 9, 12 ], [ 24, 12 ] ]
+        urgent: [ 14, 22, 5, 10, 3, 8, 21 ]
+        undeclared: [ 400, [ title, estimate.gte ] ]
+
+  # ---- A create, read, replace and delete round trip ----
+  - name: create
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: /api/tasks, method: POST }
+    inputs:
+      body: { title: Prepare the demo, projectCode: TEL-42, assigneeEmail: liam@northwind.example, dueOn: "2026-11-30", label: chore }
+  - name: refusedCreate
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: /api/tasks, method: POST }
+    inputs:
+      body: { title: Broken, projectCode: tel-42 }
+  - name: replace
+    invoke: { kind: HttpClient.Request, client: !ref grid, method: PUT }
+    inputs:
+      url: !cel "'/api/tasks/' + string(steps.create.result.body.id)"
+      body: { title: Prepare the demo, projectCode: TEL-42, status: doing, priority: 5, estimate: 2.5, blocked: true }
+  - name: refusedReplace
+    invoke: { kind: HttpClient.Request, client: !ref grid, method: PUT }
+    inputs:
+      url: !cel "'/api/tasks/' + string(steps.create.result.body.id)"
+      body: { title: Prepare the demo, projectCode: TEL-42, status: doing, priority: 5, blocked: true, dueOn: null }
+  - name: read
+    invoke: { kind: HttpClient.Request, client: !ref grid }
+    inputs:
+      url: !cel "'/api/tasks/' + string(steps.create.result.body.id)"
+  - name: listedBlocked
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?blocked=true&projectCode=TEL-42" }
+  - name: remove
+    invoke: { kind: HttpClient.Request, client: !ref grid, method: DELETE }
+    inputs:
+      url: !cel "'/api/tasks/' + string(steps.create.result.body.id)"
+  - name: gone
+    invoke: { kind: HttpClient.Request, client: !ref grid }
+    inputs:
+      url: !cel "'/api/tasks/' + string(steps.create.result.body.id)"
+  - name: afterRemove
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?limit=1" }
+  - name: verifyRoundTrip
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        created: !cel "[steps.create.result.status, steps.create.result.body]"
+        refused: !cel "[steps.refusedCreate.result.status, steps.refusedCreate.result.body.error, steps.refusedCreate.result.body.details.map(d, [d.location, d.path])]"
+        replaced: !cel "[steps.replace.result.status, steps.replace.result.body]"
+        refusedReplace: !cel "[steps.refusedReplace.result.status, steps.refusedReplace.result.body.details.map(d, [d.location, d.path])]"
+        read: !cel "steps.read.result.body"
+        listedBlocked: !cel "steps.listedBlocked.result.body.rows.map(r, r.id)"
+        removed: !cel "[steps.remove.result.status, steps.gone.result.status, steps.afterRemove.result.body.total]"
+      expected:
+        # The table fills in what the body leaves out.
+        created:
+          - 201
+          - { id: 33, title: Prepare the demo, projectCode: TEL-42, assigneeEmail: liam@northwind.example, status: todo, priority: 3, dueOn: "2026-11-30", label: chore, blocked: false }
+        refused: [ 400, ValidationError, [ [ body, projectCode ] ] ]
+        # A replace clears what the body leaves out: the assignee, the due date
+        # and the label.
+        replaced:
+          - 200
+          - { id: 33, title: Prepare the demo, projectCode: TEL-42, status: doing, priority: 5, estimate: 2.5, blocked: true }
+        # A null is refused: a property is cleared by leaving it out.
+        refusedReplace: [ 400, [ [ body, dueOn ] ] ]
+        read: { id: 33, title: Prepare the demo, projectCode: TEL-42, status: doing, priority: 5, estimate: 2.5, blocked: true }
+        listedBlocked: [ 5, 33 ]
+        removed: [ 204, 404, 32 ]
+
+  # ---- The task board: members nested in each row ----
+  - name: board
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/task-board?limit=3" }
+  - name: boardNext
+    invoke: { kind: HttpClient.Request, client: !ref grid }
+    inputs:
+      url: !cel "'/api/task-board?limit=3&cursor=' + steps.board.result.body.next"
+  - name: boardEnd
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/task-board?cursor=25" }
+  - name: boardRefused
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/task-board?cursor=later" }
+  - name: verifyBoard
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first: !cel "[steps.board.result.body.total, steps.board.result.body.next, steps.board.result.body.rows[0]]"
+        next: !cel "[steps.boardNext.result.body.next, steps.boardNext.result.body.rows.map(r, r.id)]"
+        # The last page ends the walk; a task with no assignee has none nested.
+        end: !cel "[steps.boardEnd.result.body.next, steps.boardEnd.result.body.rows.map(r, r.id), steps.boardEnd.result.body.rows.filter(r, !has(r.assignee)).map(r, r.id)]"
+        refused: !cel "[steps.boardRefused.result.status, steps.boardRefused.result.body.details.map(d, [d.location, d.path])]"
+      expected:
+        first:
+          - 32
+          - "3"
+          - id: 1
+            title: Audit the current navigation
+            assignee: { name: Ada Nowak, contact: "mailto:ada@northwind.example" }
+            project: { code: TEL-42, name: Atlas redesign, brief: "/data?project=TEL-42" }
+        next: [ "6", [ 4, 5, 6 ] ]
+        end: [ null, [ 26, 27, 28, 29, 30, 31, 32 ], [ 29 ] ]
+        refused: [ 400, [ [ query, cursor ] ] ]

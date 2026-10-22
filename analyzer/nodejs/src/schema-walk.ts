@@ -12,7 +12,13 @@ import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
 import type { RefSlot } from "./ref-slot.js";
 import type { StepSlot } from "./step-slot.js";
 import { topologyRoleOf, type TopologyRole } from "./topology-role.js";
-import { drivenSites, reachOfSchema, refSlotOfEntry, type ReachRef } from "./reference-reach.js";
+import {
+  drivenSites,
+  patternText,
+  reachOfSchema,
+  refSlotOfEntry,
+  type ReachRef,
+} from "./reference-reach.js";
 
 /** Resolve a local `$ref` (only `#/$defs/<name>` form) against the root schema.
  *  Non-refs and unresolved refs pass through unchanged. */
@@ -176,7 +182,8 @@ export type DrivenSlot =
  */
 export function forEachDeclaredSlot(schema: unknown, visit: (slot: DeclaredSlot) => void): void {
   if (!schema || typeof schema !== "object") return;
-  for (const [path, at] of reachOfSchema(schema as Record<string, any>).paths) {
+  for (const at of reachOfSchema(schema as Record<string, any>).paths.values()) {
+    const path = patternText(at.pattern);
     if (at.steps.length > 0) visit({ kind: "step", slots: at.steps, path });
     if (at.refs.length > 0) visit({ kind: "ref", slots: at.refs.map(refSlotOfEntry), path });
   }

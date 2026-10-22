@@ -1,0 +1,6 @@
+Northwind Studio — team handbook
+
+This file is served by an Http.Static mounted beneath the application. A link
+node to a declared page moves within the application; a link to this file is
+an ordinary browser load, and a value presented as a link to it opens beside
+the application, so what the page holds stays.

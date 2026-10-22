@@ -173,6 +173,31 @@ describe("a table", () => {
     expect(rendered.part("pager-status").textContent).toBe("1–2 of 4");
   });
 
+  it("lists, creates, edits and deletes under the mount, and reloads on the change it announces", async () => {
+    rendered = await render({ path: "/", prefix: "/admin", required: ["text"], collections: { "/api/todos": todos }, pages: { "/": { title: "Todos", children: [tableNode()] } } });
+    await rendered.click(rendered.part("table-create"));
+    await rendered.enter(rendered.part("input"), "A new task");
+    await rendered.click(rendered.part("submit"));
+    await rendered.click(rendered.parts("row-edit")[1]);
+    await rendered.enter(rendered.part("input"), "Review it twice");
+    await rendered.click(rendered.part("submit"));
+    await rendered.click(rendered.parts("row-delete")[0]);
+    await rendered.click(rendered.part("surface").querySelector('[data-telo-part="submit"]') as HTMLElement);
+    expect(rendered.requests).toEqual([
+      "GET /admin/_telo/ui/app",
+      "GET /admin/_telo/ui/page?path=%2F",
+      "GET /admin/api/todos?limit=2",
+      "POST /admin/api/todos",
+      "GET /admin/api/todos?limit=2",
+      "GET /admin/api/todos/2",
+      "PUT /admin/api/todos/2",
+      "GET /admin/api/todos?limit=2",
+      "DELETE /admin/api/todos/1",
+      "GET /admin/api/todos?limit=2",
+    ]);
+    expect(cells(rendered, 0)).toEqual(["Review it twice", "Ship the renderer"]);
+  });
+
   it.each([
     [401, "ERR_UI_UNAUTHORIZED", "You are not signed in, or your session has ended."],
     [403, "ERR_UI_FORBIDDEN", "You are not allowed to do this."],

@@ -104,6 +104,7 @@ kind: UiReact.App
 metadata: { name: admin }
 title: Todos
 words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
 pages:
   - path: /
     title: Todos

@@ -8,8 +8,8 @@ import { definitionInScope } from "./module-alias-scope.js";
 import {
   declaredScopes,
   isScopeMember,
+  keysUnder,
   outsideScopesOf,
-  scopeEncloses,
   type DeclaredScope,
   type OutsideScope,
 } from "./scope-declarations.js";
@@ -133,8 +133,15 @@ export function validateScopedNameReach(
         const scope = nextReach.get(name);
         if (scope) report(at(path), name, scope);
       };
+      // A CEL walk path is the walk's dotted spelling; a scope slot is a
+      // top-level property, so its own spelling prefixes every path inside it.
       const inScopeArray = (path: string) =>
-        scopes.some((scope: DeclaredScope) => scopeEncloses({ ...scope, regions: [scope.path] }, path));
+        scopes.some(
+          (scope: DeclaredScope) =>
+            path === scope.path || path.startsWith(`${scope.path}.`) || path.startsWith(`${scope.path}[`),
+        );
+      const siteInScopeArray = (keys: readonly (string | number)[]) =>
+        scopes.some((scope: DeclaredScope) => keysUnder(keys, scope.keys));
 
       // Tagged `!ref`s and CEL, anywhere but the declaration's own metadata and
       // scope arrays (their members are checked below, with their own shadowing).
@@ -153,7 +160,7 @@ export function validateScopedNameReach(
 
       // A resolved reference, where the kind declares one.
       for (const site of sites) {
-        if (site.refs.length === 0 || inScopeArray(site.path)) continue;
+        if (site.refs.length === 0 || siteInScopeArray(site.keys)) continue;
         test(resolvedLocalName(site.data), site.path);
       }
       if (schema) {

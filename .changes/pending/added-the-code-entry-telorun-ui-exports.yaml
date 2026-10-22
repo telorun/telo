@@ -1,0 +1,6 @@
+modules:
+  modules/ui: Added
+body: The code entry @telorun/ui exports the closed design token names as DESIGN_TOKENS,
+  spelled as Ui.DesignTokens writes them (color.accent), for whatever reads a token set
+  by name — a renderer spelling them in CSS, a check that a theme gives each token a
+  value — so no consumer copies the list.

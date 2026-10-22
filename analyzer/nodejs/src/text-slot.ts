@@ -220,10 +220,68 @@ export function fragmentAdmits(
   return admits(fragmentNode, root);
 }
 
+/** Members of a resource's own value that its kind's schema never declares. */
+const RESOURCE_ENVELOPE = new Set(["kind", "metadata"]);
+
+/**
+ * Whether a union branch definitely cannot hold `value`, a plain object: the
+ * branch — or a schema it references, an `allOf` member, or every alternative of
+ * a union it holds — requires a member the value lacks, or is closed and the
+ * value holds a member it neither declares nor matches by pattern. Any doubt
+ * keeps the branch: a reference that does not resolve says nothing. At a
+ * resource's root the value carries `kind` and `metadata`, which no branch
+ * declares, so they never count as extra.
+ */
+function branchExcludes(
+  branch: unknown,
+  root: Record<string, any>,
+  value: unknown,
+  path: ValuePath,
+  resolveRef: TextWalkOptions["resolveRef"],
+): boolean {
+  if (!isPlainObject(value)) return false;
+  const keys = Object.keys(value).filter((key) => path.length > 0 || !RESOURCE_ENVELOPE.has(key));
+  const ancestry = new Set<object>();
+  const excludes = (node: unknown, at: Record<string, any>): boolean => {
+    if (!isPlainObject(node) || ancestry.has(node)) return false;
+    ancestry.add(node);
+    try {
+      if (typeof node.$ref === "string") {
+        const target = node.$ref.startsWith("#")
+          ? { schema: resolveSchemaPointer(at, node.$ref), root: at }
+          : resolveRef?.(node.$ref);
+        if (target && excludes(target.schema, target.root)) return true;
+      }
+      const required: unknown[] = Array.isArray(node.required) ? node.required : [];
+      if (required.some((name) => typeof name === "string" && !Object.hasOwn(value, name))) return true;
+      if (node.additionalProperties === false) {
+        const properties = isPlainObject(node.properties) ? node.properties : {};
+        const patterns = isPlainObject(node.patternProperties) ? Object.keys(node.patternProperties) : [];
+        const extra = keys.some(
+          (key) => !Object.hasOwn(properties, key) && !patterns.some((pattern) => safeRegExp(pattern)?.test(key)),
+        );
+        if (extra) return true;
+      }
+      if (Array.isArray(node.allOf) && node.allOf.some((member: unknown) => excludes(member, at))) return true;
+      for (const union of ["anyOf", "oneOf"] as const) {
+        const alternatives = node[union];
+        if (Array.isArray(alternatives) && alternatives.length > 0) {
+          if (alternatives.every((alternative: unknown) => excludes(alternative, at))) return true;
+        }
+      }
+      return false;
+    } finally {
+      ancestry.delete(node);
+    }
+  };
+  return excludes(branch, root);
+}
+
 /**
  * Every text site and every values pairing `data` holds, found by walking `schema`
  * and the value in tandem: through `properties`, a map's `additionalProperties` /
- * `patternProperties`, a list's `items`, every `oneOf` / `anyOf` / `allOf` branch, a
+ * `patternProperties`, a list's `items`, every `allOf` member and each `oneOf` /
+ * `anyOf` branch the value can hold (never one it definitely cannot), a
  * document-local `$ref` (resolved against `root`, the document `schema` lies in),
  * and a named shape through `resolveRef`. A site is not descended into, and
  * neither is an expression — listed instead when text may lie beneath it — a
@@ -302,7 +360,10 @@ export function textSites(
     }
     for (const union of ["oneOf", "anyOf", "allOf"] as const) {
       if (Array.isArray(declared[union])) {
-        for (const branch of declared[union]) walk(branch, root, value, path, holder);
+        for (const branch of declared[union]) {
+          if (union !== "allOf" && branchExcludes(branch, root, value, path, options.resolveRef)) continue;
+          walk(branch, root, value, path, holder);
+        }
       }
     }
     if (Array.isArray(value)) {

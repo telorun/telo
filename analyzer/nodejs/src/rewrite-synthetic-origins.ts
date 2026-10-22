@@ -5,6 +5,8 @@ interface XTeloOrigin {
   parentKind: string;
   parentName: string;
   pathFromParent: string;
+  /** The same place as keys and indices, exact for a key holding a dot. */
+  keysFromParent?: (string | number)[];
 }
 
 function readOrigin(manifest: unknown): XTeloOrigin | undefined {
@@ -128,7 +130,7 @@ function unfoldOnce(root: ResourceManifest, segments: Segment[]): Segment[] | un
       if (sibling >= 0) parentPath = [...segments.slice(0, i), sibling];
     }
     if (!parentPath) return undefined;
-    return [...parentPath, ...parseSegments(origin.pathFromParent), ...segments.slice(i + 1)];
+    return [...parentPath, ...originSegments(origin), ...segments.slice(i + 1)];
   }
   return undefined;
 }
@@ -145,6 +147,16 @@ function at(root: unknown, segments: Segment[]): unknown {
 function nameOf(value: unknown): string | undefined {
   const name = (value as { metadata?: { name?: unknown } } | undefined)?.metadata?.name;
   return typeof name === "string" ? name : undefined;
+}
+
+/** Where an extraction was written in its parent: the stamped keys, or the
+ *  dotted path for an origin that carries none (a step's dispatch target). */
+function originSegments(origin: XTeloOrigin): Segment[] {
+  const keys = origin.keysFromParent;
+  return Array.isArray(keys) &&
+    keys.every((key) => typeof key === "string" || typeof key === "number")
+    ? keys
+    : parseSegments(origin.pathFromParent);
 }
 
 /** `with[3].steps[0].invoke` → `["with", 3, "steps", 0, "invoke"]`. */

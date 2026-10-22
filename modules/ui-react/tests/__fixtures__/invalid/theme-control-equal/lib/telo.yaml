@@ -1,0 +1,22 @@
+# A theme listing one declaration through two isolated imports: two entries,
+# two instances, both implementing the box control.
+kind: Telo.Library
+metadata:
+  name: UiReactThemeControlEqual
+  version: 1.0.0
+  description: >-
+    Test fixture exporting a theme that lists two equal control sets, each
+    reached through its own import.
+imports:
+  UiReact: ../../../../../
+  First: ../../../components
+  Second: ../../../components
+exports:
+  resources: [equal]
+---
+kind: UiReact.Theme
+metadata:
+  name: equal
+controls:
+  - !ref First.controls
+  - !ref Second.controls
