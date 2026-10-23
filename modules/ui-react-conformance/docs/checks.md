@@ -36,10 +36,12 @@ stylesheets and its sets' stylesheets against what was drawn:
    naming no part, is `unstyled-stale`.
 3. **No reserved property is set.** A rule matching a part that declares one
    of the part's [reserved properties](../../ui-react/docs/styling.md#reserved-properties)
-   — directly, through a shorthand (`inset`, `overflow`, `grid`, `background`,
-   `mask`, `all`), through its logical name (`inset-block-end`,
-   `min-block-size`) or through its prefixed one (`-webkit-mask-image`) — is
-   `property-reserved`.
+   — directly, through a shorthand (`inset`, `overflow`, `grid`, `grid-area`,
+   `padding`, `background`, `mask`, `all`), through its logical name
+   (`inset-block-end`, `min-block-size`, `max-inline-size`,
+   `padding-inline-start`), through a physical longhand (`padding-left`,
+   `grid-column-start`) or through its prefixed one (`-webkit-mask-image`) —
+   is `property-reserved`.
 4. **Every design token has a default.** Each name of the closed token set —
    read from `ui`'s `@telorun/ui` code entry (`DESIGN_TOKENS`) — is given a
    value by the theme's own `tokens`, or its custom property (spelled by
@@ -50,7 +52,10 @@ stylesheets and its sets' stylesheets against what was drawn:
 5. **Every design token is read.** Some `var()` of the theme's stylesheets —
    a fallback inside another `var()` included — reads the token's custom
    property; a token nothing reads is `token-unread`, since a brand setting it
-   would change nothing.
+   would change nothing. A token the renderer's own layer reads — the
+   contract's `rendererTokens`: `width.page`, the measure of a contained page,
+   and `space.page`, the page inset — needs no `var()` of the theme's; it
+   still needs a default.
 
 A stylesheet the parser cannot parse, or a selector the window cannot match, is
 `stylesheet-unparseable`. A scene whose own expectations fail while drawn with

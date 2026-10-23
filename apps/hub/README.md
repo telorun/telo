@@ -27,11 +27,11 @@ being linearized into a chain.
 - **Tracks registered module refs** across transports — OCI
   (`oci://<host>/<repo>`) and a direct manifest URL
   (`https://<host>/<path>/telo.yaml`, transport `url`).
-  A cron pass enumerates each registered module's versions by shelling out to
-  the generic CLI verbs — `telo module versions <ref>`,
-  `telo module digest <ref@version>`, `telo module manifest <ref@version> --json`
-  — so the transport protocol stays encapsulated behind the CLI and no
-  discovery-specific resource kind exists.
+  An hourly cron pass enumerates each registered module's versions by shelling
+  out to the generic CLI verbs — `telo module versions <ref> --json --digests`
+  (every version with its digest, one process per module) and
+  `telo module manifest <ref@version> --json` — so the transport protocol stays
+  encapsulated behind the CLI and no discovery-specific resource kind exists.
 - **Digest-reconciles every version on every pass.** Version content
   immutability is a convention no transport enforces; an unchanged digest is
   skipped (cheap read), a moved digest re-ingests that version. Enumeration and
@@ -614,7 +614,7 @@ modules than it did.
 | `MANIFEST_BUCKET_FORCE_PATH_STYLE` | `true` for MinIO/RustFS (default `false`) |
 | `SEED_REFS` | JSON array of module refs registered idempotently on boot (the curated seed; publishers also self-register via `POST /register`) |
 | `ALLOW_LOCAL_REFS` | `true` lets `SEED_REFS` name a `./`-relative module directory read from the hub's own disk (default `false`; set by the compose stack) |
-| `TRACK_CRON` | When the reconcile pass runs, as a 5-field cron in UTC (default `*/15 * * * *`) |
+| `TRACK_CRON` | When the reconcile pass runs, as a 5-field cron in UTC (default `0 * * * *`, hourly) |
 | `TRACK_ENABLED` | `false` disables the periodic reconcile (tests drive `Ingest.scheduleDueVersions` directly) |
 | `BUILTINS_REF` | Where the built-in vocabulary is published, one version per telo release (default `oci://ghcr.io/telorun/telo`). Registered on every boot before `SEED_REFS`, and the only ref a `Telo.Builtins` root is indexed or registered at |
 | `INGEST_REV` | Revision of the ingest pipeline (default `9`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
@@ -731,7 +731,7 @@ Modules enter the index two ways:
      existence oracle. It also rejects a leading `-` (so `--help` can't be read
      as a flag), plaintext `http://`, and a userinfo authority
      (`https://evil.com@internal/…`).
-  3. **Resolution check** — `telo module versions`, then `telo module manifest`
+  3. **Resolution check** — `telo module versions --digests`, then `telo module manifest`
      at the latest version, confirm it's a real Telo module. The manifest's root
      doc must be a **`Telo.Library`** or a **`Telo.Application`**; anything else is
      refused with "the root document of `<ref>` is `<kind>`; only a Telo.Library
@@ -851,7 +851,7 @@ path here would compete with it.
 
 Failure backoff doubles from a minute; past eight attempts `next_attempt_at` is
 left null and the version is **not** retried again — an artifact that is no
-longer a Telo module stops being read every quarter of an hour forever.
+longer a Telo module stops being read on every reconcile pass forever.
 
 Three levels of re-ingest, all writes to that table:
 

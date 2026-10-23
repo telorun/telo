@@ -22,11 +22,12 @@ export const INSTANCE_SHAPE_FIELDS = ["params", "returns"] as const;
 
 /** The fields of `manifest` whose shape references travel with it across an
  *  import boundary — an instance's contract as well as its signature, since a
- *  consumer checks a call against both. */
+ *  consumer checks a call against both, and its `schema`, since an exported
+ *  named shape is one a consumer's schemas reference whole. */
 export function forwardedShapeFieldsOf(manifest: { kind?: unknown }): readonly string[] {
   return manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract"
     ? KIND_SHAPE_FIELDS
-    : [...INSTANCE_SHAPE_FIELDS, "inputType", "outputType"];
+    : [...INSTANCE_SHAPE_FIELDS, "inputType", "outputType", "schema"];
 }
 
 /** The fields of `manifest` a shape reference may sit in. */

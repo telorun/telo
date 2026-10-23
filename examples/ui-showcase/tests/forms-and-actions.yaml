@@ -121,13 +121,13 @@ steps:
       body:
         projectCode: TEL-42
         leadRole: designer
-        leadEmail: maja@northwind.example
-        reviewerEmails: [ jan@northwind.example, sofia@northwind.example ]
+        leadEmail: maya@northwind.example
+        reviewerEmails: [ james@northwind.example, sofia@northwind.example ]
         sponsorEmail: ada@northwind.example
         helperEmails: [ liam@northwind.example ]
         period: { from: "2026-11-01", to: "2026-12-31" }
         onSite: true
-        site: Warsaw office
+        site: Manchester office
         notes: Two weeks on site, then remote.
   - name: tooLong
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/bookings, method: POST }
@@ -135,7 +135,7 @@ steps:
       body:
         projectCode: TEL-42
         leadRole: designer
-        leadEmail: maja@northwind.example
+        leadEmail: maya@northwind.example
         sponsorEmail: ada@northwind.example
         period: { from: "2026-01-01", to: "2027-06-30" }
   - name: reversed
@@ -172,14 +172,14 @@ steps:
       expected:
         before:
           bookings:
-            - { id: 1, project: Billing migration, lead: Liam Carter, sponsor: Ada Nowak, from: "2026-11-01", to: "2026-11-30" }
+            - { id: 1, project: Billing migration, lead: Liam Carter, sponsor: Ada Brooks, from: "2026-11-01", to: "2026-11-30" }
         created: [ 201, { id: 2 } ]
         tooLong: [ 400, [ { location: body, path: period.to, message: is more than a year after the start } ] ]
         reversed: [ 400, [ { location: body, path: period.from, message: must not be after the end } ] ]
         unknownProject: [ 404, { code: PROJECT_UNKNOWN, message: "There is no project 'NOPE-1'." } ]
         after:
-          - { id: 2, project: Atlas redesign, lead: Maja Wiśniewska, sponsor: Ada Nowak, from: "2026-11-01", to: "2026-12-31" }
-          - { id: 1, project: Billing migration, lead: Liam Carter, sponsor: Ada Nowak, from: "2026-11-01", to: "2026-11-30" }
+          - { id: 2, project: Atlas redesign, lead: Maya Harris, sponsor: Ada Brooks, from: "2026-11-01", to: "2026-12-31" }
+          - { id: 1, project: Billing migration, lead: Liam Carter, sponsor: Ada Brooks, from: "2026-11-01", to: "2026-11-30" }
 
   # ---- The option sources, as the fields read them ----
   - name: projects
@@ -203,7 +203,7 @@ steps:
   - name: sponsorLabel
     invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/people?limit=25&active=true&email.in=ada%40northwind.example" }
   - name: reviewerLabels
-    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/people?limit=25&active=true&email.in=jan%40northwind.example&email.in=tomas%40northwind.example&email.in=sofia%40northwind.example" }
+    invoke: { kind: HttpClient.Request, client: !ref page, url: "/api/people?limit=25&active=true&email.in=james%40northwind.example&email.in=tomas%40northwind.example&email.in=sofia%40northwind.example" }
   - name: verifyOptions
     invoke: { kind: Assert.Equals }
     inputs:
@@ -225,15 +225,15 @@ steps:
           - [ APP-5, Mobile app ]
           - [ OPS-9, Data warehouse ]
         engineers:
-          - [ jan@northwind.example, Jan Kowalski, Kraków, "mailto:jan@northwind.example" ]
+          - [ james@northwind.example, James Walker, Edinburgh, "mailto:james@northwind.example" ]
           - [ liam@northwind.example, Liam Carter, London, "mailto:liam@northwind.example" ]
         writers: [ sofia@northwind.example ]
         searched: [ Liam Carter ]
-        helpersFirst: [ 5, [ Ada Nowak, Jan Kowalski, Maja Wiśniewska ], true ]
+        helpersFirst: [ 5, [ Ada Brooks, James Walker, Maya Harris ], true ]
         helpersMore: [ [ Liam Carter, Sofia Rossi ], null ]
-        sponsorLabel: [ [ ada@northwind.example, Ada Nowak ] ]
+        sponsorLabel: [ [ ada@northwind.example, Ada Brooks ] ]
         reviewerLabels:
-          - [ jan@northwind.example, Jan Kowalski ]
+          - [ james@northwind.example, James Walker ]
           - [ sofia@northwind.example, Sofia Rossi ]
 
   # ---- An answer drawn from the result, and one the output model refuses ----
@@ -300,7 +300,7 @@ steps:
   - name: assignNoTask
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
     inputs:
-      body: { id: 999, assigneeEmail: jan@northwind.example }
+      body: { id: 999, assigneeEmail: james@northwind.example }
   - name: assignLeft
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
     inputs:
@@ -308,7 +308,7 @@ steps:
   - name: assign
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/assign, method: POST }
     inputs:
-      body: { id: 4, assigneeEmail: jan@northwind.example }
+      body: { id: 4, assigneeEmail: james@northwind.example }
   - name: assigned
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/tasks/4 }
   - name: verifyAssign
@@ -326,8 +326,8 @@ steps:
         stranger: [ 400, [ { location: body, path: assigneeEmail, message: is not the e-mail of anyone on the team } ] ]
         noTask: [ 404, { code: TASK_UNKNOWN, message: There is no task 999. } ]
         left: [ 409, { code: ASSIGNEE_INACTIVE, message: Tomás Ortega has left the team. } ]
-        assign: [ 200, { id: 4, title: Write the release notes, assignee: Jan Kowalski } ]
-        assigned: jan@northwind.example
+        assign: [ 200, { id: 4, title: Write the release notes, assignee: James Walker } ]
+        assigned: james@northwind.example
 
   # ---- The bare button, moving tasks, and the counts read again ----
   - name: countsBefore

@@ -1,0 +1,219 @@
+kind: Telo.Application
+metadata:
+  name: ChatAttachmentIsolation
+  version: 1.0.0
+  description: |
+    An upload is read for the model only under the conversation the turn runs
+    in. Conversation A holds a text upload; conversation B holds a journaled
+    turn whose message names A's upload by its id — a forged record, since the
+    agent never writes one. B's next turn tells the model the file is no longer
+    available and never sends A's text, while a turn in A naming the same id
+    sends it, so the refusal is not a resolver that reads nothing. Offline and
+    key-free.
+imports:
+  App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
+  Fs: ../../../../modules/fs
+  HttpClient: ../../../../modules/http-client
+  Stream: ../../../../modules/stream
+  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.1#sha256-1WEaTSJ_-AD9dVAa9JTdqtD94jzkkBvoGLdm2jrlroM
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.1#sha256-s499a6neOc42YDcB9x5YZeTjcEvjwXwKw5y27mcUiG0
+  Blob: oci://ghcr.io/telorun/blob@0.2.0#sha256-UgFwVFoZWZ_s8GWHIi-0qJB8K82CZ5gSQN0HZaqpc58
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.2.0#sha256-_DxXaUEsakpFyEif4SKQc1QesAcTFOpnXBW9AjIyUbo
+  Run: ../../../../modules/run
+  Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
+variables:
+  scratch:
+    env: CHAT_TEST_ATTACHMENT_ISOLATION_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/attachment-isolation
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18586 }
+targets: [ !ref stub ]
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  # The agent's own boot creates its database; nothing runs.
+  - name: schema
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18588 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18586/v1
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps: []
+  # A's upload, row and blob; B's forged turn naming A's id.
+  - name: seed
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: SQLite.Connection
+          metadata: { name: seedDb }
+          file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+        - kind: Sql.Command
+          metadata: { name: seedCommand }
+          connection: !ref seedDb
+        - kind: RecordStream.Journal
+          metadata: { name: seedJournal }
+          store:
+            kind: RecordStreamSql.JournalStore
+            connection: !ref seedDb
+            table: turn_journal
+          markerRetention: 1h
+        - kind: RecordStream.JournalClaim
+          metadata: { name: claim }
+          journal: !ref seedJournal
+        - kind: RecordStream.JournalSink
+          metadata: { name: sink }
+          journal: !ref seedJournal
+        - kind: BlobFs.Store
+          metadata: { name: uploads }
+          root: !cel "variables.scratch.joinPath('.telo-agent').joinPath('attachments')"
+        - kind: Blob.Put
+          metadata: { name: putUpload }
+          store: !ref uploads
+      steps:
+        - name: conversations
+          invoke: !ref seedCommand
+          inputs:
+            sql: "INSERT INTO conversations (id, title) VALUES (?, 'Holder'), (?, 'Intruder')"
+            bindings: [ 0190a000-0000-7000-8000-00000000c101, 0190a000-0000-7000-8000-00000000c102 ]
+        - name: upload
+          invoke: !ref putUpload
+          inputs:
+            key: 0190a000-0000-7000-8000-00000000c101/0190a000-0000-7000-8000-00000000e101
+            content: !cel "bytes('ONLY-CONVERSATION-A-HOLDS-THIS-7f3a')"
+            contentType: text/plain
+        - name: attachment
+          invoke: !ref seedCommand
+          inputs:
+            sql: "INSERT INTO attachments (conversation_id, id, name, media_type, size, sha256) VALUES (?, ?, ?, ?, ?, ?)"
+            bindings: [ 0190a000-0000-7000-8000-00000000c101, 0190a000-0000-7000-8000-00000000e101, secret.txt, text/plain, 35, !cel "sha256('ONLY-CONVERSATION-A-HOLDS-THIS-7f3a')" ]
+        - name: claimTurn
+          invoke: !ref claim
+          inputs: { key: 0190a000-0000-7000-8000-00000000d101, writer: seed }
+        - name: records
+          invoke: { kind: Stream.Of }
+          inputs:
+            items:
+              - type: user-message
+                content: look
+                attachments:
+                  - id: 0190a000-0000-7000-8000-00000000e101
+                    name: secret.txt
+                    mediaType: text/plain
+                    size: 35
+                    sha256: !cel "sha256('ONLY-CONVERSATION-A-HOLDS-THIS-7f3a')"
+                model: gpt-6-luna
+              - { type: text-delta, delta: looked }
+              - type: step-finish
+                usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 }
+                finishReason: stop
+              - type: finish
+                usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 }
+                finishReason: stop
+        - name: journal
+          invoke: !ref sink
+          inputs:
+            key: 0190a000-0000-7000-8000-00000000d101
+            writer: seed
+            input: !cel "steps.records.result.output"
+        - name: turn
+          invoke: !ref seedCommand
+          inputs:
+            sql: "INSERT INTO turns (turn_id, conversation_id, checkpointed) VALUES (?, ?, 1)"
+            bindings: [ 0190a000-0000-7000-8000-00000000d101, 0190a000-0000-7000-8000-00000000c102 ]
+  - name: agent
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18589 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18586/v1
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: intruder
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18589/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 0190a000-0000-7000-8000-00000000c102
+              message: and now?
+        - name: intruderEvents
+          timeout: 30000
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: !interpolate "http://127.0.0.1:18589/chat/${{ steps.intruder.result.body.turnId }}/events"
+            responseType: text
+        - name: afterIntruder
+          invoke: { kind: HttpClient.Request }
+          inputs: { url: http://127.0.0.1:18586/requests }
+        - name: holder
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18589/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 0190a000-0000-7000-8000-00000000c101
+              message: read it
+              attachments: [ 0190a000-0000-7000-8000-00000000e101 ]
+        - name: holderEvents
+          timeout: 30000
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: !interpolate "http://127.0.0.1:18589/chat/${{ steps.holder.result.body.turnId }}/events"
+            responseType: text
+        - name: afterHolder
+          invoke: { kind: HttpClient.Request }
+          inputs: { url: http://127.0.0.1:18586/requests }
+      outputs:
+        intruder: !cel >-
+          cel.bind(sent, json(steps.afterIntruder.result.body.requests[size(steps.afterIntruder.result.body.requests) - 1]),
+            [steps.intruderEvents.result.body.contains('\"type\":\"finish\"'),
+             sent.contains('[attached file secret.txt is no longer available]'),
+             sent.contains('ONLY-CONVERSATION-A-HOLDS-THIS-7f3a')])
+        holder: !cel >-
+          cel.bind(sent, json(steps.afterHolder.result.body.requests[size(steps.afterHolder.result.body.requests) - 1]),
+            [steps.holderEvents.result.body.contains('\"type\":\"finish\"'),
+             sent.contains('ONLY-CONVERSATION-A-HOLDS-THIS-7f3a')])
+  - name: isolated
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.agent.result"
+      expected:
+        intruder: [true, true, false]
+        holder: [true, true]

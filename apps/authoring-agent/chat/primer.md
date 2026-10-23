@@ -496,6 +496,8 @@ AN AI OPERATION THROWS WHAT ITS MODEL THROWS. `Ai.Text`, `Ai.TextStream`,
 union: a `catch:` step or a route's `catches:` over the operation may name a
 model code and read its declared `error.data`, and a `catches:` list with no
 catch-all must cover the model's codes too — UNCOVERED_THROW_CODE lists them.
+The four operations also declare `ERR_CONTENT_RESOLUTION_INVALID` (see
+REFERENCED CONTENT below), so an exhaustive list names it too.
 
 EVERY MODEL RAISES THE SAME THIRTEEN CODES, whichever provider is behind it.
 `Ai.Model` and `Ai.ModelStream` declare one failure list, each provider kind
@@ -553,7 +555,8 @@ which `catches:` cannot render. A run resuming pending tool calls settles them,
 and makes its first model call, as the stream is read — a refusal there rejects
 the iteration.
 
-A MESSAGE'S `content` IS A STRING OR A LIST OF CONTENT PARTS (`Ai.ContentPart`),
+A MESSAGE'S `content` IS A STRING OR A LIST OF CONTENT PARTS (`Ai.ContentPart`,
+an exported shape — type a consumer's own parts with `!ref Ai.ContentPart`),
 and each `type` has a fixed shape:
 
 - `text` (and the model-produced `reasoning`, `refusal`) — `text`.
@@ -578,6 +581,15 @@ In the RESOURCE field a text part is exactly `{ type, text, cacheBreakpoint? }`
 and any other key is a SCHEMA_VIOLATION; a call's `system` input takes a text
 part as a message does. Mark the system prompt of an agent whose tools and prompt are stable. Older
 `ai` versions take `system` as a string only and have no `cacheBreakpoint`.
+
+A MESSAGE IS READ BY ITS `role`: only an `assistant` turn carries `toolCalls`,
+and a `tool` turn MUST carry a non-empty `toolCallId` (the id of the call it
+answers), which no other role may. Rebuilding a message, keep its `toolCalls`
+and `toolCallId`: a tool turn written as a literal without its id is
+CONTRACT_INPUTS_MISMATCH at `telo check`, and one a CEL expression builds — the
+usual case when history is rebuilt — is `ERR_INPUT_INVALID` only at dispatch,
+so `telo check` passing says nothing about it (older `ai` versions passed it
+on and the provider failed instead).
 
 There is no other key — no `cacheControl`. The shape is enforced by the
 contract of every kind that takes messages, never by a controller: a malformed
@@ -622,6 +634,39 @@ For `Anthropic.MessagesModel` and `Anthropic.MessagesModelStream`:
   `ERR_MODEL_CONTENT_UNSUPPORTED`.
 - media a TOOL returned — text and images ride the tool result itself, files
   follow the results of that turn.
+
+REFERENCED CONTENT IS FETCHED FOR THE MODEL BY THE OPERATION'S `resolver`, never
+by rewriting messages. Keep a file in history as a media part with a `uri` of a
+scheme of your own (`upload:7f3a`), and give `Ai.Text`, `Ai.TextStream`,
+`Ai.Agent` or `Ai.AgentStream` a `resolver`: `schemes` (lowercase, never
+`data`), optional `concurrency` (references resolved at once, default 4, the
+first failure stopping the rest), optional `contextType` (as on `Ai.Tools`), `invoke` (any invocable),
+`inputs` (CEL over `part` — the referencing part — and `context`) and `result`
+(ONE CEL expression over `result` ALONE — `part` is not in scope there, so the
+resolver's answer carries what it needs, such as the media type — giving the
+part the model is sent instead:
+text, or a media part with its bytes or a reference the model can read). Every
+media part whose `uri` scheme is listed is replaced in what the model is sent
+and NOWHERE ELSE — returned `messages`, `toolResults` and streamed parts keep
+the reference — each distinct `uri` once per call (a tool result is resolved
+when it joins the conversation); any other `uri` reaches the model as written.
+An answer that is not a sendable part, or is again a reference by a listed
+scheme, is `ERR_CONTENT_RESOLUTION_INVALID` (`error.data.uri`); what the
+resolver throws escapes unchanged and is part of the operation's union. The
+operation's `context` input (on all four) must satisfy the resolver's
+`contextType` — on an agent beside every tool provider's. Needs `ai` 0.30+.
+
+    kind: Ai.Text
+    metadata: { name: reader }
+    model: !ref model
+    resolver:
+      schemes: [upload]
+      contextType: !ref UploadContext
+      invoke: !ref readUpload
+      inputs:
+        conversation: !cel "context.conversationId"
+        id: !cel "part.uri"
+      result: !cel "{'type': 'file', 'mediaType': result.mediaType, 'data': result.bytes}"
 
 `usage` ON EVERY COMPLETION is `promptTokens`, `completionTokens`,
 `totalTokens`, `unit`, `total`, plus `cachedPromptTokens` (the part of the
@@ -778,7 +823,8 @@ serves, the signed-in user. The agent's caller passes it as the agent's
 `context`, beside `arguments`. The provider declares its shape once, as
 `contextType` (a `!ref` to a `Telo.JsonSchema`, or an inline one); with none
 declared `context` is an empty object and `context.turnId` is
-`CEL_UNKNOWN_FIELD`. Every agent mounting that provider must then be called
+`CEL_UNKNOWN_FIELD`. The same `context` reaches the operation's `resolver`
+(REFERENCED CONTENT above). Every agent mounting that provider must then be called
 with a `context` satisfying it: leaving it out is `CONTRACT_INPUTS_MISMATCH` at
 the call (`ERR_INPUT_INVALID` at run, before the model is asked anything). The
 model never sees `context`, and `parameters` are unchanged by it.
@@ -1603,7 +1649,10 @@ resource say what the data must be. Inside the kind's `inputType` /
 satisfy the type declared at that location on the resource being called. The
 location is a field name or a JSON Pointer from the resource root; it
 continues through a reference slot into the declaration that slot names, and a
-`*` segment ranges over every element of a list. Every type reached must hold,
+`*` segment ranges over every element of a list. A list of locations
+(`[/handlers/*/handler/contextType, /resolver/contextType]`, each element any
+of these forms) holds the value to every type each element reaches. Every type
+reached must hold,
 so declare such types OPEN (`properties` without `additionalProperties: false`)
 when several may combine; each reached type keeps its own `$defs`; when
 nothing is reached the node stays as written. The object form
@@ -3744,7 +3793,14 @@ Where to start:
     pages by `!ref`, never by path, and is drawn by a placement kind: a
     header menu bar (the default), a sidebar collapsing to a rail of icons, a
     menu button's drawer or a bottom tab bar, the last two what a narrow
-    screen uses. An entry's `icon:` is a `Ui.FileIcon` (`file`) or a
+    screen uses. A page's content is `contained` (the look's centred measure,
+    the `width.page` design token, inset by `space.page`) unless
+    `UiReact.App.pageWidth` or the page's own `width` says `full`; the
+    header's content lines up with a contained page unless
+    `UiReact.App.header.width` (default: the app's `pageWidth`) says `full` —
+    never a `max-width` or an inline padding on `page`, `main` or `header` in
+    a stylesheet. A theme's header row rules go through the `header-content`
+    part (`[data-telo-part="header"] > [data-telo-part="header-content"] > …`). An entry's `icon:` is a `Ui.FileIcon` (`file`) or a
     `UiLucide.Icon` (`name`, a Lucide glyph, from `ui-lucide`), declared
     inline when one entry uses it and named, then `!ref`, when several
     share it. The

@@ -52,6 +52,7 @@ options:
 | `model`   | ref    | yes      | Reference to any `Ai.Model` implementation. Typed `x-telo-ref: Self.Model`.      |
 | `system`  | string or text parts | no | Default system prompt — a string, or a non-empty list of text parts when one marks a [prompt-cache breakpoint](../README.md#prompt-caching). Runtime `inputs.system` wins when set. In this field a text part is exactly `{ type: text, text, cacheBreakpoint? }`; any other key is refused. |
 | `options` | object | no       | Resource-level option defaults. Merged beneath `inputs.options` (downstream wins).   |
+| `resolver` | object | no      | Fetches referenced content for the model — see [Referenced content](#referenced-content). |
 
 The `model` field uses identity-form `x-telo-ref` because the schema is part of `@telorun/ai`'s public surface — it must resolve regardless of who imports it. (`extends`, by contrast, uses alias-form because it's evaluated in the declaring file's own import scope. See `kernel/docs/inheritance.md`.)
 
@@ -63,6 +64,7 @@ The `model` field uses identity-form `x-telo-ref` because the schema is part of 
 | `messages` | array  | exactly one of prompt/messages | Full turns, each `{role, content}`; `content` is a string or [content parts](./ai-model.md#modality-lives-in-the-parts). |
 | `system`   | string or text parts | no                 | Runtime system override, in either form. Wins over manifest `system`. A text part here is read as a message's is. |
 | `options`  | object | no                             | Per-call option overrides.                                         |
+| `context`  | object | no (default `{}`)              | Caller data the `resolver` mapping reads as `context`; it must satisfy the resolver's `contextType`. Never sent to the model. |
 
 Validation comes from two places. The **shape** of the call — each message's fields, and what every content part must carry — is the declared input type's: a malformed literal is `CONTRACT_INPUTS_MISMATCH` under `telo check`, a malformed computed value `ERR_INPUT_INVALID` at dispatch. What the shape cannot state is `ERR_INVALID_INPUT`: both `prompt` and `messages`, neither, an empty message list, or a `tool` turn.
 
@@ -104,7 +106,7 @@ The model's answer is held to `Ai.Model`'s declared output by the kernel (`ERR_O
 
 ## Errors
 
-`Ai.Text` throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION` — **and whatever its model throws**, unchanged. The kind declares `throws: { inherit: true }`, so the model's codes are part of this resource's own throw union: a `catch:` step or a route's `catches:` may name them, and `telo check` asks for every one to be covered. Every model raises the same [thirteen codes](../README.md#catching-a-models-errors), whichever provider it is, so the list below holds when the model is swapped.
+`Ai.Text` throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION`, `ERR_CONTENT_RESOLUTION_INVALID` — **and whatever its model and its resolver throw**, unchanged. The kind declares `throws: { inherit: true }`, so those codes are part of this resource's own throw union: a `catch:` step or a route's `catches:` may name them, and `telo check` asks for every one to be covered. Every model raises the same [thirteen codes](../README.md#catching-a-models-errors), whichever provider it is, so the list below holds when the model is swapped.
 
 ```yaml
 routes:
@@ -131,6 +133,45 @@ routes:
 ```
 
 A list that names some of the codes and has no catch-all is `UNCOVERED_THROW_CODE`, listing what is left — the model's codes included. An entry naming a code no model raises is `UNDECLARED_THROW_CODE`.
+
+## Referenced content
+
+A media part may name its bytes by `uri` instead of carrying them. A `uri` whose scheme the `resolver` lists is resolved for the model: before the call, each such part is replaced, in what the model is sent and nowhere else, by the part the resolver answers with. A `uri` of any other scheme reaches the model as written, and the model refuses one it cannot carry (`ERR_MODEL_CONTENT_UNSUPPORTED`). So history can keep a short reference — an upload id — and the bytes are read only when a model needs them.
+
+```yaml
+kind: Ai.Text
+metadata: { name: reader }
+model: !ref Gpt4o
+resolver:
+  schemes: [upload]                  # lowercase; matched case-blind; never `data`
+  concurrency: 4                     # references resolved at once (default 4)
+  contextType:                       # what `context` holds, as for Ai.Tools
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [conversationId]
+      properties: { conversationId: { type: string } }
+  invoke: !ref ReadUpload            # any invocable or runnable
+  inputs:                            # CEL over `part` (the referencing part) and `context`
+    conversation: !cel "context.conversationId"
+    id: !cel "part.uri"
+  result: !cel "{'type': 'file', 'mediaType': result.mediaType, 'data': result.bytes}"
+```
+
+```yaml
+inputs:
+  context: { conversationId: c-17 }
+  messages:
+    - role: user
+      content:
+        - { type: text, text: "Summarize the attachment." }
+        - { type: file, mediaType: application/pdf, uri: "upload:7f3a" }
+```
+
+- `result` is one CEL expression over `result` alone (typed from the invoked resource's `outputType`) — what it needs of the reference, such as its media type, the resolver's own answer carries — giving the part the model is sent: text, or an image, audio, video or file part carrying its bytes or a reference the model can read. Anything else — and a part referencing a scheme `schemes` lists — is `ERR_CONTENT_RESOLUTION_INVALID`, with `data.uri` the reference whose answer was refused, and nothing is sent.
+- Each distinct `uri` is resolved once per call; the answer is reused for every part naming it, and never across calls. At most `concurrency` resolutions run at once (default `4`, may be computed), started in message order; the first failure cancels the ones running, starts no queued one, and fails the call with it. Cancelling the call cancels them all. A `cacheBreakpoint` on the referencing part stays where it was.
+- `context` is held to `contextType`: a literal one where the call is written (`CONTRACT_INPUTS_MISMATCH`), any one at dispatch (`ERR_INPUT_INVALID`). Without a `contextType` it is empty, so a mapping reading a field of it is refused.
+- What the resolver throws escapes unchanged and is part of the operation's throw union.
 
 ## Option layering
 

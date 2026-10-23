@@ -59,6 +59,8 @@ class FakeEventSource extends EventTarget {
 
 export interface Page {
   title: string;
+  /** `contained` when not given. */
+  width?: "contained" | "full";
   children: SpecNode[];
 }
 
@@ -156,8 +158,8 @@ export async function render(options: {
   words?: Record<string, ReturnType<typeof wireText>>;
   /** The application document's controls: the built-ins' mechanics and a theme's sets. */
   controls?: ControlsField;
-  /** The application's own header nodes, by side. */
-  header?: { start: unknown[]; end: unknown[] };
+  /** The application's own header nodes, by side, and its width (`contained` when not given). */
+  header?: { start?: unknown[]; end?: unknown[]; width?: "contained" | "full" };
   /** The navigation as the application document carries it; one entry per
    *  page, in the header, when not given. */
   navigation?: { items: unknown[]; placement: unknown };
@@ -202,14 +204,14 @@ export async function render(options: {
         stylesheets: [`${prefix}/_telo/ui/assets/aa/base.css`],
         controls: options.controls ?? { stylesheets: {}, sets: [] },
         compactBelow: "40rem",
-        ...(options.header ? { header: { start: wire(options.header.start), end: wire(options.header.end) } } : {}),
+        header: { start: wire(options.header?.start ?? []), end: wire(options.header?.end ?? []), width: options.header?.width ?? "contained" },
       });
     }
     if (url.pathname === `${prefix}/_telo/ui/page`) {
       const path = url.searchParams.get("path") as string;
       const digest = `${path}#${versions[path] ?? 0}`;
       if (new Headers(init?.headers).get("if-none-match") === `"${digest}"`) return new Response(null, { status: 304 });
-      return json({ specVersion: 1, bundle, digest, path, title: wireText(pages[path].title), lang: options.lang ?? "en", children: wire(pages[path].children) });
+      return json({ specVersion: 1, bundle, digest, path, title: wireText(pages[path].title), lang: options.lang ?? "en", width: pages[path].width ?? "contained", children: wire(pages[path].children) });
     }
     const base = Object.keys(collections).find((candidate) => url.pathname === prefix + candidate || url.pathname.startsWith(`${prefix}${candidate}/`));
     if (base) {

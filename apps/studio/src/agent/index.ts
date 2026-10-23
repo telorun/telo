@@ -14,6 +14,8 @@ export { FOCUS_COMPOSER_LABEL, MOD_KEY_LABEL, isFocusComposerShortcut } from "./
 export { askAboutResourcePrompt, explainRunFailurePrompt, fixDiagnosticPrompt } from "./prepared-prompts";
 export { sameSelection, selectionLabel, splitUserText, withSelections } from "./editor-selection";
 export type { EditorSelection } from "./editor-selection";
+export { buildProgress } from "./build-progress";
+export type { BuildOutcome, BuildPhase, BuildProgress, BuildStep } from "./build-progress";
 export { capabilityLine } from "./capability-line";
 export { STARTER_PROMPTS } from "./starter-prompts";
 export type { StarterPrompt } from "./starter-prompts";

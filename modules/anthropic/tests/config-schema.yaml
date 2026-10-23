@@ -10,8 +10,8 @@ metadata:
     holds, a cache lifetime the API does not offer, and a field the kind does
     not declare.
 
-    A bag that is computed is out of the static check's sight, and is refused
-    when the resource is created.
+    A computed bag whose keys the expression writes literally is refused by
+    `telo check` too, at the expression.
 imports:
   Assert: ../../assert
 targets:
@@ -41,4 +41,7 @@ kind: Assert.Manifest
 metadata: { name: computedRefused }
 source: ./__fixtures__/config-computed-options.yaml
 expect:
-  runFails: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED"
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "Anthropic.MessagesModel/computed: CEL at 'options' produces a value that does not fit what the field expects: /maxTokens: always present in source but not allowed by target."
+  runFails: "Manifest validation failed"

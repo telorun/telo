@@ -55,7 +55,7 @@ Declare the request at module level: a reference slot on a resource inside a `wi
 
 `model`, `maxTokens`, `cacheLifetime`, `betas` and `options` are `x-telo-eval: compile`, so they resolve at load time from `variables.*` / `secrets.*`.
 
-`maxTokens` is said in one place on the resource: its `options` naming `maxTokens` or `max_tokens` is a `SCHEMA_VIOLATION` under `telo check`, and a computed bag naming it is refused when the resource is created (`ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`). A **call's** options — the operation's `options` merged with the caller's `inputs.options` — may name `maxTokens`, which then replaces the field's value for that call.
+`maxTokens` is said in one place on the resource: its `options` naming `maxTokens` or `max_tokens` is a `SCHEMA_VIOLATION` under `telo check`, a computed bag whose expression writes the key literally is a `CEL_TYPE_ERROR` there too, and any other computed bag naming it is refused when the resource is created (`ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`). A **call's** options — the operation's `options` merged with the caller's `inputs.options` — may name `maxTokens`, which then replaces the field's value for that call.
 
 There is no `apiKey`, no `baseUrl` and no `thinking` field. The first two belong to the client; thinking is a request parameter, set through `options`.
 
@@ -80,7 +80,7 @@ The translation from the provider-neutral contract:
 
 Details that matter:
 
-- **A tool call's id is the endpoint's own.** `ToolCall.id` is the `tool_use` block's `id`, and a tool message's `toolCallId` goes back as `tool_use_id` unchanged. A block the endpoint returned with no id, or an empty one, is given a minted one (`call_<uuid>`) that is also written into the block inside `providerState`, so the call, its result and the replayed turn agree. The stream kind follows the same rule; no call leaves either kind with an empty id.
+- **A tool call's id is the endpoint's own.** `ToolCall.id` is the `tool_use` block's `id`, and a tool message's `toolCallId` goes back as `tool_use_id` unchanged; a tool message with no `toolCallId`, or an empty one, is refused before anything is sent — by the `Ai.Model` contract (`ERR_INPUT_INVALID`) when dispatched, and as `ERR_MODEL_REQUEST_REJECTED` naming its index in `messages` for a caller that bypasses it. A block the endpoint returned with no id, or an empty one, is given a minted one (`call_<uuid>`) that is also written into the block inside `providerState`, so the call, its result and the replayed turn agree. The stream kind follows the same rule; no call leaves either kind with an empty id.
 - **An empty text is left out.** The API refuses an empty text block, so an empty string or an empty text part sends no block, and a `user` or `assistant` message left with no blocks sends no turn. A tool result's text is sent as it is, empty or not.
 - **An assistant message is sent as its text and its calls.** Parts a model produces beside its text (`reasoning`, `refusal`, `citation`) are not sent back; what has to survive verbatim rides `providerState`.
 - **Options are written last but one.** `tool_choice` is written after the merged options, so the call's own choice is what is sent; a call's `options.maxTokens` is written after the kind's `maxTokens` and replaces it.

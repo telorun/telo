@@ -13,7 +13,8 @@ An application of pages. A `Telo.Mount`: list it under an `Http.Server`'s
 | `tokens` | | your brand: one [`Ui.DesignTokens`](../../ui/docs/design-tokens.md), or a list of `{ tokens, when? }` |
 | `stylesheets` | | your own stylesheets, as host paths: `!module-path ./ui.css` |
 | `compactBelow` | `40rem` | the viewport width below which every surface's `compact` replacement applies: a CSS length in `px`, `rem` or `em` |
-| `header` | | `{ start?, end? }`: nodes of your own in the header, before the title and after the navigation — see [Header](#header) |
+| `pageWidth` | `contained` | how wide a page's content is drawn when the page declares no `width`: `contained` or `full` — see [Page width](#page-width) |
+| `header` | | `{ start?, end?, width? }`: nodes of your own in the header, before the title and after the navigation, and how wide its content is drawn — see [Header](#header) |
 | `pages` | required, at least one | the [`Ui.Page`](../../ui/docs/page.md)s the application routes to, written in place or `!ref` |
 | `navigation` | | the [`Ui.Navigation`](../../ui/docs/navigation.md) tree and how it is drawn — see [Navigation](#navigation) |
 
@@ -39,6 +40,34 @@ pages:
   `ERR_UI_PAGE_PATH_DUPLICATE` at creation.
 - A page's `query` declares the query parameters its own nodes read; the page
   document carries it, `{}` when none is declared.
+
+### Page width
+
+```yaml
+pageWidth: full          # every page fills the room beside the navigation
+pages:
+  - !ref dashboard
+  - kind: Ui.Page
+    path: /settings
+    title: Settings
+    width: contained     # this one keeps the look's measure
+    children: [ … ]
+```
+
+- A `contained` page's content is drawn no wider than the look's page measure,
+  the `width.page` [design token](../../ui/docs/design-tokens.md), and
+  centred; a `full` one takes all the room it has.
+- A page's own `width` wins; with none, the application's `pageWidth`
+  applies; with neither, `contained`. The default is filled by `ui`'s page,
+  which the application invokes with its `pageWidth`, and the page document
+  carries the result as `width` — so one page listed by two applications can
+  be drawn at two widths.
+- The `page` part carries it as `data-width`, and the renderer's own layer
+  applies the measure (see [the styling contract](styling.md#tokens)): a theme
+  sets the measure through `width.page`, never by a `max-width` on `page`.
+- The header's content follows the application's width, not the page's — see
+  [Header width](#header-width).
+- A misspelt value is `SCHEMA_VIOLATION` at `telo check`.
 
 ## Navigation
 
@@ -183,6 +212,29 @@ header:
 - The nodes travel in the [application document](urls.md#the-application-document),
   not in a page's; the renderer draws each side in its own part,
   `header-start` and `header-end`, only when it holds a node.
+
+### Header width
+
+```yaml
+pageWidth: full
+header:
+  width: contained   # the header's content keeps the look's column over full pages
+```
+
+- `header.width` is a `Ui.PageWidth`: `contained` starts and ends the header's
+  content — its whole row, `header-content` — exactly where a contained page
+  does; `full` spans the bar, inset by the `space.page` token. The bar itself,
+  its background and border, always spans the screen.
+- Omitted, the application's `pageWidth` applies; with neither, `contained`.
+  A page's own `width` never changes it, so the header is the same on every
+  page. It is resolved by `ui`'s one resolver and carried in the application
+  document as `header.width`; the `header` part carries it as `data-width`.
+- Beside a sidebar the header spans the sidebar's column too, and a contained
+  header's content sits over the page's column, so it moves with the sidebar
+  — collapsed to its rail or expanded, at either side.
+- The alignment is the renderer's (see [the styling contract](styling.md#tokens)),
+  so it holds under every theme; a theme sets the measure and the inset
+  through the `width.page` and `space.page` tokens.
 
 ## What the browser decides
 
@@ -544,7 +596,8 @@ theme:
   stylesheets: [!module-path ./look.css]
 ```
 
-`tokens` is the brand over the theme, and may follow the request: in a list,
+`tokens` is the brand over the theme — `width.page` among them, the measure of
+a contained page — and may follow the request: in a list,
 the first entry whose `when` holds — or that has none — is used; if none
 holds, the theme's own values apply. `when` reads the same `request`, and the
 headers it reads join the application document's `Vary`.

@@ -4,6 +4,7 @@ import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { refSentinelsIn } from "./contract-shapes.js";
 
 const SOURCE = "telo-analyzer";
 // A callable's signature is schema-bearing too: `params[].schema` and
@@ -21,7 +22,9 @@ const SCHEMA_FIELDS = ["schema", "inputType", "outputType", "params", "returns"]
  * by AJV, so without this it would silently pass):
  *  - SCHEMA_TYPE_REF_UNKNOWN_ALIAS: the authority is neither `Self` nor a declared import.
  *  - SCHEMA_TYPE_REF_UNRESOLVED: the authority resolves to a module, but that module
- *    declares no `Telo.Type` named `<type>`.
+ *    declares no `Telo.Type` named `<type>`; or a named shape's `schema` holds a
+ *    `!ref` that resolved to nothing — no other reference check reads a shape's
+ *    body, and the registry holds the reference as written.
  *
  * Forwarded/imported definitions are skipped — their own refs are validated when the
  * owning library is analyzed as a root, and the consumer's scope can't see the
@@ -84,6 +87,22 @@ export function validateSchemaTypeRefs(
 
     for (const field of SCHEMA_FIELDS) {
       walk((m as Record<string, unknown>)[field], field);
+    }
+
+    const kind = typeof m.kind === "string" ? (resolver.resolveKind(m.kind) ?? m.kind) : undefined;
+    if (kind && registry.resolve(kind)?.capability === "Telo.Type") {
+      for (const { sentinel, path } of refSentinelsIn((m as Record<string, unknown>).schema, "schema")) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "SCHEMA_TYPE_REF_UNRESOLVED",
+          source: SOURCE,
+          message:
+            `${label}: '${path}' names the type '${sentinel.source}' with \`!ref\`, and nothing by ` +
+            `that name is declared in scope, so nothing beneath it is validated. Declare a ` +
+            `\`Telo.JsonSchema\` with that name, or correct the reference.`,
+          data: { resource: { kind: m.kind, name }, filePath, path },
+        });
+      }
     }
   }
 

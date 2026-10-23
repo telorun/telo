@@ -434,7 +434,7 @@ Inspect a module without importing it. `<ref>` is any form the runtime resolves:
 
 | Subcommand | What it prints |
 | --- | --- |
-| `versions` | The module's published versions, newest first (one entry for a local path or direct URL) |
+| `versions` | The module's published versions, newest first (one entry for a local path or direct URL); with `--digests`, each with the digest `digest` prints for it, read in one process (`--json` writes `[{ version, digest }]`; a version whose digest cannot be read is `{ version, error }`, also named on stderr) |
 | `manifest` | The module's `telo.yaml`, verified against the inline hash when the ref is pinned |
 | `digest` | The version's content-identity digest — a cheap read that downloads no payload |
 | `resources` | The resource instances the module declares |

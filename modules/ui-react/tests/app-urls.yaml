@@ -112,6 +112,10 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/app" }
   - name: plainApp
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/plain/_telo/ui/app" }
+  - name: wideApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/wide/_telo/ui/app" }
+  - name: plainPage
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/plain/_telo/ui/page?path=/" }
   - name: appAgain
     invoke: { kind: HttpClient.Request }
     inputs:
@@ -126,6 +130,8 @@ steps:
       url: http://127.0.0.1:19311/admin/_telo/ui/page?path=/done
       headers:
         if-none-match: !cel "steps.page.result.headers['etag']"
+  - name: containedPage
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/page?path=/all" }
   - name: noPage
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/page?path=/nowhere" }
   - name: stylesheet
@@ -149,6 +155,7 @@ steps:
           title: !cel "steps.app.result.body.title"
           lang: !cel "steps.app.result.body.lang"
           compactBelow: !cel "steps.app.result.body.compactBelow"
+          header: !cel "steps.app.result.body.header"
           pages: !cel "steps.app.result.body.pages.map(p, p.path)"
           stylesheets: !cel "steps.app.result.body.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1))"
           controlStylesheets: !cel "sort(steps.app.result.body.controls.stylesheets.map(c, steps.app.result.body.controls.stylesheets[c].substring(steps.app.result.body.controls.stylesheets[c].lastIndexOf('/') + 1)))"
@@ -156,6 +163,10 @@ steps:
           bundleIsRenderer: !cel "steps.shell.result.body.contains('/_telo/ui/assets/' + steps.app.result.body.bundle + '/renderer.js')"
         appAgain: !cel "steps.appAgain.result.status"
         defaultCompactBelow: !cel "steps.plainApp.result.body.compactBelow"
+        defaultPageWidth: !cel "steps.plainPage.result.body.width"
+        defaultHeaderWidth: !cel "steps.plainApp.result.body.header.width"
+        inheritedHeaderWidth: !cel "[size(steps.wideApp.result.body.header.start), steps.wideApp.result.body.header.width]"
+        containedPageWidth: !cel "steps.containedPage.result.body.width"
         page:
           status: !cel "steps.page.result.status"
           cache: !cel "steps.page.result.headers['cache-control']"
@@ -163,6 +174,7 @@ steps:
           keys: !cel "sort(steps.page.result.body.map(k, k))"
           path: !cel "steps.page.result.body.path"
           title: !cel "steps.page.result.body.title"
+          width: !cel "steps.page.result.body.width"
           sameBundle: !cel "steps.page.result.body.bundle == steps.app.result.body.bundle"
           children: !cel "steps.page.result.body.children.map(c, c.type)"
           fixedFilter: !cel "steps.page.result.body.children[1].filters"
@@ -184,8 +196,9 @@ steps:
           status: 200
           cache: private, no-cache
           etagIsDigest: true
-          keys: [bundle, compactBelow, controls, digest, lang, navigation, pages, specVersion, stylesheets, title, words]
+          keys: [bundle, compactBelow, controls, digest, header, lang, navigation, pages, specVersion, stylesheets, title, words]
           compactBelow: 48rem
+          header: { start: [], end: [], width: full }
           specVersion: 1
           title: { lang: en, message: [Fixture Admin] }
           lang: en
@@ -202,13 +215,18 @@ steps:
           bundleIsRenderer: true
         appAgain: 304
         defaultCompactBelow: 40rem
+        defaultPageWidth: contained
+        defaultHeaderWidth: contained
+        inheritedHeaderWidth: [1, full]
+        containedPageWidth: contained
         page:
           status: 200
           cache: private, no-cache
           etagIsDigest: true
-          keys: [bundle, children, digest, lang, path, query, specVersion, title]
+          keys: [bundle, children, digest, lang, path, query, specVersion, title, width]
           path: /done
           title: { lang: en, message: [Done] }
+          width: full
           sameBundle: true
           children: [text, table]
           fixedFilter: { isDone: { value: true } }
@@ -254,6 +272,7 @@ steps:
         setLayer: !cel "steps.setSheet.result.body.startsWith('@import url(\"/themed/_telo/ui/assets/') && steps.setSheet.result.body.endsWith('/controls.css\") layer(telo.control);\\n')"
         lookLayer: !cel "steps.lookSheet.result.body.endsWith('/look.css\") layer(telo.theme);\\n')"
         look: !cel "steps.look.result.body"
+        headerWidth: !cel "steps.themedApp.result.body.header.width"
       expected:
         stylesheets: [renderer.css, controls.css, theme-tokens.css, look.css]
         setExports: [[Checkbox]]
@@ -263,3 +282,4 @@ steps:
         setLayer: true
         lookLayer: true
         look: "[data-telo-part=\"page-title\"] { color: var(--telo-color-accent); }\n"
+        headerWidth: full

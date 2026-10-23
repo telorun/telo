@@ -103,7 +103,7 @@ function Shell({
         {lead}
         <ToolOutputPreview
           title={tool.name}
-          description={headline(tool.args) ?? undefined}
+          description={toolHeadline(tool.args) ?? undefined}
           full={
             full ??
             (lead ? (
@@ -142,7 +142,7 @@ function argumentEntries(args: unknown): Array<[string, unknown]> {
 
 /** The call's scalar arguments as one line — a lone one without its key, so
  *  a command reads as the command it ran. */
-function headline(args: unknown): string | null {
+export function toolHeadline(args: unknown): string | null {
   const shown = argumentEntries(args).flatMap(([key, value]) => {
     const text = headlineText(value);
     return text === null ? [] : [{ key, text }];
@@ -153,7 +153,7 @@ function headline(args: unknown): string | null {
 }
 
 function Arguments({ args }: { args: unknown }) {
-  const text = headline(args);
+  const text = toolHeadline(args);
   if (text === null) return null;
   return (
     <span className="min-w-0 truncate font-mono text-muted-foreground" title={text}>

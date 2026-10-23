@@ -2,7 +2,7 @@ kind: Telo.Application
 metadata:
   name: AnthropicComputedOptions
   version: 1.0.0
-  description: Fixture — a model whose `options` bag is computed, so only the running application can see that it names the token cap the kind's own field holds.
+  description: Fixture — a model whose `options` bag is computed and names the token cap the kind's own field holds, which the expression's literal keys show before it runs.
 imports:
   Anthropic: ../../
   Http: ../../../http-client

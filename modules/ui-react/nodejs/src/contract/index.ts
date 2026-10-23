@@ -12,12 +12,15 @@ import scenesData from "./scenes.json" with { type: "json" };
 import vectorsData from "./vectors.json" with { type: "json" };
 import type { ControlsContract, ControlVectors, Scene } from "./interpreter.js";
 
-/** The part list, the renderer's states, its own part states and the reserved properties. */
+/** The part list, the renderer's states, its own part states, the reserved properties and the tokens it reads. */
 export interface PartsContract {
   parts: Record<string, string[]>;
   states: Record<string, { values: string[]; on: string[] }>;
   partStates: { values: string[]; on: string[] }[];
   reserved: { part: string; properties: string[]; because: string }[];
+  /** The design tokens the renderer's own layer reads: a theme gives each a
+   *  value, and need not read it. */
+  rendererTokens: string[];
 }
 
 export const controls = controlsData as unknown as ControlsContract;

@@ -1,6 +1,5 @@
 # A stand-in origin, as the hub's origin reads see it: run as
-# `<teloCommand> module versions <ref> --json`,
-# `<teloCommand> module digest <ref>@<version> --json` or
+# `<teloCommand> module versions <ref> --json --digests` or
 # `<teloCommand> module manifest <ref>@<version> --json`, it answers with what is
 # recorded for that ref. Modules the hub must refuse:
 #
@@ -33,8 +32,8 @@ metadata:
   name: RecordedOrigin
   version: 1.0.0
   description: >-
-    Answers the hub's `telo module versions --json` and `telo module manifest
-    --json` reads with what is recorded for the requested ref.
+    Answers the hub's `telo module versions --json --digests` and `telo module
+    manifest --json` reads with what is recorded for the requested ref.
 imports:
   Console: ../../../../../../modules/console
   Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
@@ -55,6 +54,10 @@ variables:
     type: boolean
     arg: json
     default: false
+  digests:
+    type: boolean
+    arg: digests
+    default: false
 targets:
   - !ref answer
 ---
@@ -63,27 +66,24 @@ metadata:
   name: answer
 steps:
   - name: verbGate
-    if: !cel "variables.group != 'module' || !(variables.verb in ['versions', 'digest', 'manifest']) || !variables.json"
+    if: !cel >-
+      variables.group != 'module' || !variables.json
+        || !((variables.verb == 'versions' && variables.digests) || (variables.verb == 'manifest' && !variables.digests))
     then:
       - name: refuse
         throw:
           code: ERR_FIXTURE_UNSUPPORTED_READ
-          message: !interpolate "this origin answers only `module versions|digest|manifest <ref> --json`, not `${{ variables.group }} ${{ variables.verb }}`"
-  # What `module versions` reports, newest first.
+          message: !interpolate "this origin answers only `module versions <ref> --json --digests` and `module manifest <ref> --json`, not `${{ variables.group }} ${{ variables.verb }}`"
+  # What `module versions --digests` reports, newest first.
   - name: versions
     value:
-      oci://example.test/definition-first: [1.0.0]
-      oci://example.test/telo: [0.119.0, 0.118.0]
-      oci://example.test/not-telo: [0.119.0]
-  # What `module digest` reports.
-  - name: digests
-    value:
-      oci://example.test/telo@0.119.0:
-        ref: oci://example.test/telo@0.119.0
-        digest: sha256:telo-0.119.0
-      oci://example.test/not-telo@0.119.0:
-        ref: oci://example.test/not-telo@0.119.0
-        digest: sha256:not-telo-0.119.0
+      oci://example.test/definition-first:
+        - { version: 1.0.0, digest: sha256:definition-first-1.0.0 }
+      oci://example.test/telo:
+        - { version: 0.119.0, digest: sha256:telo-0.119.0 }
+        - { version: 0.118.0, digest: sha256:telo-0.118.0 }
+      oci://example.test/not-telo:
+        - { version: 0.119.0, digest: sha256:not-telo-0.119.0 }
   # What `module manifest` reports.
   - name: manifests
     value:
@@ -174,9 +174,7 @@ steps:
             - { name: Access, runtimes: [nodejs], languages: [], portable: false }
         application: null
   - name: recorded
-    value: !cel >-
-      variables.verb == 'versions' ? steps.versions.result
-        : (variables.verb == 'digest' ? steps.digests.result : steps.manifests.result)
+    value: !cel "variables.verb == 'versions' ? steps.versions.result : steps.manifests.result"
   - name: refGate
     if: !cel "!(variables.ref in steps.recorded.result)"
     then:

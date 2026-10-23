@@ -86,7 +86,7 @@ content:
       style: muted
       text: >-
         A failure tree of the action's own, drawn over the error and the record sent. Give task 4 to
-        jan@northwind.example and it succeeds. Leave the e-mail out, or name nobody on the team, and the refusal
+        james@northwind.example and it succeeds. Leave the e-mail out, or name nobody on the team, and the refusal
         lands on the field; task 999 answers 404, and tomas@northwind.example, who has left, 409.
     - { type: composite, ref: !ref assignTask }
     - type: text
@@ -373,7 +373,7 @@ content:
       style: muted
       text: >-
         Pausing a project is for a manager alone. With no session the guard answers 401. Signed in on the Data
-        page as jan@northwind.example, who is no manager, the route answers 403 with no body; signed in as
+        page as james@northwind.example, who is no manager, the route answers 403 with no body; signed in as
         ada@northwind.example, it pauses the project, and refuses one that is not running in the page's language. The
         action's default failure tree draws each refusal.
     - type: composite

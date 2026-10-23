@@ -52,70 +52,103 @@ export function resolveSchemaTypeRefs(
   aliases?: AliasResolver,
   aliasesByModule?: Map<string, AliasResolver>,
 ): void {
-  const walk = (
-    value: unknown,
-    resolveAuthority: (authority: string) => string | undefined,
-    ownModule: string | undefined,
-    // The type field's OWN value is a declared reference slot (`x-telo-ref:
-    // Telo.Type`), with its own reference validation and its own editor picker.
-    // Only what sits INSIDE it is schema, and only schema is this pass's to
-    // canonicalize — rewriting the slot itself would hand the reference checker
-    // a shape it is right to reject.
-    isSlotRoot: boolean,
-  ): void => {
-    if (value === null || typeof value !== "object") return;
-    if (Array.isArray(value)) {
-      for (const item of value) walk(item, resolveAuthority, ownModule, false);
-      return;
-    }
-    const obj = value as Record<string, unknown>;
-    const parsed = parseTeloTypeRef(obj.$ref);
-    if (parsed) {
-      const module = resolveAuthority(parsed.authority);
-      if (module) obj.$ref = canonicalTypeSchemaId(module, parsed.typeName);
-    }
-    // A reference the tag left behind. Rewritten in place rather than replaced,
-    // so a node that carried siblings (a `title`, a `description`) keeps them —
-    // a `$ref` beside other keywords is ordinary JSON Schema.
-    const named = resolvedRefInSchema(obj);
-    if (named) {
-      const module = named.alias === undefined ? ownModule : resolveAuthority(named.alias);
-      // An unresolvable alias is left exactly as written: `validateReferences`
-      // is what reports a reference that names nothing, and guessing a module
-      // here would turn a typo into a `$ref` that resolves to the wrong shape.
-      if (module) {
-        const canonical = canonicalTypeSchemaId(module, named.name);
-        if (isSlotRoot) {
-          // At the slot root the reference STAYS a reference — the canonical id
-          // is stamped beside it. That is what makes the resolver alias-aware
-          // here: it reads the module off the id instead of matching a bare
-          // `metadata.name` across a flattened list, where two libraries
-          // declaring a shape of the same name collide silently.
-          obj.$ref = canonical;
-        } else {
-          delete obj[RESOLVED_REFERENCE_MARKER];
-          delete obj.kind;
-          delete obj.name;
-          delete obj.alias;
-          obj.$ref = canonical;
-        }
-      }
-    }
-    for (const key of Object.keys(obj)) walk(obj[key], resolveAuthority, ownModule, false);
-  };
-
   for (const r of resources) {
     const ownModule = (r.metadata as { module?: string } | undefined)?.module;
     const resolver = moduleAliasScope(r.metadata, aliases, aliasesByModule);
     const resolveAuthority = (authority: string): string | undefined =>
       authority === "Self" ? ownModule : resolver?.moduleForAlias(authority);
     for (const field of SCHEMA_FIELDS) {
-      walk((r as Record<string, unknown>)[field], resolveAuthority, ownModule, true);
+      canonicalizeInPlace((r as Record<string, unknown>)[field], resolveAuthority, ownModule, true);
     }
     for (const field of SIGNATURE_FIELDS) {
-      walk((r as Record<string, unknown>)[field], resolveAuthority, ownModule, false);
+      canonicalizeInPlace((r as Record<string, unknown>)[field], resolveAuthority, ownModule, false);
     }
   }
+}
+
+/**
+ * A copy of a named shape's schema with every shape reference nested in it — a
+ * resolved `!ref`, or the authored `telo://<Self|Alias>/<Type>` — made canonical
+ * in the declaring module's scope, the form the registry holds a shape in, so
+ * whatever validates through it follows the reference. A reference that resolves
+ * to nothing stays as written, for the check that reports it; the schema passed
+ * in is not changed.
+ */
+export function canonicalShapeSchema(
+  schema: Record<string, any>,
+  ownModule: string,
+  moduleForAlias: (alias: string) => string | undefined,
+): Record<string, any> {
+  const copy = plainCopy(schema) as Record<string, any>;
+  canonicalizeInPlace(
+    copy,
+    (authority) => (authority === "Self" ? ownModule : moduleForAlias(authority)),
+    ownModule,
+    false,
+  );
+  return copy;
+}
+
+function plainCopy(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(plainCopy);
+  if (value === null || typeof value !== "object") return value;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) out[key] = plainCopy(child);
+  return out;
+}
+
+function canonicalizeInPlace(
+  value: unknown,
+  resolveAuthority: (authority: string) => string | undefined,
+  ownModule: string | undefined,
+  // The type field's OWN value is a declared reference slot (`x-telo-ref:
+  // Telo.Type`), with its own reference validation and its own editor picker.
+  // Only what sits INSIDE it is schema, and only schema is this pass's to
+  // canonicalize — rewriting the slot itself would hand the reference checker
+  // a shape it is right to reject.
+  isSlotRoot: boolean,
+): void {
+  if (value === null || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    for (const item of value) canonicalizeInPlace(item, resolveAuthority, ownModule, false);
+    return;
+  }
+  const obj = value as Record<string, unknown>;
+  const parsed = parseTeloTypeRef(obj.$ref);
+  if (parsed) {
+    const module = resolveAuthority(parsed.authority);
+    if (module) obj.$ref = canonicalTypeSchemaId(module, parsed.typeName);
+  }
+  // A reference the tag left behind. Rewritten in place rather than replaced,
+  // so a node that carried siblings (a `title`, a `description`) keeps them —
+  // a `$ref` beside other keywords is ordinary JSON Schema.
+  const named = resolvedRefInSchema(obj);
+  if (named) {
+    const module = named.alias === undefined ? ownModule : resolveAuthority(named.alias);
+    // An unresolvable alias is left exactly as written: `validateReferences`
+    // is what reports a reference that names nothing, and guessing a module
+    // here would turn a typo into a `$ref` that resolves to the wrong shape.
+    if (module) {
+      const canonical = canonicalTypeSchemaId(module, named.name);
+      if (isSlotRoot) {
+        // At the slot root the reference STAYS a reference — the canonical id
+        // is stamped beside it. That is what makes the resolver alias-aware
+        // here: it reads the module off the id instead of matching a bare
+        // `metadata.name` across a flattened list, where two libraries
+        // declaring a shape of the same name collide silently.
+        obj.$ref = canonical;
+      } else {
+        delete obj[RESOLVED_REFERENCE_MARKER];
+        delete obj.kind;
+        delete obj.name;
+        delete obj.alias;
+        obj.$ref = canonical;
+      }
+    }
+  }
+  for (const key of Object.keys(obj)) canonicalizeInPlace(obj[key], resolveAuthority, ownModule, false);
 }
 
 /**

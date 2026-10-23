@@ -284,6 +284,10 @@ export class DefinitionRegistry {
       for (const { schema, id } of this.registeredSchemas) ajv.addSchema(schema, id, undefined, false);
       const validator = new SchemaNodeValidator(ajv, {
         canonical: (schema) => schemaWithTagsAsText(schema) as object,
+        // `tryAddSchema` mirrors only what registered; a schema `this.ajv`
+        // resolves otherwise (one held though its registration was refused, an
+        // `$id` a compiled schema carried) is read off it.
+        resolveReference: (id) => this.schemaForId(id),
       });
       this.nodes = { ajv, validator };
     }

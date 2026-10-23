@@ -10,6 +10,14 @@ metadata:
     assert that a zero width, an unrecognized CSS color, a bad format, and an
     out-of-range quality raise ERR_INVALID_INPUT (canvas would otherwise
     silently keep its previous fill color or clamp the quality).
+# The bad format reaches the call from a variable, whose declared type (a
+# string) is all `telo check` knows of it, so the value meets the RUNTIME
+# contract boundary this test is about.
+variables:
+  badFormat:
+    env: TEST_IMAGE_BAD_FORMAT
+    type: string
+    default: tiff
 imports:
   Image: ../
   JS: ../../javascript
@@ -136,11 +144,11 @@ steps:
   - name: tryBlank
     try:
       - name: blank
-        # Deliberately invalid, routed through CEL: a literal is rejected by
-        # `telo check` (CONTRACT_INPUTS_MISMATCH), and this test is about the
-        # RUNTIME boundary — which is how a real violation arrives anyway, from a
-        # computed value rather than something visible in the manifest.
-        inputs: { width: 8, height: 8, format: !cel "'tiff'" }
+        # Deliberately invalid, read from a variable: a literal — written plainly
+        # or as a CEL literal — is rejected by `telo check`, and this test is
+        # about the RUNTIME boundary, which is how a real violation arrives
+        # anyway: from a value the manifest does not show.
+        inputs: { width: 8, height: 8, format: !cel "variables.badFormat" }
         invoke: !ref canvas
     catch:
       - name: caught

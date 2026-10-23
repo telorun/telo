@@ -4,7 +4,7 @@
 
 <h1 align="center">Telo</h1>
 
-<p align="center">Runtime for declarative backends.</p>
+<p align="center">Runtime for declarative applications — backends and UIs.</p>
 
 <p align="center">
   <a href="https://github.com/telorun/telo/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/telorun/telo/actions/workflows/test.yml/badge.svg" /></a>
@@ -17,12 +17,12 @@
   <img alt="Changesets" src="https://img.shields.io/badge/maintained%20with-changesets-176de3" />
 </p>
 
-Telo is an execution engine (Micro-Kernel) that runs logic defined entirely in YAML manifests. Instead of writing imperative backend code, you define your routes, databases, schemas, and AI workflows as atomic, interconnected YAML documents. Telo takes those manifests and runs them.
+Telo is an execution engine (Micro-Kernel) that runs logic defined entirely in YAML manifests. Instead of writing imperative code, you define your routes, databases, schemas, screens, and AI workflows as atomic, interconnected YAML documents. Telo takes those manifests and runs them.
 
 Built to be language-agnostic and infinitely extensible.
 
 ```bash
-# Reconcile your manifest into a running backend
+# Reconcile your manifest into a running application
 $ telo ./examples/todo-app
 
 {"level":30,"time":1771610393008,"pid":1310178,"hostname":"dev","msg":"Server listening at http://127.0.0.1:8077"}

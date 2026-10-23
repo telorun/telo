@@ -18,8 +18,7 @@ body {
 /* ---- Shell: a warm band under the title in the accent colour ---- */
 [data-telo-part="app"] { min-height: 100vh; background: var(--telo-color-background); }
 [data-telo-part="header"] {
-  gap: var(--telo-space-md);
-  padding: var(--telo-space-md) var(--telo-space-lg);
+  padding-block: var(--telo-space-md);
   border-bottom: 3px double var(--telo-color-border);
   background: var(--telo-color-surface);
   box-shadow: var(--telo-shadow-sm);
@@ -55,7 +54,8 @@ body {
 /* An icon resource's glyph, in the colour of its entry's text. */
 [data-telo-part="glyph"] { width: 1.125rem; height: 1.125rem; }
 [data-telo-part="nav-group"] { gap: var(--telo-space-xs); margin-inline-start: var(--telo-space-md); padding-inline-start: var(--telo-space-sm); border-inline-start: 1px solid var(--telo-color-border); }
-[data-telo-part="main"] { padding: var(--telo-space-xl); }
+[data-telo-part="header-content"] { gap: var(--telo-space-md); }
+[data-telo-part="main"] { padding-block: var(--telo-space-xl); }
 /* A sidebar: a column ruled off from the page, staying while it scrolls; a
    tab bar: a band along the bottom edge under a double rule. */
 [data-telo-part="sidebar"] { position: sticky; top: 0; align-self: start; max-height: 100vh; box-sizing: border-box; overflow-y: auto; gap: var(--telo-space-sm); width: 15rem; padding: var(--telo-space-lg) var(--telo-space-md); border-inline-end: 3px double var(--telo-color-border); }
@@ -77,7 +77,7 @@ body {
 [data-telo-part="tab"]:hover { color: var(--telo-color-text); }
 [data-telo-part="tab"][data-state="active"] { border-bottom-color: var(--telo-color-accent); color: var(--telo-color-text); }
 [data-telo-part="tab-panel"] { display: flex; flex-direction: column; gap: var(--telo-space-md); }
-[data-telo-part="page"] { gap: var(--telo-space-lg); max-width: 64rem; margin-inline: auto; }
+[data-telo-part="page"] { gap: var(--telo-space-lg); }
 [data-telo-part="page-title"] {
   margin: 0;
   font-family: var(--telo-font-heading), system-ui, sans-serif;
@@ -357,9 +357,10 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 /* ---- Narrow screens: the navigation is behind the menu button, filters
    shrink and wrap, and a table frame shows an edge shadow while more
    columns lie beyond it ---- */
-[data-compact="true"] > [data-telo-part="header"] { row-gap: var(--telo-space-xs); padding-block: var(--telo-space-sm); }
-[data-compact="true"] > [data-telo-part="header"] > :is([data-telo-part="header-start"], [data-telo-part="header-end"]) { flex: none; flex-wrap: nowrap; }
-[data-compact="true"] > [data-telo-part="header"] > [data-telo-part="app-title"] { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-compact="true"] > [data-telo-part="header"] { padding-block: var(--telo-space-sm); }
+[data-compact="true"] > [data-telo-part="header"] > [data-telo-part="header-content"] { row-gap: var(--telo-space-xs); }
+[data-compact="true"] > [data-telo-part="header"] > [data-telo-part="header-content"] > :is([data-telo-part="header-start"], [data-telo-part="header-end"]) { flex: none; flex-wrap: nowrap; }
+[data-compact="true"] > [data-telo-part="header"] > [data-telo-part="header-content"] > [data-telo-part="app-title"] { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-compact="true"] :is([data-telo-part="filter"], [data-telo-part="filter-group"], [data-telo-part="filter-bound"]) { min-width: 0; max-width: 100%; }
 [data-compact="true"] :is([data-telo-part="filter-group"], [data-telo-part="filter-bound"], [data-telo-part="filter-options"]) { flex-wrap: wrap; }
 [data-compact="true"] :is([data-telo-part="filter-input"], [data-telo-part="filter-select"], [data-telo-part="filter-tags"], [data-telo-part="filter-options"], [data-telo-part="filter-chip"]) { min-width: 0; max-width: 100%; }

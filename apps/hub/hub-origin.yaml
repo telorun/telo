@@ -19,9 +19,9 @@ kind: Telo.Library
 metadata:
   name: HubOrigin
   description: >-
-    Reads a published Telo module from its own host: which versions exist, what a
-    version's content digest is, and the version's manifest with the metadata the
-    CLI derives from it.
+    Reads a published Telo module from its own host: which versions exist with
+    each version's content digest, and a version's manifest with the metadata
+    the CLI derives from it.
 lifecycle: shared
 requires:
   # `resources:` inputs and `lifecycle:` on a library.
@@ -48,7 +48,6 @@ exports:
   resources:
     - pinnedRef
     - moduleVersions
-    - moduleDigest
     - moduleManifest
 ---
 kind: Shell.Command
@@ -78,9 +77,13 @@ inputType:
     required: [ref, version]
 value: !cel "inputs.ref.startsWith('oci://') ? inputs.ref + '@' + inputs.version : inputs.ref"
 ---
-# The versions a ref actually resolves to, newest-first, with the `latest` tag
-# dropped — it is an alias, not a version, and ingesting it would store the same
-# content twice under two names.
+# The versions a ref actually resolves to, newest-first, each with its digest
+# (or, when that one tag's digest cannot be read, the reason, with `digest`
+# empty), and with the `latest` tag dropped — it is an alias, not a version, and
+# ingesting it would store the same content twice under two names.
+#
+# One CLI process reads every digest: the reconcile pass reads every version of
+# every tracked module, and a process per version was most of its cost.
 kind: Run.Sequence
 metadata:
   name: moduleVersions
@@ -100,7 +103,19 @@ outputType:
     properties:
       ok: { type: boolean }
       error: { type: string }
-      versions: { type: array, items: { type: string } }
+      versions:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            version: { type: string }
+            # The transport-native content digest of the version. Opaque by
+            # design: it exists to detect a re-pushed tag, never to be compared
+            # across transports. '' when `error` says why it could not be read.
+            digest: { type: string }
+            error: { type: string }
+          required: [version, digest, error]
       # '' when the ref resolves but publishes no concrete version.
       latest: { type: string }
     required: [ok, error, versions, latest]
@@ -108,7 +123,7 @@ steps:
   - name: run
     invoke: !ref teloCli
     inputs:
-      args: !cel "variables.teloCommand + ['module', 'versions', inputs.ref, '--json']"
+      args: !cel "variables.teloCommand + ['module', 'versions', inputs.ref, '--json', '--digests']"
       timeoutMs: 120000
   - name: parsed
     if: !cel "steps.run.result.exitCode == 0"
@@ -117,64 +132,21 @@ steps:
         invoke: !ref parseYaml
         inputs:
           text: !cel "steps.run.result.stdout"
+      - name: concrete
+        value: !cel >-
+          steps.docs.result.docs[0]
+            .filter(e, string(e.version) != 'latest')
+            .map(e, {
+            'version': string(e.version),
+            'digest': 'digest' in e ? string(e.digest) : '',
+            'error': 'error' in e ? string(e.error) : ''
+          })
 outputs:
   ok: !cel "steps.run.result.exitCode == 0"
   error: !cel "steps.run.result.exitCode == 0 ? '' : steps.run.result.stderr"
-  versions: !cel >-
-    'docs' in steps
-      ? steps.docs.result.docs[0].filter(v, v != 'latest').map(v, string(v))
-      : []
+  versions: !cel "'concrete' in steps ? steps.concrete.result : []"
   latest: !cel >-
-    'docs' in steps && size(steps.docs.result.docs[0].filter(v, v != 'latest')) > 0
-      ? string(steps.docs.result.docs[0].filter(v, v != 'latest')[0])
-      : ''
----
-# The transport-native content digest of one version. Opaque by design: it exists
-# to detect a re-pushed tag, never to be compared across transports.
-kind: Run.Sequence
-metadata:
-  name: moduleDigest
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    additionalProperties: false
-    properties:
-      ref: { type: string }
-      version: { type: string }
-    required: [ref, version]
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    additionalProperties: false
-    properties:
-      ok: { type: boolean }
-      error: { type: string }
-      digest: { type: string }
-    required: [ok, error, digest]
-steps:
-  - name: pinned
-    invoke: !ref pinnedRef
-    inputs:
-      ref: !cel "inputs.ref"
-      version: !cel "inputs.version"
-  - name: run
-    invoke: !ref teloCli
-    inputs:
-      args: !cel "variables.teloCommand + ['module', 'digest', steps.pinned.result, '--json']"
-      timeoutMs: 60000
-  - name: parsed
-    if: !cel "steps.run.result.exitCode == 0"
-    then:
-      - name: docs
-        invoke: !ref parseYaml
-        inputs:
-          text: !cel "steps.run.result.stdout"
-outputs:
-  ok: !cel "steps.run.result.exitCode == 0"
-  error: !cel "steps.run.result.exitCode == 0 ? '' : steps.run.result.stderr"
-  digest: !cel "'docs' in steps ? steps.docs.result.docs[0].digest : ''"
+    'concrete' in steps && size(steps.concrete.result) > 0 ? steps.concrete.result[0].version : ''
 ---
 # One version's manifest, plus everything the CLI derives from it.
 #

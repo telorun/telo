@@ -506,8 +506,15 @@ export function evaluateResourceRules(
     }
     const { parsed, chains } = compiled;
 
+    // The budget stops the loop, so it is asked before a subject is evaluated:
+    // one slow evaluation with nothing left to judge has skipped nothing.
     const started = Date.now();
     for (const subject of subjects) {
+      const elapsed = Date.now() - started;
+      if (elapsed > RESOURCE_RULE_BUDGET_MS) {
+        findings.push({ kind: "over-budget", rule, path: subject.path, elapsedMs: elapsed });
+        break;
+      }
       // The collection itself is known only once the resource is created.
       if (subject.dynamic) {
         findings.push({ kind: "skipped", rule, path: subject.path, dynamic: subject.dynamic });
@@ -540,11 +547,6 @@ export function evaluateResourceRules(
       }
       if (held !== true) {
         findings.push({ kind: "violation", rule, path: subject.path, message: rule.message });
-      }
-      const elapsed = Date.now() - started;
-      if (elapsed > RESOURCE_RULE_BUDGET_MS) {
-        findings.push({ kind: "over-budget", rule, path: subject.path, elapsedMs: elapsed });
-        break;
       }
     }
   }

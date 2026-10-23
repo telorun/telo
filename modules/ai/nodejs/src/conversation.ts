@@ -1,4 +1,5 @@
 import { InvokeError } from "@telorun/sdk";
+import type { ContentResolution } from "./content-resolution.js";
 import type { AgentStreamPart, Message, ToolApproval, ToolCall } from "./types.js";
 
 /**
@@ -10,32 +11,39 @@ import type { AgentStreamPart, Message, ToolApproval, ToolCall } from "./types.j
  * The record is append-only, so a tool's message lands when that tool finishes.
  * A model is always shown each assistant turn's tool messages in that turn's
  * call order — see {@link Conversation.forModel}.
+ *
+ * What it keeps for the model is the conversation as the model is sent it: each
+ * message with the references the run's resolver claims resolved, resolved when
+ * the message enters the conversation. The record keeps them as written.
  */
 export class Conversation {
   /** What this run appended, in order. */
   readonly appended: Message[] = [];
 
-  private readonly messages: Message[];
+  private constructor(
+    private readonly sent: Message[],
+    private readonly resolution: ContentResolution,
+  ) {}
 
-  constructor(initial: readonly Message[]) {
-    this.messages = [...initial];
+  /** The conversation a run was given, its references resolved. */
+  static async start(
+    initial: readonly Message[],
+    resolution: ContentResolution,
+  ): Promise<Conversation> {
+    return new Conversation(await resolution.messages(initial), resolution);
   }
 
-  /** Append a message, returning the part that reports it. */
-  append(message: Message): Extract<AgentStreamPart, { type: "message" }> {
-    this.messages.push(message);
+  /** Append a message, returning the part that reports it — the message as written. */
+  async append(message: Message): Promise<Extract<AgentStreamPart, { type: "message" }>> {
+    const sent = await this.resolution.message(message);
+    this.sent.push(sent);
     this.appended.push(message);
     return { type: "message", message };
   }
 
   /** The conversation as a model request carries it. */
   forModel(): Message[] {
-    return inCallOrder(this.messages);
-  }
-
-  /** The calls the conversation leaves unanswered, in call order. */
-  pendingCalls(): ToolCall[] {
-    return pendingCalls(this.messages);
+    return inCallOrder(this.sent);
   }
 }
 
@@ -92,7 +100,7 @@ export interface PendingWork {
  * decisions for one call, and two pending calls sharing an id.
  */
 export function pendingWork(
-  conversation: Conversation,
+  initial: readonly Message[],
   inputs: { prompt?: string; approvals?: ToolApproval[] },
   label: string,
 ): PendingWork {
@@ -103,7 +111,7 @@ export function pendingWork(
       "'approvals' decides the tool calls a conversation left pending, so it goes with 'messages', never with 'prompt'.",
     );
   }
-  const calls = conversation.pendingCalls();
+  const calls = pendingCalls(initial);
   const ids = new Set<string>();
   for (const call of calls) {
     if (ids.has(call.id)) {

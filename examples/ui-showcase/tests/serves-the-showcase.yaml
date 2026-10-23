@@ -28,7 +28,7 @@ metadata:
     Filters page; and the themes page with its tokens, typefaces and, on `/`,
     the links between mounts and the brand switch. `/radix`, `/brand` and
     `/sidebar` place the very same views, `/sidebar` drawing its navigation in
-    a sidebar that is a tab bar on a phone. The routes these call are asserted by
+    a sidebar that is a tab bar on a phone, its pages at full width. The routes these call are asserted by
     `answers-every-route.yaml`, `tables-and-filters.yaml`,
     `forms-and-actions.yaml` and `components-crud-themes.yaml`.
 imports:
@@ -214,6 +214,8 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/sidebar/_telo/ui/page?path=/" }
   - name: sidebarThemes
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/sidebar/_telo/ui/page?path=/themes" }
+  - name: sidebarData
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/sidebar/_telo/ui/page?path=/data" }
 
   # The components' module and their stylesheet, as the page loads them.
   - name: componentModule
@@ -379,7 +381,20 @@ steps:
             - Language
             - &languages
               - [ English, "/api/lang?set=en", [ strong ] ]
+              - [ Deutsch, "/api/lang?set=de", [] ]
+              - [ Español, "/api/lang?set=es", [] ]
+              - [ Français, "/api/lang?set=fr", [] ]
+              - [ Italiano, "/api/lang?set=it", [] ]
+              - [ Nederlands, "/api/lang?set=nl", [] ]
               - [ Polski, "/api/lang?set=pl", [] ]
+              - [ Português, "/api/lang?set=pt", [] ]
+              - [ Türkçe, "/api/lang?set=tr", [] ]
+              - [ Русский, "/api/lang?set=ru", [] ]
+              - [ Українська, "/api/lang?set=uk", [] ]
+              - [ हिन्दी, "/api/lang?set=hi", [] ]
+              - [ 日本語, "/api/lang?set=ja", [] ]
+              - [ 한국어, "/api/lang?set=ko", [] ]
+              - [ 中文, "/api/lang?set=zh", [] ]
           - - menu
             - Theme
             - - [ Default, /, strong ]
@@ -1658,3 +1673,17 @@ steps:
         sidebar:
           - !cel "[steps.overview.result.body.children[0]]"
           - !cel "[steps.themes.result.body.children[0]]"
+
+  # One page resource at two widths: `/` leaves its pages contained, `/sidebar`
+  # declares `pageWidth: full`, and each header follows its application.
+  - name: verifyPageWidth
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        root: !cel "steps.data.result.body.width"
+        sidebar: !cel "steps.sidebarData.result.body.width"
+        headers: !cel "[steps.app, steps.radixApp, steps.brandApp, steps.sidebarApp].map(a, a.result.body.header.width)"
+      expected:
+        root: contained
+        sidebar: full
+        headers: [ contained, contained, contained, full ]

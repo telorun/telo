@@ -1,4 +1,5 @@
 import {
+  answeredCallId,
   contentToText,
   isMediaPart,
   isTextPart,
@@ -264,11 +265,11 @@ function replayedBlocks(message: Message, state: MessagesProviderState, out: Tra
  * breakpoint on a part inside a result marks the result, which is the block
  * the API caches at.
  */
-function toolTurn(run: Message[], label: string, out: Translation): Turn {
+function toolTurn(run: Message[], start: number, label: string, out: Translation): Turn {
   const results: Block[] = [];
   const documents: Block[] = [];
-  for (const message of run) {
-    const result: Block = { type: "tool_result", tool_use_id: message.toolCallId ?? "" };
+  for (const [offset, message] of run.entries()) {
+    const result: Block = { type: "tool_result", tool_use_id: answeredCallId(message, start + offset, label) };
     results.push(result);
     const content = message.content;
     if (typeof content === "string") {
@@ -369,7 +370,7 @@ function translateMessages(
     if (message.role === "tool") {
       let end = index;
       while (messages[end + 1]?.role === "tool") end++;
-      out.turns.push(toolTurn(messages.slice(index, end + 1), label, out));
+      out.turns.push(toolTurn(messages.slice(index, end + 1), index, label, out));
       index = end;
       continue;
     }

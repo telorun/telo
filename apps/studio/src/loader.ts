@@ -92,6 +92,7 @@ export {
   getImportedConfig,
   getImportableLibraries,
   hasApplicationImporter,
+  firstWorkspaceModule,
   hasNoWorkspaceModules,
   isWorkspaceModule,
   resolveCapability,

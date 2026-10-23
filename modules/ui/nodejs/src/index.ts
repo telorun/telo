@@ -22,7 +22,8 @@ export { placedRowAction } from "./row-actions.js";
 // request headers they read, and the navigation with every default filled.
 export { errorNode, RequestNodes, type EvaluatedNode } from "./delivered-nodes.js";
 export { headerReads, unionReads, type HeaderReads } from "./request-header-reads.js";
-export { isPage, type PageDocument, type PageInstance, type PageReading, type PageRequest } from "./page-controller.js";
+export { isPage, type PageDocument, type PageInputs, type PageInstance, type PageReading, type PageRequest } from "./page-controller.js";
+export { resolvedPageWidth, type PageWidth } from "./page-width.js";
 export {
   deliveredNavigation,
   preparedNavigation,

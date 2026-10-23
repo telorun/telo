@@ -52,16 +52,21 @@ system: "You are a helpful assistant."
 | `model`   | ref    | yes      | Reference to any `Ai.Model` implementation. Typed `x-telo-ref: Self.Model`.                    |
 | `system`  | string or text parts | no | Default system prompt — a string, or a non-empty list of text parts when one marks a [prompt-cache breakpoint](../README.md#prompt-caching). Runtime `inputs.system` wins when set. In this field a text part is exactly `{ type: text, text, cacheBreakpoint? }`; any other key is refused. |
 | `options` | object | no       | Resource-level option defaults. Merged beneath `inputs.options` (downstream wins).                 |
+| `resolver` | object | no      | Fetches referenced content for the model — see [Referenced content](#referenced-content). |
 
 ## Invocation inputs
 
-Identical to [Ai.Text](./ai-text.md): `prompt` (shorthand) **or** `messages` (full turns, whose `content` is a string or content parts), plus optional `system` / `options` overrides. Same validation rules.
+Identical to [Ai.Text](./ai-text.md): `prompt` (shorthand) **or** `messages` (full turns, whose `content` is a string or content parts), plus optional `system` / `options` overrides and the `context` the resolver reads. Same validation rules.
+
+## Referenced content
+
+The `resolver` field and the `context` input are [Ai.Text's](./ai-text.md#referenced-content): a media part whose `uri` scheme the resolver lists is replaced, in what the model is sent, by the resolver's answer — each distinct `uri` once per call — and any other `uri` reaches the model as written. Resolution happens before the model call, so what the resolver throws, and `ERR_CONTENT_RESOLUTION_INVALID` for an answer that is not a part a caller may send, reject **this call** rather than the iteration.
 
 ## Errors
 
 Like `Ai.Text`, this kind declares `throws: { inherit: true }`: its model's codes — the same [thirteen](../README.md#catching-a-models-errors) for every provider — are part of its own throw union, so a `catch:` step or a route's `catches:` may name them (see [Ai.Text → Errors](./ai-text.md#errors)). *When* a failure arrives decides who can answer it:
 
-- **The call makes the model call.** What the model refuses that call with — a content part it cannot carry, for one — rejects **this call**, unchanged. In a `mode: stream` route nothing has been sent yet, so `catches:` renders it.
+- **The call resolves referenced content and makes the model call.** What the resolver throws, `ERR_CONTENT_RESOLUTION_INVALID`, and what the model refuses that call with — a content part it cannot carry, for one — rejects **this call**, unchanged. In a `mode: stream` route nothing has been sent yet, so `catches:` renders it.
 - **Anything later rejects the iteration** — the endpoint refusing the request, or a failure during generation. The response is already under way, so the encoder frames it in-band and `catches:` cannot.
 
 Which refusals a model raises from the call is its contract's: [every one it can decide from the request alone](./ai-model.md#when-a-streaming-call-fails). A caller that received the stream reads it to its `finish` or cancels it.

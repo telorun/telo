@@ -71,6 +71,7 @@ toolProviders:
 | `maxToolResultBytes` | integer ≥ 1 | no | Bounds the text each tool result feeds the model — see [Bounded tool results](#bounded-tool-results). Unset: unbounded. |
 | `toolProviders` | array           | no       | Tool sources — see below.                                                                |
 | `approver`      | object          | no       | What decides a tool call that needs a decision — see [Tool approval](#tool-approval).    |
+| `resolver`      | object          | no       | Fetches referenced content for the model — see [Referenced content](#referenced-content). |
 
 ### `toolProviders[]`
 
@@ -92,7 +93,7 @@ Tools are listed lazily on first invoke and cached. A name clash across provider
 | `messages` | array  | exactly one of `prompt`/`messages`| Full turns.                                                  |
 | `system`   | string or text parts | no                  | Runtime system override, in either form (wins over manifest `system`). A text part here is read as a message's is. |
 | `options`  | object | no                                | Per-call option overrides.                                   |
-| `context`  | object | no                                | Data from the caller for the tools to read — see [Caller context](#caller-context). Default `{}`. |
+| `context`  | object | no                                | Data from the caller for the tools and the resolver to read — see [Caller context](#caller-context). Default `{}`. |
 | `approvals` | array | no                                | Decisions on the tool calls `messages` leaves pending: `{ toolCallId, approved, reason? }` each. An `approvals` entry beside `prompt` is refused — see [Resuming](#resuming-a-run-that-ended-asking). |
 | `providerState` | any | no                              | Opaque state a previous run returned as `providerState`; handed to the first model call. |
 
@@ -100,7 +101,7 @@ Tools are listed lazily on first invoke and cached. A name clash across provider
 
 `context` carries data the caller knows and the model must not choose: the id of the turn being served, the signed-in user, a tenant. It is never sent to the model. Each mounted provider's tools read it in their `inputs:` mapping as `context` (see [`Ai.Tools`](./ai-tool-provider.md#caller-context)), and a provider says what it needs by declaring a `contextType`.
 
-The agent's `context` input is typed by those declarations: it must satisfy the `contextType` of **every** provider under `toolProviders` that declares one, and a provider declaring none (an MCP provider, a static list reading no caller data) asks for nothing. An omitted `context` is `{}`, so an agent whose provider requires `turnId` must be called with it:
+The agent's `context` input is typed by those declarations: it must satisfy the `contextType` of **every** provider under `toolProviders` that declares one, and the [resolver](#referenced-content)'s when it declares one; a provider declaring none (an MCP provider, a static list reading no caller data) asks for nothing. An omitted `context` is `{}`, so an agent whose provider requires `turnId` must be called with it:
 
 ```yaml
 - name: reply
@@ -111,7 +112,7 @@ The agent's `context` input is typed by those declarations: it must satisfy the 
       turnId: !cel "inputs.turnId"
 ```
 
-A call that does not satisfy them is `CONTRACT_INPUTS_MISMATCH` at its `inputs:` under `telo check`, and `ERR_INPUT_INVALID` when invoked — before any model call is made. With several providers, declare each `contextType` open (no `additionalProperties: false`), since one value has to satisfy all of them. A provider the agent reaches only through a library's `resources:` input is not known to `telo check`; it is still enforced when the agent is invoked.
+A call that does not satisfy them is `CONTRACT_INPUTS_MISMATCH` at its `inputs:` under `telo check`, and `ERR_INPUT_INVALID` when invoked — before any model call is made. With several declarations, declare each `contextType` open (no `additionalProperties: false`), since one value has to satisfy all of them. A provider the agent reaches only through a library's `resources:` input is not known to `telo check`; it is still enforced when the agent is invoked.
 
 ## Output
 
@@ -131,9 +132,19 @@ A call that does not satisfy them is `CONTRACT_INPUTS_MISMATCH` at its `inputs:`
 
 ## Errors
 
-The agent throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION`, `ERR_AGENT_MAX_STEPS`, `ERR_AGENT_UNKNOWN_TOOL`, `ERR_AGENT_TOOL_COLLISION`, `ERR_AGENT_APPROVAL_UNKNOWN_TOOL`, `ERR_AGENT_APPROVAL_DECISION_INVALID` — **and whatever its model or its approver throws**, unchanged: the kind declares `throws: { inherit: true }`, so their declared codes are part of the agent's own throw union. Every model raises the same [thirteen codes](../README.md#catching-a-models-errors), whichever provider it is. A `catch:` step or a route's `catches:` may name them, and a list with no catch-all must cover them (`UNCOVERED_THROW_CODE`). See [Ai.Text → Errors](./ai-text.md#errors) for a route that does.
+The agent throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION`, `ERR_AGENT_MAX_STEPS`, `ERR_AGENT_UNKNOWN_TOOL`, `ERR_AGENT_TOOL_COLLISION`, `ERR_AGENT_APPROVAL_UNKNOWN_TOOL`, `ERR_AGENT_APPROVAL_DECISION_INVALID`, `ERR_CONTENT_RESOLUTION_INVALID` — **and whatever its model, its approver or its resolver throws**, unchanged: the kind declares `throws: { inherit: true }`, so their declared codes are part of the agent's own throw union. Every model raises the same [thirteen codes](../README.md#catching-a-models-errors), whichever provider it is. A `catch:` step or a route's `catches:` may name them, and a list with no catch-all must cover them (`UNCOVERED_THROW_CODE`). See [Ai.Text → Errors](./ai-text.md#errors) for a route that does.
 
-The shape of the call — its messages and their content parts included — is the declared input type's (`CONTRACT_INPUTS_MISMATCH` under `telo check`, `ERR_INPUT_INVALID` at dispatch); `ERR_INVALID_INPUT` is what the shape cannot state: both `prompt` and `messages`, or neither, and an `approvals` list that cannot be placed.
+The shape of the call — its messages and their content parts included, and a `tool` turn naming the call it answers by a non-empty `toolCallId` — is the declared input type's: a malformed literal is `CONTRACT_INPUTS_MISMATCH` under `telo check`, a malformed computed value `ERR_INPUT_INVALID` at dispatch; `ERR_INVALID_INPUT` is what the shape cannot state: both `prompt` and `messages`, or neither, and an `approvals` list that cannot be placed.
+
+## Referenced content
+
+The `resolver` field is [Ai.Text's](./ai-text.md#referenced-content), and `context` reaches it as it reaches the tools. A media part whose `uri` scheme the resolver lists is replaced, in what the model is sent and nowhere else, by the resolver's answer; any other `uri` reaches the model as written.
+
+- The messages the run is given are resolved before the first model call; a tool result carrying such a part is resolved when its message joins the conversation.
+- Each distinct `uri` is resolved once per run, at most `concurrency` at a time, whichever message or model call carries it — a reference repeated across turns, or a tool returning one the conversation already holds, is not fetched again. Nothing is kept across runs.
+- `messages`, `toolResults[].content` and every streamed part keep the reference as written, so the conversation a caller persists never holds the fetched content.
+- `maxToolResultBytes` bounds what a tool returns, not what its references resolve to: the resolver bounds the content it fetches.
+- A resolver failure fails the run, whatever `onToolError` says — a tool result's included: it is not a tool failure. An answer that is not a part a caller may send is `ERR_CONTENT_RESOLUTION_INVALID`.
 
 ## When the step budget runs out
 

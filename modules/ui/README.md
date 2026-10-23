@@ -89,7 +89,7 @@ turns what it produces into a web application.
 | [`Ui.Collection`](docs/collection.md) | What a collection's list accepts: its filters and sorts. |
 | [`Ui.Component`](docs/component.md) | A custom browser component, with its properties. |
 | [`Ui.ComponentExport`](docs/component-export.md) | Publishes a component a module ships. |
-| [`Ui.DesignTokens`](docs/design-tokens.md) | The brand: colours, radii, spacing, shadows, type sizes and typefaces by name, read by any renderer's theme. |
+| [`Ui.DesignTokens`](docs/design-tokens.md) | The brand: colours, radii, spacing, shadows, type sizes, typefaces and a page's measure and inset by name, read by any renderer's theme. |
 | [`Ui.Composite`](docs/composite.md) | The contract every composite provides through. |
 | [`Ui.Words`](docs/texts.md#the-renderers-own-words) | The words a renderer draws on its own — loading, save, a pager's range, each validation message — one text per id; `Ui.words` is the English set. |
 

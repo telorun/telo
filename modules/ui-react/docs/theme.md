@@ -64,8 +64,10 @@ reads should have a value in the theme itself.
 `UiReact.defaultTheme` is the instance this module exports: one stylesheet,
 no `controls`. It styles every part of the styling contract — the picker, the
 date range, field groups and field descriptions included — declares no
-reserved property, and gives every token a value, light and dark; how it reads
-the tokens is under [Tokens](styling.md#tokens). A sidebar is a column on the
+reserved property, and gives every token a value, light and dark — a
+contained page's measure, `width.page`, `64rem`, and the page inset,
+`space.page`, `1.5rem`; how it reads the tokens is
+under [Tokens](styling.md#tokens). A sidebar is a column on the
 surface colour under the sticky header, staying in view while the page
 scrolls, with its toggle at its top; a tab bar is a row on the surface colour
 along the bottom edge, its tabs spread across it; tabs are a row over a

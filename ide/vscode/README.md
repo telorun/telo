@@ -2,7 +2,7 @@
 
 Language support for [Telo](https://telo.run) manifests — diagnostics, completions, hover docs, go-to-definition, rename and import upgrades, all computed by the telo version each module is edited against: that version's own engine, the same analysis its `telo check` performs.
 
-Telo is a declarative runtime for backend applications: YAML manifests describe desired state, and the kernel resolves the dependency graph and runs a controller for each resource kind. Because manifests are statically analyzable, most mistakes are catchable before anything runs — this extension is where you see them.
+Telo is a declarative runtime for applications — backends and UIs: YAML manifests describe desired state, and the kernel resolves the dependency graph and runs a controller for each resource kind. Because manifests are statically analyzable, most mistakes are catchable before anything runs — this extension is where you see them.
 
 ## Features
 

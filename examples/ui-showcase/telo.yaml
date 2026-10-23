@@ -5,7 +5,7 @@ metadata:
   categories: [ UI ]
   description: |
     A tour of everything a declarative screen can do, with no hand-written
-    frontend, in English and Polish: every node type and text form, conditions
+    frontend, in fifteen languages: every node type and text form, conditions
     and query parameters, data readers with loading and failure states and a
     sign-in gate, data grids, filter bars, forms, actions, custom components,
     a generated admin screen, tabs and themes. The same pages are served four
@@ -40,12 +40,14 @@ imports:
   # the `/brand` mount draws with.
   Components: ./components
   Brand: ./brand
-# The database, the routes crud does not give, the Polish translation, and one
-# file per page holding the view every application places there.
+# The database, the routes crud does not give, the translator with one catalog
+# file per language, and one file per page holding the view every application
+# places there.
 include:
   - ./data.yaml
   - ./api.yaml
-  - ./polish.yaml
+  - ./translator.yaml
+  - ./translations/*.yaml
   - ./pages-overview.yaml
   - ./pages-conditions.yaml
   - ./pages-data.yaml
@@ -168,11 +170,89 @@ header:
             Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
             'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
         - type: link
+          text: Deutsch
+          href: "/api/lang?set=de"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'de' ? ['strong'] : []
+        - type: link
+          text: Español
+          href: "/api/lang?set=es"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'es' ? ['strong'] : []
+        - type: link
+          text: Français
+          href: "/api/lang?set=fr"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'fr' ? ['strong'] : []
+        - type: link
+          text: Italiano
+          href: "/api/lang?set=it"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'it' ? ['strong'] : []
+        - type: link
+          text: Nederlands
+          href: "/api/lang?set=nl"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'nl' ? ['strong'] : []
+        - type: link
           text: Polski
           href: "/api/lang?set=pl"
           style: !cel >-
             Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
             'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+        - type: link
+          text: Português
+          href: "/api/lang?set=pt"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pt' ? ['strong'] : []
+        - type: link
+          text: Türkçe
+          href: "/api/lang?set=tr"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'tr' ? ['strong'] : []
+        - type: link
+          text: Русский
+          href: "/api/lang?set=ru"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ru' ? ['strong'] : []
+        - type: link
+          text: Українська
+          href: "/api/lang?set=uk"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'uk' ? ['strong'] : []
+        - type: link
+          text: हिन्दी
+          href: "/api/lang?set=hi"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'hi' ? ['strong'] : []
+        - type: link
+          text: 日本語
+          href: "/api/lang?set=ja"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ja' ? ['strong'] : []
+        - type: link
+          text: 한국어
+          href: "/api/lang?set=ko"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ko' ? ['strong'] : []
+        - type: link
+          text: 中文
+          href: "/api/lang?set=zh"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'zh' ? ['strong'] : []
     - type: menu
       text: Theme
       items:
@@ -352,11 +432,89 @@ header:
             Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
             'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
         - type: link
+          text: Deutsch
+          href: "/api/lang?set=de"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'de' ? ['strong'] : []
+        - type: link
+          text: Español
+          href: "/api/lang?set=es"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'es' ? ['strong'] : []
+        - type: link
+          text: Français
+          href: "/api/lang?set=fr"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'fr' ? ['strong'] : []
+        - type: link
+          text: Italiano
+          href: "/api/lang?set=it"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'it' ? ['strong'] : []
+        - type: link
+          text: Nederlands
+          href: "/api/lang?set=nl"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'nl' ? ['strong'] : []
+        - type: link
           text: Polski
           href: "/api/lang?set=pl"
           style: !cel >-
             Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
             'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+        - type: link
+          text: Português
+          href: "/api/lang?set=pt"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pt' ? ['strong'] : []
+        - type: link
+          text: Türkçe
+          href: "/api/lang?set=tr"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'tr' ? ['strong'] : []
+        - type: link
+          text: Русский
+          href: "/api/lang?set=ru"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ru' ? ['strong'] : []
+        - type: link
+          text: Українська
+          href: "/api/lang?set=uk"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'uk' ? ['strong'] : []
+        - type: link
+          text: हिन्दी
+          href: "/api/lang?set=hi"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'hi' ? ['strong'] : []
+        - type: link
+          text: 日本語
+          href: "/api/lang?set=ja"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ja' ? ['strong'] : []
+        - type: link
+          text: 한국어
+          href: "/api/lang?set=ko"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ko' ? ['strong'] : []
+        - type: link
+          text: 中文
+          href: "/api/lang?set=zh"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'zh' ? ['strong'] : []
     - type: menu
       text: Theme
       items:
@@ -438,11 +596,89 @@ header:
             Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
             'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
         - type: link
+          text: Deutsch
+          href: "/api/lang?set=de"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'de' ? ['strong'] : []
+        - type: link
+          text: Español
+          href: "/api/lang?set=es"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'es' ? ['strong'] : []
+        - type: link
+          text: Français
+          href: "/api/lang?set=fr"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'fr' ? ['strong'] : []
+        - type: link
+          text: Italiano
+          href: "/api/lang?set=it"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'it' ? ['strong'] : []
+        - type: link
+          text: Nederlands
+          href: "/api/lang?set=nl"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'nl' ? ['strong'] : []
+        - type: link
           text: Polski
           href: "/api/lang?set=pl"
           style: !cel >-
             Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
             'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+        - type: link
+          text: Português
+          href: "/api/lang?set=pt"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pt' ? ['strong'] : []
+        - type: link
+          text: Türkçe
+          href: "/api/lang?set=tr"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'tr' ? ['strong'] : []
+        - type: link
+          text: Русский
+          href: "/api/lang?set=ru"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ru' ? ['strong'] : []
+        - type: link
+          text: Українська
+          href: "/api/lang?set=uk"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'uk' ? ['strong'] : []
+        - type: link
+          text: हिन्दी
+          href: "/api/lang?set=hi"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'hi' ? ['strong'] : []
+        - type: link
+          text: 日本語
+          href: "/api/lang?set=ja"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ja' ? ['strong'] : []
+        - type: link
+          text: 한국어
+          href: "/api/lang?set=ko"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ko' ? ['strong'] : []
+        - type: link
+          text: 中文
+          href: "/api/lang?set=zh"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'zh' ? ['strong'] : []
     - type: menu
       text: Theme
       items:
@@ -493,8 +729,9 @@ navigation:
 ---
 # The same pages under the built-in look, their navigation in a sidebar beside
 # the page instead of the header: groups open in place, several at once, and
-# the sidebar collapses to a rail. Which groups are open and whether it is
-# collapsed are kept in the browser's local storage. Below the breakpoint it
+# the sidebar collapses to a rail. The page fills the width beside it
+# (`pageWidth: full`) rather than the theme's centred column. Which groups are open
+# and whether it is collapsed are kept in the browser's local storage. Below the breakpoint it
 # becomes a tab bar along the bottom edge, its fourth tab More holding the rest.
 kind: UiReact.App
 metadata:
@@ -509,6 +746,7 @@ theme: !ref UiReact.defaultTheme
 stylesheets:
   - !module-path ./showcase.css
 compactBelow: 48rem
+pageWidth: full
 header:
   start:
     - { type: composite, ref: !ref logo }
@@ -523,11 +761,89 @@ header:
             Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
             'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
         - type: link
+          text: Deutsch
+          href: "/api/lang?set=de"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'de' ? ['strong'] : []
+        - type: link
+          text: Español
+          href: "/api/lang?set=es"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'es' ? ['strong'] : []
+        - type: link
+          text: Français
+          href: "/api/lang?set=fr"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'fr' ? ['strong'] : []
+        - type: link
+          text: Italiano
+          href: "/api/lang?set=it"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'it' ? ['strong'] : []
+        - type: link
+          text: Nederlands
+          href: "/api/lang?set=nl"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'nl' ? ['strong'] : []
+        - type: link
           text: Polski
           href: "/api/lang?set=pl"
           style: !cel >-
             Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
             'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+        - type: link
+          text: Português
+          href: "/api/lang?set=pt"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pt' ? ['strong'] : []
+        - type: link
+          text: Türkçe
+          href: "/api/lang?set=tr"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'tr' ? ['strong'] : []
+        - type: link
+          text: Русский
+          href: "/api/lang?set=ru"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ru' ? ['strong'] : []
+        - type: link
+          text: Українська
+          href: "/api/lang?set=uk"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'uk' ? ['strong'] : []
+        - type: link
+          text: हिन्दी
+          href: "/api/lang?set=hi"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'hi' ? ['strong'] : []
+        - type: link
+          text: 日本語
+          href: "/api/lang?set=ja"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ja' ? ['strong'] : []
+        - type: link
+          text: 한국어
+          href: "/api/lang?set=ko"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ko' ? ['strong'] : []
+        - type: link
+          text: 中文
+          href: "/api/lang?set=zh"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'zh' ? ['strong'] : []
     - type: menu
       text: Theme
       items:

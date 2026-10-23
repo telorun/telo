@@ -24,7 +24,7 @@ interface ViewInputs {
 }
 
 /**
- * Read-through cache decorator. Wraps an invocable (`invoke:`); a lookup against
+ * Read-through cache decorator. Wraps an invocable or runnable (`invoke:`); a lookup against
  * `store` decides whether to serve cached or call through:
  *   - fresh → return cached;
  *   - stale → serve cached, and (background) schedule a single-flight detached

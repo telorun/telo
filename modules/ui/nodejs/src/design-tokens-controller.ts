@@ -23,6 +23,7 @@ export const DESIGN_TOKENS = [
   "space.md",
   "space.lg",
   "space.xl",
+  "space.page",
   "shadow.sm",
   "shadow.md",
   "font.body",
@@ -34,6 +35,7 @@ export const DESIGN_TOKENS = [
   "font-size.xl",
   "line-height.body",
   "line-height.heading",
+  "width.page",
 ] as const;
 
 export type DesignTokenName = (typeof DESIGN_TOKENS)[number];

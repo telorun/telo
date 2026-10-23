@@ -22,6 +22,7 @@ import {
   type AssembledTools,
   type ToolProviderEntry,
 } from "./agent-tools.js";
+import { ContentResolution, type ContentResolverConfig } from "./content-resolution.js";
 import { Conversation, pendingWork } from "./conversation.js";
 import {
   conclusionRequest,
@@ -77,6 +78,7 @@ interface AiAgentResource extends StepBudgetConfig {
   maxParallelTools?: number | bigint;
   toolProviders?: ToolProviderEntry[];
   approver?: ApproverConfig;
+  resolver?: ContentResolverConfig;
 }
 
 interface AiAgentInputs {
@@ -164,11 +166,17 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
     const approver =
       this.resource.approver && new Approver(this.resource.approver, this.ctx, label);
 
-    const conversation = new Conversation(buildInitialMessages(inputs, this.resource, label));
-    const pending = pendingWork(conversation, inputs, label);
+    const initial = buildInitialMessages(inputs, this.resource, label);
+    const pending = pendingWork(initial, inputs, label);
     const mergedOptions = mergeAgentOptions(this.resource, inputs);
 
     const tools = await this.tools();
+    // Referenced content is resolved before the first model call; a part a tool
+    // returns is resolved when its message is appended.
+    const conversation = await Conversation.start(
+      initial,
+      new ContentResolution(this.resource.resolver, this.ctx, label, inputs.context ?? {}, ctx),
+    );
     const { toolDefs } = tools;
     const { maxSteps, onMaxSteps, conclusionPrompt } = this.budget;
 
@@ -296,7 +304,7 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
         if (toolCalls.length === 0) {
           // A step is one model call, the answering one included.
           steps.push({ text: result.text ?? "", toolCalls: [] });
-          conversation.append({ role: "assistant", content: result.text ?? "" });
+          await conversation.append({ role: "assistant", content: result.text ?? "" });
           const output = finished(result.text, result.finishReason);
           // The aggregate across every turn, which is what the run actually cost —
           // a per-turn figure would understate an agent that looped eight times.
@@ -313,7 +321,7 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
           assertUniqueCallId(call, normalized, label);
           normalized.push(call);
         }
-        conversation.append({ role: "assistant", content: result.text ?? "", toolCalls: normalized });
+        await conversation.append({ role: "assistant", content: result.text ?? "", toolCalls: normalized });
         steps.push({ text: result.text ?? "", toolCalls: normalized });
         const waiting = await settle(normalized, new Map());
         if (waiting.length > 0) return await interrupted(result.text ?? "", waiting);
@@ -353,7 +361,7 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
         if (result.providerState !== undefined) providerState = result.providerState;
         addUsage(usage, turnUsage);
         steps.push({ text: result.text ?? "", toolCalls: [] });
-        conversation.append({ role: "assistant", content: result.text ?? "" });
+        await conversation.append({ role: "assistant", content: result.text ?? "" });
         const output = finished(result.text, result.finishReason, { limit: MAX_STEPS_LIMIT });
         logCompletion(this.ctx.log, "Agent run concluded at maxSteps", output.usage, result.finishReason, {
           "ai.agent.steps": calls,

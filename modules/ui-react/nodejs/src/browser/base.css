@@ -3,25 +3,44 @@
    so this names no part only a control draws. */
 @layer telo.base {
   [data-telo-part="app"] { display: flex; flex-direction: column; min-height: 100vh; }
-  /* One row: the navigation takes the room between the title and the end, and
-     what does not fit it moves under More; below the breakpoint the header wraps
-     instead. The navigation fills its slot, which is one column wide. */
-  [data-telo-part="header"] { display: flex; align-items: center; flex-wrap: nowrap; }
+  /* The header is a bar; its content is one row inside it: the navigation
+     takes the room between the title and the end, and what does not fit it
+     moves under More; below the breakpoint the row wraps instead. The
+     navigation fills its slot, which is one column wide. */
+  [data-telo-part="header"] { display: block; padding-inline: 0; }
+  [data-telo-part="header-content"] { display: flex; align-items: center; flex-wrap: nowrap; min-width: 0; box-sizing: border-box; }
   [data-telo-part="app-title"] { flex: none; }
   [data-telo-part="nav"] { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1 1 0; min-width: 0; }
   [data-telo-part="nav-menu"] { display: inline-flex; align-items: center; justify-content: center; flex: none; }
   [data-telo-part="header-start"],
   [data-telo-part="header-end"] { display: flex; align-items: center; flex: none; flex-wrap: nowrap; }
   [data-telo-part="header-end"] { margin-inline-start: auto; }
-  [data-compact] > [data-telo-part="header"] { flex-wrap: wrap; }
-  [data-compact] > [data-telo-part="header"] > [data-telo-part="header-start"],
-  [data-compact] > [data-telo-part="header"] > [data-telo-part="header-end"] { flex: 0 1 auto; flex-wrap: wrap; min-width: 0; }
-  [data-telo-part="main"] { flex: 1; min-width: 0; }
+  [data-compact] > [data-telo-part="header"] > [data-telo-part="header-content"] { flex-wrap: wrap; }
+  [data-compact] > [data-telo-part="header"] > [data-telo-part="header-content"] > [data-telo-part="header-start"],
+  [data-compact] > [data-telo-part="header"] > [data-telo-part="header-content"] > [data-telo-part="header-end"] { flex: 0 1 auto; flex-wrap: wrap; min-width: 0; }
+  /* The page column and the header's content share one inset, and a contained
+     one the page's measure: the same expression over the room each has, so
+     the header's content starts and ends where a contained page does. */
+  [data-telo-part="main"] { flex: 1; min-width: 0; padding-inline: var(--telo-space-page); }
+  [data-telo-part="header"][data-width="full"] > [data-telo-part="header-content"] { padding-inline: var(--telo-space-page); }
+  [data-telo-part="header"][data-width="contained"] > [data-telo-part="header-content"] {
+    padding-inline: max(var(--telo-space-page), calc((100% - var(--telo-width-page)) / 2));
+  }
   /* A sidebar is a column beside the page, under the header, at its side; a
-     tab bar stays at the bottom edge while the page scrolls. */
-  [data-telo-part="app"]:has(> [data-telo-part="sidebar"]) { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr; }
-  [data-telo-part="app"]:has(> [data-telo-part="sidebar"][data-side="end"]) { grid-template-columns: minmax(0, 1fr) auto; }
+     tab bar stays at the bottom edge while the page scrolls. The header spans
+     every column as a subgrid of the application's, so its bar covers the
+     strip above the sidebar while a contained header's content sits over the
+     page's column, wherever that is. */
+  [data-telo-part="app"]:has(> [data-telo-part="sidebar"]) {
+    display: grid; grid-template-columns: [side-start] auto [side-end main-start] minmax(0, 1fr) [main-end]; grid-template-rows: auto 1fr;
+  }
+  [data-telo-part="app"]:has(> [data-telo-part="sidebar"][data-side="end"]) {
+    grid-template-columns: [main-start] minmax(0, 1fr) [main-end side-start] auto [side-end];
+  }
   [data-telo-part="app"] > [data-telo-part="header"] { grid-column: 1 / -1; }
+  [data-telo-part="app"]:has(> [data-telo-part="sidebar"]) > [data-telo-part="header"] { display: grid; grid-template-columns: subgrid; }
+  [data-telo-part="app"]:has(> [data-telo-part="sidebar"]) > [data-telo-part="header"] > [data-telo-part="header-content"] { grid-column: 1 / -1; }
+  [data-telo-part="app"]:has(> [data-telo-part="sidebar"]) > [data-telo-part="header"][data-width="contained"] > [data-telo-part="header-content"] { grid-column: main; }
   [data-telo-part="sidebar"] { display: flex; flex-direction: column; min-width: 0; }
   [data-telo-part="tab-bar"] { position: sticky; bottom: 0; }
   /* An icon's glyph is its file as a mask over the colour of the text around
@@ -42,6 +61,10 @@
   [data-telo-part="action-result"],
   [data-telo-part="action-failure"],
   [data-telo-part="list"] { display: flex; flex-direction: column; }
+  /* A contained page is no wider than the look's measure, centred; a full one
+     takes all the room it has. */
+  [data-telo-part="page"][data-width="contained"] { max-width: var(--telo-width-page); margin-inline: auto; }
+  [data-telo-part="page"][data-width="full"] { max-width: none; }
   [data-telo-part="box"] { display: block; }
   [data-telo-part="columns"] { display: flex; flex-wrap: wrap; align-items: flex-start; }
   [data-telo-part="column"] { flex: 1 1 0; min-width: 0; }

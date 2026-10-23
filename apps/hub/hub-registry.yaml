@@ -266,33 +266,34 @@ steps:
           # successful registration with a 500.
           - name: schedule
             try:
-              - name: digest
-                invoke: !ref Origin.moduleDigest
-                inputs:
-                  ref: !cel "inputs.ref"
-                  version: !cel "steps.versions.result.latest"
-              - name: claim
-                if: !cel "steps.digest.result.ok"
+              - name: digestGate
+                if: !cel "steps.versions.result.versions[0].error != ''"
                 then:
-                  - name: take
-                    invoke: !ref Schema.claimVersion
+                  - name: fail
+                    throw:
+                      code: TRACK_DIGEST_FAILED
+                      message: !cel >-
+                        'no digest for ' + inputs.ref + ' ' + steps.versions.result.latest + ': '
+                          + steps.versions.result.versions[0].error
+              - name: take
+                invoke: !ref Schema.claimVersion
+                inputs:
+                  moduleId: !cel "steps.lookup.result.rows[0].id"
+                  version: !cel "steps.versions.result.latest"
+                  digest: !cel "steps.versions.result.versions[0].digest"
+                  rev: !cel "variables.ingestRev"
+              - name: due
+                if: !cel "steps.take.result.claimed"
+                then:
+                  - name: start
+                    invoke: !ref scheduleIngest
                     inputs:
                       moduleId: !cel "steps.lookup.result.rows[0].id"
+                      ref: !cel "inputs.ref"
                       version: !cel "steps.versions.result.latest"
-                      digest: !cel "steps.digest.result.digest"
-                      rev: !cel "variables.ingestRev"
-                  - name: due
-                    if: !cel "steps.take.result.claimed"
-                    then:
-                      - name: start
-                        invoke: !ref scheduleIngest
-                        inputs:
-                          moduleId: !cel "steps.lookup.result.rows[0].id"
-                          ref: !cel "inputs.ref"
-                          version: !cel "steps.versions.result.latest"
-                          digest: !cel "steps.digest.result.digest"
-                          latestVersion: !cel "steps.versions.result.latest"
-                          attempt: !cel "steps.take.result.attempt"
+                      digest: !cel "steps.versions.result.versions[0].digest"
+                      latestVersion: !cel "steps.versions.result.latest"
+                      attempt: !cel "steps.take.result.attempt"
             catch:
               - name: log
                 invoke: !ref logLine

@@ -172,7 +172,7 @@ async function check(job: WindowJob, root: string, console: Console): Promise<Pr
     problems.push(...(await sceneProblems(window, staged.renderer, loaded, coverage)));
     problems.push(...sheets.problems);
     problems.push(...coverage.problems({ parts: Object.values(parts.parts).flat(), reserved: parts.reserved }, job.look.unstyled));
-    problems.push(...tokenProblems(job.look.tokens.names, tokenProperty, job.look.tokens.given, sheets.read));
+    problems.push(...tokenProblems(job.look.tokens.names, tokenProperty, parts.rendererTokens, job.look.tokens.given, sheets.read));
   }
   await page.close();
   return problems;

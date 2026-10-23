@@ -46,7 +46,6 @@ import {
   describeValueSchemaLocation,
   memberNameAt,
   memberTypeOf,
-  readValueSchemaLocation,
   resolveScopeValues,
   valueSchemaSlots,
   valueSchemaTypes,
@@ -299,7 +298,7 @@ function resourceLocalHost(typeManifests: Record<string, any>[]): ValueSchemaHos
   };
 }
 
-/** Every `x-telo-value-schema-from` slot, with each type its location names. A
+/** Every `x-telo-value-schema-from` slot, with each type its locations name. A
  *  location naming no type opts out. */
 export function valueSchemaSites(
   manifest: Record<string, any>,
@@ -310,10 +309,8 @@ export function valueSchemaSites(
   const host = ctx.valueSchemaHost ?? resourceLocalHost(ctx.typeManifests);
   const out: ValueSchemaSite[] = [];
   for (const { scope, from } of valueSchemaSlots(defSchema)) {
-    const location = readValueSchemaLocation(from);
-    const member = location && !("invalid" in location) ? location.member : undefined;
     const label = describeValueSchemaLocation(from);
-    for (const type of valueSchemaTypes(manifest, from, host)) {
+    for (const { schema: type, member } of valueSchemaTypes(manifest, from, host)) {
       for (const { path, value } of resolveScopeValues(manifest, scope)) {
         if (!member) {
           out.push({ path, value, schema: type, from: label });

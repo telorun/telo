@@ -4,12 +4,14 @@ import type { ReadStylesheet } from "./style-coverage.js";
 /**
  * The token checks: every design token has a default — from the theme's own
  * token set, or a `:root` rule of its stylesheets — and is read by some `var()`
- * of them. `tokens` are the token names as a token set spells them, and
- * `propertyOf` spells one as the custom property the renderer sets.
+ * of them, unless the renderer's own layer reads it. `tokens` are the token
+ * names as a token set spells them, and `propertyOf` spells one as the custom
+ * property the renderer sets.
  */
 export function tokenProblems(
   tokens: readonly string[],
   propertyOf: (token: string) => string,
+  rendererTokens: readonly string[],
   themeTokens: readonly string[],
   sheets: readonly ReadStylesheet[],
 ): Problem[] {
@@ -26,7 +28,7 @@ export function tokenProblems(
     });
   }
   for (const token of tokens) {
-    if (read.has(propertyOf(token))) continue;
+    if (read.has(propertyOf(token)) || rendererTokens.includes(token)) continue;
     problems.push({
       check: "token-unread",
       subject: token,

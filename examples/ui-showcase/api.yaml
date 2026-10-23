@@ -617,8 +617,9 @@ body: !cel "cel.bind(found, regexGroups(header, '(?:^|;[ ]*)' + name + '=([^;]*)
 ---
 # The language a request is answered in, the one rule every application's
 # `lang` and its language menu share: the `showcase-lang` cookie when it names
-# a language the showcase speaks, else the Accept-Language negotiation, else
-# English. Each header is handed over as its own argument (empty when absent),
+# a language the showcase speaks (one `Self.language` answers unchanged, so the
+# translator's catalogs are the only list of them), else the Accept-Language
+# negotiation, else English. Each header is handed over as its own argument (empty when absent),
 # so the headers a call reads stay visible to the documents' `Vary`.
 kind: Telo.Function
 metadata:
@@ -633,7 +634,8 @@ returns:
   schema: { type: string }
 body: !cel >-
   cel.bind(chosen, Self.cookie(cookie, 'showcase-lang'),
-  chosen in ['en', 'pl'] ? chosen : acceptLanguage != '' ? Self.language(acceptLanguage) : 'en')
+  chosen != '' && Self.language(chosen) == chosen ? chosen
+  : acceptLanguage != '' ? Self.language(acceptLanguage) : 'en')
 ---
 # The origin a request was made to, from its Host and X-Forwarded-Proto headers
 # (each empty when absent). A proxy chain may list several schemes; the first
@@ -1825,8 +1827,8 @@ routes:
       - *commentUnknown
 
   # ---- The language switch ----
-  # Sets the cookie every application's `lang` reads first, or clears it for
-  # any other value, and goes back to the page it was pressed on — the
+  # Sets the cookie every application's `lang` reads first when the value is a
+  # language the showcase speaks, or clears it for any other value, and goes back to the page it was pressed on — the
   # Referer's path and query when the Referer is of this request's own origin,
   # else the mount's home, so the switch never redirects to another site.
   - request:
@@ -1859,7 +1861,7 @@ routes:
       value: { set: !cel "inputs.set", back: !cel "inputs.back" }
     returns:
       - status: 302
-        when: !cel "result.set in ['en', 'pl']"
+        when: !cel "result.set != '' && Self.language(result.set) == result.set"
         headers:
           Location: !cel "result.back"
           Set-Cookie: !interpolate "showcase-lang=${{ result.set }}; Path=/; Max-Age=31536000; SameSite=Lax"

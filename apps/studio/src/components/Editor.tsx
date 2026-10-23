@@ -24,6 +24,7 @@ import {
   loadWorkspace,
   noopAdapter,
   normalizePath,
+  firstWorkspaceModule,
   hasNoWorkspaceModules,
   isWorkspaceModule,
   persistWorkspaceModule,
@@ -69,7 +70,7 @@ import {
   type SyncedFiles,
 } from "../run";
 import type { RunnerCapabilities, RunnerTerms } from "../run";
-import { isFocusComposerShortcut, useAgent } from "../agent";
+import { buildProgress, isFocusComposerShortcut, useAgent } from "../agent";
 import { isTauri } from "@tauri-apps/api/core";
 import { useCloud } from "../cloud/context";
 import {
@@ -1093,6 +1094,28 @@ export function Editor() {
       setError(`${linkedModule.projectName} has no module at ${linkedModule.modulePath}.`);
     }
   }, [linkedModule, state.workspace, setState]);
+
+  // The first module written into an empty workspace — usually by the agent —
+  // opens when nothing else is.
+  const emptyWorkspaceRef = useRef<{ root: string; empty: boolean } | null>(null);
+  useEffect(() => {
+    const workspace = state.workspace;
+    if (!workspace) {
+      emptyWorkspaceRef.current = null;
+      return;
+    }
+    const empty = hasNoWorkspaceModules(workspace);
+    const previous = emptyWorkspaceRef.current;
+    emptyWorkspaceRef.current = { root: workspace.rootDir, empty };
+    if (empty || previous?.root !== workspace.rootDir || !previous.empty) return;
+    const first = firstWorkspaceModule(workspace);
+    if (first) setState((s) => (s.activeTabId === null ? activateModuleState(s, first) : s));
+  }, [state.workspace, setState]);
+
+  const agentBuild = useMemo(
+    () => buildProgress(agent.messages, agent.status, agent.error),
+    [agent.messages, agent.status, agent.error],
+  );
 
   // A workspace opened with nothing in it shows the drawer: at phone width the
   // sidebar is the only way forward there.
@@ -2431,6 +2454,17 @@ export function Editor() {
                   onBuild={agentVisible ? buildInOpenWorkspace : undefined}
                   onStartFromStarter={
                     editingPaused === null ? () => setCreateModuleKind("Application") : undefined
+                  }
+                  build={
+                    agentVisible && agentBuild
+                      ? {
+                          progress: agentBuild,
+                          editorFile: agent.editorFile,
+                          onStop: agent.stop,
+                          onRetry: agent.canRetry ? agent.retry : undefined,
+                          onShowConversation: agent.focusComposer,
+                        }
+                      : undefined
                   }
                 />
               ) : (

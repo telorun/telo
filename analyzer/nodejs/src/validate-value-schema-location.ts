@@ -16,7 +16,7 @@ import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import {
   describeValueSchemaLocation,
-  readValueSchemaLocation,
+  readValueSchemaLocations,
   schemaReachesLocation,
   valueSchemaAnnotations,
   valueSchemaMemberProblem,
@@ -83,9 +83,10 @@ export function valueSchemaFromProblems(
 ): ValueSchemaFromProblem[] {
   const problems: ValueSchemaFromProblem[] = [];
   const kindName = String(definition.metadata?.name);
-  const unreachable = (raw: unknown, where: string): string =>
+  const unreachable = (raw: unknown, location: unknown, where: string): string =>
     `'${kindName}' declares \`${ANNOTATION}: ${describeValueSchemaLocation(raw)}\` ${where}, but its schema ` +
-    `declares nothing at that location, so no resource of the kind can name a type there ` +
+    `declares nothing at ${location === raw ? "that location" : `the location \`${describeValueSchemaLocation(location)}\``}, ` +
+    `so no resource of the kind can name a type there ` +
     `and the annotated node would be typed from nothing. Name a field the kind's ` +
     `\`schema:\` declares — by name, or by a JSON Pointer from the resource root, which may ` +
     `continue through a reference slot and range over a list with '*'.`;
@@ -96,18 +97,18 @@ export function valueSchemaFromProblems(
     for (const annotation of valueSchemaAnnotations(written, field)) {
       const { path, raw } = annotation;
       const at = `${path}.${ANNOTATION}`;
-      const location = readValueSchemaLocation(raw);
-      if (!location) continue;
-      if ("invalid" in location) {
-        problems.push({ path: at, message: `'${kindName}' at '${at}': ${location.invalid}` });
-        continue;
+      for (const location of readValueSchemaLocations(raw) ?? []) {
+        if ("invalid" in location) {
+          problems.push({ path: at, message: `'${kindName}' at '${at}': ${location.invalid}` });
+          continue;
+        }
+        if (!schema || !schemaReachesLocation(schema, location.segments)) {
+          problems.push({ path: at, message: unreachable(raw, location.raw, `at '${at}'`) });
+        }
+        const memberProblem =
+          location.member && writtenRoot ? valueSchemaMemberProblem(writtenRoot, annotation, location.member) : undefined;
+        if (memberProblem) problems.push({ path: at, message: `'${kindName}' at '${at}': ${memberProblem}` });
       }
-      if (!schema || !schemaReachesLocation(schema, location.segments)) {
-        problems.push({ path: at, message: unreachable(raw, `at '${at}'`) });
-      }
-      const memberProblem =
-        location.member && writtenRoot ? valueSchemaMemberProblem(writtenRoot, annotation, location.member) : undefined;
-      if (memberProblem) problems.push({ path: at, message: `'${kindName}' at '${at}': ${memberProblem}` });
     }
 
     const shape = field === "schema" ? undefined : resolveShape?.(written);
@@ -116,19 +117,19 @@ export function valueSchemaFromProblems(
       const { path, raw } = annotation;
       const within = path === "" ? "its root" : `'${path}'`;
       const where = `through \`${field}\`, which names the shape '${shape.name}' carrying it at ${within}`;
-      const location = readValueSchemaLocation(raw);
-      if (!location) continue;
-      if ("invalid" in location) {
-        problems.push({ path: field, message: `'${kindName}' ${where}: ${location.invalid}` });
-        continue;
+      for (const location of readValueSchemaLocations(raw) ?? []) {
+        if ("invalid" in location) {
+          problems.push({ path: field, message: `'${kindName}' ${where}: ${location.invalid}` });
+          continue;
+        }
+        if (!schema || !schemaReachesLocation(schema, location.segments)) {
+          problems.push({ path: field, message: unreachable(raw, location.raw, where) });
+        }
+        const memberProblem = location.member
+          ? valueSchemaMemberProblem(shape.schema, annotation, location.member)
+          : undefined;
+        if (memberProblem) problems.push({ path: field, message: `'${kindName}' ${where}: ${memberProblem}` });
       }
-      if (!schema || !schemaReachesLocation(schema, location.segments)) {
-        problems.push({ path: field, message: unreachable(raw, where) });
-      }
-      const memberProblem = location.member
-        ? valueSchemaMemberProblem(shape.schema, annotation, location.member)
-        : undefined;
-      if (memberProblem) problems.push({ path: field, message: `'${kindName}' ${where}: ${memberProblem}` });
     }
   }
   return problems;

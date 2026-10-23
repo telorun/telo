@@ -1,5 +1,10 @@
 import { isTaggedSentinel } from "@telorun/templating";
-import { isSingleValueScope, resolveScopeValues, valueSchemaSlots } from "./value-schema-slot.js";
+import {
+  isSingleValueScope,
+  readValueSchemaLocations,
+  resolveScopeValues,
+  valueSchemaSlots,
+} from "./value-schema-slot.js";
 
 /**
  * The contract a resource's own value slot implies when the contract field is
@@ -12,7 +17,9 @@ import { isSingleValueScope, resolveScopeValues, valueSchemaSlots } from "./valu
  * resource actually produces. The keys are what is closed; each value stays
  * unconstrained.
  *
- * Only a kind with exactly ONE slot naming the field, holding one value per
+ * A slot names the field when one of its locations is the field itself, read
+ * whole — beside further locations too, since the value is still what the field
+ * types. Only a kind with exactly ONE slot naming the field, holding one value per
  * resource, implies a contract: slots under an array (a decision table's rows)
  * are several candidate producers, and their union is a separate question. A
  * slot written as one CEL expression computes its keys, so it implies nothing.
@@ -23,7 +30,7 @@ export function valueDerivedContract(
   field: string,
 ): Record<string, any> | undefined {
   if (!manifest || !defSchema) return undefined;
-  const slots = valueSchemaSlots(defSchema).filter((slot) => slot.from === field);
+  const slots = valueSchemaSlots(defSchema).filter((slot) => namesField(slot.from, field));
   if (slots.length !== 1 || !isSingleValueScope(slots[0]!.scope)) return undefined;
   const [site] = resolveScopeValues(manifest, slots[0]!.scope);
   const value = site?.value as Record<string, unknown> | undefined;
@@ -37,4 +44,14 @@ export function valueDerivedContract(
     required: keys,
     additionalProperties: false,
   };
+}
+
+function namesField(from: unknown, field: string): boolean {
+  return (readValueSchemaLocations(from) ?? []).some(
+    (location) =>
+      !("invalid" in location) &&
+      !location.member &&
+      location.segments.length === 1 &&
+      location.segments[0] === field,
+  );
 }

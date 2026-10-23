@@ -1,7 +1,7 @@
 # Ui.DesignTokens
 
-An interface's brand: its colours, radii, spacing, shadows, type sizes and
-typefaces, by name. It says nothing about how anything is drawn — a renderer's
+An interface's brand: its colours, radii, spacing, shadows, type sizes,
+typefaces and page measure and inset, by name. It says nothing about how anything is drawn — a renderer's
 theme reads the tokens, so one token set works under any theme, and changing
 the theme keeps the brand.
 
@@ -25,14 +25,23 @@ misspelled token never silently does nothing.
 | --- | --- |
 | `color.` | `background`, `surface`, `text`, `muted`, `border`, `accent`, `accent-text`, `danger`, `warning`, `success` |
 | `radius.` | `sm`, `md`, `lg` |
-| `space.` | `xs`, `sm`, `md`, `lg`, `xl` |
+| `space.` | `xs`, `sm`, `md`, `lg`, `xl`, `page` |
 | `shadow.` | `sm`, `md` |
 | `font.` | `body`, `heading`, `mono` |
 | `font-size.` | `sm`, `md`, `lg`, `xl` |
 | `line-height.` | `body`, `heading` |
+| `width.` | `page` |
 
 A `font.` token is a `!ref` to a `Font.Family`; every other value is a CSS
-value, written as a string. A token left out keeps the theme's value.
+value, written as a string. `width.page` is the widest a
+[contained page](page.md#width)'s content is drawn, a CSS length in `px` or
+`rem` (`64rem`); `none`, an `em` length or any other value is refused
+(`SCHEMA_VIOLATION`) — a page with no maximum is a `full` one, and an `em`
+length would resolve against the font size of each part using it, so a page
+and a header in different type sizes would not line up. `space.page` is the
+inline space between the edge of the room a page has and its content — and
+the header's — in the same grammar (`1.5rem`, `0`). A token left out keeps
+the theme's value.
 
 The names are also code: the module's code entry `@telorun/ui` exports them as
 `DESIGN_TOKENS`, spelled as above, for whatever reads a token set by name — a

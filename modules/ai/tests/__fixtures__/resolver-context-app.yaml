@@ -1,0 +1,11 @@
+# Runs the library's text call that omits the caller data its content resolver
+# requires. This consumer's entry-scoped check is silent about the library's call
+# site, so the operation's bound contract is what refuses it.
+kind: Telo.Application
+metadata:
+  name: ResolverContextMissingApp
+  version: 1.0.0
+imports:
+  Lib: ./resolver-context
+targets:
+  - !ref Lib.callWithoutContext

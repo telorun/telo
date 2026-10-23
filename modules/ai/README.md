@@ -8,6 +8,7 @@ Model access for Telo — defines the `Ai.Model` and `Ai.ImageModel` abstracts e
 - **Buffered and streaming** — `Ai.Text` returns a complete response; `Ai.TextStream` exposes an async iterable of `StreamPart` records.
 - **Text and images** — `Ai.Image` turns a prompt into picture bytes, or reworks pictures you supply, through the same provider you already configured.
 - **Multimodal turns** — a message's content is text or parts: images, audio, video and documents by bytes or by URI, in one vocabulary every model shares.
+- **Referenced content fetched on demand** — a conversation can name a file by a URI of your own scheme (`upload:7f3a`); the operation's `resolver` fetches it for the model, once per URI per call, and history keeps the reference, never the bytes.
 - **Composable encoding** — pipe a stream through any `Codec.Encoder` (NDJSON, SSE, plain text, raw bytes) without bespoke serialization.
 - **Open for extension** — both model abstracts are `Telo.Abstract`s; any module declaring `extends` is a drop-in provider.
 - **Traced** — with tracing on, an agent run is an `invoke_agent` span with a `chat` span per model call and an `execute_tool` span per tool call, carrying token usage and finish reasons but never message content; each tool's own dispatch nests beneath its call.
@@ -136,7 +137,11 @@ messages:
       - { type: image, mediaType: image/png, uri: "https://example.com/chart.png" }
 ```
 
-**Shape and capability are separate.** What a part must carry is declared once, in `Ai.ContentPart`, and enforced by the contract of every kind that takes a message: a malformed literal is `CONTRACT_INPUTS_MISMATCH` under `telo check`, at the key at fault, and a malformed computed value is `ERR_INPUT_INVALID` at dispatch. Whether a given model can *carry* a well-formed part is the provider's answer: one it cannot is refused as `ERR_MODEL_CONTENT_UNSUPPORTED` before anything is sent. A `uri` is passed to the model as written; nothing here fetches it. See [Modality lives in the parts](docs/ai-model.md#modality-lives-in-the-parts).
+**Shape and capability are separate.** What a part must carry is declared once, in `Ai.ContentPart` — an exported shape, so a consumer types its own parts with `!ref Ai.ContentPart` — and enforced by the contract of every kind that takes a message: a malformed literal is `CONTRACT_INPUTS_MISMATCH` under `telo check`, at the key at fault, and a malformed computed value is `ERR_INPUT_INVALID` at dispatch. Whether a given model can *carry* a well-formed part is the provider's answer: one it cannot is refused as `ERR_MODEL_CONTENT_UNSUPPORTED` before anything is sent. A `uri` is passed to the model as written, unless its scheme is one the operation's `resolver` lists — then the operation fetches it for the model, as below. See [Modality lives in the parts](docs/ai-model.md#modality-lives-in-the-parts).
+
+**Referenced content.** `Ai.Text`, `Ai.TextStream`, `Ai.Agent` and `Ai.AgentStream` take a `resolver`: the URI schemes it answers for, how many references it resolves at once (`concurrency`), an invocable to ask, a mapping into it from the referencing `part` and the caller's `context`, and a `result` expression giving the part the model is sent instead. Only what the model is sent changes — returned messages, tool results and streamed parts keep the reference — and each distinct URI is resolved once per call. See [Ai.Text → Referenced content](docs/ai-text.md#referenced-content).
+
+**A tool turn names the call it answers.** `Ai.Message` — an exported shape, so a consumer types a conversation it builds with `items: !ref Ai.Message` — is read by its `role`: only an `assistant` turn carries `toolCalls`, and a `tool` turn must carry a non-empty `toolCallId`, which no other role may.
 
 ## Usage
 

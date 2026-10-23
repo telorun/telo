@@ -349,6 +349,9 @@ export class SchemaValidator {
       }
       const fills = new WeakMap<object, ValidateFunction>();
       const nodes = new SchemaNodeValidator(locating, {
+        // The primary instance may hold what the mirror does not: an id a
+        // compiled schema carried.
+        resolveReference: (id) => this.primaryDocument(id),
         canonical: (whole) => this.canonicalSchema(whole),
         run: (validate, value) => {
           const { view, context } = bigIntView(value);
@@ -356,7 +359,7 @@ export class SchemaValidator {
         },
         fillDefaults: (whole, value) => {
           let fill = fills.get(whole);
-          if (!fill) fills.set(whole, (fill = filling.compile(this.canonicalSchema(whole))));
+          if (!fill) fills.set(whole, (fill = this.compileOnMirror(filling, this.canonicalSchema(whole))));
           // The fills land in the view; merged back so the judge reads them, as
           // a passing validation hands them to its caller.
           const { view, context } = bigIntView(value);
@@ -371,6 +374,37 @@ export class SchemaValidator {
 
   getSchema(name: string): object | undefined {
     return this.rawSchemas.get(name);
+  }
+
+  /** `schema` compiled on a mirror of the primary instance, a reference only
+   *  the primary holds adopted from it first. */
+  private compileOnMirror(mirror: InstanceType<typeof Ajv>, schema: object): ValidateFunction {
+    const adopted = new Set<string>();
+    for (;;) {
+      try {
+        return mirror.compile(schema) as ValidateFunction;
+      } catch (error) {
+        const missing = (error as { missingSchema?: unknown } | null)?.missingSchema;
+        const document =
+          typeof missing === "string" && !adopted.has(missing) ? this.primaryDocument(missing) : undefined;
+        if (!document) throw error;
+        adopted.add(missing as string);
+        mirror.addSchema(document, missing as string, undefined, false);
+      }
+    }
+  }
+
+  /** The document the primary instance resolves `id` to, read and never
+   *  compiled. */
+  private primaryDocument(id: string): object | undefined {
+    const tables = this.ajv as unknown as {
+      schemas: Record<string, unknown>;
+      refs: Record<string, unknown>;
+    };
+    let entry = tables.schemas[id] ?? tables.refs[id];
+    while (typeof entry === "string") entry = tables.schemas[entry] ?? tables.refs[entry];
+    const schema = (entry as { schema?: unknown } | undefined)?.schema;
+    return schema && typeof schema === "object" ? (schema as object) : undefined;
   }
 
   /** `callNames` are the names the module declaring the rules resolves CEL calls

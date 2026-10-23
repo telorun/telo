@@ -44,6 +44,8 @@ metadata:
         request, until one forbids tools (`tool_choice: "none"`), which gets
         the text reply `stub wrap-up`;
       - anything else gets a text reply.
+    Any request whose input holds a `function_call_output` with no `call_id`, or
+    an empty one, is refused with 400 first, as the provider refuses it.
     Every reply carries a reasoning item, so the agent records provider state.
     Every request body is kept, in order, and GET /requests returns them — what
     a test reads to see what the agent sent.
@@ -94,6 +96,21 @@ steps:
       bindings: [ !cel "json(inputs.body)" ]
   - name: request
     value: !cel "json(inputs.body)"
+  # As the provider does: a tool result must name the call it answers.
+  - name: unanswerable
+    value: !cel >-
+      'input' in inputs.body && type(inputs.body.input) == type([])
+        ? enumerate(inputs.body.input).filter(e, type(e.value) == type({}) && 'type' in e.value
+            && e.value.type == 'function_call_output'
+            && (!('call_id' in e.value) || e.value.call_id == '')).map(e, e.index)
+        : []
+  - name: callIdMissing
+    if: !cel "size(steps.unanswerable.result) > 0"
+    then:
+      - name: refuseCallId
+        throw:
+          code: ERR_STUB_REFUSED
+          message: !cel "'Invalid \\'input[' + string(steps.unanswerable.result[0]) + '].call_id\\': empty string.'"
   # A naming or summary call is told apart by its instructions; the agent's
   # own directives never apply to it, only its own.
   - name: kind

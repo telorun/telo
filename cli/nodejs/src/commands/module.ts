@@ -107,6 +107,82 @@ function emitVersions(versions: string[], json: boolean, log: Logger): void {
   for (const v of versions) outLine(v);
 }
 
+/** A version with its digest, or with why its digest could not be read. */
+export type VersionDigest = { version: string; digest: string } | { version: string; error: string };
+
+function emitVersionDigests(
+  ref: string,
+  entries: VersionDigest[],
+  json: boolean,
+  log: Logger,
+): void {
+  for (const e of entries) {
+    if ("error" in e) outErrLine(`${log.err.error("error")}  no digest for ${ref} ${e.version}: ${e.error}`);
+  }
+  if (json || output().isJson) {
+    output().document(entries);
+    return;
+  }
+  if (entries.length === 0) {
+    outErrLine(log.err.dim("no published versions"));
+    return;
+  }
+  for (const e of entries) if ("digest" in e) outLine(`${e.version}  ${log.dim(e.digest)}`);
+}
+
+/** Digest requests in flight at once for one module's versions. */
+const VERSION_DIGEST_CONCURRENCY = 8;
+
+/** Each version's change-detection digest, in the order given, read with
+ *  bounded concurrency. A version whose digest cannot be read carries the
+ *  reason in place of a digest, so one unreadable tag does not hide the rest. */
+export async function readVersionDigests(
+  versions: string[],
+  digestOf: (version: string) => Promise<string | null>,
+): Promise<VersionDigest[]> {
+  const entries: VersionDigest[] = new Array(versions.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < versions.length) {
+      const index = next++;
+      const version = versions[index];
+      try {
+        const digest = await digestOf(version);
+        entries[index] =
+          digest === null ? { version, error: "version not found" } : { version, digest };
+      } catch (err) {
+        entries[index] = { version, error: errMsg(err) };
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(VERSION_DIGEST_CONCURRENCY, versions.length) }, worker),
+  );
+  return entries;
+}
+
+async function digestOrExit(registry: TransportRegistry, ref: string, log: Logger): Promise<string> {
+  let digest: string | null;
+  try {
+    digest = await registry.digest(ref);
+  } catch (err) {
+    outErrLine(`${log.err.error("error")}  ${errMsg(err)}`);
+    process.exit(1);
+  }
+  if (digest === null) {
+    outErrLine(`${log.err.error("error")}  module not found: ${ref}`);
+    process.exit(1);
+  }
+  return digest;
+}
+
+/** The change-detection digest of a module on the local filesystem — the same
+ *  form the HTTP transport's digest takes, so a local and a published copy
+ *  compare equal. */
+async function localDigest(text: string): Promise<string> {
+  return `sha256-${await sha256Base64Url(new TextEncoder().encode(text))}`;
+}
+
 /** Read a single remote manifest (a direct URL, or any transport-owned ref) and
  *  return its verified bytes. `source.read` checks the inline `#sha256-...` hash
  *  when the ref is pinned — a mismatch throws, never a silent fallback. */
@@ -131,14 +207,23 @@ async function readRemoteManifest(
   }
 }
 
-async function runVersions(argv: { ref: string; json: boolean }): Promise<void> {
+/** With `--digests`, each version is reported with the digest `telo module
+ *  digest` would print for it, read in this one process — the discovery
+ *  tracker's reconcile pass reads every version of every module, and a process
+ *  per version is most of its cost. */
+async function runVersions(argv: { ref: string; json: boolean; digests: boolean }): Promise<void> {
   const log = createLogger(false);
 
   // 1. Local module — one version, the one it declares on disk.
   const localPath = localManifestPath(argv.ref);
   if (localPath) {
     const text = readFileOrExit(localPath, log);
-    emitVersions([versionOrExit(text, path.relative(process.cwd(), localPath), log)], argv.json, log);
+    const version = versionOrExit(text, path.relative(process.cwd(), localPath), log);
+    if (argv.digests) {
+      emitVersionDigests(argv.ref, [{ version, digest: await localDigest(text) }], argv.json, log);
+    } else {
+      emitVersions([version], argv.json, log);
+    }
     return;
   }
 
@@ -148,7 +233,13 @@ async function runVersions(argv: { ref: string; json: boolean }): Promise<void> 
   // 2. Direct URL — a single manifest at a fixed location, no version list.
   if (base.startsWith("http://") || base.startsWith("https://")) {
     const text = await readRemoteManifest(registry, argv.ref, log);
-    emitVersions([versionOrExit(text, argv.ref, log)], argv.json, log);
+    const version = versionOrExit(text, argv.ref, log);
+    if (argv.digests) {
+      const digest = await digestOrExit(registry, argv.ref, log);
+      emitVersionDigests(argv.ref, [{ version, digest }], argv.json, log);
+    } else {
+      emitVersions([version], argv.json, log);
+    }
     return;
   }
 
@@ -169,7 +260,16 @@ async function runVersions(argv: { ref: string; json: boolean }): Promise<void> 
     outErrLine(`${log.err.error("error")}  module not found: ${argv.ref}`);
     process.exit(1);
   }
-  emitVersions(sortVersionsDesc(versions), argv.json, log);
+  const sorted = sortVersionsDesc(versions);
+  if (!argv.digests) {
+    emitVersions(sorted, argv.json, log);
+    return;
+  }
+  const transport = registry.forRef(enumRef)!;
+  const entries = await readVersionDigests(sorted, (version) =>
+    registry.digest(transport.withVersion(enumRef, version)),
+  );
+  emitVersionDigests(enumRef, entries, argv.json, log);
 }
 
 /** Resolve `ref` to a single manifest's text — local file, direct URL, or any
@@ -313,12 +413,9 @@ async function runDigest(argv: { ref: string; json: boolean }): Promise<void> {
     outLine(digest);
   };
 
-  // Local module — hash the manifest bytes on disk (same form as the HTTP
-  // transport's digest, so a local and a published copy compare equal).
   const localPath = localManifestPath(argv.ref);
   if (localPath) {
-    const text = readFileOrExit(localPath, log);
-    emit(`sha256-${await sha256Base64Url(new TextEncoder().encode(text))}`);
+    emit(await localDigest(readFileOrExit(localPath, log)));
     return;
   }
 
@@ -327,18 +424,7 @@ async function runDigest(argv: { ref: string; json: boolean }): Promise<void> {
     outErrLine(`${log.err.error("error")}  no transport handles '${argv.ref}'`);
     process.exit(1);
   }
-  let digest: string | null;
-  try {
-    digest = await registry.digest(argv.ref);
-  } catch (err) {
-    outErrLine(`${log.err.error("error")}  ${errMsg(err)}`);
-    process.exit(1);
-  }
-  if (digest === null) {
-    outErrLine(`${log.err.error("error")}  module not found: ${argv.ref}`);
-    process.exit(1);
-  }
-  emit(digest);
+  emit(await digestOrExit(registry, argv.ref, log));
 }
 
 interface ResourceEntry {
@@ -513,6 +599,12 @@ export function moduleCommand(yargs: Argv): Argv {
                 type: "boolean",
                 default: false,
                 describe: "Emit the versions as a JSON array",
+              })
+              .option("digests", {
+                type: "boolean",
+                default: false,
+                describe:
+                  "Report each version with its change-detection digest ('telo module digest'); --json emits [{ version, digest }], a version whose digest cannot be read as { version, error }",
               }),
           async (argv) => {
             await runVersions(argv as any);

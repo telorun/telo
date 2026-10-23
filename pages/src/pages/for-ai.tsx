@@ -6,7 +6,7 @@ export default function AiFirst() {
       slug="/for-ai"
       emoji="✨"
       title="For AI"
-      tagline="Agents can generate, review, and transform entire backends without losing intent."
+      tagline="Agents can generate, review, and transform entire applications without losing intent."
       intro="YAML is explicit and structured, so manifests are as readable to a model as they are to a person. Telo turns that legibility into a tight loop: an agent emits a manifest, the analyzer checks it statically, and the feedback points at the exact line to fix - no runtime guesswork."
       points={[
         {
@@ -32,7 +32,7 @@ export default function AiFirst() {
         {
           icon: "💰",
           title: "Cheaper to build with AI",
-          body: "Compact manifests and local changes mean an agent spends far fewer tokens per task, so the cost of building and maintaining a backend with AI stays low.",
+          body: "Compact manifests and local changes mean an agent spends far fewer tokens per task, so the cost of building and maintaining an application with AI stays low.",
         },
         {
           icon: "🤖",

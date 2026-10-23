@@ -21,6 +21,7 @@ import {
   type AssembledTools,
   type ToolProviderEntry,
 } from "./agent-tools.js";
+import { ContentResolution, type ContentResolverConfig } from "./content-resolution.js";
 import { Conversation, pendingWork, type PendingWork } from "./conversation.js";
 import {
   conclusionRequest,
@@ -73,6 +74,7 @@ interface AiAgentStreamResource extends StepBudgetConfig {
   maxParallelTools?: number | bigint;
   toolProviders?: ToolProviderEntry[];
   approver?: ApproverConfig;
+  resolver?: ContentResolverConfig;
 }
 
 interface AiAgentStreamInputs {
@@ -148,9 +150,9 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
     const approver =
       this.resource.approver && new Approver(this.resource.approver, this.ctx, label);
 
-    const conversation = new Conversation(buildInitialMessages(inputs, this.resource, label));
+    const initial = buildInitialMessages(inputs, this.resource, label);
     // Refused here, from the input alone, so a bad `approvals` fails the CALL.
-    const pending = pendingWork(conversation, inputs, label);
+    const pending = pendingWork(initial, inputs, label);
     const mergedOptions = mergeAgentOptions(this.resource, inputs);
 
     // Assemble tools eagerly so a collision / bad-reference error surfaces from
@@ -158,6 +160,14 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
     if (!this.assembled) {
       this.assembled = await assembleTools(this.resource.toolProviders, label);
     }
+
+    // Referenced content the run was given is resolved here, so a resolver
+    // failure fails the CALL; a part a tool returns is resolved when its message
+    // is appended, as the stream is read.
+    const conversation = await Conversation.start(
+      initial,
+      new ContentResolution(this.resource.resolver, this.ctx, label, inputs.context ?? {}, ctx),
+    );
 
     // The first model call is dispatched here, not when the stream is first
     // read: a request the model refuses outright fails this CALL, where a
@@ -390,12 +400,12 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
             "ai.agent.steps": calls,
           });
           await agentSpan.settle("ok", { attributes: runAttributes() });
-          yield conversation.append({ role: "assistant", content: turn.text });
+          yield await conversation.append({ role: "assistant", content: turn.text });
           yield { type: "finish", usage: total, finishReason };
           return;
         }
 
-        yield conversation.append({
+        yield await conversation.append({
           role: "assistant",
           content: turn.text,
           toolCalls: turn.toolCalls,
@@ -455,7 +465,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
           "ai.agent.max_steps": maxSteps,
         });
         await agentSpan.settle("ok", { attributes: runAttributes() });
-        yield conversation.append({ role: "assistant", content: turn.text });
+        yield await conversation.append({ role: "assistant", content: turn.text });
         yield { type: "finish", usage: total, finishReason, limit: MAX_STEPS_LIMIT };
         return;
       }

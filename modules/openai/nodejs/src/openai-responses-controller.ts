@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  answeredCallId,
   contentToText,
   isMediaPart,
   isTextPart,
@@ -262,7 +263,7 @@ function translateMessages(
   // reasoning items belong in.
   let assistantStart = -1;
 
-  for (const m of messages) {
+  for (const [index, m] of messages.entries()) {
     if (m.role === "system") {
       instructions.push(contentToText(m.content));
       continue;
@@ -270,7 +271,7 @@ function translateMessages(
     if (m.role === "tool") {
       input.push({
         type: "function_call_output",
-        call_id: m.toolCallId ?? "",
+        call_id: answeredCallId(m, index, label),
         output: toolOutput(m.content, label),
       });
       continue;
@@ -323,7 +324,8 @@ function buildTools(defs: ToolDefinition[] | undefined): unknown[] | undefined {
 function toolCallOf(item: ResponsesItem): ToolCall {
   const name = textLeaf(item.name) ?? "";
   return {
-    id: textLeaf(item.call_id) ?? textLeaf(item.id) ?? "",
+    // One the endpoint never gave is minted, so the result that answers it has an id.
+    id: textLeaf(item.call_id) || textLeaf(item.id) || `call_${randomUUID()}`,
     name,
     arguments: parseToolArguments(item.arguments, name || "(unnamed)"),
   };

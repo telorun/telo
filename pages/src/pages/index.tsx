@@ -23,7 +23,7 @@ export default function Home() {
   const logo = useBaseUrl("/telo.svg");
 
   return (
-    <Layout description="Runtime for declarative backends.">
+    <Layout description="Runtime for declarative applications — backends and UIs.">
       <Head>
         <title>Telo Runtime</title>
       </Head>

@@ -4,6 +4,7 @@ import type {
   ResourceContext,
   ResourceInstance,
 } from "@telorun/sdk";
+import { ContentResolution, type ContentResolverConfig } from "./content-resolution.js";
 import { InvokeError, Stream } from "@telorun/sdk";
 import { reportStreamUsage, stampStreamUsage } from "./usage.js";
 import type { AiModelStreamInstance, Message, StreamPart, SystemPrompt } from "./types.js";
@@ -18,6 +19,7 @@ interface AiTextStreamResource {
   model: AiModelStreamInstance;
   system?: SystemPrompt;
   options?: Record<string, unknown>;
+  resolver?: ContentResolverConfig;
 }
 
 interface AiTextStreamInputs {
@@ -25,6 +27,8 @@ interface AiTextStreamInputs {
   messages?: Message[];
   system?: SystemPrompt;
   options?: Record<string, unknown>;
+  /** Caller data the resolver's mappings read; never sent to the model. */
+  context?: Record<string, unknown>;
 }
 
 interface AiTextStreamOutput {
@@ -105,7 +109,16 @@ class AiTextStream implements ResourceInstance<AiTextStreamInputs, AiTextStreamO
     // A dispatch through the kernel, so the call is traced, contract-checked and
     // zone-tracked like any other — and the InvokeContext it carries is what
     // aborts the live model connection on cancel.
-    const { output } = await model.invoke({ messages, options: mergedOptions }, ctx);
+    // Referenced content is resolved before the call, so a resolver failure
+    // rejects the CALL rather than the iteration.
+    const sent = await new ContentResolution(
+      this.resource.resolver,
+      this.ctx,
+      `Ai.TextStream "${name}"`,
+      inputs.context ?? {},
+      ctx,
+    ).messages(messages);
+    const { output } = await model.invoke({ messages: sent, options: mergedOptions }, ctx);
     // Stamped so a streamed run reports usage exactly as a buffered one does.
     return {
       output: new Stream(reportStreamUsage(stampStreamUsage(output), this.ctx.log)),

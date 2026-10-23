@@ -36,7 +36,7 @@ exports:
   resources:
     - defaultTheme
   # The renderer's controls contract as data — the parts, the reserved
-  # properties, the controls of `ui_react_controls-2` with their vectors, the
+  # properties, the tokens the renderer reads, the controls of `ui_react_controls-2` with their vectors, the
   # scenes drawing every part — and the DOM-only interpreter that runs them:
   # what a module checking a theme against the renderer imports.
   code:
@@ -215,16 +215,34 @@ schema:
       type: string
       pattern: "^(0|[0-9]+(\\.[0-9]+)?|\\.[0-9]+)(px|rem|em)$"
       default: 40rem
+    pageWidth:
+      title: Page width
+      description: >-
+        How wide every page's content is drawn when the page declares no
+        `width` of its own: `contained` within the look's page measure (the
+        `width.page` design token), centred, or `full` across all the room
+        beside the navigation.
+      $ref: "telo://Ui/PageWidth"
+      default: contained
     header:
       title: Header
       description: >-
         Nodes of the application's own in its header, drawn on every page:
         `start` before the title, `end` after the navigation. Each node's
         `when:` and text values may read the request, evaluated per request;
-        no browser root is in scope.
+        no browser root is in scope. `width` lines the header's content up
+        with a contained page or spreads it across the bar.
       type: object
       additionalProperties: false
       properties:
+        width:
+          title: Width
+          description: >-
+            How wide the header's content is drawn, the same on every page:
+            `contained` starts and ends where a contained page does, `full`
+            spans the bar. Omitted, the application's `pageWidth`; a page's own
+            `width` never changes it.
+          $ref: "telo://Ui/PageWidth"
         start:
           title: Start
           description: Nodes before the application's title, such as a logo.

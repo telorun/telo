@@ -26,8 +26,8 @@ interface AppDocument {
   /** The navigation tree and how it is drawn. */
   navigation: NavigationSpec;
   /** The application's own header nodes, before its title and after its
-   *  navigation; absent when it declares none. */
-  header?: { start: SpecNode[]; end: SpecNode[] };
+   *  navigation (empty when it declares none), and how wide its content is drawn. */
+  header: { start: SpecNode[]; end: SpecNode[]; width: "contained" | "full" };
   /** The renderer's own words, translated. */
   words: Words;
   stylesheets: string[];
@@ -45,6 +45,8 @@ interface PageDocument {
   lang?: string;
   /** The query parameters the page's nodes read, by name. */
   query?: Record<string, JsonSchema>;
+  /** How wide its content is drawn, filled by the server. */
+  width: "contained" | "full";
   children: SpecNode[];
 }
 
@@ -258,6 +260,9 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   // Serial presses are ordered within one page.
   const queues = useMemo(() => new PressQueues(), [path]);
   const state = failure ? "error" : !app ? "loading" : !declared ? "empty" : shown ? "idle" : "loading";
+  // The last page delivered keeps its width while the next one loads; a path no
+  // page declares has none, whichever page came before it.
+  const width = declared ? (shown ?? held.current.page)?.width : undefined;
   // A failure is drawn whatever the styles: it must never be a spinner forever.
   if (!failure && (!styled || !controls)) return null;
   const words = app?.words ?? NO_WORDS;
@@ -268,25 +273,27 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     <HostContext.Provider value={store}>
       <RendererContext.Provider value={base}>
         <div data-telo-part="app" data-compact={compact ? "true" : undefined} onClick={followAnchor}>
-          <header data-telo-part="header">
-            {app && <SiteNavigation navigation={app.navigation} path={path} side="start" />}
-            {app?.header && app.header.start.length > 0 && (
-              <div data-telo-part="header-start">
-                <Nodes nodes={app.header.start} />
-              </div>
-            )}
-            <span data-telo-part="app-title">{app && formatText(words, app.title, {})}</span>
-            {app && <SiteNavigation navigation={app.navigation} path={path} side="middle" />}
-            {app?.header && app.header.end.length > 0 && (
-              <div data-telo-part="header-end">
-                <Nodes nodes={app.header.end} />
-              </div>
-            )}
-            {app && <SiteNavigation navigation={app.navigation} path={path} side="end" />}
+          <header data-telo-part="header" data-width={app?.header.width}>
+            <div data-telo-part="header-content">
+              {app && <SiteNavigation navigation={app.navigation} path={path} side="start" />}
+              {app && app.header.start.length > 0 && (
+                <div data-telo-part="header-start">
+                  <Nodes nodes={app.header.start} />
+                </div>
+              )}
+              <span data-telo-part="app-title">{app && formatText(words, app.title, {})}</span>
+              {app && <SiteNavigation navigation={app.navigation} path={path} side="middle" />}
+              {app && app.header.end.length > 0 && (
+                <div data-telo-part="header-end">
+                  <Nodes nodes={app.header.end} />
+                </div>
+              )}
+              {app && <SiteNavigation navigation={app.navigation} path={path} side="end" />}
+            </div>
           </header>
           {app && <SiteNavigation navigation={app.navigation} path={path} side="before" />}
           <main data-telo-part="main">
-            <div data-telo-part="page" data-state={state}>
+            <div data-telo-part="page" data-state={state} data-width={width}>
               {failure ? (
                 <ErrorNode error={failure} />
               ) : !app ? (

@@ -7,8 +7,8 @@
  * buffered one does not.
  */
 import { InvokeError } from "@telorun/sdk";
-import { contentToText } from "@telorun/ai";
-import type { Message, ModelInvokeInput, ToolCall } from "@telorun/ai";
+import { contentToText, isMediaPart } from "@telorun/ai";
+import type { Message, MessageContent, ModelInvokeInput, ToolCall } from "@telorun/ai";
 
 export interface EchoFailRule {
   message: string;
@@ -29,6 +29,10 @@ export interface EchoResource {
    *  text — `role[toolCallId]=text` each, joined by ` | ` — so a test sees the
    *  conversation a call was given, in the order it was given. */
   echoConversation?: boolean;
+  /** Test-only: echo a media part where it stands, as `<type>(<uri>)` — or
+   *  `<type>(<n> bytes)` for one carrying its bytes — so a test sees which
+   *  references reached the model as written. */
+  echoMedia?: boolean;
   /** Test-only: emit `emitToolCall` on every call that offers tools, whatever the
    *  conversation or `toolChoice` — a model that never converges, and that
    *  disobeys a call that may not use a tool. */
@@ -81,14 +85,29 @@ export abstract class EchoBase {
     return { suffix: this.resource.suffix ?? "" };
   }
 
+  /** A message's text, with its media parts where they stand under `echoMedia`. */
+  private echoed(content: MessageContent | undefined): string {
+    if (!this.resource.echoMedia || content === undefined || typeof content === "string") {
+      return contentToText(content);
+    }
+    return content
+      .map((part) => {
+        if (!isMediaPart(part)) return contentToText([part]);
+        const data = part.data;
+        const size = typeof data === "string" ? data.length : data?.byteLength;
+        return `${part.type}(${part.uri ?? `${size} bytes`})`;
+      })
+      .join("");
+  }
+
   protected buildEchoText(input: ModelInvokeInput): string {
     if (this.resource.echoConversation) {
       return input.messages
-        .map((m) => `${m.role}${m.toolCallId ? `[${m.toolCallId}]` : ""}=${contentToText(m.content)}`)
+        .map((m) => `${m.role}${m.toolCallId ? `[${m.toolCallId}]` : ""}=${this.echoed(m.content)}`)
         .join(" | ");
     }
     const last = input.messages[input.messages.length - 1];
-    const text = contentToText(last?.content) + (this.resource.suffix ?? "");
+    const text = this.echoed(last?.content) + (this.resource.suffix ?? "");
     if (!this.resource.echoRequest) return text;
     const tools = (input.tools ?? []).map((tool) => tool.name).join(",");
     return `${text} [tools: ${tools}] [toolChoice: ${input.toolChoice ?? "absent"}]`;

@@ -25,7 +25,8 @@ const drawer = (side: string) => ({
   modal: true,
   dismiss: { escape: true, outside: true, closeButton: true },
 });
-const headerParts = (r: Rendered) => [...r.part("header").children].map((child) => child.getAttribute("data-telo-part"));
+// The header's row: what its only child, `header-content`, holds.
+const headerParts = (r: Rendered) => [...r.part("header-content").children].map((child) => child.getAttribute("data-telo-part"));
 const toggle = (r: Rendered, text: string) => r.parts("nav-toggle").find((candidate) => candidate.textContent === text) as HTMLElement;
 
 describe("the application's navigation", () => {

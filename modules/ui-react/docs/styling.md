@@ -61,6 +61,15 @@ breaks — `UiReact.defaultTheme` declares none.
 | `app` | `display`, `grid-template-columns` | a sidebar sits beside the page |
 | `tab-bar` | `position`, `bottom` | a tab bar stays at the bottom edge |
 | `glyph` | `background-color`, `mask-image` | a glyph is its file's shape in the colour of the text around it |
+| `page` | `max-width`, `margin-inline` | a contained page is no wider than the width.page token, centred |
+| `header` | `display`, `grid-template-columns`, `padding-inline` | beside a sidebar the header spans every column of the application, and its content holds the inset |
+| `header-content` | `padding-inline`, `grid-column` | a contained header's content starts and ends where a contained page does |
+| `main` | `padding-inline` | the page column is inset by the space.page token |
+
+A shorthand or a longhand that sets a reserved property counts as setting it:
+`padding`, `padding-left` or `padding-inline-start` on `header`, `grid-area` on
+`header-content`, `margin` or `margin-left` on `page`. Write a header's or the main area's block padding with
+`padding-block` (or `padding-top` / `padding-bottom`).
 
 ## Tokens
 
@@ -70,6 +79,27 @@ code entry `@telorun/ui-react-contract` exports as `tokenProperty`). A theme giv
 every token a value — from its own `tokens`, or from its stylesheets — and
 reads them for colours, spacing, radii, shadows and type, so an application's
 `tokens` change the brand under any theme.
+
+Two tokens are read by the base layer rather than by a theme, and the contract
+lists them as `rendererTokens` in its parts data:
+
+- `width.page` (`--telo-width-page`) is the widest a page's content is drawn
+  while it carries `data-width="contained"`, centred; under
+  `data-width="full"` the page has no maximum.
+- `space.page` (`--telo-space-page`) is the inline space between the room a
+  page has and its content: `main`'s inline padding, and the inset of the
+  header's content.
+
+The header's content uses the same expression over the room it has: under
+`data-width="full"` on `header` it is inset by `space.page`; under
+`contained` by the larger of `space.page` and half of what `width.page`
+leaves — so it starts and ends exactly where a contained page does, at every
+viewport width. Beside a sidebar the header is a subgrid spanning every column
+of `app`, its bar covering the strip above the sidebar, and a contained
+header's content is placed over `main`'s column. A theme gives both tokens a
+value — `UiReact.defaultTheme` `64rem` and `1.5rem` — and, as the properties
+that apply them are reserved, sets the measure and the inset only through the
+tokens.
 
 The default theme, [`UiReact.defaultTheme`](theme.md#the-default-theme), is
 neutral: near-black text and primary buttons on white, hairline borders, 2rem
@@ -109,7 +139,8 @@ application declares a theme of its own that styles both schemes.
 | Part | Is |
 | --- | --- |
 | `app` | the whole application |
-| `header` | the bar holding the title and the navigation: one row — `header-start`, the title, `nav` taking the room left, `header-end` at its end, and `nav-menu` first (or last, for a drawer opening from the end edge) when the navigation is behind a menu button — while the application is not compact, and wrapping when it is |
+| `header` | the bar holding the title and the navigation, its only child `header-content`; beside a sidebar a subgrid spanning every column of `app` |
+| `header-content` | the header's row: `header-start`, the title, `nav` taking the room left, `header-end` at its end, and `nav-menu` first (or last, for a drawer opening from the end edge) when the navigation is behind a menu button — one row while the application is not compact, wrapping when it is; inset to line up with a contained page under the header's `data-width="contained"` |
 | `header-start` | the application's own [header](app.md#header) nodes before the title; drawn only when there are any |
 | `app-title` | the application's title |
 | `nav` | the slot of a navigation drawn in the header, holding the [`Navigation` control](controls-abi.md#navigation) in a row; what does not fit moves under More |
@@ -121,6 +152,15 @@ application declares a theme of its own that styles both schemes.
 | `page` | the current page |
 | `page-title` | the page's title |
 | `tab-bar` | the bar along the bottom edge holding a navigation placed as a tab bar: the `Navigation` control in a row, its top-level entries as tabs and More last when there are more than it shows; a group's tab and More open their entries in a surface, in a column; drawn last in `app` |
+
+`header-content` is a break in this contract: the row's parts are its
+children, not the header's, so a rule written `[data-telo-part="header"] >
+[data-telo-part="header-start"]` (or over any other part of the row) matches
+nothing and must go through `header-content` —
+`[data-telo-part="header"] > [data-telo-part="header-content"] >
+[data-telo-part="header-start"]`. A row's `gap` and `min-height` belong on
+`header-content`; the bar's background, border and block padding stay on
+`header`.
 
 ### Structure
 
@@ -448,6 +488,7 @@ listed.
 | `data-align="…"` | `start`, `center`, `end` — a popover's, along its side | `surface` |
 | `data-modal="…"` | `true`, `false` — a dialog's or a drawer's | `surface` |
 | `data-sorted="…"` | `asc`, `desc` | `table-header-cell` |
+| `data-width="…"` | `contained`, `full`: on `page`, how wide the page's content is drawn, as its page document says — the page's own `width`, else the application's `pageWidth` — the last page's while the next loads, absent on a path no page declares; on `header`, how wide its content is drawn — the application's `header.width`, else its `pageWidth` — the same on every page | `header`, `page` |
 | `data-style="…"` | the node's or the rule's style names, space-separated | wherever a style applies |
 
 Three parts of the renderer's own carry `data-state` with values of their own,

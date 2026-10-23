@@ -1,0 +1,22 @@
+# The showcase's translator: one catalog per language, each in its own file
+# under `translations/`. The texts are written in English, the module's `lang`,
+# so English has no catalog. A language a request asks for that no catalog
+# translates is answered in English.
+kind: I18n.Translator
+metadata:
+  name: t
+catalogs:
+  - !ref german
+  - !ref spanish
+  - !ref french
+  - !ref italian
+  - !ref dutch
+  - !ref polish
+  - !ref portuguese
+  - !ref turkish
+  - !ref russian
+  - !ref ukrainian
+  - !ref hindi
+  - !ref japanese
+  - !ref korean
+  - !ref chinese

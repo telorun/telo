@@ -31,11 +31,13 @@
   --telo-font-size-xl: 1.375rem;
   --telo-line-height-body: 1.55;
   --telo-line-height-heading: 1.2;
+  --telo-width-page: 60rem;
+  --telo-space-page: 0;
 }
 body { margin: 0; background: var(--telo-color-background); color: var(--telo-color-text); font-family: var(--telo-font-body); font-size: var(--telo-font-size-md); line-height: var(--telo-line-height-body); }
 
 /* shell */
-[data-telo-part="app"], [data-telo-part="header"], [data-telo-part="header-start"], [data-telo-part="app-title"], [data-telo-part="nav"], [data-telo-part="nav-menu"], [data-telo-part="header-end"], [data-telo-part="sidebar"], [data-telo-part="sidebar-toggle"], [data-telo-part="main"], [data-telo-part="page"], [data-telo-part="page-title"], [data-telo-part="tab-bar"] { gap: var(--telo-space-md); font-family: var(--telo-font-heading); line-height: var(--telo-line-height-heading); }
+[data-telo-part="app"], [data-telo-part="header"], [data-telo-part="header-content"], [data-telo-part="header-start"], [data-telo-part="app-title"], [data-telo-part="nav"], [data-telo-part="nav-menu"], [data-telo-part="header-end"], [data-telo-part="sidebar"], [data-telo-part="sidebar-toggle"], [data-telo-part="main"], [data-telo-part="page"], [data-telo-part="page-title"], [data-telo-part="tab-bar"] { gap: var(--telo-space-md); font-family: var(--telo-font-heading); line-height: var(--telo-line-height-heading); }
 
 /* structure */
 [data-telo-part="box"], [data-telo-part="stack"], [data-telo-part="columns"], [data-telo-part="column"], [data-telo-part="text"], [data-telo-part="badge"], [data-telo-part="link"], [data-telo-part="navigation"], [data-telo-part="nav-toggle"], [data-telo-part="nav-item"], [data-telo-part="nav-group"], [data-telo-part="nav-panel"], [data-telo-part="tabs"], [data-telo-part="tab-list"], [data-telo-part="tab"], [data-telo-part="tab-panel"], [data-telo-part="image"], [data-telo-part="svg"], [data-telo-part="value"], [data-telo-part="list"], [data-telo-part="list-heading"], [data-telo-part="data"] { gap: var(--telo-space-sm); margin: 0; font-size: var(--telo-font-size-md); }

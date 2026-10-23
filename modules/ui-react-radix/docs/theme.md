@@ -25,7 +25,9 @@ quiet header holding the title in the accent colour, a sidebar and a bottom
 tab bar in the header's tint, tabs underlined in the accent, and table
 headings in small uppercase letters. It holds:
 
-- `tokens` — the design tokens' light values, a `Ui.DesignTokens` set;
+- `tokens` — the design tokens' light values, a `Ui.DesignTokens` set, a
+  contained page's measure (`width.page`) `72rem` and the page inset
+  (`space.page`) `1.5rem` among them;
 - `stylesheets` — one stylesheet, `themes/radix-theme.css`, styling every part
   of [the styling contract](../../ui-react/docs/styling.md), giving the
   typeface tokens and every dark-scheme value, and declaring no reserved

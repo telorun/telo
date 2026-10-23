@@ -6,8 +6,8 @@ description: "Install Telo, write a minimal YAML manifest, run it, and understan
 
 # Getting Started
 
-Telo is a runtime for declarative backends. You describe what your system
-should do in YAML, and Telo runs it — no imperative glue code.
+Telo is a runtime for declarative applications — backends and the UIs on top
+of them. You describe what your system should do in YAML, and Telo runs it — no imperative glue code.
 
 This guide walks through installing Telo, running a minimal manifest, and
 understanding what just happened.

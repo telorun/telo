@@ -5,10 +5,10 @@ import { tokenProblems } from "../src/token-coverage.js";
 const tokens = ["color.accent", "radius.md"];
 const propertyOf = (token: string) => `--telo-${token.replaceAll(".", "-")}`;
 
-function problemsOf(css: string, themeTokens: string[] = []) {
+function problemsOf(css: string, themeTokens: string[] = [], rendererTokens: string[] = []) {
   const read = readStylesheet(css);
   if (!read.ok) throw new Error(read.message);
-  return tokenProblems(tokens, propertyOf, themeTokens, [{ path: "/theme.css", reading: read.reading }]);
+  return tokenProblems(tokens, propertyOf, rendererTokens, themeTokens, [{ path: "/theme.css", reading: read.reading }]);
 }
 
 describe("the token checks", () => {
@@ -33,5 +33,6 @@ describe("the token checks", () => {
         message: "No 'var(--telo-radius-md)' in the theme's stylesheets reads the token 'radius.md', so a brand setting it changes nothing.",
       },
     ]);
+    expect(problemsOf(`:root { --telo-color-accent: red; --telo-radius-md: 4px } a { color: var(--telo-color-accent) }`, [], ["radius.md"])).toEqual([]);
   });
 });
