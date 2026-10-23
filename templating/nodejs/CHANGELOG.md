@@ -1,5 +1,12 @@
 # @telorun/templating
 
+## 0.122.0
+
+### Patch Changes
+
+- Updated dependencies [327907c]
+  - @telorun/cel@0.122.0
+
 ## 0.121.0
 
 ### Minor Changes

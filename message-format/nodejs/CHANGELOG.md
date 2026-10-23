@@ -1,5 +1,7 @@
 # @telorun/message-format
 
+## 0.122.0
+
 ## 0.121.0
 
 ### Minor Changes
