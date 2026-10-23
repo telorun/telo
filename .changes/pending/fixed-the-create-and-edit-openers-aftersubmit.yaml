@@ -1,4 +1,0 @@
-modules:
-  modules/crud: Fixed
-body: The create and edit openers' afterSubmit description now says again returns the
-  form to the values a new record starts from, rather than emptying it.

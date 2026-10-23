@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.29.0 - 2026-10-23
+### Added
+* Crud.Ui's generated filter bar now carries its kept fields in its state, following ui's shared state record; nothing it generates changes otherwise.
+### Fixed
+* The create and edit openers' afterSubmit description now says again returns the form to the values a new record starts from, rather than emptying it.
+* The documented UiReact.App examples declare the words: the application now requires.
+* The documented UiReact.App examples list their pages as Ui.Page.
+
 ## 0.27.1 - 2026-10-13
 ### Fixed
 * The README's application example no longer binds its server to 127.0.0.1, which made it unreachable in a container or a runner session.

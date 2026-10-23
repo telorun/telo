@@ -1,5 +1,0 @@
-modules:
-  modules/ui-lucide: Added
-body: "An icon used once is declared inline where the entry names it, as icon: { kind:
-  UiLucide.Icon, name: house } — name is the kind's own field, so the object is a
-  declaration — on a runtime from telo 0.121.0."

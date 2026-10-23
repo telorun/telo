@@ -1,6 +1,0 @@
-modules:
-  apps/hub: Fixed
-body: "The build-ui guide's address rule and examples now serve the API under the
-  application's mount: mounted at /admin, an app-relative source.basePath or source.path
-  is requested under /admin, so the example mounts the API at /admin/api/tasks, and
-  Crud.Ui's basePath is its path under the application's mount."

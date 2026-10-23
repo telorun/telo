@@ -1,4 +1,0 @@
-modules:
-  blueprints/agent-app: Added
-body: "history declares entry: file, so a directory passed for it is refused
-  (HOST_PATH_ENTRY_MISMATCH). Requires telo 0.121.0."

@@ -1,8 +1,0 @@
-modules:
-  modules/ui-react: Added
-body: "Breaking: an action's source.path — of a Ui.Action and of a row action in a table
-  or a list node — is now requested under the application's mount, as every other path a
-  page names is: mounted at /admin, path: /api/reports is sent to /admin/api/reports. An
-  application mounted under a prefix whose actions name an API served at the origin's
-  root serves that API under its mount too. onSuccess.refreshes still names paths as
-  written."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-10-23
+### Added
+* `every`, `cron` and `timezone` are top-level matchers, so an editor or an application outline labels a schedule's `invoke` trigger by the values written there.
+
 ## 0.10.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

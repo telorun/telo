@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-10-23
+### Added
+* history declares entry: file, so a directory passed for it is refused (HOST_PATH_ENTRY_MISMATCH). Requires telo 0.121.0.
+
 ## 0.3.4 - 2026-10-18
 ### Fixed
 * The Http.Server the application stands up binds its port under listen:, as http-server 0.38.0 requires; the top-level port: it wrote is refused there.

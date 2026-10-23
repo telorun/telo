@@ -1,9 +1,0 @@
-modules:
-  modules/ui-react: Fixed
-body: The default theme underlines links (a link node, a link in a table cell or a
-  value, a chosen picker value) in the accent colour, wraps long unbroken text, values
-  and links inside their box, gives subheadings and list headings a heavier weight than
-  body text, cuts a long filter chip with an ellipsis, insets sliders so the thumb stays
-  inside its column at either end, and spaces the controls of a filter bar further
-  apart. A switch field draws the switch and its label on one line, as a checkbox field
-  does.

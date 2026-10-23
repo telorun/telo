@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-10-23
+### Added
+* The `App.Instance` docs state that a child application does not inherit its parent's host values (`TELO_HOST_STATE_DIR` and the public URL templates), so a child's `Telo.DurableDirectory` need is supplied through its own variable.
+
 ## 0.3.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

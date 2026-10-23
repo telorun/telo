@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.39.0 - 2026-10-23
+### Added
+* `contentTypeParsers` is an entry list: each entry is identified by its `contentType` and dispatches to its `parser`, so an editor lists a server's parsers as it lists its mounts.
+* Directory slots declare entry: directory, so telo check refuses a file wired where a directory is wanted (HOST_PATH_ENTRY_MISMATCH) and the kernel refuses an existing file there when the resource is created. Requires telo 0.121.0.
+
 ## 0.38.0 - 2026-10-17
 ### Added
 * Breaking: every Http.Server must be edited. The socket moved under listen: { address, port } (listen.port required, listen.address defaulting to 0.0.0.0), and the top-level host/port spelling is refused by the resource rule HTTP_SERVER_LISTEN_MOVED (ERR_HTTP_SERVER_LISTEN_MOVED at creation). baseUrl is removed with no replacement and the server schema is closed, so it and any other undeclared key are a SCHEMA_VIOLATION; the OpenAPI servers entry is relative, or the request's own origin under trust. Added routing by host: a mount's hostnames lists references to Telo.PublicUrl / Telo.PublicHostPattern needs (never domain names), applied to every route the mount registers. The host picks a precedence class before the path is matched: mounts naming it exactly, then each pattern naming it (longest literal suffix first), then unrestricted mounts and, for a host no entry claims, the port's customDomains mount. ERR_HTTP_ROUTE_DUPLICATE names the method, path and both mounts when two mounts of one class register one route; ERR_HOSTNAMES_PORT_MISMATCH names a need served on another port. request.host (Host or :authority, X-Forwarded-Host only behind trustProxy / trustForwardedHeaders) is in every request context. unknownHosts: reject answers any other non-IP host 421 ERR_HOST_NOT_SERVED, refused without hostnames (HTTP_UNKNOWN_HOSTS_NO_HOSTNAMES) and beside a customDomains need (ERR_HTTP_UNKNOWN_HOSTS_CUSTOM_DOMAINS). Http.Reference serves the OpenAPI document of the requesting host's routes. The Listening event carries address and port.

@@ -1,6 +1,0 @@
-modules:
-  modules/openai: Added
-body: "OpenAI.Client: an Http.Client preset with OpenAI's endpoint as the default
-  baseUrl, a ten-minute timeout and an optional credential (left out for a self-hosted
-  server asking no key), so a long answer is no longer cut off by the HTTP client's
-  10-second default."

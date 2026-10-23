@@ -1,9 +1,0 @@
-modules:
-  modules/ui-react-radix: Added
-body: Draws Navigation — in a row or a rail on Radix's navigation menu, each open
-  group's panel at the end of <body>, placed against its button by the primitives'
-  popper, a nested group a submenu of its own; in a column each group's entries in place
-  beneath its button, with no portal or popper; a group's button naming its panel by
-  aria-controls only while it is open, and an entry opening a dialog drawn as a button
-  (aria-haspopup="dialog") expanded while its key is open — and Tabs on Radix's tabs,
-  and styles the navigation parts, nav-group included.

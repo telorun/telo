@@ -1,5 +1,0 @@
-modules:
-  modules/anthropic: Added
-body: "Anthropic.Client: an Http.Client preset with Anthropic's endpoint as the default
-  baseUrl, a ten-minute timeout and a required credential, so a long answer is no longer
-  cut off by the HTTP client's 10-second default."

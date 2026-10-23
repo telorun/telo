@@ -1,6 +1,0 @@
-modules:
-  modules/blob-fs: Added
-body: "BlobFs.Store's root declares that it names a directory: telo check refuses a
-  !module-path naming a file there, or a host-path variable declared entry: file, and
-  the store refuses an existing file at its root when it is created. Requires telo
-  0.121.0."

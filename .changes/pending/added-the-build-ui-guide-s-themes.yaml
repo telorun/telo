@@ -1,8 +1,0 @@
-modules:
-  apps/hub: Added
-body: "The build-ui guide's themes section covers theme and brand as two keys: theme: is
-  the required look of every part and its control sets, and tokens: is the brand over
-  it, a closed design-token set or a list chosen per request. It covers control sets:
-  any of the fifteen controls drawn in place may be replaced in any subset, while the
-  nine layer controls (select, multi-select, dialog, drawer, popover, confirmation,
-  menu, tooltip, navigation) are replaced as one unit."
