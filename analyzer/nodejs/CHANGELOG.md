@@ -1,5 +1,41 @@
 # @telorun/analyzer
 
+## 0.122.0
+
+### Minor Changes
+
+- 76a2de5: `telo check` judges what an expression's value is known to be, not only its CEL type's base: a list's element type against the slot's `items`, a map's value type against its members, and — read off the expression itself — a list literal's elements, a map literal's keys and values, a module call's declared result, the elements both sides of a list `+` contribute, and either branch of `?:`. A literal tool message without `toolCallId` concatenated onto a function's message history is now `CEL_TYPE_ERROR` at the argument rather than `ERR_INPUT_INVALID` at run, and a conflict lying wholly beneath a value type's type argument is `CEL_TYPE_ARGUMENT_MISMATCH`. Union slots are read with their shared keywords applied to every branch. The schema comparison now also refuses a value whose listed values (`const` / `enum`) a slot allows none of, and a member the value always carries where the slot declares it `false`; a required member whose own schema declares a `default` is read as filled where an expression fills a resource's field or a call's argument, as the runtime fills defaults there before validating — never in a comparison against an ancestor's contract, which nothing fills.
+- 327907c: A module variable or secret declared `type: integer` or `type: number` now holds that representation for every reader, at the root Application and in every Library import — whether the value came from a default, the environment, the command line, a literal an importer wrote or an importer's own variable (an integer, as long as int64 can hold it). `!cel "variables.boost * 20"` used to pass `telo check` and fail at run with `no overload of "*" takes (double, int)`; it now runs. Two imports of a `lifecycle: shared` library supplying the same integer in different spellings (a literal and a forwarded variable) now agree.
+
+  A number written literally in a pure `value:` step now reads in CEL as the same number written in CEL would: an int when it is integral and within int64, a double otherwise — as the whole value and at any depth of a literal map or list. `value: 3` then `!cel "steps.count.result * 2"` used to pass `telo check` and fail at run with `no overload of "*" takes (double, int)`; it now runs. The rule reads the value, not its spelling, so `3.0` and `1e3` are ints, and an integral number outside int64 (`1e30`) stays a double. A number a `!cel` or `!interpolate` member computes is left as computed.
+
+  `telo check` types `steps.<name>.result` of a literal step by the same rule: a literal map is a closed record, and a list is typed by its elements when they all agree. So that such a record still meets a map across a condition, the CEL type join now reads a record as the string-keyed map it is: a record against a map, or against a record of another shape, joins to `map<string, …>` over their value types — `cond ? steps.flags.result : {'ok': true}` checks — where the branches used to be refused as not one type; a record against a scalar or a list is still refused.
+
+  **Behaviour changes:**
+
+  - A declared integer variable or secret is an int64 for every reader, not only for CEL, so a controller handed `!cel "variables.x"` at a config slot receives an int64 (a `BigInt`) where it used to receive a plain number. A controller doing arithmetic on such a slot reads it with `integerInput` from `@telorun/sdk`.
+  - `value: 3` then `steps.count.result * 2.0` ran before and is now refused — `CEL_TYPE_ERROR` from `telo check`, and `telo run` refuses the manifest at load. Write `value: !cel "3.0"` for a double 3, or multiply by an int.
+  - A literal step's result is typed, so an expression that only worked because it was untyped is a static error: `value: 3.5` then `* 2`, `value: 3` then `+ "a"`, a literal string passed to a function that takes a number.
+  - A literal step's result no longer meets `null` in a condition: `has(steps.x) ? steps.x.result : null` over a literal-map step is `CEL_TYPE_ERROR`, as `true ? 1 : null` always was. Write `has(steps.x) ? dyn(steps.x.result) : null`.
+  - A member a literal map does not hold is `CEL_UNKNOWN_FIELD` — `steps.flags.result.misspelled`, and also under `has(steps.flags.result.absent)`, which used to answer `false`.
+  - `steps.<name>.result` is typed only when every step of that name produces the same type, where the last step written used to type the name alone. A pair that disagrees (`then: value: 3` / `else: value: !cel "2.5"`) is untyped, and an expression step reads its own name as what the other steps of that name produce: a loop seed `value: 0` advanced with `!cel "steps.i.result + 1.0"` is refused by both halves — write `+ 1`.
+  - A misspelled step name in a body with a `value:` step is reported once, as `"frist" is not declared here (declared: …)`, where it was reported twice in two wordings.
+  - A literal step's integers reach a controller as an int64 when forwarded — `value: 5000` then `timeoutMs: !cel "steps.t.result"` hands the controller a `BigInt` where it received a plain number. A controller reads such a slot with `integerInput` from `@telorun/sdk`.
+  - A durable run resumed from a journal written before this change replays the double it recorded for a literal step, not an int.
+  - `value: !cel "self.<field>"` in a step body a templated kind declares — in a body entry or in a `with:` member nested in one — or a `base:` mapping builds for its parent, is now evaluated when the step runs rather than resolved once when the instance is created, as is any expression inside a step's `value:` there. A number the instance supplies is therefore never read as one written in the step: `ratio: 3` declared `type: number` stays a double.
+
+- 76a2de5: `x-telo-value-schema-from` accepts a list of locations — `[/toolProviders/*/provider/contextType, /resolver/contextType]` — each element any form a single location takes (a field name, a JSON Pointer with `*`, or `{ from, member }`). The value must satisfy every type every element reaches, on a configuration slot and inside `inputType` / `outputType` alike, at `telo check` and at dispatch; an element reaching nothing contributes nothing. An empty list, or an element that is no location, is `VALUE_SCHEMA_FROM_INVALID` at the kind and `ERR_VALUE_SCHEMA_FROM_INVALID` when the kernel registers it, naming the element.
+
+### Patch Changes
+
+- 76a2de5: A named shape that names another shape — with `!ref`, `telo://Self/<Type>` or the canonical `telo:<Module>/<Type>` — is now read beneath that reference by `telo check`, at call sites and by every validator, as the kernel already reads it: a literal violating the nested shape (a tool call with no `id` inside a message) is reported where it is written. A nested `!ref` that names nothing is reported once, as `SCHEMA_TYPE_REF_UNRESOLVED` at the shape.
+- 76a2de5: A resource or referrer rule is reported as over its evaluation budget only when a subject is left unjudged: the budget is checked before the next evaluation, so one slow evaluation of the last subject (a cold first call on a loaded machine) no longer reports a rule that checked everything as stopped.
+- 76a2de5: A named shape a library exports is read by its importers exactly as when it is not exported: its own `!ref`s resolve in its declaring module and the shapes they name are carried with it. Before, exporting such a shape left its references unresolved, so an importer's call sites against a contract naming it were silently unchecked, or `telo check` aborted with an uncoded "does not compile where it stands" error when a value slot typed by it held an expression beside a failing union. The stand-in judge also resolves a reference exactly as the whole-schema validation did.
+- 76a2de5: The stand-in judge's schema-node validator now requires a `resolveReference` hook, and the kernel supplies one answering from its primary validator — so a union decided through a schema only the primary instance holds is judged at resource creation instead of failing with "does not compile where it stands".
+- Updated dependencies [327907c]
+  - @telorun/cel@0.122.0
+  - @telorun/templating@0.122.0
+
 ## 0.121.0
 
 ### Minor Changes

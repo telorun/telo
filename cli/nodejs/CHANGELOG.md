@@ -1,5 +1,26 @@
 # @telorun/cli
 
+## 0.122.0
+
+### Minor Changes
+
+- 76a2de5: `telo module versions <ref> --digests` reports each version with the change-detection digest `telo module digest` prints for it, read in one process with bounded concurrency; `--json` writes `[{ version, digest }]`. A version whose digest cannot be read is reported as `{ version, error }` and named on stderr, so one unreadable tag does not hide the others. Without the flag the output is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [76a2de5]
+- Updated dependencies [327907c]
+- Updated dependencies [76a2de5]
+- Updated dependencies [76a2de5]
+- Updated dependencies [76a2de5]
+- Updated dependencies [76a2de5]
+- Updated dependencies [76a2de5]
+  - @telorun/analyzer@0.122.0
+  - @telorun/kernel@0.122.0
+  - @telorun/sdk@0.122.0
+  - @telorun/ide-support@0.122.0
+  - @telorun/templating@0.122.0
+
 ## 0.121.0
 
 ### Minor Changes
