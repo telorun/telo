@@ -31,7 +31,7 @@ imports:
       maxAttachmentBytes: 2000
       maxToolResultBytes: 1200
       maxConversationAttachments: 2
-  App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
+  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
   Stream: ../../../../modules/stream
   Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
@@ -39,7 +39,7 @@ imports:
   Multipart: oci://ghcr.io/telorun/multipart@0.4.0#sha256-RjPcqJs2rTd4hWLUbQ-SGcqkhYW3GIDCgWbi_bk8kt0
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
   Blob: oci://ghcr.io/telorun/blob@0.2.0#sha256-UgFwVFoZWZ_s8GWHIi-0qJB8K82CZ5gSQN0HZaqpc58
-  BlobFs: oci://ghcr.io/telorun/blob-fs@0.2.0#sha256-_DxXaUEsakpFyEif4SKQc1QesAcTFOpnXBW9AjIyUbo
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.0#sha256-64KNO1vwB6VsYNBi9QOdsoevPOzVVCt022ONSbqX90g
 variables:
   scratch:
     env: CHAT_TEST_ATTACHMENTS_SCRATCH

@@ -45,7 +45,7 @@ imports:
       modelEndpoint: http://127.0.0.1:18504/v1
       # The repo's own CLI, relative to the workspace the tools run in.
       teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
-  App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
+  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Stream: ../../../../modules/stream
