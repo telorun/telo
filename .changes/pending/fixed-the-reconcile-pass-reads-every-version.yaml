@@ -1,6 +1,0 @@
-modules:
-  apps/hub: Fixed
-body: The reconcile pass reads every version's digest with one `telo module versions
-  --digests` process per module instead of one `telo module digest` process per version,
-  which cut a pass's CPU roughly by the module's version count. It now runs hourly by
-  default (`TRACK_CRON` still overrides it), and the chart requests 1500m CPU.

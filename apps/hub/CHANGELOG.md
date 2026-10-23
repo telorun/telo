@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.18.1 - 2026-10-23
+### Fixed
+* The reconcile pass reads every version's digest with one `telo module versions --digests` process per module instead of one `telo module digest` process per version, which cut a pass's CPU roughly by the module's version count. It now runs hourly by default (`TRACK_CRON` still overrides it), and the chart requests 1500m CPU.
+
 ## 0.18.0 - 2026-10-23
 ### Added
 * The build-ui guide covers navigation icons: an entry's icon is a UiLucide.Icon from ui-lucide — declared inline where one entry uses it, named when several share it — or a Ui.FileIcon, drawn in its text's colour and alone in a sidebar's rail.

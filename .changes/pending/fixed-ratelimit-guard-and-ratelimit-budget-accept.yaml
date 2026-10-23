@@ -1,5 +1,0 @@
-modules:
-  modules/rate-limit: Fixed
-body: RateLimit.Guard and RateLimit.Budget accept a 'limit' supplied as a 64-bit integer
-  — what any !cel integer expression produces — instead of failing with a BigInt
-  arithmetic error on the first call.

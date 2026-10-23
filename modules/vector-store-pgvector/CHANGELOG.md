@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.2 - 2026-10-23
+### Fixed
+* VectorStorePgvector.Store accepts a computed CEL integer for 'dimensions' and bounds vectors exactly as the same literal does; before, every vector was refused as the wrong length. A value no JS number holds exactly is refused at creation, naming the store.
+
 ## 0.16.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

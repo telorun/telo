@@ -1,4 +1,0 @@
-modules:
-  apps/authoring-agent: Fixed
-body: The chat app's two 'failure' outputs read the failure step's result through
-  dyn(...), so a check that types a literal step's result accepts them beside null.

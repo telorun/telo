@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-10-23
+### Added
+* `CheckTheme` counts a token the renderer itself reads (the contract's `rendererTokens`) as read, still asking the theme for its default, and treats `padding`, `padding-left`, `padding-right`, `padding-inline-start` / `-end` as setting a reserved `padding-inline`, `margin`, `margin-left`, `margin-right`, `margin-inline-start` / `-end` as setting a reserved `margin-inline`, `grid-area` and `grid-column-start` / `-end` as setting a reserved `grid-column`, and `max-inline-size` as setting a reserved `max-width`.
+
 ## 0.2.0 - 2026-10-23
 ### Added
 * A rule setting background, mask, -webkit-mask or -webkit-mask-image on a part is held to that part's reserved background-color or mask-image, and the vector host turns an element spec at any depth of a prop into an element, so a Navigation vector hands an entry its icon.

@@ -1,9 +1,0 @@
-modules:
-  modules/ui: Added
-body: "Page width: the named shape `Ui.PageWidth` (`contained` | `full`), an optional
-  `width` on `Ui.Page`, and a `pageWidth` input the page is invoked with; the page
-  answers `width` in its document. `@telorun/ui` exports `resolvedPageWidth`, the one
-  reading of that chain (the value written, else the application's, else `contained`).
-  New design tokens `width.page` (the widest a contained page is drawn) and `space.page`
-  (the inline inset of a page and of the header), each a CSS length in `px` or `rem`,
-  both in `DESIGN_TOKENS`."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-10-23
+### Fixed
+* `Anthropic.MessagesModel` and `Anthropic.MessagesModelStream` refuse a `tool` message with no `toolCallId`, or an empty one, before anything is sent — by the `Ai.Model` contract (`ERR_INPUT_INVALID`) when dispatched, and as `ERR_MODEL_REQUEST_REJECTED` naming its index in `messages` for a caller that bypasses it — instead of sending an empty `tool_use_id`.
+
 ## 0.3.0 - 2026-10-23
 ### Added
 * Anthropic.Client: an Http.Client preset with Anthropic's endpoint as the default baseUrl, a ten-minute timeout and a required credential, so a long answer is no longer cut off by the HTTP client's 10-second default.

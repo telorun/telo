@@ -1,5 +1,0 @@
-modules:
-  modules/otlp: Fixed
-body: OTLP Sink and TraceSink accept a computed (`!cel`) integer `buffer` and bound the
-  buffer as the same literal does; before, the sink was refused at start with a
-  JavaScript type error. A value no number holds exactly is refused, naming the sink.

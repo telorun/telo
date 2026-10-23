@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.2 - 2026-10-23
+### Fixed
+* Postgres.Connection accepts computed CEL integers for every 'pool' setting (min, max, idleTimeoutMs, connectionTimeoutMs, maxLifetimeMs, healthCheckMs) and configures the pool and its liveness sweep exactly as the same literals do; before, the connection failed to start or its timers threw. A value no JS number holds exactly is refused at creation, naming the connection and the field.
+
 ## 0.9.0 - 2026-10-17
 ### Added
 * A connection is opened over a typed database-access need: Postgres.DatabaseAccess (url, a sensitive Telo.Url restricted to the postgres and postgresql schemes; version: semver; features: pgvector, postgis), referenced by Postgres.Connection.access, which is now required. When the connection starts it reports the server's version (from server_version_num) and the features whose extensions are available (pg_available_extensions), so a need asking for a newer server or a missing extension is refused at start-up with ERR_NEED_UNMET. Breaking: connectionString is removed. A connection writing it, or omitting access, is refused with SCHEMA_VIOLATION at telo check and when it is created; write access: { kind: Postgres.DatabaseAccess, fields: { url: <the same URL> } } instead, or reference a need. Requires telo >=0.117.0.

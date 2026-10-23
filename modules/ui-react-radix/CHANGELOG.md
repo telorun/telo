@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-10-23
+### Added
+* The theme sets its page measure and inset as the `width.page` (`72rem`) and `space.page` (`1.5rem`) design tokens instead of `max-width` and inline padding on the `page`, `main` and `header` parts, and styles the header's row through the new `header-content` part, so a full-width page and a header lined up with a contained page work under it.
+
 ## 0.2.0 - 2026-10-23
 ### Added
 * Draws Navigation — in a row or a rail on Radix's navigation menu, each open group's panel at the end of <body>, placed against its button by the primitives' popper, a nested group a submenu of its own; in a column each group's entries in place beneath its button, with no portal or popper; a group's button naming its panel by aria-controls only while it is open, and an entry opening a dialog drawn as a button (aria-haspopup="dialog") expanded while its key is open — and Tabs on Radix's tabs, and styles the navigation parts, nav-group included.

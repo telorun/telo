@@ -1,4 +1,0 @@
-modules:
-  modules/cache: Fixed
-body: Cache.View's invoke slot accepts a runnable as well as an invocable, as its
-  dispatch always did, so wrapping a Run.Sequence no longer fails telo check.

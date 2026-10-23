@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.1 - 2026-10-23
+### Fixed
+* Shell.Command and Shell.CommandStream accept a 'timeoutMs' supplied as a 64-bit integer — what any !cel integer expression produces — instead of failing with a BigInt conversion error when the timer is set.
+
 ## 0.13.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

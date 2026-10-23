@@ -1,5 +1,0 @@
-modules:
-  modules/shell: Fixed
-body: Shell.Command and Shell.CommandStream accept a 'timeoutMs' supplied as a 64-bit
-  integer — what any !cel integer expression produces — instead of failing with a BigInt
-  conversion error when the timer is set.

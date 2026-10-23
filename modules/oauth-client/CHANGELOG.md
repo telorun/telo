@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 - 2026-10-23
+### Fixed
+* OAuthClient.RedirectListener accepts a computed (`!cel`) integer `port`, OAuthClient.DeviceToken a computed `interval`, and OAuthClient.GrantWrite a computed `tokens.expiresAt`, which is stored as a number so reading the grant back refreshes it on time. Before, each failed with a JavaScript type error. A value no number holds exactly is refused, naming the resource and the field.
+
 ## 0.9.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

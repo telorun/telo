@@ -1,5 +1,0 @@
-modules:
-  modules/image: Fixed
-body: Image.Blank accepts a 'width' and 'height', and Image.Blank, Image.Overlay and
-  Image.Fit a 'quality', supplied as a 64-bit integer — what any !cel integer expression
-  produces — instead of failing in the canvas or refusing a valid quality.
