@@ -194,6 +194,37 @@ describe("x-telo-value-schema-from", () => {
   });
 });
 
+describe("x-telo-value-schema-from naming a list of locations", () => {
+  it("holds a configuration slot to every type each location reaches", () => {
+    const listDef = {
+      kind: "Telo.Definition",
+      metadata: { name: "Both", module: "run" },
+      capability: "Telo.Invocable",
+      schema: {
+        type: "object",
+        properties: {
+          outputType: { "x-telo-ref": "telo#Type" },
+          auditType: { "x-telo-ref": "telo#Type" },
+          value: { "x-telo-value-schema-from": ["outputType", "/auditType"] },
+        },
+      },
+    } as unknown as ResourceManifest;
+    const both = (value: Record<string, unknown>) =>
+      ({
+        kind: "run.Both",
+        metadata: { name: "b", module: "test" },
+        outputType: { kind: "Type.JsonSchema", schema: { type: "object", required: ["tier"] } },
+        auditType: { kind: "Type.JsonSchema", schema: { type: "object", required: ["by"] } },
+        value,
+      }) as unknown as ResourceManifest;
+
+    const found = violations([listDef, both({ tier: "free" })]);
+    expect(found).toHaveLength(1);
+    expect(found[0]!.message).toContain("required property 'by'");
+    expect(violations([listDef, both({ tier: "free", by: "ops" })])).toEqual([]);
+  });
+});
+
 /** A map whose values are each held to the model property their own key names
  *  (`{ from: /model, member: "0#" }`), read through an accessor over `row`. */
 function pickerDef(member: unknown = "0#", extra: Record<string, unknown> = {}): ResourceManifest {

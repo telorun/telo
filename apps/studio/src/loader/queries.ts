@@ -244,6 +244,25 @@ export function hasNoWorkspaceModules(workspace: Workspace): boolean {
   return true;
 }
 
+/** The workspace module to open when one first appears in an empty workspace:
+ *  an Application before a Library, then the shortest path. */
+export function firstWorkspaceModule(workspace: Workspace): string | null {
+  let best: { path: string; application: boolean } | null = null;
+  for (const [filePath, module] of workspace.modules) {
+    if (!isWorkspaceModule(workspace, filePath)) continue;
+    const application = module.kind === "Application";
+    if (
+      !best ||
+      (application && !best.application) ||
+      (application === best.application &&
+        (filePath.length < best.path.length || (filePath.length === best.path.length && filePath < best.path)))
+    ) {
+      best = { path: filePath, application };
+    }
+  }
+  return best?.path ?? null;
+}
+
 /** A workspace-local `Telo.Library` the active module could import directly,
  *  with the relative source and a deduped PascalCase alias ready to write. */
 export interface ImportableLibrary {

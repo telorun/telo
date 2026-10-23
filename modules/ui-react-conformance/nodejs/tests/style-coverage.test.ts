@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import { StyleCoverage, type StyleContract, type UnstyledPart } from "../src/style-coverage.js";
@@ -91,6 +92,27 @@ describe("the style checks", () => {
     expect(reserved.map((problem) => problem.subject)).toEqual(["filters-bar: display", "filters-bar: bottom"]);
     expect(reserved[1].message).toBe(
       "'[data-telo-part=filters-bar]' in /theme.css sets 'bottom' on the 'filters-bar' part, which the renderer reserves: a closed bar is hidden.",
+    );
+  });
+
+  it("refuse each of the shell's reserved pairs, through its longhands and shorthands too", () => {
+    const parts = JSON.parse(readFileSync(new URL("../../../ui-react/nodejs/src/contract/parts.json", import.meta.url), "utf8"));
+    const shell = parts.reserved.filter((entry: { part: string }) => ["header", "header-content", "main", "page"].includes(entry.part));
+    const read = readStylesheet(`
+      [data-telo-part=header] { display: flex; grid: none; padding: 0 1rem }
+      [data-telo-part=header] { padding-left: 1rem }
+      [data-telo-part=header-content] { padding-inline-end: 1rem; grid-area: 1 / 1 }
+      [data-telo-part=header-content] { grid-column-start: 2 }
+      [data-telo-part=main] { padding-right: 1rem }
+      [data-telo-part=page] { margin: 0; max-inline-size: none }`);
+    if (!read.ok) throw new Error(read.message);
+    const window = new Window();
+    window.document.body.innerHTML = `<div data-telo-part="header"><div data-telo-part="header-content"></div></div><main data-telo-part="main"><div data-telo-part="page"></div></main>`;
+    const coverage = new StyleCoverage([{ path: "/theme.css", reading: read.reading }]);
+    coverage.record(window.document as unknown as Document);
+    const refused = coverage.problems({ parts: [], reserved: shell }, []).map((problem) => problem.subject);
+    expect([...new Set(refused)].sort()).toEqual(
+      ["header: display", "header: grid-template-columns", "header: padding-inline", "header-content: grid-column", "header-content: padding-inline", "main: padding-inline", "page: margin-inline", "page: max-width"].sort(),
     );
   });
 

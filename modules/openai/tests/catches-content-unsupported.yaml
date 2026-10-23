@@ -35,9 +35,9 @@ expect:
     - code: UNCOVERED_THROW_CODE
       message: "handler `!ref chat` can throw 12 codes"
     - code: UNCOVERED_THROW_CODE
-      message: "handler `!ref text` can throw 14 codes"
+      message: "handler `!ref text` can throw 15 codes"
     - code: UNCOVERED_THROW_CODE
-      message: "handler `!ref agentStream` can throw 19 codes"
+      message: "handler `!ref agentStream` can throw 20 codes"
     - code: UNCOVERED_THROW_CODE
       message: "handler `!ref buffered` can throw 12 codes"
     - code: UNCOVERED_THROW_CODE

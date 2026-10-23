@@ -95,7 +95,7 @@ The translation from the provider-neutral contract:
 | a `user` message | `{role: user, content: [{type: input_text, …}, {type: input_image, …}, {type: input_file, …}]}` |
 | an `assistant` message's text | `{role: assistant, content: [{type: output_text, …}]}` |
 | an `assistant` message's `toolCalls` | one `{type: function_call, call_id, name, arguments}` item each |
-| a `tool` message | `{type: function_call_output, call_id, output}` |
+| a `tool` message | `{type: function_call_output, call_id, output}` — `call_id` is its `toolCallId`; one with none, or an empty one, is refused before anything is sent — by the `Ai.Model` contract (`ERR_INPUT_INVALID`) when dispatched, and as `ERR_MODEL_REQUEST_REJECTED` naming its index in `messages` for a caller that bypasses it |
 | `tools` | flat — `{type: function, name, description, parameters}` |
 | `toolChoice` | `tool_choice` (`auto` \| `none`), sent only beside `tools`; `none` keeps the tools declared and forbids a new call |
 | `responseFormat` | `text.format`, and the VALUE is reshaped too — see below |

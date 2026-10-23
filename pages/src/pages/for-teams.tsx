@@ -7,7 +7,7 @@ export default function BusinessFirst() {
       emoji="🤝"
       title="For teams"
       tagline="One artifact for product and engineering - no spec-to-code translation layer."
-      intro="Most backends live as a spec the business owns and code the engineers own, with a lossy translation in between. Telo collapses that gap: the manifest is both the specification and the running system, and it stays visually editable the whole way."
+      intro="Most applications live as a spec the business owns and code the engineers own, with a lossy translation in between. Telo collapses that gap: the manifest is both the specification and the running system, and it stays visually editable the whole way."
       points={[
         {
           icon: "📐",
@@ -22,12 +22,12 @@ export default function BusinessFirst() {
         {
           icon: "🖥",
           title: "Visual editing",
-          body: "Backends are editable in the Telo editor as structured, visual documents - the declarative shape is never broken by constructs that can't be represented in a GUI.",
+          body: "Applications are editable in the Telo editor as structured, visual documents - the declarative shape is never broken by constructs that can't be represented in a GUI.",
         },
         {
           icon: "🚀",
           title: "Faster time to market",
-          body: "With no step to translate a spec into code, an idea moves from description to running backend in one artifact. Fewer hand-offs means features ship in the time it used to take just to write the spec.",
+          body: "With no step to translate a spec into code, an idea moves from description to running application in one artifact. Fewer hand-offs means features ship in the time it used to take just to write the spec.",
         },
         {
           icon: "💸",
@@ -42,12 +42,12 @@ export default function BusinessFirst() {
         {
           icon: "🧾",
           title: "Auditable & reviewable",
-          body: "Every change to a backend is a diff to a human-readable artifact. Sign-off, compliance review, and a clear record of who changed what come straight from version control, not a separate change-management process.",
+          body: "Every change to an application is a diff to a human-readable artifact. Sign-off, compliance review, and a clear record of who changed what come straight from version control, not a separate change-management process.",
         },
         {
           icon: "🔓",
           title: "You own the application",
-          body: "Telo's SDK and standard library are MIT, and its runtime is fair-code and source-available: your manifests are open-standard YAML kept in your own repository, and you can read, modify, and run the kernel yourself. Your backend is an asset you own, not something trapped inside a vendor's console.",
+          body: "Telo's SDK and standard library are MIT, and its runtime is fair-code and source-available: your manifests are open-standard YAML kept in your own repository, and you can read, modify, and run the kernel yourself. Your application is an asset you own, not something trapped inside a vendor's console.",
         },
         {
           icon: "🏠",

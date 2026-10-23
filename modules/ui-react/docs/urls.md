@@ -198,7 +198,7 @@ entries share onto a single address, so the page holds one React and one host.
     "sets": [ { "module": "/admin/_telo/ui/assets/…/controls.js", "exports": [ "Select" ] } ]
   },
   "compactBelow": "40rem",
-  "header": { "start": [ { "type": "image", "src": "/logo.svg", "alt": "Acme" } ], "end": [] }
+  "header": { "start": [ { "type": "image", "src": "/logo.svg", "alt": "Acme" } ], "end": [], "width": "contained" }
 }
 ```
 
@@ -222,10 +222,12 @@ this request, every default filled: its entries delivered by their `when`,
 each carrying its [key](#entry-keys), a `page` entry its page's path, an entry with an icon the
 address its glyph's file is served at, and its placement as
 [`Ui.NavigationPlacementSpec`](../../ui/docs/navigation.md#as-a-renderer-receives-it).
-`header` is present only when the application declares one: its `start` and
-`end` nodes as `Ui.SpecNode`s produced for this request, as a page's
-`children` are, each list empty when that side declares nothing or every node
-in it is switched off.
+`header` is always present: its `start` and `end` nodes as `Ui.SpecNode`s
+produced for this request, as a page's `children` are, each list empty when
+that side declares nothing or every node in it is switched off, and `width`,
+how wide the header's content is drawn — the application's `header.width`,
+else its `pageWidth`, else `contained`, resolved by `ui`'s `resolvedPageWidth`
+([header width](app.md#header-width)).
 
 ## A page document
 
@@ -237,6 +239,7 @@ in it is switched off.
   "path": "/",
   "title": "Todos",
   "query": {},
+  "width": "contained",
   "children": [ { "type": "text", "text": "Open work", "style": "heading" } ]
 }
 ```
@@ -244,7 +247,9 @@ in it is switched off.
 `children` are `Ui.SpecNode`s, produced for this request: no `when` is left in
 them, and every `shown` is carried as written. `query` is the page's declared
 query parameters, `{}` when it declares none; the renderer reads each from the
-address as the page's `query` root.
+address as the page's `query` root. `width` is how wide the page's content is
+drawn, `contained` or `full` — the page's own, else the application's
+`pageWidth`, else `contained` ([page width](app.md#page-width)).
 
 ## Digests
 

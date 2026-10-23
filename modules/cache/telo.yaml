@@ -202,10 +202,10 @@ schema:
         use: dependency
     invoke:
       title: Invoke
-      description: The wrapped source-of-truth invocable, called on miss / revalidation.
+      description: The wrapped source of truth — an invocable or runnable resource — called on miss / revalidation.
       type: object
       x-telo-ref:
-        kind: Telo.Invocable
+        kind: Telo.Executable
         # Which dispatches actually happen is decided by `revalidate:` —
         # `background` adds the detached refresh; under `sync`/`off` the
         # controller only ever calls inline. An unconditional [call, detached]

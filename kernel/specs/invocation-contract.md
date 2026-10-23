@@ -124,6 +124,16 @@ is read, and the caller-facing contract is derived from it.
   from the declaration's root, one segment per field, where the segment `*`
   ranges over **every item of a list**.
 
+**Several locations.** The annotation MAY be a non-empty LIST whose every element
+is one location in any form this section admits (a field name, a JSON Pointer,
+or the object form below): `[/providers/*/contextType, /resolver/contextType]`.
+Every type every element reaches MUST hold — the same conjunction several items
+of one `*` location already form — each element's `member`, when it has one,
+applying to the types that element reaches. An element reaching nothing
+contributes nothing. An empty list, or an element that is itself no location
+(a list included), is refused at registration like an unreachable location
+(below), naming the element.
+
 **A member of the type.** The annotation's object form, `{ from: <location>,
 member: <relative pointer> }`, reads the location as above and holds the value
 to ONE PROPERTY of each type it reaches rather than to the type: the property
@@ -183,7 +193,8 @@ may yield what the default lacks.
 
 **A location nothing can be written at is refused when the kind is registered**,
 with `ERR_VALUE_SCHEMA_FROM_INVALID`: an annotation that is not a non-empty
-string or the object form with a well-formed `member`, a pointer with an empty
+string, the object form with a well-formed `member`, or a non-empty list of
+those, a pointer with an empty
 segment, a `member` that takes the key of a node reached by an index (or of the
 root), a `member` pointer naming a node the schema does not declare a string,
 or a location whose segments — up to
@@ -601,7 +612,7 @@ A conforming runtime:
 13. binds every function's `call` and hands a native function's controller the
     function context, as §7.4 states;
 14. types a contract node carrying `x-telo-value-schema-from` by every type its
-    location reaches, resolving each reference crossed in the scope of the
+    location — or every location of its list — reaches, resolving each reference crossed in the scope of the
     module that declared its holder, leaves a node nothing typed as written, and
     resolves each reached type's document-local references against that type,
     and refuses an unreachable location at registration in every position a kind

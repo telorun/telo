@@ -1,0 +1,268 @@
+# Referenced content resolved for the model on demand. An operation's `resolver`
+# names the uri schemes it answers for; a media part by one of them is replaced
+# by the resolver's answer in what the model is sent, and nowhere else. Any other
+# uri reaches the model as written.
+kind: Telo.Application
+metadata:
+  name: ContentResolverTest
+  version: 1.0.0
+  description: References by a resolver's schemes are resolved for the model, once per uri per call, and kept as written everywhere else.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Stream: ../../stream
+  Assert: ../../assert
+targets:
+  - !ref textResolvesListedScheme
+  - !ref agentResolvesOncePerUri
+  - !ref agentStreamResolves
+  - !ref fetchesCounted
+  - !ref answerByClaimedSchemeRefused
+  - !ref missingContextRefused
+  - !ref missingContextRefusedAtRuntime
+  - !ref toolMessageWithoutCallIdRefused
+---
+# The resolver: what an upload's bytes are, as text, read from the caller's
+# conversation. Named because the event assertion counts its dispatches.
+kind: Run.Value
+metadata: { name: fetchUpload }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id]
+    properties:
+      id: { type: string }
+value:
+  body: !cel "'contents of ' + inputs.id"
+---
+kind: Telo.JsonSchema
+metadata: { name: UploadContext }
+schema:
+  type: object
+  required: [conversationId]
+  properties:
+    conversationId: { type: string }
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+echoConversation: true
+echoMedia: true
+---
+# Tool `attach` returns two references: one already in the conversation, and a
+# new one. The model asks for it on its first call only.
+kind: AiEcho.EchoModel
+metadata: { name: toolEcho }
+echoConversation: true
+echoMedia: true
+emitToolCall:
+  name: attach
+---
+kind: Ai.Tools
+metadata: { name: attachTools }
+tools:
+  - tool:
+      kind: Run.Value
+      value:
+        - { type: file, mediaType: text/plain, uri: "upload:a" }
+        - { type: file, mediaType: text/plain, uri: "upload:b" }
+    name: attach
+    parameters: { type: object, additionalProperties: false }
+---
+kind: Run.Sequence
+metadata: { name: textResolvesListedScheme }
+steps:
+  - name: call
+    invoke:
+      kind: Ai.Text
+      model: !ref echo
+      resolver:
+        schemes: [upload]
+        contextType: !ref UploadContext
+        invoke: !ref fetchUpload
+        inputs:
+          id: !cel "context.conversationId + '/' + part.uri"
+        result: !cel "{'type': 'text', 'text': result.body}"
+    inputs:
+      context: { conversationId: c1 }
+      messages:
+        - role: user
+          content:
+            - { type: text, text: "read " }
+            - { type: file, mediaType: text/plain, uri: "UPLOAD:a" }
+            - { type: text, text: " and " }
+            - { type: image, mediaType: image/png, uri: "https://example.com/a.png" }
+  # The scheme is matched case-blind; the unlisted one reaches the model as written.
+  - name: assertSent
+    inputs:
+      actual: !cel "steps.call.result.text"
+      expected: "user=read contents of c1/UPLOAD:a and image(https://example.com/a.png)"
+    invoke:
+      kind: Assert.Equals
+---
+# Two model calls: the first carries `upload:a` twice, the second the tool's
+# result too, naming `upload:a` again and `upload:b`. Each uri is resolved once,
+# and everything the run returns keeps the references.
+kind: Ai.Agent
+metadata: { name: uploadAgent }
+model: !ref toolEcho
+toolProviders:
+  - provider: !ref attachTools
+resolver:
+  schemes: [upload]
+  concurrency: 1
+  contextType: !ref UploadContext
+  invoke: !ref fetchUpload
+  inputs:
+    id: !cel "context.conversationId + '/' + part.uri"
+  result: !cel "{'type': 'text', 'text': result.body}"
+---
+kind: Run.Sequence
+metadata: { name: agentResolvesOncePerUri }
+steps:
+  - name: call
+    invoke: !ref uploadAgent
+    inputs:
+      context: { conversationId: c2 }
+      messages:
+        - role: user
+          content:
+            - { type: file, mediaType: text/plain, uri: "upload:a" }
+        - role: assistant
+          content: ok
+        - role: user
+          content:
+            - { type: file, mediaType: text/plain, uri: "upload:a" }
+  - name: assertSent
+    inputs:
+      actual: !cel "steps.call.result.text"
+      expected: "user=contents of c2/upload:a | assistant=ok | user=contents of c2/upload:a | assistant= | tool[echo-call-1]=contents of c2/upload:acontents of c2/upload:b"
+    invoke:
+      kind: Assert.Equals
+  - name: assertKept
+    inputs:
+      actual:
+        toolResult: !cel "steps.call.result.toolResults[0].content"
+        appended: !cel "steps.call.result.messages[1].content"
+      expected:
+        toolResult:
+          - { type: file, mediaType: text/plain, uri: "upload:a" }
+          - { type: file, mediaType: text/plain, uri: "upload:b" }
+        appended:
+          - { type: file, mediaType: text/plain, uri: "upload:a" }
+          - { type: file, mediaType: text/plain, uri: "upload:b" }
+    invoke:
+      kind: Assert.Equals
+---
+# The streaming agent sends the model the same resolved conversation.
+kind: Run.Sequence
+metadata: { name: agentStreamResolves }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.AgentStream
+      model:
+        kind: AiEcho.EchoModelStream
+        echoConversation: true
+        echoMedia: true
+      resolver:
+        schemes: [upload]
+        contextType: !ref UploadContext
+        invoke: !ref fetchUpload
+        inputs:
+          id: !cel "context.conversationId + '/' + part.uri"
+        result: !cel "{'type': 'text', 'text': result.body}"
+    inputs:
+      context: { conversationId: c3 }
+      messages:
+        - role: user
+          content:
+            - { type: file, mediaType: text/plain, uri: "upload:a" }
+  - name: drain
+    invoke:
+      kind: Stream.Collect
+    inputs:
+      input: !cel "steps.run.result.output"
+  - name: assertSent
+    inputs:
+      actual: !cel "steps.drain.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
+      expected: "user=contents of c3/upload:a"
+    invoke:
+      kind: Assert.Equals
+---
+# The Ai.Text call reaches the resolver once, the agent run twice — `upload:a`
+# and `upload:b`, once each — and the streaming agent run once.
+kind: Assert.Events
+metadata: { name: fetchesCounted }
+filter:
+  - type: "fetchUpload.Invoked"
+expect:
+  - event: fetchUpload.Invoked
+    times: 4
+---
+# An answer that is again a reference by a scheme the resolver lists.
+kind: Run.Sequence
+metadata: { name: answerByClaimedSchemeRefused }
+steps:
+  - name: attempt
+    try:
+      - name: call
+        invoke:
+          kind: Ai.Text
+          model: !ref echo
+          resolver:
+            schemes: [upload]
+            invoke:
+              kind: Run.Value
+              value: { next: "upload:again" }
+            inputs: {}
+            result: !cel "{'type': 'file', 'mediaType': 'text/plain', 'uri': result.next}"
+        inputs:
+          messages:
+            - role: user
+              content:
+                - { type: file, mediaType: text/plain, uri: "upload:a" }
+      - name: unexpected
+        throw:
+          code: ERR_TEST_NOT_REFUSED
+          message: the answer was accepted
+    catch:
+      - name: assertRefused
+        inputs:
+          actual:
+            code: !cel "error.code"
+            data: !cel "error.data"
+          expected:
+            code: ERR_CONTENT_RESOLUTION_INVALID
+            data: { uri: "upload:a" }
+        invoke:
+          kind: Assert.Equals
+---
+# Called without the `context` its resolver's `contextType` requires: refused
+# where the call is written, and — from a consumer whose check is silent — by
+# the bound contract.
+kind: Assert.Manifest
+metadata: { name: missingContextRefused }
+source: ./__fixtures__/resolver-context/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/context is missing required property 'conversationId'"
+---
+kind: Assert.Manifest
+metadata: { name: missingContextRefusedAtRuntime }
+source: ./__fixtures__/resolver-context-app.yaml
+expect:
+  errors: []
+  runFails: "AI.Text/reader: inputs do not satisfy the declared inputType: Invalid value passed: {\"prompt\":\"hello\",\"context\":{}}. Error: /context is missing required property 'conversationId'"
+---
+# A tool turn names the call it answers: the Message contract refuses one that
+# does not, before any provider sees it.
+kind: Assert.Manifest
+metadata: { name: toolMessageWithoutCallIdRefused }
+source: ./__fixtures__/tool-message-without-call-id.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/messages/1 is missing required property 'toolCallId'"

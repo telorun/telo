@@ -98,3 +98,164 @@ outputType: !ref Nope
     ]);
   });
 });
+
+describe("a contract naming a shape its library also exports", () => {
+  const library = (exported: string) => `kind: Telo.Library
+metadata: { name: Chat, version: 0.1.0 }
+exports: { kinds: [Send], resources: [${exported}] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Call }
+schema: { type: object, required: [id], properties: { id: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Turn }
+schema:
+  type: object
+  additionalProperties: false
+  required: [role]
+  properties:
+    role: { type: string }
+    calls: { type: array, items: !ref Call }
+---
+kind: Telo.Definition
+metadata: { name: Send }
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      turns: { type: array, items: !ref Turn }
+`;
+  const flow = `kind: Telo.Definition
+metadata: { name: Flow }
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+schema:
+  type: object
+  properties:
+    steps:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+`;
+  const app = `kind: Telo.Application
+metadata: { name: App, version: 1.0.0 }
+imports:
+  Chat: ../lib/telo.yaml
+  Fx: ../fx/telo.yaml
+---
+kind: Fx.Flow
+metadata: { name: flow }
+steps:
+  - name: send
+    invoke: { kind: Chat.Send }
+    inputs:
+      turns:
+        - { calls: [{ id: a }] }
+`;
+  const fx = `kind: Telo.Library
+metadata: { name: Fx, version: 0.1.0 }
+---
+${flow}`;
+
+  it("types an importer's call site as when the shape is not exported", async () => {
+    for (const exported of ["", "Call", "Turn"]) {
+      const found = (
+        await check(
+          { "/lib/telo.yaml": library(exported), "/fx/telo.yaml": fx, "/app/telo.yaml": app },
+          "/app/telo.yaml",
+        )
+      ).filter((d) => d.severity === 1);
+      expect(found.map((d) => [d.code, d.data?.path])).toEqual([
+        ["CONTRACT_INPUTS_MISMATCH", "steps[0].inputs.turns[0]"],
+      ]);
+    }
+  });
+});
+
+describe("a shape naming another shape", () => {
+  const library = (callRef: string) => `kind: Telo.Library
+metadata: { name: Chat, version: 0.1.0 }
+exports: { kinds: [Send] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Call }
+schema: { type: object, required: [id], properties: { id: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Turn }
+schema:
+  type: object
+  required: [role]
+  properties:
+    role: { type: string }
+    calls: { type: array, items: ${callRef} }
+---
+kind: Telo.Definition
+metadata: { name: Send }
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      turns: { type: array, items: !ref Turn }
+`;
+  const fx = `kind: Telo.Library
+metadata: { name: Fx, version: 0.1.0 }
+---
+kind: Telo.Definition
+metadata: { name: Flow }
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+schema:
+  type: object
+  properties:
+    steps:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+`;
+  const app = `kind: Telo.Application
+metadata: { name: App, version: 1.0.0 }
+imports:
+  Chat: ../lib/telo.yaml
+  Fx: ../fx/telo.yaml
+---
+kind: Fx.Flow
+metadata: { name: flow }
+steps:
+  - name: send
+    invoke: { kind: Chat.Send }
+    inputs:
+      turns:
+        - { role: user, calls: [{}] }
+`;
+  const errors = async (callRef: string, entry = "/app/telo.yaml") =>
+    (
+      await check(
+        { "/lib/telo.yaml": library(callRef), "/fx/telo.yaml": fx, "/app/telo.yaml": app },
+        entry,
+      )
+    )
+      .filter((d) => d.severity === 1)
+      .map((d) => [d.code, d.data?.path]);
+
+  it("reads the nested shape at an importer's call site, whichever way it is named", async () => {
+    const expected = [["CONTRACT_INPUTS_MISMATCH", "steps[0].inputs.turns[0].calls[0]"]];
+    expect(await errors("!ref Call")).toEqual(expected);
+    expect(await errors(`{ $ref: "telo:Chat/Call" }`)).toEqual(expected);
+  });
+
+  it("reports a nested reference that names nothing once, where it is written", async () => {
+    expect(await errors("!ref Nowhere", "/lib/telo.yaml")).toEqual([
+      ["SCHEMA_TYPE_REF_UNRESOLVED", "schema.properties.calls.items"],
+    ]);
+  });
+});

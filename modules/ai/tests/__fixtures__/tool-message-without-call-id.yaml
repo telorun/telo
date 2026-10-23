@@ -1,0 +1,27 @@
+# A conversation whose tool turn names no call: refused by the Message contract
+# where the call is written.
+kind: Telo.Application
+metadata:
+  name: ToolMessageWithoutCallId
+  version: 1.0.0
+imports:
+  Ai: ../..
+  AiEcho: ./ai-echo.yaml
+  Run: ../../../run
+targets:
+  - !ref call
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+---
+kind: Run.Sequence
+metadata: { name: call }
+steps:
+  - name: call
+    invoke:
+      kind: Ai.Agent
+      model: !ref echo
+    inputs:
+      messages:
+        - { role: user, content: "hello" }
+        - { role: tool, content: "42" }

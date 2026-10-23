@@ -93,7 +93,7 @@ steps:
               code: APP-5
               name: Mobile app
               status: active
-              leadEmail: jan@northwind.example
+              leadEmail: james@northwind.example
               budget: 75000
               velocity: 3
               featured: false
@@ -126,7 +126,7 @@ steps:
               code: WEB-3
               name: Marketing site
               status: paused
-              leadEmail: maja@northwind.example
+              leadEmail: maya@northwind.example
               budget: 12000
               velocity: 0.5
               featured: false
@@ -141,13 +141,13 @@ steps:
           velocity: 2.5
           tags: [ design, web ]
           note: null
-          lead: { name: Ada Nowak, email: ada@northwind.example, role: manager }
+          lead: { name: Ada Brooks, email: ada@northwind.example, role: manager }
         opsCodename: Ledger
         unknownSummary: [ 404, { code: PROJECT_UNKNOWN, message: There is no project 'NOPE-1'. } ]
         people:
-          - [ Ada Nowak, Lead ]
-          - [ Jan Kowalski, Front end ]
-          - [ Maja Wiśniewska, Design ]
+          - [ Ada Brooks, Lead ]
+          - [ James Walker, Front end ]
+          - [ Maya Harris, Design ]
           - [ Sofia Rossi, Copy ]
         unknownPeople: 404
         clock: [ 200, true ]
@@ -351,7 +351,7 @@ steps:
         formerMember: [ 403, { code: ACCOUNT_INACTIVE, message: tomas@northwind.example has left the team. } ]
         signIn: { status: 200, cookie: true }
         signedIn: { signedIn: true }
-        account: { name: Ada Nowak, email: ada@northwind.example, memberSince: "2021-03-01" }
+        account: { name: Ada Brooks, email: ada@northwind.example, memberSince: "2021-03-01" }
         ping: 200
         signOut: [ 200, showcase-session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax ]
         afterSignOut: 401
@@ -376,7 +376,7 @@ steps:
   - name: langEnglish
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/radix/api/lang?set=en" }
   - name: langOther
-    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/lang?set=de" }
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/lang?set=eo" }
   - name: langMissing
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/lang }
   - name: verifyLanguage

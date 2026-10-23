@@ -9,6 +9,7 @@ import type {
 import {
   canonicalizeSchemaRefs,
   getAvailableKinds,
+  firstWorkspaceModule,
   getImportedConfig,
   hasNoWorkspaceModules,
 } from "./queries";
@@ -312,5 +313,22 @@ describe("hasNoWorkspaceModules", () => {
       library("/ws/libs/notes/telo.yaml", "notes"),
     ]);
     expect(hasNoWorkspaceModules(workspace)).toBe(false);
+  });
+});
+
+describe("firstWorkspaceModule", () => {
+  it("opens an Application before a Library, and never an external import", () => {
+    const { workspace, manifest } = consumer([
+      library("oci://ghcr.io/telorun/console@0.9.0/telo.yaml", "console"),
+      library("/ws/libs/notes/telo.yaml", "notes"),
+    ]);
+    expect(firstWorkspaceModule(workspace)).toBe("/ws/libs/notes/telo.yaml");
+    workspace.modules.set(manifest.filePath, manifest);
+    expect(firstWorkspaceModule(workspace)).toBe("/ws/app/telo.yaml");
+  });
+
+  it("is null for a workspace holding only external imports", () => {
+    const { workspace } = consumer([library("oci://ghcr.io/telorun/console@0.9.0/telo.yaml", "console")]);
+    expect(firstWorkspaceModule(workspace)).toBeNull();
   });
 });

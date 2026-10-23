@@ -760,8 +760,9 @@ this module, beside the interpreter that runs it:
   and states;
 - `vectors` — per control, the props every vector starts from and each
   behaviour vector: props, the steps a person takes and what must follow;
-- `parts` — the part list, the renderer's states and the reserved properties
-  (see [the styling contract](styling.md));
+- `parts` — the part list, the renderer's states, the reserved properties and
+  the design tokens the renderer's own layer reads (`rendererTokens`) (see
+  [the styling contract](styling.md));
 - `scenes` — applications that between them draw every part: their documents,
   the answers their requests get, and the steps taken on them;
 - `runVector` and `runScene` — the interpreter, which drives a DOM window and

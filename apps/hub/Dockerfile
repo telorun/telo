@@ -11,7 +11,7 @@ ARG TELO_NODE_VERSION=latest
 # would be testing the registry rather than the tree. `hub-web` and `pages`
 # already mount the repo for the same reason.
 #
-# The origin reads — `telo module versions|digest|manifest` — run the tree's
+# The origin reads — `telo module versions --digests` and `telo module manifest` — run the tree's
 # telo too, for the same reason: ingest reads the `--json` contract of the CLI
 # it spawns, so a released CLI one generation behind the hub would report a
 # payload the hub cannot index (an application's `application` field, above

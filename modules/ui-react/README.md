@@ -35,6 +35,12 @@ by a React renderer this module ships prebuilt.
   under `tokens:`, so changing one keeps the other. A theme may also draw its
   own selects, menus and dialogs, and is held to the renderer's contract by
   [`ui-react-conformance`](../ui-react-conformance/README.md) from its own tests.
+- **Contained or full-width pages.** A page is drawn within the look's measure,
+  centred, or across all the room beside the navigation — chosen for the whole
+  application (`pageWidth`) or per page (`width`), the measure and the inset
+  design tokens (`width.page`, `space.page`); the header's content lines up
+  with a contained page under every theme, beside a sidebar too, or spans the
+  bar (`header.width`).
 - **Styling is a published contract.** Every element carries a stable part
   name; your stylesheet is applied last and always wins.
 - **Controls behind a contract.** Every interactive leaf — text boxes, choices,

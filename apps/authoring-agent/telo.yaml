@@ -30,10 +30,10 @@ metadata:
     are unguarded; GET /capabilities reports the agent's identity, prompt id and
     auth mode. OTLP_ENDPOINT exports traces and logs to a collector; unset,
     spans are written as log records.
-# `tracing:`, `x-telo-span-attribute` and `{ sink, when }` sink entries are read
-# from 0.104.0 on; an older runtime rejects this file.
+# The chat library's agent takes a content `resolver`, whose `context` an older
+# runtime cannot type (it reports the mapping as never evaluated).
 requires:
-  telo: ">=0.104.0"
+  telo: ">=0.122.0"
 imports:
   Chat:
     source: ./chat
@@ -57,13 +57,13 @@ imports:
       maxCheckpointFiles: !cel "variables.maxCheckpointFiles"
       maxAttachmentBytes: !cel "variables.maxAttachmentBytes"
   Http: oci://ghcr.io/telorun/http-server@0.38.0#sha256-QUCZmb_cvTor4YhWUAj3YdRj-kacNkmkXLnycjXLBtA
-  # `Mcp` and `Run` are pinned to the chat library's versions, so every module
-  # in this graph has one origin.
-  Mcp: oci://ghcr.io/telorun/mcp-client@0.17.0#sha256-wMlnrVxgeWHAX6_f1pr7v059KzgjYHuICg5Ui68v2zc
+  # `Mcp` and `Run` come from where the chat library takes them, so every
+  # module in this graph has one origin.
+  Mcp: ../../modules/mcp-client
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
   Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4
   Scheduler: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
-  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Run: ../../modules/run
   Log: oci://ghcr.io/telorun/log@0.3.0#sha256-zHq0Vq_G85EDj7Wfbcla8_6hvE4imxgVQoMZsxZwIwE
   Otlp: oci://ghcr.io/telorun/otlp@0.7.0#sha256-ULQBzWXxiaTU-182Hr0mmFTxFwJ_qLcG_k-IgfqpO1A
 ports:

@@ -110,6 +110,7 @@ exports:
     - Navigation
     - NavigationItem
     - NavigationPlacementSpec
+    - PageWidth
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -2463,6 +2464,20 @@ schema:
         that ships with the module.
       x-telo-type: { name: Telo.HostPath, entry: file }
 ---
+# How wide a page's content is drawn: within the look's measure, or across all
+# the room it has. The one definition of the values; every place an author
+# writes a width names it.
+kind: Telo.JsonSchema
+metadata:
+  name: PageWidth
+schema:
+  title: Page width
+  description: >-
+    `contained` draws the page's content no wider than the look's page measure
+    (the `width.page` design token), centred; `full` lets it take all the room
+    it has.
+  enum: [contained, full]
+---
 # One page of an application: its address, its title and its nodes. Its
 # composites are resolved once, when it is created; the application invokes it
 # per request with the request, and it answers the page as delivered for it.
@@ -2493,16 +2508,20 @@ inputType:
             type: object
             additionalProperties: { type: string }
           ip: { type: string }
+      # The application's width, used when the page declares none.
+      pageWidth: { $ref: "telo://Self/PageWidth" }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
-    required: [path, title, query, children]
+    required: [path, title, query, width, children]
     properties:
       path: { type: string }
       title: { $ref: "telo://manifest#/$defs/TextRecord" }
       query: { type: object }
+      # The page's own width, else the one it was invoked with, else `contained`.
+      width: { $ref: "telo://Self/PageWidth" }
       # Each a `Ui.SpecNode`, judged by the page: one that is not valid is
       # replaced by an error node.
       children:
@@ -2533,6 +2552,13 @@ schema:
         strings for a key given more than once. Read as `query` by a condition
         or a value the browser draws.
       $ref: "telo://Self/QueryParameters"
+    width:
+      title: Width
+      description: >-
+        How wide the page's content is drawn: `contained` within the look's
+        page measure, centred, or `full` across all the room it has. Omitted,
+        the application's width applies.
+      $ref: "telo://Self/PageWidth"
     children:
       title: Children
       description: >-
@@ -4390,7 +4416,8 @@ metadata:
   description: >-
     Brand values for an interface, independent of how it is drawn: brand and
     status colours, corner radii, spacing steps, shadows, font sizes, line
-    heights and the typefaces for body text, headings and code. A closed set of
+    heights, the typefaces for body text, headings and code, and a page's
+    width and inset. A closed set of
     names, so a misspelled token is an error rather than a style that silently
     does nothing; any look reads the same names.
 capability: Telo.Provider
@@ -4418,6 +4445,15 @@ schema:
     space.md: { type: string }
     space.lg: { type: string }
     space.xl: { type: string }
+    space.page:
+      title: Page inset
+      description: >-
+        The inline space between the edge of the screen (or of the room beside
+        the navigation) and a page's content, and the header's: a CSS length
+        in `px` or `rem`, never `em`, which would resolve against each part's
+        own font size.
+      type: string
+      pattern: "^(0|[0-9]+(\\.[0-9]+)?|\\.[0-9]+)(px|rem)$"
     shadow.sm: { type: string }
     shadow.md: { type: string }
     font.body:
@@ -4432,6 +4468,14 @@ schema:
     font-size.xl: { type: string }
     line-height.body: { type: string }
     line-height.heading: { type: string }
+    width.page:
+      title: Page width
+      description: >-
+        The widest a contained page's content is drawn: a CSS length in `px`
+        or `rem`, never `em`, which would resolve against each part's own font
+        size.
+      type: string
+      pattern: "^(0|[0-9]+(\\.[0-9]+)?|\\.[0-9]+)(px|rem)$"
 ---
 # The words a renderer of this vocabulary shows of its own — loading, empty
 # states, buttons, confirmations, each profile keyword's validation message, the

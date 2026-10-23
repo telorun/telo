@@ -2,16 +2,25 @@ import type { InvokeContext, ResourceContext, ResourceInstance, RuntimeResource,
 import type { AssetFile, SpecNode } from "./composite.js";
 import { RequestNodes } from "./delivered-nodes.js";
 import { modelShape } from "./model-schema.js";
+import { resolvedPageWidth, type PageWidth } from "./page-width.js";
 import type { HeaderReads } from "./request-header-reads.js";
 
 type PageResource = RuntimeResource & {
   path: string;
   title: TextRecord;
   query?: Record<string, unknown> | null;
+  width?: PageWidth | null;
   children: unknown;
 };
 
-/** What a page is invoked with: the request it answers. */
+/** What a page is invoked with. */
+export interface PageInputs {
+  request: PageRequest;
+  /** The application's width, used when the page declares none. */
+  pageWidth?: PageWidth | null;
+}
+
+/** The request a page answers. */
 export interface PageRequest {
   headers: Record<string, string>;
   ip?: string;
@@ -23,6 +32,7 @@ export interface PageDocument {
   title: TextRecord;
   /** The query parameters its nodes read, by name; empty when none is declared. */
   query: Record<string, unknown>;
+  width: PageWidth;
   children: SpecNode[];
 }
 
@@ -36,7 +46,7 @@ export interface PageReading {
 /** A `Ui.Page`, as whoever lists it holds it. */
 export interface PageInstance extends ResourceInstance {
   /** `context` is the invocation the request is handled under. */
-  invoke(inputs: { request: PageRequest }, context?: InvokeContext): Promise<PageDocument>;
+  invoke(inputs: PageInputs, context?: InvokeContext): Promise<PageDocument>;
   snapshot(): PageReading;
   /** Every file the page's composites need. */
   assets(): AssetFile[];
@@ -53,11 +63,16 @@ export function isPage(candidate: unknown): candidate is PageInstance {
 class Page implements PageInstance {
   constructor(
     private readonly reading: PageReading,
+    private readonly width: PageWidth | undefined,
     private readonly nodes: RequestNodes,
   ) {}
 
-  async invoke({ request }: { request: PageRequest }): Promise<PageDocument> {
-    return { ...this.reading, children: this.nodes.deliver(request as unknown as Record<string, unknown>) };
+  async invoke({ request, pageWidth }: PageInputs): Promise<PageDocument> {
+    return {
+      ...this.reading,
+      width: resolvedPageWidth(this.width, pageWidth),
+      children: this.nodes.deliver(request as unknown as Record<string, unknown>),
+    };
   }
 
   snapshot(): PageReading {
@@ -80,5 +95,5 @@ export async function create(resource: PageResource, ctx: ResourceContext): Prom
   // the values its `value` and `list` nodes name.
   const queryShape = modelShape({ type: "object", properties: query, additionalProperties: false }, { ctx, owner: where }, "query");
   const nodes = await RequestNodes.prepare(resource.children, { query: queryShape }, ctx, `${where} children`);
-  return new Page({ path: resource.path, title: resource.title, query }, nodes);
+  return new Page({ path: resource.path, title: resource.title, query }, resource.width ?? undefined, nodes);
 }

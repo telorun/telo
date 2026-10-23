@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  answeredCallId,
   contentToText,
   isMediaPart,
   type ContentPart,
@@ -209,13 +210,13 @@ function translateMessages(messages: Message[], label: string): OpenAiRequestMes
     }
   };
 
-  for (const m of messages) {
+  for (const [index, m] of messages.entries()) {
     if (m.role === "tool") {
       const media = mediaParts(m.content);
       const text = contentToText(m.content);
       out.push({
         role: "tool",
-        tool_call_id: m.toolCallId ?? "",
+        tool_call_id: answeredCallId(m, index, label),
         // Text placeholder in the tool message; the media rides the buffered user
         // message flushed once this run of tool messages ends.
         content: media.length === 0 ? text : text || TOOL_MEDIA_PLACEHOLDER,
@@ -289,8 +290,8 @@ function parseToolCalls(given: unknown, label: string): ToolCall[] {
     }
     const name = textLeaf(fn.name) ?? "";
     return {
-      // An id that is not text is read as one the endpoint never sent.
-      id: textLeaf(call.id) as string,
+      // An id that is not text is read as one the endpoint never sent, and minted.
+      id: textLeaf(call.id) || `call_${randomUUID()}`,
       name,
       arguments: parseToolArguments(fn.arguments, name || "(unnamed)"),
     };

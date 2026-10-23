@@ -49,7 +49,7 @@ metadata: { name: Store }
 kind: Cache.View
 metadata: { name: UserView }
 store: !ref Store
-invoke: !ref LoadUser      # any Telo.Invocable (e.g. a SQL lookup)
+invoke: !ref LoadUser      # any invocable or runnable (e.g. a SQL lookup, a Run.Sequence)
 ttl: "300s"
 staleTtl: "3600s"
 revalidate: background

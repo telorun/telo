@@ -2,7 +2,7 @@
 
 Loaded when working under `apps/hub/`. Repo-wide rules live in the root `CLAUDE.md` (including how authors write `metadata.description` and `metadata.categories`).
 
-`apps/hub/` — federated discovery hub (declarative Telo app): tracks registered module refs across transports via the `telo module versions|digest|manifest` CLI verbs, caches each version's `telo.yaml` to the static manifest bucket (`manifests.telo.sh`, the editor's browser-safe OCI read path, keys from the analyzer's `manifestCacheKey` helper), indexes one row per `(module-version, resource-kind)` — need types included, and the built-in vocabulary tracked like a module (below) — and serves `/search/*`, `/refs`, `/module/versions`, `/modules` + the `search_resources` MCP tool, and three authoring guides as MCP tools.
+`apps/hub/` — federated discovery hub (declarative Telo app): tracks registered module refs across transports via the `telo module versions --digests` and `telo module manifest` CLI verbs (one process per module per pass, never one per version), caches each version's `telo.yaml` to the static manifest bucket (`manifests.telo.sh`, the editor's browser-safe OCI read path, keys from the analyzer's `manifestCacheKey` helper), indexes one row per `(module-version, resource-kind)` — need types included, and the built-in vocabulary tracked like a module (below) — and serves `/search/*`, `/refs`, `/module/versions`, `/modules` + the `search_resources` MCP tool, and three authoring guides as MCP tools.
 
 ## Authoring guides
 

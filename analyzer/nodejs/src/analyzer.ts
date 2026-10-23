@@ -174,7 +174,16 @@ import { validateSinkAttachment } from "./validate-sink-attachment.js";
 import {
   validateSpanAttributes,
 } from "./validate-span-attributes.js";
-import { resolveSchemaTypeRefs, withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
+import {
+  producedValueMisfits,
+  producedValueOf,
+  type ProducedValue,
+} from "./cel-produced-value.js";
+import {
+  canonicalShapeSchema,
+  resolveSchemaTypeRefs,
+  withCanonicalRefSentinels,
+} from "./resolve-schema-type-refs.js";
 import { foldedNamedShapes, type NamedShapeDeclaration } from "./named-shape-extends.js";
 import { validateSchemaTypeRefs } from "./validate-schema-type-refs.js";
 import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
@@ -796,6 +805,8 @@ interface CelSiteFacts {
   type?: string;
   literal?: string;
   produced?: Record<string, any>;
+  /** What a non-chain expression's tree says about its value. */
+  composed?: ProducedValue;
 }
 
 /** Who gives a variant its typing, as a message names them. */
@@ -1643,24 +1654,33 @@ export class StaticAnalyzer {
      *  kernel registers it — a shape the set holds before a library's own. */
     const foldedShapesOf = (
       set: readonly ResourceManifest[],
+      // Registration reads each shape with its nested shape references made
+      // canonical in its own module, before folding mixes modules.
+      canonical = false,
     ): Array<{ m: ResourceManifest; id: string; schema: Record<string, any> }> => {
       const shapes = set.flatMap((m) => {
         const shape = namedShapeOf(m);
-        return shape ? [{ m, shape }] : [];
+        if (!shape) return [];
+        const schema = canonical
+          ? canonicalShapeSchema(m.schema as Record<string, any>, shape.ownModule, (alias) =>
+              shape.scope.moduleForAlias(alias),
+            )
+          : (m.schema as Record<string, any>);
+        return [{ m, shape, schema }];
       });
       const folded = foldedNamedShapes([
-        ...shapes.map(({ m, shape }) => ({
+        ...shapes.map(({ m, shape, schema }) => ({
           module: shape.ownModule,
           name: shape.typeName,
-          schema: m.schema as Record<string, any>,
+          schema,
           extends: (m as { extends?: unknown }).extends,
         })),
         ...libraryShapes,
       ]);
-      return shapes.map(({ m, shape }) => ({
+      return shapes.map(({ m, shape, schema }) => ({
         m,
         id: canonicalTypeSchemaId(shape.ownModule, shape.typeName),
-        schema: folded(shape.ownModule, shape.typeName) ?? (m.schema as Record<string, any>),
+        schema: folded(shape.ownModule, shape.typeName) ?? schema,
       }));
     };
 
@@ -2087,7 +2107,7 @@ export class StaticAnalyzer {
     // The schema registered is the shape's with its `extends` parents folded —
     // what the kernel registers, so a nested `$ref` to it reads the inherited
     // members too.
-    for (const { m, id, schema } of foldedShapesOf(allManifests as unknown as ResourceManifest[])) {
+    for (const { m, id, schema } of foldedShapesOf(allManifests as unknown as ResourceManifest[], true)) {
       const typeName = m.metadata.name as string;
       const ownModule = (m.metadata as { module: string }).module;
       const registered = defs.registerNamedTypeSchema(id, schema);
@@ -2625,6 +2645,7 @@ export class StaticAnalyzer {
     // fit the slot at all", the schema answers "do their type arguments agree",
     // which cel-js cannot express because it types by constructor identity.
     const celSourceSchemaByPath = new Map<ResourceManifest, Map<string, Record<string, any>>>();
+    const celComposedByPath = new Map<ResourceManifest, Map<string, ProducedValue>>();
     // What a site judged under several referrer typings found under each.
     const celVariantFacts = new Map<
       ResourceManifest,
@@ -4034,34 +4055,47 @@ export class StaticAnalyzer {
             // the host-path check needs as much as a step result's.
             const chainContext =
               effectiveContext ?? kernelGlobals.forResource(m as unknown as ResourceManifest);
+            // Read as the shape it names: a reference at a hop or at the tail is
+            // followed, so what a producer declares behind one is judged. A step
+            // chain is read off the step map itself, where each result is the
+            // document its target declared; the context is a copy of it, in
+            // which no pointer can be traced to its document. An undeclared step
+            // result is typed by the permissive fallback: an absence of a claim,
+            // not a producer saying `object`.
+            const declaredChainSchema = (chain: string): Record<string, any> | undefined => {
+              const viaSteps = celStepContextSchema !== undefined && chain.startsWith(STEPS_ROOT);
+              const produced = viaSteps
+                ? navigateDeclaredChain(celStepContextSchema!, chain.slice(STEPS_ROOT.length), namedShape)
+                : navigateDeclaredChain(chainContext, chain, namedShape);
+              const undeclared =
+                viaSteps &&
+                navigateSchemaToExprPath(celStepContextSchema!, chain.slice(STEPS_ROOT.length)) ===
+                  PERMISSIVE_CONTRACT;
+              return undeclared ? undefined : produced;
+            };
             const chain = plainChainOf(makeTaggedSentinel(engineName, expr));
             if (chain) {
-              // Read as the shape it names: a reference at a hop or at the tail
-              // is followed, so what a producer declares behind one is judged. A
-              // step chain is read off the step map itself, where each result is
-              // the document its target declared; the context is a copy of it,
-              // in which no pointer can be traced to its document.
-              const produced =
-                celStepContextSchema !== undefined && chain.startsWith(STEPS_ROOT)
-                  ? navigateDeclaredChain(
-                      celStepContextSchema,
-                      chain.slice(STEPS_ROOT.length),
-                      namedShape,
-                    )
-                  : navigateDeclaredChain(chainContext, chain, namedShape);
-              // An undeclared step result is typed by the permissive fallback: an
-              // absence of a claim, not a producer saying `object`. Asked of the
-              // step map itself, because the context is a copy of it.
-              const undeclared =
-                celStepContextSchema !== undefined &&
-                chain.startsWith(STEPS_ROOT) &&
-                navigateSchemaToExprPath(celStepContextSchema, chain.slice(STEPS_ROOT.length)) ===
-                  PERMISSIVE_CONTRACT;
-              if (produced && !undeclared) facts.produced = produced;
-              if (produced && !undeclared && primary) {
+              const produced = declaredChainSchema(chain);
+              if (produced) facts.produced = produced;
+              if (produced && primary) {
                 let byPath = celSourceSchemaByPath.get(m);
                 if (!byPath) celSourceSchemaByPath.set(m, (byPath = new Map()));
                 byPath.set(path, produced);
+              }
+            } else if (engineName === CEL_ENGINE) {
+              // Not a plain chain: what its tree says about its value, composed
+              // from the chains, calls and literals inside it.
+              const composed = producedValueOf(expr, {
+                chainSchema: declaredChainSchema,
+                moduleNames: siteModuleNames,
+                callResult: moduleCallResult,
+                resolveRef: namedShape,
+              });
+              if (composed) facts.composed = composed;
+              if (composed && primary) {
+                let byPath = celComposedByPath.get(m);
+                if (!byPath) celComposedByPath.set(m, (byPath = new Map()));
+                byPath.set(path, composed);
               }
             }
 
@@ -4383,7 +4417,7 @@ export class StaticAnalyzer {
         slot.callTarget !== undefined ? `${slot.callTarget}'s declared inputType` : "the field";
       const hostPath = holdsHostPath(target);
       const fits = celTypeSatisfiesJsonSchema(
-        baseType,
+        type,
         hostPath
           ? hostPathBranchesFor(
               target,
@@ -4466,7 +4500,44 @@ export class StaticAnalyzer {
         };
       }
       const produced = facts.produced;
-      if (!produced) return undefined;
+      if (!produced) {
+        const composed = facts.composed;
+        if (!composed) return undefined;
+        const misfits = producedValueMisfits(composed, target, namedShape);
+        if (misfits.length === 0) return undefined;
+        const reasons = misfits.map((conflict) => conflict.message).join("; ");
+        return result
+          ? {
+              severity: DiagnosticSeverity.Error,
+              code: "FUNCTION_RETURN_MISMATCH",
+              source: SOURCE,
+              message:
+                `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
+                `that disagrees with '${slot.schema[RETURNS_FROM_ANNOTATION]}': ${reasons}.`,
+              data,
+            }
+          : misfits.every((conflict) => conflict.beneathTypeArgument)
+            ? {
+                severity: DiagnosticSeverity.Error,
+                code: "CEL_TYPE_ARGUMENT_MISMATCH",
+                source: SOURCE,
+                message:
+                  `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
+                  `whose type arguments disagree with ${
+                    slot.callTarget !== undefined ? holder : "the field's"
+                  }: ${reasons}.`,
+                data,
+              }
+            : {
+                severity: DiagnosticSeverity.Error,
+                code: "CEL_TYPE_ERROR",
+                source: SOURCE,
+                message:
+                  `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
+                  `that does not fit what ${holder} expects: ${reasons}.`,
+                data,
+              };
+      }
       // A host path forwarded from a source DECLARED as something else — a
       // plain `type: string` field or variable — carries whatever relative text
       // it was given, and is refused at creation for every consumer. The source
@@ -4517,6 +4588,8 @@ export class StaticAnalyzer {
         produced,
         target,
         namedShape,
+        undefined,
+        { targetFillsDefaults: true },
       );
       if (compatible) return undefined;
       return result
@@ -4563,6 +4636,7 @@ export class StaticAnalyzer {
           type: celTypeByPath.get(slot.manifest)?.get(slot.path),
           literal: celLiteralByPath.get(slot.manifest)?.get(slot.path),
           produced: celSourceSchemaByPath.get(slot.manifest)?.get(slot.path),
+          composed: celComposedByPath.get(slot.manifest)?.get(slot.path),
         });
       }
       const verdicts = variants.map((facts) => ({ label: facts.label, verdict: judgeSlotWith(slot, facts) }));

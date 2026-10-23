@@ -6,7 +6,7 @@ description: "v1.0 spec: resource lifecycle stages (Validated, Initialized, Drai
 
 ## 1. Overview
 
-Telo is an execution engine (Micro-Kernel) that runs backend logic defined entirely in declarative YAML manifests. Because Telo routes execution based on a `Kind.Name` registry and relies on strictly isolated contexts, managing the deterministic lifecycle of resources and modules is critical.
+Telo is an execution engine (Micro-Kernel) that runs application logic defined entirely in declarative YAML manifests. Because Telo routes execution based on a `Kind.Name` registry and relies on strictly isolated contexts, managing the deterministic lifecycle of resources and modules is critical.
 
 This specification defines the lifecycle events that orchestrate how modules and their internal resources transition through the engine's core operational phases: _Loads_, _Expands_, _Indexes_, and _Dispatches_.
 

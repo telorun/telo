@@ -214,3 +214,40 @@ describe("create-time validation with a stand-in recorded", () => {
     });
   });
 });
+
+describe("create-time validation judging a union through a reference", () => {
+  it("judges a union whose branch names a schema only the primary instance holds", () => {
+    const validator = new SchemaValidator();
+    // A document the primary instance holds and no registration mirrored.
+    (validator as unknown as { ajv: { addSchema(schema: object, key: string): void } }).ajv.addSchema(
+      { type: "object", properties: { a: SECONDS } },
+      "telo://fx/Inner",
+    );
+    const schema = {
+      type: "object",
+      additionalProperties: false,
+      required: ["b"],
+      properties: {
+        b: { type: "integer" },
+        cfg: { anyOf: [{ $ref: "telo://fx/Inner" }, { type: "integer" }] },
+      },
+    };
+    const standIns: StandIns = new Map();
+    const stripped = stripCompiledValues(
+      { kind: "Self.Thing", metadata: { name: "thing" }, cfg: { a: interpolated } },
+      schema,
+      undefined,
+      undefined,
+      standIns,
+    ) as Record<string, unknown>;
+    expect(() => validator.compile(schema).validate(stripped)).toThrow(SchemaValidationError);
+    const findings = validator.findingsFor(schema);
+    const remaining = withoutStandInFindings(findings(schema, stripped), {
+      value: stripped,
+      schema,
+      standIns,
+      validate: findings,
+    });
+    expect(remaining.map((e) => `${e.instancePath} ${e.keyword}`)).toEqual([" required"]);
+  });
+});

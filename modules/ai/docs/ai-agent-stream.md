@@ -161,12 +161,16 @@ data: {"usage":{"promptTokens":400,"completionTokens":48,"totalTokens":448,"unit
 
 ## Invocation inputs
 
-`prompt` xor `messages`, `system`, `options`, `context` — the caller data the tools read, typed by the mounted providers' `contextType` — `approvals` and `providerState`, as for [`Ai.Agent`](./ai-agent.md#invocation-inputs):
+`prompt` xor `messages`, `system`, `options`, `context` — the caller data the tools and the resolver read, typed by the mounted providers' `contextType` and the resolver's — `approvals` and `providerState`, as for [`Ai.Agent`](./ai-agent.md#invocation-inputs):
 
 | Field           | Type  | Purpose                                                                             |
 | --------------- | ----- | ----------------------------------------------------------------------------------- |
 | `approvals`     | array | Decisions on the tool calls `messages` leaves pending: `{ toolCallId, approved, reason? }` each. |
 | `providerState` | any   | State a previous run's `provider-state` part carried; handed to the first model call. |
+
+## Referenced content
+
+The `resolver` field is [`Ai.Agent`'s](./ai-agent.md#referenced-content): a media part whose `uri` scheme it lists is replaced, in what the model is sent, by the resolver's answer — each distinct `uri` once per run, at most `concurrency` at a time — and every `message` and `tool-result` part keeps the reference as written. The messages the run is given are resolved when the agent is invoked, so a resolver failure there, and `ERR_CONTENT_RESOLUTION_INVALID`, reject **the call**; a tool result carrying a reference is resolved when its `message` part is emitted, and a failure there rejects the iteration. `maxToolResultBytes` bounds what a tool returns, not what its references resolve to: the resolver bounds the content it fetches.
 
 ## Cancellation
 
@@ -176,10 +180,10 @@ The first model call is made when the agent is invoked — unless the run resume
 
 These mirror [`Ai.Agent`](./ai-agent.md#when-the-step-budget-runs-out). A failure never becomes a record. *When* it arrives decides who can answer it:
 
-- **Before the stream exists** — the call makes the first model call, and what that call is refused with (a content part the model cannot carry, for one) rejects **this call**, unchanged; so do a malformed call — an `approvals` list that cannot be placed included — a tool-name collision, an `approval.include` name the entry does not expose and an `approver` whose target cannot be resolved, which is resolved for every run whether or not a call is gated. A run resuming pending calls makes no model call from the invocation: the calls are settled, and the first model call made, as the stream is read. In a `mode: stream` route nothing has been sent yet, so the route's `catches:` renders it. Which refusals a model raises from the call is its contract's: [every one it can decide from the request alone](./ai-model.md#when-a-streaming-call-fails).
+- **Before the stream exists** — the call resolves the referenced content it was given and makes the first model call, and what that call is refused with (a content part the model cannot carry, for one) rejects **this call**, unchanged; so do a malformed call — an `approvals` list that cannot be placed included — a tool-name collision, an `approval.include` name the entry does not expose and an `approver` whose target cannot be resolved, which is resolved for every run whether or not a call is gated. A run resuming pending calls makes no model call from the invocation: the calls are settled, and the first model call made, as the stream is read. In a `mode: stream` route nothing has been sent yet, so the route's `catches:` renders it. Which refusals a model raises from the call is its contract's: [every one it can decide from the request alone](./ai-model.md#when-a-streaming-call-fails).
 - **During the run** — anything later **rejects** the iteration, the endpoint's own refusal of the first request included, where a `try:` step that drains the stream sees it. Parts already emitted still reach the consumer, and an encoder frames the rejection for the wire; a route's `catches:` cannot, since the response is under way.
 
-The kind declares `throws: { inherit: true }`: its model's codes — the same [thirteen](../README.md#catching-a-models-errors) for every provider — are part of its own throw union beside the agent's, so a `catches:` list may name them and one with no catch-all must cover them (`UNCOVERED_THROW_CODE`). See [Ai.Text → Errors](./ai-text.md#errors).
+The kind declares `throws: { inherit: true }`: its model's codes — the same [thirteen](../README.md#catching-a-models-errors) for every provider — and its approver's and resolver's are part of its own throw union beside the agent's, so a `catches:` list may name them and one with no catch-all must cover them (`UNCOVERED_THROW_CODE`). See [Ai.Text → Errors](./ai-text.md#errors).
 
 - **`onToolError: feedback`** (default) — a failed tool emits a `tool-result` with `error: true`; the tools running beside it finish, and the loop continues so the model can react.
 - **`onToolError: throw`** — the first tool error cancels the tools still running and rejects the iteration.

@@ -32,17 +32,17 @@ metadata:
     Exported so the app and its tests drive the same handler. Parameterized by the
     OpenAI key, the model endpoint, the workspace directory and the agent's state
     directory, which holds `agent.sqlite`.
-# A module this library, the application and its tests all import is pinned to
-# ONE version everywhere — `Ai`, `OpenAI`, `AiMcp`, `Mcp`, `Run`, `Stream` and
+# A module this library, the application and its tests all import comes from
+# ONE origin everywhere — `Ai`, `OpenAI`, `AiMcp`, `Mcp`, `Run`, `Stream` and
 # `HttpClient` in particular, since `ai` and `openai` reach the last three: one
 # module loaded from two origins is two identities for one kind. When a change
 # needs one from the checkout, the whole set moves to the checkout together.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.28.0#sha256-zpi3w-6zWjD3HGhxoMJKItuFM4ELZa-NTVHOtFacRII
-  OpenAI: oci://ghcr.io/telorun/openai@0.13.0#sha256-Tt9DaH254A972an-WTH_mtJOy9HAuUuH_SK1_bfOvHM
-  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.24.0#sha256-LLWn670MIBui2xMZIrykj_6t0c3lIuyz29Uymbh12hQ
-  Mcp: oci://ghcr.io/telorun/mcp-client@0.17.0#sha256-wMlnrVxgeWHAX6_f1pr7v059KzgjYHuICg5Ui68v2zc
+  Ai: ../../../modules/ai
+  OpenAI: ../../../modules/openai
+  HttpClient: ../../../modules/http-client
+  AiMcp: ../../../modules/ai-mcp
+  Mcp: ../../../modules/mcp-client
   Fs: oci://ghcr.io/telorun/fs@0.14.0#sha256-N5xTrQgDJ91sb_XrS6mPLsH_g0_70yj1S3xBB_hLDdA
   TextDiff: oci://ghcr.io/telorun/text-diff@0.3.0#sha256-FaVk4PVZVI1-ryRkgdTmN1MNtEP1E8bjAXXl365nSW4
   Shell: oci://ghcr.io/telorun/shell@0.13.0#sha256-h4-z6gdCjduwxgU1n7o5eol8RYgsxBCS2iQcxpCV_u0
@@ -50,13 +50,13 @@ imports:
   SQLite: oci://ghcr.io/telorun/sqlite@0.10.1#sha256-1WEaTSJ_-AD9dVAa9JTdqtD94jzkkBvoGLdm2jrlroM
   RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
   RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.1#sha256-s499a6neOc42YDcB9x5YZeTjcEvjwXwKw5y27mcUiG0
-  Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
-  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Stream: ../../../modules/stream
+  Run: ../../../modules/run
   Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
   KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.0#sha256-GmMDeJ2eYatJ0_ewaUI6A6bnfkqlphjd4YKWtqZ5d2Y
-  Cache: oci://ghcr.io/telorun/cache@0.13.0#sha256-m85mbpiAnfwojpzTTF9I1yZeTF6KDLlCPEtadghO3nc
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.0#sha256-yPwUSVVhRMiqQYQ9cbptorm1cA-HnJW6pLHRZ-8-qPA
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.0#sha256-wHzRZi3uI7c12dRSULXQBO8GRYqhJj6gos6xv6eZj7g
+  Cache: ../../../modules/cache
+  CacheMemory: ../../../modules/cache-memory
+  RateLimit: ../../../modules/rate-limit
   Idempotency: oci://ghcr.io/telorun/idempotency@0.11.0#sha256-hd4NvqYA6OioV89wn7SNk7BXrHIFYzv0cNL68Cscgd4
   KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.14.1#sha256-HUh0QikIQZylfIkGGYxG8ucEK9-XhSFbOPw9N9THWzI
   SecretScan: oci://ghcr.io/telorun/secret-scan@0.3.0#sha256-j5LTmj50zPdy65badRWFTPmICPURIf1n4Q-Iaq6dFSo
@@ -507,6 +507,12 @@ migrations:
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
         PRIMARY KEY (conversation_id, id)
       )
+  # A projected upload becomes an `Ai.ContentPart` reference (`attachment:<id>`)
+  # rather than a part of this library's own shape. Clearing the projection
+  # makes every live turn's unprojected, so `catchUpProjections` folds each one
+  # again from the journal at boot, and its `messages` rows are rewritten.
+  projection_8_attachment_references:
+    statement: DELETE FROM turn_projections
 ---
 # The account, declared once: base URL and credential on the client, so the model
 # kinds carry no key and the 401 re-acquire-and-retry is inherited from
@@ -3273,7 +3279,10 @@ outputs:
 # replays every attempt in order. A tool call with no recorded result is left
 # out — the provider refuses a call with no answer, and the note names it.
 # Reasoning deltas are display-only (the reasoning itself rides providerState),
-# and a call cut off mid-stream keeps the text it had streamed.
+# and a call cut off mid-stream keeps the text it had streamed. An upload the
+# message names is a reference part, `attachment:<id>`, which the agent's
+# resolver reads from the conversation's own uploads; the uri never names the
+# conversation, since a branch copies its uploads under the same ids.
 kind: Telo.Function
 metadata:
   name: turnMessages
@@ -3289,8 +3298,8 @@ body: !cel >-
       records.filter(r, r.type == 'user-message').map(r, {'role': 'user', 'content':
           has(r.attachments) && size(r.attachments) > 0
             ? dyn((r.content == '' ? [] : [{'type': 'text', 'text': r.content}])
-                + r.attachments.map(a, {'type': 'attachment', 'id': a.id, 'name': a.name,
-                    'mediaType': a.mediaType, 'size': a.size, 'sha256': a.sha256}))
+                + r.attachments.map(a, {'type': string(a.mediaType).startsWith('image/') ? 'image' : 'file',
+                    'mediaType': a.mediaType, 'name': a.name, 'uri': 'attachment:' + a.id}))
             : dyn(r.content)})
       + flatten(range(size(ends) + 1).map(k,
           cel.bind(segment, slice(records, k == 0 ? 0 : ends[k - 1] + 1, k < size(ends) ? ends[k] : size(records)),
@@ -5110,37 +5119,101 @@ body: !cel >-
             + ' characters cut; an attached text file passes at most ' + string(maxChars) + ' characters to the model]'
           : text)
 ---
-# A stored message's content as the model takes it: every `attachment` part
-# replaced by what it names — an image or a PDF by its bytes, text by its text —
-# and by a note when its bytes are gone. `loaded` is `[{ id, data }]`, `data`
-# null for an upload that could not be read.
+# An upload as the model reads it, answered for the agent's resolver: an image
+# or a PDF as its bytes, text as its text, and a note when the conversation
+# holds no such upload or its bytes are gone. What it is comes from the
+# conversation's own row, never from the reference, and the blob is read only
+# under the caller's conversation, so a reference naming another
+# conversation's upload reads nothing.
+kind: Run.Sequence
+metadata: { name: resolveAttachment }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, id, name]
+    properties:
+      conversationId: { type: string }
+      id: { type: string }
+      # What the reference calls the file, for the note.
+      name: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [part]
+    properties:
+      part: !ref Ai.ContentPart
+steps:
+  - name: row
+    invoke: !ref historyRows
+    inputs:
+      sql: "SELECT name, media_type, sha256 FROM attachments WHERE conversation_id = ? AND id = ?"
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "inputs.id"
+  - name: read
+    try:
+      - name: unknown
+        if: !cel "size(steps.row.result.rows) == 0"
+        then:
+          - name: refuseUnknown
+            throw:
+              code: ERR_ATTACHMENT_NOT_FOUND
+              message: !cel "'No attachment ' + inputs.id + ' exists in this conversation.'"
+      - name: blob
+        invoke: !ref getAttachment
+        inputs:
+          key: !cel "Self.attachmentKey(inputs.conversationId, inputs.id)"
+      - name: bytes
+        invoke: { kind: Octet.Decoder }
+        inputs:
+          input: !cel "steps.blob.result.output"
+    catch:
+      - name: failed
+        if: !cel "!(error.code in ['ERR_ATTACHMENT_NOT_FOUND', 'ERR_BLOB_NOT_FOUND'])"
+        then:
+          - name: propagate
+            throw:
+              code: !cel "error.code"
+              message: !cel "error.message"
+              data: !cel "has(error.data) ? error.data : null"
+outputs:
+  part: !cel >-
+    !has(steps.bytes)
+      ? {'type': 'text', 'text': '[attached file ' + inputs.name + ' is no longer available]'}
+      : cel.bind(row, steps.row.result.rows[0], cel.bind(mediaType, string(row.media_type),
+          mediaType.startsWith('image/')
+            ? {'type': 'image', 'mediaType': mediaType, 'data': steps.bytes.result.bytes}
+          : mediaType == 'application/pdf'
+            ? {'type': 'file', 'mediaType': mediaType, 'name': string(row.name), 'data': steps.bytes.result.bytes}
+          : {'type': 'text', 'text': Self.attachedText(string(row.name), mediaType,
+              Self.blobText(bytesToBase64(steps.bytes.result.bytes), string(row.sha256)),
+              int(variables.maxToolResultBytes))}))
+---
+# The replayed history as messages: the one place a projected row's JSON meets
+# the message type, so a row the type refuses fails the turn here rather than
+# at the provider.
 kind: Telo.Function
 metadata:
-  name: modelContent
-  description: Resolves the attachment parts of a message's content into the parts a model takes.
+  name: historyMessages
+  description: Decodes projected history rows into the messages a model call replays.
 params:
-  - name: content
-    schema: { type: array }
-  # A projection's result, which is a list at run time and untyped statically.
-  - name: loaded
-    schema: {}
-  - name: maxChars
-    schema: { type: integer }
+  - name: rows
+    schema:
+      type: array
+      items:
+        type: object
+        required: [message]
+        properties:
+          message: { type: string }
 returns:
-  schema: { type: array }
-body: !cel >-
-  flatten(content.map(p,
-    type(p) == type({}) && 'type' in p && p.type == 'attachment'
-      ? cel.bind(found, loaded.filter(l, l.id == p.id),
-          size(found) == 0 || found[0].data == null
-            ? [dyn({'type': 'text', 'text': '[attached file ' + string(p.name) + ' is no longer available]'})]
-            : string(p.mediaType).startsWith('image/')
-              ? [dyn({'type': 'image', 'mediaType': p.mediaType, 'data': found[0].data})]
-            : p.mediaType == 'application/pdf'
-              ? [dyn({'type': 'file', 'mediaType': p.mediaType, 'name': p.name, 'data': found[0].data})]
-            : [dyn({'type': 'text', 'text': Self.attachedText(string(p.name), string(p.mediaType),
-                Self.blobText(bytesToBase64(found[0].data), string(p.sha256)), maxChars)})])
-      : [dyn(p)]))
+  schema:
+    type: array
+    items: !ref Ai.Message
+body: !cel "rows.map(r, parseJson(r.message))"
 ---
 # One part of an upload, stored: identified from its own bytes, refused when
 # they contradict what it was sent as or are of a type the agent does not take,
@@ -6026,6 +6099,23 @@ toolProviders:
   # whose work one of them covers.
   - provider: !ref hubTools
     include: [get_kinds, guide_build_ui, guide_write_integration_tests, guide_design_library]
+# An upload is replayed as a reference, `attachment:<id>`, and read for the model
+# on each call that sends it, from the caller's conversation only.
+resolver:
+  schemes: [attachment]
+  contextType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [conversationId]
+      properties:
+        conversationId: { type: string }
+  invoke: !ref resolveAttachment
+  inputs:
+    conversationId: !cel "context.conversationId"
+    id: !cel "part.uri.substring(size('attachment:'))"
+    name: !cel "has(part.name) ? part.name : part.uri"
+  result: !cel "result.part"
 ---
 # Chooses kinds, and nothing else: it searches the hub and names what answers
 # each need. It never writes a schema — `findKinds` fetches the definitions of
@@ -7331,8 +7421,8 @@ steps:
             cel.bind(text, Self.contentText(content),
               text != '' || type(content) != type([])
                 ? regexExtract(text, '(?s)^.{0,1000}.{0,1000}.{0,1000}.{0,1000}')
-                : 'Attached files: ' + join(content.filter(p, type(p) == type({}) && 'type' in p && p.type == 'attachment')
-                    .map(p, string(p.name)), ', ')))
+                : 'Attached files: ' + join(content.filter(p, type(p) == type({}) && 'uri' in p && 'name' in p
+                    && string(p.uri).startsWith('attachment:')).map(p, string(p.name)), ', ')))
       - name: attempt
         try:
           - name: call
@@ -7677,42 +7767,6 @@ steps:
       bindings:
         - !cel "inputs.conversationId"
         - !cel "size(steps.summary.result.rows) > 0 ? string(steps.summary.result.rows[0].summary_through) : ''"
-  - name: history
-    value: !cel "steps.readHistory.result.rows.map(r, parseJson(r.message))"
-  # The uploads that history names, each read once for this attempt. One whose
-  # bytes are gone reads as null and is told to the model as missing.
-  - name: uploads
-    invoke:
-      kind: Run.Projection
-      collection: !cel "inputs.ids"
-      steps:
-        - name: read
-          try:
-            - name: blob
-              invoke: !ref getAttachment
-              inputs:
-                key: !cel "Self.attachmentKey(inputs.conversationId, item)"
-            - name: bytes
-              invoke: { kind: Octet.Decoder }
-              inputs:
-                input: !cel "steps.blob.result.output"
-          catch:
-            - name: failed
-              if: !cel "error.code != 'ERR_BLOB_NOT_FOUND'"
-              then:
-                - name: propagate
-                  throw:
-                    code: !cel "error.code"
-                    message: !cel "error.message"
-                    data: !cel "has(error.data) ? error.data : null"
-      outputs:
-        id: !cel "item"
-        data: !cel "has(steps.bytes) ? dyn(steps.bytes.result.bytes) : null"
-    inputs:
-      conversationId: !cel "inputs.conversationId"
-      ids: !cel >-
-        distinct(flatten(steps.history.result.filter(m, type(m.content) == type([])).map(m,
-          m.content.filter(p, type(p) == type({}) && 'type' in p && p.type == 'attachment').map(p, string(p.id)))))
   # The reasoning the conversation last recorded, replayed only to the model
   # that produced it: another model cannot read it. This turn's own counts — a
   # continued turn's interrupted attempt recorded the latest. Never state from
@@ -7771,9 +7825,11 @@ steps:
   - name: ask
     invoke: !ref author
     inputs:
-      # What the file tools checkpoint under; never shown to the model.
+      # What the file tools checkpoint under and whose uploads the resolver
+      # reads; never shown to the model.
       context:
         turnId: !cel "inputs.turnId"
+        conversationId: !cel "inputs.conversationId"
       providerState: !cel >-
         size(steps.previous.result.rows) > 0
           && steps.previous.result.rows[0].provider_state != null
@@ -7811,9 +7867,7 @@ steps:
         + (size(steps.summary.result.rows) > 0
           ? [{'role': 'user', 'content': 'CONVERSATION SUMMARY: ' + string(steps.summary.result.rows[0].summary)}]
           : [])
-        + steps.history.result.map(m, type(m.content) == type([])
-            ? dyn({'role': m.role, 'content': Self.modelContent(m.content, steps.uploads.result, int(variables.maxToolResultBytes))})
-            : dyn(m)) + [{
+        + Self.historyMessages(steps.readHistory.result.rows) + [{
           'role': 'user',
           'content': 'CURRENT TIME: ' + nowIso() + ' (UTC). Resolve every relative period the user names — "last week", "this month", "since Friday" — against this, and say which absolute range you resolved it to. Never guess a date, and where the boundaries depend on the user timezone, ask.'
         }, {

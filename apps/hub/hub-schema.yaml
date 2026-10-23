@@ -768,7 +768,7 @@ steps:
 #
 # The backoff doubles from a minute; past the attempt ceiling nothing is
 # scheduled at all, so a ref that is no longer a Telo module stops being read
-# every quarter of an hour forever. Clearing the row's `ingest_rev` is the
+# on every reconcile pass forever. Clearing the row's `ingest_rev` is the
 # operator's per-version override — clearing `last_error` alone would leave the
 # row current at the running revision and therefore not due.
 kind: Run.Sequence

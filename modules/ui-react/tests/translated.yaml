@@ -101,6 +101,7 @@ steps:
           vary: Accept-Language, X-Role
           save: { lang: pl, message: [Zapisz] }
           header:
+            width: contained
             start: [ { type: image, src: /logo.svg, alt: { lang: pl, message: [Faktury] } } ]
             end:
               - { type: link, text: { lang: pl, message: [Pomoc] }, href: /help }
@@ -112,6 +113,7 @@ steps:
           title: { lang: en, message: [Invoices] }
           save: { lang: en, message: [Save] }
           header:
+            width: contained
             start: [ { type: image, src: /logo.svg, alt: { lang: en, message: [Invoices] } } ]
             end:
               - { type: link, text: { lang: en, message: [Help] }, href: /help }

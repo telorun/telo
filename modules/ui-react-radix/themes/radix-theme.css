@@ -52,14 +52,15 @@ body { margin: 0; background: var(--telo-color-background); color: var(--telo-co
 
 /* Shell: a quiet bar holding the title in the brand's colour. */
 [data-telo-part="app"] { min-height: 100vh; background: var(--telo-color-background); color: var(--telo-color-text); }
-[data-telo-part="header"] { gap: var(--telo-space-md); min-height: 3rem; padding: 0 var(--telo-space-lg); border-bottom: 1px solid var(--telo-color-border); background: var(--ui-react-radix-chrome); position: sticky; top: 0; z-index: 10; }
+[data-telo-part="header"] { border-bottom: 1px solid var(--telo-color-border); background: var(--ui-react-radix-chrome); position: sticky; top: 0; z-index: 10; }
+[data-telo-part="header-content"] { gap: var(--telo-space-md); min-height: 3rem; }
 [data-telo-part="app-title"] { color: var(--telo-color-accent); font-family: var(--telo-font-heading); font-size: var(--telo-font-size-lg); font-weight: 600; letter-spacing: -0.015em; }
 [data-telo-part="nav"] { gap: var(--telo-space-xs); }
 [data-telo-part="header-start"], [data-telo-part="header-end"] { gap: var(--telo-space-sm); }
 /* The menu button opening the navigation on a narrow screen. */
 [data-telo-part="nav-menu"] { width: 2rem; padding: 0; color: var(--telo-color-muted); }
 [data-telo-part="nav-menu"]:hover, [data-telo-part="nav-menu"][aria-expanded="true"] { background: var(--ui-react-radix-fill); color: var(--telo-color-text); }
-[data-telo-part="main"] { padding: var(--telo-space-xl) var(--telo-space-xl) calc(2 * var(--telo-space-xl)); }
+[data-telo-part="main"] { padding-block: var(--telo-space-xl) calc(2 * var(--telo-space-xl)); }
 /* A sidebar: a chrome column under the sticky header that stays while the
    page scrolls, its toggle at its top; collapsed, a rail. A tab bar: a chrome
    row along the bottom edge, its tabs spread across it. */
@@ -79,7 +80,7 @@ body { margin: 0; background: var(--telo-color-background); color: var(--telo-co
 /* A tab with an icon shows it above its text. */
 [data-telo-part="tab-bar"] :is([data-telo-part="nav-item"], [data-telo-part="nav-toggle"]):has(> [data-telo-part="glyph"]) { flex-direction: column; justify-content: center; gap: 0.125rem; min-height: 3rem; font-size: 0.6875rem; }
 [data-telo-part="tab-bar"] [data-telo-part="glyph"] { width: 1.25rem; height: 1.25rem; }
-[data-telo-part="page"] { gap: var(--telo-space-xl); width: 100%; max-width: 72rem; margin-inline: auto; box-sizing: border-box; }
+[data-telo-part="page"] { gap: var(--telo-space-xl); width: 100%; box-sizing: border-box; }
 [data-telo-part="page-title"] { margin: 0; font-family: var(--telo-font-heading); font-size: calc(var(--telo-font-size-xl) * 1.25); font-weight: 600; letter-spacing: -0.025em; line-height: var(--telo-line-height-heading); }
 
 /* Structure */
@@ -342,11 +343,12 @@ button[data-telo-part="table-sort"] { height: 1.75rem; padding: 0 var(--telo-spa
    shrink and wrap rather than widen the page; a table frame shows an edge
    shadow while more columns lie beyond it — covers that scroll with the
    content over shadows that stay with the frame. */
-[data-compact="true"] > [data-telo-part="header"] { position: static; row-gap: 0; padding-block: var(--telo-space-xs); }
+[data-compact="true"] > [data-telo-part="header"] { position: static; padding-block: var(--telo-space-xs); }
+[data-compact="true"] > [data-telo-part="header"] > [data-telo-part="header-content"] { row-gap: 0; }
 /* The menu button, the title, what starts the header and what ends it share
    one row, the title cut short when they leave it no room. */
-[data-compact="true"] > [data-telo-part="header"] > :is([data-telo-part="header-start"], [data-telo-part="header-end"]) { flex: none; flex-wrap: nowrap; }
-[data-compact="true"] > [data-telo-part="header"] > [data-telo-part="app-title"] { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-compact="true"] > [data-telo-part="header"] > [data-telo-part="header-content"] > :is([data-telo-part="header-start"], [data-telo-part="header-end"]) { flex: none; flex-wrap: nowrap; }
+[data-compact="true"] > [data-telo-part="header"] > [data-telo-part="header-content"] > [data-telo-part="app-title"] { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-compact="true"] :is([data-telo-part="filter"], [data-telo-part="filter-group"], [data-telo-part="filter-bound"]) { min-width: 0; max-width: 100%; }
 [data-compact="true"] :is([data-telo-part="filter-group"], [data-telo-part="filter-bound"], [data-telo-part="filter-options"]) { flex-wrap: wrap; }
 [data-compact="true"] :is([data-telo-part="filter-input"], [data-telo-part="filter-select"], [data-telo-part="filter-tags"], [data-telo-part="filter-options"], [data-telo-part="filter-chip"]) { min-width: 0; max-width: 100%; }

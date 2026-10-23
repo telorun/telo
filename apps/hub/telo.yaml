@@ -152,11 +152,13 @@ variables:
     env: ALLOW_LOCAL_REFS
     type: boolean
     default: false
-  # When the reconcile pass runs. Standard 5-field cron, in UTC.
+  # When the reconcile pass runs. Standard 5-field cron, in UTC. Hourly: a pass
+  # reads every version of every tracked module, while a registration schedules
+  # its own ingest at once, so only a re-pushed tag waits for it.
   trackCron:
     env: TRACK_CRON
     type: string
-    default: "*/15 * * * *"
+    default: "0 * * * *"
   # Disable the periodic reconcile (tests and one-shot ingests drive
   # `Ingest.scheduleDueVersions` directly).
   trackEnabled:
@@ -274,7 +276,7 @@ targets:
   - !ref resumer
   # One pass at boot. A cron fires at calendar instants, so without this a fresh
   # deployment — or a compose stack that has just seeded its refs — would sit
-  # unindexed until the next quarter hour. It only enumerates, claims and
+  # unindexed until the next hour. It only enumerates, claims and
   # schedules; the runs themselves execute through the resumer above, so this
   # does not hold the boot sequence open for the length of an ingest.
   - ref: !ref Ingest.scheduleDueVersions

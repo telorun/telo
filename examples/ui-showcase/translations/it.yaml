@@ -1,0 +1,612 @@
+# The showcase in Italian: the applications' and pages' titles, every text the
+# pages write, the labels of the models they draw, and the words the renderer
+# draws on its own. A plural source is matched by the text its `other` case
+# reads and translated into Italian's cases, `one` and `other` (`many` only
+# serves large round numbers); a word told apart by its context is translated
+# once per context.
+kind: I18n.Catalog
+metadata:
+  name: italian
+lang: it
+texts:
+  # Applications and pages.
+  - { text: UI showcase, translation: "Vetrina dell'interfaccia" }
+  - { text: UI showcase — Radix, translation: "Vetrina dell'interfaccia — Radix" }
+  - { text: UI showcase — brand, translation: "Vetrina dell'interfaccia — marchio" }
+  - { text: UI showcase — sidebar, translation: "Vetrina dell'interfaccia — barra laterale" }
+  - { text: Overview, translation: Panoramica }
+  - { text: Conditions, translation: Condizioni }
+  - { text: Data, translation: Dati }
+  - { text: Tables, translation: Tabelle }
+  - { text: Filters, translation: Filtri }
+  - { text: Forms, translation: Moduli }
+  - { text: Actions, translation: Azioni }
+  - { text: Components, translation: Componenti }
+  - { text: CRUD, translation: CRUD }
+  - { text: Themes, translation: Temi }
+  # The navigation's groups.
+  - { text: Building blocks, translation: Elementi costitutivi }
+  - { text: Input, translation: Inserimento }
+
+  # The header of every application: the mark, the Language and Theme
+  # menus and the Theme menu's items. The language names are each written
+  # in its own language, so neither is translated.
+  - { text: UI showcase logo, translation: "Logo della vetrina dell'interfaccia" }
+  - { text: Language, translation: Lingua }
+  - { text: Theme, translation: Tema }
+  - { text: Default, translation: Predefinito }
+  - { text: Radix, translation: Radix }
+  - { text: Brand, translation: Marchio }
+  - { text: Sidebar, translation: Barra laterale }
+
+  # The overview's nodes evaluated per request.
+  - { text: Per request, translation: A ogni richiesta }
+  - { text: "These nodes are the page's own, so their when and their text are evaluated for every request.", translation: "Questi nodi appartengono alla pagina stessa, quindi il loro when e il loro testo vengono valutati a ogni richiesta." }
+  - { text: Your browser asked for Polish., translation: Il tuo browser ha chiesto il polacco. }
+  - { text: Your browser did not ask for Polish., translation: Il tuo browser non ha chiesto il polacco. }
+  - { text: The Acme brand is on., translation: Il marchio Acme è attivo. }
+  - { text: "A text an expression computes is shown as computed, never translated.", translation: "Un testo calcolato da un'espressione viene mostrato così come è calcolato, mai tradotto." }
+  - { text: "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", translation: "Un link che questa richiesta rende non valido viene sostituito da un nodo di errore, e il resto della pagina viene servito." }
+  - { text: Leaves the application, translation: "Esce dall'applicazione" }
+
+  # The overview.
+  - { text: Every node type, translation: Ogni tipo di nodo }
+  - { text: "A box, a stack and columns hold other nodes, each drawing its children its own way.", translation: "Un contenitore, una pila e delle colonne contengono altri nodi, e ciascuno disegna i propri figli a modo suo." }
+  - { text: A box, translation: Un contenitore }
+  - { text: Groups its children., translation: Raggruppa i propri figli. }
+  - { text: A stack, translation: Una pila }
+  - { text: Draws its children one under another., translation: "Disegna i propri figli uno sotto l'altro." }
+  - { text: A badge, translation: Un badge }
+  - { text: Columns, translation: Colonne }
+  - { text: "Draw their children side by side, as these three are.", translation: "Disegnano i propri figli affiancati, come queste tre." }
+  - { text: Text in each style, translation: Testo in ogni stile }
+  - { text: "A style says what a node means; the theme decides how that looks. A node may carry several.", translation: "Uno stile dice che cosa significa un nodo; il tema decide che aspetto ha. Un nodo può averne più di uno." }
+  - { text: Heading, translation: Titolo }
+  - { text: Subheading, translation: Sottotitolo }
+  - { text: Muted, translation: Attenuato }
+  - { text: Strong, translation: Marcato }
+  - { text: Accent, translation: Accento }
+  - { text: Danger, translation: Pericolo }
+  - { text: Warning, translation: Avviso }
+  - { text: Success, translation: Successo }
+  - { text: Strong and accent, translation: Marcato e accento }
+  - { text: Links, translation: Link }
+  - { text: "A link to a declared page moves within the application; a file served under the mount is an ordinary load; https and mailto leave it.", translation: "Un link a una pagina dichiarata si sposta all'interno dell'applicazione; un file servito sotto il punto di montaggio è un normale caricamento; https e mailto ne escono." }
+  - { text: Go to Conditions, translation: Vai a Condizioni }
+  - { text: A file the server serves, translation: Un file servito dal server }
+  - { text: Write to us, translation: Scrivici }
+  - { text: Images, translation: Immagini }
+  - { text: "An image by address, the same image as decoration with an empty alt, and SVG markup drawn as an image, never inserted into the page.", translation: "Un'immagine da indirizzo, la stessa immagine come decorazione con alt vuoto, e markup SVG disegnato come immagine, mai inserito nella pagina." }
+  - { text: The showcase mark, translation: Il simbolo della vetrina }
+  - { text: Three overlapping circles, translation: Tre cerchi sovrapposti }
+  - { text: Values by their schema, translation: Valori secondo il loro schema }
+  - { text: "Each value is drawn as its model property says, read from the team record the page loads.", translation: "Ogni valore è disegnato come indica la sua proprietà del modello, letto dal record del team che la pagina carica." }
+  - { text: Visit the team homepage, translation: Visita la home page del team }
+  - { text: "A uri, drawn as a link with a text of its own", translation: "Un uri, disegnato come link con un testo proprio" }
+  - { text: A uri-reference to a declared page, translation: Un uri-reference a una pagina dichiarata }
+  - { text: A uri-reference to a served file, translation: Un uri-reference a un file servito }
+  - { text: A mailto address, translation: Un indirizzo mailto }
+  - { text: "An address the rule refuses, drawn as plain text", translation: "Un indirizzo rifiutato dalla regola, disegnato come testo semplice" }
+  - { text: A date, translation: Una data }
+  - { text: A date and time, translation: Una data e ora }
+  - { text: A boolean, translation: Un booleano }
+  - { text: An enumeration's label, translation: "L'etichetta di un'enumerazione" }
+  - { text: A list, translation: Un elenco }
+  - { text: "The rows one answer holds, never paged. A header defaults to the property's title, and the last column is shown only while the team is hiring.", translation: "Le righe contenute in una sola risposta, mai paginate. Un'intestazione è per impostazione predefinita il titolo della proprietà, e l'ultima colonna è mostrata solo mentre il team sta assumendo." }
+  - { text: Projects under way, translation: Progetti in corso }
+  - { text: Project, translation: Progetto }
+  - { text: Texts, translation: Testi }
+  - text: "{$count} projects so far."
+    translation:
+      plural: count
+      cases:
+        "=0": Ancora nessun progetto.
+        one: "{$count} progetto finora."
+        other: "{$count} progetti finora."
+  - { text: "{$team} started {$project} most recently.", translation: "{$team} ha avviato per ultimo {$project}." }
+  - { text: "A plural chosen in the browser for the number it reads, and a text whose values come from the record.", translation: "Un plurale scelto nel browser per il numero che legge, e un testo i cui valori provengono dal record." }
+  - { text: Open, context: state, translation: Aperto }
+  - { text: Open, context: verb, translation: Apri }
+  - { text: "A node's own text is told apart the same way: the badge says TEL-42 is open, the link offers to open its tasks.", translation: "Il testo proprio di un nodo si distingue allo stesso modo: il badge dice che TEL-42 è aperto, il link propone di aprirne le attività." }
+  - { text: Style rules, translation: Regole di stile }
+  - { text: "A row's style and a cell's are chosen by a value of the row. The featured project is strong, each status has its colour, and a status no case names takes the default. Two columns are headed by the same word, Open, told apart by the context each header is written with.", translation: "Lo stile di una riga e quello di una cella sono scelti da un valore della riga. Il progetto in evidenza è marcato, ogni stato ha il suo colore, e uno stato che nessun caso nomina prende quello predefinito. Due colonne hanno come intestazione la stessa parola, Open, distinta dal contesto con cui è scritta ciascuna intestazione." }
+  - { text: Composites, translation: Compositi }
+  - { text: "This whole page is a view each application places by reference. Below, a view written inline where it is placed, and a composite kind of this example's own, which has no controller.", translation: "Tutta questa pagina è una vista che ogni applicazione colloca per riferimento. Qui sotto, una vista scritta direttamente dove è collocata, e un tipo composito proprio di questo esempio, che non ha controller." }
+  - { text: A view declared inline at the node that places it., translation: "Una vista dichiarata direttamente nel nodo che la colloca." }
+  - { text: A callout, translation: Un richiamo }
+  - { text: "Declared once as a kind that extends Ui.Composite and provides a view, and placed with fields of its own.", translation: "Dichiarato una volta come tipo che estende Ui.Composite e fornisce una vista, e collocato con campi propri." }
+  # The overview's tabs; `Details` and `Notes` are translated with the forms' labels.
+  - { text: Tabs, translation: Schede }
+  - { text: "Content under tabs, one tab at a time. The chosen tab is part of the page's address, so a reload or a shared link opens it again.", translation: "Contenuto in schede, una scheda alla volta. La scheda scelta fa parte dell'indirizzo della pagina, quindi un ricaricamento o un link condiviso la riapre." }
+  - { text: Summary, translation: Riepilogo }
+  - { text: "A tab holds any nodes, as a box does.", translation: "Una scheda contiene qualsiasi nodo, come un contenitore." }
+  - { text: "Only the chosen tab's nodes are drawn.", translation: "Vengono disegnati solo i nodi della scheda scelta." }
+  - { text: Chosen, translation: Scelta }
+  - { text: "Each tab is delivered by its own when, as any node is.", translation: "Ogni scheda viene inviata secondo il proprio when, come qualsiasi nodo." }
+  # The labels of the overview's models.
+  - { text: Code, translation: Codice }
+  - { text: Name, translation: Nome }
+  - { text: Status, translation: Stato }
+  - { text: Active, translation: Attivo }
+  - { text: Paused, translation: In pausa }
+  - { text: Finished, translation: Concluso }
+  - { text: Budget, translation: Budget }
+  - { text: Started, translation: Avviato }
+  - { text: Free, context: subscription, translation: Gratuito }
+  - { text: Enterprise, context: subscription, translation: Aziendale }
+  - { text: Version, translation: Versione }
+  - { text: Team, context: subscription, translation: Team }
+
+  # Conditions.
+  - { text: Delivered and drawn, translation: Inviato e disegnato }
+  - { text: "A node's when decides on the server whether it is delivered; its shown decides in the browser whether a delivered node is drawn.", translation: "Il when di un nodo decide sul server se viene inviato; il suo shown decide nel browser se un nodo inviato viene disegnato." }
+  - { text: Never delivered — this node is not in the page document., translation: Mai inviato — questo nodo non è nel documento della pagina. }
+  - { text: "Delivered and never drawn: the status is not paused, so the browser holds this out of sight.", translation: "Inviato e mai disegnato: lo stato non è paused, quindi il browser lo tiene nascosto." }
+  - { text: Delivered by its when and drawn by its shown., translation: Inviato dal suo when e disegnato dal suo shown. }
+  - { text: "A placement's condition around a composite whose node has one of its own is wrapped in a box, and both must hold.", translation: "La condizione di una collocazione attorno a un composito il cui nodo ne ha una propria viene avvolta in un contenitore, ed entrambe devono essere soddisfatte." }
+  - { text: Both conditions hold., translation: Entrambe le condizioni sono soddisfatte. }
+  - { text: "A view whose content is switched off by its own when provides no node, so the composite placing it is left out.", translation: "Una vista il cui contenuto è disattivato dal suo stesso when non fornisce alcun nodo, quindi il composito che la colloca viene omesso." }
+  - { text: Never provided., translation: Mai fornito. }
+  - { text: Every keyword of a condition, translation: Ogni parola chiave di una condizione }
+  - { text: "Each line below is drawn because its condition holds over the summary of project TEL-42 this page read: status active, four members, velocity 2.5, tags design and web, its lead a manager, a null note and no codename.", translation: "Ogni riga qui sotto è disegnata perché la sua condizione è soddisfatta dal riepilogo del progetto TEL-42 letto da questa pagina: stato active, quattro membri, velocità 2.5, tag design e web, un manager come responsabile, una note null e nessun codename." }
+  - { text: "allOf: between 1 and 10 people work on it.", translation: "allOf: ci lavorano da 1 a 10 persone." }
+  - { text: "required: the lead has an e-mail.", translation: "required: il responsabile ha un'e-mail." }
+  - { text: "properties: the lead is a manager.", translation: "properties: il responsabile è un manager." }
+  - { text: "minimum: at least three people work on it.", translation: "minimum: ci lavorano almeno tre persone." }
+  - { text: "maximum: at most nine people work on it.", translation: "maximum: ci lavorano al massimo nove persone." }
+  - { text: "exclusiveMinimum: the velocity is greater than 2.", translation: "exclusiveMinimum: la velocità è maggiore di 2." }
+  - { text: "exclusiveMaximum: the velocity is less than 3.", translation: "exclusiveMaximum: la velocità è minore di 3." }
+  - { text: "multipleOf: the velocity is a multiple of 0.5.", translation: "multipleOf: la velocità è un multiplo di 0.5." }
+  - { text: "type: the status is a string.", translation: "type: lo stato è una stringa." }
+  - { text: "type, as a list: the note is a string or null.", translation: "type, come elenco: note è una stringa o null." }
+  - { text: "const: the status is active.", translation: "const: lo stato è active." }
+  - { text: "enum: the status is active or paused.", translation: "enum: lo stato è active o paused." }
+  - { text: "not: the status is not paused.", translation: "not: lo stato non è paused." }
+  - { text: "anyOf: the code starts with TEL or OPS.", translation: "anyOf: code inizia con TEL o OPS." }
+  - { text: "items: every tag has at least two letters.", translation: "items: ogni tag ha almeno due lettere." }
+  - { text: "minItems: there are at least two tags.", translation: "minItems: ci sono almeno due tag." }
+  - { text: "maxItems: there are at most five tags.", translation: "maxItems: ci sono al massimo cinque tag." }
+  - { text: "uniqueItems: no tag repeats.", translation: "uniqueItems: nessun tag si ripete." }
+  - { text: "minLength: the code has at least three characters.", translation: "minLength: code ha almeno tre caratteri." }
+  - { text: "maxLength: the code has at most ten characters.", translation: "maxLength: code ha al massimo dieci caratteri." }
+  - { text: "pattern: the code is letters, a dash and digits.", translation: "pattern: code è composto da lettere, un trattino e cifre." }
+  - { text: Missing and null, translation: Mancante e null }
+  - { text: "Null is a present value. A missing value satisfies no condition, not even one under not, so absence is tested on the parent.", translation: "Null è un valore presente. Un valore mancante non soddisfa alcuna condizione, nemmeno una sotto not, quindi l'assenza si verifica sul genitore." }
+  - { text: The note is present and null., translation: note è presente e vale null. }
+  - { text: "Never drawn: a missing codename does not satisfy not.", translation: "Mai disegnato: un codename mancante non soddisfa not." }
+  - { text: "The project has no codename, tested on the summary.", translation: "Il progetto non ha codename, verificato sul riepilogo." }
+  - { text: Query parameters, translation: Parametri di query }
+  - { text: "This reader declares mode, a list of tag values and a ticket held to a pattern. A parameter the address leaves out, a single one given twice or a value its declaration refuses counts as missing.", translation: "Questo lettore dichiara mode, un elenco di valori tag e un ticket vincolato a un pattern. Un parametro che l'indirizzo omette, uno singolo indicato due volte o un valore che la sua dichiarazione rifiuta conta come mancante." }
+  - { text: Mode detailed, translation: Modalità detailed }
+  - { text: Two tags, translation: Due tag }
+  - { text: A valid ticket, translation: Un ticket valido }
+  - { text: A refused ticket, translation: Un ticket rifiutato }
+  - { text: Mode given twice, translation: Modalità indicata due volte }
+  - { text: Clear the query, translation: Cancella la query }
+  - { text: mode is detailed., translation: mode è detailed. }
+  - { text: There are two tag values or more., translation: Ci sono due o più valori tag. }
+  - { text: The ticket matches its pattern., translation: ticket corrisponde al suo pattern. }
+  - { text: "No ticket, or one its pattern refuses.", translation: "Nessun ticket, o uno che il suo pattern rifiuta." }
+  - { text: Enablement, translation: Abilitazione }
+  - { text: "The button can be pressed only while its condition over what the form holds is met, and says why while it is not. A tag the project already has is refused, and the lines above read the summary again after a tag is added.", translation: "Il pulsante si può premere solo mentre è soddisfatta la sua condizione su ciò che contiene il modulo, e finché non lo è spiega perché. Un tag che il progetto ha già viene rifiutato, e le righe qui sopra rileggono il riepilogo dopo l'aggiunta di un tag." }
+  - { text: Tag TEL-42, translation: Aggiungi un tag a TEL-42 }
+  - { text: Tag, translation: Tag }
+  - { text: Type a tag of three letters or more., translation: Digita un tag di tre o più lettere. }
+  - text: "Tagged {$tag}: TEL-42 has {$count} tags now."
+    translation:
+      plural: count
+      cases:
+        one: "Aggiunto {$tag}: ora TEL-42 ha {$count} tag."
+        other: "Aggiunto {$tag}: ora TEL-42 ha {$count} tag."
+  - { text: A page's own query, translation: La query della pagina stessa }
+  - { text: "This page declares mode as well, and its own nodes read it.", translation: "Anche questa pagina dichiara mode, e i suoi nodi lo leggono." }
+  - { text: The page reads mode as detailed., translation: La pagina legge mode come detailed. }
+
+  # Data.
+  - { text: A reader and its parameters, translation: Un lettore e i suoi parametri }
+  - { text: "The project is the page address's project parameter, sent with the read; with none the parameter is not sent and the route answers for TEL-42. A code no project has draws the failure tree.", translation: "Il progetto è il parametro project dell'indirizzo della pagina, inviato con la lettura; senza di esso il parametro non viene inviato e la route risponde per TEL-42. Un codice che nessun progetto ha disegna l'albero di errore." }
+  - { text: A code no project has, translation: Un codice che nessun progetto ha }
+  - { text: No project, translation: Nessun progetto }
+  - { text: Reading the project…, translation: Lettura del progetto… }
+  - { text: "{$code} {$name}, led by {$lead}", translation: "{$code} {$name}, guidato da {$lead}" }
+  - { text: "A reader nested in this one's content reads the people working on the same project.", translation: "Un lettore annidato nel contenuto di questo legge le persone che lavorano allo stesso progetto." }
+  - { text: Working on it, translation: Ci lavorano }
+  - { text: Role, translation: Ruolo }
+  - { text: E-mail, translation: E-mail }
+  - { text: "No answer · {$code}", translation: "Nessuna risposta · {$code}" }
+  - { text: Readers that fail, translation: Lettori che falliscono }
+  - { text: "With no failure tree of their own, readers draw the error's code and message — for a project that does not exist, for a guarded route read with no session, and for an answer the reader's model refuses (the projects list read as one project).", translation: "Senza un proprio albero di errore, i lettori disegnano il codice e il messaggio dell'errore — per un progetto che non esiste, per una route protetta letta senza sessione e per una risposta che il modello del lettore rifiuta (l'elenco dei progetti letto come un solo progetto)." }
+  - { text: "Never drawn: there is no such project.", translation: "Mai disegnato: questo progetto non esiste." }
+  - { text: "Signed in, so this reads: {$name}", translation: "Accesso effettuato, quindi questo legge: {$name}" }
+  - { text: "Never drawn: a list is no project.", translation: "Mai disegnato: un elenco non è un progetto." }
+  - { text: Read again on focus, translation: Rilettura al ritorno del focus }
+  - { text: "This reader reads the server's time again whenever the window regains focus. Switch to another window and back.", translation: "Questo lettore rilegge l'ora del server ogni volta che la finestra riprende il focus. Passa a un'altra finestra e torna qui." }
+  - { text: Read at, translation: Letto alle }
+  - { text: A sign-in gate, translation: Una barriera di accesso }
+  - { text: "The gate reads whether a session is open, and reads again whenever a request inside it answers 401. Signing in opens a session for a member of the team; an e-mail nobody on the team has is refused on its field. Inside, a reader over a guarded route shows the account. Ending the session quietly leaves the account on screen until the next guarded request — the check below, or a focus — is refused, and the gate then swaps to the signed-out view.", translation: "La barriera legge se è aperta una sessione, e la rilegge ogni volta che una richiesta al suo interno riceve la risposta 401. L'accesso apre una sessione per un membro del team; un'e-mail che nessuno nel team ha viene rifiutata sul suo campo. All'interno, un lettore su una route protetta mostra l'account. Chiudere la sessione in silenzio lascia l'account sullo schermo finché la successiva richiesta protetta — il controllo qui sotto, o un ritorno del focus — non viene rifiutata, e allora la barriera passa alla vista senza accesso." }
+  - { text: You are signed out., translation: Sei disconnesso. }
+  - { text: Sign in, translation: Accedi }
+  - { text: "Signed in as {$name}", translation: "Accesso effettuato come {$name}" }
+  - { text: "Member since {$since}", translation: "Membro dal {$since}" }
+  - { text: Check the session, translation: Verifica la sessione }
+  - { text: End the session quietly, translation: Chiudi la sessione in silenzio }
+  - { text: Sign out, translation: Esci }
+
+  # The labels of the task models.
+  - { text: Task, translation: Attività }
+  - { text: Assignee, translation: Assegnatario }
+  - { text: Priority, translation: Priorità }
+  - { text: Estimate, translation: Stima }
+  - { text: Due, translation: Scadenza }
+  - { text: Label, translation: Etichetta }
+  - { text: Blocked, translation: Bloccata }
+  - { text: To do, translation: Da fare }
+  - { text: In progress, translation: In corso }
+  - { text: In review, translation: In revisione }
+  - { text: Bug, translation: Bug }
+  - { text: Feature, translation: Funzionalità }
+  - { text: Chore, translation: Manutenzione }
+  - { text: Docs, translation: Documentazione }
+  - { text: Contact, translation: Contatto }
+  - { text: Project name, translation: Nome del progetto }
+  - { text: Brief, translation: Sintesi }
+
+  # Tables.
+  - { text: Columns from the model, translation: Colonne dal modello }
+  - { text: "With no columns written, a table shows one per model property but the row key, each headed by its title and drawn by its type. It shows 25 rows to a page, the default, and opens its create and edit forms in a dialog, the surface a table uses when it names none.", translation: "Senza colonne scritte, una tabella ne mostra una per ogni proprietà del modello tranne la chiave di riga, ciascuna intestata con il suo titolo e disegnata secondo il suo tipo. Mostra 25 righe per pagina, il valore predefinito, e apre i moduli di creazione e modifica in una finestra di dialogo, la superficie che una tabella usa quando non ne nomina nessuna." }
+  - { text: "Written columns, sorting and style rules", translation: "Colonne scritte, ordinamento e regole di stile" }
+  - { text: "Columns written by hand, in the order given, one with a header of its own. A column sorts where the collection lists its property for sorting. A blocked task's row is strong and red, each status cell has its colour, and a priority no case names takes the default. Eight rows to a page.", translation: "Colonne scritte a mano, nell'ordine indicato, una con un'intestazione propria. Una colonna è ordinabile dove la collezione elenca la sua proprietà per l'ordinamento. La riga di un'attività bloccata è marcata e rossa, ogni cella di stato ha il suo colore, e una priorità che nessun caso nomina prende quello predefinito. Otto righe per pagina." }
+  - { text: Where, translation: Dove }
+  - { text: Members behind a reference, translation: Campi dietro un riferimento }
+  - { text: "The task board answers each task with its assignee and its project nested in it. A column over a nested member takes that member's title and presentation through a named shape, through a definition of the model's own, and through a reference whose own title wins over the shape it names: the contact is a mail link and the brief a link to a page.", translation: "La bacheca delle attività restituisce ogni attività con il suo assegnatario e il suo progetto annidati. Una colonna su un campo annidato ne prende il titolo e la presentazione attraverso una forma con nome, attraverso una definizione propria del modello e attraverso un riferimento il cui titolo prevale sulla forma che nomina: il contatto è un link e-mail e la sintesi un link a una pagina." }
+  - { text: Filtered by the address, translation: "Filtrata dall'indirizzo" }
+  - { text: "This table declares a project parameter and sends it as an equality with every request. With no project in the address it reads nothing.", translation: "Questa tabella dichiara un parametro project e lo invia come uguaglianza con ogni richiesta. Senza un progetto nell'indirizzo non legge nulla." }
+  - { text: Atlas redesign tasks, translation: Attività della riprogettazione di Atlas }
+  - { text: Billing migration tasks, translation: Attività della migrazione della fatturazione }
+  - { text: Blocked tasks, translation: Attività bloccate }
+  - { text: "This one is filtered by a fixed value written into the table, and lists only the tasks that are blocked.", translation: "Questa è filtrata da un valore fisso scritto nella tabella, ed elenca solo le attività bloccate." }
+  - { text: Where a form opens, translation: Dove si apre un modulo }
+  - { text: "Each table below opens its create and edit forms on a different surface. A save reloads every table of tasks on the page.", translation: "Ogni tabella qui sotto apre i moduli di creazione e modifica su una superficie diversa. Un salvataggio ricarica ogni tabella di attività della pagina." }
+  - { text: Dialogs, translation: Finestre di dialogo }
+  - { text: "Create in a small dialog that stays open, emptied, for another task. Edit in a large dialog that does not block the page and ignores a click outside; it keeps its values after a save, drops unsaved input without asking, and is part of the address. Each row offers a confirmed delete.", translation: "Creazione in una piccola finestra di dialogo che resta aperta, svuotata, per un'altra attività. Modifica in una grande finestra di dialogo che non blocca la pagina e ignora un clic all'esterno; dopo un salvataggio mantiene i valori, scarta i dati non salvati senza chiedere e fa parte dell'indirizzo. Ogni riga offre un'eliminazione con conferma." }
+  - { text: Drawers, translation: Cassetti }
+  - { text: "Create in a small drawer from the start edge; edit in a large drawer from the end edge, with no close button. Both close after a save and ask before unsaved input is dropped.", translation: "Creazione in un piccolo cassetto dal bordo iniziale; modifica in un grande cassetto dal bordo finale, senza pulsante di chiusura. Entrambi si chiudono dopo un salvataggio e chiedono conferma prima di scartare i dati non salvati." }
+  - { text: Sheets, translation: Fogli }
+  - { text: "Create in a sheet from the top that does not block the page; edit in a full sheet from the bottom, part of the address.", translation: "Creazione in un foglio dall'alto che non blocca la pagina; modifica in un foglio a tutto schermo dal basso, che fa parte dell'indirizzo." }
+  - { text: Popovers, translation: Popover }
+  - { text: "Create in a card beside the New button, centred on it; below the breakpoint it becomes a full dialog. Edit in a card under the row's button, aligned to its end, which a click outside does not close and which stays open after a save.", translation: "Creazione in un riquadro accanto al pulsante Nuovo, centrato su di esso; sotto la soglia diventa una finestra di dialogo completa. Modifica in un riquadro sotto il pulsante della riga, allineato alla sua fine, che un clic all'esterno non chiude e che resta aperto dopo un salvataggio." }
+  - { text: In line, translation: In linea }
+  - { text: "The create form opens above the rows and the edit form under the row it changes. Below the breakpoint the create form opens in a sheet from the bottom.", translation: "Il modulo di creazione si apre sopra le righe e quello di modifica sotto la riga che modifica. Sotto la soglia il modulo di creazione si apre in un foglio dal basso." }
+  - { text: Panels, translation: Pannelli }
+  - { text: "Create in a small panel at the start edge, which Escape does not close. Edit in a large panel at the end edge, part of the address, with the rows still usable beside it; below the breakpoint it becomes a sheet from the bottom.", translation: "Creazione in un piccolo pannello sul bordo iniziale, che Esc non chiude. Modifica in un grande pannello sul bordo finale, che fa parte dell'indirizzo, con le righe ancora utilizzabili accanto; sotto la soglia diventa un foglio dal basso." }
+  - { text: A page of its own, translation: Una pagina a sé }
+  - { text: "Create and edit replace the page's content under one address name, so the address says either a new task or the task with this key, and Back closes the form. The surface is declared once and named by both.", translation: "Creazione e modifica sostituiscono il contenuto della pagina sotto un unico nome nell'indirizzo, quindi l'indirizzo indica una nuova attività o l'attività con questa chiave, e Indietro chiude il modulo. La superficie è dichiarata una volta e nominata da entrambe." }
+
+  # Filters.
+  - { text: Every filter the collection accepts, translation: Ogni filtro che la collezione accetta }
+  - { text: "With no fields written, the bar draws one control per filter the collection accepts, in its order and from the model's property: a list for an enumeration or a yes/no value, a typed box otherwise, and one label over the two bounds of a range. It sits above the table, applies a choice at once and typed text on Enter, and keeps nothing between visits.", translation: "Senza campi scritti, la barra disegna un controllo per ogni filtro che la collezione accetta, nel suo ordine e dalla proprietà del modello: un elenco per un'enumerazione o un valore sì/no, altrimenti una casella tipizzata, e un'unica etichetta sopra i due estremi di un intervallo. Sta sopra la tabella, applica subito una scelta e il testo digitato con Invio, e non conserva nulla tra una visita e l'altra." }
+  - { text: Every control, translation: Ogni controllo }
+  - { text: "Each way a filter is entered: typed text, options side by side, a list, typed tags, a slider, a switch, and two dates under one label. The project filter is drawn nowhere and only a preset sets it. Status starts at its default, and a preset sets the filters the presets name and clears the others they name. Chips summarise what is chosen, and the values are part of the address. Below the breakpoint the bar folds, and the pinned text filter stays outside the fold.", translation: "Ogni modo di inserire un filtro: testo digitato, opzioni affiancate, un elenco, tag digitati, un cursore, un interruttore e due date sotto un'unica etichetta. Il filtro del progetto non è disegnato da nessuna parte e lo imposta solo una preimpostazione. Lo stato parte dal suo valore predefinito, e una preimpostazione imposta i filtri che le preimpostazioni nominano e cancella gli altri che nominano. I chip riassumono ciò che è scelto, e i valori fanno parte dell'indirizzo. Sotto la soglia la barra si comprime, e il filtro di testo fissato resta fuori dalla parte compressa." }
+  - { text: Urgent, translation: Urgenti }
+  - { text: Atlas only, translation: Solo Atlas }
+  - { text: Stuck, translation: Ferme }
+  - { text: "Beside, as chips, while typing", translation: "Accanto, come chip, durante la digitazione" }
+  - { text: "The controls sit in a column at the start edge. Only the filters you choose are on show: add one from the bar's list, and removing it clears it. Each filter is a chip naming its value, which opens its control. Typed text applies after a pause, and two bounds of a number are captioned after and before. The choice is kept in this browser across visits. Below the breakpoint the bar opens in a sheet from the bottom.", translation: "I controlli stanno in una colonna sul bordo iniziale. Sono visibili solo i filtri che scegli: aggiungine uno dall'elenco della barra, e rimuoverlo lo cancella. Ogni filtro è un chip che ne indica il valore e che apre il suo controllo. Il testo digitato si applica dopo una pausa, e i due estremi di un numero hanno le didascalie dopo e prima. La scelta è conservata in questo browser tra una visita e l'altra. Sotto la soglia la barra si apre in un foglio dal basso." }
+  - { text: "Beside at the end, applied by a button", translation: "Accanto alla fine, applicati con un pulsante" }
+  - { text: "The controls sit at the end edge, and a change waits for Apply, while a preset, Reset and removing a summary chip apply at once. Several assignees are typed separated by commas. The choice is kept for this tab only, and survives a reload.", translation: "I controlli stanno sul bordo finale, e una modifica attende Applica, mentre una preimpostazione, Reimposta e la rimozione di un chip di riepilogo si applicano subito. Più assegnatari si digitano separati da virgole. La scelta è conservata solo per questa scheda e sopravvive a un ricaricamento." }
+  - { text: Due by October, translation: Scadenza entro ottobre }
+  - { text: "Folded, starting open", translation: "Comprimibile, inizialmente espanso" }
+  - { text: "The controls fold behind a toggle that counts the filters holding a value, and start unfolded. The pinned text filter stays outside the fold, and the others are added from the bar's list. Status starts at in progress; removing it clears that default too, and Reset brings it back. The values are kept both in the address and in this browser, the address winning, and the fold you choose is remembered.", translation: "I controlli si comprimono dietro un pulsante che conta i filtri con un valore, e partono espansi. Il filtro di testo fissato resta fuori dalla parte compressa, e gli altri si aggiungono dall'elenco della barra. Lo stato parte da in corso; rimuoverlo cancella anche quel valore predefinito, e Reimposta lo ripristina. I valori sono conservati sia nell'indirizzo sia in questo browser, e prevale l'indirizzo; la compressione scelta viene ricordata." }
+  - { text: "Folded, starting closed", translation: "Comprimibile, inizialmente compresso" }
+  - { text: "Folded to begin with. The pinned text filter, Apply and Reset stay outside the fold. The label starts at its default, bugs, until it is changed, and Reset brings the default back.", translation: "Compresso all'inizio. Il filtro di testo fissato, Applica e Reimposta restano fuori dalla parte compressa. L'etichetta parte dal suo valore predefinito, bug, finché non viene cambiata, e Reimposta ripristina il valore predefinito." }
+  - { text: In a dialog, translation: In una finestra di dialogo }
+  - { text: "The controls open in a small dialog from a button that counts the filters holding a value, and close with Done. The open dialog is part of the address, so a link opens it. The pinned text filter stays beside the button, and chips summarise what is chosen.", translation: "I controlli si aprono in una piccola finestra di dialogo da un pulsante che conta i filtri con un valore, e si chiudono con Fine. La finestra aperta fa parte dell'indirizzo, quindi un link la apre. Il filtro di testo fissato resta accanto al pulsante, e i chip riassumono ciò che è scelto." }
+  - { text: In a drawer, translation: In un cassetto }
+  - { text: "The controls open in a drawer from the start edge, which a click outside does not close. Typed values apply after a pause.", translation: "I controlli si aprono in un cassetto dal bordo iniziale, che un clic all'esterno non chiude. I valori digitati si applicano dopo una pausa." }
+  - { text: In a popover, translation: In un popover }
+  - { text: "The controls open in a card under the button, aligned to its end; below the breakpoint, in a sheet from the bottom.", translation: "I controlli si aprono in un riquadro sotto il pulsante, allineato alla sua fine; sotto la soglia, in un foglio dal basso." }
+
+  # The labels of the forms page's models.
+  - { text: Title, translation: Titolo }
+  - { text: Kind of work, translation: Tipo di lavoro }
+  - { text: Design, translation: Design }
+  - { text: Building, translation: Realizzazione }
+  - { text: Writing, translation: Scrittura }
+  - { text: Research, translation: Ricerca }
+  - { text: People needed, translation: Persone necessarie }
+  - { text: Start, translation: Inizio }
+  - { text: Kick-off, translation: Riunione di avvio }
+  - { text: Daily call, translation: Chiamata quotidiana }
+  - { text: Details, translation: Dettagli }
+  - { text: Markdown is welcome., translation: Puoi usare Markdown. }
+  - { text: Keep me posted by, translation: Tienimi aggiornato tramite }
+  - { text: Chat, translation: Chat }
+  - { text: Phone, translation: Telefono }
+  - { text: Keywords, translation: Parole chiave }
+  - { text: "Lower-case words; Enter or a comma adds one.", translation: "Parole in minuscolo; Invio o una virgola ne aggiunge una." }
+  - { text: Site access code, translation: Codice di accesso alla sede }
+  - { text: Never kept between visits., translation: "Mai conservato tra una visita e l'altra." }
+  - { text: Received, translation: Ricevuta }
+  - { text: Lead, translation: Responsabile }
+  - { text: "Lead's role", translation: Ruolo del responsabile }
+  - { text: Manager, translation: Manager }
+  - { text: Engineer, translation: Ingegnere }
+  - { text: Designer, translation: Designer }
+  - { text: Writer, translation: Redattore }
+  - { text: Reviewers, translation: Revisori }
+  - { text: Sponsor, translation: Sponsor }
+  - { text: Helpers, translation: Collaboratori }
+  - { text: Period, translation: Periodo }
+  - { text: The studio books a year at most., translation: Lo studio prenota al massimo un anno. }
+  - { text: On site, translation: In sede }
+  - { text: Site address, translation: Indirizzo della sede }
+  - { text: Notes, translation: Note }
+  - { text: Location, translation: Luogo }
+  - { text: Joined, translation: Data di ingresso }
+
+  # Forms.
+  - { text: Every control from the model, translation: Ogni controllo dal modello }
+  - { text: "With no fields written, the form draws one control per property, chosen from its schema: a text box, a list for an enumeration, number boxes, a date, a date and time, a time, a multi-line box for a document, a checkbox, options side by side for a list of an enumeration, and typed tags for a list of words. A description is a hint under its field, and a default the starting value.", translation: "Senza campi scritti, il modulo disegna un controllo per ogni proprietà, scelto dal suo schema: una casella di testo, un elenco per un'enumerazione, caselle numeriche, una data, una data e ora, un'ora, una casella multiriga per un documento, una casella di controllo, opzioni affiancate per un elenco di un'enumerazione e tag digitati per un elenco di parole. Una descrizione è un suggerimento sotto il suo campo, e un valore predefinito è il valore iniziale." }
+  - { text: "Each field is checked against the model once it has been touched: the title's length, the number of people, the budget in steps of 50, the keywords' spelling. The server refuses a title another request has, and its answer lands on the title. What is typed is kept in the address and in this browser — all but the access code, which the model marks write-only.", translation: "Ogni campo viene verificato rispetto al modello una volta toccato: la lunghezza del titolo, il numero di persone, il budget in passi di 50, la grafia delle parole chiave. Il server rifiuta un titolo che ha già un'altra richiesta, e la sua risposta finisce sul titolo. Ciò che viene digitato è conservato nell'indirizzo e in questo browser — tutto tranne il codice di accesso, che il modello contrassegna come di sola scrittura." }
+  - { text: Each control chosen by hand, translation: Ogni controllo scelto a mano }
+  - { text: "The same request with a control written for each field: the title left to its derived control, the kind as options side by side, the channels as a list choosing several, the number of people on a slider, urgent as a switch and the keywords as tags. What is typed is kept for this tab only.", translation: "La stessa richiesta con un controllo scritto per ogni campo: il titolo lasciato al suo controllo derivato, il tipo come opzioni affiancate, i canali come elenco a scelta multipla, il numero di persone su un cursore, urgente come interruttore e le parole chiave come tag. Ciò che viene digitato è conservato solo per questa scheda." }
+  - { text: Requests received, translation: Richieste ricevute }
+  - { text: "The latest requests the two forms sent, read again after every save.", translation: "Le ultime richieste inviate dai due moduli, rilette dopo ogni salvataggio." }
+  - { text: "Choices, pickers and dates", translation: "Scelte, selettori e date" }
+  - { text: "Booking people on a project. The project is chosen from a list read from the projects collection, each option with its code as a hint. The lead is picked in a dialog, searched by name, among the active members of the role chosen above it; choosing another role reads the options again and keeps the lead only if they still fit. Reviewers are picked in a drawer, several at once, and the sponsor in a popover; the sponsor starts at a default e-mail, shown as the person's name by one lookup. Helpers are offered side by side, three at a time, with More for the rest. A picked person links to their e-mail.", translation: "Prenotazione di persone su un progetto. Il progetto si sceglie da un elenco letto dalla collezione dei progetti, ogni opzione con il suo codice come suggerimento. Il responsabile si sceglie in una finestra di dialogo, cercandolo per nome, tra i membri attivi del ruolo scelto sopra; scegliere un altro ruolo rilegge le opzioni e mantiene il responsabile solo se è ancora adatto. I revisori si scelgono in un cassetto, più di uno alla volta, e lo sponsor in un popover; lo sponsor parte da un'e-mail predefinita, mostrata come nome della persona grazie a una ricerca. I collaboratori sono proposti affiancati, tre alla volta, con Altro per i restanti. Una persona scelta è un link alla sua e-mail." }
+  - { text: "The period is two dates with presets, its weeks starting on Sunday, starting at next month and warning past three months. The server refuses a period that ends before it starts or runs past a year, and its answer lands on the period. The people around the lead are shown once a lead is chosen, and the site address only for work on site.", translation: "Il periodo è composto da due date con preimpostazioni, con le settimane che iniziano la domenica; parte dal mese prossimo e avvisa oltre i tre mesi. Il server rifiuta un periodo che termina prima di iniziare o che dura più di un anno, e la sua risposta finisce sul periodo. Le persone attorno al responsabile sono mostrate una volta scelto un responsabile, e l'indirizzo della sede solo per il lavoro in sede." }
+  - { text: The project, translation: Il progetto }
+  - { text: "Which project, and who leads the work.", translation: "Quale progetto, e chi guida il lavoro." }
+  - { text: Around the lead, translation: Attorno al responsabile }
+  - { text: "Who reviews the work, who sponsors it and who helps.", translation: "Chi revisiona il lavoro, chi lo sponsorizza e chi aiuta." }
+  - { text: When and where, translation: Quando e dove }
+  - { text: Tomorrow, translation: Domani }
+  - { text: Next week, translation: Settimana prossima }
+  - { text: This month, translation: Questo mese }
+  - { text: Next month, translation: Mese prossimo }
+  - { text: Next quarter, translation: Trimestre prossimo }
+  - { text: Next year, translation: Anno prossimo }
+  - { text: Bookings, translation: Prenotazioni }
+  - { text: "The latest bookings, read again after every save.", translation: "Le ultime prenotazioni, rilette dopo ogni salvataggio." }
+
+  # The labels of the actions page's models.
+  - { text: Only these labels, translation: Solo queste etichette }
+  - { text: Count blocked tasks, translation: Conta le attività bloccate }
+  - { text: Hours a week, translation: Ore a settimana }
+  - { text: Done by, translation: Completato entro }
+  - { text: No label, translation: Senza etichetta }
+  - { text: Tasks, translation: Attività }
+  - { text: Hours, translation: Ore }
+  - { text: Days, translation: Giorni }
+  - { text: Task number, translation: "Numero dell'attività" }
+  - { text: "Assignee's e-mail", translation: "E-mail dell'assegnatario" }
+  - { text: Comment, translation: Commento }
+  - { text: Comment number, translation: Numero del commento }
+  - { text: Pinned, translation: Fissato }
+  - { text: Written, translation: Scritto }
+  - { text: New text, translation: Nuovo testo }
+
+  # Actions.
+  - { text: A bare button, translation: Un pulsante semplice }
+  - { text: "An input model with no properties draws the button alone. This one unblocks every blocked task of TEL-42, and the task counts and the TEL-42 table further down read again.", translation: "Un modello di input senza proprietà disegna solo il pulsante. Questo sblocca ogni attività bloccata di TEL-42, e i conteggi delle attività e la tabella di TEL-42 più in basso vengono riletti." }
+  - { text: Unblock TEL-42, translation: Sblocca TEL-42 }
+  - { text: An answer drawn from the result, translation: Una risposta disegnata dal risultato }
+  - { text: "The route adds up the estimates of a project's open tasks. Its fields are the input model's, in two sections, the project chosen from the projects collection and the pace on a slider; what is entered is kept in the address. The answer is drawn under the button: sentences over the result and the record sent, the date the work would be done by, and a list of the hours by label.", translation: "La route somma le stime delle attività aperte di un progetto. I suoi campi sono quelli del modello di input, in due sezioni, con il progetto scelto dalla collezione dei progetti e il ritmo su un cursore; ciò che viene inserito è conservato nell'indirizzo. La risposta è disegnata sotto il pulsante: frasi sul risultato e sul record inviato, la data entro cui il lavoro sarebbe completato e un elenco delle ore per etichetta." }
+  - { text: What to count, translation: Cosa contare }
+  - { text: How fast, translation: Con che ritmo }
+  - { text: Estimate, context: verb, translation: Calcola la stima }
+  - text: "{$hours} hours in {$tasks} open tasks of {$project}"
+    translation:
+      plural: tasks
+      cases:
+        "=0": "{$project} non ha lavoro aperto."
+        one: "{$hours} ore in {$tasks} attività aperta di {$project}"
+        other: "{$hours} ore in {$tasks} attività aperte di {$project}"
+  - text: "About {$weeks} weeks at {$pace} hours a week, done by"
+    translation:
+      plural: weeks
+      cases:
+        one: "Circa {$weeks} settimana a {$pace} ore a settimana, completato entro il"
+        other: "Circa {$weeks} settimane a {$pace} ore a settimana, completato entro il"
+  - { text: By label, translation: Per etichetta }
+  - { text: When it fails, translation: Quando fallisce }
+  - { text: "A failure tree of the action's own, drawn over the error and the record sent. Give task 4 to james@northwind.example and it succeeds. Leave the e-mail out, or name nobody on the team, and the refusal lands on the field; task 999 answers 404, and tomas@northwind.example, who has left, 409.", translation: "Un albero di errore proprio dell'azione, disegnato sull'errore e sul record inviato. Assegna l'attività 4 a james@northwind.example e riesce. Ometti l'e-mail, o indica qualcuno che non è nel team, e il rifiuto finisce sul campo; l'attività 999 risponde 404, e tomas@northwind.example, che se n'è andato, 409." }
+  - { text: "This action reads the estimate route's answer as a number of days, which the route does not give: the answer is refused by the action's output model, and its failure tree says so.", translation: "Questa azione legge la risposta della route di stima come un numero di giorni, che la route non fornisce: la risposta viene rifiutata dal modello di output dell'azione, e il suo albero di errore lo dice." }
+  - { text: Estimate in days, translation: Stima in giorni }
+  - { text: "{$code}: the answer is not the one this button reads.", translation: "{$code}: la risposta non è quella che legge questo pulsante." }
+  - { text: Where a success goes, translation: Dove porta un successo }
+  - { text: "The first answers with the page listing a project's tasks, and the application moves there. The second answers with the team's homepage, an https address that replaces the page.", translation: "La prima risponde con la pagina che elenca le attività di un progetto, e l'applicazione si sposta lì. La seconda risponde con la home page del team, un indirizzo https che sostituisce la pagina." }
+  - { text: Open its tasks, translation: Apri le sue attività }
+  - { text: Visit the homepage, translation: Visita la home page }
+  - { text: Reading again after a success, translation: Rilettura dopo un successo }
+  - { text: "Moving a task reads again both the counts below, a reader, and the TEL-42 table further down. The answer names the task and its new status.", translation: "Spostare un'attività rilegge sia i conteggi qui sotto, un lettore, sia la tabella di TEL-42 più in basso. La risposta indica l'attività e il suo nuovo stato." }
+  - { text: "{$code}: {$todo} to do, {$doing} in progress, {$review} in review, {$done} finished, {$blocked} blocked.", translation: "{$code}: {$todo} da fare, {$doing} in corso, {$review} in revisione, {$done} concluse, {$blocked} bloccate." }
+  - { text: Move, translation: Sposta }
+  - { text: "Task {$id}, {$title}, is now", translation: "L'attività {$id}, {$title}, ora è" }
+  - { text: One press after another, translation: "Una pressione dopo l'altra" }
+  - { text: "Comments are sent one after another, in the order the button is pressed, however quickly. The button waits for three characters and says why; choosing another task clears the last answer. The comments listed at the bottom read again after each one.", translation: "I commenti vengono inviati uno dopo l'altro, nell'ordine in cui si preme il pulsante, per quanto rapidamente. Il pulsante attende tre caratteri e spiega perché; scegliere un'altra attività cancella l'ultima risposta. I commenti elencati in fondo vengono riletti dopo ciascuno." }
+  - { text: Add the comment, translation: Aggiungi il commento }
+  - { text: Write three characters or more., translation: Scrivi tre o più caratteri. }
+  - text: "Comment {$id} added to {$title}, which has {$count} comments now."
+    translation:
+      plural: count
+      cases:
+        one: "Il commento {$id} è il primo dell'attività {$title}."
+        other: "Commento {$id} aggiunto a {$title}, che ora ha {$count} commenti."
+  - { text: Row actions on a table, translation: Azioni di riga in una tabella }
+  - { text: "Every task of TEL-42 offers three buttons, each replaced by its answer once pressed. Start runs at once, only on a task still to do. Close asks first, and is not offered on a finished task. Assign opens a dialog for the e-mail, which the row does not give, and shows the server's refusal on its field.", translation: "Ogni attività di TEL-42 offre tre pulsanti, ciascuno sostituito dalla sua risposta una volta premuto. Avvia agisce subito, solo su un'attività ancora da fare. Chiudi chiede prima conferma, e non è offerto su un'attività conclusa. Assegna apre una finestra di dialogo per l'e-mail, che la riga non fornisce, e mostra il rifiuto del server sul suo campo." }
+  - { text: Number, translation: Numero }
+  - { text: Start, context: verb, translation: Avvia }
+  - { text: Closed, translation: Chiusa }
+  - { text: Close this task?, translation: Chiudere questa attività? }
+  - { text: Already started., translation: Già avviata. }
+  - { text: Already finished., translation: Già conclusa. }
+  - { text: Assign, translation: Assegna }
+  - { text: "{$title} is assigned to {$assignee}.", translation: "Attività {$title} assegnata a {$assignee}." }
+  - { text: "Task {$id} is unchanged.", translation: "L'attività {$id} non è cambiata." }
+  - { text: "HTTP {$status} · {$code}", translation: "HTTP {$status} · {$code}" }
+  - { text: Row actions on a list, translation: Azioni di riga in un elenco }
+  - { text: "The latest comments, a list a reader draws, pinned ones first. Pin runs at once on a comment not yet pinned, Delete asks first, and Edit asks for the new text in a dialog; leaving it empty is refused on its field. The list reads again after each.", translation: "Gli ultimi commenti, un elenco disegnato da un lettore, con quelli fissati per primi. Fissa agisce subito su un commento non ancora fissato, Elimina chiede prima conferma, e Modifica chiede il nuovo testo in una finestra di dialogo; lasciarlo vuoto viene rifiutato sul suo campo. L'elenco viene riletto dopo ciascuna azione." }
+  - { text: Latest comments, translation: Ultimi commenti }
+  - { text: Pin, translation: Fissa }
+  - { text: Already pinned., translation: Già fissato. }
+  - { text: Delete this comment?, translation: Eliminare questo commento? }
+  - { text: Rewrite this comment?, translation: Riscrivere questo commento? }
+  - { text: More places a success goes, translation: Altri posti dove porta un successo }
+  - { text: "The first adds a task and moves to the tables page, an address written in the manifest. The second answers with the handbook's address, a file the server serves under the mount, which is an ordinary load. The third answers with the team's mirror, an address a browser reads as another host: it navigates nowhere, and the answer says so.", translation: "La prima aggiunge un'attività e si sposta alla pagina delle tabelle, un indirizzo scritto nel manifest. La seconda risponde con l'indirizzo del manuale, un file che il server serve sotto il punto di montaggio, che è un normale caricamento. La terza risponde con il mirror del team, un indirizzo che un browser legge come un altro host: non porta da nessuna parte, e la risposta lo dice." }
+  - { text: Add it and open the tables, translation: Aggiungi e apri le tabelle }
+  - { text: Open the handbook, translation: Apri il manuale }
+  - { text: Open the mirror, translation: Apri il mirror }
+  - { text: "The answer was {$mirror}, which is no address to go to, so the page stays.", translation: "La risposta era {$mirror}, che non è un indirizzo a cui andare, quindi la pagina resta." }
+  - { text: "Refused, and unanswered", translation: "Rifiutato, e senza risposta" }
+  - { text: "Pausing a project is for a manager alone. With no session the guard answers 401. Signed in on the Data page as james@northwind.example, who is no manager, the route answers 403 with no body; signed in as ada@northwind.example, it pauses the project, and refuses one that is not running in the page's language. The action's default failure tree draws each refusal.", translation: "Mettere in pausa un progetto spetta solo a un manager. Senza sessione la guardia risponde 401. Con l'accesso effettuato nella pagina Dati come james@northwind.example, che non è un manager, la route risponde 403 senza corpo; con l'accesso come ada@northwind.example, mette in pausa il progetto, e rifiuta, nella lingua della pagina, un progetto che non è in corso. L'albero di errore predefinito dell'azione disegna ogni rifiuto." }
+  - { text: Pause the project, translation: Metti in pausa il progetto }
+  - { text: "{$code} is not running, so it cannot be paused.", translation: "{$code} non è in corso, quindi non può essere messo in pausa." }
+  - { text: "{$name} is paused.", translation: "{$name} è in pausa." }
+  - { text: "This route sends every request back to itself, so the browser gives up and no answer arrives at all. The failure tree says so: the error carries no status.", translation: "Questa route rimanda ogni richiesta a sé stessa, quindi il browser rinuncia e non arriva alcuna risposta. L'albero di errore lo dice: l'errore non ha alcuno stato." }
+  - { text: Call a route that never answers, translation: Chiama una route che non risponde mai }
+  - { text: "The route answered, with the status", translation: "La route ha risposto, con lo stato" }
+  - { text: "No answer arrived, so there is no status.", translation: "Non è arrivata alcuna risposta, quindi non c'è alcuno stato." }
+  - { text: "{$code} · {$message}", translation: "{$code} · {$message}" }
+  - { text: Row actions that read the address, translation: "Azioni di riga che leggono l'indirizzo" }
+  - { text: "The table lists the tasks of the project the address names, and Move sends a task to the status the address names, read from the table's query when it is pressed. The row and the address bind every field of the move, so its dialog asks nothing and is a plain confirmation. Choose a project and a status:", translation: "La tabella elenca le attività del progetto indicato dall'indirizzo, e Sposta porta un'attività allo stato indicato dall'indirizzo, letto dalla query della tabella al momento della pressione. La riga e l'indirizzo vincolano ogni campo dello spostamento, quindi la sua finestra di dialogo non chiede nulla ed è una semplice conferma. Scegli un progetto e uno stato:" }
+  - { text: TEL-42 into review, translation: TEL-42 in revisione }
+  - { text: APP-5 to finished, translation: APP-5 come conclusa }
+  - { text: OPS-7 back to in progress, translation: OPS-7 di nuovo in corso }
+  - { text: Neither, translation: Nessuno }
+  - { text: Moved to, translation: Spostata in }
+  - { text: Move this task to the status the address names?, translation: "Spostare questa attività allo stato indicato dall'indirizzo?" }
+  - { text: Choose a status above first., translation: Prima scegli uno stato qui sopra. }
+
+  # Components.
+  - { text: A component on the page, translation: Un componente nella pagina }
+  - { text: "A component written in TSX and shipped by a library of this example, placed with fixed properties. It uses everything the host gives it: it shows where the page is, keeps which panel is open in the address, moves to another page by navigate and by a link from href, and is refused an https address. It reads how TEL-42 stands and adds a task with fetch, says the tasks changed with notifyChanged — so the table below reads again — and counts every change it hears of with onChanged, the table's own edits and deletes included. A task it adds is announced in a layer of its own at the corner of the page.", translation: "Un componente scritto in TSX e fornito da una libreria di questo esempio, collocato con proprietà fisse. Usa tutto ciò che l'host gli offre: mostra dove si trova la pagina, conserva nell'indirizzo quale pannello è aperto, passa a un'altra pagina tramite navigate e tramite un link da href, e un indirizzo https gli viene rifiutato. Legge lo stato di TEL-42 e aggiunge un'attività con fetch, segnala che le attività sono cambiate con notifyChanged — così la tabella qui sotto viene riletta — e conta ogni modifica di cui viene a sapere con onChanged, comprese le modifiche e le eliminazioni della tabella stessa. Un'attività che aggiunge viene annunciata in un livello proprio nell'angolo della pagina." }
+  - { text: A component in a cell, translation: Un componente in una cella }
+  - { text: "The priority column is drawn by a component given each row's priority and whether the task is blocked. The table lists TEL-42's tasks over the same collection the component writes to, so it reads again when a task is added above; its edits and deletes are heard by the component.", translation: "La colonna della priorità è disegnata da un componente che riceve la priorità di ogni riga e se l'attività è bloccata. La tabella elenca le attività di TEL-42 dalla stessa collezione in cui scrive il componente, quindi viene riletta quando sopra si aggiunge un'attività; le sue modifiche ed eliminazioni vengono recepite dal componente." }
+  - { text: Its stylesheet, translation: Il suo foglio di stile }
+  - { text: "The components' sources import a stylesheet of their own, which the application places in the telo.component layer: after the theme and the brand, before the application's own stylesheet. Every value in it reads a design token, so the desk and the meter take each mount's look.", translation: "I sorgenti dei componenti importano un foglio di stile proprio, che l'applicazione colloca nel livello telo.component: dopo il tema e il marchio, prima del foglio di stile dell'applicazione. Ogni valore al suo interno legge un token di design, quindi il pannello e l'indicatore assumono l'aspetto di ogni punto di montaggio." }
+
+  # CRUD.
+  - { text: A generated admin screen, translation: Una schermata di amministrazione generata }
+  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "Un'unica dichiarazione sul modello delle attività da cui è servita l'API: una barra dei filtri, una tabella ordinabile e paginata, un modulo per aggiungere un'attività e uno per modificarla, e un'eliminazione con conferma su ogni riga. Le colonne, i campi e i filtri derivano tutti dal modello, quindi la schermata offre esattamente ciò che l'API accetta." }
+  - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "La barra sta accanto alla tabella sul bordo finale e mostra solo i filtri che scegli, ciascuno come un chip che apre il suo controllo. Conserva la scelta in questo browser sotto la chiave aside — la chiave della barra accanto alla tabella nella pagina Filtri, quindi un filtro scelto in una delle due pagine è scelto in entrambe." }
+  - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "Una nuova attività si apre in un cassetto dal bordo finale e resta aperta, svuotata, per la successiva. Un'attività si modifica in un pannello accanto all'elenco, che fa parte dell'indirizzo, e uscirne con dati non salvati chiede prima conferma." }
+
+  # Themes.
+  - { text: Four mounts of one design, translation: Quattro punti di montaggio di un unico design }
+  - { text: "The same pages are served four times, each application naming its own theme, brand and navigation. The pages are one set of views, placed by reference from all four, so only the look and the navigation differ.", translation: "Le stesse pagine sono servite quattro volte, e ogni applicazione nomina il proprio tema, marchio e navigazione. Le pagine sono un unico insieme di viste, collocate per riferimento da tutte e quattro, quindi cambiano solo l'aspetto e la navigazione." }
+  - { text: At the root, translation: Alla radice }
+  - { text: "The built-in look, this example's own stylesheet over it, and a brand chosen for every request: the Acme token set while a cookie asks for it, the theme's own values otherwise.", translation: "L'aspetto integrato, con sopra il foglio di stile proprio di questo esempio, e un marchio scelto a ogni richiesta: il set di token Acme quando un cookie lo chiede, altrimenti i valori propri del tema." }
+  - { text: Under /radix, translation: Sotto /radix }
+  - { text: "The Radix theme: its stylesheet and its thirteen controls — the choice lists, dialogs, drawers, popovers, menus and tooltips — with the brand left to the theme.", translation: "Il tema Radix: il suo foglio di stile e i suoi tredici controlli — gli elenchi di scelta, le finestre di dialogo, i cassetti, i popover, i menu e i tooltip — con il marchio lasciato al tema." }
+  - { text: Under /brand, translation: Sotto /brand }
+  - { text: "A theme of this example's own: Radix's controls under a stylesheet written here, with token values of its own. The application's brand is one token set, which ships the Inter typeface the theme names.", translation: "Un tema proprio di questo esempio: i controlli di Radix sotto un foglio di stile scritto qui, con valori di token propri. Il marchio dell'applicazione è un unico set di token, che fornisce il carattere tipografico Inter nominato dal tema." }
+  - { text: Under /sidebar, translation: Sotto /sidebar }
+  - { text: "The built-in look with the navigation in a sidebar beside the page, which collapses to a rail and remembers its open groups. On a phone it becomes a tab bar along the bottom edge.", translation: "L'aspetto integrato con la navigazione in una barra laterale accanto alla pagina, che si riduce a una striscia e ricorda i gruppi aperti. Su un telefono diventa una barra di schede lungo il bordo inferiore." }
+  - { text: "A link resolves under the mount it is drawn in, so the links between the mounts and the brand switch are on the root application's Themes page.", translation: "Un link si risolve sotto il punto di montaggio in cui è disegnato, quindi i link tra i punti di montaggio e il selettore del marchio sono nella pagina Temi dell'applicazione alla radice." }
+  - { text: Every design token, translation: Ogni token di design }
+  - { text: "Each token of the closed set as this page's theme and brand give it, read from the custom property the renderer projects it to, with a sample drawn in it. Open another mount, or switch the brand at the root, and the values change.", translation: "Ogni token dell'insieme chiuso così come lo forniscono il tema e il marchio di questa pagina, letto dalla proprietà personalizzata su cui il renderer lo proietta, con un campione disegnato con esso. Apri un altro punto di montaggio, o cambia il marchio alla radice, e i valori cambiano." }
+  - { text: Typefaces, translation: Caratteri tipografici }
+  - { text: "The body and heading typefaces in each of their four faces, and for each face whether this application serves it. Under /brand they are Inter's regular, bold, italic and bold italic faces, which ship with the example and are served with the page; the other two mounts serve none and draw from the viewer's own fonts.", translation: "I caratteri del testo e dei titoli in ciascuno dei loro quattro stili, e per ogni stile se questa applicazione lo serve. Sotto /brand sono gli stili normale, grassetto, corsivo e grassetto corsivo di Inter, forniti con l'esempio e serviti con la pagina; gli altri due punti di montaggio non ne servono nessuno e usano i caratteri del visitatore." }
+  - { text: Switch the mount or the brand, translation: Cambia punto di montaggio o marchio }
+  - { text: "These links are this application's own: a link resolves under the mount it is drawn in, so only the application at the root reaches the other two. Each is an ordinary load of another application.", translation: "Questi link appartengono a questa applicazione: un link si risolve sotto il punto di montaggio in cui è disegnato, quindi solo l'applicazione alla radice raggiunge gli altri due. Ciascuno è un normale caricamento di un'altra applicazione." }
+  - { text: Open the Radix mount, translation: Apri il punto di montaggio Radix }
+  - { text: Open the brand mount, translation: Apri il punto di montaggio del marchio }
+  - { text: "This application's brand is chosen for every request. The switch sets or clears a cookie and comes back here, and while the cookie is there the Acme token set is used instead of the theme's own.", translation: "Il marchio di questa applicazione è scelto a ogni richiesta. Il selettore imposta o cancella un cookie e torna qui, e finché il cookie c'è viene usato il set di token Acme al posto dei valori propri del tema." }
+  - { text: Use the Acme brand, translation: Usa il marchio Acme }
+  - { text: "Use the theme's own values", translation: Usa i valori propri del tema }
+
+  # The renderer's own words, as `Ui.words` writes them.
+  - { text: Loading…, translation: Caricamento… }
+  - { text: No rows., translation: Nessuna riga. }
+  - { text: Nothing found., translation: Nessun risultato. }
+  - { text: Save, translation: Salva }
+  - { text: Cancel, translation: Annulla }
+  - { text: Close, translation: Chiudi }
+  - { text: New, translation: Nuovo }
+  - { text: Edit, translation: Modifica }
+  - { text: Delete, translation: Elimina }
+  - { text: Delete this row?, translation: Eliminare questa riga? }
+  - { text: This cannot be undone., translation: "L'operazione non può essere annullata." }
+  - { text: Previous page, translation: Pagina precedente }
+  - { text: "{$first}–{$last} of {$total}", translation: "{$first}–{$last} di {$total}" }
+  - { text: "0 of {$total}", translation: "0 di {$total}" }
+  - { text: Next page, translation: Pagina successiva }
+  - { text: "Yes", translation: "Sì" }
+  - { text: "No", translation: "No" }
+  - { text: None, translation: Nessuno }
+  - { text: Any, translation: Qualsiasi }
+  - { text: Select…, translation: Seleziona… }
+  - { text: Choose…, translation: Scegli… }
+  - { text: More, translation: Altro }
+  - { text: Menu, translation: Menu }
+  - { text: Site, translation: Sito }
+  - { text: Collapse navigation, translation: Comprimi la navigazione }
+  - { text: Expand navigation, translation: Espandi la navigazione }
+  - { text: "Search {$label}", translation: "Cerca: {$label}" }
+  - { text: "Remove {$label}", translation: "Rimuovi: {$label}" }
+  - { text: "Clear {$label}", translation: "Cancella: {$label}" }
+  - { text: Add filter, translation: Aggiungi filtro }
+  - { text: Apply, translation: Applica }
+  - { text: Reset, translation: Reimposta }
+  - { text: Done, translation: Fine }
+  - { text: Presets, translation: Preimpostazioni }
+  - { text: is, translation: è }
+  - { text: contains, translation: contiene }
+  - { text: after, translation: dopo }
+  - { text: from, translation: da }
+  - { text: before, translation: prima }
+  - { text: to, translation: a }
+  - { text: one of, translation: uno tra }
+  - { text: "{$label} {$operator}", translation: "{$label} {$operator}" }
+  - { text: "{$label} {$operator} {$value}", translation: "{$label} {$operator} {$value}" }
+  - { text: "{$label}: {$summary}", translation: "{$label}: {$summary}" }
+  - { text: From, translation: Da }
+  - { text: To, translation: A }
+  - { text: Must not start after it ends, translation: Non può iniziare dopo la sua fine }
+  - text: "Longer than {$count} days"
+    translation: { plural: count, cases: { one: "Più di {$count} giorno", other: "Più di {$count} giorni" } }
+  - text: "Longer than {$count} weeks"
+    translation: { plural: count, cases: { one: "Più di {$count} settimana", other: "Più di {$count} settimane" } }
+  - text: "Longer than {$count} months"
+    translation: { plural: count, cases: { one: "Più di {$count} mese", other: "Più di {$count} mesi" } }
+  - text: "Longer than {$count} quarters"
+    translation: { plural: count, cases: { one: "Più di {$count} trimestre", other: "Più di {$count} trimestri" } }
+  - text: "Longer than {$count} years"
+    translation: { plural: count, cases: { one: "Più di {$count} anno", other: "Più di {$count} anni" } }
+  - { text: Not found, translation: Non trovato }
+  - { text: "This application has no page at {$path}.", translation: "Questa applicazione non ha alcuna pagina in {$path}." }
+  - { text: Discard unsaved changes?, translation: Scartare le modifiche non salvate? }
+  - { text: What you entered has not been saved., translation: Ciò che hai inserito non è stato salvato. }
+  - { text: Discard, translation: Scarta }
+  - { text: Keep editing, translation: Continua a modificare }
+  - { text: "You are not signed in, or your session has ended.", translation: "Non hai effettuato l'accesso, oppure la sessione è scaduta." }
+  - { text: You are not allowed to do this., translation: "Non hai l'autorizzazione per farlo." }
+  - { text: "The request failed with status {$status}.", translation: "La richiesta non è riuscita, con stato {$status}." }
+  - { text: "The request failed: {$reason}", translation: "La richiesta non è riuscita: {$reason}" }
+  - { text: The record was refused., translation: Il record è stato rifiutato. }
+  - { text: The answer is not JSON., translation: La risposta non è in formato JSON. }
+  - { text: The answer is not a JSON object., translation: La risposta non è un oggetto JSON. }
+  - { text: "The answer does not fit its model: {$detail}", translation: "La risposta non corrisponde al suo modello: {$detail}" }
+  - { text: Is not valid, translation: Non è valido }
+  - { text: Is required, translation: È obbligatorio }
+  - { text: "Must be {$types}", translation: "Deve essere di tipo {$types}" }
+  - { text: "Must be one of: {$allowed}", translation: "Deve essere uno tra: {$allowed}" }
+  - { text: "Must be {$value}", translation: "Deve essere uguale a {$value}" }
+  - { text: Is not allowed, translation: Non è consentito }
+  - { text: Is not one of the allowed forms, translation: Non corrisponde a nessuna delle forme consentite }
+  - text: "Must be at least {$limit} characters"
+    translation: { plural: limit, cases: { one: "Almeno {$limit} carattere", other: "Almeno {$limit} caratteri" } }
+  - text: "Must be at most {$limit} characters"
+    translation: { plural: limit, cases: { one: "Al massimo {$limit} carattere", other: "Al massimo {$limit} caratteri" } }
+  - { text: Is not in the expected format, translation: Non è nel formato previsto }
+  - { text: "Must be at least {$limit}", translation: "Deve essere almeno {$limit}" }
+  - { text: "Must be at most {$limit}", translation: "Deve essere al massimo {$limit}" }
+  - { text: "Must be greater than {$limit}", translation: "Deve essere maggiore di {$limit}" }
+  - { text: "Must be less than {$limit}", translation: "Deve essere minore di {$limit}" }
+  - { text: "Must be a multiple of {$limit}", translation: "Deve essere un multiplo di {$limit}" }
+  - text: "Must have at least {$limit} items"
+    translation: { plural: limit, cases: { one: "Almeno {$limit} elemento", other: "Almeno {$limit} elementi" } }
+  - text: "Must have at most {$limit} items"
+    translation: { plural: limit, cases: { one: "Al massimo {$limit} elemento", other: "Al massimo {$limit} elementi" } }
+  - { text: Must not repeat an item, translation: Gli elementi non devono ripetersi }

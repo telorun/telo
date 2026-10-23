@@ -12,6 +12,7 @@ import {
   valueTypeOf,
   valueTypePlaceholder,
 } from "@telorun/sdk";
+import { canonicalJson } from "./canonical-json.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { memberSlotSchema, memberSlotSchemas, membersSlotOf } from "./members-value-slot.js";
 import { liftFragmentDefs, ManifestRootSchema } from "./manifest-schemas.js";
@@ -76,6 +77,14 @@ export interface CompatibilityRoles {
 
 const DEFAULT_ROLES: CompatibilityRoles = { source: "source", target: "target" };
 
+export interface CompatibilityOptions {
+  /** The target is the schema a value is validated against with its defaults
+   *  filled first (a resource's fields, a call's arguments), so a required
+   *  member whose own schema declares a `default` is never missing. Off for a
+   *  contract no validator fills, such as an ancestor's `outputType`. */
+  targetFillsDefaults?: boolean;
+}
+
 /** The alternatives a union node declares, or undefined when it is not one.
  *  `anyOf` and `oneOf` are one question here — which branches could accept this
  *  value — and their difference (exactly-one vs at-least-one) is a validation
@@ -113,9 +122,10 @@ export function checkSchemaCompatibility(
   target: Record<string, any>,
   resolveRef?: (ref: string) => Record<string, any> | undefined,
   roles: CompatibilityRoles = DEFAULT_ROLES,
+  options: CompatibilityOptions = {},
 ): CompatibilityResult {
   const conflicts: CompatibilityConflict[] = [];
-  compare(source, target, "", conflicts, resolveRef, new Set(), roles, false);
+  compare(source, target, "", conflicts, resolveRef, new Set(), roles, false, options.targetFillsDefaults === true);
   return {
     compatible: conflicts.length === 0,
     issues: conflicts.map((conflict) => conflict.message),
@@ -145,6 +155,7 @@ function compare(
   seen: Set<string>,
   roles: CompatibilityRoles,
   beneathTypeArgument: boolean,
+  fillsDefaults: boolean,
 ): void {
   const issues = {
     push: (message: string) => conflicts.push({ message, beneathTypeArgument }),
@@ -190,7 +201,7 @@ function compare(
         const probe: CompatibilityConflict[] = [];
         // A fresh `seen` per probe: a pair rejected on one branch must not mark
         // a reference pair visited for the next, which would silently pass it.
-        compare(left, right, path, probe, resolveRef, new Set(seen), roles, beneathTypeArgument);
+        compare(left, right, path, probe, resolveRef, new Set(seen), roles, beneathTypeArgument, fillsDefaults);
         if (probe.length === 0) return;
         reasons.push(...probe.map((conflict) => conflict.message));
       }
@@ -240,6 +251,7 @@ function compare(
         seen,
         roles,
         true,
+        fillsDefaults,
       );
     }
     return;
@@ -298,6 +310,22 @@ function compare(
     return;
   }
 
+  // A finite set of values the source holds, against the target's: when the
+  // target allows none of them the conflict is definite.
+  const sourceValues = allowedValues(source);
+  const targetValues = allowedValues(target);
+  if (
+    sourceValues &&
+    targetValues &&
+    !sourceValues.some((value) => targetValues.some((allowed) => sameJson(value, allowed)))
+  ) {
+    issues.push(
+      `${path || "/"}: ${roles.source} is ${sourceValues.map((v) => JSON.stringify(v)).join(" | ")}, ` +
+        `which ${roles.target} does not allow (${targetValues.map((v) => JSON.stringify(v)).join(", ")})`,
+    );
+    return;
+  }
+
   // An array's element, which the old comparison never looked at — so every
   // nested shape passed regardless of what it contained.
   if (target.items && source.items) {
@@ -310,17 +338,27 @@ function compare(
       seen,
       roles,
       beneathTypeArgument,
+      fillsDefaults,
     );
   }
 
   const targetRequired: string[] = Array.isArray(target.required) ? target.required : [];
   const sourceProps: Record<string, any> = source.properties ?? {};
   const targetProps: Record<string, any> = target.properties ?? {};
+  // A member the source always carries where the target forbids it.
+  for (const field of Array.isArray(source.required) ? (source.required as unknown[]) : []) {
+    if (typeof field === "string" && targetProps[field] === false) {
+      issues.push(`${path}/${field}: always present in ${roles.source} but not allowed by ${roles.target}`);
+    }
+  }
   for (const field of targetRequired) {
     if (!(field in sourceProps)) {
       // Only when the source describes an object at all: a schema with no
       // `properties` is saying nothing about its shape, not saying it is empty.
       if (source.properties === undefined) continue;
+      // A member whose own schema declares a default is filled before the value
+      // is validated, so its absence is no conflict.
+      if (fillsDefaults && declaresOwnDefault(targetProps[field])) continue;
       issues.push(`${path}/${field}: required by ${roles.target} but missing from ${roles.source}`);
       continue;
     }
@@ -336,9 +374,26 @@ function compare(
         seen,
         roles,
         beneathTypeArgument,
+        fillsDefaults,
       );
     }
   }
+}
+
+/** Whether a member's own schema declares a `default` — read where a validator
+ *  filling defaults reads it: beside a `$ref`, never on the node it names. */
+function declaresOwnDefault(property: unknown): boolean {
+  return !!property && typeof property === "object" && "default" in (property as object);
+}
+
+/** The values a node allows when it lists them (`const`, `enum`), or undefined. */
+function allowedValues(schema: Record<string, any>): unknown[] | undefined {
+  if ("const" in schema) return [schema.const];
+  return Array.isArray(schema.enum) ? schema.enum : undefined;
+}
+
+function sameJson(a: unknown, b: unknown): boolean {
+  return a === b || canonicalJson(a) === canonicalJson(b);
 }
 
 export { formatAjvErrors, formatSingleError } from "./schema-error-report.js";
@@ -497,8 +552,64 @@ function literalJsonTypes(schema: Record<string, any>): string[] {
   return [...types];
 }
 
-/** Check whether a CEL return type is compatible with a JSON Schema type constraint. */
+/**
+ * Check whether a CEL type is compatible with a JSON Schema type constraint,
+ * judged whole: a `list<T>`'s element type against the slot's `items`, a
+ * `map<K, V>`'s value type against its `additionalProperties` and every
+ * property it requires, recursively. A part the slot declares through a
+ * reference, or the type leaves `dyn`, says nothing.
+ */
 export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<string, any>): boolean {
+  const { name, args } = splitCelType(celType);
+  if (args.length === 0) return celBaseTypeSatisfies(name, schema);
+  const branches = valueTypeOf(schema) === undefined ? unionBranches(schema) : undefined;
+  if (branches) return branches.some((branch) => celTypeSatisfiesJsonSchema(celType, branch));
+  if (!celBaseTypeSatisfies(name, schema)) return false;
+  const holds = (part: string | undefined, slot: unknown): boolean =>
+    part === undefined ||
+    part === "dyn" ||
+    !slot ||
+    typeof slot !== "object" ||
+    Array.isArray(slot) ||
+    typeof (slot as Record<string, any>).$ref === "string" ||
+    celTypeSatisfiesJsonSchema(part, slot as Record<string, any>);
+  if (name === "list") return holds(args[0], schema.items);
+  if (name === "map") {
+    const value = args[1];
+    if (!holds(value, schema.additionalProperties)) return false;
+    const required: unknown[] = Array.isArray(schema.required) ? schema.required : [];
+    return required.every(
+      (key) =>
+        typeof key !== "string" ||
+        declaresOwnDefault(schema.properties?.[key]) ||
+        holds(value, schema.properties?.[key]),
+    );
+  }
+  return true;
+}
+
+/** A CEL type's name and its type arguments, top-level commas only:
+ *  `map<string, list<int>>` → `map`, [`string`, `list<int>`]. */
+function splitCelType(celType: string): { name: string; args: string[] } {
+  const open = celType.indexOf("<");
+  if (open === -1 || !celType.endsWith(">")) return { name: celType, args: [] };
+  const args: string[] = [];
+  let depth = 0;
+  let start = open + 1;
+  for (let i = start; i < celType.length - 1; i++) {
+    const c = celType[i];
+    if (c === "<") depth++;
+    else if (c === ">") depth--;
+    else if (c === "," && depth === 0) {
+      args.push(celType.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  args.push(celType.slice(start, celType.length - 1).trim());
+  return { name: celType.slice(0, open), args };
+}
+
+function celBaseTypeSatisfies(celType: string, schema: Record<string, any>): boolean {
   if (celType === "dyn") return true;
   // A union is a CHOICE, satisfied by satisfying any branch — split BEFORE a
   // brand degrades to its base, or a `Telo.HostPath` source would reach the
@@ -507,7 +618,7 @@ export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<strin
   // outright turns the check off for exactly the slots that admit more than one
   // shape, and those are the ones where the branches carry the information.
   const branches = valueTypeOf(schema) === undefined ? unionBranches(schema) : undefined;
-  if (branches) return branches.some((branch) => celTypeSatisfiesJsonSchema(celType, branch));
+  if (branches) return branches.some((branch) => celBaseTypeSatisfies(celType, branch));
   // Nominal value brands: when the expression's type is a recognized brand,
   // a branded consuming field must match exactly (a UdpPort wired into a
   // TcpPort-branded field is the error we want). An unbranded field accepts

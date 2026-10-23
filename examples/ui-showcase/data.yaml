@@ -77,9 +77,9 @@ columns:
 seeds:
   key: [ email ]
   rows:
-    - { name: Ada Nowak, email: ada@northwind.example, role: manager, location: Warsaw, joined_on: "2021-03-01", contact: "mailto:ada@northwind.example" }
-    - { name: Jan Kowalski, email: jan@northwind.example, role: engineer, location: Kraków, joined_on: "2022-06-15", contact: "mailto:jan@northwind.example" }
-    - { name: Maja Wiśniewska, email: maja@northwind.example, role: designer, location: Gdańsk, joined_on: "2023-01-09", contact: "mailto:maja@northwind.example" }
+    - { name: Ada Brooks, email: ada@northwind.example, role: manager, location: Manchester, joined_on: "2021-03-01", contact: "mailto:ada@northwind.example" }
+    - { name: James Walker, email: james@northwind.example, role: engineer, location: Edinburgh, joined_on: "2022-06-15", contact: "mailto:james@northwind.example" }
+    - { name: Maya Harris, email: maya@northwind.example, role: designer, location: Bristol, joined_on: "2023-01-09", contact: "mailto:maya@northwind.example" }
     - { name: Liam Carter, email: liam@northwind.example, role: engineer, location: London, joined_on: "2020-11-23", contact: "mailto:liam@northwind.example" }
     - { name: Sofia Rossi, email: sofia@northwind.example, role: writer, location: Milan, joined_on: "2024-04-02", contact: "mailto:sofia@northwind.example" }
     - { name: Tomás Ortega, email: tomas@northwind.example, role: engineer, location: Lisbon, joined_on: "2019-08-19", active: 0, contact: "mailto:tomas@northwind.example" }
@@ -109,9 +109,9 @@ seeds:
   rows:
     - { code: TEL-42, name: Atlas redesign, status: active, lead_email: ada@northwind.example, budget: 48000, velocity: 2.5, featured: 1, open: 1, brief: "/data?project=TEL-42", started_on: "2026-06-01" }
     - { code: OPS-7, name: Billing migration, status: active, lead_email: liam@northwind.example, budget: 32000, velocity: 1.5, open: 1, brief: "/data?project=OPS-7", started_on: "2026-04-14", codename: Ledger }
-    - { code: WEB-3, name: Marketing site, status: paused, lead_email: maja@northwind.example, budget: 12000, velocity: 0.5, open: 0, brief: "/data?project=WEB-3", started_on: "2026-02-20", note: Waiting for the new copy., codename: Lighthouse }
+    - { code: WEB-3, name: Marketing site, status: paused, lead_email: maya@northwind.example, budget: 12000, velocity: 0.5, open: 0, brief: "/data?project=WEB-3", started_on: "2026-02-20", note: Waiting for the new copy., codename: Lighthouse }
     - { code: DOC-12, name: Handbook rewrite, status: done, lead_email: sofia@northwind.example, budget: 6000, velocity: 1, open: 0, brief: "/data?project=DOC-12", started_on: "2025-11-03", codename: Quill }
-    - { code: APP-5, name: Mobile app, status: active, lead_email: jan@northwind.example, budget: 75000, velocity: 3, open: 1, brief: "/data?project=APP-5", started_on: "2026-08-18", codename: Pocket }
+    - { code: APP-5, name: Mobile app, status: active, lead_email: james@northwind.example, budget: 75000, velocity: 3, open: 1, brief: "/data?project=APP-5", started_on: "2026-08-18", codename: Pocket }
     - { code: OPS-9, name: Data warehouse, status: done, lead_email: tomas@northwind.example, budget: 54000, velocity: 2, open: 0, brief: "/data?project=OPS-9", started_on: "2025-07-07", codename: Silo }
 ---
 kind: SQLite.Table
@@ -129,17 +129,17 @@ seeds:
   key: [ project_code, person_email ]
   rows:
     - { project_code: TEL-42, person_email: ada@northwind.example, role: Lead }
-    - { project_code: TEL-42, person_email: maja@northwind.example, role: Design }
-    - { project_code: TEL-42, person_email: jan@northwind.example, role: Front end }
+    - { project_code: TEL-42, person_email: maya@northwind.example, role: Design }
+    - { project_code: TEL-42, person_email: james@northwind.example, role: Front end }
     - { project_code: TEL-42, person_email: sofia@northwind.example, role: Copy }
     - { project_code: OPS-7, person_email: liam@northwind.example, role: Lead }
     - { project_code: OPS-7, person_email: tomas@northwind.example, role: Data }
-    - { project_code: WEB-3, person_email: maja@northwind.example, role: Lead }
+    - { project_code: WEB-3, person_email: maya@northwind.example, role: Lead }
     - { project_code: WEB-3, person_email: sofia@northwind.example, role: Copy }
     - { project_code: DOC-12, person_email: sofia@northwind.example, role: Lead }
-    - { project_code: APP-5, person_email: jan@northwind.example, role: Lead }
+    - { project_code: APP-5, person_email: james@northwind.example, role: Lead }
     - { project_code: APP-5, person_email: liam@northwind.example, role: Back end }
-    - { project_code: APP-5, person_email: maja@northwind.example, role: Design }
+    - { project_code: APP-5, person_email: maya@northwind.example, role: Design }
     - { project_code: OPS-9, person_email: tomas@northwind.example, role: Lead }
 ---
 kind: SQLite.Table
@@ -184,36 +184,36 @@ seeds:
   key: [ seed_key ]
   rows:
     - { seed_key: T01, project_code: TEL-42, title: Audit the current navigation, assignee_email: ada@northwind.example, status: done, priority: 3, estimate: 4, due_on: "2026-09-28", label: chore }
-    - { seed_key: T02, project_code: TEL-42, title: Sketch the new header, assignee_email: maja@northwind.example, status: review, priority: 4, estimate: 6, due_on: "2026-10-20", label: feature }
-    - { seed_key: T03, project_code: TEL-42, title: Build the header component, assignee_email: jan@northwind.example, status: doing, priority: 4, estimate: 8, due_on: "2026-10-27", label: feature }
+    - { seed_key: T02, project_code: TEL-42, title: Sketch the new header, assignee_email: maya@northwind.example, status: review, priority: 4, estimate: 6, due_on: "2026-10-20", label: feature }
+    - { seed_key: T03, project_code: TEL-42, title: Build the header component, assignee_email: james@northwind.example, status: doing, priority: 4, estimate: 8, due_on: "2026-10-27", label: feature }
     - { seed_key: T04, project_code: TEL-42, title: Write the release notes, assignee_email: sofia@northwind.example, status: todo, priority: 2, estimate: 2, due_on: "2026-11-10", label: docs }
-    - { seed_key: T05, project_code: TEL-42, title: Fix the menu focus trap, assignee_email: jan@northwind.example, status: todo, priority: 5, estimate: 3, due_on: "2026-10-24", label: bug, blocked: 1 }
-    - { seed_key: T06, project_code: TEL-42, title: Pick the colour palette, assignee_email: maja@northwind.example, status: done, priority: 3, estimate: 2.5, due_on: "2026-10-02", label: feature }
+    - { seed_key: T05, project_code: TEL-42, title: Fix the menu focus trap, assignee_email: james@northwind.example, status: todo, priority: 5, estimate: 3, due_on: "2026-10-24", label: bug, blocked: 1 }
+    - { seed_key: T06, project_code: TEL-42, title: Pick the colour palette, assignee_email: maya@northwind.example, status: done, priority: 3, estimate: 2.5, due_on: "2026-10-02", label: feature }
     - { seed_key: T07, project_code: OPS-7, title: Map the old invoice fields, assignee_email: liam@northwind.example, status: done, priority: 4, estimate: 6, due_on: "2026-09-30", label: chore }
     - { seed_key: T08, project_code: OPS-7, title: Migrate the customer records, assignee_email: liam@northwind.example, status: doing, priority: 5, estimate: 16, due_on: "2026-11-03", label: feature }
     - { seed_key: T09, project_code: OPS-7, title: Reconcile last quarter, assignee_email: tomas@northwind.example, status: review, priority: 4, estimate: 12, due_on: "2026-10-22", label: chore, blocked: 1 }
     - { seed_key: T10, project_code: OPS-7, title: Fix rounding on refunds, assignee_email: liam@northwind.example, status: todo, priority: 5, estimate: 4, due_on: "2026-10-25", label: bug }
     - { seed_key: T11, project_code: OPS-7, title: Document the billing API, assignee_email: sofia@northwind.example, status: todo, priority: 2, estimate: 5, due_on: "2026-11-20", label: docs }
     - { seed_key: T12, project_code: WEB-3, title: Rewrite the landing copy, assignee_email: sofia@northwind.example, status: doing, priority: 3, estimate: 6, due_on: "2026-11-06", label: docs, blocked: 1 }
-    - { seed_key: T13, project_code: WEB-3, title: Compress the hero images, assignee_email: maja@northwind.example, status: todo, priority: 2, estimate: 1.5, due_on: "2026-11-14", label: chore }
+    - { seed_key: T13, project_code: WEB-3, title: Compress the hero images, assignee_email: maya@northwind.example, status: todo, priority: 2, estimate: 1.5, due_on: "2026-11-14", label: chore }
     - { seed_key: T14, project_code: WEB-3, title: Fix the broken pricing link, status: todo, priority: 4, estimate: 0.5, due_on: "2026-10-23", label: bug }
-    - { seed_key: T15, project_code: WEB-3, title: Add the case studies page, assignee_email: maja@northwind.example, status: todo, priority: 3, estimate: 10, due_on: "2026-12-01", label: feature, blocked: 1 }
+    - { seed_key: T15, project_code: WEB-3, title: Add the case studies page, assignee_email: maya@northwind.example, status: todo, priority: 3, estimate: 10, due_on: "2026-12-01", label: feature, blocked: 1 }
     - { seed_key: T16, project_code: DOC-12, title: Outline the new handbook, assignee_email: sofia@northwind.example, status: done, priority: 3, estimate: 3, due_on: "2025-12-05", label: docs }
     - { seed_key: T17, project_code: DOC-12, title: Review the onboarding chapter, assignee_email: ada@northwind.example, status: done, priority: 2, estimate: 2, due_on: "2025-12-19", label: docs }
     - { seed_key: T18, project_code: DOC-12, title: Publish the handbook, assignee_email: sofia@northwind.example, status: done, priority: 3, estimate: 1, due_on: "2026-01-30", label: chore }
-    - { seed_key: T19, project_code: APP-5, title: Set up the mobile build, assignee_email: jan@northwind.example, status: done, priority: 4, estimate: 6, due_on: "2026-09-05", label: chore }
-    - { seed_key: T20, project_code: APP-5, title: Design the sign-in screens, assignee_email: maja@northwind.example, status: review, priority: 4, estimate: 8, due_on: "2026-10-21", label: feature }
+    - { seed_key: T19, project_code: APP-5, title: Set up the mobile build, assignee_email: james@northwind.example, status: done, priority: 4, estimate: 6, due_on: "2026-09-05", label: chore }
+    - { seed_key: T20, project_code: APP-5, title: Design the sign-in screens, assignee_email: maya@northwind.example, status: review, priority: 4, estimate: 8, due_on: "2026-10-21", label: feature }
     - { seed_key: T21, project_code: APP-5, title: Build offline sync, assignee_email: liam@northwind.example, status: doing, priority: 5, estimate: 20, due_on: "2026-11-28", label: feature }
-    - { seed_key: T22, project_code: APP-5, title: Fix the crash on rotate, assignee_email: jan@northwind.example, status: doing, priority: 5, estimate: 3.5, due_on: "2026-10-23", label: bug }
+    - { seed_key: T22, project_code: APP-5, title: Fix the crash on rotate, assignee_email: james@northwind.example, status: doing, priority: 5, estimate: 3.5, due_on: "2026-10-23", label: bug }
     - { seed_key: T23, project_code: APP-5, title: Write the store listing, assignee_email: sofia@northwind.example, status: todo, priority: 2, estimate: 2, due_on: "2026-12-10", label: docs }
-    - { seed_key: T24, project_code: APP-5, title: Add push notifications, assignee_email: jan@northwind.example, status: todo, priority: 3, estimate: 12, due_on: "2026-12-15", label: feature, blocked: 1 }
+    - { seed_key: T24, project_code: APP-5, title: Add push notifications, assignee_email: james@northwind.example, status: todo, priority: 3, estimate: 12, due_on: "2026-12-15", label: feature, blocked: 1 }
     - { seed_key: T25, project_code: APP-5, title: Test on older phones, status: todo, priority: 3, estimate: 5, due_on: "2026-12-05", label: chore }
     - { seed_key: T26, project_code: OPS-9, title: Model the sales tables, assignee_email: tomas@northwind.example, status: done, priority: 4, estimate: 10, due_on: "2025-08-20", label: feature }
     - { seed_key: T27, project_code: OPS-9, title: Load three years of orders, assignee_email: tomas@northwind.example, status: done, priority: 5, estimate: 14, due_on: "2025-09-12", label: chore }
     - { seed_key: T28, project_code: OPS-9, title: Fix duplicate customers, assignee_email: liam@northwind.example, status: done, priority: 4, estimate: 4, due_on: "2025-09-30", label: bug }
     - { seed_key: T29, project_code: TEL-42, title: Check colour contrast, status: todo, priority: 3, estimate: 1, due_on: "2026-11-02", label: bug }
     - { seed_key: T30, project_code: OPS-7, title: Retire the old billing jobs, assignee_email: liam@northwind.example, status: todo, priority: 1, estimate: 2, due_on: "2026-12-12", label: chore }
-    - { seed_key: T31, project_code: WEB-3, title: Set up the analytics events, assignee_email: jan@northwind.example, status: todo, priority: 1, estimate: 3, label: feature }
+    - { seed_key: T31, project_code: WEB-3, title: Set up the analytics events, assignee_email: james@northwind.example, status: todo, priority: 1, estimate: 3, label: feature }
     - { seed_key: T32, project_code: TEL-42, title: Plan the usability test, assignee_email: ada@northwind.example, status: todo, priority: 2 }
 ---
 # Work asked of the studio, sent by the forms page. A list it holds is kept as

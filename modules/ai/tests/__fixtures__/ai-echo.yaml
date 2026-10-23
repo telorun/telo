@@ -78,6 +78,12 @@ schema:
         `role[toolCallId]=text` each, joined by ` | ` — instead of the last
         message's text.
       type: boolean
+    echoMedia:
+      title: Echo media
+      description: |
+        Test-only marker: echo a media part where it stands, as `<type>(<uri>)`
+        or `<type>(<n> bytes)`, instead of leaving it out.
+      type: boolean
     toolCallEveryTurn:
       title: Tool call every turn
       description: |
@@ -201,6 +207,12 @@ schema:
         Test-only marker: answer with the request's messages —
         `role[toolCallId]=text` each, joined by ` | ` — instead of the last
         message's text.
+      type: boolean
+    echoMedia:
+      title: Echo media
+      description: |
+        Test-only marker: echo a media part where it stands, as `<type>(<uri>)`
+        or `<type>(<n> bytes)`, instead of leaving it out.
       type: boolean
     toolCallEveryTurn:
       title: Tool call every turn

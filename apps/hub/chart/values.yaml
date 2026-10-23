@@ -21,9 +21,11 @@ image:
 
 imagePullSecrets: []
 
+# A reconcile pass runs `telo` CLI processes back to back for its whole length,
+# about one and a half cores while it lasts; the request reserves that.
 resources:
   requests:
-    cpu: 100m
+    cpu: 1500m
     memory: 256Mi
   limits:
     memory: 1Gi
@@ -89,7 +91,7 @@ embedder:
 seedRefs: []
 
 # When tracked refs are re-read from their origins. `cron` is five fields, in
-# UTC; empty is the hub's default, every 15 minutes.
+# UTC; empty is the hub's default, every hour.
 tracking:
   enabled: true
   cron: ""

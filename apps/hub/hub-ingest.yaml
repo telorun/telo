@@ -962,7 +962,15 @@ inputType:
     properties:
       moduleId: { type: string }
       ref: { type: string }
-      versions: { type: array }
+      versions:
+        type: array
+        items:
+          type: object
+          properties:
+            version: { type: string }
+            digest: { type: string }
+            error: { type: string }
+          required: [version, digest, error]
       latestVersion: { type: string }
 collection: !cel "inputs.versions"
 steps:
@@ -971,15 +979,16 @@ steps:
     inputs:
       moduleId: !cel "inputs.moduleId"
       ref: !cel "inputs.ref"
-      version: !cel "string(item)"
+      version: !cel "item.version"
+      digest: !cel "item.digest"
+      digestError: !cel "item.error"
       latestVersion: !cel "inputs.latestVersion"
 ---
-# Resolve the version's digest, ask the table whether it is due, and schedule the
-# attempt the table minted.
-#
-# The digest read is the cheap half of the old pass and stays here: a steady
-# state is digest-compare-only, and nothing durable is created for a version that
-# has not moved.
+# Ask the table whether the version is due at the digest the enumeration read,
+# and schedule the attempt the table minted. A steady state is digest-compare
+# only: nothing durable is created for a version that has not moved. A version
+# whose digest could not be read fails here, after every newer version has been
+# claimed, so one unreadable tag never blocks the versions published after it.
 kind: Run.Sequence
 metadata:
   name: claimAndSchedule
@@ -991,6 +1000,8 @@ inputType:
       moduleId: { type: string }
       ref: { type: string }
       version: { type: string }
+      digest: { type: string }
+      digestError: { type: string }
       latestVersion: { type: string }
 outputType:
   kind: Telo.JsonSchema
@@ -1001,26 +1012,20 @@ outputType:
       runId: { type: string }
     required: [claimed, runId]
 steps:
-  - name: digest
-    invoke: !ref Origin.moduleDigest
-    inputs:
-      ref: !cel "inputs.ref"
-      version: !cel "inputs.version"
   - name: gate
-    if: !cel "!steps.digest.result.ok"
+    if: !cel "inputs.digestError != ''"
     then:
       - name: fail
         throw:
           code: TRACK_DIGEST_FAILED
           message: !cel >-
-            'telo module digest ' + inputs.ref + '@' + inputs.version + ' failed: '
-              + steps.digest.result.error
+            'no digest for ' + inputs.ref + ' ' + inputs.version + ': ' + inputs.digestError
   - name: claim
     invoke: !ref Schema.claimVersion
     inputs:
       moduleId: !cel "inputs.moduleId"
       version: !cel "inputs.version"
-      digest: !cel "steps.digest.result.digest"
+      digest: !cel "inputs.digest"
       rev: !cel "variables.ingestRev"
   - name: due
     if: !cel "steps.claim.result.claimed"
@@ -1031,7 +1036,7 @@ steps:
           moduleId: !cel "inputs.moduleId"
           ref: !cel "inputs.ref"
           version: !cel "inputs.version"
-          digest: !cel "steps.digest.result.digest"
+          digest: !cel "inputs.digest"
           latestVersion: !cel "inputs.latestVersion"
           attempt: !cel "steps.claim.result.attempt"
 outputs:

@@ -11,12 +11,11 @@ metadata:
     that calls the model, runs the tools it asks for, and replays their results until
     it settles. Tools wrap ordinary resources, exposed as a static list or discovered
     at runtime.
-# An agent's `context` input is typed by `x-telo-value-schema-from` inside its
-# contract, which no runtime before 0.107.0 derives: an older one reads the file
-# and leaves the caller data its tool providers declare unchecked, and refuses a
-# model call whose `messages` is computed.
+# An agent's `context` input is typed by `x-telo-value-schema-from` naming a LIST
+# of locations — its tool providers' `contextType`s and its resolver's — which no
+# runtime before 0.122.0 reads: an older one refuses the annotation's list form.
 requires:
-  telo: ">=0.107.0"
+  telo: ">=0.122.0"
 imports:
   Run: ../run
   Stream: ../stream
@@ -35,6 +34,12 @@ exports:
     - Image
   resources:
     - AgentStreamPart
+    - ContentPart
+    - Message
+    # Exported so the operations' `resolver` schema resolves in an importer;
+    # its `context` is typed from `resolver/contextType`, so it serves only a
+    # field named `resolver`.
+    - ContentResolver
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/ai` to, so this module's code is one module scope across every
   # consumer instead of a copy inlined into each of their bundles.
@@ -52,7 +57,7 @@ exports:
 kind: Telo.JsonSchema
 metadata:
   name: Message
-  description: One conversation turn — a role, its content as text or parts, and the tool-call bookkeeping that links an assistant's request to the result fed back to it.
+  description: One conversation turn — a role, its content as text or parts, and the tool-call bookkeeping that links an assistant's request to the result fed back to it. Only an assistant turn carries tool calls, and a tool turn always names the call it answers.
 schema:
   type: object
   additionalProperties: false
@@ -80,6 +85,25 @@ schema:
     toolCallId:
       description: On a tool turn, which requested call this is the result of.
       type: string
+  # What each role may carry, one branch per role tagged by `role`: a tool turn
+  # names the call it answers, only an assistant turn carries calls, and only a
+  # tool turn names one. A key a role may not carry is forbidden with a `false`
+  # property, so the finding names the key.
+  anyOf:
+    - required: [role]
+      properties:
+        role: { enum: [system, user] }
+        toolCalls: false
+        toolCallId: false
+    - required: [role]
+      properties:
+        role: { const: assistant }
+        toolCallId: false
+    - required: [role, toolCallId]
+      properties:
+        role: { const: tool }
+        toolCallId: { minLength: 1 }
+        toolCalls: false
 ---
 kind: Telo.JsonSchema
 metadata:
@@ -92,7 +116,8 @@ schema:
   properties:
     id:
       type: string
-      description: The provider's id for this call, echoed back on the tool turn carrying its result.
+      minLength: 1
+      description: The provider's id for this call, echoed back on the tool turn carrying its result. Never empty.
     name: { type: string }
     arguments:
       description: The call's arguments, as the model produced them.
@@ -160,9 +185,10 @@ schema:
       type: string
       description: >-
         Where a media part's bytes live, when they are referenced rather than
-        carried: an absolute URI, passed to the model as written and never
-        fetched here. Never beside `data`, and never a `data:` URI — bytes in
-        hand go in `data`.
+        carried: an absolute URI. A uri whose scheme the operation's content
+        resolver lists is resolved before the model is sent it; any other uri is
+        passed to the model as written. Never beside `data`, and never a `data:`
+        URI — bytes in hand go in `data`.
       # Two patterns and no lookahead, which not every regex engine has: the
       # first requires a scheme, the second refuses the one scheme that is bytes.
       allOf:
@@ -250,6 +276,140 @@ schema:
           - $ref: "telo:AI/ContentPart"
           - properties:
               type: { const: text }
+---
+# Ai.ContentResolver — what fetches referenced content for the model: the
+# `resolver` of the four operations, one shape each references. `context` below
+# is typed from `resolver/contextType`, a path from the resource root, so it
+# reads the operation's own field wherever the shape is used.
+kind: Telo.JsonSchema
+metadata:
+  name: ContentResolver
+  description: What fetches referenced content for a model on demand — the uri schemes it answers for, the resource asked for each reference, how many run at once, the mapping into it from the referencing part and the caller's context, and the expression giving the part the model is sent instead.
+schema:
+  description: >-
+    Fetches referenced content for the model on demand: before the model is
+    called, every image, audio, video or file part whose `uri` scheme is listed
+    in `schemes` is replaced, in what the model is sent and nowhere else, by the
+    part `result` maps the answer of `invoke` to. Each distinct uri is resolved
+    once per call, at most `concurrency` at a time. The messages, results and streamed parts the operation
+    returns keep the reference as written; a uri of any other scheme reaches the
+    model as written.
+  type: object
+  additionalProperties: false
+  required: [schemes, invoke, inputs, result]
+  properties:
+    schemes:
+      title: Schemes
+      description: >-
+        The URI schemes this resolver answers for, in lowercase — `upload` for
+        `upload:report-7`. Never `data`: bytes in hand go in a part's `data`.
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items:
+        type: string
+        pattern: "^[a-z][a-z0-9+.-]*$"
+        not: { const: data }
+    concurrency:
+      title: Concurrency
+      description: >-
+        How many references of one call are resolved at once, started in message
+        order. A reference already being resolved is awaited, never asked again,
+        and the first failure stops the ones still queued. May be computed,
+        resolved once at startup.
+      type: integer
+      minimum: 1
+      default: 4
+      x-telo-eval: compile
+    contextType:
+      title: Context type
+      description: >-
+        The shape of the caller data the `inputs:` mapping reads as `context` — a
+        named type reference or an inline type definition. The operation requires
+        its own `context` input to satisfy it. Without it `context` is empty, so a
+        mapping reading a field of it is refused.
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
+    invoke:
+      title: Invoke
+      description: The resource asked for each reference — a reference or an inline declaration.
+      x-telo-ref:
+        kind: Telo.Executable
+        use: call
+        inputs: /inputs
+    inputs:
+      title: Inputs mapping
+      description: >-
+        CEL mapping into the resolver's input from the referencing `part` and the
+        caller's `context`, typed by `contextType`.
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        properties:
+          part:
+            type: object
+            additionalProperties: false
+            required: [type, mediaType, uri]
+            properties:
+              type: { type: string, enum: [image, audio, video, file] }
+              uri: { type: string }
+              mediaType: { type: string }
+              name: { type: string }
+              cacheBreakpoint: { type: boolean }
+          context:
+            type: object
+            properties: {}
+            additionalProperties: false
+            x-telo-context-from-root: resolver/contextType
+    result:
+      title: Result mapping
+      description: >-
+        CEL expression from the resolver's `result` to the part the model is sent
+        in place of the reference: text, or an image, audio, video or file part
+        carrying its bytes or a reference the model can read — never one by a
+        scheme listed in `schemes`.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type: { type: string, enum: [text, image, audio, video, file] }
+        text: { type: string }
+        data:
+          anyOf:
+            - x-telo-type: Telo.Bytes
+            - type: string
+        uri:
+          type: string
+          allOf:
+            - pattern: "^[A-Za-z][A-Za-z0-9+.-]*:"
+            - pattern: "^([^Dd]|[Dd][^Aa]|[Dd][Aa][^Tt]|[Dd][Aa][Tt][^Aa]|[Dd][Aa][Tt][Aa][^:])"
+        mediaType: { type: string }
+        name: { type: string }
+        cacheBreakpoint: { type: boolean }
+      # ContentPart's branches for the types a caller sends.
+      anyOf:
+        - required: [type, text]
+          properties:
+            type: { const: text }
+        - required: [type, mediaType]
+          properties:
+            type: { enum: [image, audio, video, file] }
+          anyOf:
+            - required: [data]
+            - required: [uri]
+          dependencies:
+            data:
+              properties:
+                uri: false
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        properties:
+          result:
+            x-telo-context-ref-from: "invoke/outputType"
 ---
 # Ai.StreamPart — the same content, arriving in pieces.
 #
@@ -1132,6 +1292,20 @@ throws:
         request failure.
     ERR_CONTRACT_VIOLATION:
       description: A provider reported a token count that is not a representable integer.
+    ERR_CONTENT_RESOLUTION_INVALID:
+      description: >-
+        The content resolver's answer, as `resolver.result` mapped it, is not a part
+        a caller may send — text, image, audio, video or file, as ContentPart
+        declares it — or is a reference by a scheme the resolver itself lists.
+        Nothing is sent to the model. What the resolver itself throws escapes
+        unchanged.
+      data:
+        type: object
+        required: [uri]
+        properties:
+          uri:
+            type: string
+            description: The reference whose answer was refused, as written.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1143,6 +1317,14 @@ inputType:
         items: !ref Message
       system: !ref SystemPrompt
       options: { type: object, additionalProperties: true }
+      context:
+        description: >-
+          Data from the caller for the content resolver's `inputs:` mapping to read as
+          `context`; it must satisfy the resolver's `contextType`. Never sent to the
+          model.
+        type: object
+        default: {}
+        x-telo-value-schema-from: /resolver/contextType
     additionalProperties: false
 outputType:
   kind: Telo.JsonSchema
@@ -1193,6 +1375,12 @@ schema:
       description: Completion-level option overrides. Shallow-merged between the model's options and runtime inputs.options; downstream wins.
       type: object
       additionalProperties: true
+    resolver:
+      title: Content resolver
+      description: >-
+        Fetches referenced content for the model on demand: the `uri` schemes it
+        answers for, the resource asked, and the mappings into and out of it.
+      $ref: "telo://Self/ContentResolver"
   required: [model]
   additionalProperties: false
   examples:
@@ -1237,6 +1425,20 @@ throws:
         request failure.
     ERR_CONTRACT_VIOLATION:
       description: A provider reported a token count that is not a representable integer.
+    ERR_CONTENT_RESOLUTION_INVALID:
+      description: >-
+        The content resolver's answer, as `resolver.result` mapped it, is not a part
+        a caller may send — text, image, audio, video or file, as ContentPart
+        declares it — or is a reference by a scheme the resolver itself lists.
+        Nothing is sent to the model. What the resolver itself throws escapes
+        unchanged.
+      data:
+        type: object
+        required: [uri]
+        properties:
+          uri:
+            type: string
+            description: The reference whose answer was refused, as written.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1248,6 +1450,14 @@ inputType:
         items: !ref Message
       system: !ref SystemPrompt
       options: { type: object, additionalProperties: true }
+      context:
+        description: >-
+          Data from the caller for the content resolver's `inputs:` mapping to read as
+          `context`; it must satisfy the resolver's `contextType`. Never sent to the
+          model.
+        type: object
+        default: {}
+        x-telo-value-schema-from: /resolver/contextType
     additionalProperties: false
 outputType:
   kind: Telo.JsonSchema
@@ -1304,6 +1514,12 @@ schema:
       description: Per-resource option overrides. Shallow-merged with the model's options and runtime inputs.options; downstream wins.
       type: object
       additionalProperties: true
+    resolver:
+      title: Content resolver
+      description: >-
+        Fetches referenced content for the model on demand: the `uri` schemes it
+        answers for, the resource asked, and the mappings into and out of it.
+      $ref: "telo://Self/ContentResolver"
   required: [model]
   additionalProperties: false
   examples:
@@ -1572,6 +1788,20 @@ throws:
           name:
             type: string
             description: The tool's name as the model saw it.
+    ERR_CONTENT_RESOLUTION_INVALID:
+      description: >-
+        The content resolver's answer, as `resolver.result` mapped it, is not a part
+        a caller may send — text, image, audio, video or file, as ContentPart
+        declares it — or is a reference by a scheme the resolver itself lists.
+        Nothing is sent to the model. What the resolver itself throws escapes
+        unchanged.
+      data:
+        type: object
+        required: [uri]
+        properties:
+          uri:
+            type: string
+            description: The reference whose answer was refused, as written.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1585,12 +1815,13 @@ inputType:
       options: { type: object, additionalProperties: true }
       context:
         description: >-
-          Data from the caller for the tools to read: each mounted provider's `inputs:`
-          mappings see it as `context`, and it must satisfy the `contextType` of every
-          provider that declares one. Never sent to the model.
+          Data from the caller for the tools and the content resolver to read: each
+          mounted provider's `inputs:` mappings and the resolver's see it as `context`,
+          and it must satisfy the `contextType` of every provider that declares one
+          and the resolver's. Never sent to the model.
         type: object
         default: {}
-        x-telo-value-schema-from: /toolProviders/*/provider/contextType
+        x-telo-value-schema-from: [/toolProviders/*/provider/contextType, /resolver/contextType]
       approvals:
         description: >-
           Decisions on the tool calls `messages` leaves pending — the calls of its
@@ -1953,6 +2184,12 @@ schema:
             properties:
               result:
                 x-telo-context-ref-from: "invoke/outputType"
+    resolver:
+      title: Content resolver
+      description: >-
+        Fetches referenced content for the model on demand: the `uri` schemes it
+        answers for, the resource asked, and the mappings into and out of it.
+      $ref: "telo://Self/ContentResolver"
   required: [model]
   additionalProperties: false
   x-telo-resource-rules:
@@ -2057,6 +2294,20 @@ throws:
           name:
             type: string
             description: The tool's name as the model saw it.
+    ERR_CONTENT_RESOLUTION_INVALID:
+      description: >-
+        The content resolver's answer, as `resolver.result` mapped it, is not a part
+        a caller may send — text, image, audio, video or file, as ContentPart
+        declares it — or is a reference by a scheme the resolver itself lists.
+        Nothing is sent to the model. What the resolver itself throws escapes
+        unchanged.
+      data:
+        type: object
+        required: [uri]
+        properties:
+          uri:
+            type: string
+            description: The reference whose answer was refused, as written.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -2074,12 +2325,13 @@ inputType:
           unchanged to the first model call.
       context:
         description: >-
-          Data from the caller for the tools to read: each mounted provider's `inputs:`
-          mappings see it as `context`, and it must satisfy the `contextType` of every
-          provider that declares one. Never sent to the model.
+          Data from the caller for the tools and the content resolver to read: each
+          mounted provider's `inputs:` mappings and the resolver's see it as `context`,
+          and it must satisfy the `contextType` of every provider that declares one
+          and the resolver's. Never sent to the model.
         type: object
         default: {}
-        x-telo-value-schema-from: /toolProviders/*/provider/contextType
+        x-telo-value-schema-from: [/toolProviders/*/provider/contextType, /resolver/contextType]
       approvals:
         description: >-
           Decisions on the tool calls `messages` leaves pending — the calls of its
@@ -2360,6 +2612,12 @@ schema:
             properties:
               result:
                 x-telo-context-ref-from: "invoke/outputType"
+    resolver:
+      title: Content resolver
+      description: >-
+        Fetches referenced content for the model on demand: the `uri` schemes it
+        answers for, the resource asked, and the mappings into and out of it.
+      $ref: "telo://Self/ContentResolver"
   required: [model]
   additionalProperties: false
   x-telo-resource-rules:

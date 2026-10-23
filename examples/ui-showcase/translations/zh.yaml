@@ -1,0 +1,586 @@
+# The showcase in Simplified Chinese: the applications' and pages' titles,
+# every text the pages write, the labels of the models they draw, and the words
+# the renderer draws on its own. A plural source is matched by the text its
+# `other` case reads; Chinese has a single plural form, so a plural is a plain
+# string or an `other` case beside an explicit `=0`. A word told apart by its
+# context is translated once per context.
+kind: I18n.Catalog
+metadata:
+  name: chinese
+lang: zh
+texts:
+  # Applications and pages.
+  - { text: UI showcase, translation: "界面展示" }
+  - { text: UI showcase — Radix, translation: "界面展示 — Radix" }
+  - { text: UI showcase — brand, translation: "界面展示 — 品牌" }
+  - { text: UI showcase — sidebar, translation: "界面展示 — 侧边栏" }
+  - { text: Overview, translation: "概览" }
+  - { text: Conditions, translation: "条件" }
+  - { text: Data, translation: "数据" }
+  - { text: Tables, translation: "表格" }
+  - { text: Filters, translation: "筛选" }
+  - { text: Forms, translation: "表单" }
+  - { text: Actions, translation: "操作" }
+  - { text: Components, translation: "组件" }
+  - { text: CRUD, translation: "CRUD" }
+  - { text: Themes, translation: "主题" }
+  # The navigation's groups.
+  - { text: Building blocks, translation: "基础元素" }
+  - { text: Input, translation: "输入" }
+
+  # The header of every application: the mark, the Language and Theme
+  # menus and the Theme menu's items. The language names are each written
+  # in its own language, so neither is translated.
+  - { text: UI showcase logo, translation: "界面展示标志" }
+  - { text: Language, translation: "语言" }
+  - { text: Theme, translation: "主题" }
+  - { text: Default, translation: "默认" }
+  - { text: Radix, translation: "Radix" }
+  - { text: Brand, translation: "品牌" }
+  - { text: Sidebar, translation: "侧边栏" }
+
+  # The overview's nodes evaluated per request.
+  - { text: Per request, translation: "按请求求值" }
+  - { text: "These nodes are the page's own, so their when and their text are evaluated for every request.", translation: "这些节点属于页面本身，因此它们的 when 和文本会在每次请求时求值。" }
+  - { text: Your browser asked for Polish., translation: "你的浏览器请求了波兰语。" }
+  - { text: Your browser did not ask for Polish., translation: "你的浏览器没有请求波兰语。" }
+  - { text: The Acme brand is on., translation: "Acme 品牌已启用。" }
+  - { text: "A text an expression computes is shown as computed, never translated.", translation: "由表达式计算出的文本按计算结果显示，从不翻译。" }
+  - { text: "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", translation: "因本次请求而失效的链接会被替换为错误节点，页面其余部分照常返回。" }
+  - { text: Leaves the application, translation: "离开应用" }
+
+  # The overview.
+  - { text: Every node type, translation: "所有节点类型" }
+  - { text: "A box, a stack and columns hold other nodes, each drawing its children its own way.", translation: "盒子、堆叠和分栏可以容纳其他节点，并各以自己的方式绘制子节点。" }
+  - { text: A box, translation: "盒子" }
+  - { text: Groups its children., translation: "将子节点归为一组。" }
+  - { text: A stack, translation: "堆叠" }
+  - { text: Draws its children one under another., translation: "将子节点上下依次绘制。" }
+  - { text: A badge, translation: "徽章" }
+  - { text: Columns, translation: "分栏" }
+  - { text: "Draw their children side by side, as these three are.", translation: "将子节点并排绘制，就像这三个一样。" }
+  - { text: Text in each style, translation: "各种样式的文本" }
+  - { text: "A style says what a node means; the theme decides how that looks. A node may carry several.", translation: "样式说明节点的含义，主题决定它的外观。一个节点可以带有多个样式。" }
+  - { text: Heading, translation: "标题" }
+  - { text: Subheading, translation: "副标题" }
+  - { text: Muted, translation: "弱化" }
+  - { text: Strong, translation: "强调" }
+  - { text: Accent, translation: "主题色" }
+  - { text: Danger, translation: "危险" }
+  - { text: Warning, translation: "警告" }
+  - { text: Success, translation: "成功" }
+  - { text: Strong and accent, translation: "强调加主题色" }
+  - { text: Links, translation: "链接" }
+  - { text: "A link to a declared page moves within the application; a file served under the mount is an ordinary load; https and mailto leave it.", translation: "指向已声明页面的链接在应用内跳转；挂载点下提供的文件按普通方式加载；https 和 mailto 链接会离开应用。" }
+  - { text: Go to Conditions, translation: "前往条件页" }
+  - { text: A file the server serves, translation: "服务器提供的文件" }
+  - { text: Write to us, translation: "给我们写信" }
+  - { text: Images, translation: "图片" }
+  - { text: "An image by address, the same image as decoration with an empty alt, and SVG markup drawn as an image, never inserted into the page.", translation: "按地址显示的图片、作为装饰且 alt 为空的同一张图片，以及作为图片绘制、从不插入页面的 SVG 标记。" }
+  - { text: The showcase mark, translation: "展示标志" }
+  - { text: Three overlapping circles, translation: "三个相互重叠的圆" }
+  - { text: Values by their schema, translation: "按模式显示的值" }
+  - { text: "Each value is drawn as its model property says, read from the team record the page loads.", translation: "每个值都按其模型属性的定义绘制，数据读自页面加载的团队记录。" }
+  - { text: Visit the team homepage, translation: "访问团队主页" }
+  - { text: "A uri, drawn as a link with a text of its own", translation: "uri，绘制为带有自身文本的链接" }
+  - { text: A uri-reference to a declared page, translation: "指向已声明页面的 uri-reference" }
+  - { text: A uri-reference to a served file, translation: "指向所提供文件的 uri-reference" }
+  - { text: A mailto address, translation: "mailto 地址" }
+  - { text: "An address the rule refuses, drawn as plain text", translation: "被规则拒绝的地址，绘制为纯文本" }
+  - { text: A date, translation: "日期" }
+  - { text: A date and time, translation: "日期和时间" }
+  - { text: A boolean, translation: "布尔值" }
+  - { text: An enumeration's label, translation: "枚举的标签" }
+  - { text: A list, translation: "列表" }
+  - { text: "The rows one answer holds, never paged. A header defaults to the property's title, and the last column is shown only while the team is hiring.", translation: "一次响应中的全部行，不分页。表头默认取属性的标题，最后一列仅在团队招聘时显示。" }
+  - { text: Projects under way, translation: "进行中的项目" }
+  - { text: Project, translation: "项目" }
+  - { text: Texts, translation: "文本" }
+  - text: "{$count} projects so far."
+    translation:
+      plural: count
+      cases:
+        "=0": "还没有项目。"
+        other: "目前共有 {$count} 个项目。"
+  - { text: "{$team} started {$project} most recently.", translation: "{$team} 最近启动了 {$project}。" }
+  - { text: "A plural chosen in the browser for the number it reads, and a text whose values come from the record.", translation: "根据读取到的数字在浏览器中选择的复数形式，以及取值来自记录的文本。" }
+  - { text: Open, context: state, translation: "未关闭" }
+  - { text: Open, context: verb, translation: "打开" }
+  - { text: "A node's own text is told apart the same way: the badge says TEL-42 is open, the link offers to open its tasks.", translation: "节点自身的文本也以同样方式区分：徽章表示 TEL-42 未关闭，链接则提供打开其任务的入口。" }
+  - { text: Style rules, translation: "样式规则" }
+  - { text: "A row's style and a cell's are chosen by a value of the row. The featured project is strong, each status has its colour, and a status no case names takes the default. Two columns are headed by the same word, Open, told apart by the context each header is written with.", translation: "行和单元格的样式由该行的某个值决定。精选项目以强调样式显示，每种状态有各自的颜色，没有任何分支命名的状态采用默认样式。有两列的表头是同一个词 Open，通过各表头所带的上下文加以区分。" }
+  - { text: Composites, translation: "复合组件" }
+  - { text: "This whole page is a view each application places by reference. Below, a view written inline where it is placed, and a composite kind of this example's own, which has no controller.", translation: "整个页面是每个应用通过引用放置的视图。下方是一个在放置处内联编写的视图，以及本示例自有的一个复合组件种类，它没有控制器。" }
+  - { text: A view declared inline at the node that places it., translation: "在放置它的节点处内联声明的视图。" }
+  - { text: A callout, translation: "提示框" }
+  - { text: "Declared once as a kind that extends Ui.Composite and provides a view, and placed with fields of its own.", translation: "只声明一次，作为扩展 Ui.Composite 并提供视图的种类，放置时带有自己的字段。" }
+  # The overview's tabs; `Details` and `Notes` are translated with the forms' labels.
+  - { text: Tabs, translation: "选项卡" }
+  - { text: "Content under tabs, one tab at a time. The chosen tab is part of the page's address, so a reload or a shared link opens it again.", translation: "按选项卡组织的内容，一次显示一个选项卡。所选选项卡是页面地址的一部分，因此刷新或分享的链接会再次打开它。" }
+  - { text: Summary, translation: "摘要" }
+  - { text: "A tab holds any nodes, as a box does.", translation: "选项卡可以容纳任意节点，与盒子一样。" }
+  - { text: "Only the chosen tab's nodes are drawn.", translation: "只绘制所选选项卡的节点。" }
+  - { text: Chosen, translation: "已选" }
+  - { text: "Each tab is delivered by its own when, as any node is.", translation: "每个选项卡都按自己的 when 下发，与任何节点一样。" }
+  # The labels of the overview's models.
+  - { text: Code, translation: "代码" }
+  - { text: Name, translation: "名称" }
+  - { text: Status, translation: "状态" }
+  - { text: Active, translation: "活跃" }
+  - { text: Paused, translation: "已暂停" }
+  - { text: Finished, translation: "已完成" }
+  - { text: Budget, translation: "预算" }
+  - { text: Started, translation: "开始于" }
+  - { text: Free, context: subscription, translation: "免费版" }
+  - { text: Enterprise, context: subscription, translation: "企业版" }
+  - { text: Version, translation: "版本" }
+  - { text: Team, context: subscription, translation: "团队版" }
+
+  # Conditions.
+  - { text: Delivered and drawn, translation: "下发与绘制" }
+  - { text: "A node's when decides on the server whether it is delivered; its shown decides in the browser whether a delivered node is drawn.", translation: "节点的 when 在服务器上决定是否下发它；它的 shown 在浏览器中决定已下发的节点是否绘制。" }
+  - { text: Never delivered — this node is not in the page document., translation: "从不下发 — 页面文档中没有这个节点。" }
+  - { text: "Delivered and never drawn: the status is not paused, so the browser holds this out of sight.", translation: "已下发但从不绘制：状态不是 paused，因此浏览器将其隐藏。" }
+  - { text: Delivered by its when and drawn by its shown., translation: "由其 when 下发，由其 shown 绘制。" }
+  - { text: "A placement's condition around a composite whose node has one of its own is wrapped in a box, and both must hold.", translation: "当复合组件的节点自带条件时，放置处的条件会用一个盒子包裹起来，两个条件都必须成立。" }
+  - { text: Both conditions hold., translation: "两个条件都成立。" }
+  - { text: "A view whose content is switched off by its own when provides no node, so the composite placing it is left out.", translation: "内容被自身 when 关闭的视图不提供任何节点，因此放置它的复合组件会被省略。" }
+  - { text: Never provided., translation: "从不提供。" }
+  - { text: Every keyword of a condition, translation: "条件的所有关键字" }
+  - { text: "Each line below is drawn because its condition holds over the summary of project TEL-42 this page read: status active, four members, velocity 2.5, tags design and web, its lead a manager, a null note and no codename.", translation: "下面每一行之所以绘制，是因为它的条件对本页读取的项目 TEL-42 摘要成立：状态 active，四名成员，速度 2.5，标签 design 和 web，负责人是经理，note 为 null，没有 codename。" }
+  - { text: "allOf: between 1 and 10 people work on it.", translation: "allOf: 参与人数在 1 到 10 人之间。" }
+  - { text: "required: the lead has an e-mail.", translation: "required: 负责人有电子邮箱。" }
+  - { text: "properties: the lead is a manager.", translation: "properties: 负责人是经理。" }
+  - { text: "minimum: at least three people work on it.", translation: "minimum: 至少有三人参与。" }
+  - { text: "maximum: at most nine people work on it.", translation: "maximum: 最多有九人参与。" }
+  - { text: "exclusiveMinimum: the velocity is greater than 2.", translation: "exclusiveMinimum: 速度大于 2。" }
+  - { text: "exclusiveMaximum: the velocity is less than 3.", translation: "exclusiveMaximum: 速度小于 3。" }
+  - { text: "multipleOf: the velocity is a multiple of 0.5.", translation: "multipleOf: 速度是 0.5 的倍数。" }
+  - { text: "type: the status is a string.", translation: "type: 状态是字符串。" }
+  - { text: "type, as a list: the note is a string or null.", translation: "type（列表形式）: note 是字符串或 null。" }
+  - { text: "const: the status is active.", translation: "const: 状态为 active。" }
+  - { text: "enum: the status is active or paused.", translation: "enum: 状态为 active 或 paused。" }
+  - { text: "not: the status is not paused.", translation: "not: 状态不是 paused。" }
+  - { text: "anyOf: the code starts with TEL or OPS.", translation: "anyOf: code 以 TEL 或 OPS 开头。" }
+  - { text: "items: every tag has at least two letters.", translation: "items: 每个标签至少有两个字母。" }
+  - { text: "minItems: there are at least two tags.", translation: "minItems: 至少有两个标签。" }
+  - { text: "maxItems: there are at most five tags.", translation: "maxItems: 最多有五个标签。" }
+  - { text: "uniqueItems: no tag repeats.", translation: "uniqueItems: 标签不重复。" }
+  - { text: "minLength: the code has at least three characters.", translation: "minLength: code 至少有三个字符。" }
+  - { text: "maxLength: the code has at most ten characters.", translation: "maxLength: code 最多有十个字符。" }
+  - { text: "pattern: the code is letters, a dash and digits.", translation: "pattern: code 由字母、短横线和数字组成。" }
+  - { text: Missing and null, translation: "缺失与 null" }
+  - { text: "Null is a present value. A missing value satisfies no condition, not even one under not, so absence is tested on the parent.", translation: "null 是一个存在的值。缺失的值不满足任何条件，即使是 not 之下的条件也不满足，因此要在父级上检测缺失。" }
+  - { text: The note is present and null., translation: "note 存在且为 null。" }
+  - { text: "Never drawn: a missing codename does not satisfy not.", translation: "从不绘制：缺失的 codename 不满足 not。" }
+  - { text: "The project has no codename, tested on the summary.", translation: "项目没有 codename，在摘要上检测。" }
+  - { text: Query parameters, translation: "查询参数" }
+  - { text: "This reader declares mode, a list of tag values and a ticket held to a pattern. A parameter the address leaves out, a single one given twice or a value its declaration refuses counts as missing.", translation: "这个读取器声明了 mode、一个 tag 值列表，以及一个须符合模式的 ticket。地址中省略的参数、给出两次的单值参数，或被其声明拒绝的值，都视为缺失。" }
+  - { text: Mode detailed, translation: "模式 detailed" }
+  - { text: Two tags, translation: "两个标签" }
+  - { text: A valid ticket, translation: "有效的 ticket" }
+  - { text: A refused ticket, translation: "被拒绝的 ticket" }
+  - { text: Mode given twice, translation: "模式给出两次" }
+  - { text: Clear the query, translation: "清空查询" }
+  - { text: mode is detailed., translation: "mode 为 detailed。" }
+  - { text: There are two tag values or more., translation: "有两个或更多 tag 值。" }
+  - { text: The ticket matches its pattern., translation: "ticket 符合其模式。" }
+  - { text: "No ticket, or one its pattern refuses.", translation: "没有 ticket，或 ticket 被其模式拒绝。" }
+  - { text: Enablement, translation: "启用条件" }
+  - { text: "The button can be pressed only while its condition over what the form holds is met, and says why while it is not. A tag the project already has is refused, and the lines above read the summary again after a tag is added.", translation: "只有当按钮针对表单内容的条件满足时才能按下，不满足时会说明原因。项目已有的标签会被拒绝；添加标签后，上方各行会重新读取摘要。" }
+  - { text: Tag TEL-42, translation: "为 TEL-42 添加标签" }
+  - { text: Tag, translation: "标签" }
+  - { text: Type a tag of three letters or more., translation: "请输入至少三个字母的标签。" }
+  - { text: "Tagged {$tag}: TEL-42 has {$count} tags now.", translation: "已添加 {$tag}：TEL-42 现在有 {$count} 个标签。" }
+  - { text: A page's own query, translation: "页面自身的查询" }
+  - { text: "This page declares mode as well, and its own nodes read it.", translation: "本页同样声明了 mode，页面自身的节点会读取它。" }
+  - { text: The page reads mode as detailed., translation: "页面读取到的 mode 为 detailed。" }
+
+  # Data.
+  - { text: A reader and its parameters, translation: "读取器及其参数" }
+  - { text: "The project is the page address's project parameter, sent with the read; with none the parameter is not sent and the route answers for TEL-42. A code no project has draws the failure tree.", translation: "项目取自页面地址的 project 参数，随读取请求一起发送；没有该参数时不发送，路由按 TEL-42 响应。不属于任何项目的代码会绘制失败树。" }
+  - { text: A code no project has, translation: "不属于任何项目的代码" }
+  - { text: No project, translation: "无项目" }
+  - { text: Reading the project…, translation: "正在读取项目…" }
+  - { text: "{$code} {$name}, led by {$lead}", translation: "{$code} {$name}，负责人 {$lead}" }
+  - { text: "A reader nested in this one's content reads the people working on the same project.", translation: "嵌套在此读取器内容中的另一个读取器会读取参与同一项目的人员。" }
+  - { text: Working on it, translation: "参与人员" }
+  - { text: Role, translation: "角色" }
+  - { text: E-mail, translation: "电子邮箱" }
+  - { text: "No answer · {$code}", translation: "无响应 · {$code}" }
+  - { text: Readers that fail, translation: "失败的读取器" }
+  - { text: "With no failure tree of their own, readers draw the error's code and message — for a project that does not exist, for a guarded route read with no session, and for an answer the reader's model refuses (the projects list read as one project).", translation: "没有自己的失败树时，读取器会绘制错误的代码和消息 — 适用于不存在的项目、在无会话时读取的受保护路由，以及被读取器模型拒绝的响应（把项目列表当作单个项目读取）。" }
+  - { text: "Never drawn: there is no such project.", translation: "从不绘制：不存在该项目。" }
+  - { text: "Signed in, so this reads: {$name}", translation: "已登录，因此读取到：{$name}" }
+  - { text: "Never drawn: a list is no project.", translation: "从不绘制：列表不是项目。" }
+  - { text: Read again on focus, translation: "获得焦点时重新读取" }
+  - { text: "This reader reads the server's time again whenever the window regains focus. Switch to another window and back.", translation: "每当窗口重新获得焦点时，这个读取器都会重新读取服务器时间。切换到其他窗口再切回来试试。" }
+  - { text: Read at, translation: "读取时间" }
+  - { text: A sign-in gate, translation: "登录门禁" }
+  - { text: "The gate reads whether a session is open, and reads again whenever a request inside it answers 401. Signing in opens a session for a member of the team; an e-mail nobody on the team has is refused on its field. Inside, a reader over a guarded route shows the account. Ending the session quietly leaves the account on screen until the next guarded request — the check below, or a focus — is refused, and the gate then swaps to the signed-out view.", translation: "门禁会读取是否有已打开的会话，并在其内部任何请求返回 401 时重新读取。登录会为团队成员打开一个会话；团队中无人使用的电子邮箱会在其字段上被拒绝。门禁内部，一个针对受保护路由的读取器显示账户信息。静默结束会话后，账户信息仍留在屏幕上，直到下一个受保护请求（下方的检查或窗口获得焦点）被拒绝，门禁随即切换到未登录视图。" }
+  - { text: You are signed out., translation: "你已退出登录。" }
+  - { text: Sign in, translation: "登录" }
+  - { text: "Signed in as {$name}", translation: "已以 {$name} 身份登录" }
+  - { text: "Member since {$since}", translation: "自 {$since} 起成为成员" }
+  - { text: Check the session, translation: "检查会话" }
+  - { text: End the session quietly, translation: "静默结束会话" }
+  - { text: Sign out, translation: "退出登录" }
+
+  # The labels of the task models.
+  - { text: Task, translation: "任务" }
+  - { text: Assignee, translation: "负责人" }
+  - { text: Priority, translation: "优先级" }
+  - { text: Estimate, translation: "估时" }
+  - { text: Due, translation: "截止日期" }
+  - { text: Label, translation: "类别" }
+  - { text: Blocked, translation: "受阻" }
+  - { text: To do, translation: "待办" }
+  - { text: In progress, translation: "进行中" }
+  - { text: In review, translation: "审核中" }
+  - { text: Bug, translation: "缺陷" }
+  - { text: Feature, translation: "功能" }
+  - { text: Chore, translation: "杂务" }
+  - { text: Docs, translation: "文档" }
+  - { text: Contact, translation: "联系方式" }
+  - { text: Project name, translation: "项目名称" }
+  - { text: Brief, translation: "简介" }
+
+  # Tables.
+  - { text: Columns from the model, translation: "来自模型的列" }
+  - { text: "With no columns written, a table shows one per model property but the row key, each headed by its title and drawn by its type. It shows 25 rows to a page, the default, and opens its create and edit forms in a dialog, the surface a table uses when it names none.", translation: "未编写列时，表格为除行键外的每个模型属性显示一列，表头取其标题，内容按其类型绘制。表格默认每页显示 25 行，并在对话框中打开创建和编辑表单 — 这是表格未指定界面时使用的界面。" }
+  - { text: "Written columns, sorting and style rules", translation: "手写列、排序和样式规则" }
+  - { text: "Columns written by hand, in the order given, one with a header of its own. A column sorts where the collection lists its property for sorting. A blocked task's row is strong and red, each status cell has its colour, and a priority no case names takes the default. Eight rows to a page.", translation: "按给定顺序手写的列，其中一列有自己的表头。集合将某列的属性列为可排序时，该列即可排序。受阻任务的行以强调样式和红色显示，每个状态单元格有各自的颜色，没有任何分支命名的优先级采用默认样式。每页八行。" }
+  - { text: Where, translation: "所属" }
+  - { text: Members behind a reference, translation: "引用背后的成员" }
+  - { text: "The task board answers each task with its assignee and its project nested in it. A column over a nested member takes that member's title and presentation through a named shape, through a definition of the model's own, and through a reference whose own title wins over the shape it names: the contact is a mail link and the brief a link to a page.", translation: "任务看板返回的每个任务都嵌套了其负责人和所属项目。针对嵌套成员的列，会通过命名形状、模型自身的定义，以及自身标题优先于所指形状的引用，取得该成员的标题和呈现方式：联系方式显示为邮件链接，简介显示为页面链接。" }
+  - { text: Filtered by the address, translation: "按地址筛选" }
+  - { text: "This table declares a project parameter and sends it as an equality with every request. With no project in the address it reads nothing.", translation: "这个表格声明了 project 参数，并在每次请求时作为相等条件发送。地址中没有项目时，它不读取任何内容。" }
+  - { text: Atlas redesign tasks, translation: "Atlas 改版任务" }
+  - { text: Billing migration tasks, translation: "计费迁移任务" }
+  - { text: Blocked tasks, translation: "受阻任务" }
+  - { text: "This one is filtered by a fixed value written into the table, and lists only the tasks that are blocked.", translation: "这个表格按写在表格中的固定值筛选，只列出受阻的任务。" }
+  - { text: Where a form opens, translation: "表单在哪里打开" }
+  - { text: "Each table below opens its create and edit forms on a different surface. A save reloads every table of tasks on the page.", translation: "下面每个表格都在不同的界面中打开创建和编辑表单。保存后会重新加载页面上所有任务表格。" }
+  - { text: Dialogs, translation: "对话框" }
+  - { text: "Create in a small dialog that stays open, emptied, for another task. Edit in a large dialog that does not block the page and ignores a click outside; it keeps its values after a save, drops unsaved input without asking, and is part of the address. Each row offers a confirmed delete.", translation: "在小对话框中创建，保存后保持打开并清空，以便创建下一个任务。在大对话框中编辑，它不阻挡页面，也忽略外部点击；保存后保留其值，不经询问即丢弃未保存的输入，并且是地址的一部分。每一行都提供需确认的删除。" }
+  - { text: Drawers, translation: "抽屉" }
+  - { text: "Create in a small drawer from the start edge; edit in a large drawer from the end edge, with no close button. Both close after a save and ask before unsaved input is dropped.", translation: "在从起始边滑出的小抽屉中创建；在从末尾边滑出、没有关闭按钮的大抽屉中编辑。两者都在保存后关闭，并在丢弃未保存输入前询问。" }
+  - { text: Sheets, translation: "滑出层" }
+  - { text: "Create in a sheet from the top that does not block the page; edit in a full sheet from the bottom, part of the address.", translation: "在从顶部滑出、不阻挡页面的滑出层中创建；在从底部滑出的全屏滑出层中编辑，它是地址的一部分。" }
+  - { text: Popovers, translation: "弹出框" }
+  - { text: "Create in a card beside the New button, centred on it; below the breakpoint it becomes a full dialog. Edit in a card under the row's button, aligned to its end, which a click outside does not close and which stays open after a save.", translation: "在“新建”按钮旁、以其为中心的卡片中创建；低于断点时变为完整的对话框。在行按钮下方、与其末端对齐的卡片中编辑，点击外部不会关闭它，保存后它也保持打开。" }
+  - { text: In line, translation: "行内" }
+  - { text: "The create form opens above the rows and the edit form under the row it changes. Below the breakpoint the create form opens in a sheet from the bottom.", translation: "创建表单在各行上方打开，编辑表单在所修改的行下方打开。低于断点时，创建表单在从底部滑出的滑出层中打开。" }
+  - { text: Panels, translation: "面板" }
+  - { text: "Create in a small panel at the start edge, which Escape does not close. Edit in a large panel at the end edge, part of the address, with the rows still usable beside it; below the breakpoint it becomes a sheet from the bottom.", translation: "在起始边的小面板中创建，按 Escape 不会关闭它。在末尾边的大面板中编辑，它是地址的一部分，旁边的行仍可使用；低于断点时变为从底部滑出的滑出层。" }
+  - { text: A page of its own, translation: "独立页面" }
+  - { text: "Create and edit replace the page's content under one address name, so the address says either a new task or the task with this key, and Back closes the form. The surface is declared once and named by both.", translation: "创建和编辑以同一个地址名称替换页面内容，因此地址表示的要么是新任务，要么是具有该键的任务，按“返回”即可关闭表单。该界面只声明一次，由两者共同引用。" }
+
+  # Filters.
+  - { text: Every filter the collection accepts, translation: "集合接受的所有筛选器" }
+  - { text: "With no fields written, the bar draws one control per filter the collection accepts, in its order and from the model's property: a list for an enumeration or a yes/no value, a typed box otherwise, and one label over the two bounds of a range. It sits above the table, applies a choice at once and typed text on Enter, and keeps nothing between visits.", translation: "未编写字段时，筛选栏按集合的顺序，根据模型属性为集合接受的每个筛选器绘制一个控件：枚举或是/否值使用下拉列表，其余使用对应类型的输入框，范围的两个边界共用一个标签。筛选栏位于表格上方，选择会立即生效，输入的文本按 Enter 后生效，且不会在两次访问之间保留任何内容。" }
+  - { text: Every control, translation: "所有控件" }
+  - { text: "Each way a filter is entered: typed text, options side by side, a list, typed tags, a slider, a switch, and two dates under one label. The project filter is drawn nowhere and only a preset sets it. Status starts at its default, and a preset sets the filters the presets name and clears the others they name. Chips summarise what is chosen, and the values are part of the address. Below the breakpoint the bar folds, and the pinned text filter stays outside the fold.", translation: "筛选器的各种输入方式：输入文本、并排选项、下拉列表、输入标签、滑块、开关，以及同一标签下的两个日期。项目筛选器不在任何地方绘制，只能由预设设置。状态从默认值开始；预设会设置它所命名的筛选器，并清除其他预设所命名的筛选器。胶囊汇总当前选择，筛选值是地址的一部分。低于断点时筛选栏会折叠，固定的文本筛选器留在折叠区之外。" }
+  - { text: Urgent, translation: "紧急" }
+  - { text: Atlas only, translation: "仅 Atlas" }
+  - { text: Stuck, translation: "卡住" }
+  - { text: "Beside, as chips, while typing", translation: "侧边、胶囊、边输入边生效" }
+  - { text: "The controls sit in a column at the start edge. Only the filters you choose are on show: add one from the bar's list, and removing it clears it. Each filter is a chip naming its value, which opens its control. Typed text applies after a pause, and two bounds of a number are captioned after and before. The choice is kept in this browser across visits. Below the breakpoint the bar opens in a sheet from the bottom.", translation: "控件以一列排在起始边。只显示你选择的筛选器：从筛选栏的列表中添加，移除即清除。每个筛选器都是一个显示其值的胶囊，点击可打开其控件。输入的文本在停顿后生效，数字的两个边界分别标注为“之后”和“之前”。选择会在此浏览器中跨访问保留。低于断点时，筛选栏在从底部滑出的滑出层中打开。" }
+  - { text: "Beside at the end, applied by a button", translation: "末尾侧边、按按钮生效" }
+  - { text: "The controls sit at the end edge, and a change waits for Apply, while a preset, Reset and removing a summary chip apply at once. Several assignees are typed separated by commas. The choice is kept for this tab only, and survives a reload.", translation: "控件位于末尾边，修改要等按下“应用”才生效，而预设、“重置”和移除汇总胶囊会立即生效。多个负责人用逗号分隔输入。选择只在当前浏览器标签页中保留，刷新后仍然存在。" }
+  - { text: Due by October, translation: "10 月前截止" }
+  - { text: "Folded, starting open", translation: "可折叠，初始展开" }
+  - { text: "The controls fold behind a toggle that counts the filters holding a value, and start unfolded. The pinned text filter stays outside the fold, and the others are added from the bar's list. Status starts at in progress; removing it clears that default too, and Reset brings it back. The values are kept both in the address and in this browser, the address winning, and the fold you choose is remembered.", translation: "控件折叠在一个切换按钮后面，按钮上显示有值的筛选器数量，初始为展开状态。固定的文本筛选器留在折叠区之外，其他筛选器从筛选栏的列表中添加。状态初始为“进行中”；移除它也会清除这个默认值，“重置”会将其恢复。筛选值同时保存在地址和此浏览器中，以地址为准，你选择的折叠状态也会被记住。" }
+  - { text: "Folded, starting closed", translation: "可折叠，初始收起" }
+  - { text: "Folded to begin with. The pinned text filter, Apply and Reset stay outside the fold. The label starts at its default, bugs, until it is changed, and Reset brings the default back.", translation: "初始为折叠状态。固定的文本筛选器、“应用”和“重置”留在折叠区之外。类别在被修改前取默认值“缺陷”，“重置”会恢复默认值。" }
+  - { text: In a dialog, translation: "在对话框中" }
+  - { text: "The controls open in a small dialog from a button that counts the filters holding a value, and close with Done. The open dialog is part of the address, so a link opens it. The pinned text filter stays beside the button, and chips summarise what is chosen.", translation: "控件在小对话框中打开，入口按钮上显示有值的筛选器数量，按“完成”关闭。打开的对话框是地址的一部分，因此链接可以直接打开它。固定的文本筛选器留在按钮旁边，胶囊汇总当前选择。" }
+  - { text: In a drawer, translation: "在抽屉中" }
+  - { text: "The controls open in a drawer from the start edge, which a click outside does not close. Typed values apply after a pause.", translation: "控件在从起始边滑出的抽屉中打开，点击外部不会关闭它。输入的值在停顿后生效。" }
+  - { text: In a popover, translation: "在弹出框中" }
+  - { text: "The controls open in a card under the button, aligned to its end; below the breakpoint, in a sheet from the bottom.", translation: "控件在按钮下方、与其末端对齐的卡片中打开；低于断点时，在从底部滑出的滑出层中打开。" }
+
+  # The labels of the forms page's models.
+  - { text: Title, translation: "标题" }
+  - { text: Kind of work, translation: "工作类型" }
+  - { text: Design, translation: "设计" }
+  - { text: Building, translation: "开发" }
+  - { text: Writing, translation: "写作" }
+  - { text: Research, translation: "研究" }
+  - { text: People needed, translation: "所需人数" }
+  - { text: Start, translation: "开始日期" }
+  - { text: Kick-off, translation: "启动会" }
+  - { text: Daily call, translation: "每日电话会" }
+  - { text: Details, translation: "详情" }
+  - { text: Markdown is welcome., translation: "支持 Markdown。" }
+  - { text: Keep me posted by, translation: "通知方式" }
+  - { text: Chat, translation: "聊天" }
+  - { text: Phone, translation: "电话" }
+  - { text: Keywords, translation: "关键词" }
+  - { text: "Lower-case words; Enter or a comma adds one.", translation: "小写单词；按 Enter 或输入逗号即可添加。" }
+  - { text: Site access code, translation: "场地门禁码" }
+  - { text: Never kept between visits., translation: "不会在两次访问之间保留。" }
+  - { text: Received, translation: "收到时间" }
+  - { text: Lead, translation: "负责人" }
+  - { text: "Lead's role", translation: "负责人角色" }
+  - { text: Manager, translation: "经理" }
+  - { text: Engineer, translation: "工程师" }
+  - { text: Designer, translation: "设计师" }
+  - { text: Writer, translation: "撰稿人" }
+  - { text: Reviewers, translation: "审核人" }
+  - { text: Sponsor, translation: "发起人" }
+  - { text: Helpers, translation: "协助人" }
+  - { text: Period, translation: "时段" }
+  - { text: The studio books a year at most., translation: "工作室最多预订一年。" }
+  - { text: On site, translation: "现场" }
+  - { text: Site address, translation: "现场地址" }
+  - { text: Notes, translation: "备注" }
+  - { text: Location, translation: "所在地" }
+  - { text: Joined, translation: "加入日期" }
+
+  # Forms.
+  - { text: Every control from the model, translation: "来自模型的所有控件" }
+  - { text: "With no fields written, the form draws one control per property, chosen from its schema: a text box, a list for an enumeration, number boxes, a date, a date and time, a time, a multi-line box for a document, a checkbox, options side by side for a list of an enumeration, and typed tags for a list of words. A description is a hint under its field, and a default the starting value.", translation: "未编写字段时，表单为每个属性绘制一个控件，按其模式选择：文本框、枚举的下拉列表、数字框、日期、日期和时间、时间、文档的多行文本框、复选框、枚举列表的并排选项，以及单词列表的输入标签。描述显示为字段下方的提示，默认值即初始值。" }
+  - { text: "Each field is checked against the model once it has been touched: the title's length, the number of people, the budget in steps of 50, the keywords' spelling. The server refuses a title another request has, and its answer lands on the title. What is typed is kept in the address and in this browser — all but the access code, which the model marks write-only.", translation: "每个字段一经触碰，就会按模型进行校验：标题长度、人数、以 50 为步长的预算、关键词的拼写。服务器会拒绝与其他申请重复的标题，其响应显示在标题字段上。输入的内容保存在地址和此浏览器中 — 门禁码除外，模型将其标记为只写。" }
+  - { text: Each control chosen by hand, translation: "手动选择的各个控件" }
+  - { text: "The same request with a control written for each field: the title left to its derived control, the kind as options side by side, the channels as a list choosing several, the number of people on a slider, urgent as a switch and the keywords as tags. What is typed is kept for this tab only.", translation: "同样的申请，但为每个字段编写了控件：标题沿用推导出的控件，类型为并排选项，渠道为可多选的列表，人数用滑块，紧急程度用开关，关键词用标签。输入的内容只在当前浏览器标签页中保留。" }
+  - { text: Requests received, translation: "已收到的申请" }
+  - { text: "The latest requests the two forms sent, read again after every save.", translation: "两个表单最近发送的申请，每次保存后重新读取。" }
+  - { text: "Choices, pickers and dates", translation: "选项、选择器和日期" }
+  - { text: "Booking people on a project. The project is chosen from a list read from the projects collection, each option with its code as a hint. The lead is picked in a dialog, searched by name, among the active members of the role chosen above it; choosing another role reads the options again and keeps the lead only if they still fit. Reviewers are picked in a drawer, several at once, and the sponsor in a popover; the sponsor starts at a default e-mail, shown as the person's name by one lookup. Helpers are offered side by side, three at a time, with More for the rest. A picked person links to their e-mail.", translation: "为项目预订人员。项目从读自项目集合的列表中选择，每个选项以其代码作为提示。负责人在对话框中按姓名搜索选取，范围是上方所选角色的活跃成员；选择其他角色会重新读取选项，仅当负责人仍然符合时才保留。审核人在抽屉中选取，可一次选多人；发起人在弹出框中选取，初始为一个默认电子邮箱，通过一次查询显示为该人员的姓名。协助人并排列出，每次三人，其余的通过“更多”查看。已选人员链接到其电子邮箱。" }
+  - { text: "The period is two dates with presets, its weeks starting on Sunday, starting at next month and warning past three months. The server refuses a period that ends before it starts or runs past a year, and its answer lands on the period. The people around the lead are shown once a lead is chosen, and the site address only for work on site.", translation: "时段由两个日期组成，带有预设，每周从周日开始，初始为下个月，超过三个月时会发出警告。服务器会拒绝结束早于开始或超过一年的时段，其响应显示在时段字段上。选定负责人后才显示负责人周围的人员，现场地址仅在现场工作时显示。" }
+  - { text: The project, translation: "项目" }
+  - { text: "Which project, and who leads the work.", translation: "哪个项目，由谁负责。" }
+  - { text: Around the lead, translation: "负责人周围" }
+  - { text: "Who reviews the work, who sponsors it and who helps.", translation: "谁审核工作，谁发起，谁协助。" }
+  - { text: When and where, translation: "时间和地点" }
+  - { text: Tomorrow, translation: "明天" }
+  - { text: Next week, translation: "下周" }
+  - { text: This month, translation: "本月" }
+  - { text: Next month, translation: "下个月" }
+  - { text: Next quarter, translation: "下季度" }
+  - { text: Next year, translation: "明年" }
+  - { text: Bookings, translation: "预订" }
+  - { text: "The latest bookings, read again after every save.", translation: "最近的预订，每次保存后重新读取。" }
+
+  # The labels of the actions page's models.
+  - { text: Only these labels, translation: "仅这些类别" }
+  - { text: Count blocked tasks, translation: "计入受阻任务" }
+  - { text: Hours a week, translation: "每周小时数" }
+  - { text: Done by, translation: "完成日期" }
+  - { text: No label, translation: "无类别" }
+  - { text: Tasks, translation: "任务" }
+  - { text: Hours, translation: "小时" }
+  - { text: Days, translation: "天数" }
+  - { text: Task number, translation: "任务编号" }
+  - { text: "Assignee's e-mail", translation: "负责人的电子邮箱" }
+  - { text: Comment, translation: "评论" }
+  - { text: Comment number, translation: "评论编号" }
+  - { text: Pinned, translation: "已置顶" }
+  - { text: Written, translation: "撰写时间" }
+  - { text: New text, translation: "新内容" }
+
+  # Actions.
+  - { text: A bare button, translation: "单独的按钮" }
+  - { text: "An input model with no properties draws the button alone. This one unblocks every blocked task of TEL-42, and the task counts and the TEL-42 table further down read again.", translation: "没有属性的输入模型只绘制按钮本身。这个按钮会解除 TEL-42 所有受阻任务的阻塞，随后任务计数和下方的 TEL-42 表格会重新读取。" }
+  - { text: Unblock TEL-42, translation: "解除 TEL-42 的阻塞" }
+  - { text: An answer drawn from the result, translation: "根据结果绘制的响应" }
+  - { text: "The route adds up the estimates of a project's open tasks. Its fields are the input model's, in two sections, the project chosen from the projects collection and the pace on a slider; what is entered is kept in the address. The answer is drawn under the button: sentences over the result and the record sent, the date the work would be done by, and a list of the hours by label.", translation: "该路由汇总一个项目所有未完成任务的估时。字段来自输入模型，分为两节：项目从项目集合中选择，进度用滑块设置；输入的内容保存在地址中。响应绘制在按钮下方：基于结果和所发送记录的语句、预计完成日期，以及按类别列出的小时数。" }
+  - { text: What to count, translation: "统计什么" }
+  - { text: How fast, translation: "进度" }
+  - { text: Estimate, context: verb, translation: "估算" }
+  - text: "{$hours} hours in {$tasks} open tasks of {$project}"
+    translation:
+      plural: tasks
+      cases:
+        "=0": "{$project} 没有未完成的工作。"
+        other: "{$project} 的 {$tasks} 个未完成任务共 {$hours} 小时"
+  - { text: "About {$weeks} weeks at {$pace} hours a week, done by", translation: "按每周 {$pace} 小时计约需 {$weeks} 周，完成日期为" }
+  - { text: By label, translation: "按类别" }
+  - { text: When it fails, translation: "失败时" }
+  - { text: "A failure tree of the action's own, drawn over the error and the record sent. Give task 4 to james@northwind.example and it succeeds. Leave the e-mail out, or name nobody on the team, and the refusal lands on the field; task 999 answers 404, and tomas@northwind.example, who has left, 409.", translation: "操作自己的失败树，根据错误和所发送的记录绘制。将任务 4 分配给 james@northwind.example 即可成功。不填电子邮箱或填写非团队成员，拒绝信息会显示在该字段上；任务 999 返回 404，已离职的 tomas@northwind.example 返回 409。" }
+  - { text: "This action reads the estimate route's answer as a number of days, which the route does not give: the answer is refused by the action's output model, and its failure tree says so.", translation: "这个操作把估时路由的响应当作天数读取，而该路由并不返回天数：响应被操作的输出模型拒绝，其失败树会说明这一点。" }
+  - { text: Estimate in days, translation: "按天估算" }
+  - { text: "{$code}: the answer is not the one this button reads.", translation: "{$code}：该响应不是此按钮所读取的响应。" }
+  - { text: Where a success goes, translation: "成功后去往何处" }
+  - { text: "The first answers with the page listing a project's tasks, and the application moves there. The second answers with the team's homepage, an https address that replaces the page.", translation: "第一个按钮返回列出项目任务的页面，应用随即跳转过去。第二个按钮返回团队主页，这是一个 https 地址，会替换当前页面。" }
+  - { text: Open its tasks, translation: "打开其任务" }
+  - { text: Visit the homepage, translation: "访问主页" }
+  - { text: Reading again after a success, translation: "成功后重新读取" }
+  - { text: "Moving a task reads again both the counts below, a reader, and the TEL-42 table further down. The answer names the task and its new status.", translation: "移动任务后，下方的计数（一个读取器）和更下方的 TEL-42 表格都会重新读取。响应会给出该任务及其新状态。" }
+  - { text: "{$code}: {$todo} to do, {$doing} in progress, {$review} in review, {$done} finished, {$blocked} blocked.", translation: "{$code}：待办 {$todo}，进行中 {$doing}，审核中 {$review}，已完成 {$done}，受阻 {$blocked}。" }
+  - { text: Move, translation: "移动" }
+  - { text: "Task {$id}, {$title}, is now", translation: "任务 {$id}（{$title}）当前状态为" }
+  - { text: One press after another, translation: "逐次提交" }
+  - { text: "Comments are sent one after another, in the order the button is pressed, however quickly. The button waits for three characters and says why; choosing another task clears the last answer. The comments listed at the bottom read again after each one.", translation: "无论按得多快，评论都会按按钮按下的顺序逐条发送。按钮要等输入至少三个字符才可用，并会说明原因；选择其他任务会清除上一次的响应。每发送一条评论，底部列出的评论都会重新读取。" }
+  - { text: Add the comment, translation: "添加评论" }
+  - { text: Write three characters or more., translation: "请至少输入三个字符。" }
+  - { text: "Comment {$id} added to {$title}, which has {$count} comments now.", translation: "评论 {$id} 已添加到 {$title}，现在共有 {$count} 条评论。" }
+  - { text: Row actions on a table, translation: "表格中的行操作" }
+  - { text: "Every task of TEL-42 offers three buttons, each replaced by its answer once pressed. Start runs at once, only on a task still to do. Close asks first, and is not offered on a finished task. Assign opens a dialog for the e-mail, which the row does not give, and shows the server's refusal on its field.", translation: "TEL-42 的每个任务都提供三个按钮，按下后按钮会被其响应替换。“开始”立即执行，仅对待办任务可用。“关闭”会先询问，已完成的任务不提供此按钮。“分配”会打开对话框以输入电子邮箱（行中不包含该信息），并在该字段上显示服务器的拒绝信息。" }
+  - { text: Number, translation: "编号" }
+  - { text: Start, context: verb, translation: "开始" }
+  - { text: Closed, translation: "已关闭" }
+  - { text: Close this task?, translation: "关闭此任务？" }
+  - { text: Already started., translation: "已开始。" }
+  - { text: Already finished., translation: "已完成。" }
+  - { text: Assign, translation: "分配" }
+  - { text: "{$title} is assigned to {$assignee}.", translation: "{$title} 已分配给 {$assignee}。" }
+  - { text: "Task {$id} is unchanged.", translation: "任务 {$id} 未发生变化。" }
+  - { text: "HTTP {$status} · {$code}", translation: "HTTP {$status} · {$code}" }
+  - { text: Row actions on a list, translation: "列表中的行操作" }
+  - { text: "The latest comments, a list a reader draws, pinned ones first. Pin runs at once on a comment not yet pinned, Delete asks first, and Edit asks for the new text in a dialog; leaving it empty is refused on its field. The list reads again after each.", translation: "最新评论，由读取器绘制的列表，置顶的排在最前。“置顶”对尚未置顶的评论立即执行，“删除”会先询问，“编辑”会在对话框中要求输入新内容；留空会在该字段上被拒绝。每次操作后列表都会重新读取。" }
+  - { text: Latest comments, translation: "最新评论" }
+  - { text: Pin, translation: "置顶" }
+  - { text: Already pinned., translation: "已置顶。" }
+  - { text: Delete this comment?, translation: "删除此评论？" }
+  - { text: Rewrite this comment?, translation: "改写此评论？" }
+  - { text: More places a success goes, translation: "成功后的更多去处" }
+  - { text: "The first adds a task and moves to the tables page, an address written in the manifest. The second answers with the handbook's address, a file the server serves under the mount, which is an ordinary load. The third answers with the team's mirror, an address a browser reads as another host: it navigates nowhere, and the answer says so.", translation: "第一个按钮添加一个任务并跳转到表格页，该地址写在清单中。第二个按钮返回手册的地址，这是服务器在挂载点下提供的文件，按普通方式加载。第三个按钮返回团队镜像站的地址，浏览器会将其视为另一个主机：它不会跳转到任何地方，响应会说明这一点。" }
+  - { text: Add it and open the tables, translation: "添加并打开表格页" }
+  - { text: Open the handbook, translation: "打开手册" }
+  - { text: Open the mirror, translation: "打开镜像站" }
+  - { text: "The answer was {$mirror}, which is no address to go to, so the page stays.", translation: "响应为 {$mirror}，这不是可以跳转的地址，因此页面保持不变。" }
+  - { text: "Refused, and unanswered", translation: "被拒绝与无响应" }
+  - { text: "Pausing a project is for a manager alone. With no session the guard answers 401. Signed in on the Data page as james@northwind.example, who is no manager, the route answers 403 with no body; signed in as ada@northwind.example, it pauses the project, and refuses one that is not running in the page's language. The action's default failure tree draws each refusal.", translation: "只有经理才能暂停项目。没有会话时，守卫返回 401。在数据页以非经理身份的 james@northwind.example 登录时，路由返回不带正文的 403；以 ada@northwind.example 登录时，它会暂停项目，并以页面语言拒绝未在进行中的项目。操作的默认失败树会绘制每一种拒绝。" }
+  - { text: Pause the project, translation: "暂停项目" }
+  - { text: "{$code} is not running, so it cannot be paused.", translation: "{$code} 未在进行中，因此无法暂停。" }
+  - { text: "{$name} is paused.", translation: "{$name} 已暂停。" }
+  - { text: "This route sends every request back to itself, so the browser gives up and no answer arrives at all. The failure tree says so: the error carries no status.", translation: "该路由将每个请求都重定向回自身，因此浏览器会放弃，根本收不到任何响应。失败树会说明这一点：错误不带状态码。" }
+  - { text: Call a route that never answers, translation: "调用永不响应的路由" }
+  - { text: "The route answered, with the status", translation: "路由已响应，状态码为" }
+  - { text: "No answer arrived, so there is no status.", translation: "未收到响应，因此没有状态码。" }
+  - { text: "{$code} · {$message}", translation: "{$code} · {$message}" }
+  - { text: Row actions that read the address, translation: "读取地址的行操作" }
+  - { text: "The table lists the tasks of the project the address names, and Move sends a task to the status the address names, read from the table's query when it is pressed. The row and the address bind every field of the move, so its dialog asks nothing and is a plain confirmation. Choose a project and a status:", translation: "表格列出地址所指项目的任务，“移动”会把任务移到地址所指的状态，该状态在按下按钮时从表格的查询中读取。行和地址绑定了移动操作的所有字段，因此其对话框无需填写任何内容，只是一个简单的确认。请选择项目和状态：" }
+  - { text: TEL-42 into review, translation: "TEL-42 转入审核" }
+  - { text: APP-5 to finished, translation: "APP-5 转为已完成" }
+  - { text: OPS-7 back to in progress, translation: "OPS-7 退回进行中" }
+  - { text: Neither, translation: "都不选" }
+  - { text: Moved to, translation: "已移至" }
+  - { text: Move this task to the status the address names?, translation: "将此任务移到地址所指的状态？" }
+  - { text: Choose a status above first., translation: "请先在上方选择状态。" }
+
+  # Components.
+  - { text: A component on the page, translation: "页面上的组件" }
+  - { text: "A component written in TSX and shipped by a library of this example, placed with fixed properties. It uses everything the host gives it: it shows where the page is, keeps which panel is open in the address, moves to another page by navigate and by a link from href, and is refused an https address. It reads how TEL-42 stands and adds a task with fetch, says the tasks changed with notifyChanged — so the table below reads again — and counts every change it hears of with onChanged, the table's own edits and deletes included. A task it adds is announced in a layer of its own at the corner of the page.", translation: "用 TSX 编写、由本示例的一个库提供的组件，以固定属性放置。它使用宿主提供的全部能力：显示页面所在位置，将展开的面板保存在地址中，通过 navigate 和基于 href 的链接跳转到其他页面，跳转到 https 地址则会被拒绝。它通过 fetch 读取 TEL-42 的状况并添加任务，通过 notifyChanged 告知任务已变更（下方表格因此重新读取），并通过 onChanged 统计它收到的每一次变更，包括表格自身的编辑和删除。它添加的任务会在页面角落、它自己的图层中提示。" }
+  - { text: A component in a cell, translation: "单元格中的组件" }
+  - { text: "The priority column is drawn by a component given each row's priority and whether the task is blocked. The table lists TEL-42's tasks over the same collection the component writes to, so it reads again when a task is added above; its edits and deletes are heard by the component.", translation: "优先级列由一个组件绘制，组件接收每行的优先级以及任务是否受阻。表格列出的 TEL-42 任务来自组件写入的同一集合，因此在上方添加任务时表格会重新读取；表格的编辑和删除也会被组件收到。" }
+  - { text: Its stylesheet, translation: "它的样式表" }
+  - { text: "The components' sources import a stylesheet of their own, which the application places in the telo.component layer: after the theme and the brand, before the application's own stylesheet. Every value in it reads a design token, so the desk and the meter take each mount's look.", translation: "组件源码导入了自己的样式表，应用将其放在 telo.component 层中：位于主题和品牌之后、应用自身样式表之前。其中每个值都读取一个设计令牌，因此工作台和仪表会呈现各个挂载点的外观。" }
+
+  # CRUD.
+  - { text: A generated admin screen, translation: "自动生成的管理界面" }
+  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "基于提供 API 的任务模型的一条声明：一个筛选栏、一个可排序的分页表格、一个添加任务的表单和一个修改任务的表单，以及每行需确认的删除。列、字段和筛选器全部由模型推导而来，因此界面提供的正是 API 所接受的内容。" }
+  - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "筛选栏位于表格旁的末尾边，只显示你选择的筛选器，每个都是一个可打开其控件的胶囊。它以键 aside 将选择保存在此浏览器中 — 这也是筛选页上表格旁筛选栏的键，因此在任一页面上选择的筛选器都会在两个页面上生效。" }
+  - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "新任务在从末尾边滑出的抽屉中打开，保存后保持打开并清空，以便添加下一个。任务在列表旁的面板中修改，该面板是地址的一部分；带着未保存的输入离开时会先询问。" }
+
+  # Themes.
+  - { text: Four mounts of one design, translation: "同一设计的四个挂载点" }
+  - { text: "The same pages are served four times, each application naming its own theme, brand and navigation. The pages are one set of views, placed by reference from all four, so only the look and the navigation differ.", translation: "同样的页面被提供四次，每个应用各自指定主题、品牌和导航。这些页面是同一组视图，四个应用都通过引用放置，因此只有外观和导航不同。" }
+  - { text: At the root, translation: "根路径" }
+  - { text: "The built-in look, this example's own stylesheet over it, and a brand chosen for every request: the Acme token set while a cookie asks for it, the theme's own values otherwise.", translation: "内置外观，其上叠加本示例自己的样式表，以及按每次请求选择的品牌：Cookie 要求时使用 Acme 令牌集，否则使用主题自身的值。" }
+  - { text: Under /radix, translation: "/radix 下" }
+  - { text: "The Radix theme: its stylesheet and its thirteen controls — the choice lists, dialogs, drawers, popovers, menus and tooltips — with the brand left to the theme.", translation: "Radix 主题：它的样式表和十三个控件 — 下拉列表、对话框、抽屉、弹出框、菜单和工具提示 — 品牌交由主题决定。" }
+  - { text: Under /brand, translation: "/brand 下" }
+  - { text: "A theme of this example's own: Radix's controls under a stylesheet written here, with token values of its own. The application's brand is one token set, which ships the Inter typeface the theme names.", translation: "本示例自有的主题：Radix 的控件加上在此编写的样式表，并带有自己的令牌值。应用的品牌是一个令牌集，它附带主题所指定的 Inter 字体。" }
+  - { text: Under /sidebar, translation: "/sidebar 下" }
+  - { text: "The built-in look with the navigation in a sidebar beside the page, which collapses to a rail and remembers its open groups. On a phone it becomes a tab bar along the bottom edge.", translation: "内置外观，导航位于页面旁的侧边栏中，侧边栏可收起为窄栏，并会记住已展开的分组。在手机上，它会变为沿底部边缘的标签栏。" }
+  - { text: "A link resolves under the mount it is drawn in, so the links between the mounts and the brand switch are on the root application's Themes page.", translation: "链接在其所绘制的挂载点下解析，因此挂载点之间的链接和品牌切换开关位于根应用的主题页上。" }
+  - { text: Every design token, translation: "所有设计令牌" }
+  - { text: "Each token of the closed set as this page's theme and brand give it, read from the custom property the renderer projects it to, with a sample drawn in it. Open another mount, or switch the brand at the root, and the values change.", translation: "封闭集合中的每个令牌，取值来自本页的主题和品牌，读取自渲染器将其映射到的 CSS 自定义属性，并附有用它绘制的示例。打开另一个挂载点，或在根应用中切换品牌，这些值就会改变。" }
+  - { text: Typefaces, translation: "字体" }
+  - { text: "The body and heading typefaces in each of their four faces, and for each face whether this application serves it. Under /brand they are Inter's regular, bold, italic and bold italic faces, which ship with the example and are served with the page; the other two mounts serve none and draw from the viewer's own fonts.", translation: "正文和标题字体的四种字形，以及每种字形是否由本应用提供。在 /brand 下，它们是 Inter 的常规、粗体、斜体和粗斜体字形，随示例附带并与页面一同提供；另外两个挂载点不提供任何字形，使用浏览者自己的字体绘制。" }
+  - { text: Switch the mount or the brand, translation: "切换挂载点或品牌" }
+  - { text: "These links are this application's own: a link resolves under the mount it is drawn in, so only the application at the root reaches the other two. Each is an ordinary load of another application.", translation: "这些链接属于本应用：链接在其所绘制的挂载点下解析，因此只有根路径上的应用能访问另外两个。每个链接都是按普通方式加载另一个应用。" }
+  - { text: Open the Radix mount, translation: "打开 Radix 挂载点" }
+  - { text: Open the brand mount, translation: "打开品牌挂载点" }
+  - { text: "This application's brand is chosen for every request. The switch sets or clears a cookie and comes back here, and while the cookie is there the Acme token set is used instead of the theme's own.", translation: "本应用的品牌按每次请求选择。切换开关会设置或清除一个 Cookie 并返回此处；只要该 Cookie 存在，就使用 Acme 令牌集代替主题自身的值。" }
+  - { text: Use the Acme brand, translation: "使用 Acme 品牌" }
+  - { text: "Use the theme's own values", translation: "使用主题自身的值" }
+
+  # The renderer's own words, as `Ui.words` writes them.
+  - { text: Loading…, translation: "加载中…" }
+  - { text: No rows., translation: "暂无数据。" }
+  - { text: Nothing found., translation: "未找到任何内容。" }
+  - { text: Save, translation: "保存" }
+  - { text: Cancel, translation: "取消" }
+  - { text: Close, translation: "关闭" }
+  - { text: New, translation: "新建" }
+  - { text: Edit, translation: "编辑" }
+  - { text: Delete, translation: "删除" }
+  - { text: Delete this row?, translation: "删除此行？" }
+  - { text: This cannot be undone., translation: "此操作无法撤销。" }
+  - { text: Previous page, translation: "上一页" }
+  - { text: "{$first}–{$last} of {$total}", translation: "第 {$first}–{$last} 条，共 {$total} 条" }
+  - { text: "0 of {$total}", translation: "0 条，共 {$total} 条" }
+  - { text: Next page, translation: "下一页" }
+  - { text: "Yes", translation: "是" }
+  - { text: "No", translation: "否" }
+  - { text: None, translation: "无" }
+  - { text: Any, translation: "任意" }
+  - { text: Select…, translation: "请选择…" }
+  - { text: Choose…, translation: "选取…" }
+  - { text: More, translation: "更多" }
+  - { text: Menu, translation: "菜单" }
+  - { text: Site, translation: "站点" }
+  - { text: Collapse navigation, translation: "收起导航" }
+  - { text: Expand navigation, translation: "展开导航" }
+  - { text: "Search {$label}", translation: "搜索{$label}" }
+  - { text: "Remove {$label}", translation: "移除{$label}" }
+  - { text: "Clear {$label}", translation: "清除{$label}" }
+  - { text: Add filter, translation: "添加筛选器" }
+  - { text: Apply, translation: "应用" }
+  - { text: Reset, translation: "重置" }
+  - { text: Done, translation: "完成" }
+  - { text: Presets, translation: "预设" }
+  - { text: is, translation: "为" }
+  - { text: contains, translation: "包含" }
+  - { text: after, translation: "晚于" }
+  - { text: from, translation: "从" }
+  - { text: before, translation: "早于" }
+  - { text: to, translation: "至" }
+  - { text: one of, translation: "属于" }
+  - { text: "{$label} {$operator}", translation: "{$label} {$operator}" }
+  - { text: "{$label} {$operator} {$value}", translation: "{$label} {$operator} {$value}" }
+  - { text: "{$label}: {$summary}", translation: "{$label}：{$summary}" }
+  - { text: From, translation: "开始" }
+  - { text: To, translation: "结束" }
+  - { text: Must not start after it ends, translation: "开始时间不能晚于结束时间" }
+  - { text: "Longer than {$count} days", translation: "超过 {$count} 天" }
+  - { text: "Longer than {$count} weeks", translation: "超过 {$count} 周" }
+  - { text: "Longer than {$count} months", translation: "超过 {$count} 个月" }
+  - { text: "Longer than {$count} quarters", translation: "超过 {$count} 个季度" }
+  - { text: "Longer than {$count} years", translation: "超过 {$count} 年" }
+  - { text: Not found, translation: "未找到" }
+  - { text: "This application has no page at {$path}.", translation: "本应用在 {$path} 没有页面。" }
+  - { text: Discard unsaved changes?, translation: "放弃未保存的更改？" }
+  - { text: What you entered has not been saved., translation: "你输入的内容尚未保存。" }
+  - { text: Discard, translation: "放弃" }
+  - { text: Keep editing, translation: "继续编辑" }
+  - { text: "You are not signed in, or your session has ended.", translation: "你尚未登录，或会话已过期。" }
+  - { text: You are not allowed to do this., translation: "你无权执行此操作。" }
+  - { text: "The request failed with status {$status}.", translation: "请求失败，状态码 {$status}。" }
+  - { text: "The request failed: {$reason}", translation: "请求失败：{$reason}" }
+  - { text: The record was refused., translation: "记录被拒绝。" }
+  - { text: The answer is not JSON., translation: "响应不是 JSON 格式。" }
+  - { text: The answer is not a JSON object., translation: "响应不是 JSON 对象。" }
+  - { text: "The answer does not fit its model: {$detail}", translation: "响应不符合其模型：{$detail}" }
+  - { text: Is not valid, translation: "无效" }
+  - { text: Is required, translation: "必填" }
+  - { text: "Must be {$types}", translation: "必须是 {$types} 类型" }
+  - { text: "Must be one of: {$allowed}", translation: "必须是以下之一：{$allowed}" }
+  - { text: "Must be {$value}", translation: "必须等于 {$value}" }
+  - { text: Is not allowed, translation: "不允许" }
+  - { text: Is not one of the allowed forms, translation: "不符合任何允许的形式" }
+  - { text: "Must be at least {$limit} characters", translation: "至少 {$limit} 个字符" }
+  - { text: "Must be at most {$limit} characters", translation: "最多 {$limit} 个字符" }
+  - { text: Is not in the expected format, translation: "格式不正确" }
+  - { text: "Must be at least {$limit}", translation: "不能小于 {$limit}" }
+  - { text: "Must be at most {$limit}", translation: "不能大于 {$limit}" }
+  - { text: "Must be greater than {$limit}", translation: "必须大于 {$limit}" }
+  - { text: "Must be less than {$limit}", translation: "必须小于 {$limit}" }
+  - { text: "Must be a multiple of {$limit}", translation: "必须是 {$limit} 的倍数" }
+  - { text: "Must have at least {$limit} items", translation: "至少 {$limit} 项" }
+  - { text: "Must have at most {$limit} items", translation: "最多 {$limit} 项" }
+  - { text: Must not repeat an item, translation: "不能有重复项" }

@@ -1,0 +1,598 @@
+# The showcase in Korean: the applications' and pages' titles, every text the
+# pages write, the labels of the models they draw, and the words the renderer
+# draws on its own. A plural source is matched by the text its `other` case
+# reads; Korean has a single plural form, so a plural is translated as one
+# text, or with an explicit `=0` case where that reads better. A word told
+# apart by its context is translated once per context.
+kind: I18n.Catalog
+metadata:
+  name: korean
+lang: ko
+texts:
+  # Applications and pages.
+  - { text: UI showcase, translation: "UI 쇼케이스" }
+  - { text: UI showcase — Radix, translation: "UI 쇼케이스 — Radix" }
+  - { text: UI showcase — brand, translation: "UI 쇼케이스 — 브랜드" }
+  - { text: UI showcase — sidebar, translation: "UI 쇼케이스 — 사이드바" }
+  - { text: Overview, translation: "개요" }
+  - { text: Conditions, translation: "조건" }
+  - { text: Data, translation: "데이터" }
+  - { text: Tables, translation: "테이블" }
+  - { text: Filters, translation: "필터" }
+  - { text: Forms, translation: "폼" }
+  - { text: Actions, translation: "액션" }
+  - { text: Components, translation: "컴포넌트" }
+  - { text: CRUD, translation: "CRUD" }
+  - { text: Themes, translation: "테마" }
+  # The navigation's groups.
+  - { text: Building blocks, translation: "구성 요소" }
+  - { text: Input, translation: "입력" }
+
+  # The header of every application: the mark, the Language and Theme
+  # menus and the Theme menu's items. The language names are each written
+  # in its own language, so neither is translated.
+  - { text: UI showcase logo, translation: "UI 쇼케이스 로고" }
+  - { text: Language, translation: "언어" }
+  - { text: Theme, translation: "테마" }
+  - { text: Default, translation: "기본" }
+  - { text: Radix, translation: "Radix" }
+  - { text: Brand, translation: "브랜드" }
+  - { text: Sidebar, translation: "사이드바" }
+
+  # The overview's nodes evaluated per request.
+  - { text: Per request, translation: "요청마다" }
+  - { text: "These nodes are the page's own, so their when and their text are evaluated for every request.", translation: "이 노드들은 페이지 자체의 노드이므로 when과 텍스트가 요청마다 평가됩니다." }
+  - { text: Your browser asked for Polish., translation: "브라우저가 폴란드어를 요청했습니다." }
+  - { text: Your browser did not ask for Polish., translation: "브라우저가 폴란드어를 요청하지 않았습니다." }
+  - { text: The Acme brand is on., translation: "Acme 브랜드가 켜져 있습니다." }
+  - { text: "A text an expression computes is shown as computed, never translated.", translation: "표현식이 계산한 텍스트는 계산된 그대로 표시되며 번역되지 않습니다." }
+  - { text: "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", translation: "이 요청으로 유효하지 않게 된 링크는 오류 노드로 대체되고, 페이지의 나머지 부분은 그대로 제공됩니다." }
+  - { text: Leaves the application, translation: "애플리케이션을 벗어납니다" }
+
+  # The overview.
+  - { text: Every node type, translation: "모든 노드 유형" }
+  - { text: "A box, a stack and columns hold other nodes, each drawing its children its own way.", translation: "박스, 스택, 열은 다른 노드를 담으며, 각각 자신만의 방식으로 자식을 그립니다." }
+  - { text: A box, translation: "박스" }
+  - { text: Groups its children., translation: "자식을 묶습니다." }
+  - { text: A stack, translation: "스택" }
+  - { text: Draws its children one under another., translation: "자식을 위아래로 차례로 그립니다." }
+  - { text: A badge, translation: "배지" }
+  - { text: Columns, translation: "열" }
+  - { text: "Draw their children side by side, as these three are.", translation: "이 세 항목처럼 자식을 나란히 그립니다." }
+  - { text: Text in each style, translation: "스타일별 텍스트" }
+  - { text: "A style says what a node means; the theme decides how that looks. A node may carry several.", translation: "스타일은 노드가 무엇을 의미하는지 나타내고, 그것이 어떻게 보일지는 테마가 결정합니다. 노드 하나에 여러 스타일을 지정할 수 있습니다." }
+  - { text: Heading, translation: "제목" }
+  - { text: Subheading, translation: "부제목" }
+  - { text: Muted, translation: "흐리게" }
+  - { text: Strong, translation: "강조" }
+  - { text: Accent, translation: "액센트" }
+  - { text: Danger, translation: "위험" }
+  - { text: Warning, translation: "경고" }
+  - { text: Success, translation: "성공" }
+  - { text: Strong and accent, translation: "강조 및 액센트" }
+  - { text: Links, translation: "링크" }
+  - { text: "A link to a declared page moves within the application; a file served under the mount is an ordinary load; https and mailto leave it.", translation: "선언된 페이지로 가는 링크는 애플리케이션 안에서 이동하고, 마운트 아래에서 제공되는 파일은 일반적인 방식으로 로드되며, https와 mailto는 애플리케이션을 벗어납니다." }
+  - { text: Go to Conditions, translation: "조건으로 이동" }
+  - { text: A file the server serves, translation: "서버가 제공하는 파일" }
+  - { text: Write to us, translation: "문의하기" }
+  - { text: Images, translation: "이미지" }
+  - { text: "An image by address, the same image as decoration with an empty alt, and SVG markup drawn as an image, never inserted into the page.", translation: "주소로 지정한 이미지, 빈 alt를 가진 장식용 같은 이미지, 그리고 페이지에 삽입되지 않고 이미지로 그려지는 SVG 마크업입니다." }
+  - { text: The showcase mark, translation: "쇼케이스 마크" }
+  - { text: Three overlapping circles, translation: "겹쳐진 세 개의 원" }
+  - { text: Values by their schema, translation: "스키마에 따른 값" }
+  - { text: "Each value is drawn as its model property says, read from the team record the page loads.", translation: "각 값은 페이지가 불러오는 팀 레코드에서 읽어, 해당 모델 속성이 정한 대로 그려집니다." }
+  - { text: Visit the team homepage, translation: "팀 홈페이지 방문" }
+  - { text: "A uri, drawn as a link with a text of its own", translation: "자체 텍스트가 있는 링크로 그려지는 uri" }
+  - { text: A uri-reference to a declared page, translation: "선언된 페이지를 가리키는 uri-reference" }
+  - { text: A uri-reference to a served file, translation: "제공되는 파일을 가리키는 uri-reference" }
+  - { text: A mailto address, translation: "mailto 주소" }
+  - { text: "An address the rule refuses, drawn as plain text", translation: "규칙이 거부하여 일반 텍스트로 그려지는 주소" }
+  - { text: A date, translation: "날짜" }
+  - { text: A date and time, translation: "날짜와 시간" }
+  - { text: A boolean, translation: "불리언" }
+  - { text: An enumeration's label, translation: "열거형의 레이블" }
+  - { text: A list, translation: "목록" }
+  - { text: "The rows one answer holds, never paged. A header defaults to the property's title, and the last column is shown only while the team is hiring.", translation: "한 응답에 담긴 행으로, 페이지로 나뉘지 않습니다. 헤더는 기본적으로 속성의 제목이며, 마지막 열은 팀이 채용 중일 때만 표시됩니다." }
+  - { text: Projects under way, translation: "진행 중인 프로젝트" }
+  - { text: Project, translation: "프로젝트" }
+  - { text: Texts, translation: "텍스트" }
+  - text: "{$count} projects so far."
+    translation:
+      plural: count
+      cases:
+        "=0": "아직 프로젝트가 없습니다."
+        other: "지금까지 프로젝트 {$count}개."
+  - { text: "{$team} started {$project} most recently.", translation: "{$team} 팀이 가장 최근에 시작한 프로젝트: {$project}." }
+  - { text: "A plural chosen in the browser for the number it reads, and a text whose values come from the record.", translation: "브라우저가 읽은 숫자에 맞게 고른 복수형과, 값이 레코드에서 오는 텍스트입니다." }
+  - { text: Open, context: state, translation: "열림" }
+  - { text: Open, context: verb, translation: "열기" }
+  - { text: "A node's own text is told apart the same way: the badge says TEL-42 is open, the link offers to open its tasks.", translation: "노드 자체의 텍스트도 같은 방식으로 구분됩니다. 배지는 TEL-42가 열려 있음을 알리고, 링크는 그 작업을 열도록 제안합니다." }
+  - { text: Style rules, translation: "스타일 규칙" }
+  - { text: "A row's style and a cell's are chosen by a value of the row. The featured project is strong, each status has its colour, and a status no case names takes the default. Two columns are headed by the same word, Open, told apart by the context each header is written with.", translation: "행과 셀의 스타일은 행의 값으로 선택됩니다. 주요 프로젝트는 강조되고, 각 상태에는 고유한 색이 있으며, 어떤 경우에도 해당하지 않는 상태는 기본 스타일을 받습니다. 두 열의 헤더는 같은 단어 Open이며, 각 헤더에 함께 작성된 컨텍스트로 구분됩니다." }
+  - { text: Composites, translation: "컴포지트" }
+  - { text: "This whole page is a view each application places by reference. Below, a view written inline where it is placed, and a composite kind of this example's own, which has no controller.", translation: "이 페이지 전체는 각 애플리케이션이 참조로 배치하는 뷰입니다. 아래에는 배치되는 위치에 인라인으로 작성된 뷰와, 컨트롤러가 없는 이 예제 고유의 컴포지트 종류가 있습니다." }
+  - { text: A view declared inline at the node that places it., translation: "자신을 배치하는 노드에 인라인으로 선언된 뷰입니다." }
+  - { text: A callout, translation: "콜아웃" }
+  - { text: "Declared once as a kind that extends Ui.Composite and provides a view, and placed with fields of its own.", translation: "Ui.Composite를 확장하고 뷰를 제공하는 종류로 한 번 선언되며, 자체 필드와 함께 배치됩니다." }
+  # The overview's tabs; `Details` and `Notes` are translated with the forms' labels.
+  - { text: Tabs, translation: "탭" }
+  - { text: "Content under tabs, one tab at a time. The chosen tab is part of the page's address, so a reload or a shared link opens it again.", translation: "탭 아래의 콘텐츠로, 한 번에 한 탭씩 표시됩니다. 선택한 탭은 페이지 주소의 일부이므로 새로 고침하거나 공유한 링크로 열면 그 탭이 다시 열립니다." }
+  - { text: Summary, translation: "요약" }
+  - { text: "A tab holds any nodes, as a box does.", translation: "탭은 박스처럼 어떤 노드든 담을 수 있습니다." }
+  - { text: "Only the chosen tab's nodes are drawn.", translation: "선택한 탭의 노드만 그려집니다." }
+  - { text: Chosen, translation: "선택됨" }
+  - { text: "Each tab is delivered by its own when, as any node is.", translation: "각 탭은 다른 노드와 마찬가지로 자체 when에 따라 전달됩니다." }
+  # The labels of the overview's models.
+  - { text: Code, translation: "코드" }
+  - { text: Name, translation: "이름" }
+  - { text: Status, translation: "상태" }
+  - { text: Active, translation: "활성" }
+  - { text: Paused, translation: "일시 중지됨" }
+  - { text: Finished, translation: "완료됨" }
+  - { text: Budget, translation: "예산" }
+  - { text: Started, translation: "시작일" }
+  - { text: Free, context: subscription, translation: "무료" }
+  - { text: Enterprise, context: subscription, translation: "엔터프라이즈" }
+  - { text: Version, translation: "버전" }
+  - { text: Team, context: subscription, translation: "팀" }
+
+  # Conditions.
+  - { text: Delivered and drawn, translation: "전달과 그리기" }
+  - { text: "A node's when decides on the server whether it is delivered; its shown decides in the browser whether a delivered node is drawn.", translation: "노드의 when은 서버에서 노드의 전달 여부를 결정하고, shown은 브라우저에서 전달된 노드를 그릴지 결정합니다." }
+  - { text: Never delivered — this node is not in the page document., translation: "전달되지 않음 — 이 노드는 페이지 문서에 없습니다." }
+  - { text: "Delivered and never drawn: the status is not paused, so the browser holds this out of sight.", translation: "전달되지만 그려지지 않음: 상태가 paused가 아니므로 브라우저가 이 텍스트를 보이지 않게 둡니다." }
+  - { text: Delivered by its when and drawn by its shown., translation: "when으로 전달되고 shown으로 그려집니다." }
+  - { text: "A placement's condition around a composite whose node has one of its own is wrapped in a box, and both must hold.", translation: "자체 조건이 있는 노드를 가진 컴포지트에 배치 조건을 걸면 박스로 감싸지며, 두 조건이 모두 충족되어야 합니다." }
+  - { text: Both conditions hold., translation: "두 조건이 모두 충족됩니다." }
+  - { text: "A view whose content is switched off by its own when provides no node, so the composite placing it is left out.", translation: "자체 when으로 콘텐츠가 꺼진 뷰는 노드를 제공하지 않으므로, 이를 배치하는 컴포지트는 생략됩니다." }
+  - { text: Never provided., translation: "제공되지 않음." }
+  - { text: Every keyword of a condition, translation: "조건의 모든 키워드" }
+  - { text: "Each line below is drawn because its condition holds over the summary of project TEL-42 this page read: status active, four members, velocity 2.5, tags design and web, its lead a manager, a null note and no codename.", translation: "아래 각 줄은 이 페이지가 읽은 프로젝트 TEL-42의 요약에 대해 조건이 충족되기 때문에 그려집니다. 상태는 active, 구성원은 네 명, 속도는 2.5, 태그는 design과 web, 책임자는 매니저, note는 null이며 codename은 없습니다." }
+  - { text: "allOf: between 1 and 10 people work on it.", translation: "allOf: 1명에서 10명 사이가 작업합니다." }
+  - { text: "required: the lead has an e-mail.", translation: "required: 책임자에게 이메일이 있습니다." }
+  - { text: "properties: the lead is a manager.", translation: "properties: 책임자가 매니저입니다." }
+  - { text: "minimum: at least three people work on it.", translation: "minimum: 최소 세 명이 작업합니다." }
+  - { text: "maximum: at most nine people work on it.", translation: "maximum: 최대 아홉 명이 작업합니다." }
+  - { text: "exclusiveMinimum: the velocity is greater than 2.", translation: "exclusiveMinimum: 속도가 2보다 큽니다." }
+  - { text: "exclusiveMaximum: the velocity is less than 3.", translation: "exclusiveMaximum: 속도가 3보다 작습니다." }
+  - { text: "multipleOf: the velocity is a multiple of 0.5.", translation: "multipleOf: 속도가 0.5의 배수입니다." }
+  - { text: "type: the status is a string.", translation: "type: 상태가 문자열입니다." }
+  - { text: "type, as a list: the note is a string or null.", translation: "type(목록 형태): note가 문자열 또는 null입니다." }
+  - { text: "const: the status is active.", translation: "const: 상태가 active입니다." }
+  - { text: "enum: the status is active or paused.", translation: "enum: 상태가 active 또는 paused입니다." }
+  - { text: "not: the status is not paused.", translation: "not: 상태가 paused가 아닙니다." }
+  - { text: "anyOf: the code starts with TEL or OPS.", translation: "anyOf: code가 TEL 또는 OPS로 시작합니다." }
+  - { text: "items: every tag has at least two letters.", translation: "items: 모든 태그가 두 글자 이상입니다." }
+  - { text: "minItems: there are at least two tags.", translation: "minItems: 태그가 두 개 이상입니다." }
+  - { text: "maxItems: there are at most five tags.", translation: "maxItems: 태그가 다섯 개 이하입니다." }
+  - { text: "uniqueItems: no tag repeats.", translation: "uniqueItems: 중복된 태그가 없습니다." }
+  - { text: "minLength: the code has at least three characters.", translation: "minLength: code가 세 글자 이상입니다." }
+  - { text: "maxLength: the code has at most ten characters.", translation: "maxLength: code가 열 글자 이하입니다." }
+  - { text: "pattern: the code is letters, a dash and digits.", translation: "pattern: code가 문자, 대시, 숫자로 이루어져 있습니다." }
+  - { text: Missing and null, translation: "누락과 null" }
+  - { text: "Null is a present value. A missing value satisfies no condition, not even one under not, so absence is tested on the parent.", translation: "null은 존재하는 값입니다. 누락된 값은 not 아래의 조건을 포함해 어떤 조건도 충족하지 않으므로, 값이 없는지는 부모에서 검사합니다." }
+  - { text: The note is present and null., translation: "note가 존재하며 값은 null입니다." }
+  - { text: "Never drawn: a missing codename does not satisfy not.", translation: "그려지지 않음: 누락된 codename은 not을 충족하지 않습니다." }
+  - { text: "The project has no codename, tested on the summary.", translation: "프로젝트에 codename이 없습니다(요약에서 검사)." }
+  - { text: Query parameters, translation: "쿼리 매개변수" }
+  - { text: "This reader declares mode, a list of tag values and a ticket held to a pattern. A parameter the address leaves out, a single one given twice or a value its declaration refuses counts as missing.", translation: "이 리더는 mode, tag 값 목록, 패턴을 따르는 ticket을 선언합니다. 주소에서 빠진 매개변수, 두 번 주어진 단일 매개변수, 선언이 거부하는 값은 누락된 것으로 간주됩니다." }
+  - { text: Mode detailed, translation: "detailed 모드" }
+  - { text: Two tags, translation: "태그 두 개" }
+  - { text: A valid ticket, translation: "유효한 ticket" }
+  - { text: A refused ticket, translation: "거부되는 ticket" }
+  - { text: Mode given twice, translation: "두 번 지정한 모드" }
+  - { text: Clear the query, translation: "쿼리 지우기" }
+  - { text: mode is detailed., translation: "mode가 detailed입니다." }
+  - { text: There are two tag values or more., translation: "tag 값이 두 개 이상입니다." }
+  - { text: The ticket matches its pattern., translation: "ticket이 패턴과 일치합니다." }
+  - { text: "No ticket, or one its pattern refuses.", translation: "ticket이 없거나 패턴이 거부하는 값입니다." }
+  - { text: Enablement, translation: "활성화 조건" }
+  - { text: "The button can be pressed only while its condition over what the form holds is met, and says why while it is not. A tag the project already has is refused, and the lines above read the summary again after a tag is added.", translation: "버튼은 폼에 입력된 내용에 대한 조건이 충족될 때만 누를 수 있으며, 충족되지 않는 동안에는 그 이유를 알려 줍니다. 프로젝트에 이미 있는 태그는 거부되며, 태그를 추가하면 위의 줄들이 요약을 다시 읽습니다." }
+  - { text: Tag TEL-42, translation: "TEL-42에 태그 추가" }
+  - { text: Tag, translation: "태그" }
+  - { text: Type a tag of three letters or more., translation: "세 글자 이상의 태그를 입력하세요." }
+  - text: "Tagged {$tag}: TEL-42 has {$count} tags now."
+    translation: "{$tag} 태그 추가됨: 이제 TEL-42의 태그는 {$count}개입니다."
+  - { text: A page's own query, translation: "페이지 자체의 쿼리" }
+  - { text: "This page declares mode as well, and its own nodes read it.", translation: "이 페이지도 mode를 선언하며, 페이지 자체의 노드가 이를 읽습니다." }
+  - { text: The page reads mode as detailed., translation: "페이지가 mode를 detailed로 읽습니다." }
+
+  # Data.
+  - { text: A reader and its parameters, translation: "리더와 매개변수" }
+  - { text: "The project is the page address's project parameter, sent with the read; with none the parameter is not sent and the route answers for TEL-42. A code no project has draws the failure tree.", translation: "프로젝트는 페이지 주소의 project 매개변수이며, 읽기 요청과 함께 전송됩니다. 매개변수가 없으면 전송되지 않고 라우트는 TEL-42에 대해 응답합니다. 어떤 프로젝트에도 없는 코드를 지정하면 실패 트리가 그려집니다." }
+  - { text: A code no project has, translation: "어떤 프로젝트에도 없는 코드" }
+  - { text: No project, translation: "프로젝트 없음" }
+  - { text: Reading the project…, translation: "프로젝트를 읽는 중…" }
+  - { text: "{$code} {$name}, led by {$lead}", translation: "{$code} {$name}, 책임자: {$lead}" }
+  - { text: "A reader nested in this one's content reads the people working on the same project.", translation: "이 리더의 콘텐츠 안에 중첩된 리더가 같은 프로젝트에서 일하는 사람들을 읽습니다." }
+  - { text: Working on it, translation: "참여자" }
+  - { text: Role, translation: "역할" }
+  - { text: E-mail, translation: "이메일" }
+  - { text: "No answer · {$code}", translation: "응답 없음 · {$code}" }
+  - { text: Readers that fail, translation: "실패하는 리더" }
+  - { text: "With no failure tree of their own, readers draw the error's code and message — for a project that does not exist, for a guarded route read with no session, and for an answer the reader's model refuses (the projects list read as one project).", translation: "자체 실패 트리가 없으면 리더는 오류의 코드와 메시지를 그립니다. 존재하지 않는 프로젝트, 세션 없이 읽은 보호된 라우트, 리더의 모델이 거부하는 응답(하나의 프로젝트로 읽은 프로젝트 목록)이 그 예입니다." }
+  - { text: "Never drawn: there is no such project.", translation: "그려지지 않음: 그런 프로젝트가 없습니다." }
+  - { text: "Signed in, so this reads: {$name}", translation: "로그인되어 있어 읽은 결과: {$name}" }
+  - { text: "Never drawn: a list is no project.", translation: "그려지지 않음: 목록은 프로젝트가 아닙니다." }
+  - { text: Read again on focus, translation: "포커스 시 다시 읽기" }
+  - { text: "This reader reads the server's time again whenever the window regains focus. Switch to another window and back.", translation: "이 리더는 창이 포커스를 되찾을 때마다 서버 시간을 다시 읽습니다. 다른 창으로 전환했다가 돌아와 보세요." }
+  - { text: Read at, translation: "읽은 시각" }
+  - { text: A sign-in gate, translation: "로그인 게이트" }
+  - { text: "The gate reads whether a session is open, and reads again whenever a request inside it answers 401. Signing in opens a session for a member of the team; an e-mail nobody on the team has is refused on its field. Inside, a reader over a guarded route shows the account. Ending the session quietly leaves the account on screen until the next guarded request — the check below, or a focus — is refused, and the gate then swaps to the signed-out view.", translation: "게이트는 세션이 열려 있는지 읽고, 그 안의 요청이 401로 응답할 때마다 다시 읽습니다. 로그인하면 팀 구성원의 세션이 열리며, 팀의 누구에게도 없는 이메일은 해당 필드에서 거부됩니다. 안에서는 보호된 라우트를 읽는 리더가 계정을 보여 줍니다. 세션을 조용히 종료하면 다음 보호된 요청(아래의 확인 또는 포커스)이 거부될 때까지 계정이 화면에 남아 있다가, 그때 게이트가 로그아웃 화면으로 바뀝니다." }
+  - { text: You are signed out., translation: "로그아웃되었습니다." }
+  - { text: Sign in, translation: "로그인" }
+  - { text: "Signed in as {$name}", translation: "로그인한 사용자: {$name}" }
+  - { text: "Member since {$since}", translation: "가입일: {$since}" }
+  - { text: Check the session, translation: "세션 확인" }
+  - { text: End the session quietly, translation: "세션 조용히 종료" }
+  - { text: Sign out, translation: "로그아웃" }
+
+  # The labels of the task models.
+  - { text: Task, translation: "작업" }
+  - { text: Assignee, translation: "담당자" }
+  - { text: Priority, translation: "우선순위" }
+  - { text: Estimate, translation: "추정치" }
+  - { text: Due, translation: "마감일" }
+  - { text: Label, translation: "레이블" }
+  - { text: Blocked, translation: "차단됨" }
+  - { text: To do, translation: "할 일" }
+  - { text: In progress, translation: "진행 중" }
+  - { text: In review, translation: "검토 중" }
+  - { text: Bug, translation: "버그" }
+  - { text: Feature, translation: "기능" }
+  - { text: Chore, translation: "잡무" }
+  - { text: Docs, translation: "문서" }
+  - { text: Contact, translation: "연락처" }
+  - { text: Project name, translation: "프로젝트 이름" }
+  - { text: Brief, translation: "설명" }
+
+  # Tables.
+  - { text: Columns from the model, translation: "모델에서 가져온 열" }
+  - { text: "With no columns written, a table shows one per model property but the row key, each headed by its title and drawn by its type. It shows 25 rows to a page, the default, and opens its create and edit forms in a dialog, the surface a table uses when it names none.", translation: "열을 작성하지 않으면 테이블은 행 키를 제외한 모델 속성마다 열을 하나씩 보여 주며, 각 열의 헤더는 속성의 제목이고 유형에 따라 그려집니다. 기본값인 페이지당 25행을 보여 주고, 생성 및 편집 폼은 대화 상자에서 엽니다. 대화 상자는 테이블이 표시 영역을 지정하지 않을 때 사용하는 표시 영역입니다." }
+  - { text: "Written columns, sorting and style rules", translation: "작성한 열, 정렬, 스타일 규칙" }
+  - { text: "Columns written by hand, in the order given, one with a header of its own. A column sorts where the collection lists its property for sorting. A blocked task's row is strong and red, each status cell has its colour, and a priority no case names takes the default. Eight rows to a page.", translation: "직접 작성한 열이 주어진 순서대로 표시되며, 그중 하나에는 자체 헤더가 있습니다. 컬렉션이 정렬용으로 해당 속성을 나열하는 열은 정렬할 수 있습니다. 차단된 작업의 행은 강조된 빨간색이고, 각 상태 셀에는 고유한 색이 있으며, 어떤 경우에도 해당하지 않는 우선순위는 기본 스타일을 받습니다. 페이지당 8행입니다." }
+  - { text: Where, translation: "위치" }
+  - { text: Members behind a reference, translation: "참조 너머의 멤버" }
+  - { text: "The task board answers each task with its assignee and its project nested in it. A column over a nested member takes that member's title and presentation through a named shape, through a definition of the model's own, and through a reference whose own title wins over the shape it names: the contact is a mail link and the brief a link to a page.", translation: "작업 보드는 각 작업에 담당자와 프로젝트를 중첩하여 응답합니다. 중첩된 멤버의 열은 그 멤버의 제목과 표시 방식을 가져오는데, 이름 있는 형태를 통해, 모델 자체의 정의를 통해, 그리고 가리키는 형태보다 자체 제목이 우선하는 참조를 통해 가져옵니다. 연락처는 메일 링크이고 설명은 페이지 링크입니다." }
+  - { text: Filtered by the address, translation: "주소로 필터링" }
+  - { text: "This table declares a project parameter and sends it as an equality with every request. With no project in the address it reads nothing.", translation: "이 테이블은 project 매개변수를 선언하고 모든 요청에 등호 조건으로 보냅니다. 주소에 프로젝트가 없으면 아무것도 읽지 않습니다." }
+  - { text: Atlas redesign tasks, translation: "Atlas 리디자인 작업" }
+  - { text: Billing migration tasks, translation: "결제 마이그레이션 작업" }
+  - { text: Blocked tasks, translation: "차단된 작업" }
+  - { text: "This one is filtered by a fixed value written into the table, and lists only the tasks that are blocked.", translation: "이 테이블은 테이블에 작성된 고정 값으로 필터링되며, 차단된 작업만 나열합니다." }
+  - { text: Where a form opens, translation: "폼이 열리는 곳" }
+  - { text: "Each table below opens its create and edit forms on a different surface. A save reloads every table of tasks on the page.", translation: "아래의 각 테이블은 생성 및 편집 폼을 서로 다른 표시 영역에서 엽니다. 저장하면 페이지의 모든 작업 테이블을 다시 읽습니다." }
+  - { text: Dialogs, translation: "대화 상자" }
+  - { text: "Create in a small dialog that stays open, emptied, for another task. Edit in a large dialog that does not block the page and ignores a click outside; it keeps its values after a save, drops unsaved input without asking, and is part of the address. Each row offers a confirmed delete.", translation: "생성은 비워진 채로 열려 있어 다음 작업을 받는 작은 대화 상자에서 합니다. 편집은 페이지를 막지 않고 바깥 클릭을 무시하는 큰 대화 상자에서 합니다. 저장 후에도 값을 유지하고, 저장하지 않은 입력은 묻지 않고 버리며, 주소의 일부입니다. 각 행은 확인을 거치는 삭제를 제공합니다." }
+  - { text: Drawers, translation: "드로어" }
+  - { text: "Create in a small drawer from the start edge; edit in a large drawer from the end edge, with no close button. Both close after a save and ask before unsaved input is dropped.", translation: "생성은 시작 가장자리에서 나오는 작은 드로어에서, 편집은 끝 가장자리에서 나오는 닫기 버튼 없는 큰 드로어에서 합니다. 둘 다 저장 후 닫히며, 저장하지 않은 입력을 버리기 전에 묻습니다." }
+  - { text: Sheets, translation: "시트" }
+  - { text: "Create in a sheet from the top that does not block the page; edit in a full sheet from the bottom, part of the address.", translation: "생성은 위에서 나오며 페이지를 막지 않는 시트에서, 편집은 아래에서 나오는 전체 시트에서 하며, 편집 시트는 주소의 일부입니다." }
+  - { text: Popovers, translation: "팝오버" }
+  - { text: "Create in a card beside the New button, centred on it; below the breakpoint it becomes a full dialog. Edit in a card under the row's button, aligned to its end, which a click outside does not close and which stays open after a save.", translation: "생성은 새로 만들기 버튼 옆에 버튼을 중심으로 정렬된 카드에서 하며, 브레이크포인트보다 좁으면 전체 대화 상자가 됩니다. 편집은 행 버튼 아래에 버튼 끝에 맞춰 정렬된 카드에서 하며, 바깥을 클릭해도 닫히지 않고 저장 후에도 열려 있습니다." }
+  - { text: In line, translation: "인라인" }
+  - { text: "The create form opens above the rows and the edit form under the row it changes. Below the breakpoint the create form opens in a sheet from the bottom.", translation: "생성 폼은 행 위에, 편집 폼은 변경하는 행 아래에 열립니다. 브레이크포인트보다 좁으면 생성 폼이 아래에서 나오는 시트에 열립니다." }
+  - { text: Panels, translation: "패널" }
+  - { text: "Create in a small panel at the start edge, which Escape does not close. Edit in a large panel at the end edge, part of the address, with the rows still usable beside it; below the breakpoint it becomes a sheet from the bottom.", translation: "생성은 시작 가장자리의 작은 패널에서 하며, Escape로 닫히지 않습니다. 편집은 끝 가장자리의 큰 패널에서 하며, 주소의 일부이고 옆의 행을 계속 사용할 수 있습니다. 브레이크포인트보다 좁으면 아래에서 나오는 시트가 됩니다." }
+  - { text: A page of its own, translation: "별도 페이지" }
+  - { text: "Create and edit replace the page's content under one address name, so the address says either a new task or the task with this key, and Back closes the form. The surface is declared once and named by both.", translation: "생성과 편집은 하나의 주소 이름 아래에서 페이지 콘텐츠를 대체하므로, 주소는 새 작업 또는 이 키를 가진 작업을 가리키며, 뒤로 가기를 누르면 폼이 닫힙니다. 표시 영역은 한 번 선언되고 둘 다 이를 이름으로 지정합니다." }
+
+  # Filters.
+  - { text: Every filter the collection accepts, translation: "컬렉션이 받는 모든 필터" }
+  - { text: "With no fields written, the bar draws one control per filter the collection accepts, in its order and from the model's property: a list for an enumeration or a yes/no value, a typed box otherwise, and one label over the two bounds of a range. It sits above the table, applies a choice at once and typed text on Enter, and keeps nothing between visits.", translation: "필드를 작성하지 않으면 필터 바는 컬렉션이 받는 필터마다 컨트롤을 하나씩, 그 순서대로 모델 속성에 따라 그립니다. 열거형이나 예/아니요 값에는 목록을, 그 밖에는 입력 상자를 그리며, 범위의 두 경계 위에는 레이블 하나를 둡니다. 테이블 위에 놓이고, 선택은 즉시, 입력한 텍스트는 Enter를 누르면 적용하며, 방문 사이에 아무것도 유지하지 않습니다." }
+  - { text: Every control, translation: "모든 컨트롤" }
+  - { text: "Each way a filter is entered: typed text, options side by side, a list, typed tags, a slider, a switch, and two dates under one label. The project filter is drawn nowhere and only a preset sets it. Status starts at its default, and a preset sets the filters the presets name and clears the others they name. Chips summarise what is chosen, and the values are part of the address. Below the breakpoint the bar folds, and the pinned text filter stays outside the fold.", translation: "필터를 입력하는 모든 방식: 입력 텍스트, 나란히 놓인 옵션, 목록, 입력하는 태그, 슬라이더, 스위치, 하나의 레이블 아래 두 날짜. 프로젝트 필터는 어디에도 그려지지 않으며 프리셋만 이를 설정합니다. 상태는 기본값으로 시작하고, 프리셋은 프리셋들이 지정하는 필터를 설정하고 그 밖에 프리셋들이 지정하는 필터는 지웁니다. 칩이 선택 내용을 요약하며, 값은 주소의 일부입니다. 브레이크포인트보다 좁으면 필터 바가 접히고, 고정된 텍스트 필터는 접힌 영역 밖에 남습니다." }
+  - { text: Urgent, translation: "긴급" }
+  - { text: Atlas only, translation: "Atlas만" }
+  - { text: Stuck, translation: "막힘" }
+  - { text: "Beside, as chips, while typing", translation: "옆에, 칩으로, 입력하는 동안" }
+  - { text: "The controls sit in a column at the start edge. Only the filters you choose are on show: add one from the bar's list, and removing it clears it. Each filter is a chip naming its value, which opens its control. Typed text applies after a pause, and two bounds of a number are captioned after and before. The choice is kept in this browser across visits. Below the breakpoint the bar opens in a sheet from the bottom.", translation: "컨트롤은 시작 가장자리의 열에 놓입니다. 선택한 필터만 표시됩니다. 필터 바의 목록에서 필터를 추가하고, 제거하면 그 필터가 지워집니다. 각 필터는 값을 보여 주는 칩이며, 칩을 누르면 컨트롤이 열립니다. 입력한 텍스트는 잠시 멈춘 뒤 적용되고, 숫자의 두 경계에는 각각 이후와 이전이라는 캡션이 붙습니다. 선택은 이 브라우저에 방문 간에 유지됩니다. 브레이크포인트보다 좁으면 필터 바가 아래에서 나오는 시트로 열립니다." }
+  - { text: "Beside at the end, applied by a button", translation: "끝 쪽 옆에, 버튼으로 적용" }
+  - { text: "The controls sit at the end edge, and a change waits for Apply, while a preset, Reset and removing a summary chip apply at once. Several assignees are typed separated by commas. The choice is kept for this tab only, and survives a reload.", translation: "컨트롤은 끝 가장자리에 놓이고, 변경 사항은 적용을 누를 때까지 기다리지만, 프리셋, 초기화, 요약 칩 제거는 즉시 적용됩니다. 담당자 여러 명은 쉼표로 구분해 입력합니다. 선택은 이 탭에서만 유지되며 새로 고침 후에도 남습니다." }
+  - { text: Due by October, translation: "10월까지 마감" }
+  - { text: "Folded, starting open", translation: "접기, 펼친 상태로 시작" }
+  - { text: "The controls fold behind a toggle that counts the filters holding a value, and start unfolded. The pinned text filter stays outside the fold, and the others are added from the bar's list. Status starts at in progress; removing it clears that default too, and Reset brings it back. The values are kept both in the address and in this browser, the address winning, and the fold you choose is remembered.", translation: "컨트롤은 값이 있는 필터 수를 세는 토글 뒤에 접히며, 펼쳐진 상태로 시작합니다. 고정된 텍스트 필터는 접힌 영역 밖에 남고, 나머지는 필터 바의 목록에서 추가합니다. 상태는 진행 중으로 시작합니다. 제거하면 이 기본값도 지워지고, 초기화하면 다시 돌아옵니다. 값은 주소와 이 브라우저 모두에 유지되며 주소가 우선하고, 선택한 접힘 상태도 기억됩니다." }
+  - { text: "Folded, starting closed", translation: "접기, 접힌 상태로 시작" }
+  - { text: "Folded to begin with. The pinned text filter, Apply and Reset stay outside the fold. The label starts at its default, bugs, until it is changed, and Reset brings the default back.", translation: "처음에는 접혀 있습니다. 고정된 텍스트 필터, 적용, 초기화는 접힌 영역 밖에 남습니다. 레이블은 변경하기 전까지 기본값인 버그로 시작하며, 초기화하면 기본값이 돌아옵니다." }
+  - { text: In a dialog, translation: "대화 상자에서" }
+  - { text: "The controls open in a small dialog from a button that counts the filters holding a value, and close with Done. The open dialog is part of the address, so a link opens it. The pinned text filter stays beside the button, and chips summarise what is chosen.", translation: "컨트롤은 값이 있는 필터 수를 세는 버튼에서 작은 대화 상자로 열리고, 완료를 누르면 닫힙니다. 열린 대화 상자는 주소의 일부이므로 링크로 열 수 있습니다. 고정된 텍스트 필터는 버튼 옆에 남고, 칩이 선택 내용을 요약합니다." }
+  - { text: In a drawer, translation: "드로어에서" }
+  - { text: "The controls open in a drawer from the start edge, which a click outside does not close. Typed values apply after a pause.", translation: "컨트롤은 시작 가장자리에서 나오는 드로어에 열리며, 바깥을 클릭해도 닫히지 않습니다. 입력한 값은 잠시 멈춘 뒤 적용됩니다." }
+  - { text: In a popover, translation: "팝오버에서" }
+  - { text: "The controls open in a card under the button, aligned to its end; below the breakpoint, in a sheet from the bottom.", translation: "컨트롤은 버튼 아래에 버튼 끝에 맞춰 정렬된 카드에 열리며, 브레이크포인트보다 좁으면 아래에서 나오는 시트에 열립니다." }
+
+  # The labels of the forms page's models.
+  - { text: Title, translation: "제목" }
+  - { text: Kind of work, translation: "작업 종류" }
+  - { text: Design, translation: "디자인" }
+  - { text: Building, translation: "개발" }
+  - { text: Writing, translation: "글쓰기" }
+  - { text: Research, translation: "리서치" }
+  - { text: People needed, translation: "필요 인원" }
+  - { text: Start, translation: "시작" }
+  - { text: Kick-off, translation: "킥오프" }
+  - { text: Daily call, translation: "데일리 콜" }
+  - { text: Details, translation: "세부 정보" }
+  - { text: Markdown is welcome., translation: "Markdown을 사용할 수 있습니다." }
+  - { text: Keep me posted by, translation: "소식 받을 방법" }
+  - { text: Chat, translation: "채팅" }
+  - { text: Phone, translation: "전화" }
+  - { text: Keywords, translation: "키워드" }
+  - { text: "Lower-case words; Enter or a comma adds one.", translation: "소문자 단어. Enter나 쉼표를 누르면 추가됩니다." }
+  - { text: Site access code, translation: "현장 출입 코드" }
+  - { text: Never kept between visits., translation: "방문 간에 유지되지 않습니다." }
+  - { text: Received, translation: "접수일" }
+  - { text: Lead, translation: "책임자" }
+  - { text: "Lead's role", translation: "책임자 역할" }
+  - { text: Manager, translation: "매니저" }
+  - { text: Engineer, translation: "엔지니어" }
+  - { text: Designer, translation: "디자이너" }
+  - { text: Writer, translation: "작가" }
+  - { text: Reviewers, translation: "검토자" }
+  - { text: Sponsor, translation: "스폰서" }
+  - { text: Helpers, translation: "도우미" }
+  - { text: Period, translation: "기간" }
+  - { text: The studio books a year at most., translation: "스튜디오는 최대 1년까지 예약합니다." }
+  - { text: On site, translation: "현장 근무" }
+  - { text: Site address, translation: "현장 주소" }
+  - { text: Notes, translation: "메모" }
+  - { text: Location, translation: "장소" }
+  - { text: Joined, translation: "가입일" }
+
+  # Forms.
+  - { text: Every control from the model, translation: "모델에서 가져온 모든 컨트롤" }
+  - { text: "With no fields written, the form draws one control per property, chosen from its schema: a text box, a list for an enumeration, number boxes, a date, a date and time, a time, a multi-line box for a document, a checkbox, options side by side for a list of an enumeration, and typed tags for a list of words. A description is a hint under its field, and a default the starting value.", translation: "필드를 작성하지 않으면 폼은 속성마다 스키마에 따라 고른 컨트롤을 하나씩 그립니다. 텍스트 상자, 열거형에는 목록, 숫자 상자, 날짜, 날짜와 시간, 시간, 문서에는 여러 줄 상자, 체크박스, 열거형 목록에는 나란히 놓인 옵션, 단어 목록에는 입력하는 태그를 그립니다. 설명은 필드 아래의 힌트가 되고, 기본값은 시작 값이 됩니다." }
+  - { text: "Each field is checked against the model once it has been touched: the title's length, the number of people, the budget in steps of 50, the keywords' spelling. The server refuses a title another request has, and its answer lands on the title. What is typed is kept in the address and in this browser — all but the access code, which the model marks write-only.", translation: "각 필드는 한 번 건드리면 모델에 따라 검사됩니다. 제목 길이, 인원 수, 50 단위의 예산, 키워드 철자를 검사합니다. 서버는 다른 요청에 이미 있는 제목을 거부하며, 그 응답은 제목 필드에 표시됩니다. 입력한 내용은 주소와 이 브라우저에 유지되지만, 모델이 쓰기 전용으로 표시한 출입 코드는 예외입니다." }
+  - { text: Each control chosen by hand, translation: "직접 고른 각 컨트롤" }
+  - { text: "The same request with a control written for each field: the title left to its derived control, the kind as options side by side, the channels as a list choosing several, the number of people on a slider, urgent as a switch and the keywords as tags. What is typed is kept for this tab only.", translation: "같은 요청을 필드마다 컨트롤을 작성해 만든 폼입니다. 제목은 파생된 컨트롤 그대로, 종류는 나란히 놓인 옵션, 채널은 여러 개를 고르는 목록, 인원 수는 슬라이더, 긴급은 스위치, 키워드는 태그입니다. 입력한 내용은 이 탭에서만 유지됩니다." }
+  - { text: Requests received, translation: "접수된 요청" }
+  - { text: "The latest requests the two forms sent, read again after every save.", translation: "두 폼이 보낸 최근 요청으로, 저장할 때마다 다시 읽습니다." }
+  - { text: "Choices, pickers and dates", translation: "선택, 선택기, 날짜" }
+  - { text: "Booking people on a project. The project is chosen from a list read from the projects collection, each option with its code as a hint. The lead is picked in a dialog, searched by name, among the active members of the role chosen above it; choosing another role reads the options again and keeps the lead only if they still fit. Reviewers are picked in a drawer, several at once, and the sponsor in a popover; the sponsor starts at a default e-mail, shown as the person's name by one lookup. Helpers are offered side by side, three at a time, with More for the rest. A picked person links to their e-mail.", translation: "프로젝트에 사람을 배정합니다. 프로젝트는 프로젝트 컬렉션에서 읽은 목록에서 고르며, 각 옵션에는 코드가 힌트로 붙습니다. 책임자는 대화 상자에서 이름으로 검색해, 위에서 고른 역할의 활성 구성원 중에서 고릅니다. 다른 역할을 고르면 옵션을 다시 읽고, 책임자가 여전히 맞을 때만 유지합니다. 검토자는 드로어에서 여러 명을 한꺼번에, 스폰서는 팝오버에서 고릅니다. 스폰서는 기본 이메일로 시작하며, 한 번의 조회로 그 사람의 이름이 표시됩니다. 도우미는 한 번에 세 명씩 나란히 제시되고, 나머지는 더 보기로 볼 수 있습니다. 선택한 사람은 그 사람의 이메일로 연결됩니다." }
+  - { text: "The period is two dates with presets, its weeks starting on Sunday, starting at next month and warning past three months. The server refuses a period that ends before it starts or runs past a year, and its answer lands on the period. The people around the lead are shown once a lead is chosen, and the site address only for work on site.", translation: "기간은 프리셋이 있는 두 날짜로, 주는 일요일에 시작하고, 처음에는 다음 달로 설정되며, 3개월을 넘으면 경고합니다. 서버는 시작 전에 끝나거나 1년을 넘는 기간을 거부하며, 그 응답은 기간 필드에 표시됩니다. 책임자 주변 사람들은 책임자를 고른 뒤에 표시되고, 현장 주소는 현장 근무일 때만 표시됩니다." }
+  - { text: The project, translation: "프로젝트" }
+  - { text: "Which project, and who leads the work.", translation: "어떤 프로젝트이며 누가 작업을 이끄는지." }
+  - { text: Around the lead, translation: "책임자 주변" }
+  - { text: "Who reviews the work, who sponsors it and who helps.", translation: "누가 작업을 검토하고, 후원하고, 돕는지." }
+  - { text: When and where, translation: "언제, 어디서" }
+  - { text: Tomorrow, translation: "내일" }
+  - { text: Next week, translation: "다음 주" }
+  - { text: This month, translation: "이번 달" }
+  - { text: Next month, translation: "다음 달" }
+  - { text: Next quarter, translation: "다음 분기" }
+  - { text: Next year, translation: "내년" }
+  - { text: Bookings, translation: "예약" }
+  - { text: "The latest bookings, read again after every save.", translation: "최근 예약으로, 저장할 때마다 다시 읽습니다." }
+
+  # The labels of the actions page's models.
+  - { text: Only these labels, translation: "이 레이블만" }
+  - { text: Count blocked tasks, translation: "차단된 작업도 집계" }
+  - { text: Hours a week, translation: "주당 시간" }
+  - { text: Done by, translation: "완료 예정일" }
+  - { text: No label, translation: "레이블 없음" }
+  - { text: Tasks, translation: "작업" }
+  - { text: Hours, translation: "시간" }
+  - { text: Days, translation: "일수" }
+  - { text: Task number, translation: "작업 번호" }
+  - { text: "Assignee's e-mail", translation: "담당자 이메일" }
+  - { text: Comment, translation: "댓글" }
+  - { text: Comment number, translation: "댓글 번호" }
+  - { text: Pinned, translation: "고정됨" }
+  - { text: Written, translation: "작성일" }
+  - { text: New text, translation: "새 내용" }
+
+  # Actions.
+  - { text: A bare button, translation: "버튼만" }
+  - { text: "An input model with no properties draws the button alone. This one unblocks every blocked task of TEL-42, and the task counts and the TEL-42 table further down read again.", translation: "속성이 없는 입력 모델은 버튼만 그립니다. 이 버튼은 TEL-42의 차단된 작업을 모두 차단 해제하며, 아래쪽의 작업 수와 TEL-42 테이블을 다시 읽습니다." }
+  - { text: Unblock TEL-42, translation: "TEL-42 차단 해제" }
+  - { text: An answer drawn from the result, translation: "결과로 그린 응답" }
+  - { text: "The route adds up the estimates of a project's open tasks. Its fields are the input model's, in two sections, the project chosen from the projects collection and the pace on a slider; what is entered is kept in the address. The answer is drawn under the button: sentences over the result and the record sent, the date the work would be done by, and a list of the hours by label.", translation: "라우트는 프로젝트의 열린 작업 추정치를 합산합니다. 필드는 입력 모델의 필드로 두 섹션에 나뉘며, 프로젝트는 프로젝트 컬렉션에서 고르고 속도는 슬라이더로 정합니다. 입력한 내용은 주소에 유지됩니다. 응답은 버튼 아래에 그려집니다. 결과와 보낸 레코드로 만든 문장, 작업이 완료될 날짜, 레이블별 시간 목록입니다." }
+  - { text: What to count, translation: "집계 대상" }
+  - { text: How fast, translation: "진행 속도" }
+  - { text: Estimate, context: verb, translation: "추정하기" }
+  - text: "{$hours} hours in {$tasks} open tasks of {$project}"
+    translation:
+      plural: tasks
+      cases:
+        "=0": "{$project} 프로젝트에는 열린 작업이 없습니다."
+        other: "{$project}의 열린 작업 {$tasks}개, {$hours}시간"
+  - text: "About {$weeks} weeks at {$pace} hours a week, done by"
+    translation: "주당 {$pace}시간으로 약 {$weeks}주, 완료 예정일"
+  - { text: By label, translation: "레이블별" }
+  - { text: When it fails, translation: "실패할 때" }
+  - { text: "A failure tree of the action's own, drawn over the error and the record sent. Give task 4 to james@northwind.example and it succeeds. Leave the e-mail out, or name nobody on the team, and the refusal lands on the field; task 999 answers 404, and tomas@northwind.example, who has left, 409.", translation: "액션 자체의 실패 트리로, 오류와 보낸 레코드를 바탕으로 그려집니다. 작업 4를 james@northwind.example에게 배정하면 성공합니다. 이메일을 비우거나 팀에 없는 사람을 지정하면 거부가 해당 필드에 표시됩니다. 작업 999는 404를, 퇴사한 tomas@northwind.example은 409를 응답합니다." }
+  - { text: "This action reads the estimate route's answer as a number of days, which the route does not give: the answer is refused by the action's output model, and its failure tree says so.", translation: "이 액션은 추정 라우트의 응답을 일수로 읽지만 라우트는 그런 값을 주지 않습니다. 응답은 액션의 출력 모델에 의해 거부되며, 실패 트리가 이를 알려 줍니다." }
+  - { text: Estimate in days, translation: "일수로 추정하기" }
+  - { text: "{$code}: the answer is not the one this button reads.", translation: "{$code}: 이 버튼이 읽는 응답이 아닙니다." }
+  - { text: Where a success goes, translation: "성공 후 이동하는 곳" }
+  - { text: "The first answers with the page listing a project's tasks, and the application moves there. The second answers with the team's homepage, an https address that replaces the page.", translation: "첫 번째 버튼은 프로젝트의 작업을 나열하는 페이지로 응답하며, 애플리케이션이 그 페이지로 이동합니다. 두 번째 버튼은 팀 홈페이지, 즉 페이지를 대체하는 https 주소로 응답합니다." }
+  - { text: Open its tasks, translation: "작업 열기" }
+  - { text: Visit the homepage, translation: "홈페이지 방문" }
+  - { text: Reading again after a success, translation: "성공 후 다시 읽기" }
+  - { text: "Moving a task reads again both the counts below, a reader, and the TEL-42 table further down. The answer names the task and its new status.", translation: "작업을 이동하면 아래의 작업 수(리더)와 더 아래쪽의 TEL-42 테이블을 모두 다시 읽습니다. 응답은 작업과 새 상태를 알려 줍니다." }
+  - { text: "{$code}: {$todo} to do, {$doing} in progress, {$review} in review, {$done} finished, {$blocked} blocked.", translation: "{$code}: 할 일 {$todo}, 진행 중 {$doing}, 검토 중 {$review}, 완료 {$done}, 차단됨 {$blocked}." }
+  - { text: Move, translation: "이동" }
+  - { text: "Task {$id}, {$title}, is now", translation: "작업 {$id}({$title})의 현재 상태:" }
+  - { text: One press after another, translation: "한 번씩 차례로" }
+  - { text: "Comments are sent one after another, in the order the button is pressed, however quickly. The button waits for three characters and says why; choosing another task clears the last answer. The comments listed at the bottom read again after each one.", translation: "댓글은 버튼을 아무리 빨리 눌러도 누른 순서대로 하나씩 전송됩니다. 버튼은 세 글자가 입력될 때까지 기다리며 그 이유를 알려 주고, 다른 작업을 고르면 마지막 응답이 지워집니다. 아래쪽에 나열된 댓글은 전송할 때마다 다시 읽습니다." }
+  - { text: Add the comment, translation: "댓글 추가" }
+  - { text: Write three characters or more., translation: "세 글자 이상 입력하세요." }
+  - text: "Comment {$id} added to {$title}, which has {$count} comments now."
+    translation: "{$title} 작업에 댓글 {$id} 추가됨. 이제 댓글이 {$count}개입니다."
+  - { text: Row actions on a table, translation: "테이블의 행 액션" }
+  - { text: "Every task of TEL-42 offers three buttons, each replaced by its answer once pressed. Start runs at once, only on a task still to do. Close asks first, and is not offered on a finished task. Assign opens a dialog for the e-mail, which the row does not give, and shows the server's refusal on its field.", translation: "TEL-42의 모든 작업에는 버튼이 세 개 있으며, 각 버튼은 누르면 그 응답으로 바뀝니다. 시작하기는 아직 할 일 상태인 작업에서만 즉시 실행됩니다. 닫기는 먼저 확인을 묻고, 완료된 작업에는 제공되지 않습니다. 배정은 행에 없는 이메일을 입력받는 대화 상자를 열고, 서버의 거부를 해당 필드에 보여 줍니다." }
+  - { text: Number, translation: "번호" }
+  - { text: Start, context: verb, translation: "시작하기" }
+  - { text: Closed, translation: "닫힘" }
+  - { text: Close this task?, translation: "이 작업을 닫을까요?" }
+  - { text: Already started., translation: "이미 시작되었습니다." }
+  - { text: Already finished., translation: "이미 완료되었습니다." }
+  - { text: Assign, translation: "배정" }
+  - { text: "{$title} is assigned to {$assignee}.", translation: "{$title} 작업이 {$assignee}에게 배정되었습니다." }
+  - { text: "Task {$id} is unchanged.", translation: "작업 {$id}에 변경 사항이 없습니다." }
+  - { text: "HTTP {$status} · {$code}", translation: "HTTP {$status} · {$code}" }
+  - { text: Row actions on a list, translation: "목록의 행 액션" }
+  - { text: "The latest comments, a list a reader draws, pinned ones first. Pin runs at once on a comment not yet pinned, Delete asks first, and Edit asks for the new text in a dialog; leaving it empty is refused on its field. The list reads again after each.", translation: "리더가 그리는 목록인 최근 댓글로, 고정된 댓글이 먼저 표시됩니다. 고정은 아직 고정되지 않은 댓글에서 즉시 실행되고, 삭제는 먼저 확인을 묻고, 편집은 대화 상자에서 새 내용을 묻습니다. 비워 두면 해당 필드에서 거부됩니다. 목록은 액션마다 다시 읽습니다." }
+  - { text: Latest comments, translation: "최근 댓글" }
+  - { text: Pin, translation: "고정" }
+  - { text: Already pinned., translation: "이미 고정되었습니다." }
+  - { text: Delete this comment?, translation: "이 댓글을 삭제할까요?" }
+  - { text: Rewrite this comment?, translation: "이 댓글을 다시 작성할까요?" }
+  - { text: More places a success goes, translation: "성공 후 이동하는 다른 곳" }
+  - { text: "The first adds a task and moves to the tables page, an address written in the manifest. The second answers with the handbook's address, a file the server serves under the mount, which is an ordinary load. The third answers with the team's mirror, an address a browser reads as another host: it navigates nowhere, and the answer says so.", translation: "첫 번째 버튼은 작업을 추가하고 매니페스트에 작성된 주소인 테이블 페이지로 이동합니다. 두 번째 버튼은 핸드북의 주소, 즉 서버가 마운트 아래에서 제공하는 파일로 응답하며, 이 파일은 일반적인 방식으로 로드됩니다. 세 번째 버튼은 팀 미러, 즉 브라우저가 다른 호스트로 읽는 주소로 응답합니다. 아무 데도 이동하지 않으며, 응답이 그렇게 알려 줍니다." }
+  - { text: Add it and open the tables, translation: "추가하고 테이블 열기" }
+  - { text: Open the handbook, translation: "핸드북 열기" }
+  - { text: Open the mirror, translation: "미러 열기" }
+  - { text: "The answer was {$mirror}, which is no address to go to, so the page stays.", translation: "받은 응답: {$mirror}. 이동할 수 있는 주소가 아니므로 페이지에 그대로 머뭅니다." }
+  - { text: "Refused, and unanswered", translation: "거부와 무응답" }
+  - { text: "Pausing a project is for a manager alone. With no session the guard answers 401. Signed in on the Data page as james@northwind.example, who is no manager, the route answers 403 with no body; signed in as ada@northwind.example, it pauses the project, and refuses one that is not running in the page's language. The action's default failure tree draws each refusal.", translation: "프로젝트 일시 중지는 매니저만 할 수 있습니다. 세션이 없으면 가드가 401로 응답합니다. 데이터 페이지에서 매니저가 아닌 james@northwind.example로 로그인하면 라우트가 본문 없이 403으로 응답합니다. ada@northwind.example로 로그인하면 프로젝트를 일시 중지하며, 진행 중이 아닌 프로젝트는 페이지의 언어로 거부합니다. 액션의 기본 실패 트리가 각 거부를 그립니다." }
+  - { text: Pause the project, translation: "프로젝트 일시 중지" }
+  - { text: "{$code} is not running, so it cannot be paused.", translation: "{$code} 프로젝트가 진행 중이 아니어서 일시 중지할 수 없습니다." }
+  - { text: "{$name} is paused.", translation: "{$name} 프로젝트가 일시 중지되었습니다." }
+  - { text: "This route sends every request back to itself, so the browser gives up and no answer arrives at all. The failure tree says so: the error carries no status.", translation: "이 라우트는 모든 요청을 자기 자신에게 되돌려 보내므로 브라우저가 포기하고 응답이 전혀 도착하지 않습니다. 실패 트리가 이를 알려 줍니다. 오류에는 상태가 없습니다." }
+  - { text: Call a route that never answers, translation: "응답하지 않는 라우트 호출" }
+  - { text: "The route answered, with the status", translation: "라우트가 응답했으며, 상태는" }
+  - { text: "No answer arrived, so there is no status.", translation: "응답이 도착하지 않아 상태가 없습니다." }
+  - { text: "{$code} · {$message}", translation: "{$code} · {$message}" }
+  - { text: Row actions that read the address, translation: "주소를 읽는 행 액션" }
+  - { text: "The table lists the tasks of the project the address names, and Move sends a task to the status the address names, read from the table's query when it is pressed. The row and the address bind every field of the move, so its dialog asks nothing and is a plain confirmation. Choose a project and a status:", translation: "테이블은 주소가 지정하는 프로젝트의 작업을 나열하고, 이동은 누르는 순간 테이블의 쿼리에서 읽은, 주소가 지정하는 상태로 작업을 옮깁니다. 행과 주소가 이동의 모든 필드를 채우므로 대화 상자는 아무것도 묻지 않는 단순한 확인 창입니다. 프로젝트와 상태를 고르세요:" }
+  - { text: TEL-42 into review, translation: "TEL-42 → 검토 중" }
+  - { text: APP-5 to finished, translation: "APP-5 → 완료" }
+  - { text: OPS-7 back to in progress, translation: "OPS-7 → 다시 진행 중" }
+  - { text: Neither, translation: "선택 안 함" }
+  - { text: Moved to, translation: "이동됨:" }
+  - { text: Move this task to the status the address names?, translation: "이 작업을 주소가 지정하는 상태로 이동할까요?" }
+  - { text: Choose a status above first., translation: "먼저 위에서 상태를 고르세요." }
+
+  # Components.
+  - { text: A component on the page, translation: "페이지 위의 컴포넌트" }
+  - { text: "A component written in TSX and shipped by a library of this example, placed with fixed properties. It uses everything the host gives it: it shows where the page is, keeps which panel is open in the address, moves to another page by navigate and by a link from href, and is refused an https address. It reads how TEL-42 stands and adds a task with fetch, says the tasks changed with notifyChanged — so the table below reads again — and counts every change it hears of with onChanged, the table's own edits and deletes included. A task it adds is announced in a layer of its own at the corner of the page.", translation: "TSX로 작성되어 이 예제의 라이브러리가 제공하는 컴포넌트로, 고정된 속성과 함께 배치됩니다. 호스트가 제공하는 모든 것을 사용합니다. 페이지의 위치를 보여 주고, 어느 패널이 열려 있는지 주소에 유지하며, navigate와 href로 만든 링크로 다른 페이지로 이동하고, https 주소는 거부됩니다. fetch로 TEL-42의 상태를 읽고 작업을 추가하며, notifyChanged로 작업이 변경되었음을 알려 아래 테이블이 다시 읽게 하고, onChanged로 전달받은 모든 변경을 셉니다. 테이블 자체의 편집과 삭제도 포함됩니다. 추가한 작업은 페이지 모서리에 있는 자체 레이어에서 알립니다." }
+  - { text: A component in a cell, translation: "셀 안의 컴포넌트" }
+  - { text: "The priority column is drawn by a component given each row's priority and whether the task is blocked. The table lists TEL-42's tasks over the same collection the component writes to, so it reads again when a task is added above; its edits and deletes are heard by the component.", translation: "우선순위 열은 각 행의 우선순위와 작업 차단 여부를 받는 컴포넌트가 그립니다. 테이블은 컴포넌트가 쓰는 것과 같은 컬렉션에서 TEL-42의 작업을 나열하므로, 위에서 작업을 추가하면 다시 읽습니다. 테이블의 편집과 삭제는 컴포넌트에 전달됩니다." }
+  - { text: Its stylesheet, translation: "스타일시트" }
+  - { text: "The components' sources import a stylesheet of their own, which the application places in the telo.component layer: after the theme and the brand, before the application's own stylesheet. Every value in it reads a design token, so the desk and the meter take each mount's look.", translation: "컴포넌트 소스는 자체 스타일시트를 가져오며, 애플리케이션은 이를 telo.component 레이어에 둡니다. 테마와 브랜드 뒤, 애플리케이션 자체 스타일시트 앞입니다. 그 안의 모든 값은 디자인 토큰을 읽으므로 데스크와 미터는 각 마운트의 모양을 따릅니다." }
+
+  # CRUD.
+  - { text: A generated admin screen, translation: "생성된 관리 화면" }
+  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "API를 제공하는 작업 모델에 대한 선언 하나로 필터 바, 정렬과 페이지 나누기가 되는 테이블, 작업 추가 폼과 변경 폼, 모든 행의 확인을 거치는 삭제가 만들어집니다. 열, 필드, 필터는 모두 모델에서 파생되므로 화면은 API가 받는 것을 정확히 제공합니다." }
+  - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "필터 바는 끝 가장자리에서 테이블 옆에 놓이며 선택한 필터만 보여 주고, 각 필터는 컨트롤을 여는 칩입니다. 선택은 이 브라우저에 aside 키로 유지됩니다. 이 키는 필터 페이지에서 테이블 옆에 있는 필터 바의 키이므로, 어느 페이지에서 고른 필터든 두 페이지 모두에 선택됩니다." }
+  - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "새 작업은 끝 가장자리에서 나오는 드로어에서 열리며, 비워진 채로 다음 작업을 위해 열려 있습니다. 작업은 목록 옆의 패널에서 변경하며, 이 패널은 주소의 일부이고 저장하지 않은 입력이 있을 때 벗어나려 하면 먼저 묻습니다." }
+
+  # Themes.
+  - { text: Four mounts of one design, translation: "하나의 디자인, 네 개의 마운트" }
+  - { text: "The same pages are served four times, each application naming its own theme, brand and navigation. The pages are one set of views, placed by reference from all four, so only the look and the navigation differ.", translation: "같은 페이지가 네 번 제공되며, 각 애플리케이션이 자체 테마, 브랜드, 내비게이션을 지정합니다. 페이지는 네 곳 모두에서 참조로 배치하는 하나의 뷰 세트이므로, 모양과 내비게이션만 다릅니다." }
+  - { text: At the root, translation: "루트" }
+  - { text: "The built-in look, this example's own stylesheet over it, and a brand chosen for every request: the Acme token set while a cookie asks for it, the theme's own values otherwise.", translation: "기본 제공 모양, 그 위에 얹은 이 예제 자체의 스타일시트, 그리고 요청마다 선택되는 브랜드입니다. 쿠키가 요청하면 Acme 토큰 세트를, 그렇지 않으면 테마 자체의 값을 사용합니다." }
+  - { text: Under /radix, translation: "/radix 아래" }
+  - { text: "The Radix theme: its stylesheet and its thirteen controls — the choice lists, dialogs, drawers, popovers, menus and tooltips — with the brand left to the theme.", translation: "Radix 테마: 스타일시트와 열세 가지 컨트롤(선택 목록, 대화 상자, 드로어, 팝오버, 메뉴, 툴팁)이며, 브랜드는 테마에 맡깁니다." }
+  - { text: Under /brand, translation: "/brand 아래" }
+  - { text: "A theme of this example's own: Radix's controls under a stylesheet written here, with token values of its own. The application's brand is one token set, which ships the Inter typeface the theme names.", translation: "이 예제 자체의 테마: 여기서 작성한 스타일시트를 입힌 Radix 컨트롤과 자체 토큰 값입니다. 애플리케이션의 브랜드는 하나의 토큰 세트이며, 테마가 지정하는 Inter 서체를 함께 제공합니다." }
+  - { text: Under /sidebar, translation: "/sidebar 아래" }
+  - { text: "The built-in look with the navigation in a sidebar beside the page, which collapses to a rail and remembers its open groups. On a phone it becomes a tab bar along the bottom edge.", translation: "페이지 옆 사이드바에 내비게이션이 있는 기본 제공 모양으로, 사이드바는 레일로 접히고 열린 그룹을 기억합니다. 휴대폰에서는 아래쪽 가장자리를 따라 놓인 탭 바가 됩니다." }
+  - { text: "A link resolves under the mount it is drawn in, so the links between the mounts and the brand switch are on the root application's Themes page.", translation: "링크는 그려진 마운트 아래에서 해석되므로, 마운트 간 링크와 브랜드 전환은 루트 애플리케이션의 테마 페이지에 있습니다." }
+  - { text: Every design token, translation: "모든 디자인 토큰" }
+  - { text: "Each token of the closed set as this page's theme and brand give it, read from the custom property the renderer projects it to, with a sample drawn in it. Open another mount, or switch the brand at the root, and the values change.", translation: "닫힌 세트의 각 토큰을 이 페이지의 테마와 브랜드가 정한 값으로, 렌더러가 투영하는 사용자 정의 속성에서 읽어 그 값으로 그린 샘플과 함께 보여 줍니다. 다른 마운트를 열거나 루트에서 브랜드를 전환하면 값이 바뀝니다." }
+  - { text: Typefaces, translation: "서체" }
+  - { text: "The body and heading typefaces in each of their four faces, and for each face whether this application serves it. Under /brand they are Inter's regular, bold, italic and bold italic faces, which ship with the example and are served with the page; the other two mounts serve none and draw from the viewer's own fonts.", translation: "본문과 제목 서체의 네 가지 스타일 각각과, 스타일마다 이 애플리케이션이 이를 제공하는지 여부입니다. /brand 아래에서는 Inter의 보통, 굵게, 기울임, 굵은 기울임 스타일이며, 예제와 함께 제공되어 페이지와 함께 전송됩니다. 다른 두 마운트는 아무것도 제공하지 않으며 사용자 자신의 글꼴로 그립니다." }
+  - { text: Switch the mount or the brand, translation: "마운트 또는 브랜드 전환" }
+  - { text: "These links are this application's own: a link resolves under the mount it is drawn in, so only the application at the root reaches the other two. Each is an ordinary load of another application.", translation: "이 링크들은 이 애플리케이션 자체의 링크입니다. 링크는 그려진 마운트 아래에서 해석되므로, 루트의 애플리케이션만 다른 두 곳에 닿습니다. 각 링크는 다른 애플리케이션을 일반적인 방식으로 로드합니다." }
+  - { text: Open the Radix mount, translation: "Radix 마운트 열기" }
+  - { text: Open the brand mount, translation: "브랜드 마운트 열기" }
+  - { text: "This application's brand is chosen for every request. The switch sets or clears a cookie and comes back here, and while the cookie is there the Acme token set is used instead of the theme's own.", translation: "이 애플리케이션의 브랜드는 요청마다 선택됩니다. 전환하면 쿠키를 설정하거나 지우고 이곳으로 돌아오며, 쿠키가 있는 동안에는 테마 자체의 값 대신 Acme 토큰 세트를 사용합니다." }
+  - { text: Use the Acme brand, translation: "Acme 브랜드 사용" }
+  - { text: "Use the theme's own values", translation: "테마 자체 값 사용" }
+
+  # The renderer's own words, as `Ui.words` writes them.
+  - { text: Loading…, translation: "불러오는 중…" }
+  - { text: No rows., translation: "행이 없습니다." }
+  - { text: Nothing found., translation: "찾은 항목이 없습니다." }
+  - { text: Save, translation: "저장" }
+  - { text: Cancel, translation: "취소" }
+  - { text: Close, translation: "닫기" }
+  - { text: New, translation: "새로 만들기" }
+  - { text: Edit, translation: "편집" }
+  - { text: Delete, translation: "삭제" }
+  - { text: Delete this row?, translation: "이 행을 삭제할까요?" }
+  - { text: This cannot be undone., translation: "이 작업은 되돌릴 수 없습니다." }
+  - { text: Previous page, translation: "이전 페이지" }
+  - { text: "{$first}–{$last} of {$total}", translation: "{$total}개 중 {$first}–{$last}" }
+  - { text: "0 of {$total}", translation: "{$total}개 중 0" }
+  - { text: Next page, translation: "다음 페이지" }
+  - { text: "Yes", translation: "예" }
+  - { text: "No", translation: "아니요" }
+  - { text: None, translation: "없음" }
+  - { text: Any, translation: "모두" }
+  - { text: Select…, translation: "선택…" }
+  - { text: Choose…, translation: "고르기…" }
+  - { text: More, translation: "더 보기" }
+  - { text: Menu, translation: "메뉴" }
+  - { text: Site, translation: "사이트" }
+  - { text: Collapse navigation, translation: "내비게이션 접기" }
+  - { text: Expand navigation, translation: "내비게이션 펼치기" }
+  - { text: "Search {$label}", translation: "{$label} 검색" }
+  - { text: "Remove {$label}", translation: "{$label} 제거" }
+  - { text: "Clear {$label}", translation: "{$label} 지우기" }
+  - { text: Add filter, translation: "필터 추가" }
+  - { text: Apply, translation: "적용" }
+  - { text: Reset, translation: "초기화" }
+  - { text: Done, translation: "완료" }
+  - { text: Presets, translation: "프리셋" }
+  - { text: is, translation: "일치" }
+  - { text: contains, translation: "포함" }
+  - { text: after, translation: "이후" }
+  - { text: from, translation: "부터" }
+  - { text: before, translation: "이전" }
+  - { text: to, translation: "까지" }
+  - { text: one of, translation: "중 하나" }
+  - { text: "{$label} {$operator}", translation: "{$label} {$operator}" }
+  - { text: "{$label} {$operator} {$value}", translation: "{$label}: {$value} {$operator}" }
+  - { text: "{$label}: {$summary}", translation: "{$label}: {$summary}" }
+  - { text: From, translation: "시작" }
+  - { text: To, translation: "끝" }
+  - { text: Must not start after it ends, translation: "끝난 후에 시작할 수 없습니다" }
+  - text: "Longer than {$count} days"
+    translation: "{$count}일보다 깁니다"
+  - text: "Longer than {$count} weeks"
+    translation: "{$count}주보다 깁니다"
+  - text: "Longer than {$count} months"
+    translation: "{$count}개월보다 깁니다"
+  - text: "Longer than {$count} quarters"
+    translation: "{$count}분기보다 깁니다"
+  - text: "Longer than {$count} years"
+    translation: "{$count}년보다 깁니다"
+  - { text: Not found, translation: "찾을 수 없음" }
+  - { text: "This application has no page at {$path}.", translation: "이 애플리케이션에는 {$path} 페이지가 없습니다." }
+  - { text: Discard unsaved changes?, translation: "저장하지 않은 변경 사항을 버릴까요?" }
+  - { text: What you entered has not been saved., translation: "입력한 내용이 저장되지 않았습니다." }
+  - { text: Discard, translation: "버리기" }
+  - { text: Keep editing, translation: "계속 편집" }
+  - { text: "You are not signed in, or your session has ended.", translation: "로그인하지 않았거나 세션이 만료되었습니다." }
+  - { text: You are not allowed to do this., translation: "이 작업을 수행할 권한이 없습니다." }
+  - { text: "The request failed with status {$status}.", translation: "요청이 실패했습니다(상태 {$status})." }
+  - { text: "The request failed: {$reason}", translation: "요청이 실패했습니다: {$reason}" }
+  - { text: The record was refused., translation: "레코드가 거부되었습니다." }
+  - { text: The answer is not JSON., translation: "응답이 JSON이 아닙니다." }
+  - { text: The answer is not a JSON object., translation: "응답이 JSON 객체가 아닙니다." }
+  - { text: "The answer does not fit its model: {$detail}", translation: "응답이 모델과 맞지 않습니다: {$detail}" }
+  - { text: Is not valid, translation: "유효하지 않습니다" }
+  - { text: Is required, translation: "필수 항목입니다" }
+  - { text: "Must be {$types}", translation: "{$types} 유형이어야 합니다" }
+  - { text: "Must be one of: {$allowed}", translation: "다음 중 하나여야 합니다: {$allowed}" }
+  - { text: "Must be {$value}", translation: "{$value} 값이어야 합니다" }
+  - { text: Is not allowed, translation: "허용되지 않습니다" }
+  - { text: Is not one of the allowed forms, translation: "허용된 형식 중 어느 것에도 맞지 않습니다" }
+  - text: "Must be at least {$limit} characters"
+    translation: "{$limit}자 이상이어야 합니다"
+  - text: "Must be at most {$limit} characters"
+    translation: "{$limit}자 이하여야 합니다"
+  - { text: Is not in the expected format, translation: "형식이 올바르지 않습니다" }
+  - { text: "Must be at least {$limit}", translation: "{$limit} 이상이어야 합니다" }
+  - { text: "Must be at most {$limit}", translation: "{$limit} 이하여야 합니다" }
+  - { text: "Must be greater than {$limit}", translation: "{$limit}보다 커야 합니다" }
+  - { text: "Must be less than {$limit}", translation: "{$limit}보다 작아야 합니다" }
+  - { text: "Must be a multiple of {$limit}", translation: "{$limit}의 배수여야 합니다" }
+  - text: "Must have at least {$limit} items"
+    translation: "항목이 {$limit}개 이상이어야 합니다"
+  - text: "Must have at most {$limit} items"
+    translation: "항목이 {$limit}개 이하여야 합니다"
+  - { text: Must not repeat an item, translation: "항목이 중복되면 안 됩니다" }

@@ -87,8 +87,8 @@ below is named because a page and a filter bar both use it.
 - `title` (required) names the application. `words` (required) is what the
   renderer draws on its own — `!ref Ui.words`, English. `theme` (required) is
   the look — `!ref UiReact.defaultTheme`, or another theme. `pages` (at least
-  one) are `Ui.Page`s — `{ path, title, query?, children }`, each path unique —
-  inline or `!ref`, a library's included.
+  one) are `Ui.Page`s — `{ path, title, query?, width?, children }`, each path
+  unique — inline or `!ref`, a library's included.
 - `navigation: { items, placement? }` is the menu, naming pages by `!ref`,
   never by path: `{ type: page, page, text? }`, `{ type: link, text, href }`,
   `{ type: group, text, items }`, each with `when?` and `icon?` — a
@@ -106,8 +106,9 @@ below is named because a page and a filter bar both use it.
   `!cel` over `request.headers` — the negotiated `Accept-Language`) serve every
   text translated; `tokens` (the brand), `stylesheets` (host paths, written
   `!module-path ./ui.css`), `compactBelow` (the narrow-viewport breakpoint),
-  `header: { start?, end? }` (nodes on every page around the title and
-  navigation; no `query` there).
+  `pageWidth` (`contained` or `full`; a page's `width` wins),
+  `header: { start?, end?, width? }` (nodes on every page around the title and
+  navigation, no `query` there).
 
 ### Nodes
 
@@ -660,8 +661,9 @@ operation — is hand-built from the kinds above over routes of your own.
   UiReact.Theme, stylesheets: [!module-path ./look.css] }`. `tokens:` is the
   brand over it: a `Ui.DesignTokens` whose fields are a closed token set
   (`color.*`, `radius.*`, `space.*`, `shadow.*`, `font.*` as a `!ref` to a
-  font family, `font-size.*`, `line-height.*`), each a CSS value string,
-  written `{ kind: Ui.DesignTokens, color.accent: "#1d4ed8" }`; or a list of
+  font family, `font-size.*`, `line-height.*`, `width.page`, `space.page`),
+  each a CSS value string, written `{ kind: Ui.DesignTokens, color.accent:
+  "#1d4ed8" }`; or a list of
   `{ tokens, when? }`, the first whose `when` holds winning per request.
 - **Control sets.** A theme's `controls` lists `UiReact.Controls` sets, each
   declared in the library shipping its browser entry (`entry`, `implements`);
@@ -675,7 +677,7 @@ operation — is hand-built from the kinds above over routes of your own.
 - **Stylesheets.** Everything the renderer draws carries `data-telo-part`,
   with state in `data-` attributes; that list is a stable contract. Your
   `stylesheets` are unlayered and win over the renderer's layers without
-  out-specifying them.
+  out-specifying them; page width and inset are tokens, not CSS.
 - **Custom components.** A library ships a browser entry built for the
   renderer's ABI and publishes it with `Ui.ComponentExport` (`entry`,
   `export`, `props` as a shape), exported as an instance. An application
@@ -686,16 +688,14 @@ operation — is hand-built from the kinds above over routes of your own.
   React function component, receiving exactly its declared props. It may
   leave only `react`, `react/jsx-runtime`, `react-dom` and `@telorun/ui-react`
   as `external`; anything else it imports is bundled into it. Another ABI or
-  another external is replaced by an `error` node at start
-  (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`, `ERR_UI_COMPONENT_IMPORT_UNSUPPLIED`).
+  external is replaced by an `error` node at start.
   Navigation, requests and refresh come from the host: `useHost()` from
   `@telorun/ui-react` returns `location` (`{ path, search, hash }`, without
   the mount prefix), `navigate(to, { replace? })`
-  (an app-relative reference), `href(to)` (the same, as an anchor URL with
-  the mount prefix), `fetch` (the platform `fetch` with same-origin
-  credentials), `notifyChanged(basePath)` (tables over that `basePath`
-  re-fetch) and `onChanged(basePath, listener)` (returns the unsubscribe
-  function).
+  (app-relative), `href(to)` (the same, as an anchor URL with
+  the mount prefix), `fetch` (`fetch` with same-origin credentials), `notifyChanged(basePath)` (tables over that `basePath`
+  re-fetch) and `onChanged(basePath, listener)` (returns its
+  unsubscribe).
 - **Reusable sections.** `Ui.View` holds one node tree (`content`), declared
   once and placed wherever needed; a library exports one to describe its own
   interface.

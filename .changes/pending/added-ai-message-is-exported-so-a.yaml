@@ -1,0 +1,4 @@
+modules:
+  modules/ai: Added
+body: "`Ai.Message` is exported, so a consumer types a conversation it builds with
+  `items: !ref Ai.Message`."

@@ -1,0 +1,54 @@
+# A list computed by concatenating a literal element with a function's declared
+# result: the literal element is held to the contract's item shape, so a tool
+# message naming no call is reported at the argument, and the kernel refuses
+# the value at dispatch for a consumer.
+kind: Telo.Library
+metadata:
+  name: CelComputedListElement
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [call]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Message
+schema:
+  type: object
+  required: [role, content]
+  properties:
+    role: { type: string, enum: [user, tool] }
+    content: { type: string }
+    toolCallId: { type: string }
+  anyOf:
+    - properties: { role: { const: user }, toolCallId: false }
+    - required: [role, toolCallId]
+      properties: { role: { const: tool } }
+---
+kind: Telo.Function
+metadata:
+  name: history
+returns:
+  schema: { type: array, items: !ref Message }
+body: !cel "[{'role': 'user', 'content': 'hello'}]"
+---
+kind: Run.Sequence
+metadata:
+  name: call
+steps:
+  - name: sent
+    invoke: !ref consume
+    inputs:
+      messages: !cel "[{'role': 'tool', 'content': 'x'}] + Self.history()"
+---
+kind: Run.Value
+metadata:
+  name: consume
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [messages]
+    properties:
+      messages: { type: array, items: !ref Message }
+value: { ok: true }

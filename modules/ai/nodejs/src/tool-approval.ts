@@ -157,7 +157,7 @@ export async function* settleToolCalls(
     } else {
       const record = step.outcome;
       yield { type: "tool-result", toolResult: record };
-      yield conversation.append({
+      yield await conversation.append({
         role: "tool",
         content: record.content,
         toolCallId: record.toolCallId,

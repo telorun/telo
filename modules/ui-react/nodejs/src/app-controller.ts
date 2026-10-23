@@ -18,12 +18,14 @@ import {
   isPage,
   isWords,
   preparedNavigation,
+  resolvedPageWidth,
   RequestNodes,
   SpecTranslator,
   type NavigationConfig,
   type NavigationEntrySpec,
   type PageInstance,
   type PageReading,
+  type PageWidth,
   type PreparedNavigation,
   type Words,
 } from "@telorun/ui";
@@ -41,10 +43,11 @@ import { tokensStylesheet, type ProvidedTokens } from "./tokens-stylesheet.js";
 
 type TokensEntry = { tokens: unknown; when?: unknown };
 
-/** The nodes of the application's own in its header, by side. */
+/** The nodes of the application's own in its header, by side, and how wide its content is drawn. */
 interface HeaderConfig {
   start?: unknown;
   end?: unknown;
+  width?: PageWidth | null;
 }
 
 const HEADER_SIDES = ["start", "end"] as const;
@@ -60,6 +63,8 @@ export type AppResource = RuntimeResource & {
   tokens?: unknown;
   stylesheets?: string[];
   compactBelow?: string;
+  /** Left to each page to fill when omitted. */
+  pageWidth?: PageWidth | null;
   header?: HeaderConfig | null;
   /** Each a `Ui.Page`. */
   pages: unknown[];
@@ -465,12 +470,12 @@ export class UiReactApp {
     const tokens = chosen === undefined ? [] : [started.tokens.get(chosen.tokens) as string];
     const tag = this.effectiveTag(started, scope.request);
     const language = this.inLanguage(started, tag);
-    const header =
-      started.header === undefined
-        ? undefined
-        : Object.fromEntries(
-            HEADER_SIDES.map((side) => [side, this.shown(started, started.header![side].deliver(scope.request), language)]),
-          );
+    const header = {
+      width: resolvedPageWidth(this.resource.header?.width, this.resource.pageWidth),
+      ...Object.fromEntries(
+        HEADER_SIDES.map((side) => [side, started.header ? this.shown(started, started.header[side].deliver(scope.request), language) : []]),
+      ),
+    };
     const translatedEntries = (entries: NavigationEntrySpec[]): unknown[] =>
       entries.map((entry) =>
         entry.type === "group"
@@ -488,7 +493,7 @@ export class UiReactApp {
         ...(tag === undefined ? {} : { lang: tag }),
         pages: this.pages.map(({ reading }, index) => ({ path: reading.path, title: language.pageTitles[index] })),
         navigation: { items: translatedEntries(items), placement: started.navigation.placement },
-        ...(header === undefined ? {} : { header }),
+        header,
         words: language.words,
         stylesheets: [...started.leading, ...tokens, ...started.trailing],
         controls: started.controls,
@@ -510,8 +515,9 @@ export class UiReactApp {
         .send({ error: "NotFound", message: `This application declares no page at '${String(path)}'.`, status: 404 });
     }
     const scope = { request: this.requestOf(request) };
+    const pageWidth = this.resource.pageWidth ?? undefined;
     const delivered = await page.instance.invoke(
-      { request: scope.request as { headers: Record<string, string>; ip?: string } },
+      { request: scope.request as { headers: Record<string, string>; ip?: string }, ...(pageWidth === undefined ? {} : { pageWidth }) },
       requestScope?.forRequest(request).context,
     );
     const tag = this.effectiveTag(started, scope.request);
@@ -526,6 +532,7 @@ export class UiReactApp {
         title: language.pageTitles[index],
         ...(tag === undefined ? {} : { lang: tag }),
         query: delivered.query,
+        width: delivered.width,
         children: this.shown(started, delivered.children, language),
       },
       started.vary.pages[index],

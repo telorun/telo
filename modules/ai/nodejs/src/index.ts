@@ -7,6 +7,7 @@ export {
   isMediaPart,
   isTextPart,
 } from "./content.js";
+export { answeredCallId } from "./answered-call.js";
 export { redact } from "./redact.js";
 export {
   MODEL_FAILURE_CODES,

@@ -419,9 +419,16 @@ export function evaluateReferrerRules(
     // would share one bucket and the second violation would be dropped in
     // silence — the trap the migration provenance index names.
     const seen = new Set<ResourceManifest>();
+    // The budget stops the loop, so it is asked before a referrer is judged:
+    // one slow evaluation with nothing left to judge has skipped nothing.
     const started = Date.now();
     for (const referrer of referrers) {
       if (rule.referrer !== undefined && !kindMatches(rule.referrer, referrer.kind)) continue;
+      const elapsed = Date.now() - started;
+      if (elapsed > RULE_BUDGET_MS) {
+        findings.push({ kind: "over-budget", rule, referrer, elapsedMs: elapsed });
+        break;
+      }
       if (!perEntry) {
         if (seen.has(referrer.manifest)) continue;
         seen.add(referrer.manifest);
@@ -484,11 +491,6 @@ export function evaluateReferrerRules(
       }
       if (held !== true) {
         findings.push({ kind: "violation", rule, referrer, message: rule.message });
-      }
-      const elapsed = Date.now() - started;
-      if (elapsed > RULE_BUDGET_MS) {
-        findings.push({ kind: "over-budget", rule, referrer, elapsedMs: elapsed });
-        break;
       }
     }
   }

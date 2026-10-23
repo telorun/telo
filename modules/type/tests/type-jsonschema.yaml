@@ -2,6 +2,18 @@ kind: Telo.Application
 metadata:
   name: TypeJsonSchemaTest
   version: 1.0.0
+# Inputs that break a contract reach their calls from variables, whose declared
+# type (an open object) is all `telo check` knows of them, so each violation
+# meets the RUNTIME contract boundary the test is about.
+variables:
+  withoutId:
+    env: TEST_TYPE_WITHOUT_ID
+    type: object
+    default: { name: Bob }
+  withoutTimestamp:
+    env: TEST_TYPE_WITHOUT_TIMESTAMP
+    type: object
+    default: { id: x-2, label: Oops }
 imports:
   Type: ..
   Run: ../../run
@@ -182,12 +194,10 @@ steps:
   - name: missingParentField
     try:
       - name: callWithoutId
-        # Deliberately invalid, routed through CEL: a literal is rejected by
-        # `telo check`, and this test is about the RUNTIME contract boundary.
-        # The whole map comes from one expression so the omission is only
-        # visible at runtime — a statically-absent required input is a
+        # Deliberately invalid, read from a variable: a missing required input
+        # written in the manifest — as a literal or a CEL map literal — is a
         # `telo check` error, and this test is about the runtime boundary.
-        inputs: !cel "{'name': 'Bob'}"
+        inputs: !cel "variables.withoutId"
         invoke: !ref identity
     catch:
       - name: verifyInheritanceError
@@ -424,9 +434,9 @@ steps:
   - name: missingTimestamp
     try:
       - name: callWithoutTimestamp
-        # Whole map from one expression: the omission is only visible at
-        # runtime, which is the boundary this test is about.
-        inputs: !cel "{'id': 'x-2', 'label': 'Oops'}"
+        # Whole map from a variable: the omission is only visible at runtime,
+        # which is the boundary this test is about.
+        inputs: !cel "variables.withoutTimestamp"
         invoke: !ref fullIdentity
     catch:
       - name: verifyTimestampError

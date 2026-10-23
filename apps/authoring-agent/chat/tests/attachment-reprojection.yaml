@@ -1,0 +1,363 @@
+kind: Telo.Application
+metadata:
+  name: ChatAttachmentReprojection
+  version: 1.0.0
+  description: |
+    An agent database whose projection holds an upload in the shape the agent
+    used to write — a `{ type: attachment }` part of its own — is re-projected
+    when the agent boots, before any route is served: the turn's message names
+    the upload as an `Ai.ContentPart` reference, `attachment:<id>`, folded again
+    from the journal, though its old projection said the turn was taken whole.
+    The next turn replays that history, and the model receives the image as its
+    bytes. Offline and key-free.
+imports:
+  App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
+  Fs: ../../../../modules/fs
+  HttpClient: ../../../../modules/http-client
+  Stream: ../../../../modules/stream
+  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.1#sha256-1WEaTSJ_-AD9dVAa9JTdqtD94jzkkBvoGLdm2jrlroM
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.1#sha256-s499a6neOc42YDcB9x5YZeTjcEvjwXwKw5y27mcUiG0
+  Blob: oci://ghcr.io/telorun/blob@0.2.0#sha256-UgFwVFoZWZ_s8GWHIi-0qJB8K82CZ5gSQN0HZaqpc58
+  BlobFs: oci://ghcr.io/telorun/blob-fs@0.2.0#sha256-_DxXaUEsakpFyEif4SKQc1QesAcTFOpnXBW9AjIyUbo
+  Run: ../../../../modules/run
+  Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
+variables:
+  scratch:
+    env: CHAT_TEST_ATTACHMENT_REPROJECTION_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/attachment-reprojection
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: stateDir
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('.telo-agent'))"
+      createParents: true
+  # The database as the previous agent left it: its migrations, one
+  # conversation holding an uploaded image and one turn naming it, journaled,
+  # projected in the old shape and marked as projected whole.
+  - name: legacy
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: SQLite.Connection
+          metadata: { name: legacyDb }
+          file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+        # The previous agent's migrations, verbatim.
+        - kind: SQLite.Schema
+          metadata: { name: legacySchema }
+          connection: !ref legacyDb
+          migrations:
+            create_messages:
+              statement: |
+                CREATE TABLE IF NOT EXISTS messages (
+                  id TEXT PRIMARY KEY,
+                  conversation_id TEXT NOT NULL,
+                  role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant')),
+                  content TEXT NOT NULL,
+                  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            projection_1_turns:
+              statements:
+                - |
+                  CREATE TABLE turns (
+                    turn_id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                    active_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                  )
+                - CREATE INDEX turns_by_conversation ON turns (conversation_id, turn_id)
+            projection_2_messages:
+              statements:
+                - DROP TABLE messages
+                - |
+                  CREATE TABLE messages (
+                    turn_id TEXT NOT NULL,
+                    seq INTEGER NOT NULL,
+                    conversation_id TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant', 'tool')),
+                    content TEXT NOT NULL,
+                    tool_calls TEXT,
+                    tool_call_id TEXT,
+                    PRIMARY KEY (turn_id, seq)
+                  )
+                - CREATE INDEX messages_by_conversation ON messages (conversation_id, turn_id, seq)
+            projection_3_turn_projections:
+              statement: |
+                CREATE TABLE turn_projections (
+                  turn_id TEXT PRIMARY KEY,
+                  conversation_id TEXT NOT NULL,
+                  through_id INTEGER NOT NULL,
+                  provider_state TEXT,
+                  provider_model TEXT
+                )
+            projection_4_aborted_at:
+              statement: ALTER TABLE turns ADD COLUMN aborted_at TEXT
+            projection_5_conversations:
+              statements:
+                - |
+                  CREATE TABLE conversations (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    archived INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                    revision INTEGER NOT NULL DEFAULT 0,
+                    removed_at TEXT,
+                    assembling INTEGER NOT NULL DEFAULT 0
+                  )
+                - |
+                  INSERT INTO conversations (id, created_at, updated_at)
+                  SELECT conversation_id, MIN(started_at), MAX(active_at) FROM turns GROUP BY conversation_id
+                - CREATE INDEX conversations_by_activity ON conversations (updated_at, id)
+                - ALTER TABLE turns ADD COLUMN removed_at TEXT
+                - ALTER TABLE turns DROP COLUMN active_at
+                - DELETE FROM turn_projections
+                - ALTER TABLE turn_projections ADD COLUMN tokens INTEGER NOT NULL DEFAULT 0
+                - ALTER TABLE turn_projections ADD COLUMN model TEXT
+                - ALTER TABLE turn_projections ADD COLUMN context_tokens INTEGER
+                - ALTER TABLE turn_projections ADD COLUMN summary TEXT
+                - ALTER TABLE turn_projections ADD COLUMN summary_through TEXT
+                - |
+                  CREATE VIEW conversation_view AS
+                  SELECT c.id, c.title, c.archived, c.created_at, c.updated_at, c.revision, c.removed_at,
+                         (SELECT p.model FROM turns t JOIN turn_projections p ON p.turn_id = t.turn_id
+                           WHERE t.conversation_id = c.id AND t.removed_at IS NULL
+                           ORDER BY t.turn_id DESC LIMIT 1) AS model,
+                         (SELECT COUNT(*) FROM turns t
+                           WHERE t.conversation_id = c.id AND t.removed_at IS NULL) * 2 AS message_count,
+                         (SELECT COALESCE(SUM(p.tokens), 0) FROM turns t JOIN turn_projections p ON p.turn_id = t.turn_id
+                           WHERE t.conversation_id = c.id AND t.removed_at IS NULL) AS total_tokens
+                  FROM conversations c
+                  WHERE c.assembling = 0
+            projection_6_checkpoints:
+              statements:
+                - |
+                  CREATE TABLE checkpoint_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    turn_id TEXT NOT NULL,
+                    call_id TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    before_hash TEXT,
+                    after_hash TEXT,
+                    confirmed INTEGER NOT NULL DEFAULT 0
+                  )
+                - CREATE INDEX checkpoint_entries_by_path ON checkpoint_entries (turn_id, path, id)
+                - CREATE INDEX checkpoint_entries_by_call ON checkpoint_entries (call_id)
+                - |
+                  CREATE TABLE turn_reverts (
+                    turn_id TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('created', 'modified', 'deleted')),
+                    outcome TEXT NOT NULL CHECK (outcome IN ('restored', 'skipped')),
+                    PRIMARY KEY (turn_id, path)
+                  )
+                - |
+                  CREATE TABLE turn_changes (
+                    turn_id TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('created', 'modified', 'deleted')),
+                    before_hash TEXT,
+                    after_hash TEXT,
+                    added INTEGER,
+                    removed INTEGER,
+                    first_line INTEGER,
+                    check_exit_code INTEGER,
+                    PRIMARY KEY (turn_id, path)
+                  )
+                - ALTER TABLE turns ADD COLUMN checkpointed INTEGER NOT NULL DEFAULT 0
+                - ALTER TABLE turns ADD COLUMN reverted_at TEXT
+                - DELETE FROM turn_projections
+                - ALTER TABLE turn_projections ADD COLUMN prompt_tokens INTEGER NOT NULL DEFAULT 0
+                - ALTER TABLE turn_projections ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0
+                - ALTER TABLE turn_projections ADD COLUMN runs TEXT NOT NULL DEFAULT '[]'
+                - ALTER TABLE turn_projections ADD COLUMN ended INTEGER NOT NULL DEFAULT 0
+            projection_7_attachments:
+              statement: |
+                CREATE TABLE attachments (
+                  conversation_id TEXT NOT NULL,
+                  id TEXT NOT NULL,
+                  name TEXT NOT NULL,
+                  media_type TEXT NOT NULL,
+                  size INTEGER NOT NULL,
+                  sha256 TEXT NOT NULL,
+                  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                  PRIMARY KEY (conversation_id, id)
+                )
+        - kind: Sql.Command
+          metadata: { name: seedCommand }
+          connection: !ref legacyDb
+        - kind: RecordStream.Journal
+          metadata: { name: legacyJournal }
+          store:
+            kind: RecordStreamSql.JournalStore
+            connection: !ref legacyDb
+            table: turn_journal
+          markerRetention: 1h
+        - kind: RecordStream.JournalClaim
+          metadata: { name: claim }
+          journal: !ref legacyJournal
+        - kind: RecordStream.JournalSink
+          metadata: { name: sink }
+          journal: !ref legacyJournal
+        - kind: BlobFs.Store
+          metadata: { name: uploads }
+          root: !cel "variables.scratch.joinPath('.telo-agent').joinPath('attachments')"
+        - kind: Blob.Put
+          metadata: { name: putUpload }
+          store: !ref uploads
+      targets: [ !ref legacySchema ]
+      steps:
+        - name: conversation
+          invoke: !ref seedCommand
+          inputs:
+            sql: "INSERT INTO conversations (id, title) VALUES (?, 'Legacy upload')"
+            bindings: [ 0190a000-0000-7000-8000-00000000c001 ]
+        - name: upload
+          invoke: !ref putUpload
+          inputs:
+            key: 0190a000-0000-7000-8000-00000000c001/0190a000-0000-7000-8000-00000000e001
+            content: !cel "bytesFromBase64('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==')"
+            contentType: image/png
+        - name: attachment
+          invoke: !ref seedCommand
+          inputs:
+            sql: "INSERT INTO attachments (conversation_id, id, name, media_type, size, sha256) VALUES (?, ?, ?, ?, ?, ?)"
+            bindings: [ 0190a000-0000-7000-8000-00000000c001, 0190a000-0000-7000-8000-00000000e001, shot.png, image/png, 70, 497790947d4666760ce38f3c00e852c71fdb66cae849bae8e9ede352719e1581 ]
+        - name: claimTurn
+          invoke: !ref claim
+          inputs: { key: 0190a000-0000-7000-8000-00000000d001, writer: seed }
+        - name: records
+          invoke: { kind: Stream.Of }
+          inputs:
+            items:
+              - type: user-message
+                content: look
+                attachments:
+                  - { id: 0190a000-0000-7000-8000-00000000e001, name: shot.png, mediaType: image/png, size: 70, sha256: 497790947d4666760ce38f3c00e852c71fdb66cae849bae8e9ede352719e1581 }
+                model: gpt-legacy
+              - { type: text-delta, delta: a pixel }
+              - type: step-finish
+                usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 }
+                finishReason: stop
+              - type: finish
+                usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 }
+                finishReason: stop
+        - name: journal
+          invoke: !ref sink
+          inputs:
+            key: 0190a000-0000-7000-8000-00000000d001
+            writer: seed
+            input: !cel "steps.records.result.output"
+        - name: turn
+          invoke: !ref seedCommand
+          inputs:
+            sql: "INSERT INTO turns (turn_id, conversation_id, checkpointed) VALUES (?, ?, 1)"
+            bindings: [ 0190a000-0000-7000-8000-00000000d001, 0190a000-0000-7000-8000-00000000c001 ]
+        - name: oldMessages
+          invoke: !ref seedCommand
+          inputs:
+            sql: |
+              INSERT INTO messages (turn_id, seq, conversation_id, role, content) VALUES
+                (?, 0, ?, 'user', ?), (?, 1, ?, 'assistant', '"a pixel"')
+            bindings:
+              - 0190a000-0000-7000-8000-00000000d001
+              - 0190a000-0000-7000-8000-00000000c001
+              - !cel >-
+                  json([{'type': 'text', 'text': 'look'},
+                        {'type': 'attachment', 'id': '0190a000-0000-7000-8000-00000000e001', 'name': 'shot.png', 'mediaType': 'image/png',
+                         'size': 70, 'sha256': '497790947d4666760ce38f3c00e852c71fdb66cae849bae8e9ede352719e1581'}])
+              - 0190a000-0000-7000-8000-00000000d001
+              - 0190a000-0000-7000-8000-00000000c001
+        # Taken whole: without the migration, nothing would fold this turn again.
+        - name: oldProjection
+          invoke: !ref seedCommand
+          inputs:
+            sql: |
+              INSERT INTO turn_projections (turn_id, conversation_id, through_id, tokens, model, ended)
+              VALUES (?, ?, 1000000, 15, 'gpt-legacy', 1)
+            bindings: [ 0190a000-0000-7000-8000-00000000d001, 0190a000-0000-7000-8000-00000000c001 ]
+  - name: agent
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: stub }
+          source: ./__fixtures__/provider-stub/telo.yaml
+          ports: { http: 18580 }
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18581 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18580/v1
+            # The seeded turn has no recent activity; retention must not take it.
+            retentionDays: 3650
+          secrets:
+            openaiApiKey: stub-key
+        - kind: SQLite.Connection
+          metadata: { name: agentDb }
+          file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+        - kind: Sql.Query
+          metadata: { name: agentQuery }
+          connection: !ref agentDb
+      targets: [ !ref stub, !ref agent ]
+      steps:
+        # Read before any turn runs: what the boot left.
+        - name: projected
+          invoke: !ref agentQuery
+          inputs:
+            sql: "SELECT content FROM messages WHERE turn_id = ? AND seq = 0"
+            bindings: [ 0190a000-0000-7000-8000-00000000d001 ]
+        - name: start
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18581/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 0190a000-0000-7000-8000-00000000c001
+              message: and now?
+        - name: events
+          timeout: 30000
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: !interpolate "http://127.0.0.1:18581/chat/${{ steps.start.result.body.turnId }}/events"
+            responseType: text
+        - name: sent
+          invoke: { kind: HttpClient.Request }
+          inputs: { url: http://127.0.0.1:18580/requests }
+      outputs:
+        projected: !cel "parseJson(steps.projected.result.rows[0].content)"
+        finished: !cel "steps.events.result.body.contains('\"type\":\"finish\"')"
+        modelGotImage: !cel >-
+          json(steps.sent.result.body.requests[size(steps.sent.result.body.requests) - 1])
+            .contains('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==')
+  - name: reprojected
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.agent.result"
+      expected:
+        projected:
+          - { type: text, text: look }
+          - { type: image, mediaType: image/png, name: shot.png, uri: "attachment:0190a000-0000-7000-8000-00000000e001" }
+        finished: true
+        modelGotImage: true

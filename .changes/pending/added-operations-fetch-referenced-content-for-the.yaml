@@ -1,0 +1,21 @@
+modules:
+  modules/ai: Added
+body: "Operations fetch referenced content for the model on demand: `Ai.Text`,
+  `Ai.TextStream`, `Ai.Agent` and `Ai.AgentStream` take a `resolver` — `schemes`,
+  `concurrency` (default 4), `contextType`, `invoke`, `inputs` over `part` and
+  `context`, `result` over `result` — that replaces every image, audio, video or file
+  part whose `uri` scheme it lists, in what the model is sent and nowhere else, by the
+  part it answers with; each distinct uri once per call, at most `concurrency` at a time
+  in message order, a tool result's when it joins the conversation, the first failure
+  cancelling the rest and failing the call. Returned messages, tool results and streamed
+  parts keep the reference. `Ai.Text` and `Ai.TextStream` gain a `context` input typed
+  by the resolver's `contextType`; an agent's `context` must also satisfy it. `telo
+  check` refuses a `result` that cannot be a part a caller may send; an answer that is
+  not one at run time, or is again a reference by a listed scheme, is
+  `ERR_CONTENT_RESOLUTION_INVALID`, now declared by all four operations — an exhaustive
+  `catches:` list over one must name it. `Ai.ContentPart` is exported, so a consumer
+  types its parts with `!ref Ai.ContentPart`. Breaking: `Ai.Message` is read by its
+  `role` — a `tool` turn requires a non-empty `toolCallId`, only an `assistant` turn may
+  carry `toolCalls`, and only a `tool` turn a `toolCallId` — and `Ai.ToolCall.id` may
+  not be empty. `answeredCallId` is exported from `@telorun/ai` for providers refusing a
+  tool message that names no call. Requires telo >=0.122.0."

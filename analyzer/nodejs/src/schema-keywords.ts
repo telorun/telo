@@ -176,8 +176,8 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   "x-telo-value-schema-from": {
     title: "Value schema from",
     description:
-      "The value here must satisfy the type declared at the named location — a field of the resource, or a JSON Pointer from its root that may cross a reference and range over a list with '*'. On a configuration slot every such slot is checked, not only the branch a given input selects; inside inputType / outputType the node is typed by every type the location reaches.",
-    type: "string",
+      "The value here must satisfy the type declared at the named location — a field of the resource, or a JSON Pointer from its root that may cross a reference and range over a list with '*'; `{ from, member }` holds it to one property of that type, and a list of locations holds it to every type each reaches. On a configuration slot every such slot is checked, not only the branch a given input selects; inside inputType / outputType the node is typed by every type the locations reach.",
+    anyOf: [{ type: "string" }, { type: "object" }, { type: "array", items: { anyOf: [{ type: "string" }, { type: "object" }] } }],
   },
   "x-telo-bindings-from": {
     title: "Bindings from",

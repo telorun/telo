@@ -69,22 +69,22 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST, responseType: text }
     inputs:
       body: { code: OPS-7 }
-  - name: janSignIn
+  - name: jamesSignIn
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/session/signin, method: POST }
     inputs:
-      body: { email: jan@northwind.example }
+      body: { email: james@northwind.example }
   - name: adaSignIn
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/session/signin, method: POST }
     inputs:
       body: { email: ada@northwind.example }
   - name: cookies
     value:
-      jan: !cel "string(steps.janSignIn.result.headers['set-cookie']).split(';')[0]"
+      james: !cel "string(steps.jamesSignIn.result.headers['set-cookie']).split(';')[0]"
       ada: !cel "string(steps.adaSignIn.result.headers['set-cookie']).split(';')[0]"
   - name: notManager
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST, responseType: text }
     inputs:
-      headers: { cookie: !cel "steps.cookies.result.jan" }
+      headers: { cookie: !cel "steps.cookies.result.james" }
       body: { code: OPS-7 }
   - name: pause
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST }

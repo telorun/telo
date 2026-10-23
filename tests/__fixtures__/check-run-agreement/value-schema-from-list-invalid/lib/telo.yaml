@@ -1,0 +1,41 @@
+# A kind whose contract names a list of locations, one of which is no location:
+# a pointer with an empty segment names nothing to read a type from.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaFromListInvalidLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind types an input from a list of locations holding
+    one that is malformed.
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      context:
+        type: object
+        default: {}
+        x-telo-value-schema-from: [/readers/*/contextType, /readers//contextType]
+schema:
+  type: object
+  properties:
+    readers:
+      type: array
+      items:
+        type: object
+        properties:
+          contextType:
+            x-telo-ref: { kind: Telo.Type, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body

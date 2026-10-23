@@ -190,6 +190,7 @@ tokens:
 stylesheets:
   - !module-path ./ui.css
 compactBelow: 48rem
+pageWidth: full
 pages:
   - kind: Ui.Page
     path: /
@@ -213,6 +214,7 @@ pages:
   - kind: Ui.Page
     path: /all
     title: All columns
+    width: contained
     children:
       - { type: composite, ref: !ref allColumns }
   - kind: Ui.Page
@@ -289,6 +291,24 @@ pages:
     children:
       - { type: text, text: Nothing else }
 ---
+# Full-width pages and header nodes, its header's width left to `pageWidth`.
+kind: UiReact.App
+metadata:
+  name: wide
+title: Wide
+words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
+pageWidth: full
+header:
+  start:
+    - { type: text, text: Wide }
+pages:
+  - kind: Ui.Page
+    path: /
+    title: Home
+    children:
+      - { type: text, text: Across the screen }
+---
 # A look of its own: a stylesheet, token defaults and a control set drawing
 # the box control in place of the built-in.
 kind: UiReact.App
@@ -303,6 +323,8 @@ theme:
     - !module-path ./look.css
   controls:
     - !ref Widgets.controls
+header:
+  width: full
 pages:
   - kind: Ui.Page
     path: /
@@ -327,5 +349,7 @@ mounts:
     mount: !ref admin
   - path: /plain
     mount: !ref plain
+  - path: /wide
+    mount: !ref wide
   - path: /themed
     mount: !ref themed

@@ -1,0 +1,622 @@
+# The showcase in Ukrainian: the applications' and pages' titles, every text the
+# pages write, the labels of the models they draw, and the words the renderer
+# draws on its own. A plural source is matched by the text its `other` case
+# reads and translated into Ukrainian's four cases (`other` holding fractions);
+# a word told apart by its context is translated once per context.
+kind: I18n.Catalog
+metadata:
+  name: ukrainian
+lang: uk
+texts:
+  # Applications and pages.
+  - { text: UI showcase, translation: Вітрина інтерфейсу }
+  - { text: UI showcase — Radix, translation: Вітрина інтерфейсу — Radix }
+  - { text: UI showcase — brand, translation: Вітрина інтерфейсу — бренд }
+  - { text: UI showcase — sidebar, translation: Вітрина інтерфейсу — бічна панель }
+  - { text: Overview, translation: Огляд }
+  - { text: Conditions, translation: Умови }
+  - { text: Data, translation: Дані }
+  - { text: Tables, translation: Таблиці }
+  - { text: Filters, translation: Фільтри }
+  - { text: Forms, translation: Форми }
+  - { text: Actions, translation: Дії }
+  - { text: Components, translation: Компоненти }
+  - { text: CRUD, translation: CRUD }
+  - { text: Themes, translation: Теми }
+  # The navigation's groups.
+  - { text: Building blocks, translation: Елементи }
+  - { text: Input, translation: Введення }
+
+  # The header of every application: the mark, the Language and Theme
+  # menus and the Theme menu's items. The language names are each written
+  # in its own language, so neither is translated.
+  - { text: UI showcase logo, translation: Логотип вітрини інтерфейсу }
+  - { text: Language, translation: Мова }
+  - { text: Theme, translation: Тема }
+  - { text: Default, translation: Типова }
+  - { text: Radix, translation: Radix }
+  - { text: Brand, translation: Бренд }
+  - { text: Sidebar, translation: Бічна панель }
+
+  # The overview's nodes evaluated per request.
+  - { text: Per request, translation: На кожен запит }
+  - { text: "These nodes are the page's own, so their when and their text are evaluated for every request.", translation: "Ці вузли належать самій сторінці, тому їхні when і текст обчислюються для кожного запиту." }
+  - { text: Your browser asked for Polish., translation: Ваш браузер запросив польську мову. }
+  - { text: Your browser did not ask for Polish., translation: Ваш браузер не запросив польську мову. }
+  - { text: The Acme brand is on., translation: Бренд Acme увімкнено. }
+  - { text: "A text an expression computes is shown as computed, never translated.", translation: "Текст, обчислений виразом, показується так, як його обчислено, і ніколи не перекладається." }
+  - { text: "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", translation: "Посилання, яке цей запит робить недійсним, замінюється вузлом помилки, а решта сторінки надсилається." }
+  - { text: Leaves the application, translation: Виходить із застосунку }
+
+  # The overview.
+  - { text: Every node type, translation: Кожен тип вузла }
+  - { text: "A box, a stack and columns hold other nodes, each drawing its children its own way.", translation: "Блок, стек і колонки містять інші вузли, і кожен малює свої дочірні вузли по-своєму." }
+  - { text: A box, translation: Блок }
+  - { text: Groups its children., translation: Групує свої дочірні вузли. }
+  - { text: A stack, translation: Стек }
+  - { text: Draws its children one under another., translation: Малює свої дочірні вузли один під одним. }
+  - { text: A badge, translation: Значок }
+  - { text: Columns, translation: Колонки }
+  - { text: "Draw their children side by side, as these three are.", translation: "Малюють свої дочірні вузли поруч, як ці три." }
+  - { text: Text in each style, translation: Текст у кожному стилі }
+  - { text: "A style says what a node means; the theme decides how that looks. A node may carry several.", translation: "Стиль каже, що означає вузол; тема вирішує, як це виглядає. Вузол може мати кілька стилів." }
+  - { text: Heading, translation: Заголовок }
+  - { text: Subheading, translation: Підзаголовок }
+  - { text: Muted, translation: Приглушений }
+  - { text: Strong, translation: Виділений }
+  - { text: Accent, translation: Акцент }
+  - { text: Danger, translation: Небезпека }
+  - { text: Warning, translation: Попередження }
+  - { text: Success, translation: Успіх }
+  - { text: Strong and accent, translation: Виділений і акцент }
+  - { text: Links, translation: Посилання }
+  - { text: "A link to a declared page moves within the application; a file served under the mount is an ordinary load; https and mailto leave it.", translation: "Посилання на оголошену сторінку переходить у межах застосунку; файл, що подається в точці монтування, завантажується звичайним способом; https і mailto виходять із застосунку." }
+  - { text: Go to Conditions, translation: Перейти до умов }
+  - { text: A file the server serves, translation: "Файл, який подає сервер" }
+  - { text: Write to us, translation: Напишіть нам }
+  - { text: Images, translation: Зображення }
+  - { text: "An image by address, the same image as decoration with an empty alt, and SVG markup drawn as an image, never inserted into the page.", translation: "Зображення за адресою, те саме зображення як оздоба з порожнім alt і розмітка SVG, намальована як зображення, але ніколи не вставлена в сторінку." }
+  - { text: The showcase mark, translation: Знак вітрини }
+  - { text: Three overlapping circles, translation: "Три кола, що перекриваються" }
+  - { text: Values by their schema, translation: Значення за їхньою схемою }
+  - { text: "Each value is drawn as its model property says, read from the team record the page loads.", translation: "Кожне значення малюється так, як визначає його властивість моделі, і зчитується із запису команди, який завантажує сторінка." }
+  - { text: Visit the team homepage, translation: Відвідати домашню сторінку команди }
+  - { text: "A uri, drawn as a link with a text of its own", translation: "Адреса uri, намальована як посилання з власним текстом" }
+  - { text: A uri-reference to a declared page, translation: Посилання uri-reference на оголошену сторінку }
+  - { text: A uri-reference to a served file, translation: "Посилання uri-reference на файл, що подається" }
+  - { text: A mailto address, translation: Адреса mailto }
+  - { text: "An address the rule refuses, drawn as plain text", translation: "Адреса, яку відхиляє правило, намальована як звичайний текст" }
+  - { text: A date, translation: Дата }
+  - { text: A date and time, translation: Дата й час }
+  - { text: A boolean, translation: Логічне значення }
+  - { text: An enumeration's label, translation: Мітка переліку }
+  - { text: A list, translation: Список }
+  - { text: "The rows one answer holds, never paged. A header defaults to the property's title, and the last column is shown only while the team is hiring.", translation: "Рядки однієї відповіді, без поділу на сторінки. Заголовок типово береться з назви властивості, а останню колонку показано, лише поки команда наймає людей." }
+  - { text: Projects under way, translation: Поточні проєкти }
+  - { text: Project, translation: Проєкт }
+  - { text: Texts, translation: Тексти }
+  - text: "{$count} projects so far."
+    translation:
+      plural: count
+      cases:
+        "=0": Проєктів поки немає.
+        one: "Наразі {$count} проєкт."
+        few: "Наразі {$count} проєкти."
+        many: "Наразі {$count} проєктів."
+        other: "Наразі {$count} проєкту."
+  - { text: "{$team} started {$project} most recently.", translation: "Останнім команда {$team} розпочала проєкт {$project}." }
+  - { text: "A plural chosen in the browser for the number it reads, and a text whose values come from the record.", translation: "Форма множини, обрана в браузері для зчитаного числа, і текст зі значеннями із запису." }
+  - { text: Open, context: state, translation: Відкрито }
+  - { text: Open, context: verb, translation: Відкрити }
+  - { text: "A node's own text is told apart the same way: the badge says TEL-42 is open, the link offers to open its tasks.", translation: "Власний текст вузла розрізняється так само: значок каже, що TEL-42 відкрито, а посилання пропонує відкрити його завдання." }
+  - { text: Style rules, translation: Правила стилю }
+  - { text: "A row's style and a cell's are chosen by a value of the row. The featured project is strong, each status has its colour, and a status no case names takes the default. Two columns are headed by the same word, Open, told apart by the context each header is written with.", translation: "Стиль рядка й комірки обирає значення рядка. Обраний проєкт виділено, кожен статус має свій колір, а статус, якого не називає жоден випадок, отримує типовий стиль. Дві колонки мають заголовком те саме слово, Open, яке розрізняє контекст, із яким записано кожен заголовок." }
+  - { text: Composites, translation: Композити }
+  - { text: "This whole page is a view each application places by reference. Below, a view written inline where it is placed, and a composite kind of this example's own, which has no controller.", translation: "Уся ця сторінка — подання, яке кожен застосунок розміщує за посиланням. Нижче — подання, записане просто там, де його розміщено, і власний тип композита цього прикладу, який не має контролера." }
+  - { text: A view declared inline at the node that places it., translation: "Подання, оголошене просто у вузлі, який його розміщує." }
+  - { text: A callout, translation: Виноска }
+  - { text: "Declared once as a kind that extends Ui.Composite and provides a view, and placed with fields of its own.", translation: "Оголошена один раз як тип, що розширює Ui.Composite і надає подання, та розміщена з власними полями." }
+  # The overview's tabs; `Details` and `Notes` are translated with the forms' labels.
+  - { text: Tabs, translation: Вкладки }
+  - { text: "Content under tabs, one tab at a time. The chosen tab is part of the page's address, so a reload or a shared link opens it again.", translation: "Вміст у вкладках, по одній вкладці за раз. Вибрана вкладка є частиною адреси сторінки, тож перезавантаження або надіслане посилання відкриває її знову." }
+  - { text: Summary, translation: Підсумок }
+  - { text: "A tab holds any nodes, as a box does.", translation: "Вкладка містить будь-які вузли, як і блок." }
+  - { text: "Only the chosen tab's nodes are drawn.", translation: "Малюються лише вузли вибраної вкладки." }
+  - { text: Chosen, translation: Вибрана }
+  - { text: "Each tab is delivered by its own when, as any node is.", translation: "Кожна вкладка доставляється за власним when, як і будь-який вузол." }
+  # The labels of the overview's models.
+  - { text: Code, translation: Код }
+  - { text: Name, translation: Назва }
+  - { text: Status, translation: Статус }
+  - { text: Active, translation: Активний }
+  - { text: Paused, translation: Призупинений }
+  - { text: Finished, translation: Завершений }
+  - { text: Budget, translation: Бюджет }
+  - { text: Started, translation: Розпочато }
+  - { text: Free, context: subscription, translation: Безкоштовний }
+  - { text: Enterprise, context: subscription, translation: Корпоративний }
+  - { text: Version, translation: Версія }
+  - { text: Team, context: subscription, translation: Командний }
+
+  # Conditions.
+  - { text: Delivered and drawn, translation: Доставлено й намальовано }
+  - { text: "A node's when decides on the server whether it is delivered; its shown decides in the browser whether a delivered node is drawn.", translation: "when вузла вирішує на сервері, чи його доставляти; його shown вирішує в браузері, чи малювати доставлений вузол." }
+  - { text: Never delivered — this node is not in the page document., translation: Ніколи не доставляється — цього вузла немає в документі сторінки. }
+  - { text: "Delivered and never drawn: the status is not paused, so the browser holds this out of sight.", translation: "Доставлено, але ніколи не малюється: статус не paused, тому браузер тримає цей текст поза полем зору." }
+  - { text: Delivered by its when and drawn by its shown., translation: Доставлено за своїм when і намальовано за своїм shown. }
+  - { text: "A placement's condition around a composite whose node has one of its own is wrapped in a box, and both must hold.", translation: "Умова розміщення навколо композита, вузол якого має власну умову, обгортається в блок, і обидві мають виконуватися." }
+  - { text: Both conditions hold., translation: Обидві умови виконуються. }
+  - { text: "A view whose content is switched off by its own when provides no node, so the composite placing it is left out.", translation: "Подання, вміст якого вимикає його власне when, не надає вузла, тому композит, що його розміщує, пропускається." }
+  - { text: Never provided., translation: Ніколи не надається. }
+  - { text: Every keyword of a condition, translation: Кожне ключове слово умови }
+  - { text: "Each line below is drawn because its condition holds over the summary of project TEL-42 this page read: status active, four members, velocity 2.5, tags design and web, its lead a manager, a null note and no codename.", translation: "Кожен рядок нижче намальовано, бо його умова виконується для підсумку проєкту TEL-42, який зчитала сторінка: status active, четверо учасників, швидкість 2.5, теги design і web, керівник — менеджер, note null і жодного codename." }
+  - { text: "allOf: between 1 and 10 people work on it.", translation: "allOf: над ним працює від 1 до 10 людей." }
+  - { text: "required: the lead has an e-mail.", translation: "required: керівник має e-mail." }
+  - { text: "properties: the lead is a manager.", translation: "properties: керівник — менеджер." }
+  - { text: "minimum: at least three people work on it.", translation: "minimum: над ним працюють щонайменше три людини." }
+  - { text: "maximum: at most nine people work on it.", translation: "maximum: над ним працює щонайбільше девʼять людей." }
+  - { text: "exclusiveMinimum: the velocity is greater than 2.", translation: "exclusiveMinimum: швидкість більша за 2." }
+  - { text: "exclusiveMaximum: the velocity is less than 3.", translation: "exclusiveMaximum: швидкість менша за 3." }
+  - { text: "multipleOf: the velocity is a multiple of 0.5.", translation: "multipleOf: швидкість кратна 0.5." }
+  - { text: "type: the status is a string.", translation: "type: статус — рядок." }
+  - { text: "type, as a list: the note is a string or null.", translation: "type як список: note — рядок або null." }
+  - { text: "const: the status is active.", translation: "const: статус — active." }
+  - { text: "enum: the status is active or paused.", translation: "enum: статус — active або paused." }
+  - { text: "not: the status is not paused.", translation: "not: статус не paused." }
+  - { text: "anyOf: the code starts with TEL or OPS.", translation: "anyOf: code починається з TEL або OPS." }
+  - { text: "items: every tag has at least two letters.", translation: "items: кожен тег має щонайменше дві літери." }
+  - { text: "minItems: there are at least two tags.", translation: "minItems: тегів щонайменше два." }
+  - { text: "maxItems: there are at most five tags.", translation: "maxItems: тегів щонайбільше пʼять." }
+  - { text: "uniqueItems: no tag repeats.", translation: "uniqueItems: жоден тег не повторюється." }
+  - { text: "minLength: the code has at least three characters.", translation: "minLength: code має щонайменше три символи." }
+  - { text: "maxLength: the code has at most ten characters.", translation: "maxLength: code має щонайбільше десять символів." }
+  - { text: "pattern: the code is letters, a dash and digits.", translation: "pattern: code — це літери, дефіс і цифри." }
+  - { text: Missing and null, translation: Відсутність і null }
+  - { text: "Null is a present value. A missing value satisfies no condition, not even one under not, so absence is tested on the parent.", translation: "Null — це наявне значення. Відсутнє значення не задовольняє жодної умови, навіть під not, тому відсутність перевіряють на батьківському обʼєкті." }
+  - { text: The note is present and null., translation: note наявне й має значення null. }
+  - { text: "Never drawn: a missing codename does not satisfy not.", translation: "Ніколи не малюється: відсутнє codename не задовольняє not." }
+  - { text: "The project has no codename, tested on the summary.", translation: "Проєкт не має codename — перевірено на підсумку." }
+  - { text: Query parameters, translation: Параметри запиту }
+  - { text: "This reader declares mode, a list of tag values and a ticket held to a pattern. A parameter the address leaves out, a single one given twice or a value its declaration refuses counts as missing.", translation: "Цей читач оголошує mode, список значень tag і ticket, що має відповідати шаблону. Параметр, пропущений в адресі, одиничний параметр, переданий двічі, або значення, яке відхиляє його оголошення, вважається відсутнім." }
+  - { text: Mode detailed, translation: Режим detailed }
+  - { text: Two tags, translation: Два теги }
+  - { text: A valid ticket, translation: Коректний ticket }
+  - { text: A refused ticket, translation: Відхилений ticket }
+  - { text: Mode given twice, translation: "Режим, переданий двічі" }
+  - { text: Clear the query, translation: Очистити запит }
+  - { text: mode is detailed., translation: mode — detailed. }
+  - { text: There are two tag values or more., translation: Значень tag щонайменше два. }
+  - { text: The ticket matches its pattern., translation: ticket відповідає своєму шаблону. }
+  - { text: "No ticket, or one its pattern refuses.", translation: "Немає ticket або є такий, який відхиляє шаблон." }
+  - { text: Enablement, translation: Доступність }
+  - { text: "The button can be pressed only while its condition over what the form holds is met, and says why while it is not. A tag the project already has is refused, and the lines above read the summary again after a tag is added.", translation: "Кнопку можна натиснути, лише поки виконано її умову щодо вмісту форми, а доки ні, вона пояснює чому. Тег, який проєкт уже має, відхиляється, а рядки вище знову зчитують підсумок після додавання тегу." }
+  - { text: Tag TEL-42, translation: Додати тег до TEL-42 }
+  - { text: Tag, translation: Тег }
+  - { text: Type a tag of three letters or more., translation: Введіть тег щонайменше з трьох літер. }
+  - text: "Tagged {$tag}: TEL-42 has {$count} tags now."
+    translation:
+      plural: count
+      cases:
+        one: "Додано {$tag}: тепер TEL-42 має {$count} тег."
+        few: "Додано {$tag}: тепер TEL-42 має {$count} теги."
+        many: "Додано {$tag}: тепер TEL-42 має {$count} тегів."
+        other: "Додано {$tag}: тепер TEL-42 має {$count} тегу."
+  - { text: A page's own query, translation: Власний запит сторінки }
+  - { text: "This page declares mode as well, and its own nodes read it.", translation: "Ця сторінка теж оголошує mode, і її власні вузли його зчитують." }
+  - { text: The page reads mode as detailed., translation: Сторінка зчитує mode як detailed. }
+
+  # Data.
+  - { text: A reader and its parameters, translation: Читач і його параметри }
+  - { text: "The project is the page address's project parameter, sent with the read; with none the parameter is not sent and the route answers for TEL-42. A code no project has draws the failure tree.", translation: "Проєкт — це параметр project адреси сторінки, що надсилається разом зі зчитуванням; без нього параметр не надсилається, і маршрут відповідає для TEL-42. Код, якого не має жоден проєкт, малює дерево помилки." }
+  - { text: A code no project has, translation: "Код, якого не має жоден проєкт" }
+  - { text: No project, translation: Без проєкту }
+  - { text: Reading the project…, translation: Зчитування проєкту… }
+  - { text: "{$code} {$name}, led by {$lead}", translation: "{$code} {$name}, керівник — {$lead}" }
+  - { text: "A reader nested in this one's content reads the people working on the same project.", translation: "Читач, вкладений у вміст цього, зчитує людей, які працюють над тим самим проєктом." }
+  - { text: Working on it, translation: Працюють над ним }
+  - { text: Role, translation: Роль }
+  - { text: E-mail, translation: E-mail }
+  - { text: "No answer · {$code}", translation: "Немає відповіді · {$code}" }
+  - { text: Readers that fail, translation: "Читачі, що зазнають невдачі" }
+  - { text: "With no failure tree of their own, readers draw the error's code and message — for a project that does not exist, for a guarded route read with no session, and for an answer the reader's model refuses (the projects list read as one project).", translation: "Без власного дерева помилки читачі малюють код і повідомлення помилки — для проєкту, якого не існує, для захищеного маршруту, зчитаного без сеансу, і для відповіді, яку відхиляє модель читача (список проєктів, зчитаний як один проєкт)." }
+  - { text: "Never drawn: there is no such project.", translation: "Ніколи не малюється: такого проєкту немає." }
+  - { text: "Signed in, so this reads: {$name}", translation: "Ви ввійшли, тому зчитано: {$name}" }
+  - { text: "Never drawn: a list is no project.", translation: "Ніколи не малюється: список — не проєкт." }
+  - { text: Read again on focus, translation: Повторне зчитування після повернення до вікна }
+  - { text: "This reader reads the server's time again whenever the window regains focus. Switch to another window and back.", translation: "Цей читач знову зчитує час сервера щоразу, коли вікно повертає фокус. Перейдіть до іншого вікна й назад." }
+  - { text: Read at, translation: Зчитано }
+  - { text: A sign-in gate, translation: Шлюз входу }
+  - { text: "The gate reads whether a session is open, and reads again whenever a request inside it answers 401. Signing in opens a session for a member of the team; an e-mail nobody on the team has is refused on its field. Inside, a reader over a guarded route shows the account. Ending the session quietly leaves the account on screen until the next guarded request — the check below, or a focus — is refused, and the gate then swaps to the signed-out view.", translation: "Шлюз зчитує, чи відкрито сеанс, і зчитує це знову щоразу, коли запит усередині нього отримує відповідь 401. Вхід відкриває сеанс для учасника команди; e-mail, якого немає ні в кого з команди, відхиляється біля свого поля. Усередині читач захищеного маршруту показує обліковий запис. Тихе завершення сеансу залишає обліковий запис на екрані, доки наступний захищений запит — перевірку нижче або повернення до вікна — не буде відхилено; тоді шлюз перемикається на подання для того, хто вийшов." }
+  - { text: You are signed out., translation: Ви вийшли. }
+  - { text: Sign in, translation: Увійти }
+  - { text: "Signed in as {$name}", translation: "Ви ввійшли як {$name}" }
+  - { text: "Member since {$since}", translation: "Учасник із {$since}" }
+  - { text: Check the session, translation: Перевірити сеанс }
+  - { text: End the session quietly, translation: Тихо завершити сеанс }
+  - { text: Sign out, translation: Вийти }
+
+  # The labels of the task models.
+  - { text: Task, translation: Завдання }
+  - { text: Assignee, translation: Виконавець }
+  - { text: Priority, translation: Пріоритет }
+  - { text: Estimate, translation: Оцінка }
+  - { text: Due, translation: Термін }
+  - { text: Label, translation: Мітка }
+  - { text: Blocked, translation: Заблоковано }
+  - { text: To do, translation: До виконання }
+  - { text: In progress, translation: У роботі }
+  - { text: In review, translation: На перевірці }
+  - { text: Bug, translation: Помилка }
+  - { text: Feature, translation: Функція }
+  - { text: Chore, translation: Рутинна робота }
+  - { text: Docs, translation: Документація }
+  - { text: Contact, translation: Контакт }
+  - { text: Project name, translation: Назва проєкту }
+  - { text: Brief, translation: Опис }
+
+  # Tables.
+  - { text: Columns from the model, translation: Колонки з моделі }
+  - { text: "With no columns written, a table shows one per model property but the row key, each headed by its title and drawn by its type. It shows 25 rows to a page, the default, and opens its create and edit forms in a dialog, the surface a table uses when it names none.", translation: "Без записаних колонок таблиця показує по одній на кожну властивість моделі, крім ключа рядка, кожну із заголовком з її назви й намальовану за її типом. Вона типово показує 25 рядків на сторінку, а форми створення й редагування відкриває в діалоговому вікні — поверхні, якою таблиця користується, коли не називає жодної." }
+  - { text: "Written columns, sorting and style rules", translation: "Записані колонки, сортування й правила стилю" }
+  - { text: "Columns written by hand, in the order given, one with a header of its own. A column sorts where the collection lists its property for sorting. A blocked task's row is strong and red, each status cell has its colour, and a priority no case names takes the default. Eight rows to a page.", translation: "Колонки, записані вручну, у заданому порядку, одна з власним заголовком. Колонка сортується, якщо колекція вказує її властивість для сортування. Рядок заблокованого завдання виділено червоним, кожна комірка статусу має свій колір, а пріоритет, якого не називає жоден випадок, отримує типовий стиль. Вісім рядків на сторінку." }
+  - { text: Where, translation: Де }
+  - { text: Members behind a reference, translation: Поля за посиланням }
+  - { text: "The task board answers each task with its assignee and its project nested in it. A column over a nested member takes that member's title and presentation through a named shape, through a definition of the model's own, and through a reference whose own title wins over the shape it names: the contact is a mail link and the brief a link to a page.", translation: "Дошка завдань повертає кожне завдання з вкладеними виконавцем і проєктом. Колонка над вкладеним полем бере його назву й спосіб показу через іменовану структуру, через власне визначення моделі та через посилання, чия власна назва переважає структуру, яку воно називає: контакт — це поштове посилання, а опис — посилання на сторінку." }
+  - { text: Filtered by the address, translation: Відфільтровано за адресою }
+  - { text: "This table declares a project parameter and sends it as an equality with every request. With no project in the address it reads nothing.", translation: "Ця таблиця оголошує параметр project і надсилає його як рівність із кожним запитом. Без проєкту в адресі вона нічого не зчитує." }
+  - { text: Atlas redesign tasks, translation: Завдання редизайну Atlas }
+  - { text: Billing migration tasks, translation: Завдання міграції білінгу }
+  - { text: Blocked tasks, translation: Заблоковані завдання }
+  - { text: "This one is filtered by a fixed value written into the table, and lists only the tasks that are blocked.", translation: "Цю таблицю відфільтровано фіксованим значенням, записаним у неї, і вона показує лише заблоковані завдання." }
+  - { text: Where a form opens, translation: Де відкривається форма }
+  - { text: "Each table below opens its create and edit forms on a different surface. A save reloads every table of tasks on the page.", translation: "Кожна таблиця нижче відкриває форми створення й редагування на іншій поверхні. Збереження перезавантажує кожну таблицю завдань на сторінці." }
+  - { text: Dialogs, translation: Діалогові вікна }
+  - { text: "Create in a small dialog that stays open, emptied, for another task. Edit in a large dialog that does not block the page and ignores a click outside; it keeps its values after a save, drops unsaved input without asking, and is part of the address. Each row offers a confirmed delete.", translation: "Створення в малому діалоговому вікні, яке лишається відкритим і очищеним для наступного завдання. Редагування у великому вікні, яке не блокує сторінку й ігнорує клацання поза ним; після збереження воно зберігає значення, незбережене введення відкидає без запитання і є частиною адреси. Кожен рядок пропонує видалення з підтвердженням." }
+  - { text: Drawers, translation: Шухляди }
+  - { text: "Create in a small drawer from the start edge; edit in a large drawer from the end edge, with no close button. Both close after a save and ask before unsaved input is dropped.", translation: "Створення в малій шухляді від початкового краю; редагування у великій шухляді від кінцевого краю, без кнопки закриття. Обидві закриваються після збереження і питають, перш ніж відкинути незбережене введення." }
+  - { text: Sheets, translation: Аркуші }
+  - { text: "Create in a sheet from the top that does not block the page; edit in a full sheet from the bottom, part of the address.", translation: "Створення в аркуші згори, який не блокує сторінку; редагування в повному аркуші знизу, що є частиною адреси." }
+  - { text: Popovers, translation: Спливні картки }
+  - { text: "Create in a card beside the New button, centred on it; below the breakpoint it becomes a full dialog. Edit in a card under the row's button, aligned to its end, which a click outside does not close and which stays open after a save.", translation: "Створення в картці біля кнопки «Створити», вирівняній по її центру; нижче порогу вона стає повним діалоговим вікном. Редагування в картці під кнопкою рядка, вирівняній по її кінцю, яку не закриває клацання поза нею і яка лишається відкритою після збереження." }
+  - { text: In line, translation: Вбудовано }
+  - { text: "The create form opens above the rows and the edit form under the row it changes. Below the breakpoint the create form opens in a sheet from the bottom.", translation: "Форма створення відкривається над рядками, а форма редагування — під рядком, який вона змінює. Нижче порогу форма створення відкривається в аркуші знизу." }
+  - { text: Panels, translation: Панелі }
+  - { text: "Create in a small panel at the start edge, which Escape does not close. Edit in a large panel at the end edge, part of the address, with the rows still usable beside it; below the breakpoint it becomes a sheet from the bottom.", translation: "Створення в малій панелі біля початкового краю, яку не закриває Escape. Редагування у великій панелі біля кінцевого краю, що є частиною адреси, а рядки поруч лишаються доступними; нижче порогу вона стає аркушем знизу." }
+  - { text: A page of its own, translation: Окрема сторінка }
+  - { text: "Create and edit replace the page's content under one address name, so the address says either a new task or the task with this key, and Back closes the form. The surface is declared once and named by both.", translation: "Створення й редагування замінюють вміст сторінки під однією назвою в адресі, тож адреса вказує або на нове завдання, або на завдання з цим ключем, а «Назад» закриває форму. Поверхню оголошено один раз, і обидві дії її називають." }
+
+  # Filters.
+  - { text: Every filter the collection accepts, translation: "Кожен фільтр, який приймає колекція" }
+  - { text: "With no fields written, the bar draws one control per filter the collection accepts, in its order and from the model's property: a list for an enumeration or a yes/no value, a typed box otherwise, and one label over the two bounds of a range. It sits above the table, applies a choice at once and typed text on Enter, and keeps nothing between visits.", translation: "Без записаних полів панель фільтрів малює по одному елементу керування на кожен фільтр, який приймає колекція, у її порядку та за властивістю моделі: список для переліку або значення так/ні, в інших випадках поле введення, і одну мітку над двома межами діапазону. Вона стоїть над таблицею, вибір застосовує одразу, а введений текст — після Enter, і нічого не зберігає між відвідинами." }
+  - { text: Every control, translation: Кожен елемент керування }
+  - { text: "Each way a filter is entered: typed text, options side by side, a list, typed tags, a slider, a switch, and two dates under one label. The project filter is drawn nowhere and only a preset sets it. Status starts at its default, and a preset sets the filters the presets name and clears the others they name. Chips summarise what is chosen, and the values are part of the address. Below the breakpoint the bar folds, and the pinned text filter stays outside the fold.", translation: "Кожен спосіб введення фільтра: введений текст, варіанти поруч, список, введені теги, повзунок, перемикач і дві дати під однією міткою. Фільтр проєкту ніде не малюється, і задає його лише готовий набір. Статус починається з типового значення, а готовий набір задає фільтри, які він називає, і очищає інші, названі наборами. Чипи підсумовують вибране, а значення є частиною адреси. Нижче порогу панель згортається, а закріплений текстовий фільтр лишається поза згорнутою частиною." }
+  - { text: Urgent, translation: Терміново }
+  - { text: Atlas only, translation: Лише Atlas }
+  - { text: Stuck, translation: Застрягло }
+  - { text: "Beside, as chips, while typing", translation: "Поруч, як чипи, під час введення" }
+  - { text: "The controls sit in a column at the start edge. Only the filters you choose are on show: add one from the bar's list, and removing it clears it. Each filter is a chip naming its value, which opens its control. Typed text applies after a pause, and two bounds of a number are captioned after and before. The choice is kept in this browser across visits. Below the breakpoint the bar opens in a sheet from the bottom.", translation: "Елементи керування стоять у колонці біля початкового краю. Видно лише вибрані вами фільтри: додайте фільтр зі списку панелі, а його вилучення його очищає. Кожен фільтр — це чип із назвою значення, який відкриває свій елемент керування. Введений текст застосовується після паузи, а дві межі числа мають підписи «після» і «раніше за». Вибір зберігається в цьому браузері між відвідинами. Нижче порогу панель відкривається в аркуші знизу." }
+  - { text: "Beside at the end, applied by a button", translation: "Поруч у кінці, із застосуванням кнопкою" }
+  - { text: "The controls sit at the end edge, and a change waits for Apply, while a preset, Reset and removing a summary chip apply at once. Several assignees are typed separated by commas. The choice is kept for this tab only, and survives a reload.", translation: "Елементи керування стоять біля кінцевого краю, і зміна чекає на «Застосувати», тоді як готовий набір, «Скинути» та вилучення чипа підсумку діють одразу. Кількох виконавців вводять через кому. Вибір зберігається лише для цієї вкладки й переживає перезавантаження." }
+  - { text: Due by October, translation: Термін до жовтня }
+  - { text: "Folded, starting open", translation: "Згортається, спершу розгорнуто" }
+  - { text: "The controls fold behind a toggle that counts the filters holding a value, and start unfolded. The pinned text filter stays outside the fold, and the others are added from the bar's list. Status starts at in progress; removing it clears that default too, and Reset brings it back. The values are kept both in the address and in this browser, the address winning, and the fold you choose is remembered.", translation: "Елементи керування згортаються за перемикачем, який рахує фільтри зі значенням, і спершу розгорнуті. Закріплений текстовий фільтр лишається поза згорнутою частиною, а інші додаються зі списку панелі. Статус починається зі значення «У роботі»; його вилучення очищає й це типове значення, а «Скинути» його повертає. Значення зберігаються і в адресі, і в цьому браузері, причому перевагу має адреса, а вибраний вами стан згортання запамʼятовується." }
+  - { text: "Folded, starting closed", translation: "Згортається, спершу згорнуто" }
+  - { text: "Folded to begin with. The pinned text filter, Apply and Reset stay outside the fold. The label starts at its default, bugs, until it is changed, and Reset brings the default back.", translation: "Спершу згорнуто. Закріплений текстовий фільтр, «Застосувати» і «Скинути» лишаються поза згорнутою частиною. Мітка має типове значення «Помилка», доки її не змінять, а «Скинути» повертає типове значення." }
+  - { text: In a dialog, translation: У діалоговому вікні }
+  - { text: "The controls open in a small dialog from a button that counts the filters holding a value, and close with Done. The open dialog is part of the address, so a link opens it. The pinned text filter stays beside the button, and chips summarise what is chosen.", translation: "Елементи керування відкриваються в малому діалоговому вікні з кнопки, яка рахує фільтри зі значенням, і закриваються кнопкою «Готово». Відкрите вікно є частиною адреси, тож його відкриває посилання. Закріплений текстовий фільтр лишається біля кнопки, а чипи підсумовують вибране." }
+  - { text: In a drawer, translation: У шухляді }
+  - { text: "The controls open in a drawer from the start edge, which a click outside does not close. Typed values apply after a pause.", translation: "Елементи керування відкриваються в шухляді від початкового краю, яку не закриває клацання поза нею. Введені значення застосовуються після паузи." }
+  - { text: In a popover, translation: У спливній картці }
+  - { text: "The controls open in a card under the button, aligned to its end; below the breakpoint, in a sheet from the bottom.", translation: "Елементи керування відкриваються в картці під кнопкою, вирівняній по її кінцю; нижче порогу — в аркуші знизу." }
+
+  # The labels of the forms page's models.
+  - { text: Title, translation: Назва }
+  - { text: Kind of work, translation: Вид роботи }
+  - { text: Design, translation: Дизайн }
+  - { text: Building, translation: Розробка }
+  - { text: Writing, translation: Написання текстів }
+  - { text: Research, translation: Дослідження }
+  - { text: People needed, translation: Потрібно людей }
+  - { text: Start, translation: Початок }
+  - { text: Kick-off, translation: Стартова зустріч }
+  - { text: Daily call, translation: Щоденний дзвінок }
+  - { text: Details, translation: Подробиці }
+  - { text: Markdown is welcome., translation: Можна використовувати Markdown. }
+  - { text: Keep me posted by, translation: Повідомляйте мене через }
+  - { text: Chat, translation: Чат }
+  - { text: Phone, translation: Телефон }
+  - { text: Keywords, translation: Ключові слова }
+  - { text: "Lower-case words; Enter or a comma adds one.", translation: "Слова малими літерами; Enter або кома додає ще одне." }
+  - { text: Site access code, translation: "Код доступу на обʼєкт" }
+  - { text: Never kept between visits., translation: Ніколи не зберігається між відвідинами. }
+  - { text: Received, translation: Отримано }
+  - { text: Lead, translation: Керівник }
+  - { text: "Lead's role", translation: Роль керівника }
+  - { text: Manager, translation: Менеджер }
+  - { text: Engineer, translation: Інженер }
+  - { text: Designer, translation: Дизайнер }
+  - { text: Writer, translation: Автор }
+  - { text: Reviewers, translation: Рецензенти }
+  - { text: Sponsor, translation: Спонсор }
+  - { text: Helpers, translation: Помічники }
+  - { text: Period, translation: Період }
+  - { text: The studio books a year at most., translation: Студія бронює щонайбільше на рік. }
+  - { text: On site, translation: На місці }
+  - { text: Site address, translation: "Адреса обʼєкта" }
+  - { text: Notes, translation: Нотатки }
+  - { text: Location, translation: Місце }
+  - { text: Joined, translation: Дата приєднання }
+
+  # Forms.
+  - { text: Every control from the model, translation: Кожен елемент керування з моделі }
+  - { text: "With no fields written, the form draws one control per property, chosen from its schema: a text box, a list for an enumeration, number boxes, a date, a date and time, a time, a multi-line box for a document, a checkbox, options side by side for a list of an enumeration, and typed tags for a list of words. A description is a hint under its field, and a default the starting value.", translation: "Без записаних полів форма малює по одному елементу керування на кожну властивість, обраному за її схемою: текстове поле, список для переліку, числові поля, дату, дату й час, час, багаторядкове поле для документа, прапорець, варіанти поруч для списку з переліку і введені теги для списку слів. Опис стає підказкою під полем, а типове значення — початковим значенням." }
+  - { text: "Each field is checked against the model once it has been touched: the title's length, the number of people, the budget in steps of 50, the keywords' spelling. The server refuses a title another request has, and its answer lands on the title. What is typed is kept in the address and in this browser — all but the access code, which the model marks write-only.", translation: "Кожне поле перевіряється за моделлю, щойно його торкнулися: довжина назви, кількість людей, бюджет із кроком 50, написання ключових слів. Сервер відхиляє назву, яку вже має інша заявка, і його відповідь потрапляє на поле назви. Введене зберігається в адресі та в цьому браузері — усе, крім коду доступу, який модель позначає як лише для запису." }
+  - { text: Each control chosen by hand, translation: "Кожен елемент керування, обраний вручну" }
+  - { text: "The same request with a control written for each field: the title left to its derived control, the kind as options side by side, the channels as a list choosing several, the number of people on a slider, urgent as a switch and the keywords as tags. What is typed is kept for this tab only.", translation: "Та сама заявка з елементом керування, записаним для кожного поля: назва з виведеним елементом керування, вид роботи як варіанти поруч, канали як список із кількома варіантами вибору, кількість людей на повзунку, терміновість як перемикач, а ключові слова як теги. Введене зберігається лише для цієї вкладки." }
+  - { text: Requests received, translation: Отримані заявки }
+  - { text: "The latest requests the two forms sent, read again after every save.", translation: "Останні заявки, надіслані обома формами, що зчитуються знову після кожного збереження." }
+  - { text: "Choices, pickers and dates", translation: "Варіанти, засоби вибору й дати" }
+  - { text: "Booking people on a project. The project is chosen from a list read from the projects collection, each option with its code as a hint. The lead is picked in a dialog, searched by name, among the active members of the role chosen above it; choosing another role reads the options again and keeps the lead only if they still fit. Reviewers are picked in a drawer, several at once, and the sponsor in a popover; the sponsor starts at a default e-mail, shown as the person's name by one lookup. Helpers are offered side by side, three at a time, with More for the rest. A picked person links to their e-mail.", translation: "Бронювання людей на проєкт. Проєкт обирають зі списку, зчитаного з колекції проєктів, кожен варіант — із кодом як підказкою. Керівника обирають у діалоговому вікні, шукаючи за імʼям, серед активних учасників ролі, обраної вище; вибір іншої ролі знову зчитує варіанти й залишає керівника, лише якщо він досі підходить. Рецензентів обирають у шухляді, кількох одразу, а спонсора — у спливній картці; спонсор спершу має типовий e-mail, показаний як імʼя людини завдяки одному запиту. Помічників пропонують поруч, по троє, з кнопкою «Більше» для решти. Обрана людина має посилання на свій e-mail." }
+  - { text: "The period is two dates with presets, its weeks starting on Sunday, starting at next month and warning past three months. The server refuses a period that ends before it starts or runs past a year, and its answer lands on the period. The people around the lead are shown once a lead is chosen, and the site address only for work on site.", translation: "Період — це дві дати з готовими наборами, тижні в ньому починаються з неділі, спершу встановлено наступний місяць, а понад три місяці показується попередження. Сервер відхиляє період, що закінчується раніше, ніж починається, або триває довше за рік, і його відповідь потрапляє на поле періоду. Людей навколо керівника показано, щойно керівника обрано, а адресу обʼєкта — лише для роботи на місці." }
+  - { text: The project, translation: Проєкт }
+  - { text: "Which project, and who leads the work.", translation: "Який проєкт і хто керує роботою." }
+  - { text: Around the lead, translation: Навколо керівника }
+  - { text: "Who reviews the work, who sponsors it and who helps.", translation: "Хто рецензує роботу, хто її спонсорує і хто допомагає." }
+  - { text: When and where, translation: Коли й де }
+  - { text: Tomorrow, translation: Завтра }
+  - { text: Next week, translation: Наступний тиждень }
+  - { text: This month, translation: Цей місяць }
+  - { text: Next month, translation: Наступний місяць }
+  - { text: Next quarter, translation: Наступний квартал }
+  - { text: Next year, translation: Наступний рік }
+  - { text: Bookings, translation: Бронювання }
+  - { text: "The latest bookings, read again after every save.", translation: "Останні бронювання, що зчитуються знову після кожного збереження." }
+
+  # The labels of the actions page's models.
+  - { text: Only these labels, translation: Лише ці мітки }
+  - { text: Count blocked tasks, translation: Враховувати заблоковані завдання }
+  - { text: Hours a week, translation: Годин на тиждень }
+  - { text: Done by, translation: Готово до }
+  - { text: No label, translation: Без мітки }
+  - { text: Tasks, translation: Завдання }
+  - { text: Hours, translation: Години }
+  - { text: Days, translation: Дні }
+  - { text: Task number, translation: Номер завдання }
+  - { text: "Assignee's e-mail", translation: E-mail виконавця }
+  - { text: Comment, translation: Коментар }
+  - { text: Comment number, translation: Номер коментаря }
+  - { text: Pinned, translation: Закріплено }
+  - { text: Written, translation: Написано }
+  - { text: New text, translation: Новий текст }
+
+  # Actions.
+  - { text: A bare button, translation: Сама кнопка }
+  - { text: "An input model with no properties draws the button alone. This one unblocks every blocked task of TEL-42, and the task counts and the TEL-42 table further down read again.", translation: "Модель введення без властивостей малює саму кнопку. Ця розблоковує кожне заблоковане завдання TEL-42, а лічильники завдань і таблиця TEL-42 нижче зчитуються знову." }
+  - { text: Unblock TEL-42, translation: Розблокувати TEL-42 }
+  - { text: An answer drawn from the result, translation: "Відповідь, намальована з результату" }
+  - { text: "The route adds up the estimates of a project's open tasks. Its fields are the input model's, in two sections, the project chosen from the projects collection and the pace on a slider; what is entered is kept in the address. The answer is drawn under the button: sentences over the result and the record sent, the date the work would be done by, and a list of the hours by label.", translation: "Маршрут підсумовує оцінки відкритих завдань проєкту. Його поля — це поля моделі введення у двох розділах: проєкт обирають із колекції проєктів, а темп — на повзунку; введене зберігається в адресі. Відповідь малюється під кнопкою: речення з результату й надісланого запису, дата, до якої роботу було б завершено, і список годин за мітками." }
+  - { text: What to count, translation: Що рахувати }
+  - { text: How fast, translation: Як швидко }
+  - { text: Estimate, context: verb, translation: Оцінити }
+  - text: "{$hours} hours in {$tasks} open tasks of {$project}"
+    translation:
+      plural: tasks
+      cases:
+        "=0": "У проєкті {$project} немає відкритої роботи."
+        one: "{$hours} год у {$tasks} відкритому завданні проєкту {$project}"
+        few: "{$hours} год у {$tasks} відкритих завданнях проєкту {$project}"
+        many: "{$hours} год у {$tasks} відкритих завданнях проєкту {$project}"
+        other: "{$hours} год у {$tasks} відкритого завдання проєкту {$project}"
+  - text: "About {$weeks} weeks at {$pace} hours a week, done by"
+    translation:
+      plural: weeks
+      cases:
+        one: "Приблизно {$weeks} тиждень при {$pace} год на тиждень, готово до"
+        few: "Приблизно {$weeks} тижні при {$pace} год на тиждень, готово до"
+        many: "Приблизно {$weeks} тижнів при {$pace} год на тиждень, готово до"
+        other: "Приблизно {$weeks} тижня при {$pace} год на тиждень, готово до"
+  - { text: By label, translation: За мітками }
+  - { text: When it fails, translation: Коли не вдається }
+  - { text: "A failure tree of the action's own, drawn over the error and the record sent. Give task 4 to james@northwind.example and it succeeds. Leave the e-mail out, or name nobody on the team, and the refusal lands on the field; task 999 answers 404, and tomas@northwind.example, who has left, 409.", translation: "Власне дерево помилки дії, намальоване з помилки й надісланого запису. Призначте завдання 4 на james@northwind.example, і все вдасться. Пропустіть e-mail або вкажіть когось не з команди, і відмова зʼявиться біля поля; завдання 999 дає 404, а tomas@northwind.example, який пішов із команди, — 409." }
+  - { text: "This action reads the estimate route's answer as a number of days, which the route does not give: the answer is refused by the action's output model, and its failure tree says so.", translation: "Ця дія зчитує відповідь маршруту оцінки як кількість днів, якої маршрут не надає: модель виведення дії відхиляє відповідь, і її дерево помилки про це повідомляє." }
+  - { text: Estimate in days, translation: Оцінити в днях }
+  - { text: "{$code}: the answer is not the one this button reads.", translation: "{$code}: це не та відповідь, яку зчитує ця кнопка." }
+  - { text: Where a success goes, translation: Куди веде успіх }
+  - { text: "The first answers with the page listing a project's tasks, and the application moves there. The second answers with the team's homepage, an https address that replaces the page.", translation: "Перша відповідає сторінкою із завданнями проєкту, і застосунок переходить туди. Друга відповідає домашньою сторінкою команди — адресою https, яка замінює сторінку." }
+  - { text: Open its tasks, translation: Відкрити його завдання }
+  - { text: Visit the homepage, translation: Відвідати домашню сторінку }
+  - { text: Reading again after a success, translation: Повторне зчитування після успіху }
+  - { text: "Moving a task reads again both the counts below, a reader, and the TEL-42 table further down. The answer names the task and its new status.", translation: "Переміщення завдання знову зчитує і лічильники нижче — читач, — і таблицю TEL-42 ще нижче. Відповідь називає завдання і його новий статус." }
+  - { text: "{$code}: {$todo} to do, {$doing} in progress, {$review} in review, {$done} finished, {$blocked} blocked.", translation: "{$code}: до виконання {$todo}, у роботі {$doing}, на перевірці {$review}, завершено {$done}, заблоковано {$blocked}." }
+  - { text: Move, translation: Перемістити }
+  - { text: "Task {$id}, {$title}, is now", translation: "Завдання {$id}, {$title}, тепер має статус" }
+  - { text: One press after another, translation: Одне натискання за іншим }
+  - { text: "Comments are sent one after another, in the order the button is pressed, however quickly. The button waits for three characters and says why; choosing another task clears the last answer. The comments listed at the bottom read again after each one.", translation: "Коментарі надсилаються один за одним, у порядку натискань кнопки, хоч би як швидко її натискали. Кнопка чекає на три символи й пояснює чому; вибір іншого завдання очищає останню відповідь. Коментарі, перелічені внизу, зчитуються знову після кожного." }
+  - { text: Add the comment, translation: Додати коментар }
+  - { text: Write three characters or more., translation: Напишіть щонайменше три символи. }
+  - text: "Comment {$id} added to {$title}, which has {$count} comments now."
+    translation:
+      plural: count
+      cases:
+        "=1": "Коментар {$id} — перший у завданні {$title}."
+        one: "Додано коментар {$id} до завдання {$title}, яке тепер має {$count} коментар."
+        few: "Додано коментар {$id} до завдання {$title}, яке тепер має {$count} коментарі."
+        many: "Додано коментар {$id} до завдання {$title}, яке тепер має {$count} коментарів."
+        other: "Додано коментар {$id} до завдання {$title}, яке тепер має {$count} коментаря."
+  - { text: Row actions on a table, translation: Дії рядків у таблиці }
+  - { text: "Every task of TEL-42 offers three buttons, each replaced by its answer once pressed. Start runs at once, only on a task still to do. Close asks first, and is not offered on a finished task. Assign opens a dialog for the e-mail, which the row does not give, and shows the server's refusal on its field.", translation: "Кожне завдання TEL-42 має три кнопки, і кожна після натискання замінюється своєю відповіддю. «Розпочати» діє одразу, лише для завдання, яке ще до виконання. «Закрити» спершу питає і недоступна для завершеного завдання. «Призначити» відкриває діалогове вікно для e-mail, якого рядок не надає, і показує відмову сервера біля його поля." }
+  - { text: Number, translation: Номер }
+  - { text: Start, context: verb, translation: Розпочати }
+  - { text: Closed, translation: Закрито }
+  - { text: Close this task?, translation: Закрити це завдання? }
+  - { text: Already started., translation: Уже розпочато. }
+  - { text: Already finished., translation: Уже завершено. }
+  - { text: Assign, translation: Призначити }
+  - { text: "{$title} is assigned to {$assignee}.", translation: "{$title} призначено виконавцю {$assignee}." }
+  - { text: "Task {$id} is unchanged.", translation: "Завдання {$id} не змінилося." }
+  - { text: "HTTP {$status} · {$code}", translation: "HTTP {$status} · {$code}" }
+  - { text: Row actions on a list, translation: Дії рядків у списку }
+  - { text: "The latest comments, a list a reader draws, pinned ones first. Pin runs at once on a comment not yet pinned, Delete asks first, and Edit asks for the new text in a dialog; leaving it empty is refused on its field. The list reads again after each.", translation: "Останні коментарі — список, який малює читач, закріплені спершу. «Закріпити» діє одразу для ще не закріпленого коментаря, «Видалити» спершу питає, а «Редагувати» просить новий текст у діалоговому вікні; порожній текст відхиляється біля свого поля. Список зчитується знову після кожної дії." }
+  - { text: Latest comments, translation: Останні коментарі }
+  - { text: Pin, translation: Закріпити }
+  - { text: Already pinned., translation: Уже закріплено. }
+  - { text: Delete this comment?, translation: Видалити цей коментар? }
+  - { text: Rewrite this comment?, translation: Переписати цей коментар? }
+  - { text: More places a success goes, translation: "Інші місця, куди веде успіх" }
+  - { text: "The first adds a task and moves to the tables page, an address written in the manifest. The second answers with the handbook's address, a file the server serves under the mount, which is an ordinary load. The third answers with the team's mirror, an address a browser reads as another host: it navigates nowhere, and the answer says so.", translation: "Перша додає завдання й переходить на сторінку таблиць — за адресою, записаною в маніфесті. Друга відповідає адресою довідника — файлу, який сервер подає в точці монтування і який завантажується звичайним способом. Третя відповідає адресою дзеркала команди, яку браузер читає як інший хост: вона нікуди не веде, і відповідь про це повідомляє." }
+  - { text: Add it and open the tables, translation: Додати й відкрити таблиці }
+  - { text: Open the handbook, translation: Відкрити довідник }
+  - { text: Open the mirror, translation: Відкрити дзеркало }
+  - { text: "The answer was {$mirror}, which is no address to go to, so the page stays.", translation: "Відповіддю була адреса {$mirror}, на яку не можна перейти, тому сторінка лишається." }
+  - { text: "Refused, and unanswered", translation: "Відмова й відсутність відповіді" }
+  - { text: "Pausing a project is for a manager alone. With no session the guard answers 401. Signed in on the Data page as james@northwind.example, who is no manager, the route answers 403 with no body; signed in as ada@northwind.example, it pauses the project, and refuses one that is not running in the page's language. The action's default failure tree draws each refusal.", translation: "Призупинити проєкт може лише менеджер. Без сеансу перевірка доступу відповідає 401. Після входу на сторінці «Дані» як james@northwind.example, який не є менеджером, маршрут відповідає 403 без тіла; після входу як ada@northwind.example він призупиняє проєкт, а проєкт, що не виконується, відхиляє мовою сторінки. Типове дерево помилки дії малює кожну відмову." }
+  - { text: Pause the project, translation: Призупинити проєкт }
+  - { text: "{$code} is not running, so it cannot be paused.", translation: "Проєкт {$code} не виконується, тому його не можна призупинити." }
+  - { text: "{$name} is paused.", translation: "Проєкт {$name} призупинено." }
+  - { text: "This route sends every request back to itself, so the browser gives up and no answer arrives at all. The failure tree says so: the error carries no status.", translation: "Цей маршрут перенаправляє кожен запит на самого себе, тож браузер здається й жодна відповідь не надходить. Дерево помилки про це повідомляє: помилка не має статусу." }
+  - { text: Call a route that never answers, translation: "Викликати маршрут, який ніколи не відповідає" }
+  - { text: "The route answered, with the status", translation: "Маршрут відповів зі статусом" }
+  - { text: "No answer arrived, so there is no status.", translation: "Відповідь не надійшла, тому статусу немає." }
+  - { text: "{$code} · {$message}", translation: "{$code} · {$message}" }
+  - { text: Row actions that read the address, translation: "Дії рядків, що зчитують адресу" }
+  - { text: "The table lists the tasks of the project the address names, and Move sends a task to the status the address names, read from the table's query when it is pressed. The row and the address bind every field of the move, so its dialog asks nothing and is a plain confirmation. Choose a project and a status:", translation: "Таблиця показує завдання проєкту, названого в адресі, а «Перемістити» переносить завдання до статусу, названого в адресі, який зчитується із запиту таблиці в момент натискання. Рядок і адреса задають кожне поле переміщення, тому його діалогове вікно ні про що не питає і є простим підтвердженням. Оберіть проєкт і статус:" }
+  - { text: TEL-42 into review, translation: TEL-42 на перевірку }
+  - { text: APP-5 to finished, translation: APP-5 до завершених }
+  - { text: OPS-7 back to in progress, translation: OPS-7 знову в роботу }
+  - { text: Neither, translation: Жоден }
+  - { text: Moved to, translation: Переміщено до }
+  - { text: Move this task to the status the address names?, translation: "Перемістити це завдання до статусу, названого в адресі?" }
+  - { text: Choose a status above first., translation: Спершу оберіть статус вище. }
+
+  # Components.
+  - { text: A component on the page, translation: Компонент на сторінці }
+  - { text: "A component written in TSX and shipped by a library of this example, placed with fixed properties. It uses everything the host gives it: it shows where the page is, keeps which panel is open in the address, moves to another page by navigate and by a link from href, and is refused an https address. It reads how TEL-42 stands and adds a task with fetch, says the tasks changed with notifyChanged — so the table below reads again — and counts every change it hears of with onChanged, the table's own edits and deletes included. A task it adds is announced in a layer of its own at the corner of the page.", translation: "Компонент, написаний на TSX і поставлений бібліотекою цього прикладу, розміщений із фіксованими властивостями. Він використовує все, що дає йому хост: показує, де перебуває сторінка, зберігає в адресі, яку панель відкрито, переходить на іншу сторінку через navigate і через посилання з href, а адресу https йому відхиляють. Він зчитує стан TEL-42 і додає завдання через fetch, повідомляє про зміну завдань через notifyChanged — тож таблиця нижче зчитується знову — і рахує кожну зміну, про яку дізнається через onChanged, зокрема власні редагування й видалення таблиці. Додане завдання він оголошує у власному шарі в куті сторінки." }
+  - { text: A component in a cell, translation: Компонент у комірці }
+  - { text: "The priority column is drawn by a component given each row's priority and whether the task is blocked. The table lists TEL-42's tasks over the same collection the component writes to, so it reads again when a task is added above; its edits and deletes are heard by the component.", translation: "Колонку пріоритету малює компонент, який отримує пріоритет кожного рядка й те, чи завдання заблоковано. Таблиця показує завдання TEL-42 з тієї самої колекції, у яку пише компонент, тож вона зчитується знову, коли вище додають завдання; про її редагування й видалення дізнається компонент." }
+  - { text: Its stylesheet, translation: Його таблиця стилів }
+  - { text: "The components' sources import a stylesheet of their own, which the application places in the telo.component layer: after the theme and the brand, before the application's own stylesheet. Every value in it reads a design token, so the desk and the meter take each mount's look.", translation: "Джерела компонентів імпортують власну таблицю стилів, яку застосунок розміщує в шарі telo.component: після теми й бренду, перед власною таблицею стилів застосунку. Кожне значення в ній зчитує токен дизайну, тож робоча панель та індикатор набувають вигляду кожної точки монтування." }
+
+  # CRUD.
+  - { text: A generated admin screen, translation: Згенерований адміністративний екран }
+  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "Одне оголошення над моделлю завдань, на якій працює API: панель фільтрів, сортована таблиця з поділом на сторінки, форма додавання завдання й форма його зміни, а також видалення з підтвердженням у кожному рядку. Колонки, поля й фільтри виводяться з моделі, тож екран пропонує саме те, що приймає API." }
+  - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "Панель фільтрів стоїть поруч із таблицею біля кінцевого краю й показує лише вибрані вами фільтри, кожен як чип, що відкриває свій елемент керування. Свій вибір вона зберігає в цьому браузері під ключем aside — ключем панелі поруч із таблицею на сторінці «Фільтри», тож фільтр, вибраний на одній сторінці, вибрано на обох." }
+  - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "Нове завдання відкривається в шухляді від кінцевого краю, яка лишається відкритою й очищеною для наступного. Завдання змінюють у панелі поруч зі списком, яка є частиною адреси, а вихід із неї з незбереженим введенням спершу просить підтвердження." }
+
+  # Themes.
+  - { text: Four mounts of one design, translation: Чотири точки монтування одного дизайну }
+  - { text: "The same pages are served four times, each application naming its own theme, brand and navigation. The pages are one set of views, placed by reference from all four, so only the look and the navigation differ.", translation: "Ті самі сторінки подаються чотири рази, і кожен застосунок називає власну тему, бренд і навігацію. Сторінки — це один набір подань, розміщених за посиланням в усіх чотирьох, тож відрізняються лише вигляд і навігація." }
+  - { text: At the root, translation: У корені }
+  - { text: "The built-in look, this example's own stylesheet over it, and a brand chosen for every request: the Acme token set while a cookie asks for it, the theme's own values otherwise.", translation: "Вбудований вигляд, над ним власна таблиця стилів цього прикладу і бренд, що обирається для кожного запиту: набір токенів Acme, поки про нього просить cookie, а інакше — власні значення теми." }
+  - { text: Under /radix, translation: За адресою /radix }
+  - { text: "The Radix theme: its stylesheet and its thirteen controls — the choice lists, dialogs, drawers, popovers, menus and tooltips — with the brand left to the theme.", translation: "Тема Radix: її таблиця стилів і тринадцять елементів керування — списки вибору, діалогові вікна, шухляди, спливні картки, меню й підказки, — а бренд залишено темі." }
+  - { text: Under /brand, translation: За адресою /brand }
+  - { text: "A theme of this example's own: Radix's controls under a stylesheet written here, with token values of its own. The application's brand is one token set, which ships the Inter typeface the theme names.", translation: "Власна тема цього прикладу: елементи керування Radix під написаною тут таблицею стилів, із власними значеннями токенів. Бренд застосунку — це один набір токенів, який постачає шрифт Inter, названий темою." }
+  - { text: Under /sidebar, translation: За адресою /sidebar }
+  - { text: "The built-in look with the navigation in a sidebar beside the page, which collapses to a rail and remembers its open groups. On a phone it becomes a tab bar along the bottom edge.", translation: "Вбудований вигляд із навігацією в бічній панелі поруч зі сторінкою, яка згортається до вузької смуги й запамʼятовує відкриті групи. На телефоні вона стає панеллю вкладок уздовж нижнього краю." }
+  - { text: "A link resolves under the mount it is drawn in, so the links between the mounts and the brand switch are on the root application's Themes page.", translation: "Посилання розвʼязується в точці монтування, у якій його намальовано, тож посилання між точками монтування й перемикач бренду розташовані на сторінці «Теми» кореневого застосунку." }
+  - { text: Every design token, translation: Кожен токен дизайну }
+  - { text: "Each token of the closed set as this page's theme and brand give it, read from the custom property the renderer projects it to, with a sample drawn in it. Open another mount, or switch the brand at the root, and the values change.", translation: "Кожен токен закритого набору таким, яким його задають тема й бренд цієї сторінки, зчитаний із CSS-властивості, у яку його проєктує рендерер, і зі зразком, намальованим із ним. Відкрийте іншу точку монтування або перемкніть бренд у корені, і значення зміняться." }
+  - { text: Typefaces, translation: Шрифти }
+  - { text: "The body and heading typefaces in each of their four faces, and for each face whether this application serves it. Under /brand they are Inter's regular, bold, italic and bold italic faces, which ship with the example and are served with the page; the other two mounts serve none and draw from the viewer's own fonts.", translation: "Шрифти тексту й заголовків у кожному з чотирьох накреслень і, для кожного накреслення, чи подає його цей застосунок. За адресою /brand це звичайне, жирне, курсивне й жирне курсивне накреслення Inter, які постачаються з прикладом і подаються разом зі сторінкою; дві інші точки монтування не подають жодного й використовують власні шрифти користувача." }
+  - { text: Switch the mount or the brand, translation: Перемкнути точку монтування або бренд }
+  - { text: "These links are this application's own: a link resolves under the mount it is drawn in, so only the application at the root reaches the other two. Each is an ordinary load of another application.", translation: "Ці посилання належать цьому застосунку: посилання розвʼязується в точці монтування, у якій його намальовано, тож лише кореневий застосунок досягає двох інших. Кожне з них — звичайне завантаження іншого застосунку." }
+  - { text: Open the Radix mount, translation: Відкрити точку монтування Radix }
+  - { text: Open the brand mount, translation: Відкрити точку монтування бренду }
+  - { text: "This application's brand is chosen for every request. The switch sets or clears a cookie and comes back here, and while the cookie is there the Acme token set is used instead of the theme's own.", translation: "Бренд цього застосунку обирається для кожного запиту. Перемикач встановлює або видаляє cookie й повертається сюди, і поки cookie є, замість власних значень теми використовується набір токенів Acme." }
+  - { text: Use the Acme brand, translation: Використати бренд Acme }
+  - { text: "Use the theme's own values", translation: Використати власні значення теми }
+
+  # The renderer's own words, as `Ui.words` writes them.
+  - { text: Loading…, translation: Завантаження… }
+  - { text: No rows., translation: Немає рядків. }
+  - { text: Nothing found., translation: Нічого не знайдено. }
+  - { text: Save, translation: Зберегти }
+  - { text: Cancel, translation: Скасувати }
+  - { text: Close, translation: Закрити }
+  - { text: New, translation: Створити }
+  - { text: Edit, translation: Редагувати }
+  - { text: Delete, translation: Видалити }
+  - { text: Delete this row?, translation: Видалити цей рядок? }
+  - { text: This cannot be undone., translation: Цю дію не можна скасувати. }
+  - { text: Previous page, translation: Попередня сторінка }
+  - { text: "{$first}–{$last} of {$total}", translation: "{$first}–{$last} з {$total}" }
+  - { text: "0 of {$total}", translation: "0 з {$total}" }
+  - { text: Next page, translation: Наступна сторінка }
+  - { text: "Yes", translation: Так }
+  - { text: "No", translation: Ні }
+  - { text: None, translation: Немає }
+  - { text: Any, translation: Будь-яке }
+  - { text: Select…, translation: Виберіть… }
+  - { text: Choose…, translation: Оберіть… }
+  - { text: More, translation: Більше }
+  - { text: Menu, translation: Меню }
+  - { text: Site, translation: Сайт }
+  - { text: Collapse navigation, translation: Згорнути навігацію }
+  - { text: Expand navigation, translation: Розгорнути навігацію }
+  - { text: "Search {$label}", translation: "Пошук: {$label}" }
+  - { text: "Remove {$label}", translation: "Вилучити: {$label}" }
+  - { text: "Clear {$label}", translation: "Очистити: {$label}" }
+  - { text: Add filter, translation: Додати фільтр }
+  - { text: Apply, translation: Застосувати }
+  - { text: Reset, translation: Скинути }
+  - { text: Done, translation: Готово }
+  - { text: Presets, translation: Готові набори }
+  - { text: is, translation: є }
+  - { text: contains, translation: містить }
+  - { text: after, translation: після }
+  - { text: from, translation: від }
+  - { text: before, translation: раніше за }
+  - { text: to, translation: до }
+  - { text: one of, translation: одне з }
+  - { text: "{$label} {$operator}", translation: "{$label} {$operator}" }
+  - { text: "{$label} {$operator} {$value}", translation: "{$label} {$operator} {$value}" }
+  - { text: "{$label}: {$summary}", translation: "{$label}: {$summary}" }
+  - { text: From, translation: Від }
+  - { text: To, translation: До }
+  - { text: Must not start after it ends, translation: Не може починатися після свого кінця }
+  - text: "Longer than {$count} days"
+    translation: { plural: count, cases: { one: "Довше ніж {$count} день", few: "Довше ніж {$count} дні", many: "Довше ніж {$count} днів", other: "Довше ніж {$count} дня" } }
+  - text: "Longer than {$count} weeks"
+    translation: { plural: count, cases: { one: "Довше ніж {$count} тиждень", few: "Довше ніж {$count} тижні", many: "Довше ніж {$count} тижнів", other: "Довше ніж {$count} тижня" } }
+  - text: "Longer than {$count} months"
+    translation: { plural: count, cases: { one: "Довше ніж {$count} місяць", few: "Довше ніж {$count} місяці", many: "Довше ніж {$count} місяців", other: "Довше ніж {$count} місяця" } }
+  - text: "Longer than {$count} quarters"
+    translation: { plural: count, cases: { one: "Довше ніж {$count} квартал", few: "Довше ніж {$count} квартали", many: "Довше ніж {$count} кварталів", other: "Довше ніж {$count} кварталу" } }
+  - text: "Longer than {$count} years"
+    translation: { plural: count, cases: { one: "Довше ніж {$count} рік", few: "Довше ніж {$count} роки", many: "Довше ніж {$count} років", other: "Довше ніж {$count} року" } }
+  - { text: Not found, translation: Не знайдено }
+  - { text: "This application has no page at {$path}.", translation: "У цьому застосунку немає сторінки за адресою {$path}." }
+  - { text: Discard unsaved changes?, translation: Відкинути незбережені зміни? }
+  - { text: What you entered has not been saved., translation: Введене не збережено. }
+  - { text: Discard, translation: Відкинути }
+  - { text: Keep editing, translation: Продовжити редагування }
+  - { text: "You are not signed in, or your session has ended.", translation: "Ви не ввійшли, або ваш сеанс завершився." }
+  - { text: You are not allowed to do this., translation: У вас немає дозволу на цю дію. }
+  - { text: "The request failed with status {$status}.", translation: "Запит не виконано, статус {$status}." }
+  - { text: "The request failed: {$reason}", translation: "Запит не виконано: {$reason}" }
+  - { text: The record was refused., translation: Запис відхилено. }
+  - { text: The answer is not JSON., translation: Відповідь не у форматі JSON. }
+  - { text: The answer is not a JSON object., translation: "Відповідь не є обʼєктом JSON." }
+  - { text: "The answer does not fit its model: {$detail}", translation: "Відповідь не відповідає своїй моделі: {$detail}" }
+  - { text: Is not valid, translation: Некоректне значення }
+  - { text: Is required, translation: "Обовʼязкове поле" }
+  - { text: "Must be {$types}", translation: "Має бути типу {$types}" }
+  - { text: "Must be one of: {$allowed}", translation: "Має бути одним із: {$allowed}" }
+  - { text: "Must be {$value}", translation: "Має дорівнювати {$value}" }
+  - { text: Is not allowed, translation: Недозволене значення }
+  - { text: Is not one of the allowed forms, translation: Не відповідає жодній із дозволених форм }
+  - text: "Must be at least {$limit} characters"
+    translation: { plural: limit, cases: { one: "Щонайменше {$limit} символ", few: "Щонайменше {$limit} символи", many: "Щонайменше {$limit} символів", other: "Щонайменше {$limit} символу" } }
+  - text: "Must be at most {$limit} characters"
+    translation: { plural: limit, cases: { one: "Щонайбільше {$limit} символ", few: "Щонайбільше {$limit} символи", many: "Щонайбільше {$limit} символів", other: "Щонайбільше {$limit} символу" } }
+  - { text: Is not in the expected format, translation: Неправильний формат }
+  - { text: "Must be at least {$limit}", translation: "Має бути щонайменше {$limit}" }
+  - { text: "Must be at most {$limit}", translation: "Має бути щонайбільше {$limit}" }
+  - { text: "Must be greater than {$limit}", translation: "Має бути більше за {$limit}" }
+  - { text: "Must be less than {$limit}", translation: "Має бути менше за {$limit}" }
+  - { text: "Must be a multiple of {$limit}", translation: "Має бути кратним {$limit}" }
+  - text: "Must have at least {$limit} items"
+    translation: { plural: limit, cases: { one: "Щонайменше {$limit} елемент", few: "Щонайменше {$limit} елементи", many: "Щонайменше {$limit} елементів", other: "Щонайменше {$limit} елемента" } }
+  - text: "Must have at most {$limit} items"
+    translation: { plural: limit, cases: { one: "Щонайбільше {$limit} елемент", few: "Щонайбільше {$limit} елементи", many: "Щонайбільше {$limit} елементів", other: "Щонайбільше {$limit} елемента" } }
+  - { text: Must not repeat an item, translation: Елементи не можуть повторюватися }

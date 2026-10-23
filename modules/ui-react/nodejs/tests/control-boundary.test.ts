@@ -130,6 +130,12 @@ describe("the --telo- custom properties", () => {
     );
     expect(strays).toEqual([]);
   });
+
+  it("the base layer reads are exactly the tokens the contract says the renderer reads", () => {
+    const base = readFileSync(new URL("../src/browser/base.css", import.meta.url), "utf8");
+    const read = new Set([...base.matchAll(/var\((--telo-[\w-]+)/g)].map(([, property]) => property));
+    expect([...read].sort()).toEqual(contract.rendererTokens.map(tokenProperty).sort());
+  });
 });
 
 describe("the Controls kind", () => {

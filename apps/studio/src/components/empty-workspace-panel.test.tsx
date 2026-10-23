@@ -33,6 +33,55 @@ describe("an open workspace with no modules", () => {
     expect(screen.queryByText("Start from a starter")).toBeNull();
   });
 
+  it("shows the conversation's latest turn in place of the request", () => {
+    const onStop = vi.fn();
+    const onShow = vi.fn();
+    render(
+      <EmptyWorkspacePanel
+        onBuild={async () => true}
+        onStartFromStarter={() => undefined}
+        build={{
+          progress: {
+            request: "Build me a todo app",
+            phase: { kind: "working", step: null },
+            files: ["app/telo.yaml"],
+          },
+          editorFile: () => null,
+          onStop,
+          onShowConversation: onShow,
+        }}
+      />,
+    );
+    expect(screen.queryByLabelText("What to build")).toBeNull();
+    expect(screen.queryByText("This workspace has no modules yet")).toBeNull();
+    expect(screen.getByText("Build me a todo app")).toBeTruthy();
+    expect(screen.getByText("app/telo.yaml")).toBeTruthy();
+    fireEvent.click(screen.getByText("Stop"));
+    fireEvent.click(screen.getByText("Show conversation"));
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(onShow).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers Retry for a failed turn and no Stop once it ended", () => {
+    const onRetry = vi.fn();
+    render(
+      <EmptyWorkspacePanel
+        build={{
+          progress: { request: "x", phase: { kind: "ended", outcome: { kind: "failed", message: "Boom" } }, files: [] },
+          editorFile: () => null,
+          onStop: () => undefined,
+          onRetry,
+          onShowConversation: () => undefined,
+        }}
+      />,
+    );
+    expect(screen.getByText("Boom")).toBeTruthy();
+    expect(screen.queryByText("Stop")).toBeNull();
+    fireEvent.click(screen.getByText("Retry"));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Continue in the conversation")).toBeTruthy();
+  });
+
   it("puts the starters ahead of the request for the agent", () => {
     render(<EmptyWorkspacePanel onBuild={async () => true} onStartFromStarter={() => undefined} />);
     const starters = screen.getByText("Start from a starter");

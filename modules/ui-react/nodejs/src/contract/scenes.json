@@ -187,6 +187,7 @@
           "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
         },
         "header": {
+          "width": "contained",
           "start": [{"type":"badge","text":{"message":["Beta"],"lang":"en"}}],
           "end": [
             {"type":"link","text":{"message":["Help"],"lang":"en"},"href":"/"},
@@ -210,6 +211,7 @@
           "title": {"message":["Everything"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "stack",
@@ -1060,6 +1062,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -1068,6 +1071,7 @@
           "title": {"message":["Inline"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "table",
@@ -1206,6 +1210,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -1214,6 +1219,7 @@
           "title": {"message":["Action"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "action",
@@ -1462,6 +1468,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -1470,6 +1477,7 @@
           "title": {"message":["Answers"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "action",
@@ -1749,6 +1757,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -1757,6 +1766,7 @@
           "title": {"message":["Data"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "data",
@@ -1920,6 +1930,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -1928,6 +1939,7 @@
           "title": {"message":["Fields"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "action",
@@ -2128,6 +2140,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -2136,6 +2149,7 @@
           "title": {"message":["Opened"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "table",
@@ -2315,6 +2329,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -2323,6 +2338,7 @@
           "title": {"message":["Slow"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "table",
@@ -2495,6 +2511,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -2503,6 +2520,7 @@
           "title": {"message":["States"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "filters",
@@ -3305,7 +3323,7 @@
             }
           ]
         },
-        "/other": {"specVersion":1,"title":{"message":["Other"],"lang":"en"},"lang":"en","query":{},"children":[]}
+        "/other": {"specVersion":1,"title":{"message":["Other"],"lang":"en"},"lang":"en","query":{},"width":"contained","children":[]}
       },
       "responses": {
         "GET /api/todos": {
@@ -3360,6 +3378,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -3368,6 +3387,7 @@
           "title": {"message":["Layers"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "table",
@@ -3600,6 +3620,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -3608,6 +3629,7 @@
           "title": {"message":["Layers"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "filters",
@@ -3844,6 +3866,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -3852,6 +3875,7 @@
           "title": {"message":["Layers"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [
             {
               "type": "filters",
@@ -4104,7 +4128,7 @@
       ]
     },
     {
-      "name": "a sidebar beside the page, its groups opening in place, collapsed to a rail of its entries' icons and back; a tabs node choosing its tab under the address",
+      "name": "a sidebar beside a full-width page, its groups opening in place, collapsed to a rail of its entries' icons and back; a tabs node choosing its tab under the address",
       "path": "/?_telo.open.section=details",
       "app": {
         "specVersion": 1,
@@ -4135,6 +4159,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"contained"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -4143,6 +4168,7 @@
           "title": {"message":["Home"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "full",
           "children": [
             {
               "type": "tabs",
@@ -4165,7 +4191,9 @@
           "attributes":[
             {"of":{"part":"tab","text":"Details"},"name":"aria-selected","value":"true"},
             {"of":{"part":"sidebar"},"name":"data-state","value":"open"},
-            {"of":{"part":"sidebar-toggle"},"name":"aria-expanded","value":"true"}
+            {"of":{"part":"sidebar-toggle"},"name":"aria-expanded","value":"true"},
+            {"of":{"part":"page"},"name":"data-width","value":"full"},
+            {"of":{"part":"header"},"name":"data-width","value":"contained"}
           ]
         }},
         {"click":{"part":"tab","text":"Summary"}},
@@ -4228,6 +4256,7 @@
         },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
+        "header": {"start":[],"end":[],"width":"full"},
         "compactBelow": "40rem"
       },
       "pages": {
@@ -4236,6 +4265,7 @@
           "title": {"message":["Home"],"lang":"en"},
           "lang": "en",
           "query": {},
+          "width": "contained",
           "children": [{"type":"text","text":{"message":["The summary"],"lang":"en"}}]
         }
       },
@@ -4265,6 +4295,9 @@
         {"key":"Escape"},
         {"expect":{"absent":[{"part":"surface"}]}}
       ]
-    }
+    },
+    {"name": "a full-width header over a contained page, the navigation in it", "path": "/", "app": {"specVersion": 1, "title": {"message": ["Scenes"], "lang": "en"}, "lang": "en", "pages": [{"path": "/", "title": {"message": ["Home"], "lang": "en"}}, {"path": "/other", "title": {"message": ["Other"], "lang": "en"}}], "navigation": {"items": [{"type": "page", "key": "home", "path": "/", "text": {"message": ["Home"], "lang": "en"}, "icon": "/_telo/ui/assets/aa/house.svg"}, {"type": "group", "key": "sections", "text": {"message": ["Sections"], "lang": "en"}, "icon": "/_telo/ui/assets/bb/folder.svg", "items": [{"type": "page", "key": "sections/other", "path": "/other", "text": {"message": ["Other"], "lang": "en"}}, {"type": "group", "key": "sections/deeper", "text": {"message": ["Deeper"], "lang": "en"}, "items": [{"type": "link", "key": "sections/deeper/guide", "href": "/guide", "text": {"message": ["Guide"], "lang": "en"}}]}]}], "placement": {"type": "header", "compact": {"type": "overlay", "surface": {"type": "drawer", "side": "start", "size": "medium", "modal": true, "dismiss": {"escape": true, "outside": true, "closeButton": true}}}}}, "stylesheets": [], "controls": {"stylesheets": {}, "sets": []}, "header": {"start": [], "end": [], "width": "full"}, "compactBelow": "40rem"}, "pages": {"/": {"specVersion": 1, "title": {"message": ["Home"], "lang": "en"}, "lang": "en", "query": {}, "width": "contained", "children": [{"type": "text", "text": {"message": ["The page"], "lang": "en"}}]}}, "responses": {}, "steps": [{"expect": {"present": [{"part": "header-content", "within": {"part": "header"}}, {"part": "app-title", "within": {"part": "header-content"}}], "attributes": [{"of": {"part": "header"}, "name": "data-width", "value": "full"}, {"of": {"part": "page"}, "name": "data-width", "value": "contained"}]}}]},
+    {"name": "a sidebar at the end edge under a contained header", "path": "/", "app": {"specVersion": 1, "title": {"message": ["Scenes"], "lang": "en"}, "lang": "en", "pages": [{"path": "/", "title": {"message": ["Home"], "lang": "en"}}, {"path": "/other", "title": {"message": ["Other"], "lang": "en"}}], "navigation": {"items": [{"type": "page", "key": "home", "path": "/", "text": {"message": ["Home"], "lang": "en"}, "icon": "/_telo/ui/assets/aa/house.svg"}, {"type": "group", "key": "sections", "text": {"message": ["Sections"], "lang": "en"}, "icon": "/_telo/ui/assets/bb/folder.svg", "items": [{"type": "page", "key": "sections/other", "path": "/other", "text": {"message": ["Other"], "lang": "en"}}, {"type": "group", "key": "sections/deeper", "text": {"message": ["Deeper"], "lang": "en"}, "items": [{"type": "link", "key": "sections/deeper/guide", "href": "/guide", "text": {"message": ["Guide"], "lang": "en"}}]}]}], "placement": {"type": "sidebar", "side": "end", "rail": {"collapsed": false}, "store": {"type": "memory"}, "compact": {"type": "overlay", "surface": {"type": "drawer", "side": "bottom", "size": "medium", "modal": true, "dismiss": {"escape": true, "outside": true, "closeButton": true}}}}}, "stylesheets": [], "controls": {"stylesheets": {}, "sets": []}, "header": {"start": [], "end": [], "width": "contained"}, "compactBelow": "40rem"}, "pages": {"/": {"specVersion": 1, "title": {"message": ["Home"], "lang": "en"}, "lang": "en", "query": {}, "width": "contained", "children": [{"type": "text", "text": {"message": ["The page"], "lang": "en"}}]}}, "responses": {}, "steps": [{"expect": {"present": [{"part": "header-content", "within": {"part": "header"}}, {"part": "app-title", "within": {"part": "header-content"}}, {"part": "sidebar", "attributes": {"data-side": "end"}}], "attributes": [{"of": {"part": "header"}, "name": "data-width", "value": "contained"}, {"of": {"part": "page"}, "name": "data-width", "value": "contained"}]}}]},
+    {"name": "a sidebar at the end edge under a full-width header", "path": "/", "app": {"specVersion": 1, "title": {"message": ["Scenes"], "lang": "en"}, "lang": "en", "pages": [{"path": "/", "title": {"message": ["Home"], "lang": "en"}}, {"path": "/other", "title": {"message": ["Other"], "lang": "en"}}], "navigation": {"items": [{"type": "page", "key": "home", "path": "/", "text": {"message": ["Home"], "lang": "en"}, "icon": "/_telo/ui/assets/aa/house.svg"}, {"type": "group", "key": "sections", "text": {"message": ["Sections"], "lang": "en"}, "icon": "/_telo/ui/assets/bb/folder.svg", "items": [{"type": "page", "key": "sections/other", "path": "/other", "text": {"message": ["Other"], "lang": "en"}}, {"type": "group", "key": "sections/deeper", "text": {"message": ["Deeper"], "lang": "en"}, "items": [{"type": "link", "key": "sections/deeper/guide", "href": "/guide", "text": {"message": ["Guide"], "lang": "en"}}]}]}], "placement": {"type": "sidebar", "side": "end", "rail": {"collapsed": false}, "store": {"type": "memory"}, "compact": {"type": "overlay", "surface": {"type": "drawer", "side": "bottom", "size": "medium", "modal": true, "dismiss": {"escape": true, "outside": true, "closeButton": true}}}}}, "stylesheets": [], "controls": {"stylesheets": {}, "sets": []}, "header": {"start": [], "end": [], "width": "full"}, "compactBelow": "40rem"}, "pages": {"/": {"specVersion": 1, "title": {"message": ["Home"], "lang": "en"}, "lang": "en", "query": {}, "width": "contained", "children": [{"type": "text", "text": {"message": ["The page"], "lang": "en"}}]}}, "responses": {}, "steps": [{"expect": {"present": [{"part": "header-content", "within": {"part": "header"}}, {"part": "app-title", "within": {"part": "header-content"}}, {"part": "sidebar", "attributes": {"data-side": "end"}}], "attributes": [{"of": {"part": "header"}, "name": "data-width", "value": "full"}, {"of": {"part": "page"}, "name": "data-width", "value": "contained"}]}}]}
   ]
 }

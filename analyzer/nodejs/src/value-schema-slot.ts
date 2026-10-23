@@ -25,10 +25,10 @@ export type ValueSchemaMember =
   | { readonly up: number; readonly key: true }
   | { readonly up: number; readonly pointer: readonly string[] };
 
-/** A location as read, or why the annotation that is present cannot be read. */
+/** One location as read — or why it cannot be — with the location as written. */
 export type ValueSchemaLocation =
-  | { readonly segments: readonly string[]; readonly member?: ValueSchemaMember }
-  | { readonly invalid: string };
+  | { readonly raw: unknown; readonly segments: readonly string[]; readonly member?: ValueSchemaMember }
+  | { readonly raw: unknown; readonly invalid: string };
 
 const decodeSegment = (segment: string) => segment.replace(/~1/g, "/").replace(/~0/g, "~");
 
@@ -44,48 +44,74 @@ export function readValueSchemaMember(raw: unknown): ValueSchemaMember | undefin
 }
 
 /**
- * The location an annotation names, relative to the declaration: a bare field
- * name, or a JSON Pointer from its root in which a `*` segment ranges over every
- * item of a list; or `{ from, member }`, the same location and the member of
- * each reached type the value must satisfy. Undefined when the annotation is
- * absent.
+ * Every location an annotation names, in written order, relative to the
+ * declaration. A location is a bare field name, or a JSON Pointer from its root
+ * in which a `*` segment ranges over every item of a list; or `{ from, member }`,
+ * the same location and the member of each reached type the value must satisfy.
+ * A list names several, every type each reaches holding at once; a single
+ * location is a list of one. Undefined when the annotation is absent.
  */
-export function readValueSchemaLocation(raw: unknown): ValueSchemaLocation | undefined {
+export function readValueSchemaLocations(raw: unknown): ValueSchemaLocation[] | undefined {
   if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) return [readValueSchemaLocation(raw)];
+  if (raw.length === 0) {
+    return [{ raw, invalid: `'${VALUE_SCHEMA_ANNOTATION}' as a list names at least one location.` }];
+  }
+  return raw.map((element, index) => {
+    const location = Array.isArray(element)
+      ? { raw: element, invalid: `a list element is one location, not a list of them.` }
+      : readValueSchemaLocation(element);
+    if (!("invalid" in location)) return location;
+    return {
+      raw: element,
+      invalid: `element ${index} of the list (\`${describeValueSchemaLocation(element)}\`): ${location.invalid}`,
+    };
+  });
+}
+
+/** One location as written, a list element or the whole annotation. */
+function readValueSchemaLocation(raw: unknown): ValueSchemaLocation {
   if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
     const { from, member, ...rest } = raw as Record<string, unknown>;
     const extra = Object.keys(rest);
     if (extra.length > 0) {
-      return { invalid: `'${VALUE_SCHEMA_ANNOTATION}' takes \`from\` and \`member\`; '${extra[0]}' is neither.` };
+      return { raw, invalid: `'${VALUE_SCHEMA_ANNOTATION}' takes \`from\` and \`member\`; '${extra[0]}' is neither.` };
+    }
+    if (from === undefined) {
+      return { raw, invalid: `'${VALUE_SCHEMA_ANNOTATION}' in its object form names a location under \`from\`.` };
     }
     const location = readValueSchemaLocation(from);
-    if (!location) return { invalid: `'${VALUE_SCHEMA_ANNOTATION}' in its object form names a location under \`from\`.` };
-    if ("invalid" in location) return location;
+    if ("invalid" in location) return { raw, invalid: location.invalid };
     const read = readValueSchemaMember(member);
     if (!read) {
       return {
+        raw,
         invalid:
           `\`member\` is a Relative JSON Pointer from the annotated node naming a property of the ` +
           `type at \`from\`: a non-negative integer, then '#' (that node's own key) or a JSON ` +
           `Pointer to the string naming it — '0#' for a map value's own key.`,
       };
     }
-    return { segments: location.segments, member: read };
+    return { raw, segments: location.segments, member: read };
   }
   if (typeof raw !== "string" || raw.length === 0) {
-    return { invalid: `'${VALUE_SCHEMA_ANNOTATION}' is a field name, or a JSON Pointer from the declaration.` };
+    return {
+      raw,
+      invalid: `'${VALUE_SCHEMA_ANNOTATION}' is a field name, a JSON Pointer from the declaration, or a list of them.`,
+    };
   }
-  if (!raw.startsWith("/")) return { segments: [raw] };
+  if (!raw.startsWith("/")) return { raw, segments: [raw] };
   const segments = raw.slice(1).split("/").map(decodeSegment);
   if (segments.some((segment) => segment.length === 0)) {
-    return { invalid: `'${raw}' holds an empty segment; a pointer names one field or '*' per segment.` };
+    return { raw, invalid: `'${raw}' holds an empty segment; a pointer names one field or '*' per segment.` };
   }
-  return { segments };
+  return { raw, segments };
 }
 
-/** The location written, as a message quotes it. */
+/** The annotation written, or one of its locations, as a message quotes it. */
 export function describeValueSchemaLocation(raw: unknown): string {
-  if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+  if (Array.isArray(raw)) return `[${raw.map(describeValueSchemaLocation).join(", ")}]`;
+  if (raw !== null && typeof raw === "object") {
     const { from, member } = raw as Record<string, unknown>;
     return `{ from: ${String(from)}, member: ${String(member)} }`;
   }
@@ -101,21 +127,32 @@ export interface ValueSchemaHost {
   typeSchemaOf(value: unknown, holder: Record<string, any>): Record<string, any> | undefined;
 }
 
-/** Every type the location `from` names from `declaration`. A location that
- *  reaches nothing, or a value naming no type, contributes nothing. */
+/** One type an annotation's locations reach, and the member of it the value
+ *  must satisfy when its location names one. */
+export interface ValueSchemaReach {
+  readonly schema: Record<string, any>;
+  readonly member?: ValueSchemaMember;
+}
+
+/** Every type the locations `from` names reach from `declaration`, each with its
+ *  location's member. A location that reaches nothing, a value naming no type,
+ *  or a location that cannot be read contributes nothing. */
 export function valueSchemaTypes(
   declaration: Record<string, any>,
   from: unknown,
   host: ValueSchemaHost,
-): Record<string, any>[] {
-  const location = readValueSchemaLocation(from);
-  if (!location || "invalid" in location) return [];
-  const types: Record<string, any>[] = [];
-  for (const { value, holder } of declarationValuesAt(declaration, location.segments, host.scope)) {
-    const schema = host.typeSchemaOf(value, holder);
-    if (schema && typeof schema === "object" && !types.includes(schema)) types.push(schema);
+): ValueSchemaReach[] {
+  const reaches: ValueSchemaReach[] = [];
+  for (const location of readValueSchemaLocations(from) ?? []) {
+    if ("invalid" in location) continue;
+    for (const { value, holder } of declarationValuesAt(declaration, location.segments, host.scope)) {
+      const schema = host.typeSchemaOf(value, holder);
+      if (!schema || typeof schema !== "object") continue;
+      if (reaches.some((r) => r.schema === schema && r.member === location.member)) continue;
+      reaches.push({ schema, member: location.member });
+    }
   }
-  return types;
+  return reaches;
 }
 
 /** Keywords whose value is data, never a schema. */
@@ -278,11 +315,8 @@ export function resolveContractValueSchemas(
       }
       walked[child.keyword][child.at] = next;
     }
-    const raw = node[VALUE_SCHEMA_ANNOTATION];
-    const location = readValueSchemaLocation(raw);
-    const member = location && !("invalid" in location) ? location.member : undefined;
-    const conjuncts = valueSchemaTypes(declaration, raw, host)
-      .map((type) => conjunct(type, member, key))
+    const conjuncts = valueSchemaTypes(declaration, node[VALUE_SCHEMA_ANNOTATION], host)
+      .map(({ schema: type, member }) => conjunct(type, member, key))
       .filter((c): c is Record<string, any> => c !== undefined);
     if (conjuncts.length === 0) return walked;
     const { [VALUE_SCHEMA_ANNOTATION]: _dropped, ...rest } = walked;

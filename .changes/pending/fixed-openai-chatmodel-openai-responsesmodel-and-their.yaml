@@ -1,0 +1,8 @@
+modules:
+  modules/openai: Fixed
+body: "`OpenAI.ChatModel`, `OpenAI.ResponsesModel` and their stream kinds refuse a
+  `tool` message with no `toolCallId`, or an empty one, before anything is sent — by the
+  `Ai.Model` contract (`ERR_INPUT_INVALID`) when dispatched, and as
+  `ERR_MODEL_REQUEST_REJECTED` naming its index in `messages` for a caller that bypasses
+  it — instead of sending an empty call id the endpoint rejects with a 400 naming no
+  message."

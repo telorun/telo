@@ -25,6 +25,7 @@ children:
 | `path` | required | the page's address under the application's mount |
 | `title` | required | a text, shown above the page and in the navigation unless an entry says otherwise |
 | `query` | | the query parameters the page's own nodes read, as [`Ui.QueryParameters`](conditions.md#query-parameters) |
+| `width` | | how wide its content is drawn, a `Ui.PageWidth`: `contained` or `full`; omitted, the application's — see [Width](#width) |
 | `children` | required | the page's [nodes](nodes.md), top to bottom |
 
 - `path` is `/` followed by anything other than `/` or `\`, with no control
@@ -47,15 +48,33 @@ provides is judged against [`Ui.SpecNode`](nodes.md) once and stands for every
 request, and one that is not valid is replaced by an `error` node
 (`ERR_UI_NODE_INVALID`) and logged.
 
-Invoked with `{ request: { headers, ip? } }`, the page answers
-`{ path, title, query, children }`: `title` the record of its text, `query`
-the declared parameters (`{}` with none), and `children` its nodes for that
+Invoked with `{ request: { headers, ip? }, pageWidth? }`, the page answers
+`{ path, title, query, width, children }`: `title` the record of its text,
+`query` the declared parameters (`{}` with none), `width` as under
+[Width](#width), and `children` its nodes for that
 request — a node whose `when:` is false left out, each composite placed as it
 provided, and a node an expression made invalid replaced by an `error` node,
 its siblings kept.
 
 Its published reading is `{ path, title, query }`, so another resource reads
 `resources.<page>.path`.
+
+## Width
+
+`Ui.PageWidth` is the one definition of a page's width, the shape every place
+an author writes one names: `contained` — no wider than the look's page
+measure, the `width.page` [design token](design-tokens.md), centred — or
+`full`, all the room the page has. Anything else is `SCHEMA_VIOLATION`.
+
+The page fills its own `width`: the one it declares, else the `pageWidth` it
+is invoked with — the application's — else `contained`. It always answers
+one, so a renderer draws what the document says and holds no default of its
+own; one page listed by two applications is drawn at each one's width.
+
+That chain — the value written where it applies, else the application's
+`pageWidth`, else `contained` — is read in one place: `@telorun/ui` exports it
+as `resolvedPageWidth`, which a renderer uses for any other `Ui.PageWidth` it
+resolves (a header's width, say), so no renderer restates the default.
 
 ## Listing a page
 

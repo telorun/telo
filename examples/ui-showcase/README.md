@@ -7,7 +7,9 @@ demonstration carries a muted line saying what it shows. The data is a small
 studio — its team, people, projects, tasks, the requests and bookings its
 forms send, and comments on tasks — in SQLite, served by `crud` and routes of
 its own, with real sessions behind a sign-in gate. Every text is written in
-English and translated into Polish.
+English and translated into fourteen languages: German, Spanish, French,
+Italian, Dutch, Polish, Portuguese, Turkish, Russian, Ukrainian, Hindi,
+Japanese, Korean and Chinese (Simplified).
 
 ## Run
 
@@ -15,9 +17,9 @@ English and translated into Polish.
 pnpm run telo ./examples/ui-showcase/telo.yaml
 ```
 
-Then open <http://127.0.0.1:8150>, and choose Polski from the header's
-Language menu — or set
-the browser's language to Polish — to see it translated. `PORT` overrides the port and `DB_FILE` the database
+Then open <http://127.0.0.1:8150>, and choose a language from the header's
+Language menu — or set the browser's language to one of them — to see it
+translated. `PORT` overrides the port and `DB_FILE` the database
 file, `./showcase.db` in the working directory by default; a fresh file is
 created and seeded on the first start, and a seeded row edited by hand is
 restored on the next.
@@ -33,7 +35,7 @@ from a checkout.
 | `/` | the built-in look, the example's own `showcase.css`, and a brand chosen per request: with the cookie `showcase-brand=acme` (set by `/api/brand?set=acme`, cleared by `?set=none`) the Acme tokens apply, without it the theme's own |
 | `/radix` | `UiReactRadix.theme` |
 | `/brand` | the example's own theme from `brand/` — Radix's controls, `brand.css` and token values of its own — under a brand of one token set that serves the bundled Inter typeface |
-| `/sidebar` | the built-in look and `showcase.css`, its navigation in a sidebar instead of the header |
+| `/sidebar` | the built-in look and `showcase.css`, its navigation in a sidebar instead of the header, and its pages at full width beside it (`pageWidth: full`) instead of the theme's centred column |
 
 All four place the same pages. Each page's content is one `Ui.View`, and
 each page one `Ui.Page` placing it, declared once in its `pages-*.yaml`; every
@@ -69,9 +71,10 @@ group's tab and More opening their entries in a bottom sheet.
 Every application draws the same header around its title and navigation
 (`UiReact.App.header`), on one row while the window is wider than
 `compactBelow`: the example's mark before the title, and after the navigation
-two `menu` nodes. **Language** offers English and Polski, each
-`/api/lang?set=en|pl` under the mount: it sets the cookie `showcase-lang` (or
-clears it for any other value) and goes back to the page it was pressed on —
+two `menu` nodes. **Language** offers every language the showcase speaks,
+each named in its own language, each `/api/lang?set=<tag>` under the mount: it
+sets the cookie `showcase-lang` when the tag is one the translator has a
+catalog for or English (or clears it for any other value) and goes back to the page it was pressed on —
 the `Referer`'s path and query when the `Referer` is of the request's own
 origin, the mount's home otherwise.
 **Theme** offers the four mounts' home pages — another mount's by an absolute
@@ -105,9 +108,10 @@ brand switch, `/api/brand`, is the root's alone.
 | `telo.yaml` | the application, the four `UiReact.App` mounts with their header and navigation, the navigation's icons, the root's own overview, conditions and themes pages, the logo view they share, the `Callout` composite kind, the session check, the three collections, the server serving the API under each mount, the Inter family the brand serves |
 | `data.yaml` | the SQLite connection, schema, tables with their seed rows, and the projects, tasks and people `Crud.Model`s |
 | `api.yaml` | the routes `crud` does not give and the shapes they share with the pages: record reads, the task board, the tag action, the forms' writes and lists, every action of the actions page, the session, the language and brand switches, the language rule the applications share (`chosenLanguage`), and the request origin and redirect target rules (`origin`, `sameOriginTarget`) |
-| `polish.yaml` | the translator, its Polish catalog and the language negotiator |
+| `translator.yaml` | the translator, listing one catalog per language |
+| `translations/` | one `I18n.Catalog` per language, each file named by its language tag (`pl.yaml`, `ja.yaml`, …) |
 | `pages-*.yaml` | one view per page and the `Ui.Page` placing it, with the resources only that page uses (the tables page's two task forms and page surface, the filters page's task table, the forms page's team and project option sources, the actions page's assign action) |
-| `showcase.css` | the `/` application's stylesheet |
+| `showcase.css` | the `/` and `/sidebar` applications' stylesheet |
 | `components/` | a library of the example's own: four browser components written in TSX (`nodejs/src/components.tsx`, with the stylesheet they import) against the `ui_react-1` host, built by the kernel and published as `Ui.ComponentExport`s — `taskDesk`, `priorityMeter`, `tokenSheet` and `typefaceSamples`. Its `nodejs/package.json` exists only to type-check the sources |
 | `brand/` | a library of the example's own exporting the `/brand` theme: `brand.css`, which styles every part of the styling contract, the token values, and Radix's controls |
 | `files/` | the handbook and the image served under each mount |
@@ -203,11 +207,11 @@ why it is not shown.
 | Line | Capability | Where |
 | --- | --- | --- |
 | A1 | `title` | every mount |
-| A2 | `words: !ref Ui.words` | every mount. A custom `Ui.Words` set is not shown: the example words the renderer in Polish by translating the exported set through its catalog |
+| A2 | `words: !ref Ui.words` | every mount. A custom `Ui.Words` set is not shown: the example words the renderer in every language it speaks by translating the exported set through its catalog |
 | A3 | `theme`: the default, Radix's, one of the example's own | `/`, `/radix`, `/brand`. The example's own theme is declared in `brand/` and named by `!ref`, not written inline at the application, so `tests/brand-theme.yaml` checks the very theme the mount draws with |
 | A4 | `tokens` as one `Ui.DesignTokens`, inline | `/brand` (the Inter typeface) |
 | A5 | `tokens` as a `{ tokens, when }` list over a cookie | `/`, switched on its Themes page |
-| A6 | `stylesheets` | `/` (`showcase.css`) |
+| A6 | `stylesheets` | `/`, `/sidebar` (`showcase.css`) |
 | A7 | `compactBelow` | every mount |
 | A8, A9 | `translator`, `lang` negotiated from `Accept-Language`, `Vary` | every mount |
 | A10 | ten pages, one nav link each | every mount; the path refusals are out of scope |
@@ -230,7 +234,7 @@ why it is not shown.
 | C35 | texts that take no values: action labels, column headers, group labels, preset labels | `/actions`, `/tables`, `/forms`, `/filters`; the refusal is out of scope |
 | C36 | `disabledText` and `confirm` | `/conditions`, `/actions` |
 | C37 | schema titles and enum labels, `x-telo-text-context` | Overview (`plan`), every model drawn |
-| C38, C39 | the renderer's words, translated, plurals included | `polish.yaml`, every mount |
+| C38, C39 | the renderer's words, translated, plurals included | `translations/`, every mount |
 | C40 | check codes | out of scope |
 | D41–D43 | conditions, every `Ui.Match` keyword, missing against null | `/conditions`; the codes are out of scope |
 | D44 | hidden content stays mounted and reads nothing | `/data` (the sign-in gate), `/forms` (a field and a group shown on a condition) |
@@ -267,7 +271,7 @@ why it is not shown.
 | P147 | Radix's theme, and its controls reused by a theme of the example's own | `/radix`, `/brand` |
 | P148 | the cascade layers | `/components` (`telo.component`), `/` (`showcase.css`, unlayered) |
 | P149, P150 | the styling contract and `UiReactConformance.CheckTheme` | `brand/brand.css`, `tests/brand-theme.yaml` |
-| Q151–Q153 | the Polish catalog with plurals, the translator, the negotiator | `polish.yaml`, every mount |
+| Q151–Q153 | fourteen catalogs with plurals, the translator, the negotiator | `translations/`, `translator.yaml`, `telo.yaml`, every mount |
 | Q152, Q154 | the translator in an API route, answering in the caller's language | `/api/private/pause` (from `/actions`) |
 | R155, R156 | `Crud.Model`, `Crud.Resource` | `data.yaml`, `/api/projects`, `/api/tasks`, `/api/people`; the rules are out of scope |
 | R157 | `Crud.Ui` with a filter policy and `create` / `edit` surfaces | `/crud`; its expansion, written by hand, on `/tables` and `/filters` |

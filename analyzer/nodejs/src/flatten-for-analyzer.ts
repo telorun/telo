@@ -1,4 +1,4 @@
-import type { ResourceManifest } from "@telorun/sdk";
+import { parseCanonicalTypeSchemaId, parseTeloTypeRef, type ResourceManifest } from "@telorun/sdk";
 import { isKindDocument } from "./kind-declaration.js";
 import type { LoadedGraph, LoadedModule } from "./loaded-types.js";
 import type { LoadedFile } from "./loaded-types.js";
@@ -213,12 +213,18 @@ function forwardedContractShapes(
   );
   const out: ResourceManifest[] = [];
   const queue: Array<{ manifest: ResourceManifest; fields: readonly string[] }> = forwarded.map(
-    (manifest) => ({ manifest, fields: forwardedShapeFieldsOf(manifest) }),
+    // `schema` is followed only on a named shape: another kind's `schema:` field
+    // may name a resource that is no shape at all.
+    (manifest) => ({
+      manifest,
+      fields: forwardedShapeFieldsOf(manifest).filter((field) => field !== "schema" || isShapeDocument(manifest)),
+    }),
   );
   while (queue.length > 0) {
     const { manifest, fields } = queue.shift()!;
     const record = manifest as unknown as Record<string, unknown>;
     const names: string[] = [];
+    const byId = new Set<string>();
     // A shape extending another by name folds the parent in when it resolves.
     for (const parent of [record.extends].flat()) {
       if (typeof parent === "string") names.push(parent);
@@ -230,11 +236,15 @@ function forwardedContractShapes(
           names.push(target.name);
         }
       }
+      for (const name of ownShapeIdsIn(record[field], ownNames)) byId.add(name);
     }
-    for (const name of names) {
+    for (const name of [...names, ...byId]) {
       if (present.has(name)) continue;
       const shape = byName.get(name);
       if (!shape) continue;
+      // A schema id names a shape only: a resource of that name declaring no
+      // schema of its own is not one.
+      if (!names.includes(name) && !isShapeDocument(shape)) continue;
       present.add(name);
       out.push({
         ...shape,
@@ -243,6 +253,34 @@ function forwardedContractShapes(
       queue.push({ manifest: shape, fields: ["schema"] });
     }
   }
+  return out;
+}
+
+/** Whether a manifest carries a schema of its own, as a named shape does. */
+function isShapeDocument(manifest: ResourceManifest): boolean {
+  const schema = (manifest as unknown as Record<string, unknown>).schema;
+  return !!schema && typeof schema === "object" && !Array.isArray(schema);
+}
+
+/** The names of the library's own shapes a `$ref` under `value` names by id —
+ *  canonical (`telo:<Library>/<Type>`) or authored (`telo://Self/<Type>`) — the
+ *  spellings a shape names a sibling shape by, besides `!ref`. */
+function ownShapeIdsIn(value: unknown, ownNames: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    const ref = (node as Record<string, unknown>).$ref;
+    const canonical = parseCanonicalTypeSchemaId(ref);
+    if (canonical && ownNames.has(canonical.moduleName)) out.push(canonical.typeName);
+    const authored = parseTeloTypeRef(ref);
+    if (authored && ownNames.has(authored.authority)) out.push(authored.typeName);
+    Object.values(node as Record<string, unknown>).forEach(walk);
+  };
+  walk(value);
   return out;
 }
 

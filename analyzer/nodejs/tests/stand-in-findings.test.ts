@@ -32,7 +32,7 @@ function findings(
     value: data,
     schema,
     standIns,
-    validate: new SchemaNodeValidator(located).findingsFor(schema),
+    validate: new SchemaNodeValidator(located, { resolveReference: () => undefined }).findingsFor(schema),
   }).map((e) => `${e.instancePath} ${e.keyword}`);
 }
 
@@ -336,6 +336,7 @@ describe("withoutStandInFindings — a branch judged alone, on a validator that 
   function judged(schema: Record<string, any>, data: unknown, standIns: StandIns) {
     const filling = new Ajv({ strict: false, allErrors: true, useDefaults: true });
     const seam = new SchemaNodeValidator(createAjv({ verbose: true }), {
+      resolveReference: () => undefined,
       fillDefaults: (whole, value) => void filling.compile(whole)(value),
     }).findingsFor(schema);
     const all = seam(schema, data);
@@ -414,7 +415,9 @@ describe("SchemaNodeValidator", () => {
     };
     const validate = createAjv({ verbose: true }).compile(schema);
     expect(validate({ wait: "" })).toBe(false);
-    const seam = new SchemaNodeValidator(createAjv({ verbose: true })).findingsFor({});
+    const seam = new SchemaNodeValidator(createAjv({ verbose: true }), {
+      resolveReference: () => undefined,
+    }).findingsFor({});
     expect(seam(schema.properties.wait.anyOf[0]!, "")).toBeUndefined();
     const kept = withoutStandInFindings(validate.errors, {
       value: { wait: "" },
@@ -429,7 +432,7 @@ describe("SchemaNodeValidator", () => {
     const ajv = createAjv({ verbose: true });
     const document = { anyOf: [{ $ref: "telo://m/Missing" }, { type: "integer" }] };
     ajv.addSchema(document, "telo://m/Doc", undefined, false);
-    const seam = new SchemaNodeValidator(ajv).findingsFor({});
+    const seam = new SchemaNodeValidator(ajv, { resolveReference: () => undefined }).findingsFor({});
     let thrown: unknown;
     try {
       seam(document.anyOf[0]!, "");

@@ -85,6 +85,8 @@ targets:
   - !ref standInIdenticalOwnFieldAtRuntime
   - !ref celArgumentType
   - !ref celArgumentTypeAtRuntime
+  - !ref celComputedListElement
+  - !ref celComputedListElementAtRuntime
   - !ref celArgumentNullable
   - !ref celArgumentNullableAtRuntime
   - !ref celArgumentNullableRef
@@ -289,6 +291,8 @@ targets:
   - !ref valueSchemaContextAtRuntime
   - !ref valueSchemaFromInvalid
   - !ref valueSchemaFromInvalidAtRuntime
+  - !ref valueSchemaFromListInvalid
+  - !ref valueSchemaFromListInvalidAtRuntime
   - !ref valueSchemaMemberKeyInvalid
   - !ref valueSchemaMemberKeyInvalidAtRuntime
   - !ref valueSchemaMemberPointerInvalid
@@ -2369,6 +2373,25 @@ expect:
   # The message of `ERR_INPUT_INVALID`.
   runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"count\":\"abc\"}. Error: /count must be integer"
 ---
+# …a list an expression computes, held element by element: a literal element
+# beside a function's declared result…
+kind: Assert.Manifest
+metadata:
+  name: celComputedListElement
+source: ./__fixtures__/check-run-agreement/cel-computed-list-element/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "/toolCallId: required by target but missing from source"
+---
+kind: Assert.Manifest
+metadata:
+  name: celComputedListElementAtRuntime
+source: ./__fixtures__/check-run-agreement/cel-computed-list-element/telo.yaml
+expect:
+  # The message of `ERR_INPUT_INVALID`.
+  runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"messages\":[{\"role\":\"tool\",\"content\":\"x\"},{\"role\":\"user\",\"content\":\"hello\"}]}. Error: /messages/0 is missing required property 'toolCallId'"
+---
 # …and a value its producer declares nullable where the contract takes no null.
 kind: Assert.Manifest
 metadata:
@@ -3211,6 +3234,25 @@ source: ./__fixtures__/check-run-agreement/value-schema-from-invalid/telo.yaml
 expect:
   errors: []
   runFails: "ERR_VALUE_SCHEMA_FROM_INVALID"
+---
+# A list of locations holding one that is no location: refused naming the
+# element, where the kind is written and when the kernel registers it.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromListInvalid
+source: ./__fixtures__/check-run-agreement/value-schema-from-list-invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: VALUE_SCHEMA_FROM_INVALID
+      message: "element 1 of the list (`/readers//contextType`)"
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromListInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-from-list-invalid/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_VALUE_SCHEMA_FROM_INVALID] RuntimeError: Telo.Definition 'Caller' at 'inputType.schema.properties.context.x-telo-value-schema-from': element 1 of the list"
 ---
 # A member named by the key of a value reached by an index has no key: the
 # kind is refused where it is written and when the kernel registers it.

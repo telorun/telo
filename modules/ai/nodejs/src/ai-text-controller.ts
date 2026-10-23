@@ -4,6 +4,7 @@ import type {
   ResourceContext,
   ResourceInstance,
 } from "@telorun/sdk";
+import { ContentResolution, type ContentResolverConfig } from "./content-resolution.js";
 import { InvokeError } from "@telorun/sdk";
 import { logCompletion } from "./completion-log.js";
 import { tokenCounts, withTokenQuantity } from "./usage.js";
@@ -19,6 +20,7 @@ interface AiTextResource {
   model: AiModelInstance;
   system?: SystemPrompt;
   options?: Record<string, unknown>;
+  resolver?: ContentResolverConfig;
 }
 
 interface AiTextInputs {
@@ -26,6 +28,8 @@ interface AiTextInputs {
   messages?: Message[];
   system?: SystemPrompt;
   options?: Record<string, unknown>;
+  /** Caller data the resolver's mappings read; never sent to the model. */
+  context?: Record<string, unknown>;
 }
 
 const VALID_ROLES = new Set(["system", "user", "assistant"]);
@@ -109,7 +113,16 @@ class AiText implements ResourceInstance<AiTextInputs, AiTextResult> {
     // the result arrives already held to `Ai.Model`'s declared outputType —
     // which is why the hand-rolled result validation that used to stand here is
     // gone rather than merely moved. Cancellation rides the InvokeContext.
-    const result = await model.invoke({ messages, options: mergedOptions }, ctx);
+    // Referenced content is resolved for this call only: the model is sent the
+    // resolver's answers, and nothing the caller wrote is changed.
+    const sent = await new ContentResolution(
+      this.resource.resolver,
+      this.ctx,
+      `Ai.Text "${name}"`,
+      inputs.context ?? {},
+      ctx,
+    ).messages(messages);
+    const result = await model.invoke({ messages: sent, options: mergedOptions }, ctx);
 
     // Stamp the provider-neutral half of usage here rather than asking every
     // provider for it — the token triple already carries the answer, and doing it

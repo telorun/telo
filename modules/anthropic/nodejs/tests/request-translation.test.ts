@@ -133,6 +133,21 @@ describe("the request", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it("refuses a tool message naming no call before anything is sent", async () => {
+    const { model, invoke } = await stubbed();
+    const error = await outcome(model, {
+      messages: [
+        { role: "user", content: "fetch" },
+        { role: "assistant", content: "", toolCalls: [{ id: "c1", name: "fetch", arguments: {} }] },
+        { role: "tool", toolCallId: "c1", content: "first" },
+        { role: "tool", content: "second" },
+      ],
+    });
+    expect(error).toMatchObject({ code: "ERR_MODEL_REQUEST_REJECTED" });
+    expect(error.message).toContain("messages[3] is a tool message with no 'toolCallId'");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it("sends a run of tool messages as one user turn, files after the results", async () => {
     const { model, body } = await stubbed();
     await model.invoke({

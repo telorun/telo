@@ -119,9 +119,9 @@ steps:
   - name: labelIn
     invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?label.in=docs&label.in=chore&limit=100" }
   - name: assigneeIs
-    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?assigneeEmail=jan@northwind.example" }
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?assigneeEmail=james@northwind.example" }
   - name: assigneeIn
-    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?assigneeEmail.in=jan@northwind.example&assigneeEmail.in=maja@northwind.example&limit=100" }
+    invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?assigneeEmail.in=james@northwind.example&assigneeEmail.in=maya@northwind.example&limit=100" }
   - name: projectIs
     invoke: { kind: HttpClient.Request, client: !ref grid, url: "/api/tasks?projectCode=OPS-9" }
   - name: blockedIs
@@ -147,7 +147,7 @@ steps:
         labelIs: !cel "steps.labelIs.result.body.rows.map(r, r.id)"
         labelIn: !cel "[steps.labelIn.result.body.total, steps.labelIn.result.body.rows.all(r, r.label in ['docs', 'chore'])]"
         assigneeIs: !cel "steps.assigneeIs.result.body.rows.map(r, r.id)"
-        assigneeIn: !cel "[steps.assigneeIn.result.body.total, steps.assigneeIn.result.body.rows.all(r, r.assigneeEmail in ['jan@northwind.example', 'maja@northwind.example'])]"
+        assigneeIn: !cel "[steps.assigneeIn.result.body.total, steps.assigneeIn.result.body.rows.all(r, r.assigneeEmail in ['james@northwind.example', 'maya@northwind.example'])]"
         projectIs: !cel "steps.projectIs.result.body.rows.map(r, r.title)"
         blockedIs: !cel "steps.blockedIs.result.body.rows.map(r, r.id)"
         priorityRange: !cel "steps.priorityRange.result.body.rows.map(r, r.id)"
@@ -267,7 +267,7 @@ steps:
           - "3"
           - id: 1
             title: Audit the current navigation
-            assignee: { name: Ada Nowak, contact: "mailto:ada@northwind.example" }
+            assignee: { name: Ada Brooks, contact: "mailto:ada@northwind.example" }
             project: { code: TEL-42, name: Atlas redesign, brief: "/data?project=TEL-42" }
         next: [ "6", [ 4, 5, 6 ] ]
         end: [ null, [ 26, 27, 28, 29, 30, 31, 32 ], [ 29 ] ]

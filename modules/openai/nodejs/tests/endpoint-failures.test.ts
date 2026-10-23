@@ -514,10 +514,12 @@ describe("an answer whose members have the wrong shape", () => {
     });
   });
 
-  it("never copies a call id that is not text: the stream kind mints one", async () => {
+  it("never copies a call id that is not text: both kinds mint one", async () => {
     const call = { id: 7, function: { name: "lookup", arguments: "{}" } };
     const buffered = await outcome("chat", ok(chatAnswer({ tool_calls: [call] })));
-    expect(buffered.toolCalls).toEqual([{ id: undefined, name: "lookup", arguments: {} }]);
+    expect(buffered.toolCalls).toEqual([
+      { id: expect.stringMatching(/^call_[0-9a-f-]{36}$/), name: "lookup", arguments: {} },
+    ]);
 
     const made = streamBody([
       chatDelta({ tool_calls: [{ index: 0, ...call }] }) + frames({ choices: [{ delta: {}, finish_reason: "tool_calls" }] }),

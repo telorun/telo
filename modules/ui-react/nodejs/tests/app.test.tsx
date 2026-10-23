@@ -20,11 +20,21 @@ describe("the application shell", () => {
   it("draws the application's own header nodes before its title and after its navigation, on every page", async () => {
     const header = { start: [{ type: "image", src: "/logo.svg", alt: "Logo" }], end: [{ type: "link", text: "Help", href: "/help" }] };
     rendered = await render({ path: "/nowhere", prefix: "/admin", pages, header });
-    const parts = [...rendered.part("header").children].map((child) => child.getAttribute("data-telo-part"));
-    expect(parts).toEqual(["header-start", "app-title", "nav", "header-end"]);
+    const parts = (element: Element) => [...element.children].map((child) => child.getAttribute("data-telo-part"));
+    expect(parts(rendered.part("header"))).toEqual(["header-content"]);
+    expect(parts(rendered.part("header-content"))).toEqual(["header-start", "app-title", "nav", "header-end"]);
     expect(rendered.part("header-start").querySelector("img")?.getAttribute("src")).toBe("/admin/logo.svg");
     expect(rendered.part("header-end").querySelector("a")?.getAttribute("href")).toBe("/admin/help");
     expect(rendered.part("page-title").textContent).toBe("Not found");
+  });
+
+  it("draws the header at the application's width on every page, whatever each page's own", async () => {
+    const widths = { "/": { ...pages["/"], width: "full" as const }, "/other": { title: "Other", width: "contained" as const, children: [] } };
+    rendered = await render({ path: "/", pages: widths, header: { width: "contained" } });
+    const drawn = () => [rendered!.part("header").getAttribute("data-width"), rendered!.part("page").getAttribute("data-width"), rendered!.part("app").hasAttribute("data-width")];
+    expect(drawn()).toEqual(["contained", "full", false]);
+    await rendered.click(rendered.parts("nav-item").find((item) => item.textContent === "Other")!);
+    expect(drawn()).toEqual(["contained", "contained", false]);
   });
 
   it("draws nothing until its stylesheets have loaded, so the shell's spinner stays", async () => {

@@ -25,7 +25,11 @@
  *    defaults into the value the next branch is judged against.
  * 3. It answers "cannot" (`undefined`) only for a node that lies in no document
  *    it holds.
- * 4. Anything else is thrown: a located node that cannot be registered or
+ * 4. A reference the instance cannot resolve is asked of the host
+ *    ({@link SchemaNodeValidatorOptions.resolveReference}, which every host
+ *    must supply) — the document the host's own validation resolves it to — so
+ *    a node compiles here exactly where it compiled for the host.
+ * 5. Anything else is thrown: a located node that cannot be registered or
  *    compiled where it stands is a defect, never a "cannot".
  *
  * Whole and node findings come off ONE instance, because the judge matches a
@@ -60,6 +64,9 @@ interface NodePlace {
 }
 
 export interface SchemaNodeValidatorOptions {
+  /** The document the host's own validator resolves a schema id to, for a
+   *  reference this instance does not hold; undefined when it resolves none. */
+  resolveReference: (id: string) => object | undefined;
   /** A whole schema as the host compiles it. */
   canonical?: (schema: object) => object;
   /** Runs a compiled validator the way the host runs its own. */
@@ -78,7 +85,7 @@ export class SchemaNodeValidator {
 
   constructor(
     private readonly ajv: NodeValidatingAjv,
-    private readonly options: SchemaNodeValidatorOptions = {},
+    private readonly options: SchemaNodeValidatorOptions,
   ) {
     if (ajv.opts.useDefaults) {
       throw new Error(
@@ -119,12 +126,30 @@ export class SchemaNodeValidator {
 
   private compile(place: NodePlace): NodeValidate {
     let validate: unknown;
-    try {
-      validate = this.ajv.getSchema(place.pointer ? `${place.key}#${place.pointer}` : place.key);
-    } catch (cause) {
-      throw new Error(`${describePlace(place)} does not compile where it stands: ${reasonOf(cause)}`, {
-        cause,
-      });
+    const adopted = new Set<string>();
+    for (;;) {
+      try {
+        validate = this.ajv.getSchema(place.pointer ? `${place.key}#${place.pointer}` : place.key);
+        break;
+      } catch (cause) {
+        const missing = missingSchemaOf(cause);
+        const document =
+          missing !== undefined && !adopted.has(missing) ? this.options.resolveReference(missing) : undefined;
+        if (!document) {
+          throw new Error(`${describePlace(place)} does not compile where it stands: ${reasonOf(cause)}`, {
+            cause,
+          });
+        }
+        adopted.add(missing!);
+        try {
+          this.ajv.addSchema(document, missing, undefined, false);
+        } catch (addCause) {
+          throw new Error(
+            `${describePlace(place)} references '${missing}', which cannot be registered: ${reasonOf(addCause)}`,
+            { cause: addCause },
+          );
+        }
+      }
     }
     if (typeof validate !== "function") {
       throw new Error(`${describePlace(place)} resolves to no schema the validator can compile.`);
@@ -183,6 +208,13 @@ function describePlace(place: NodePlace): string {
   return place.pointer
     ? `Schema node '#${place.pointer}' of document '${place.key}', asked about on its own to judge a stand-in,`
     : `The schema held as document '${place.key}', validated to judge a stand-in,`;
+}
+
+/** The schema id a validator could not resolve, as its missing-reference
+ *  error names it. */
+function missingSchemaOf(cause: unknown): string | undefined {
+  const missing = (cause as { missingSchema?: unknown } | null)?.missingSchema;
+  return typeof missing === "string" && missing.length > 0 ? missing : undefined;
 }
 
 function reasonOf(cause: unknown): string {

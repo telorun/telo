@@ -1,0 +1,49 @@
+# Caller data typed where it is read: the resolver declares the `context` its
+# mapping reads, so the operation holding it requires that data of its caller.
+# `callWithoutContext` leaves it out; run from a consumer, the operation's bound
+# contract refuses the call before the model is asked anything.
+kind: Telo.Library
+metadata:
+  name: ResolverContextMissing
+  version: 1.0.0
+  description: Fixture library whose text call omits the caller data its content resolver declares.
+imports:
+  Ai: ../../..
+  AiEcho: ../ai-echo.yaml
+  Run: ../../../../run
+exports:
+  resources: [callWithoutContext]
+---
+# Reaching the model at all would fail the run with this code instead.
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+failOn:
+  message: "hello"
+  code: ERR_MODEL_REACHED
+  reason: the model received a request
+---
+kind: Ai.Text
+metadata: { name: reader }
+model: !ref echo
+resolver:
+  schemes: [upload]
+  contextType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [conversationId]
+      properties:
+        conversationId: { type: string }
+  invoke:
+    kind: Run.Value
+    value: { body: "" }
+  inputs: {}
+  result: !cel "{'type': 'text', 'text': result.body}"
+---
+kind: Run.Sequence
+metadata: { name: callWithoutContext }
+steps:
+  - name: call
+    invoke: !ref reader
+    inputs:
+      prompt: "hello"

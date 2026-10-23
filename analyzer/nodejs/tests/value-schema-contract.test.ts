@@ -25,7 +25,7 @@ const READER = {
   schema: { type: "object", properties: { contextType: TYPE_FIELD } },
 } as unknown as ResourceDefinition;
 
-const contextInput = (from: string) => ({
+const contextInput = (from: unknown) => ({
   kind: "Telo.JsonSchema",
   schema: {
     type: "object",
@@ -183,6 +183,58 @@ describe("x-telo-value-schema-from inside a contract", () => {
     expect(found.map((d) => d.data?.path)).toEqual([
       "schema.properties.context.x-telo-value-schema-from",
     ]);
+  });
+
+  it("holds the node to every type each listed location reaches", () => {
+    const both = {
+      ...CALLER,
+      metadata: { name: "Both", module: "test-fx" },
+      schema: {
+        type: "object",
+        properties: { ...CALLER.schema.properties, contextType: TYPE_FIELD },
+      },
+      inputType: contextInput(["/readers/*/contextType", "contextType"]),
+    } as unknown as ResourceDefinition;
+    const reader = app("turns", "Fx.Reader", { contextType: requires("turnId") });
+    const holder = app("both", "Fx.Both", {
+      readers: [makeTaggedSentinel("ref", "turns")],
+      contextType: requires("sessionId"),
+    });
+    const target = { kind: "Fx.Both", name: "both" };
+    const definitions = [READER, HOST, both];
+
+    const found = mismatches(
+      analyze([reader, holder, call(target, { context: { turnId: "t1" } })], definitions),
+    );
+    expect(found.map((d) => d.data?.path)).toEqual(["inputs.context"]);
+    expect(found[0]!.message).toContain("sessionId");
+    expect(
+      mismatches(
+        analyze(
+          [reader, holder, call(target, { context: { turnId: "t1", sessionId: "s1" } })],
+          definitions,
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("refuses an empty list, and a list element that is no location, naming the element", () => {
+    const listed = (name: string, from: unknown) =>
+      ({
+        ...CALLER,
+        metadata: { name, module: "App" },
+        inputType: contextInput(from),
+      }) as unknown as ResourceManifest;
+    const found = analyze([
+      listed("EmptyList", []),
+      listed("BadElement", ["/readers/*/contextType", "/readers//contextType"]),
+    ]).filter((d) => d.code === "VALUE_SCHEMA_FROM_INVALID");
+    expect(found.map((d) => [d.data?.resource?.name, d.data?.path])).toEqual([
+      ["EmptyList", "inputType.schema.properties.context.x-telo-value-schema-from"],
+      ["BadElement", "inputType.schema.properties.context.x-telo-value-schema-from"],
+    ]);
+    expect(found[0]!.message).toContain("names at least one location");
+    expect(found[1]!.message).toContain("element 1 of the list (`/readers//contextType`)");
   });
 
   describe("a type field naming a shape", () => {
@@ -666,6 +718,91 @@ ${naming("Holds", "readers")}${naming("Lacks", "reader")}`;
       .filter((d) => d.severity === 1);
     expect(diagnostics.map((d) => [d.code, d.data?.resource?.name, d.data?.path])).toEqual([
       ["VALUE_SCHEMA_FROM_INVALID", "Lacks", "inputType"],
+    ]);
+  });
+});
+
+describe("a value slot typed by a shape an imported library exports", () => {
+  const SHAPES = `kind: Telo.Library
+metadata: { name: Shapes, version: 0.1.0 }
+exports:
+  resources: [Part]
+---
+kind: Telo.JsonSchema
+metadata: { name: Inner }
+schema:
+  type: object
+  properties:
+    id: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Part }
+schema:
+  type: object
+  properties:
+    inner: !ref Inner
+`;
+  const ENTRY = `kind: Telo.Library
+metadata: { name: Entry, version: 0.1.0 }
+imports:
+  Sh: ../shapes/telo.yaml
+---
+kind: Telo.Definition
+metadata: { name: Producer }
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+schema:
+  type: object
+  properties:
+    outputType:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    outputs:
+      type: object
+      x-telo-eval: runtime
+      x-telo-value-schema-from: outputType
+---
+kind: Self.Producer
+metadata: { name: producer }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    anyOf:
+      - required: [part]
+      - required: [count]
+    properties:
+      part: !ref Sh.Part
+      count: { type: integer }
+outputs:
+  note: !cel "'a'"
+`;
+
+  async function analyzeEntry(shapes: string) {
+    const files: Record<string, string> = { "/shapes/telo.yaml": shapes, "/entry/telo.yaml": ENTRY };
+    const source: ManifestSource = {
+      supports: () => true,
+      async read(url: string) {
+        const text = files[url];
+        if (text === undefined) throw new Error(`File not found: ${url}`);
+        return { text, source: url };
+      },
+      resolveRelative: (base: string, relative: string) => new URL(relative, `file://${base}`).pathname,
+    };
+    const graph = await new Loader([source]).loadGraph("/entry/telo.yaml", { desugarImports: true });
+    return new StaticAnalyzer()
+      .analyze(flattenForAnalyzer(graph), { moduleDocuments: collectModuleDocuments(graph) })
+      .filter((d) => d.severity === 1)
+      .map((d) => [d.code, d.data?.path]);
+  }
+
+  it("validates against the exported shape with the library as the entry", async () => {
+    expect(await analyzeEntry(SHAPES)).toEqual([["SCHEMA_VIOLATION", "outputs"]]);
+  });
+
+  it("judges a stand-in against a shape the registry could not register, as the whole pass reads it", async () => {
+    expect(await analyzeEntry(SHAPES.replace("!ref Inner", "!ref Nowhere"))).toEqual([
+      ["SCHEMA_VIOLATION", "outputs"],
     ]);
   });
 });
