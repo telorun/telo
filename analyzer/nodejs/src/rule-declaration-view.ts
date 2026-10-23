@@ -36,7 +36,7 @@ import { accessorFields, readsOnlySelf, withAccessorBindings } from "./accessor-
 import type { CelEvalSites } from "./eval-paths.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
-import { isInlineResource } from "./reference-field-map.js";
+import { isInlineDeclaration, type ResolvedReference } from "./resolved-reference.js";
 
 /** How one declaration is read: the eval sites of its kind, resolved in the
  *  scope of the module that declared it — absent where no CEL field rule governs
@@ -58,7 +58,7 @@ export type DeclarationEvalSites = (
 export type ForwardedReference = (
   target: RefSentinelTarget,
   module: string,
-) => { kind: string; name: string; alias?: string } | undefined;
+) => ResolvedReference | undefined;
 
 function isPlainContainer(value: unknown): value is Record<string, unknown> | unknown[] {
   if (!value || typeof value !== "object" || isTaggedSentinel(value)) return false;
@@ -120,7 +120,7 @@ export class RuleDeclarationViews {
         const items = node.map((item, index) => walk(item, `${path}[${index}]`));
         return items.some((item, index) => item !== node[index]) ? items : node;
       }
-      if (path !== "" && isInlineResource(node)) return this.view(node, module, forwarded);
+      if (path !== "" && isInlineDeclaration(node)) return this.view(node, module, forwarded);
       let copy: Record<string, unknown> | undefined;
       for (const [key, child] of Object.entries(node)) {
         const read = walk(child, path === "" ? key : `${path}.${key}`);

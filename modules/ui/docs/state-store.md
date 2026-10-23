@@ -39,7 +39,8 @@ nothing is a `SCHEMA_VIOLATION`.
 Both keep it in the viewer's browser; nothing is sent to the server.
 `Ui.StateStore` is the abstract they extend — the bar's slot takes any kind
 that extends it, so another place to keep state is another kind and the bar
-does not change.
+does not change. A [`Ui.SidebarNavigation`](navigation.md#placements) names
+one at `store` to keep its open groups and whether its rail is collapsed.
 
 ## One key, one state
 

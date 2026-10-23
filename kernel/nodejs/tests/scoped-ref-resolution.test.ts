@@ -59,7 +59,7 @@ function resourceContext(module: Record<string, Named>, owning?: Record<string, 
 }
 
 const describeSlot = () => 'Test.User "user": \'thing\'';
-const resolvedRef = { kind: "Test.Thing", name: "target" };
+const resolvedRef = { __ref: true, kind: "Test.Thing", name: "target" };
 const sentinel = makeTaggedSentinel("ref", "target");
 
 describe("ResourceContext.resolveRef", () => {

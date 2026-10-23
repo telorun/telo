@@ -31,6 +31,7 @@ import { MODULE_CALL_DISPATCH_KEY } from "@telorun/templating";
 import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleFunctionTable, splitQualifiedCall } from "./module-functions.js";
 import type { NeedFulfilment } from "./need-fulfilment.js";
+import { isResolvedReference, resolvedReference } from "@telorun/analyzer";
 
 /** Where a call through an import alias stands. */
 export type ImportedFunctionTarget =
@@ -514,7 +515,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     const scope = this.importedScopes.get(alias);
     if (!scope || !scope.names.has(name)) return undefined;
     const entry = scope.terminal(name)?.();
-    return entry ? { kind: entry.kind, name } : undefined;
+    return entry ? resolvedReference(entry.kind, name) : undefined;
   }
 
   /** Where a call through import `alias` to `name` stands — the module-call half
@@ -1055,8 +1056,8 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         await runResolvedInstance(target, id.kind, id.name);
         continue;
       }
-      const bare = target as { name?: unknown; alias?: unknown };
-      if (typeof bare.alias === "string" && bare.alias !== "Self" && typeof bare.name === "string") {
+      const bare = isResolvedReference(target) ? target : undefined;
+      if (bare && bare.alias !== undefined && bare.alias !== "Self") {
         const inst = this.resolveImportedInstance(bare.alias, bare.name);
         if (!inst || typeof inst.run !== "function") {
           throw new Error(
@@ -1066,7 +1067,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         await runResolvedInstance(inst, getRefIdentity(inst as object)?.kind ?? "", bare.name);
         continue;
       }
-      if (typeof bare.name === "string") {
+      if (bare) {
         await this.run(bare.name, ctx);
         continue;
       }

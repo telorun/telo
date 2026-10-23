@@ -327,7 +327,8 @@ tokens:
 stylesheets:
   - !module-path ./console.css
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Reports
     children:
       - { type: text, text: Monthly reports, style: heading }
@@ -613,7 +614,8 @@ pages:
                               values: { code: !cel "error.code" }
                             shown: { at: !cel "error", matches: { not: { required: [ status ] } } }
                           - { type: value, value: !cel "error.message" }
-  - path: /projects
+  - kind: Ui.Page
+    path: /projects
     title: Projects
     children:
       - { type: text, text: Projects of a timesheet, style: heading }

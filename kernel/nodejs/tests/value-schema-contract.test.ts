@@ -41,7 +41,7 @@ const readers = [turns, sessions, untyped];
 const caller = {
   kind: "fx.Caller",
   metadata: { name: "caller" },
-  readers: readers.map((reader) => ({ kind: reader.kind, name: reader.metadata.name })),
+  readers: readers.map((reader) => ({ __ref: true, kind: reader.kind, name: reader.metadata.name })),
 };
 
 const scope: ProjectionScope = {

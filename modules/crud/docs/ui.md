@@ -31,7 +31,8 @@ title: Tasks
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Tasks
     children:
       - type: composite

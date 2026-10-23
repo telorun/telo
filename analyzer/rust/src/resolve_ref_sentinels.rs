@@ -27,6 +27,8 @@ use std::collections::HashMap;
 use serde_json::{json, Value};
 use telo_templating::ref_sentinel_source;
 
+use crate::resolved_reference::{is_resolved_reference, RESOLVED_REFERENCE_MARKER as RESOLVED_REF_MARKER};
+
 /// Names a reference may resolve to, and the kind each carries.
 #[derive(Default)]
 pub struct RefTargets {
@@ -91,16 +93,6 @@ pub fn resolve_ref_sentinels(value: &mut Value, targets: &RefTargets) {
     }
 }
 
-/// Marks the object this pass writes, so a resolved reference is distinguishable
-/// from an author-typed `{kind, name}` mapping.
-///
-/// Without it the two are identical, and the object form — which the Node
-/// analyzer rejects statically as `INVALID_REFERENCE_FORM` — would be accepted
-/// and dispatched here. Two kernels disagreeing about what a valid manifest is
-/// is worse than either rule alone, so the marker is what lets
-/// [`find_invalid_reference_forms`] reject it.
-pub const RESOLVED_REF_MARKER: &str = "__ref";
-
 /// A resolved reference: the shape every downstream consumer sees, regardless of
 /// where the reference was written.
 pub struct ResolvedRef<'a> {
@@ -111,7 +103,7 @@ pub struct ResolvedRef<'a> {
 
 /// Read a resolved reference back out of a value, or `None` if this is not one.
 pub fn as_resolved_ref(value: &Value) -> Option<ResolvedRef<'_>> {
-    if value.get(RESOLVED_REF_MARKER).and_then(Value::as_bool) != Some(true) {
+    if !is_resolved_reference(value) {
         return None;
     }
     let kind = value.get("kind")?.as_str()?;
@@ -141,39 +133,6 @@ pub fn find_unresolved_sentinels(value: &Value) -> Vec<UnresolvedRef> {
                 source: source.to_string(),
             });
         }
-    });
-    found
-}
-
-/// One author-written `{kind, name}` mapping in a slot that wants a reference.
-pub struct InvalidReferenceForm {
-    pub path: String,
-    pub kind: String,
-    pub name: String,
-}
-
-/// Collect every object that looks like a hand-written reference.
-///
-/// A resource *declaration* also carries `kind`, so the discriminator is
-/// `metadata.name` versus a bare top-level `name`: an inline definition names
-/// itself under `metadata`, a reference-shaped object does not.
-pub fn find_invalid_reference_forms(value: &Value) -> Vec<InvalidReferenceForm> {
-    let mut found = Vec::new();
-    walk_paths(value, &mut String::new(), &mut |path, node| {
-        if node.get(RESOLVED_REF_MARKER).is_some() {
-            return;
-        }
-        let (Some(kind), Some(name)) = (
-            node.get("kind").and_then(Value::as_str),
-            node.get("name").and_then(Value::as_str),
-        ) else {
-            return;
-        };
-        found.push(InvalidReferenceForm {
-            path: path.to_string(),
-            kind: kind.to_string(),
-            name: name.to_string(),
-        });
     });
     found
 }
@@ -268,28 +227,5 @@ mod tests {
         let unresolved = find_unresolved_sentinels(&value);
         assert_eq!(unresolved.len(), 1);
         assert_eq!(unresolved[0].path, "config/nested/0/handler");
-    }
-
-    #[test]
-    fn a_resolved_reference_is_not_reported_as_a_hand_written_one() {
-        let mut value = json!({ "invoke": make_tagged_sentinel("ref", "localThing") });
-        resolve_ref_sentinels(&mut value, &targets());
-        assert!(find_invalid_reference_forms(&value).is_empty());
-    }
-
-    #[test]
-    fn a_hand_written_object_reference_is_reported() {
-        let value = json!({ "invoke": { "kind": "demo.Thing", "name": "localThing" } });
-        let invalid = find_invalid_reference_forms(&value);
-        assert_eq!(invalid.len(), 1);
-        assert_eq!(invalid[0].path, "invoke");
-    }
-
-    /// An inline resource declaration also carries `kind`; it names itself under
-    /// `metadata`, so it must not be mistaken for a reference.
-    #[test]
-    fn an_inline_declaration_is_not_a_reference_form() {
-        let value = json!({ "with": [{ "kind": "demo.Thing", "metadata": { "name": "scoped" } }] });
-        assert!(find_invalid_reference_forms(&value).is_empty());
     }
 }

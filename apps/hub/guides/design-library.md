@@ -466,7 +466,10 @@ Declare a resource **inline at its use site** when it is used exactly once
 must name it: it is referenced more than once, listed in `targets:`, or
 exported. A router mounted on a server stays named, so it can be tested on
 its own. In a template body, entries are always named (the dispatch verb
-names one).
+names one). An inline declaration holds the kind's own fields, a `name` among
+them when the kind declares one (`icon: { kind: UiLucide.Icon, name: house }`);
+for a kind declaring no `name` field, `{ kind, name }` is the removed form of a
+reference (`INVALID_REFERENCE_FORM`) — write `!ref <name>`.
 
 ## Testing a library
 

@@ -59,7 +59,7 @@ describe("AnalysisRegistry.forModule", () => {
     );
 
     expect((normalized.find((m) => m.metadata.name === "read") as { target?: unknown }).target)
-      .toEqual({ kind: "RightSource.Right", name: "value", alias: "Source" });
+      .toEqual({ __ref: true, kind: "RightSource.Right", name: "value", alias: "Source" });
   });
 
   it("analyzes a library into the shared registry without touching the entry's table", () => {

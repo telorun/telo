@@ -1,5 +1,5 @@
 import type { ModuleContext } from "./module-context.js";
-import type { KindRef } from "./ref.js";
+import { isKindRef, refSentinelTarget, type KindRef } from "./ref.js";
 import type { ResourceInstance } from "./resource-instance.js";
 import { RuntimeError } from "./types.js";
 
@@ -34,7 +34,10 @@ export interface RefResolveContext {
  * controller obtained itself via `ctx.ensureKindRef`. Both are gaps worth
  * closing in the kernel — until they are, both shapes must be accepted here, and
  * an aliased ref routes through the import's exported scope because a bare local
- * lookup would miss it.
+ * lookup would miss it. A reference is told by the rule the kernel applies: a
+ * resolved reference carries the `__ref` marker, and a `!ref` sentinel left
+ * unresolved is resolved by the name it holds; any other object is an inline
+ * declaration, refused here as no reference.
  *
  * `guard` decides what counts as the right kind of instance — a duck-type check
  * on the methods the caller will actually invoke, so a mis-wired ref fails with a
@@ -64,8 +67,12 @@ export function resolveRefInstance<T>(
     throw new RuntimeError("ERR_REF_REQUIRED", `${describe()} is required — reference a ${target}.`);
   }
 
-  const ref = value as Partial<KindRef<T>>;
-  if (typeof ref.name !== "string") {
+  // A reference is a resolved reference or a `!ref` sentinel — never a plain
+  // `{ kind, name }`, which is an inline declaration whatever fields it holds.
+  const ref: { kind?: string; name: string; alias?: string } | undefined = isKindRef(value)
+    ? value
+    : refSentinelTarget(value);
+  if (!ref) {
     throw new RuntimeError(
       "ERR_REF_UNRESOLVED",
       `${describe()} must be a \`!ref\` to a ${target}.`,
@@ -81,7 +88,7 @@ export function resolveRefInstance<T>(
         // already in the manifest and recording it would mark the target
         // unreconcilable on the strength of a reference the host can see.
         (ctx.resolveLocalInstance?.(ref.name) ??
-          ctx.moduleContext.getInstance(ref.name, { kind: ref.kind as string, name: ref.name }));
+          ctx.moduleContext.getInstance(ref.name, { kind: ref.kind ?? "", name: ref.name }));
 
   if (!guard(instance)) {
     const label = ref.alias ? `${ref.alias}.${ref.name}` : ref.name;

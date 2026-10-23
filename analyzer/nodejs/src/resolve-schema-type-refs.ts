@@ -3,6 +3,7 @@ import { canonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
+import { isResolvedReference, RESOLVED_REFERENCE_MARKER } from "./resolved-reference.js";
 
 /** Schema-bearing fields on a Telo.Definition / Telo.Type resource. */
 const SCHEMA_FIELDS = ["schema", "inputType", "outputType"];
@@ -92,6 +93,7 @@ export function resolveSchemaTypeRefs(
           // declaring a shape of the same name collide silently.
           obj.$ref = canonical;
         } else {
+          delete obj[RESOLVED_REFERENCE_MARKER];
           delete obj.kind;
           delete obj.name;
           delete obj.alias;
@@ -156,8 +158,8 @@ export function withCanonicalRefSentinels(
 /**
  * A resolved `!ref` sitting where a schema belongs, or null.
  *
- * Recognised structurally: Phase 2.5 writes `{kind, name, alias?}` and nothing
- * else, and a node carrying JSON Schema keywords is a schema that happens to be
+ * Recognised by the resolved-reference marker: Phase 2.5 writes
+ * `{__ref, kind, name, alias?}` and nothing else, and a node carrying JSON Schema keywords is a schema that happens to be
  * beside one rather than a reference. Being conservative here is the safe
  * direction — a node this declines to rewrite stays a reference for
  * `validateReferences` to judge, while one it rewrote wrongly would silently
@@ -166,11 +168,19 @@ export function withCanonicalRefSentinels(
 function resolvedRefInSchema(
   obj: Record<string, unknown>,
 ): { name: string; alias?: string } | null {
-  if (typeof obj.kind !== "string" || typeof obj.name !== "string") return null;
+  if (!isResolvedReference(obj)) return null;
   for (const key of Object.keys(obj)) {
     // `$ref` is allowed so the pass is idempotent at a slot root, where the id
     // is stamped BESIDE the reference rather than replacing it.
-    if (key !== "kind" && key !== "name" && key !== "alias" && key !== "$ref") return null;
+    if (
+      key !== RESOLVED_REFERENCE_MARKER &&
+      key !== "kind" &&
+      key !== "name" &&
+      key !== "alias" &&
+      key !== "$ref"
+    ) {
+      return null;
+    }
   }
   return typeof obj.alias === "string"
     ? { name: obj.name, alias: obj.alias }

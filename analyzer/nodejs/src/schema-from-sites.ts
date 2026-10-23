@@ -8,6 +8,7 @@ import type { DerivedSlotContext } from "./derived-slots.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { navigateJsonPointer } from "./schema-compat.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 /** An `x-telo-schema-from` slot resolved to the schema it derives. */
 export interface SchemaFromSite {
@@ -143,8 +144,7 @@ export function schemaFromSites(
   // The instance first, then the kind: a kind whose shape is per instance
   // declares it as a field, and reading only the definition types every
   // instance against nothing.
-  const target =
-    typeof ref.name === "string" ? ctx.resolveTarget(ref as Record<string, any>) : undefined;
+  const target = isResolvedReference(ref) ? ctx.resolveTarget(ref as Record<string, any>) : undefined;
   const perInstance =
     target === undefined
       ? undefined

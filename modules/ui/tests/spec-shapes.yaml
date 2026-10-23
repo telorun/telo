@@ -200,4 +200,4 @@ steps:
         - "ERR_OUTPUT_INVALID Error: /surface matches no alternative — expected one with 'modal', or one with 'align'"
         - "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'open', or one with 'surface'"
         - "ERR_OUTPUT_INVALID Error: /node/placement matches no alternative — expected one with 'side', or one with 'open', or one with 'surface'"
-        - "ERR_OUTPUT_INVALID Error: /node matches no alternative — expected one with 'children', or one with 'text', or one with 'src', or one with 'markup', or one with 'schema', or one with 'module', or one with 'value', or one with 'rows', or one with 'code'"
+        - "ERR_OUTPUT_INVALID Error: /node matches no alternative — expected one with 'children', or one with 'text', or one with 'tabs', or one with 'src', or one with 'markup', or one with 'schema', or one with 'module', or one with 'value', or one with 'rows', or one with 'code'"

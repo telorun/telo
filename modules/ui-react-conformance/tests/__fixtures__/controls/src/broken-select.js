@@ -4,8 +4,8 @@ import { BUILT_IN_CONTROLS } from "../../../../../ui-react/nodejs/src/browser/co
 const Reference = BUILT_IN_CONTROLS.Select;
 
 // The other layer controls are the renderer's own: a set replacing one layer
-// control replaces all eight.
-export const { MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip } = BUILT_IN_CONTROLS;
+// control replaces all nine.
+export const { MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation } = BUILT_IN_CONTROLS;
 
 // The renderer's own Select, except that Escape closes it on its own, without
 // asking the renderer through `onOpenChange`.

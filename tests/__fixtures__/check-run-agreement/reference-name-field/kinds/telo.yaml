@@ -1,0 +1,62 @@
+# A kind whose configuration has a field called `name`, a kind holding an
+# invocable through a reference slot, and a template forwarding that slot from
+# `self` into its body.
+kind: Telo.Library
+metadata:
+  name: RefNameField
+  version: 1.0.0
+  description: >-
+    Fixture library with a kind declaring a name field, a kind invoking what its
+    reference slot holds, and a template forwarding a reference into its body.
+exports:
+  kinds:
+    - Named
+    - Holder
+    - Forward
+---
+kind: Telo.Definition
+metadata:
+  name: Named
+  description: Answers with the name it was declared with.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Named
+schema:
+  type: object
+  additionalProperties: false
+  required: [name]
+  properties:
+    name: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+  description: Invokes the resource its target slot holds and answers with its result.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Holder
+schema:
+  type: object
+  additionalProperties: false
+  required: [target]
+  properties:
+    target:
+      x-telo-ref: { kind: Self.Named, use: call }
+---
+kind: Telo.Definition
+metadata:
+  name: Forward
+  description: Hands the resource its target slot holds to a body entry and invokes that entry.
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+  required: [target]
+  properties:
+    target:
+      x-telo-ref: { kind: Self.Named, use: call }
+resources:
+  - kind: Self.Holder
+    metadata: { name: hold }
+    target: !cel "self.target"
+invoke: !ref hold

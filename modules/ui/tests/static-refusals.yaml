@@ -14,7 +14,9 @@ metadata:
     address and a menu item's are held to the same rule, and a
     component's properties are held to what its export declares. A surface
     takes only its own kind's keys, a page surface needs its address, a surface
-    slot and a compact slot take only the kinds they name, an edit cannot ask
+    slot and a compact slot take only the kinds they name — a navigation's
+    compact slot only a compact placement, which takes no compact of its own, and a tab bar at most five tabs —
+    an edit cannot ask
     for another record, an opener is not a bare form, and a compact surface
     declares neither an address nor a compact surface of its own. A filter bar
     lists a pair once, declares only defaults and preset values its filters can
@@ -59,6 +61,7 @@ targets:
   - !ref filterModelUntypedAtRuntime
   - !ref shapes
   - !ref surfaces
+  - !ref navigationPlacements
   - !ref compactAddressedAtRuntime
   - !ref compactNestedAtRuntime
   - !ref filterDuplicateAtRuntime
@@ -269,7 +272,7 @@ source: ./__fixtures__/invalid/shapes/telo.yaml
 expect:
   errors:
     - code: SCHEMA_VIOLATION
-      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | menu | image | svg | value | list | composite)"
+      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | menu | tabs | image | svg | value | list | composite)"
     - code: SCHEMA_VIOLATION
       message: "Ui.View/strayKey: /content/children/0 must NOT have additional properties ('gap' is not allowed)"
     - code: SCHEMA_VIOLATION
@@ -304,7 +307,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Ui.PageSurface/pageUnaddressed: / is missing required property 'address'"
     - code: REFERENCE_KIND_MISMATCH
-      message: "Ui.Panel/compactPopover: reference at 'compact' → 'Ui.Popover' (resolved: 'Ui.Popover') does not match required 'Ui.Dialog'"
+      message: "Ui.Panel/compactPopover: reference at 'compact' → 'Ui.Popover' does not implement 'Ui.ViewportOverlay'"
     - code: REFERENCE_KIND_MISMATCH
       message: "Ui.Table/surfaceIsForm: reference at 'create.surface' → 'Ui.Form' does not implement 'Ui.Surface'"
     - code: SCHEMA_VIOLATION
@@ -315,6 +318,21 @@ expect:
       message: "Ui.Table/bareCreate: /create must NOT have additional properties ('kind' is not allowed)"
     - code: SCHEMA_VIOLATION
       message: "Ui.Table/bareCreate: /create must NOT have additional properties ('name' is not allowed)"
+---
+kind: Assert.Manifest
+metadata:
+  name: navigationPlacements
+source: ./__fixtures__/invalid/navigation/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.OverlayNavigation/overlayCompact: / must NOT have additional properties ('compact' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.TabBarNavigation/tabBarCompact: / must NOT have additional properties ('compact' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.TabBarNavigation/tooManyTabs: /visible must be <= 5"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.HeaderNavigation/sidebarAsCompact: reference at 'compact' → 'Ui.SidebarNavigation' does not implement 'Ui.CompactNavigationPlacement'"
 ---
 kind: Assert.Manifest
 metadata:
@@ -429,9 +447,11 @@ expect:
     - code: REFERENCE_KIND_MISMATCH
       message: "Ui.OverlayPlacement/overlayInPanel: reference at 'surface' → 'Ui.Panel' does not implement 'Ui.Overlay'"
     - code: REFERENCE_KIND_MISMATCH
-      message: "Ui.AsidePlacement/compactAbove: reference at 'compact' → 'Ui.AbovePlacement' (resolved: 'Ui.AbovePlacement') does not match required 'Ui.CollapsiblePlacement'"
+      message: "Ui.AsidePlacement/compactAbove: reference at 'compact' → 'Ui.AbovePlacement' does not implement 'Ui.FoldingFilterPlacement'"
 ---
-# Ten bars pin a filter under every placement; three are told it says nothing.
+# Ten bars pin a filter under every placement; the two where nothing ever folds
+# are told it says nothing. An aside bar folds on a narrow viewport, compact
+# named or not.
 kind: Run.Sequence
 metadata:
   name: pinned
@@ -445,7 +465,6 @@ steps:
       expected:
         - "RESOURCE_RULE_VIOLATED Ui.Filters/omitted:"
         - "REFERRER_RULE_VIOLATED Ui.Filters/above at 'policy.placement': required by Ui.AbovePlacement —"
-        - "REFERRER_RULE_VIOLATED Ui.Filters/aside at 'policy.placement': required by Ui.AsidePlacement —"
 ---
 # `eachItsOwn`, two row actions over different models, reports nothing.
 kind: Assert.Manifest

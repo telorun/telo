@@ -60,7 +60,8 @@ import {
 } from "./ref-slot.js";
 import { isStepSlot } from "./step-slot.js";
 import { topologyRoleOf, type TopologyRole } from "./topology-role.js";
-import { isInlineResource, type RefFieldEntry } from "./reference-field-map.js";
+import { type RefFieldEntry } from "./reference-field-map.js";
+import { isInlineDeclaration, isResolvedReference } from "./resolved-reference.js";
 import { enclosingDefault, siteRefEntry, type Pattern, type ReachRef } from "./reference-reach.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
@@ -464,12 +465,11 @@ export function resolveSlotUseAt(
   return resolveUseAtSite(entry, resource, concretePath, reachDefault([ref]));
 }
 
-/** A resolved plain reference value (`{kind, name}`, optionally `alias`) — the
- *  shape `resolveRefSentinels` leaves at a ref site. NOT a step: a bare boot
- *  target written `!ref X` must not mint a step node. */
+/** A resolved reference — the shape `resolveRefSentinels` leaves at a ref
+ *  site. NOT a step: a bare boot target written `!ref X` must not mint a step
+ *  node. */
 function isPlainRefValue(value: Record<string, unknown>): boolean {
-  if (typeof value.kind !== "string" || typeof value.name !== "string") return false;
-  return Object.keys(value).every((k) => k === "kind" || k === "name" || k === "alias" || k === "__ref");
+  return isResolvedReference(value);
 }
 
 interface StepWalkContext {
@@ -568,7 +568,7 @@ function emitStepEdges(node: StepGraphNode, ctx: StepWalkContext): void {
       written !== null &&
       typeof written === "object" &&
       !Array.isArray(written) &&
-      isInlineResource(written as Record<string, unknown>);
+      isInlineDeclaration(written);
     // Every declared slot is recorded, whatever is in it: an empty one is a
     // site an editor can fill, and a declaration written at the site is a real
     // dispatch that emits no edge — which is what made an inline step read
@@ -1066,7 +1066,7 @@ export function buildCallGraph(
 }
 
 /** The target resource NAME a ref site's value carries. Both written forms reach
- *  here: an unresolved `!ref <name>` sentinel and the `{kind, name}` object
+ *  here: an unresolved `!ref <name>` sentinel and the resolved reference
  *  `resolveRefSentinels` rewrites it into. */
 function refTargetName(value: unknown): string | undefined {
   // An edge's target is taken VERBATIM — `resolveScopedName` and the node index
@@ -1075,9 +1075,7 @@ function refTargetName(value: unknown): string | undefined {
   // shared parse, not a second reading of the tag.
   const sentinel = refSentinelTarget(value);
   if (sentinel) return sentinel.source;
-  if (!value || typeof value !== "object") return undefined;
-  const name = (value as Record<string, unknown>).name;
-  return typeof name === "string" ? name : undefined;
+  return isResolvedReference(value) ? value.name : undefined;
 }
 
 export interface ProjectToPairsOptions {

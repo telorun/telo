@@ -34,6 +34,7 @@ import { ITEMS, MAP_VALUES, type Pattern, type PatternSegment } from "./referenc
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -216,16 +217,9 @@ function refName(value: unknown): string | undefined {
     if (sentinel.alias === undefined) return sentinel.name;
     return sentinel.alias === "Self" ? sentinel.name : undefined;
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const v = value as Record<string, unknown>;
-  const pure =
-    typeof v.kind === "string" &&
-    typeof v.name === "string" &&
-    Object.keys(v).every((k) => k === "kind" || k === "name" || k === "alias" || k === "__ref");
-  if (!pure) return undefined;
-  const alias = v.alias;
-  if (typeof alias === "string" && alias !== "Self") return undefined;
-  return v.name as string;
+  if (!isResolvedReference(value)) return undefined;
+  if (value.alias !== undefined && value.alias !== "Self") return undefined;
+  return value.name;
 }
 
 /**

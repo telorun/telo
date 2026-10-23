@@ -282,7 +282,12 @@ import { collectReferenceOutputIssues } from "./validate-reference-output.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
 import { kindSatisfies, validateReferences } from "./validate-references.js";
-import { validateReferenceForms } from "./validate-reference-forms.js";
+import {
+  markerFormRefusals,
+  validateReferenceForms,
+  withoutRefusedFormConsequences,
+} from "./validate-reference-forms.js";
+import { resolvedReference } from "./resolved-reference.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 import { isKindDocument, kindDeclarationOf } from "./kind-declaration.js";
 import { needTableReportsFinding, needTypeOf } from "./need-type.js";
@@ -1697,6 +1702,8 @@ export class StaticAnalyzer {
     // inherited field resolves — which is what lets a rule shared by every
     // backend be declared once on the abstract they extend.
     const kindSchemas = analyzerKindSchemas(defs);
+    const ruleShapes = (ref: string, module: string | undefined) =>
+      defs.namedShapeAt(ref, module, moduleAliasScope({ module }, aliases, aliasesByModule));
     for (const declarer of ownRuleDeclarers) {
       resourceRuleIssues.push(
         ...validateResourceRuleDeclarations(
@@ -1704,6 +1711,7 @@ export class StaticAnalyzer {
           effectiveAuthorSchema(declarer as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
           moduleCallNamesOf(moduleCallNames, declarer),
           kindSchemas,
+          ruleShapes,
         ),
       );
     }
@@ -2270,7 +2278,7 @@ export class StaticAnalyzer {
       const kind = declaration.kind.startsWith("Self.")
         ? `${owner}.${declaration.kind.slice("Self.".length)}`
         : (aliasesByModule.get(owner)?.resolveKind(declaration.kind) ?? declaration.kind);
-      return { kind, name: target.name, ...(local ? {} : { alias: target.alias }) };
+      return resolvedReference(kind, target.name, local ? undefined : target.alias);
     };
     const ruleViews = new RuleDeclarationViews((declaration, module) => {
       const bodyEntry = bodyEntryOf(declaration);
@@ -4962,7 +4970,10 @@ export class StaticAnalyzer {
     // the chain root so position-index lookups land on the parent doc — then
     // move a forward view's to its consumer, which may itself be an extraction.
     const rooted = rewriteSyntheticOrigins(
-      suppressUnreadableModuleDiagnostics(diagnostics, unreadableFiles),
+      withoutRefusedFormConsequences(
+        suppressUnreadableModuleDiagnostics(diagnostics, unreadableFiles),
+        allManifests,
+      ),
       allManifests,
     );
     return forwardViews
@@ -4998,7 +5009,7 @@ export class StaticAnalyzer {
     );
     // Resolve !ref sentinels after normalize so both the original and
     // inline-extracted manifests get their refs canonicalized to
-    // {kind, name} for the kernel that consumes this output.
+    // marked resolved references for the kernel that consumes this output.
     resolveRefSentinels(
       normalized,
       ctx.aliases,
@@ -5011,6 +5022,18 @@ export class StaticAnalyzer {
     // ids the type controllers register their schemas under.
     resolveSchemaTypeRefs(normalized, ctx.aliases, ctx.aliasesByModule);
     return normalized;
+  }
+
+  /** The author-written `__ref` keys {@link validateReferenceForms} refuses in
+   *  `manifests` — a raw, unresolved manifest set — read in the registry's
+   *  scope. Only resolution writes the marker, so a library carrying one is
+   *  refused when an import loads it, whose own analysis is not the entry's; a
+   *  library's legacy `{ kind, name }` is read as the reference it means. */
+  referenceForms(manifests: ResourceManifest[], registry: AnalysisRegistry): AnalysisDiagnostic[] {
+    const ctx = registry._context();
+    return markerFormRefusals(
+      validateReferenceForms(manifests, ctx.definitions!, ctx.aliases, ctx.aliasesByModule),
+    );
   }
 
   prepare(

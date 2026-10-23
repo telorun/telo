@@ -1,0 +1,41 @@
+kind: Telo.Application
+metadata:
+  name: UiReactTwoServersTest
+  version: 1.0.0
+  description: |
+    One application mounted on two servers answers a page on each: a request
+    is evaluated in the scope of the server it reached, whichever mounted last.
+imports:
+  App: ../../app
+  Run: ../../run
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/two-servers/telo.yaml
+    ports:
+      http: 19352
+      other: 19353
+targets:
+  - !ref fixture
+steps:
+  - name: first
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19352/admin/_telo/ui/page?path=/" }
+  - name: second
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19353/admin/_telo/ui/page?path=/" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first: { status: !cel "steps.first.result.status", children: !cel "steps.first.result.body.children" }
+        second: { status: !cel "steps.second.result.status", children: !cel "steps.second.result.body.children" }
+      expected:
+        first: { status: 200, children: [ { type: text, text: { lang: und, message: [Served twice] } } ] }
+        second: { status: 200, children: [ { type: text, text: { lang: und, message: [Served twice] } } ] }

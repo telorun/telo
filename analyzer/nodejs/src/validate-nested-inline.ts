@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { abstractKindMessage, isInstantiableDefinition } from "./instantiable-kind.js";
-import { collectRefs, isInlineResource } from "./reference-field-map.js";
+import { collectRefs } from "./reference-field-map.js";
+import { isInlineDeclaration } from "./resolved-reference.js";
 import type { ExternalSchemaResolver } from "./schema-compat.js";
 import { collectProperties, resolveRef } from "./schema-compat.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
@@ -186,7 +187,7 @@ export function validateNestedInlineResources(
         data &&
         typeof data === "object" &&
         !Array.isArray(data) &&
-        isInlineResource(data as Record<string, unknown>)
+        isInlineDeclaration(data)
       ) {
         validateInline(data as Record<string, any>, path);
       }

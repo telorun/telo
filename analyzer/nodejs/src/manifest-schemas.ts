@@ -521,7 +521,10 @@ function walkFragments(node: unknown, seen: Set<object>, ctx: ExpandContext): vo
   for (const key of keys) {
     const value = container[key];
     if (isPlainObject(value) && isRootPosition(ctx, key)) {
-      container[key] = expandRoot(value, seen);
+      // An inline declaration (`outputType: { kind: Telo.JsonSchema, schema }`)
+      // is a document of its own: its roots are its kind's, never itself.
+      if (typeof value.kind === "string") expandManifestFragments(value, seen);
+      else container[key] = expandRoot(value, seen);
       continue;
     }
     const localized = localizeRecursiveFragment(value, ctx);

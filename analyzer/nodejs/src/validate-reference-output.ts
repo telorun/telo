@@ -30,6 +30,7 @@ import type { RefSlot } from "./ref-slot.js";
 import { checkSchemaCompatibility } from "./schema-compat.js";
 import { valueDerivedContract } from "./value-derived-contract.js";
 import { callSiteContext, type CallScopes } from "./validate-step-inputs.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 /**
  * What a target returns, resolved exactly as `steps.<name>.result` is typed:
@@ -115,7 +116,7 @@ export function collectReferenceOutputIssues(
     const reported = new Set<string>();
     for (const { slot } of site.refs) {
       if (!slot.outputType) continue;
-      const target = typeof reference.name === "string" ? ctx.resolveTarget(reference) : reference;
+      const target = isResolvedReference(reference) ? ctx.resolveTarget(reference) : reference;
       if (!target) continue;
       const definition = contractScope.resolveIn(reference.kind, readingModule);
       const issues = referenceOutputRefusal(

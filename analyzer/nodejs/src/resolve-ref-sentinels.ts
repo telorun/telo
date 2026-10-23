@@ -12,6 +12,7 @@ import {
 } from "./forwarded-declaration.js";
 import { forwardedShapeFieldsOf, KIND_SHAPE_FIELDS } from "./contract-shapes.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { resolvedReference, type ResolvedReference } from "./resolved-reference.js";
 
 /** The slice of the definition registry this pass needs: a resource's concrete
  *  sites, from which its `x-telo-scope` slots are read. */
@@ -25,11 +26,12 @@ export interface ScopeSiteSource {
 
 /** Resolved ref shape written in place of a `!ref` sentinel. `alias` is set only for
  *  cross-module references (resolved into an imported library's exported instance). */
-type ResolvedRef = { kind: string; name: string; alias?: string };
+type ResolvedRef = ResolvedReference;
 
 /**
  * Rewrites every `!ref <name>` sentinel in each non-system resource's value tree
- * to `{kind, name}` (local) or `{kind, name, alias}` (cross-module), in place.
+ * to a resolved reference — `{__ref, kind, name}` (local) or `{__ref, kind, name,
+ * alias}` (cross-module), in place (`resolved-reference.ts`).
  *
  * The walk is value-tree-driven, not reach-driven: a `!ref` tag is an
  * *explicit* reference marker, so any sentinel found anywhere is unambiguously a
@@ -134,13 +136,13 @@ function resolveReferences(
     const dot = source.indexOf(".");
     if (dot === -1) {
       const t = byName.get(source);
-      return t ? { kind: t.kind as string, name: source } : undefined;
+      return t ? resolvedReference(t.kind as string, source) : undefined;
     }
     const alias = source.slice(0, dot);
     const name = source.slice(dot + 1);
     if (alias === "Self") {
       const t = byName.get(name);
-      return t ? { kind: t.kind as string, name } : undefined;
+      return t ? resolvedReference(t.kind as string, name) : undefined;
     }
     return resolveExported(alias, name, aliases);
   };
@@ -165,7 +167,7 @@ function resolveReferences(
         const foreignKind = rawKind.startsWith("Self.")
           ? `${module}.${rawKind.slice("Self.".length)}`
           : aliasesByModule?.get(module)?.resolveKind(rawKind) ?? rawKind;
-        return { kind: foreignKind, name, alias };
+        return resolvedReference(foreignKind, name, alias);
       }
     }
     return undefined;
@@ -197,7 +199,7 @@ function resolveReferences(
       const name = dot === -1 ? source : source.slice(dot + 1);
       if (alias === undefined || alias === "Self") {
         const t = byDeclaringModule.get(`${module ?? ""}\0${name}`);
-        return t ? { kind: t.kind as string, name } : undefined;
+        return t ? resolvedReference(t.kind as string, name) : undefined;
       }
       return resolveExported(alias, name, scope);
     };
@@ -245,7 +247,7 @@ function resolveReferences(
       const source = value.source;
       const bare = source.indexOf(".") === -1;
       const shadow = bare ? scoped?.get(source) : undefined;
-      if (shadow) return { kind: shadow.kind as string, name: source };
+      if (shadow) return resolvedReference(shadow.kind as string, source);
       return resolve(source) ?? value;
     }
     if (value === null || typeof value !== "object") return value;

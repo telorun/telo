@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: UiReactNavigationPlacementsTest
+  version: 1.0.0
+  description: |
+    A compact navigation placement of another module's own — a kind extending
+    the compact abstract — is accepted where a compact placement goes with no
+    change to ui, and a sidebar reaches the renderer with every default
+    filled: its rail, its store, and that compact placement as it provides it.
+    An entry's icon, a file of the application's own, reaches it as the
+    address the application serves that file at by its content digest.
+imports:
+  App: ../../app
+  Run: ../../run
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/navigation-placements/telo.yaml
+    ports:
+      http: 19319
+targets:
+  - !ref fixture
+steps:
+  - name: app
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19319/admin/_telo/ui/app" }
+  - name: glyph
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19319' + steps.app.result.body.navigation.items[0].icon"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        icon: !cel "steps.app.result.body.navigation.items[0].icon"
+        type: !cel "steps.glyph.result.headers['content-type']"
+        placement: !cel "steps.app.result.body.navigation.placement"
+      expected:
+        icon: /admin/_telo/ui/assets/fc4623b15ea93cb24bb023ca34aa2f42773be8b4761bf706f6b5e0171e032e82/glyph.svg
+        type: image/svg+xml
+        placement:
+          type: sidebar
+          side: end
+          rail: { collapsed: false }
+          store: { type: local }
+          compact:
+            type: tab-bar
+            visible: 3
+            surface:
+              type: drawer
+              side: bottom
+              size: medium
+              modal: true
+              dismiss: { escape: true, outside: true, closeButton: true }

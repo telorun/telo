@@ -1,5 +1,5 @@
 # A pinned filter on bars of every placement. Pinning says something only
-# where something folds.
+# where something folds — an aside bar folds on a narrow viewport.
 kind: Telo.Application
 metadata:
   name: UiPinnedApp

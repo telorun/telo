@@ -1,0 +1,11 @@
+# Imports the library above. Its entry-scoped check is silent about the
+# library's resources, and the run reads the legacy `{ kind, name }` as the
+# reference it means, as published artifacts carrying it have always run.
+kind: Telo.Application
+metadata:
+  name: RefNameFieldObjectFormApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.main

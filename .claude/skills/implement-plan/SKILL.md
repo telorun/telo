@@ -89,10 +89,8 @@ card's acceptance requires.
 **The builder runs the quick checks, not the gate.** The brief names them: the type check, the
 tests of the packages and modules it changed, and `pnpm run check` on the manifests it touched —
 single tests while it works, each changed package's tests once before it reports, unless that run
-takes four minutes or more. It does not run the whole repo's suite: you run that once, at the end
-of the loop. A builder running it per card multiplies the slowest step of the loop by the number of
-cards. Every wait past the five-minute cache expiry also makes the builder rewrite its whole
-context.
+takes four minutes or more. Nobody in the loop runs the whole repo's suite — that is CI's. Every
+wait past the five-minute cache expiry also makes the builder rewrite its whole context.
 
 A builder decides the small choices it meets and lists them under *Choices* in its report (see
 *What is not a decision for `decider`*). A question it may not settle that only building turned
@@ -228,7 +226,7 @@ not the builder. Every card not started is reported as not started.
 The end of a loop runs in a fixed order: the incidental-fix sweep, the audit, its fixes, the gate,
 the verification pass, the final round. The audit comes before the gate because it reads the diff
 and runs what its findings need itself; a gate run before it proves a tree the audit's fixes are
-about to change, and the whole suite is then paid for twice.
+about to change, and the gate is then paid for twice.
 
 ### The audit — after the last card
 
@@ -265,15 +263,17 @@ reported, not quietly dropped.
 ### The gate — once, after the audit's fixes
 
 When the audit's fixes have landed — or it found nothing to fix — run the gate
-yourself, once, over the whole tree:
+yourself, once, over what the loop touched:
 `sh .claude/skills/implement-plan/gate.sh <loop-dir>/98-gate.md "<heading>" "<command>" …` (in the
 background; it writes each command's full output and duration and prints one line per command). It
-runs everything every card named: for this repo `pnpm run test` for behaviour, the type checks and unit
-tests of every package the loop touched, `pnpm run check <manifests>` where a card asked for it, the
-integration suite when a card's acceptance rests on it, the release and licence checks when a card
-added a module or a fragment, and `cargo test --workspace` when a card touched a module the Rust
-kernel can load — the JS suite cannot see a Rust break. A builder reporting "tests pass" is a claim;
-this run is the evidence, and it is the only time the loop pays for the whole suite.
+runs everything every card named, scoped to the loop's own modules and packages — never a whole
+suite, which CI runs: the manifest tests of every module the loop touched
+(`pnpm run test --include '<module>/tests/*.yaml'`, plus any root `tests/*.yaml` a card named),
+the type checks and unit tests of every package the loop touched, `pnpm run check <manifests>`
+where a card asked for it, the single integration tests a card's acceptance rests on, the release
+and licence checks when a card added a module or a fragment, and the Rust crates' own
+`cargo test -p <crate>` when a card touched the Rust half — the JS tests cannot see a Rust break. A
+builder reporting "tests pass" is a claim; this run is the evidence.
 
 Read its output yourself, the durations included: a command that takes minutes and has never failed
 for a loop like this one is a note for the closing summary. A failure belongs to the card whose
@@ -306,24 +306,19 @@ each finding before you call it closed. Only a finding that genuinely cannot be 
 approved public surface, one about code the loop did not write, or a pure nit goes under *For the
 user*, each with the finding, the reason and the diff.
 
-**The final round re-runs what it reaches, not the whole gate.** The full gate has already proven
+**The final round re-runs what it reaches, not the whole gate.** The gate has already proven
 the tree this round started from, so its re-run is scoped by the round's own paths
 (`tree-snapshot.sh diff <loop-dir>/99-fixes/pre-final.tree --name-only`), and written to
 `99-fixes/final-round-gate.md` with `gate.sh`:
 
-- **A path of the runtime, the test runner, a suite or the dependency set** — `kernel/`,
-  `analyzer/`, `sdk/`, `templating/`, `cel/`, `cli/`, `modules/test/`, `package.json`,
-  `pnpm-lock.yaml`, `pnpm-workspace.yaml`, a `test-suite*.yaml` — the whole gate.
-- **A module's or a package's source, or a `telo.yaml`** — that unit's type check, unit tests and
-  `telo check`, and the whole manifest suite (`pnpm run test`): its dependents import it by
-  relative path, and `telo changed` cannot name them here, because it reads the committed diff
-  `base...HEAD` and the loop's change is uncommitted.
+- **A module's or a package's source, or a `telo.yaml`** — that unit's type check, unit tests,
+  `telo check` and its own manifest tests. Its dependents are CI's.
 - **Only tests, fixtures and docs** — the changed tests alone (`pnpm run test --include <path>` per
   manifest test, the package's own test command for a unit test).
 - **In every case, each other gate command one of whose inputs is among the paths** — the release
   check for a fragment or a `telo.yaml`, the previous-CLI check for a `telo.yaml`, the licence
-  check for a `package.json`, a `LICENSE` or a new directory, `cargo test --workspace` for a Rust
-  path.
+  check for a `package.json`, a `LICENSE` or a new directory, the touched crate's
+  `cargo test -p <crate>` for a Rust path.
 
 Say in the run's heading which gate commands were left out. A round that changed nothing has no
 re-run.

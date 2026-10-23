@@ -1,0 +1,39 @@
+kind: Telo.Application
+metadata:
+  name: ObjectReferenceForm
+  version: 1.0.0
+  description: |
+    `{ kind, name }` at a reference slot, for a kind whose schema declares no
+    `name` field: the removed object form of a reference, refused before any
+    controller is built.
+---
+kind: Telo.Definition
+metadata:
+  name: Api
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/unbuilt-api?local_path=./unbuilt#Api
+schema:
+  type: object
+---
+kind: Telo.Definition
+metadata:
+  name: Server
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/unbuilt-server?local_path=./unbuilt#Server
+schema:
+  type: object
+  properties:
+    mounts:
+      type: array
+      items:
+        type: object
+        properties:
+          mount: { x-telo-ref: Self.Api }
+---
+kind: Self.Server
+metadata:
+  name: server
+mounts:
+  - mount: { kind: Self.Api, name: usersApi }

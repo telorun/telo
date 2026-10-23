@@ -15,6 +15,7 @@
  * declaration resolves to `undefined` and the caller simply skips it.
  */
 import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
+import { isResolvedReference } from "@telorun/analyzer";
 
 export type SchemaLookup = (name: string) => object | undefined;
 
@@ -32,11 +33,9 @@ export type SchemaLookup = (name: string) => object | undefined;
  */
 export function typeReferenceKey(typeRef: unknown): string | undefined {
   if (typeof typeRef === "string") return typeRef;
-  if (!typeRef || typeof typeRef !== "object") return undefined;
-  const ref = typeRef as Record<string, unknown>;
-  if (ref.schema && typeof ref.schema === "object") return undefined;
-  if (typeof ref.name !== "string") return undefined;
-  return typeof ref.$ref === "string" && parseCanonicalTypeSchemaId(ref.$ref) ? ref.$ref : ref.name;
+  if (!isResolvedReference(typeRef)) return undefined;
+  const $ref = (typeRef as { $ref?: unknown }).$ref;
+  return typeof $ref === "string" && parseCanonicalTypeSchemaId($ref) ? $ref : typeRef.name;
 }
 
 /** The four declaration forms: a registered type's name, a `{kind, name}` ref

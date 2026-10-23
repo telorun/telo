@@ -64,3 +64,12 @@ content:
         The components' sources import a stylesheet of their own, which the application places in the
         telo.component layer: after the theme and the brand, before the application's own stylesheet. Every
         value in it reads a design token, so the desk and the meter take each mount's look.
+---
+# The page every application lists at /components, placing the view.
+kind: Ui.Page
+metadata:
+  name: componentsScreen
+path: /components
+title: Components
+children:
+  - { type: composite, ref: !ref componentsPage }

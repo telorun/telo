@@ -140,6 +140,7 @@ describe("inline step targets are extracted at load", () => {
     // The step holds the reference now, not the declaration.
     const clone = named(out, "seq")!;
     expect(clone.steps[1].then[0].invoke).toEqual({
+      __ref: true,
       kind: "demo.Task",
       name: "SequenceSeqSteps1Then0Taken",
     });
@@ -147,7 +148,7 @@ describe("inline step targets are extracted at load", () => {
     // What the target itself declares inline is extracted in turn, as an
     // ordinary reference slot of the extracted declaration.
     const first = named(out, "SequenceSeqSteps0First")!;
-    expect(first.helper).toEqual({ kind: "demo.Task", name: "SequenceSeqSteps0First_helper" });
+    expect(first.helper).toEqual({ __ref: true, kind: "demo.Task", name: "SequenceSeqSteps0First_helper" });
     expect(named(out, "SequenceSeqSteps0First_helper")!.metadata.xTeloOrigin).toEqual({
       parentKind: "demo.Task",
       parentName: "SequenceSeqSteps0First",
@@ -227,7 +228,7 @@ describe("inline step targets are extracted at load", () => {
 
     const out = normalizeInlineResources([outer], registry());
     const clone = named(out, "outer")!;
-    expect(clone.targets[0]).toEqual({ kind: "demo.Task", name: "outer_targets_0" });
+    expect(clone.targets[0]).toEqual({ __ref: true, kind: "demo.Task", name: "outer_targets_0" });
     expect(clone.with.map((m: Record<string, any>) => m.metadata.name)).toEqual(["v", "outer_targets_0"]);
     expect(named(out, "outer_targets_0")).toBeUndefined();
     // Created in the scope, so its names are in reach.
@@ -242,7 +243,7 @@ describe("inline step targets are extracted at load", () => {
     } as unknown as ResourceManifest;
 
     const out = normalizeInlineResources([seq], registry());
-    expect(named(out, "seq")!.steps[0].invoke).toEqual({ kind: "demo.Task", name: "chosen" });
+    expect(named(out, "seq")!.steps[0].invoke).toEqual({ __ref: true, kind: "demo.Task", name: "chosen" });
     expect(named(out, "chosen")).toBeDefined();
   });
 

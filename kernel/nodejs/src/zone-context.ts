@@ -34,6 +34,7 @@ import {
 } from "@telorun/sdk";
 import {
   effectiveAuthorSchema,
+  isResolvedReference,
   readProvidesZone,
   readRequiresZone,
   type RequiresZoneSlot,
@@ -382,14 +383,9 @@ export class ZoneContext {
       if (dot <= 0) return source;
       return source.slice(0, dot) === "Self" ? source.slice(dot + 1) : undefined;
     }
-    const v = value as Record<string, unknown>;
-    const pure =
-      typeof v.kind === "string" &&
-      typeof v.name === "string" &&
-      Object.keys(v).every((k) => k === "kind" || k === "name" || k === "alias");
-    if (!pure) return undefined;
-    if (typeof v.alias === "string" && v.alias !== "Self") return undefined;
-    return v.name as string;
+    if (!isResolvedReference(value)) return undefined;
+    if (value.alias !== undefined && value.alias !== "Self") return undefined;
+    return value.name;
   }
 
   /** The handle a pointer's terminal value identifies: a live instance's own

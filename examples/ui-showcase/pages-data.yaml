@@ -190,3 +190,12 @@ content:
                         source: { path: /api/session/signout }
                         label: Sign out
                         onSuccess: { refreshes: [ /api/session ] }
+---
+# The page every application lists at /data, placing the view.
+kind: Ui.Page
+metadata:
+  name: dataScreen
+path: /data
+title: Data
+children:
+  - { type: composite, ref: !ref dataPage }

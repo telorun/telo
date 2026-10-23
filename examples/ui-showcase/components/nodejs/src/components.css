@@ -62,6 +62,8 @@
   border-block-end: 1px solid var(--telo-color-border);
   text-align: start;
   vertical-align: middle;
+  /* A long name or value wraps, so the table fits a narrow screen. */
+  overflow-wrap: anywhere;
 }
 .showcase-tokens tbody + tbody { border-block-start: 2px solid var(--telo-color-border); }
 .showcase-swatch, .showcase-corner, .showcase-shadow {

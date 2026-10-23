@@ -6,6 +6,7 @@ import {
   scenes,
   tokenProperty,
   vectors,
+  withElements,
   type ElementSpec,
   type Problem as StepProblem,
   type SceneHost,
@@ -79,8 +80,8 @@ function reactHost(react: React, client: ReactDomClient, Control: unknown) {
   return (container: HTMLElement): VectorHost => {
     const root = client.createRoot(container);
     return {
-      render: (props) =>
-        root.render(react.createElement(Control, { ...props, ...(props.children === undefined ? {} : { children: children(props.children) }) })),
+      render: ({ children: given, ...props }) =>
+        root.render(react.createElement(Control, { ...(withElements(props, node) as object), ...(given === undefined ? {} : { children: children(given) }) })),
       unmount: () => root.unmount(),
     };
   };

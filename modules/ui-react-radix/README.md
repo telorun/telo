@@ -2,7 +2,8 @@
 
 A theme for [`ui-react`](../ui-react/README.md): Studio's look over every part
 the renderer draws, with its selects, multi-selects, option lists, checkboxes,
-dialogs, drawers, popovers, confirmations, menus, tooltips and icons drawn by
+dialogs, drawers, popovers, confirmations, menus, navigation menus, tabs,
+tooltips and icons drawn by
 [Radix](https://www.radix-ui.com/primitives)'s primitives and
 [Lucide](https://lucide.dev)'s icons. An application picks it with one
 reference; its brand stays its own.
@@ -29,7 +30,7 @@ reference; its brand stays its own.
 | Resource | Is |
 | --- | --- |
 | [`Radix.theme`](docs/theme.md#the-theme) | A `UiReact.Theme`: the look, the brand's defaults, and the controls below. |
-| [`Radix.controls`](docs/theme.md#the-controls) | A `UiReact.Controls` set: `Select`, `MultiSelect`, `Listbox`, `Checkbox`, `Dialog`, `Drawer`, `Popover`, `Confirmation`, `Menu`, `Tooltip`, `Icon`. |
+| [`Radix.controls`](docs/theme.md#the-controls) | A `UiReact.Controls` set: `Select`, `MultiSelect`, `Listbox`, `Checkbox`, `Dialog`, `Drawer`, `Popover`, `Confirmation`, `Menu`, `Tooltip`, `Navigation`, `Tabs`, `Icon`. |
 
 ## Example
 
@@ -50,7 +51,8 @@ words: !ref Ui.words
 theme: !ref Radix.theme
 tokens: { kind: Ui.DesignTokens, color.accent: "#1d4ed8" }
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Reports
     children:
       - { type: text, text: Monthly reports, style: heading }

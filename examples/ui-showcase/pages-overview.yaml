@@ -209,3 +209,31 @@ content:
         heading: A callout
         body: Declared once as a kind that extends Ui.Composite and provides a view, and placed with fields of its own.
         tone: accent
+
+    # ---- Tabs ----
+    - { type: text, text: Tabs, style: heading }
+    - type: text
+      style: muted
+      text: Content under tabs, one tab at a time. The chosen tab is part of the page's address, so a reload or a shared link opens it again.
+    - type: tabs
+      address: { name: overviewTab }
+      tabs:
+        - text: Summary
+          children:
+            - { type: text, text: "A tab holds any nodes, as a box does." }
+        - text: Details
+          children:
+            - { type: text, text: "Only the chosen tab's nodes are drawn." }
+            - { type: badge, style: accent, text: Chosen }
+        - text: Notes
+          children:
+            - { type: text, text: "Each tab is delivered by its own when, as any node is." }
+---
+# The page every application lists at /, placing the view.
+kind: Ui.Page
+metadata:
+  name: overviewScreen
+path: /
+title: Overview
+children:
+  - { type: composite, ref: !ref overviewPage }

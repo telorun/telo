@@ -4,21 +4,18 @@ A Telo application's screens are declared in its manifest, never written as a
 frontend. The `ui` module is the vocabulary — pages, tables, forms, actions,
 filter bars, surfaces, design tokens. The `ui-react` module is a renderer: it
 serves that vocabulary to a browser as data a prebuilt React application
-interprets, styled by a swappable theme.
-What crosses the wire is a spec, never generated code, so the screen is
-type-checked by `telo check` with the rest of the manifest.
+interprets, styled by a swappable theme. The screen is type-checked by
+`telo check` with the rest of the manifest.
 
 Rules that hold throughout:
 
 - **Never generate frontend code, and never use `JS.Script`.** Everything a
   screen does is a declared kind. A component of your own is a browser entry
-  a library ships (see *Custom components*), not code in the manifest.
+  a library ships, not code in the manifest.
 - **Take every field from `get_kinds`.** The exact schema of each kind, and
-  the `imports:` line to write for each module (version and integrity pin),
-  come from `get_kinds` on the `ui`, `ui-react`, `http-server` and — for a
-  generated admin screen — `crud` modules. A `Telo.*` kind is built in:
-  `get_kinds` returns it with no import line, read at the telo version you
-  pass as `telo`.
+  the `imports:` line to write for each module, come from `get_kinds` on the
+  `ui`, `ui-react`, `http-server` and — for a generated admin screen — `crud`
+  modules. A `Telo.*` kind is built in and needs no import.
 - **The API comes first.** A screen calls routes; it never reaches a database
   or an invocable directly. Declare the routes, then the screen over them.
 
@@ -62,12 +59,14 @@ title: Tasks
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Open work
     children:
       - { type: text, text: Open work, style: heading }
       - { type: composite, ref: !ref taskTable }
-  - path: /about
+  - kind: Ui.Page
+    path: /about
     title: About
     children:
       - { type: text, text: Tasks tracked by the team. }
@@ -81,23 +80,34 @@ mounts:
   - { path: /admin, mount: !ref admin }
 ```
 
-`UiReact.App` stays named, like any router a server mounts, so it can be
-tested on its own. A composite used in exactly one place is declared inline at
-its node (`ref: { kind: Ui.Table, … }`) and gets a name only when two places
-use it — as `taskTable` below is, on a page and inside a filter bar.
+`UiReact.App` stays named, like any router a server mounts. A composite used
+once is declared inline at its node (`ref: { kind: Ui.Table, … }`); `taskTable`
+below is named because a page and a filter bar both use it.
 
 - `title` (required) names the application. `words` (required) is what the
   renderer draws on its own — `!ref Ui.words`, English. `theme` (required) is
   the look — `!ref UiReact.defaultTheme`, or another theme. `pages` (at least
-  one) are `{ path, title, children }`; every page gets a navigation link, in
-  order.
+  one) are `Ui.Page`s — `{ path, title, query?, children }`, each path unique —
+  inline or `!ref`, a library's included.
+- `navigation: { items, placement? }` is the menu, naming pages by `!ref`,
+  never by path: `{ type: page, page, text? }`, `{ type: link, text, href }`,
+  `{ type: group, text, items }`, each with `when?` and `icon?` — a
+  `UiLucide.Icon` (`name`, a Lucide glyph; module `ui-lucide`; inline when
+  used once) or a `Ui.FileIcon` (`file`), drawn in its text's colour, alone in a
+  sidebar's rail. Omitted, one entry per page — in the header, behind a menu
+  button on a narrow screen. A page entry
+  names a page `pages` lists, or `telo check` refuses it. `placement` is a
+  kind: `Ui.HeaderNavigation` (the default), `Ui.SidebarNavigation` (`side`,
+  `rail: { collapsed }`, `store` keeping its open groups), or a compact one —
+  `Ui.OverlayNavigation` (a menu button) or `Ui.TabBarNavigation` (bottom
+  tabs, at most `visible`) — which a header's or a sidebar's `compact` names
+  for a narrow screen.
 - Optional: `translator` (an `I18n.Translator`) and `lang` (a tag, or
   `!cel` over `request.headers` — the negotiated `Accept-Language`) serve every
   text translated; `tokens` (the brand), `stylesheets` (host paths, written
   `!module-path ./ui.css`), `compactBelow` (the narrow-viewport breakpoint),
   `header: { start?, end? }` (nodes on every page around the title and
   navigation; no `query` there).
-- A page `path` is literal and unique, never under `/_telo`.
 
 ### Nodes
 
@@ -109,18 +119,19 @@ A page's `children` are nodes — plain data with a `type`:
 | `text`, `badge` | `text` |
 | `link` | `text`, `href` |
 | `menu` | `text`, `items` (`link`s behind a button; `strong` marks the current) |
+| `tabs` | `tabs: [{ text, children, when? }]`, `address?` (the chosen tab in the page address) |
 | `image` | `src`, `alt` (required, may be empty) |
 | `svg` | `markup`, `alt` — drawn as an image, never inserted |
 | `value` | `value` (an accessor), `text?` — one value, presented as its schema says |
 | `list` | `rows` (an accessor), `columns: [{ header?, value, shown? }]`, `heading?` |
 | `composite` | `ref` — a `!ref`, or an inline declaration |
 
-Every node also takes `style` (one or a list of `heading`, `subheading`,
-`muted`, `strong`, `accent`, `danger`, `warning`, `success`), `when` (a
+Every node also takes `style` (not `tabs`; one or a list of `heading`,
+`subheading`, `muted`, `strong`, `accent`, `danger`, `warning`, `success`), `when` (a
 boolean deciding on the server whether the node is delivered) and `shown` (a
 condition deciding in the browser whether it is drawn — see "Data and
 conditions"). There is no layout field: arrangement is the renderer's
-styling, and a button that does something is a `Ui.Action`.
+styling.
 
 **Texts.** Every label, heading and node text is a text in the module's
 `lang:`. A text over data names its values instead of being concatenated, so a
@@ -137,7 +148,7 @@ app-relative address resolves under the application's mount: mounted at
 `/admin`, `source.path: /api/reports` is requested at `/admin/api/reports`, so
 serve the API there.
 
-**Per request.** Inside `pages[].children` and `header`, a node's `when` and its leaf
+**Per request.** Inside a page's `children` and `header`, a node's `when` and its leaf
 values (`text`, `href`, `src`, `alt`, `markup`, `style`) may be `!cel`,
 evaluated for every request against `request.headers` (lower-case names; test
 with `in` first) and `request.ip`:
@@ -152,8 +163,7 @@ children:
 
 The tree's structure and every `ref` stay literal: a computed `children` list
 or `ref` is `REF_SLOT_COMPUTED`. A value that is no valid node once evaluated
-is replaced by an `error` node for that request, and the rest of the page is
-served.
+becomes an `error` node for that request.
 
 ## Shapes first
 
@@ -185,8 +195,7 @@ schema:
     id: { type: integer }
 ```
 
-A shape shares properties with another through `extends:`; shapes are never
-derived by an expression.
+Shapes share properties through `extends:`, never through an expression.
 
 ## Lists — `Ui.Collection` and `Ui.Table`
 
@@ -235,9 +244,6 @@ delete: true
   (`ACCESSOR_NOT_PLAIN_CHAIN`). A style that depends on data is a rule
   (`{ by, cases, default? }`), never an expression.
 - A string property with `format: uri` or `uri-reference` is drawn as a link.
-  A link to a declared page moves within the application; any other — a file
-  served by an `Http.Static` mounted beneath the application's mount — opens
-  beside it.
 - `source.filters` fixes equalities on every request (each a property the
   collection declares with `eq`).
 
@@ -307,8 +313,7 @@ content: { type: composite, ref: !ref taskTable }
   `Ui.SessionStore`. A `state` keeps the bar's values in the page address
   (`address: true`), a store, or both; left out, they live in memory.
 - `pinned` means something only where the bar folds; on a bar that folds
-  nothing `telo check` warns `UI_FILTER_PINNED_UNUSED`. A folding placement
-  with no unpinned filter on show has nothing to fold and draws no toggle.
+  nothing `telo check` warns `UI_FILTER_PINNED_UNUSED`.
 
 ## Forms and where they open — `Ui.Form` and surfaces
 
@@ -372,8 +377,7 @@ delete: true
   used below the application's `compactBelow`.
 - `afterSubmit` is `close`, `keep`, and on `create` also `again`; `unsaved`
   is `confirm` or `discard`.
-- **`ui` owns every default.** Leave a key out and the table fills it (a
-  medium modal dialog that closes after a save and confirms unsaved input).
+- **`ui` owns every default.** Leave a key out and the table fills it.
   Never restate a default.
 
 An edit form reads the record by its key first and sends back what it held
@@ -475,9 +479,8 @@ routes:
 - `concurrency: serial` runs the action's presses on a page one after another
   (default `parallel`); `clearAnswerOn: [<property>]` clears the drawn answer
   when that input changes.
-- A reference on the way to a column's member (in an action's `outputModel`
-  or a table's `model`) that names nothing passes `telo check` and fails with
-  `ERR_REF_UNRESOLVED` when the page is first read.
+- A reference on the way to a column's member that names nothing passes
+  `telo check` and fails at start (`ERR_REF_UNRESOLVED`).
 
 ### Row actions
 
@@ -607,7 +610,8 @@ title: Tasks
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Tasks
     children:
       - type: composite
@@ -659,16 +663,15 @@ operation — is hand-built from the kinds above over routes of your own.
   font family, `font-size.*`, `line-height.*`), each a CSS value string,
   written `{ kind: Ui.DesignTokens, color.accent: "#1d4ed8" }`; or a list of
   `{ tokens, when? }`, the first whose `when` holds winning per request.
-  Changing the theme keeps the brand.
 - **Control sets.** A theme's `controls` lists `UiReact.Controls` sets, each
   declared in the library shipping its browser entry (`entry`, `implements`);
   no two entries implement one control, even one set via two aliases. The
-  fourteen inline controls may be replaced in any subset. The eight layer
+  fifteen inline controls may be replaced in any subset. The nine layer
   controls — `Select`, `MultiSelect`, `Dialog`, `Drawer`, `Popover`,
-  `Confirmation`, `Menu`, `Tooltip` — are replaced as one unit: a set
-  implementing any of them implements all eight, or is refused before the app
-  runs. `ui-react-radix` exports `theme`, drawn with Radix; a theme of yours
-  takes its `controls` whole or none.
+  `Confirmation`, `Menu`, `Tooltip`, `Navigation` — are replaced as one unit:
+  a set implementing any of them implements all nine, or is refused before
+  the app runs. `ui-react-radix` exports `theme`, drawn with Radix; a theme of
+  yours takes its `controls` whole or none.
 - **Stylesheets.** Everything the renderer draws carries `data-telo-part`,
   with state in `data-` attributes; that list is a stable contract. Your
   `stylesheets` are unlayered and win over the renderer's layers without
@@ -686,8 +689,8 @@ operation — is hand-built from the kinds above over routes of your own.
   another external is replaced by an `error` node at start
   (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`, `ERR_UI_COMPONENT_IMPORT_UNSUPPLIED`).
   Navigation, requests and refresh come from the host: `useHost()` from
-  `@telorun/ui-react` returns `location` (`{ path, search, hash }`, the
-  page's declared path without the mount prefix), `navigate(to, { replace? })`
+  `@telorun/ui-react` returns `location` (`{ path, search, hash }`, without
+  the mount prefix), `navigate(to, { replace? })`
   (an app-relative reference), `href(to)` (the same, as an anchor URL with
   the mount prefix), `fetch` (the platform `fetch` with same-origin
   credentials), `notifyChanged(basePath)` (tables over that `basePath`
@@ -702,17 +705,16 @@ operation — is hand-built from the kinds above over routes of your own.
 There is no `onClick` and no handler list. A table's buttons, a form's submit
 and a filter's change are built in; an operation is a `Ui.Action`. The
 renderer sends the page's same-origin credentials with every request; protect
-the routes (or the mount) with a guard, and a 401 or 403 is shown where it
-happened.
+the routes (or the mount) with a guard.
 
 ## Testing a screen
 
-A screen is tested through what it serves, like any other route. Start the
+A screen is tested through what it serves. Start the
 application with `App.Instance` (from the `app` module) in a `Run.Sequence`'s
 `with:` and request its documents with an HTTP client:
 
 - `<mount>/_telo/ui/app` is the application document (title, pages,
-  stylesheets); `<mount>/_telo/ui/page?path=<page path>` is one page's
+  navigation, stylesheets); `<mount>/_telo/ui/page?path=<page path>` is one page's
   document, its `children` the resolved nodes — `table`, `form`, `action`,
   `filters`, `component`, or `error` with a `code` where a node could not be
   produced.
@@ -748,16 +750,15 @@ steps:
         headers: [Task, When]
 ```
 
-Give each test its own port. Behaviour inside the browser — focus, dialogs,
-what a click draws — is the renderer's, already tested; a manifest test
-proves what the screen is given and what its routes answer.
+Give each test its own port. A manifest test proves what the screen is given
+and what its routes answer.
 
 ## Before you finish
 
 - `telo check` is clean: an unknown column (`CEL_UNKNOWN_FIELD`), a filter the
   collection does not declare (`UI_FILTER_NOT_ACCEPTED`), a key a surface
   does not take (`SCHEMA_VIOLATION`) and a malformed address are all
-  reported there, at the line that wrote them.
+  reported there.
 - Every table, filter bar and action names a route that exists and answers
   its contract.
 - The screen and the API read the same shapes; no shape is restated by hand

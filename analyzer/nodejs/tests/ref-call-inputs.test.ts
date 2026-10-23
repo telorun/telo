@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { AnalysisRegistry } from "../src/analysis-registry.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
@@ -63,7 +64,7 @@ function api(inputs: Record<string, unknown>): ResourceManifest {
   return {
     kind: "Http.Api",
     metadata: { name: "api", module: "app" },
-    routes: [{ handler: { kind: "Run.Task", name: "chatStart" }, inputs }],
+    routes: [{ handler: makeTaggedSentinel("ref", "chatStart"), inputs }],
   } as unknown as ResourceManifest;
 }
 
@@ -86,9 +87,7 @@ function check(inputs: Record<string, unknown>): string[] {
 }
 
 describe("call inputs through a reference slot", () => {
-  /** The fixture writes the loader's INTERNAL `{kind, name}` ref form, which the
-   *  author-facing check rejects on sight; that diagnostic is not what these
-   *  assert, so they read the contract findings only. */
+  /** These assert the contract findings only. */
   const contractFindings = (messages: string[]): string[] =>
     messages.filter((m) => /inputs|required|additional/i.test(m));
 

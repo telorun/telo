@@ -184,7 +184,7 @@ steps:
           status: 200
           cache: private, no-cache
           etagIsDigest: true
-          keys: [bundle, compactBelow, controls, digest, lang, pages, specVersion, stylesheets, title, words]
+          keys: [bundle, compactBelow, controls, digest, lang, navigation, pages, specVersion, stylesheets, title, words]
           compactBelow: 48rem
           specVersion: 1
           title: { lang: en, message: [Fixture Admin] }
@@ -194,9 +194,9 @@ steps:
           controlStylesheets:
             [
               checkbox.css, confirmation.css, date-input.css, date-range-input.css, date-time-input.css, dialog.css,
-              drawer.css, icon.css, listbox.css, menu.css, multi-select.css, number-input.css, option-group.css,
-              popover.css, select.css, slider.css, switch.css, tags-input.css, text-area.css, text-input.css,
-              time-input.css, tooltip.css,
+              drawer.css, icon.css, listbox.css, menu.css, multi-select.css, navigation.css, number-input.css,
+              option-group.css, popover.css, select.css, slider.css, switch.css, tabs.css, tags-input.css,
+              text-area.css, text-input.css, time-input.css, tooltip.css,
             ]
           controlSets: []
           bundleIsRenderer: true

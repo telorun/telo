@@ -51,6 +51,32 @@ surface with `address: { name }`) uses the same key with an **empty** value:
 `/todos?_telo.open.filters=` is the open overlay. Opening adds the entry, back
 closes it, a cold load opens it. Done closes the overlay and nothing else.
 
+A [`tabs` node](../../ui/docs/nodes.md#tabs) declared with
+`address: { name }` uses the same key for its chosen tab, the value the tab's
+[key](#entry-keys): `/reports?_telo.open.section=details` is the tab written
+with the text `Details`. The first choice adds a history entry and later ones
+take it, so back returns to the page as it was before a tab was chosen. A
+value naming no delivered tab chooses the first.
+
+A [tab bar](../../ui/docs/navigation.md#the-tab-bar) whose `surface` declares
+`address: { name }` holds there the key of the tab whose sheet is open — a
+group's, or `~more` for More.
+
+## Entry keys
+
+A navigation entry and a tab of a `tabs` node are named — in the address and
+in browser storage — by a key derived from what their author wrote, never by
+their position, so an entry gated off by `when` or added elsewhere moves no
+other's key. The key is the entry's source text — the untranslated text,
+taking `other` at a plural selection — lower-cased, accents dropped, and every
+run of anything but letters and digits one `-`: `Admin reports` is
+`admin-reports`. A navigation entry inside a group is keyed under the group's
+key and `/` (`admin/audit-log`). Of siblings whose keys would be equal, each
+after the first takes `~2`, `~3` and so on, in declaration order. A text with
+no letter or digit is keyed `entry` (a navigation entry) or `tab`. The
+application document carries each navigation entry's key as `key`, and a page
+document each tab's.
+
 A name is one state on its page: an overlay that shares its name with a
 table's create opener opens and closes together with the create form. Give the
 overlay a name of its own unless that is meant.
@@ -120,6 +146,26 @@ a full quota — is reported once per store in the console (`The browser
 refuses local storage, so filters are kept in memory: …`) and the bar
 continues in memory. A bar with no `state` writes nothing anywhere.
 
+## Navigation state
+
+A [sidebar](../../ui/docs/navigation.md#the-sidebar) naming a `store` keeps
+one entry in local storage (`Ui.LocalStore`) or session storage
+(`Ui.SessionStore`); it writes nothing to the address.
+
+| | |
+| --- | --- |
+| Key | `telo.ui:<mount path>:n` — one per application, its mount path as a filter bar's |
+| Value | `{ "v": 2, "open": ["admin", "admin/logs"], "collapsed": true }` |
+
+`open` lists the groups open in the sidebar's column, each by its
+[key](#entry-keys) — `admin` the group written `Admin`, `admin/logs` the group
+`Logs` inside it — and `collapsed` whether the sidebar is collapsed to its
+rail. The entry is written on every change the viewer makes, never at the
+start. What is read back is held to the tree drawn: a key naming no group of
+it is ignored, and an entry whose `v` is not `2` is ignored and replaced by
+the next write. A store the browser refuses is reported in the console and
+the sidebar continues in memory.
+
 ## The shell
 
 One HTML document, the same for every page: the cascade layer order, an
@@ -142,6 +188,10 @@ entries share onto a single address, so the page holds one React and one host.
   "title": "Todo Admin",
   "lang": "en",
   "pages": [ { "path": "/", "title": "Todos" } ],
+  "navigation": {
+    "items": [ { "type": "page", "key": "todos", "path": "/", "text": "Todos", "icon": "/admin/_telo/ui/assets/…/house.svg" } ],
+    "placement": { "type": "header", "compact": { "type": "overlay", "surface": { "type": "drawer", "side": "start", "…": "…" } } }
+  },
   "stylesheets": [ "/admin/_telo/ui/assets/…/renderer.css", "…" ],
   "controls": {
     "stylesheets": { "Select": "/admin/_telo/ui/assets/…/select.css", "…": "…" },
@@ -166,6 +216,12 @@ the page; see [the controls contract](controls-abi.md).
 breakpoint, always present: below that viewport width every surface's
 `compact` replacement applies. A surface open when the viewport crosses the
 breakpoint is swapped in place: what was entered stays.
+`pages` lists every page the application serves, in order — what a move
+within it may reach. `navigation` is the [navigation](app.md#navigation) for
+this request, every default filled: its entries delivered by their `when`,
+each carrying its [key](#entry-keys), a `page` entry its page's path, an entry with an icon the
+address its glyph's file is served at, and its placement as
+[`Ui.NavigationPlacementSpec`](../../ui/docs/navigation.md#as-a-renderer-receives-it).
 `header` is present only when the application declares one: its `start` and
 `end` nodes as `Ui.SpecNode`s produced for this request, as a page's
 `children` are, each list empty when that side declares nothing or every node

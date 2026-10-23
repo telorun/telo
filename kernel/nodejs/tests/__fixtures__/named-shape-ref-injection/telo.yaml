@@ -1,0 +1,67 @@
+# A kind whose children are a recursive, tagged named shape holding a reference
+# slot in one of its branches: every reference, at any depth, is injected.
+kind: Telo.Application
+metadata:
+  name: NamedShapeRefInjection
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata:
+  name: Leaf
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Leaf
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Node
+schema:
+  type: object
+  oneOf:
+    - additionalProperties: false
+      required: [type, children]
+      properties:
+        type: { const: box }
+        children: { type: array, items: { $ref: "#" } }
+    - additionalProperties: false
+      required: [type, ref]
+      properties:
+        type: { const: ref }
+        ref:
+          x-telo-ref: { kind: Self.Leaf, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Tree
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Tree
+schema:
+  type: object
+  additionalProperties: false
+  required: [children]
+  properties:
+    children:
+      type: array
+      items: { $ref: "telo://Self/Node" }
+---
+kind: Self.Leaf
+metadata:
+  name: leaf
+---
+kind: Self.Tree
+metadata:
+  name: tree
+children:
+  - type: ref
+    ref: !ref leaf
+  - type: box
+    children:
+      - type: box
+        children:
+          - type: ref
+            ref: !ref leaf

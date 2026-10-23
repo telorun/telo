@@ -30,11 +30,13 @@ pub mod plain_literal_decoding;
 pub mod release;
 pub mod reserved_kind_prefix;
 pub mod resolve_ref_sentinels;
+pub mod resolved_reference;
 pub mod schema_compat;
 pub mod source_entries;
 pub mod sources;
 pub mod system_kinds;
 pub mod types;
+pub mod validate_reference_forms;
 pub mod value_type_keyword;
 
 pub use loaded_types::{LoadedFile, ParseError};
@@ -42,8 +44,16 @@ pub use manifest_loader::{resolve_source, ManifestLoader};
 pub use parse_loaded_file::parse_loaded_file;
 pub use release::WORKSPACE_FILENAME;
 pub use resolve_ref_sentinels::{
-    as_resolved_ref, find_invalid_reference_forms, find_unresolved_sentinels,
-    resolve_ref_sentinels, InvalidReferenceForm, RefTargets, ResolvedRef, UnresolvedRef,
+    as_resolved_ref, find_unresolved_sentinels, resolve_ref_sentinels, RefTargets, ResolvedRef,
+    UnresolvedRef,
+};
+pub use resolved_reference::{
+    carries_reference_marker, declares_name_field, is_resolved_reference,
+    RESOLVED_REFERENCE_MARKER,
+};
+pub use validate_reference_forms::{
+    authored_object_form, find_invalid_reference_forms, mark_legacy_references,
+    reference_form_message, AcceptsValue, InvalidReferenceForm, ReferenceForm,
 };
 pub use types::{
     kind_of, name_of, LoadError, ManifestSource, ReadManifest, ResourceManifest,

@@ -12,6 +12,7 @@ import {
   type Referrer,
   type ReferrerRuleContext,
 } from "../src/validate-referrer-rules.js";
+import { resolvedReference } from "../src/resolved-reference.js";
 
 // A rule's evaluation budget is wall-clock, so a slow runner turns a rule that
 // holds into an extra `over-budget` finding. No case here is about the budget.
@@ -432,7 +433,7 @@ describe("peer rules", () => {
   const table = (config: Record<string, unknown>): ResourceManifest =>
     ({ kind: "SQL.Table", metadata: { name: config.table as string }, ...config }) as unknown as ResourceManifest;
 
-  const ref = (name: string) => ({ kind: "SQL.Table", name });
+  const ref = (name: string) => resolvedReference("SQL.Table", name);
 
   const schema = (...names: string[]): ResourceManifest =>
     ({
@@ -726,7 +727,7 @@ describe("peer rules — binding", () => {
   };
   const table = (config: Record<string, unknown>): ResourceManifest =>
     ({ kind: "SQL.Table", metadata: { name: config.name as string }, ...config }) as unknown as ResourceManifest;
-  const ref = (name: string) => ({ kind: "SQL.Table", name });
+  const ref = (name: string) => resolvedReference("SQL.Table", name);
   const matches = (filter: string, kind: string) => filter === kind;
   const binder = (...tables: ResourceManifest[]): ReferrerRuleContext => {
     const byName = new Map(tables.map((t) => [t.metadata!.name as string, t]));
@@ -827,8 +828,8 @@ describe("peer rules — binding", () => {
       kind: "SQL.Schema",
       metadata: { name: "s" },
       notes: [
-        { about: ref("a"), label: { kind: "colour", name: "plain" } },
-        { about: ref("a"), label: { kind: "colour", name: "plain" } },
+        { about: ref("a"), label: { __ref: true, kind: "colour", name: "plain" } },
+        { about: ref("a"), label: { __ref: true, kind: "colour", name: "plain" } },
       ],
     } as unknown as ResourceManifest;
     expect(
@@ -873,7 +874,7 @@ describe("referrer rules — resolveSelf", () => {
     },
   };
   const declarations = new Map<string, ResourceManifest>([
-    ["projects", { kind: "Ui.Options", metadata: { name: "projects" }, model: { kind: "Ui.Model", name: "project" } } as unknown as ResourceManifest],
+    ["projects", { kind: "Ui.Options", metadata: { name: "projects" }, model: { __ref: true, kind: "Ui.Model", name: "project" } } as unknown as ResourceManifest],
     ["project", { kind: "Ui.Model", metadata: { name: "project" }, idType: "integer" } as unknown as ResourceManifest],
   ]);
   const binder = new PeerBinder({ declarationOf: (r) => declarations.get(r.name), ...reachEnv(schemas) } as PeerBinderEnv);
@@ -888,7 +889,7 @@ describe("referrer rules — resolveSelf", () => {
       },
     ],
   };
-  const choice = { kind: "Ui.Choice", metadata: { name: "pick" }, options: { kind: "Ui.Options", name: "projects" } } as unknown as ResourceManifest;
+  const choice = { kind: "Ui.Choice", metadata: { name: "pick" }, options: { __ref: true, kind: "Ui.Options", name: "projects" } } as unknown as ResourceManifest;
   const form = { kind: "Ui.Form", metadata: { name: "form" }, fields: [choice] } as unknown as ResourceManifest;
 
   it("binds self with the declarations its own slots name, two references deep", () => {

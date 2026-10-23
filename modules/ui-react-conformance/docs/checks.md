@@ -36,8 +36,9 @@ stylesheets and its sets' stylesheets against what was drawn:
    naming no part, is `unstyled-stale`.
 3. **No reserved property is set.** A rule matching a part that declares one
    of the part's [reserved properties](../../ui-react/docs/styling.md#reserved-properties)
-   — directly, through a shorthand (`inset`, `overflow`, `grid`, `all`) or
-   through its logical name (`inset-block-end`, `min-block-size`) — is
+   — directly, through a shorthand (`inset`, `overflow`, `grid`, `background`,
+   `mask`, `all`), through its logical name (`inset-block-end`,
+   `min-block-size`) or through its prefixed one (`-webkit-mask-image`) — is
    `property-reserved`.
 4. **Every design token has a default.** Each name of the closed token set —
    read from `ui`'s `@telorun/ui` code entry (`DESIGN_TOKENS`) — is given a
@@ -58,13 +59,13 @@ as `CheckControls` checks it.
 
 The scenes are what catch controls that work alone and fail together. Every
 layer on a page comes from one implementation — a set implementing any of the
-eight [layer controls](../../ui-react/docs/controls-abi.md#layers) implements
+nine [layer controls](../../ui-react/docs/controls-abi.md#layers) implements
 all of them, which `ui-react` refuses otherwise (`UI_CONTROLS_LAYERS_PARTIAL`)
 — so what the scenes hold is how that one stack composes: a list opened in a
 dialog, a drawer or a popover, the confirmation over a dialog or a drawer, the
-menu in a filter overlay, a tooltip over a surface, Escape closing only the
-top layer, and a press outside reaching the layers beneath the top one as far
-as the first shielding layer
+menu in a filter overlay, a tooltip over a surface or over a menu node's
+navigation panel, Escape closing only the top layer, and a press outside
+reaching the layers beneath the top one as far as the first shielding layer
 ([composition within the stack](../../ui-react/docs/controls-abi.md#layers)).
 
 ## CheckControls
@@ -112,7 +113,7 @@ the built entries it loads in a directory of its own, removed when it is done:
 - the renderer, beside generated packages supplying `react`,
   `react/jsx-runtime`, `react-dom` and `react-dom/client`;
 - each set's entry, beside generated packages supplying exactly what
-  `ui_react_controls-1` supplies — `react`, `react/jsx-runtime`, `react-dom` —
+  `ui_react_controls-2` supplies — `react`, `react/jsx-runtime`, `react-dom` —
   so an entry reaching anything else, `@telorun/ui-react` included, does not
   load.
 

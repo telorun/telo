@@ -13,8 +13,12 @@ describe("inlineResourceKind", () => {
     ).toBe("Crud.Resource");
   });
 
-  it("is not a reference — the loader's `{kind, name}` shape has a name", () => {
-    expect(inlineResourceKind({ kind: "Crud.Resource", name: "todos" })).toBeNull();
+  it("is a declaration of a kind whose configuration has a `name` field", () => {
+    expect(inlineResourceKind({ kind: "UiLucide.Icon", name: "house" })).toBe("UiLucide.Icon");
+  });
+
+  it("is not a resolved reference — the loader's shape carries the marker", () => {
+    expect(inlineResourceKind({ __ref: true, kind: "Crud.Resource", name: "todos" })).toBeNull();
   });
 
   it("is not a `!ref` sentinel", () => {

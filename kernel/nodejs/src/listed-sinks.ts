@@ -1,4 +1,5 @@
 import { RuntimeError } from "@telorun/sdk";
+import { isResolvedReference } from "@telorun/analyzer";
 
 /**
  * The sinks the root Application attaches — `logging.sinks` and `tracing.sinks`
@@ -32,8 +33,8 @@ export function readListedSinks(list: SinkList, block: unknown): ListedSink[] {
       raw && typeof raw === "object" && "sink" in (raw as Record<string, unknown>)
         ? (raw as { sink: unknown; when?: unknown })
         : undefined;
-    const ref = (gated ? gated.sink : raw) as { name?: unknown; alias?: unknown } | undefined;
-    if (!ref || typeof ref.name !== "string") {
+    const ref = gated ? gated.sink : raw;
+    if (!isResolvedReference(ref)) {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
         `${entry} does not name a sink: write \`!ref <name>\`, an inline sink declaration, or \`{ sink, when }\`.`,

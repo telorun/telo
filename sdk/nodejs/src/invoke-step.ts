@@ -27,8 +27,9 @@ import {
 import type { OpenZoneAttributes } from "./zone-attribute.js";
 import { tryParseDurationMs } from "./duration.js";
 import { InvokeError } from "./invoke-error.js";
+import { RuntimeError } from "./types.js";
 import { predicateResult } from "./step-predicate.js";
-import type { KindRef, ScopeContext } from "./ref.js";
+import { isKindRef, refSentinelTarget, type KindRef, type ScopeContext } from "./ref.js";
 import { getRefIdentity, type ResourceInstance } from "./resource-instance.js";
 
 /**
@@ -321,9 +322,9 @@ function targetIdentityOf(
   // A pre-injected instance carries the stamp already.
   const behind = getRefIdentity(raw as object) ? undefined : instanceBehind(raw, ctx, state);
   const stamped = getRefIdentity(raw as object) ?? (behind && getRefIdentity(behind.instance));
-  const ref = raw as Partial<KindRef>;
-  const kind = stamped?.kind ?? (typeof ref.kind === "string" ? ref.kind : undefined);
-  const name = stamped?.name ?? (typeof ref.name === "string" ? ref.name : undefined);
+  const ref = referenceIn(raw);
+  const kind = stamped?.kind ?? (ref?.kind || undefined);
+  const name = stamped?.name ?? ref?.name;
   if (!kind || !name) return undefined;
   return {
     kind,
@@ -364,8 +365,8 @@ function instanceBehind(
   ctx: InvokeStepContext,
   state: InvokeStepState,
 ): { instance: object; scoped: boolean } | undefined {
-  const ref = raw as Partial<KindRef>;
-  if (typeof ref.name !== "string") return undefined;
+  const ref = referenceIn(raw);
+  if (!ref) return undefined;
   try {
     if (ref.alias && ref.alias !== "Self") {
       const imported = ctx.resolveImportedInstance?.(ref.alias, ref.name) as object | undefined;
@@ -689,7 +690,15 @@ async function dispatch(
         )
       : await (raw as Invocable).invoke(inputs, attemptCtx);
   } else {
-    const ref = raw as KindRef<Invocable>;
+    const ref = referenceIn(raw);
+    if (!ref) {
+      // An object without the marker is an inline declaration, which the step
+      // engine registers and replaces with a reference before any dispatch.
+      throw new RuntimeError(
+        "ERR_REF_UNRESOLVED",
+        "A step's 'invoke' must be a `!ref` to an executable resource or an inline declaration of one.",
+      );
+    }
     if (ref.alias && ref.alias !== "Self") {
       // Cross-module exported instance: resolve into the owning import's context and invoke
       // the live instance directly — works whether or not the step runs inside a `with:`
@@ -709,4 +718,13 @@ async function dispatch(
     }
   }
   return result;
+}
+
+/** The reference a step's target holds — a resolved reference (the `__ref`
+ *  marker) or a `!ref` sentinel, by the rule the kernel applies — or undefined
+ *  for anything else, an inline declaration above all. A sentinel names no kind. */
+function referenceIn(raw: unknown): { kind: string; name: string; alias?: string } | undefined {
+  if (isKindRef(raw)) return raw;
+  const sentinel = refSentinelTarget(raw);
+  return sentinel && { kind: "", ...sentinel };
 }

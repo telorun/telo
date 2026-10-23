@@ -1,7 +1,7 @@
 /**
  * `@telorun/ui-react-contract`: the contract a theme's controls and stylesheets
  * are held to, as data — the part list and states, the reserved properties,
- * the control set of `ui_react_controls-1` with each control's props, parts,
+ * the control set of `ui_react_controls-2` with each control's props, parts,
  * states and behaviour vectors, and the scenes that draw every part — and the
  * interpreter that runs the vectors and the scenes in a DOM window — and how a
  * design token is spelled as the custom property the page sets.
@@ -30,6 +30,7 @@ export {
   prepareWindow,
   runScene,
   runVector,
+  withElements,
   type CannedResponse,
   type ControlContract,
   type ControlsContract,

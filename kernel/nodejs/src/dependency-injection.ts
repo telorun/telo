@@ -1,5 +1,6 @@
 import { ResourceInstance, RuntimeError } from "@telorun/sdk";
 import { isNeedFulfilment } from "./need-fulfilment.js";
+import { isResolvedReference } from "@telorun/analyzer";
 
 /** One concrete reference site: the value written there and where it sits. */
 export interface InjectionSite {
@@ -65,8 +66,8 @@ export function injectAtSite(
 ): void {
   const ref = site.data;
   if (!site.holder || !ref || typeof ref !== "object" || Array.isArray(ref)) return;
-  const candidate = ref as Record<string, unknown>;
-  if (typeof candidate.kind !== "string" || typeof candidate.name !== "string") return;
+  if (!isResolvedReference(ref)) return;
+  const candidate = ref;
   const instance = resolveReference(
     {
       name: candidate.name,

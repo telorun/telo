@@ -75,7 +75,7 @@ export async function surfaceSpec(
   if (resource.address !== undefined) spec.address = { name: resource.address.name };
   if (resource.compact === undefined) return spec;
   const compact = await ctx
-    .resolveRef(resource.compact, isSurface, () => `'compact' of ${owner}`, "Ui.Dialog or Ui.Drawer")
+    .resolveRef(resource.compact, isSurface, () => `'compact' of ${owner}`, "Ui.ViewportOverlay")
     .provide();
   if (compact.address !== undefined) {
     throw new RuntimeError(

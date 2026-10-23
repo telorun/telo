@@ -35,8 +35,10 @@ export const RESOURCE_RULES_ANNOTATION = "x-telo-resource-rules";
 export type ResourceRuleSeverity = "error" | "warning";
 
 export interface ResourceRule {
-  /** JSON Pointer to the collection to iterate. Absent = the whole-resource
-   *  form, which reports at the resource rather than at an element. */
+  /** JSON Pointer to the collection to iterate — or, with `*` and repeated
+   *  groups ({@link parseRulePointer}), to every collection it names. Absent =
+   *  the whole-resource form, which reports at the resource rather than at an
+   *  element. */
   readonly in?: string;
   /** JSON Pointers to this kind's own reference slots whose declarations the
    *  condition reads in place of the references, resolved one level — a single
@@ -62,6 +64,10 @@ export interface RuleSubject {
   readonly value: unknown;
   /** Present when the collection is a map: the entry's key. */
   readonly key?: string;
+  /** Present when the pointer reached a value known only once the resource is
+   *  created — the collection itself, or a container on the way to it: the
+   *  rule cannot run there, and the skip is reported. */
+  readonly dynamic?: DynamicLeaf;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -174,6 +180,149 @@ export function pointerSegments(pointer: string): string[] | undefined {
     .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
 }
 
+/**
+ * One step of a rule's `in:` pointer: a key, `*` (every item of a list or value
+ * of a map), or a group of steps repeated zero or more times — the repeated-group
+ * form of the eval-path grammar (`content(.children[*])*`), spelled as pointer
+ * segments, with `|` between alternatives. A group is how one rule visits every
+ * entry of a tree of unknown depth: a navigation's `items`, then the `items` of
+ * each of their entries, repeated.
+ */
+export type RulePointerStep =
+  | { readonly kind: "key"; readonly key: string }
+  | { readonly kind: "any" }
+  | { readonly kind: "repeat"; readonly alternatives: readonly (readonly RulePointerStep[])[] };
+
+/**
+ * A rule's `in:` pointer as steps; `undefined` when it is not one. A key cannot
+ * hold `(`, `)` or `|`, which the grammar reads; a group repeats a non-empty
+ * list of steps, and groups nest.
+ */
+export function parseRulePointer(pointer: string): RulePointerStep[] | undefined {
+  if (pointer === "" || pointer === "/") return [];
+  let at = 0;
+  const steps = (closing: boolean): RulePointerStep[] | undefined => {
+    const out: RulePointerStep[] = [];
+    while (at < pointer.length) {
+      const c = pointer[at]!;
+      if (c === ")" || c === "|") return closing ? out : undefined;
+      if (c === "(") {
+        at++;
+        const alternatives: RulePointerStep[][] = [];
+        for (;;) {
+          const alternative = steps(true);
+          if (!alternative || alternative.length === 0) return undefined;
+          alternatives.push(alternative);
+          if (pointer[at] === "|") {
+            at++;
+            continue;
+          }
+          if (pointer.startsWith(")*", at)) {
+            at += 2;
+            break;
+          }
+          return undefined;
+        }
+        out.push({ kind: "repeat", alternatives });
+        continue;
+      }
+      if (c !== "/") return undefined;
+      at++;
+      let end = at;
+      while (end < pointer.length && !"/()|".includes(pointer[end]!)) end++;
+      const raw = pointer.slice(at, end);
+      at = end;
+      out.push(raw === "*" ? { kind: "any" } : { kind: "key", key: raw.replace(/~1/g, "/").replace(/~0/g, "~") });
+    }
+    return closing ? undefined : out;
+  };
+  const parsed = steps(false);
+  return parsed && at === pointer.length ? parsed : undefined;
+}
+
+/** Whether a parsed pointer names one place only: no `*` and no group. */
+function namesOnePlace(steps: readonly RulePointerStep[]): boolean {
+  return steps.every((step) => step.kind === "key");
+}
+
+/** A place a pointer reaches in a value, with the path that names it. A place
+ *  holding a value known only at creation is carried on unchanged through every
+ *  later step: what lies beneath it is unknown. */
+interface PointerPlace {
+  readonly value: unknown;
+  readonly path: string;
+  readonly dynamic?: DynamicLeaf;
+}
+
+/** A key or index appended to a diagnostic path. */
+function joinPath(base: string, key: string | number): string {
+  if (typeof key === "number" || /^\d+$/.test(key)) return `${base}[${key}]`;
+  return base === "" ? key : `${base}.${key}`;
+}
+
+/** The deepest a repeated group is followed into a value. A manifest is a tree,
+ *  so this only bounds a value that is not one. */
+const MAX_REPEAT_DEPTH = 64;
+
+/**
+ * Every place `steps` reaches from each of `from`, in order, each once — two
+ * alternatives of a group reaching one place yield it once.
+ *
+ * A step never looks inside a tagged value (`!cel`, an embed, a `!ref`) or a
+ * compiled one: a value known only at creation becomes a `dynamic` place that
+ * every later step carries unchanged, and a reference is no container.
+ */
+function placesAlong(from: readonly PointerPlace[], steps: readonly RulePointerStep[]): PointerPlace[] {
+  let places = [...from];
+  for (const step of steps) {
+    const next: PointerPlace[] = [];
+    const seen = new Set<string>();
+    const reach = (place: PointerPlace) => {
+      if (seen.has(place.path)) return;
+      seen.add(place.path);
+      next.push(place);
+    };
+    const child = (value: unknown, path: string) => {
+      const dynamic = dynamicNode(value, path);
+      reach(dynamic ? { value, path, dynamic } : { value, path });
+    };
+    for (const place of places) {
+      const { value, path } = place;
+      if (place.dynamic) {
+        reach(place);
+        continue;
+      }
+      if (isTaggedSentinel(value) || isCelNode(value)) continue;
+      if (step.kind === "key") {
+        if (Array.isArray(value)) {
+          const index = Number(step.key);
+          if (Number.isInteger(index) && value[index] !== undefined) child(value[index], joinPath(path, index));
+        } else if (isObject(value) && value[step.key] !== undefined) {
+          child(value[step.key], joinPath(path, step.key));
+        }
+      } else if (step.kind === "any") {
+        if (Array.isArray(value)) value.forEach((item, index) => child(item, joinPath(path, index)));
+        else if (isObject(value)) {
+          for (const [key, item] of Object.entries(value)) child(item, joinPath(path, key));
+        }
+      } else {
+        let frontier: PointerPlace[] = [place];
+        reach(place);
+        for (let depth = 0; frontier.length > 0 && depth < MAX_REPEAT_DEPTH; depth++) {
+          frontier = step.alternatives
+            .flatMap((alternative) => placesAlong(frontier, alternative))
+            .filter((reached) => !seen.has(reached.path));
+          frontier.forEach(reach);
+          // A dynamic place has nothing beneath it to repeat into.
+          frontier = frontier.filter((reached) => !reached.dynamic);
+        }
+      }
+    }
+    places = next;
+  }
+  return places;
+}
+
 /** Navigate a pointer within a value, stopping at anything that is not a plain
  *  container. Returns `undefined` for a pointer that does not resolve — which a
  *  resource legitimately produces by omitting an optional collection. */
@@ -209,18 +358,44 @@ export function pointerToPath(pointer: string): string {
 /**
  * The elements a rule iterates. An array yields one subject per item, a map one
  * per entry with its key bound; a collection that is absent yields none, which
- * is a rule that had nothing to say rather than a rule that failed.
+ * is a rule that had nothing to say rather than a rule that failed. A
+ * collection known only once the resource is created — an expression at the
+ * pointer or above it — yields one subject carrying `dynamic`, which the rule
+ * reports as skipped.
  *
- * A scalar at the pointer is `undefined` — not an empty list — because that is a
- * declaration defect the strict half reports, and an empty list would hide it.
+ * A scalar at a single pointer is `undefined` — not an empty list — because that
+ * is a declaration defect the strict half reports, and an empty list would hide
+ * it. A pattern is checked by the strict half only for reaching a declared
+ * collection, which a place of it holding something else in this resource does
+ * not contradict: that place contributes nothing, as an absent one does, and
+ * schema validation reports the value.
  */
 export function resolveRuleSubjects(
   config: unknown,
   pointer: string,
 ): RuleSubject[] | undefined {
-  const collection = resolvePointer(config, pointer);
-  if (collection === undefined || collection === null) return [];
-  const base = pointerToPath(pointer);
+  const steps = parseRulePointer(pointer);
+  if (!steps) return [];
+  const one = namesOnePlace(steps);
+  const subjects: RuleSubject[] = [];
+  for (const place of placesAlong([{ value: config, path: "" }], steps)) {
+    if (place.dynamic) {
+      subjects.push({ path: place.path, value: place.value, dynamic: place.dynamic });
+      continue;
+    }
+    if (place.value === null || isTaggedSentinel(place.value)) continue;
+    const each = subjectsOf(place.value, place.path);
+    if (!each) {
+      if (one) return undefined;
+      continue;
+    }
+    subjects.push(...each);
+  }
+  return subjects;
+}
+
+/** The elements of one collection, or `undefined` for a value that is none. */
+function subjectsOf(collection: unknown, base: string): RuleSubject[] | undefined {
   if (Array.isArray(collection)) {
     return collection.map((value, index) => ({ path: `${base}[${index}]`, value }));
   }

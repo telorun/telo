@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import type { ReachSite } from "./reference-reach.js";
 import { pointerSegments } from "./resource-rule.js";
+import { isInlineDeclaration } from "./resolved-reference.js";
 
 /**
  * The execution scopes ONE resource declares — the `x-telo-scope` arrays it
@@ -73,9 +74,9 @@ export function isScopeMember(value: unknown): value is ScopeMember {
   if (!value || typeof value !== "object" || Array.isArray(value) || isRefSentinel(value)) {
     return false;
   }
-  const entry = value as Record<string, unknown>;
-  const name = (entry.metadata as { name?: unknown } | undefined)?.name;
-  return typeof entry.kind === "string" && typeof entry.name !== "string" && typeof name === "string";
+  if (!isInlineDeclaration(value)) return false;
+  const name = (value.metadata as { name?: unknown } | undefined)?.name;
+  return typeof name === "string";
 }
 
 /**

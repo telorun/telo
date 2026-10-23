@@ -6,7 +6,6 @@ import {
   lookupLanguage,
   readMessage,
   RuntimeError,
-  type DataValidator,
   type Message,
   type ResourceContext,
   type RuntimeResource,
@@ -14,25 +13,31 @@ import {
 } from "@telorun/sdk";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { basename } from "node:path";
-import { isWords, modelShape, presented, SpecTranslator, type AuthoredNode, type Words } from "@telorun/ui";
+import {
+  deliveredNavigation,
+  isPage,
+  isWords,
+  preparedNavigation,
+  RequestNodes,
+  SpecTranslator,
+  type NavigationConfig,
+  type NavigationEntrySpec,
+  type PageInstance,
+  type PageReading,
+  type PreparedNavigation,
+  type Words,
+} from "@telorun/ui";
 import abi from "./contract/abi.json" with { type: "json" };
-import { AssetStore, entryAssets, type Asset, type AssetRef } from "./asset-store.js";
+import { AssetStore, entryAssets, type AssetRef } from "./asset-store.js";
 import { CONTROL_MECHANICS, mechanicsFileName } from "./browser/controls/mechanics.js";
-import { withUnhostedComponentsReplaced, type Hosted, type SpecNode } from "./component-abi.js";
+import { HostedNodes, type SpecNode } from "./component-abi.js";
 import { holdsCurrent, servedDocument, SPEC_VERSION } from "./documents.js";
 import { EventStreams } from "./event-streams.js";
 import { headerReads, unionReads, varyHeader, type HeaderReads } from "./header-reads.js";
-import { judgedComposite, producedNode, type EvaluatedNode } from "./page-nodes.js";
+import { servedIconFormat } from "./icon-file.js";
 import { shellHtml } from "./shell.js";
 import type { ProvidedTheme } from "./theme-controller.js";
 import { tokensStylesheet, type ProvidedTokens } from "./tokens-stylesheet.js";
-
-interface PageConfig {
-  path: string;
-  title: TextRecord;
-  query?: Record<string, unknown> | null;
-  children: unknown;
-}
 
 type TokensEntry = { tokens: unknown; when?: unknown };
 
@@ -56,8 +61,16 @@ export type AppResource = RuntimeResource & {
   stylesheets?: string[];
   compactBelow?: string;
   header?: HeaderConfig | null;
-  pages: PageConfig[];
+  /** Each a `Ui.Page`. */
+  pages: unknown[];
+  navigation?: NavigationConfig | null;
 };
+
+/** A listed page, with what it publishes. */
+interface ListedPage {
+  instance: PageInstance;
+  reading: PageReading;
+}
 
 interface Providing<T> {
   provide(): Promise<T>;
@@ -93,6 +106,8 @@ interface InLanguage {
   title: Translated;
   pageTitles: Translated[];
   words: Record<string, Translated>;
+  /** Translates a text the application document carries. */
+  translate(record: TextRecord): Translated;
 }
 
 /** Everything resolved once, when the application is mounted. */
@@ -112,15 +127,13 @@ interface Started {
   vary: { shell: HeaderReads; app: HeaderReads; pages: HeaderReads[] };
   /** By effective tag; `""` for none. */
   languages: Map<string, InLanguage>;
-  /** What each placed composite provided — `null` for nothing — in the order
-   *  the pages place them. */
-  composites: (SpecNode | null)[];
-  /** Each page's children as written, every composite's `ref` replaced by its
-   *  place in `composites`. */
-  pages: unknown[];
-  /** The header's nodes by side, numbered as the pages' are; nothing when the
-   *  application declares no header. */
-  header?: Record<HeaderSide, unknown>;
+  /** The header's nodes by side, prepared once; nothing when the application
+   *  declares no header. */
+  header?: Record<HeaderSide, RequestNodes>;
+  /** The navigation, every default filled; its entries delivered per request. */
+  navigation: PreparedNavigation;
+  /** Components this renderer cannot host, replaced as they are delivered. */
+  hosted: HostedNodes;
   /** The stylesheet of each of the application's token sets, by instance. */
   tokens: Map<unknown, string>;
   /** Stylesheets every request gets, before and after its token set's. */
@@ -129,31 +142,6 @@ interface Started {
   /** What the application document says of the controls: each built-in's
    *  mechanics stylesheet by control, and the sets replacing built-ins. */
   controls: { stylesheets: Record<string, string>; sets: { module: string; exports: string[] }[] };
-  validator: DataValidator;
-}
-
-/**
- * A page's children with each composite's `ref`, and each list row action's
- * `action`, replaced by its index in `placed`, where the instance is appended.
- * A page's structure and references are literal — only leaf values are
- * evaluated per request — so the numbering made once holds for every request,
- * and no instance passes through evaluation.
- */
-function withCompositesNumbered(node: unknown, placed: unknown[]): unknown {
-  if (Array.isArray(node)) return node.map((child) => withCompositesNumbered(child, placed));
-  if (node === null || typeof node !== "object") return node;
-  const { type, ref, children, rowActions } = node as EvaluatedNode;
-  if (type === "composite" && provides(ref)) return { ...node, ref: placed.push(ref) - 1 };
-  if (Array.isArray(children)) return { ...node, children: withCompositesNumbered(children, placed) };
-  if (type === "list" && Array.isArray(rowActions)) {
-    return {
-      ...node,
-      rowActions: (rowActions as Record<string, unknown>[]).map((entry) =>
-        provides(entry.action) ? { ...entry, action: placed.push(entry.action) - 1 } : entry,
-      ),
-    };
-  }
-  return node;
 }
 
 /** A mount path with one leading slash and no trailing one; `""` at the root. */
@@ -165,6 +153,7 @@ function mountPrefix(prefix: string): string {
 export class UiReactApp {
   private readonly owner: string;
   private readonly streams: EventStreams;
+  private readonly pages: ListedPage[];
 
   constructor(
     private readonly resource: AppResource,
@@ -172,15 +161,35 @@ export class UiReactApp {
   ) {
     this.owner = `UiReact.App '${resource.metadata.name}'`;
     this.streams = new EventStreams(this.owner, ctx);
+    this.pages = resource.pages.map((page, index) => {
+      const instance = ctx.resolveRef(page, isPage, () => `'pages[${index}]' of ${this.owner}`, "Ui.Page");
+      return { instance, reading: instance.snapshot() };
+    });
     const seen = new Set<string>();
-    for (const [index, page] of resource.pages.entries()) {
-      if (seen.has(page.path)) {
+    for (const [index, { reading }] of this.pages.entries()) {
+      if (seen.has(reading.path)) {
         throw new RuntimeError(
           "ERR_UI_PAGE_PATH_DUPLICATE",
-          `${this.owner}: 'pages[${index}]' declares a path another page already has ('${page.path}'). Give each page a path of its own.`,
+          `${this.owner}: 'pages[${index}]' declares a path another page already has ('${reading.path}'). Give each page a path of its own.`,
         );
       }
-      seen.add(page.path);
+      seen.add(reading.path);
+    }
+    this.refuseUnroutedEntries(resource.navigation?.items ?? [], "navigation.items");
+  }
+
+  /** Every entry naming a page, at any depth, names one `pages` lists. */
+  private refuseUnroutedEntries(entries: NavigationConfig["items"], at: string): void {
+    for (const [index, entry] of (entries ?? []).entries()) {
+      const where = `${at}[${index}]`;
+      if (entry.type === "group") this.refuseUnroutedEntries(entry.items, `${where}.items`);
+      if (entry.type !== "page") continue;
+      const page = this.ctx.resolveRef(entry.page, isPage, () => `'${where}.page' of ${this.owner}`, "Ui.Page");
+      if (this.pages.some(({ instance }) => instance === page)) continue;
+      throw new RuntimeError(
+        "ERR_UI_NAVIGATION_PAGE_UNROUTED",
+        `${this.owner}: '${where}' names a page the application does not list in its pages ('${page.snapshot().path}'), so it leads nowhere. Add the page to pages, or remove the entry.`,
+      );
     }
   }
 
@@ -197,7 +206,7 @@ export class UiReactApp {
         // never ends on its own.
         scope.addHook("preClose", () => this.streams.closeAll());
         scope.get("/_telo/ui/app", (request, reply) => this.serveApp(started, request, reply));
-        scope.get("/_telo/ui/page", (request, reply) => this.servePage(started, request, reply));
+        scope.get("/_telo/ui/page", (request, reply) => this.servePage(started, requestScope, request, reply));
         scope.get("/_telo/ui/events", async (request, reply) => {
           reply.hijack();
           try {
@@ -233,48 +242,41 @@ export class UiReactApp {
       stylesheets[specifier] = assets.filter((asset) => asset.mediaType === "text/css");
       if (specifier === HOST) hostAbi = entry.abi;
     }
-    const hosted: Hosted = { abis: hostAbi === undefined ? [] : [hostAbi], specifiers: SUPPLIED };
-
-    const placed: unknown[] = [];
-    const pages = this.resource.pages.map((page, index) =>
-      withCompositesNumbered(this.presentedChildren(page, index), placed),
-    );
+    for (const { instance } of this.pages) {
+      for (const asset of instance.assets()) await store.hold(asset);
+    }
     const declaredHeader = this.resource.header ?? undefined;
-    const header =
-      declaredHeader === undefined
-        ? undefined
-        : (Object.fromEntries(
-            HEADER_SIDES.map((side) => [
-              side,
-              withCompositesNumbered(this.presentedNodes(declaredHeader[side] ?? [], {}, `${this.owner} header.${side}`), placed),
-            ]),
-          ) as Record<HeaderSide, unknown>);
-    const validator = this.ctx.createTypeValidator(canonicalTypeSchemaId("Ui", "SpecNode"));
-    const composites: (SpecNode | null)[] = [];
-    for (const instance of placed) {
-      const provided = await (instance as Providing<{ node?: SpecNode; assets: Asset[] }>).provide();
-      for (const asset of provided.assets) await store.hold(asset);
-      if (provided.node === undefined) {
-        composites.push(null);
-        continue;
+    let header: Record<HeaderSide, RequestNodes> | undefined;
+    if (declaredHeader !== undefined) {
+      header = {} as Record<HeaderSide, RequestNodes>;
+      for (const side of HEADER_SIDES) {
+        const nodes = await RequestNodes.prepare(declaredHeader[side] ?? [], {}, this.ctx, `${this.owner} header.${side}`);
+        for (const asset of nodes.assets) await store.hold(asset);
+        header[side] = nodes;
       }
-      const hostable = withUnhostedComponentsReplaced(provided.node, hosted, (error) =>
+    }
+    // Each icon's file served as it is, by its digest, and drawn as a mask.
+    const navigation = await preparedNavigation(
+      this.resource.navigation,
+      this.pages.map(({ instance }) => instance),
+      this.ctx,
+      this.owner,
+      async ({ file }, where) => {
+        const bytes = await store.bytesOf(file);
+        const format = servedIconFormat(bytes, file, this.owner, where);
+        const slug = basename(file).replace(/\.[^.]*$/, "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+        const name = `${slug || "icon"}.${format.extension}`;
+        return urlOf(store.addBytes(name, format.mediaType, bytes));
+      },
+    );
+    const hosted = new HostedNodes(
+      { abis: hostAbi === undefined ? [] : [hostAbi], specifiers: SUPPLIED },
+      (error) =>
         this.ctx.log.error("A component cannot be hosted and is shown as an error", {
           code: error.code,
           message: error.message,
         }),
-      );
-      // Judged here, once: a request places it as it stands.
-      composites.push(
-        judgedComposite(hostable, validator, (invalid, reason) =>
-          this.ctx.log.error("A composite provides a node that is not valid and is shown as an error", {
-            code: "ERR_UI_NODE_INVALID",
-            type: String(invalid.type),
-            reason,
-          }),
-        ),
-      );
-    }
+    );
 
     const serveFont = (name: string, format: { mediaType: string }, bytes: Uint8Array) =>
       urlOf(store.addBytes(name, format.mediaType, Buffer.from(bytes)));
@@ -344,8 +346,13 @@ export class UiReactApp {
     const langReads = headerReads(this.resource.lang);
     const vary = {
       shell: langReads,
-      app: unionReads(langReads, headerReads(this.tokenEntries().map((entry) => entry.when)), headerReads(header)),
-      pages: pages.map((page) => unionReads(langReads, headerReads(page))),
+      app: unionReads(
+        langReads,
+        headerReads(this.tokenEntries().map((entry) => entry.when)),
+        ...HEADER_SIDES.map((side) => header?.[side].headerReads ?? new Set<string>()),
+        headerReads(navigation.items),
+      ),
+      pages: this.pages.map(({ instance }) => unionReads(langReads, instance.headerReads())),
     };
     return {
       mount,
@@ -358,31 +365,14 @@ export class UiReactApp {
       words,
       vary,
       languages: new Map(),
-      composites,
-      pages,
       header,
+      navigation,
+      hosted,
       tokens,
       leading,
       trailing,
       controls: { stylesheets: controlStylesheets, sets },
-      validator,
     };
-  }
-
-  /** A page's children with what its declared query parameters say about the
-   *  values its `value` and `list` nodes name; the page's only browser root. */
-  private presentedChildren(page: PageConfig, index: number): unknown {
-    const where = `${this.owner} pages[${index}]`;
-    const reader = { ctx: this.ctx, owner: where };
-    const query = modelShape({ type: "object", properties: page.query ?? {}, additionalProperties: false }, reader, "query");
-    return this.presentedNodes(page.children, { query }, `${where}.children`);
-  }
-
-  /** Nodes with what the roots in scope say about the values their `value`
-   *  and `list` nodes name. */
-  private presentedNodes(nodes: unknown, roots: Parameters<typeof presented>[1], where: string): unknown {
-    const reader = { ctx: this.ctx, owner: where };
-    return (nodes as AuthoredNode[]).map((child, at) => presented(child, roots, reader, `${where}[${at}]`));
   }
 
   private tokenEntries(): TokensEntry[] {
@@ -442,7 +432,7 @@ export class UiReactApp {
     const made: InLanguage = {
       translator,
       title,
-      pageTitles: this.resource.pages.map((page) => translate(page.title)),
+      pageTitles: this.pages.map(({ reading }) => translate(reading.title)),
       words: Object.fromEntries(Object.entries(started.words).map(([id, record]) => [id, translate(record)])),
       shell: shellHtml({
         title: formatMessage(title.message, title.lang, {}),
@@ -452,6 +442,7 @@ export class UiReactApp {
         rendererUrl: started.rendererUrl,
         importMap: started.importMap,
       }),
+      translate,
     };
     started.languages.set(key, made);
     return made;
@@ -474,13 +465,19 @@ export class UiReactApp {
     const tokens = chosen === undefined ? [] : [started.tokens.get(chosen.tokens) as string];
     const tag = this.effectiveTag(started, scope.request);
     const language = this.inLanguage(started, tag);
-    const evaluated = started.header === undefined ? undefined : (this.ctx.expandValue(started.header, scope) as Record<HeaderSide, EvaluatedNode[]>);
     const header =
-      evaluated === undefined
+      started.header === undefined
         ? undefined
         : Object.fromEntries(
-            HEADER_SIDES.map((side) => [side, this.producedNodes(started, evaluated[side], language, { header: side })]),
+            HEADER_SIDES.map((side) => [side, this.shown(started, started.header![side].deliver(scope.request), language)]),
           );
+    const translatedEntries = (entries: NavigationEntrySpec[]): unknown[] =>
+      entries.map((entry) =>
+        entry.type === "group"
+          ? { ...entry, text: language.translate(entry.text), items: translatedEntries(entry.items) }
+          : { ...entry, text: language.translate(entry.text) },
+      );
+    const items = deliveredNavigation(this.ctx.expandValue(started.navigation.items, scope));
     return this.send(
       request,
       reply,
@@ -489,7 +486,8 @@ export class UiReactApp {
         bundle: started.bundle,
         title: language.title,
         ...(tag === undefined ? {} : { lang: tag }),
-        pages: this.resource.pages.map(({ path }, index) => ({ path, title: language.pageTitles[index] })),
+        pages: this.pages.map(({ reading }, index) => ({ path: reading.path, title: language.pageTitles[index] })),
+        navigation: { items: translatedEntries(items), placement: started.navigation.placement },
         ...(header === undefined ? {} : { header }),
         words: language.words,
         stylesheets: [...started.leading, ...tokens, ...started.trailing],
@@ -500,10 +498,11 @@ export class UiReactApp {
     );
   }
 
-  private servePage(started: Started, request: FastifyRequest, reply: FastifyReply) {
+  /** `requestScope` is the one of the server this request reached: one App may be mounted on several. */
+  private async servePage(started: Started, requestScope: RequestScope<FastifyRequest> | undefined, request: FastifyRequest, reply: FastifyReply) {
     const path = (request.query as Record<string, unknown>).path;
-    const index = this.resource.pages.findIndex((candidate) => candidate.path === path);
-    const page = this.resource.pages[index];
+    const index = this.pages.findIndex(({ reading }) => reading.path === path);
+    const page = this.pages[index];
     if (!page) {
       return reply
         .code(404)
@@ -511,47 +510,32 @@ export class UiReactApp {
         .send({ error: "NotFound", message: `This application declares no page at '${String(path)}'.`, status: 404 });
     }
     const scope = { request: this.requestOf(request) };
-    const evaluated = this.ctx.expandValue(started.pages[index], scope) as EvaluatedNode[];
+    const delivered = await page.instance.invoke(
+      { request: scope.request as { headers: Record<string, string>; ip?: string } },
+      requestScope?.forRequest(request).context,
+    );
     const tag = this.effectiveTag(started, scope.request);
     const language = this.inLanguage(started, tag);
-    const children = this.producedNodes(started, evaluated, language, { page: page.path });
     return this.send(
       request,
       reply,
       {
         specVersion: SPEC_VERSION,
         bundle: started.bundle,
-        path: page.path,
+        path: delivered.path,
         title: language.pageTitles[index],
         ...(tag === undefined ? {} : { lang: tag }),
-        query: page.query ?? {},
-        children,
+        query: delivered.query,
+        children: this.shown(started, delivered.children, language),
       },
       started.vary.pages[index],
     );
   }
 
-  /** Nodes evaluated for a request, produced and translated: a node switched
-   *  off left out, one not valid replaced by an error node and logged with
-   *  `where` it sits. */
-  private producedNodes(started: Started, evaluated: EvaluatedNode[], language: InLanguage, where: Record<string, string>) {
-    return evaluated
-      .map((node) =>
-        producedNode(
-          node,
-          (ref) => started.composites[ref as number],
-          started.validator,
-          (invalid, reason) =>
-            this.ctx.log.error("A node is not valid for this request and is shown as an error", {
-              code: "ERR_UI_NODE_INVALID",
-              ...where,
-              type: String(invalid.type),
-              reason,
-            }),
-        ),
-      )
-      .filter((node) => node !== undefined)
-      .map((node) => language.translator.node(node));
+  /** Nodes as a request is sent them: every component this renderer cannot
+   *  host replaced, every text translated. */
+  private shown(started: Started, nodes: SpecNode[], language: InLanguage): SpecNode[] {
+    return nodes.map((node) => language.translator.node(started.hosted.node(node)) as SpecNode);
   }
 
   private serveAsset(started: Started, request: FastifyRequest, reply: FastifyReply) {
@@ -570,7 +554,7 @@ export class UiReactApp {
     if (path === "/_telo" || path.startsWith("/_telo/")) {
       return reply.code(404).send({ error: "NotFound", message: `Nothing is served at '${path}'.`, status: 404 });
     }
-    const declared = this.resource.pages.some((page) => page.path === path);
+    const declared = this.pages.some(({ reading }) => reading.path === path);
     const language = this.inLanguage(started, this.effectiveTag(started, this.requestOf(request)));
     const vary = varyHeader(started.vary.shell);
     if (vary !== undefined) reply.header("vary", vary);

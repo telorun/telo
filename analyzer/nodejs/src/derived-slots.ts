@@ -52,6 +52,7 @@ import {
   valueSchemaTypes,
   type ValueSchemaHost,
 } from "./value-schema-slot.js";
+import { isResolvedReference, resolvedReference } from "./resolved-reference.js";
 
 /** What resolving a site needs from its host. */
 export interface DerivedSlotContext {
@@ -125,8 +126,7 @@ function callSite(
   const scope = contractScopeOf(ctx);
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
   const invokedKind = typeof invoke.kind === "string" ? invoke.kind : undefined;
-  const invokedManifest =
-    typeof invoke.name === "string" ? ctx.resolveTarget(invoke) : invoke;
+  const invokedManifest = isResolvedReference(invoke) ? ctx.resolveTarget(invoke) : invoke;
   const invokedDefinition = invokedKind ? scope.resolveIn(invokedKind, readingModule) : undefined;
   return {
     origin,
@@ -255,7 +255,7 @@ export function templateCallSite(
       origin: "template",
       path: "inputs",
       values,
-      invoke: { kind: target.kind, name: target.name },
+      invoke: resolvedReference(target.kind, target.name),
       invokedManifest: entry,
       invokedDefinition: definition,
       contract: resolveContract("inputType", entry, definition, scope),

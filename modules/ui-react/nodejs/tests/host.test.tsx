@@ -43,7 +43,7 @@ describe("the host object", () => {
     await rendered.click(rendered.fixture("page"));
     expect(window.location.pathname).toBe("/done");
     expect(rendered.part("text").textContent).toBe("The done page");
-    expect(rendered.parts("nav-link").map((link) => link.getAttribute("data-current"))).toEqual([null, "page"]);
+    expect(rendered.parts("nav-item").map((link) => link.getAttribute("data-current"))).toEqual([null, "page"]);
   });
 
   it("replaces the current history entry when asked to", async () => {
@@ -65,7 +65,7 @@ describe("the host object", () => {
     rendered = await show([probe], "/admin");
     expect(rendered.fixture("href").textContent).toBe("/admin/done?x=1");
     expect(rendered.fixture("location").textContent).toBe("/");
-    expect(rendered.part("nav-link").getAttribute("href")).toBe("/admin/");
+    expect(rendered.part("nav-item").getAttribute("href")).toBe("/admin/");
   });
 
   it("follows a link only to a page the application declares, and leaves any other address under the mount to the browser", async () => {

@@ -191,25 +191,6 @@ export function isValueAtSlot(
   return satisfiesSiteValue(value, refs, registry);
 }
 
-/** Keys that a named reference object may have. Values beyond these indicate an inline resource. */
-export const REFERENCE_KEYS = new Set(["kind", "name", "metadata"]);
-
-/** True when `val` is an inline resource definition rather than a named reference.
- *  Three shapes flow through here:
- *   - `{kind, name}` (optionally with runtime call args) → named reference, NOT inline.
- *   - `{kind, ...config}` with no name → inline definition with config; extract.
- *   - `{kind}` alone (bare kind, no name) → inline singleton — extract a fresh
- *     stateless resource. Lets simple stateless kinds be used inline without
- *     boilerplate (e.g. `encoder: {kind: Ndjson.Encoder}`, `invoke: {kind: Run.Throw}`).
- *
- *  A named reference (has string `name`) may carry extra keys (e.g. `inputs`)
- *  that are runtime call parameters — those are never inline resources. */
-export function isInlineResource(val: Record<string, unknown>): boolean {
-  if (typeof val.name === "string") return false;
-  if (typeof val.kind !== "string") return false;
-  return true;
-}
-
 /** The accepted kinds a node declares, unioned across a `kind:` list and across
  *  `anyOf` branches. Thin wrapper over {@link readRefSlot} — kept because
  *  several passes want only the kind set. */

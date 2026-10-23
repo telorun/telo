@@ -1,0 +1,5 @@
+modules:
+  apps/hub: Added
+body: The design-library guide says an inline declaration holds the kind's own fields, a
+  name among them when the kind declares one, and that { kind, name } for a kind
+  declaring no name field is the removed reference form.

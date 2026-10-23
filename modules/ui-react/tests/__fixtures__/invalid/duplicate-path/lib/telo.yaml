@@ -19,9 +19,11 @@ title: Twice
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: /reports
+  - kind: Ui.Page
+    path: /reports
     title: Reports
     children: []
-  - path: /reports
+  - kind: Ui.Page
+    path: /reports
     title: Reports again
     children: []

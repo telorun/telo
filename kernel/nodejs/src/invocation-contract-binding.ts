@@ -17,6 +17,7 @@ import {
   type DefResolver,
   reachesMembersSlot,
   withLiveValuesSkipped,
+  isResolvedReference,
 } from "@telorun/analyzer";
 import type { ResourceDefinition, ResourceInstance, ResourceManifest } from "@telorun/sdk";
 import {
@@ -152,13 +153,10 @@ const CONTRACT_ERROR: Record<ContractDirection, string> = {
  * can dispatch before the loop finishes, so first-use is always late enough.
  */
 /** True when a type field names a registered `telo#Type` — a bare name, or the
- *  `{kind, name}` object a `!ref` normalizes to. Only these carry CEL `rules:`,
+ *  resolved reference a `!ref` normalizes to. Only these carry CEL `rules:`,
  *  so only these are worth compiling by name rather than from their schema. */
 function isNamedTypeReference(declared: unknown): boolean {
-  if (typeof declared === "string") return true;
-  if (!declared || typeof declared !== "object") return false;
-  const ref = declared as Record<string, unknown>;
-  return typeof ref.name === "string" && !(ref.schema && typeof ref.schema === "object");
+  return typeof declared === "string" || isResolvedReference(declared);
 }
 
 export function resolveBoundContract(

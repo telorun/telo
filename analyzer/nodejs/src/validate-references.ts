@@ -7,7 +7,6 @@ import type { DefResolver } from "./extends-resolution.js";
 import { isSchemaFromSite, schemaFromIsKindDecidable, schemaFromSites } from "./schema-from-sites.js";
 import { valueTypeRefusalCode } from "./schema-error-report.js";
 import {
-  isInlineResource,
   satisfiesSiteValue,
   type RefFieldEntry,
 } from "./reference-field-map.js";
@@ -18,6 +17,7 @@ import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } fro
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isModuleKind } from "./module-kinds.js";
+import { isInlineDeclaration, isResolvedReference } from "./resolved-reference.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { acceptsInline } from "./normalize-inline-resources.js";
 import { resolveScopedName } from "./call-graph.js";
@@ -626,7 +626,7 @@ export function validateReferences(
         if (satisfiesSiteValue(val, e.refs, registry)) return;
 
         // Skip inline resources — Phase 2 normalization hasn't run yet.
-        if (isInlineResource(refVal)) return;
+        if (isInlineDeclaration(refVal)) return;
 
         // Polymorphic ref slots accept object forms whose references live in
         // nested slots rather than being a `{kind, name}` ref themselves —
@@ -653,7 +653,7 @@ export function validateReferences(
 
         // 1. Neither a reference, an inline declaration nor a value: say what the
         //    slot takes, from its own schema.
-        if (typeof refVal.kind !== "string" || typeof refVal.name !== "string") {
+        if (!isResolvedReference(refVal)) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
             code: "INVALID_REFERENCE",
@@ -674,10 +674,8 @@ export function validateReferences(
 
         // 2. Kind check
         const objectTarget =
-          typeof refVal.name === "string"
-            ? (visibleScopeManifests.find((m) => m.metadata?.name === refVal.name) ??
-              byName.get(refVal.name))
-            : undefined;
+          visibleScopeManifests.find((m) => m.metadata?.name === refVal.name) ??
+          byName.get(refVal.name);
         const crossModule = typeof refVal.alias === "string" && refVal.alias !== "Self";
         const referentModule = crossModule
           ? aliases.moduleForAlias(refVal.alias as string)

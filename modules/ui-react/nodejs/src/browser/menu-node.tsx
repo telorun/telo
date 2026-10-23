@@ -5,7 +5,7 @@ import { useHost, useHostStore } from "./host.js";
 import { linkAddress, pageAddress } from "./link-address.js";
 import { ErrorNode, type SpecNode } from "./nodes.js";
 import { RendererContext, RootsContext } from "./renderer-context.js";
-import { useText, type WireText } from "./texts.js";
+import { useSay, useText, type WireText } from "./texts.js";
 
 interface MenuLink {
   text: WireText;
@@ -14,11 +14,14 @@ interface MenuLink {
   shown?: Condition;
 }
 
+/** The key of the menu's one group; its links are keyed by their index. */
+const GROUP = "menu";
+
 /**
- * A `menu` node: a button opening its links through the `Menu` control. An
- * item is offered while its `shown` holds; choosing one follows its address as
- * clicking the link would — one of the application's pages within it, anything
- * else by a load. An item whose style holds `strong` is the current choice. An
+ * A `menu` node: one group of links drawn by the `Navigation` control, a
+ * disclosure that is no landmark. An item is offered while its `shown` holds;
+ * following one moves within the application to one of its pages, and loads
+ * anything else. An item whose style holds `strong` is the current choice. An
  * item whose address is not one a link may hold makes the menu an error node.
  */
 export function MenuNode({ node }: { node: SpecNode }): ReactNode {
@@ -27,11 +30,12 @@ export function MenuNode({ node }: { node: SpecNode }): ReactNode {
   const { prefix, pages } = useContext(RendererContext);
   const roots = useContext(RootsContext);
   const text = useText();
-  const Menu = useControl("Menu");
-  const Icon = useControl("Icon");
-  const [open, setOpen] = useState(false);
+  const say = useSay();
+  const Navigation = useControl("Navigation");
+  const [open, setOpen] = useState<string[]>([]);
   const links = node.items as MenuLink[];
-  const failing = links.find((link) => linkAddress(store, link.href) === undefined);
+  const addresses = links.map((link) => linkAddress(store, link.href));
+  const failing = links.find((_, index) => addresses[index] === undefined);
   if (failing) {
     return (
       <ErrorNode
@@ -43,31 +47,35 @@ export function MenuNode({ node }: { node: SpecNode }): ReactNode {
       />
     );
   }
-  const offered = links.flatMap((link, index) =>
-    link.shown === undefined || conditionHolds(link.shown, roots) ? [{ link, key: String(index) }] : [],
-  );
+  const offered = links.flatMap((link, index) => (link.shown === undefined || conditionHolds(link.shown, roots) ? [{ link, index }] : []));
   if (offered.length === 0) return null;
-  const choose = (key: string) => {
-    const href = linkAddress(store, links[Number(key)].href) as string;
+  const follow = (key: string) => {
+    const href = addresses[Number(key)] as string;
     const to = pageAddress(prefix, pages, href);
     if (to === undefined) store.leave(href);
     else host.navigate(to);
   };
+  const style = styleAttribute(node.style);
   return (
-    <Menu
+    <Navigation
+      layout="horizontal"
+      items={[
+        {
+          key: GROUP,
+          label: text(node.text),
+          items: offered.map(({ link, index }) => ({
+            key: String(index),
+            label: text(link.text),
+            href: addresses[index] as string,
+            ...([link.style ?? []].flat().includes("strong") ? { current: "true" as const } : {}),
+          })),
+        },
+      ]}
+      more={{ key: "more", label: say("more") }}
       open={open}
-      items={offered.map(({ link, key }) => ({
-        key,
-        label: text(link.text),
-        ...([link.style ?? []].flat().includes("strong") ? { current: true } : {}),
-      }))}
       onOpenChange={setOpen}
-      onChange={choose}
-    >
-      <button type="button" data-telo-part="menu-trigger" data-style={styleAttribute(node.style)}>
-        {text(node.text)}
-        <Icon name="next" />
-      </button>
-    </Menu>
+      onChange={follow}
+      {...(style === undefined ? {} : { attributes: { "data-style": style } })}
+    />
   );
 }

@@ -1,0 +1,6 @@
+modules:
+  apps/hub: Added
+body: The build-ui guide names the navigation placements — the header, a sidebar
+  collapsing to a rail and keeping its open groups, a menu button's drawer and a bottom
+  tab bar, the last two what a narrow screen uses — and the tabs node, its chosen tab
+  kept in the page address.

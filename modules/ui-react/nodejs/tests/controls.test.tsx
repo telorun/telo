@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
 import contract from "../src/contract/controls.json" with { type: "json" };
 import vectors from "../src/contract/vectors.json" with { type: "json" };
-import { runVector, type ControlVectors, type ElementSpec, type VectorHost } from "../src/contract/interpreter.js";
+import { runVector, withElements, type ControlVectors, type ElementSpec, type VectorHost } from "../src/contract/interpreter.js";
 import { BUILT_IN_CONTROLS } from "../src/browser/controls/index.js";
 
 /** An element the interpreter describes, as React draws it. */
@@ -19,7 +19,8 @@ const reactHost =
   (container: HTMLElement): VectorHost => {
     const root = createRoot(container);
     return {
-      render: (props) => root.render(createElement(Control, { ...props, ...(props.children === undefined ? {} : { children: children(props.children) }) })),
+      render: ({ children: given, ...props }) =>
+        root.render(createElement(Control, { ...(withElements(props, node) as object), ...(given === undefined ? {} : { children: children(given) }) })),
       unmount: () => root.unmount(),
     };
   };

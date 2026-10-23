@@ -1,0 +1,53 @@
+# An application whose sidebar names another module's compact placement and
+# keeps its state in the browser's local storage, and whose one entry's icon is
+# a file of its own.
+kind: Telo.Application
+metadata:
+  name: UiReactNavigationPlacementsApp
+  version: 1.0.0
+imports:
+  Http: ../../../../http-server
+  Ui: ../../../../ui
+  UiReact: ../../../
+  Lib: ./lib
+ports:
+  http: { env: PORT, default: 19319 }
+targets:
+  - !ref server
+---
+kind: Ui.Page
+metadata:
+  name: home
+path: /
+title: Home
+children: []
+---
+kind: UiReact.App
+metadata:
+  name: admin
+title: Navigation placements
+words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
+pages:
+  - !ref home
+navigation:
+  items:
+    - type: page
+      page: !ref home
+      icon: { kind: Ui.FileIcon, file: !module-path ./glyph.svg }
+  placement:
+    kind: Ui.SidebarNavigation
+    side: end
+    rail: {}
+    store: { kind: Ui.LocalStore }
+    compact: { kind: Lib.ThreeTabs }
+---
+kind: Http.Server
+metadata:
+  name: server
+listen:
+  address: 127.0.0.1
+  port: !cel "ports.http"
+mounts:
+  - path: /admin
+    mount: !ref admin

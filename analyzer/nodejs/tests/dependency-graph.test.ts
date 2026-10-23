@@ -340,7 +340,7 @@ describe("buildDependencyGraph — creation order", () => {
           kind: "Telo.Import",
           metadata: { name: "Lib" },
           source: "./lib",
-          resources: { connection: { kind: "Lib.Connection", name: "db" } },
+          resources: { connection: { __ref: true, kind: "Lib.Connection", name: "db" } },
         },
         { kind: "Lib.Connection", metadata: { name: "db" } },
       ] as unknown as ResourceManifest[],
@@ -360,14 +360,14 @@ describe("buildDependencyGraph — creation order", () => {
       kind: "Telo.Import",
       metadata: { name: "Lib", ...app },
       source: "./lib",
-      resources: { connection: { kind: "test.Db", name: "db" } },
+      resources: { connection: { __ref: true, kind: "test.Db", name: "db" } },
     };
     const db = { kind: "test.Db", metadata: { name: "db", ...app } };
     const resolved = names([
       {
         kind: "test.Caller",
         metadata: { name: "resolved", ...app },
-        steps: [{ name: "sweep", invoke: { kind: "Lib.Sweep", name: "sweep", alias: "Lib" } }],
+        steps: [{ name: "sweep", invoke: { __ref: true, kind: "Lib.Sweep", name: "sweep", alias: "Lib" } }],
       },
       lib,
       db,
@@ -392,7 +392,7 @@ describe("buildDependencyGraph — creation order", () => {
       {
         kind: "test.Caller",
         metadata: { name: "caller", ...app },
-        steps: [{ name: "own", invoke: { kind: "App.Thing", name: "thing", alias: "Self" } }],
+        steps: [{ name: "own", invoke: { __ref: true, kind: "App.Thing", name: "thing", alias: "Self" } }],
       },
       { kind: "Telo.Import", metadata: { name: "Lib", ...app }, source: "./lib" },
     ]);

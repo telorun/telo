@@ -1,0 +1,9 @@
+modules:
+  modules/ui: Added
+body: "Every navigation entry and every tab of a tabs node is keyed by what its author
+  wrote: the slug of its untranslated source text, a navigation entry under its group's
+  key and /, a sibling repeating a key taking ~2, ~3 in declaration order — so an entry
+  gated off by when or added elsewhere moves no other entry's key. A delivered
+  navigation entry carries it as key, and a tabs node's tab in Ui.SpecNode as key.
+  Ui.Words gains siteNavigation, collapseNavigation and expandNavigation. Breaking: a
+  Ui.Words set of one's own must give the three words."

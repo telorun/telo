@@ -28,18 +28,19 @@ export const asidePlacement = (config: PlacementConfig = {}): FilterPlacementSpe
 export const collapsiblePlacement = (config: PlacementConfig = {}): FilterPlacementSpec => ({ type: "collapsible", open: config.open ?? false });
 
 /** A placement kind's controller: its own members filled, then the placement
- *  standing in for it on a narrow viewport. */
-const withCompact = (kind: string, own: (config: PlacementConfig) => FilterPlacementSpec) => ({
+ *  standing in for it on a narrow viewport — the one it names, else its
+ *  `fallback`, if it has one. */
+const withCompact = (kind: string, own: (config: PlacementConfig) => FilterPlacementSpec, fallback?: () => FilterPlacementSpec) => ({
   async create(resource: PlacementResource, ctx: ResourceContext): Promise<ResourceInstance> {
     return {
       provide: async (): Promise<FilterPlacementSpec> => {
-        if (resource.compact === undefined) return own(resource);
+        if (resource.compact == null) return fallback ? { ...own(resource), compact: fallback() } : own(resource);
         const compact = await ctx
           .resolveRef(
             resource.compact,
             isFilterPlacement,
             () => `'compact' of ${kind} '${resource.metadata.name}'`,
-            "Ui.CollapsiblePlacement or Ui.OverlayPlacement",
+            "Ui.FoldingFilterPlacement",
           )
           .provide();
         return { ...own(resource), compact };
@@ -49,7 +50,8 @@ const withCompact = (kind: string, own: (config: PlacementConfig) => FilterPlace
 });
 
 export const AbovePlacementController = withCompact("Ui.AbovePlacement", abovePlacement);
-export const AsidePlacementController = withCompact("Ui.AsidePlacement", asidePlacement);
+/** A column beside the content has no room on a narrow viewport, so it folds. */
+export const AsidePlacementController = withCompact("Ui.AsidePlacement", asidePlacement, collapsiblePlacement);
 
 export const CollapsiblePlacementController = {
   async create(resource: PlacementResource): Promise<ResourceInstance> {

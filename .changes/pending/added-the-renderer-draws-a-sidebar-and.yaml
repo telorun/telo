@@ -1,0 +1,16 @@
+modules:
+  modules/ui-react: Added
+body: "The renderer draws a sidebar and a tab bar. Ui.SidebarNavigation is the sidebar
+  part, a column beside main under the header holding the Navigation control in a column
+  whose groups open in place, and with a rail the sidebar-toggle button collapsing it to
+  a rail whose groups float beside it; its open groups and collapsed rail are kept in
+  its store under telo.ui:<mount path>:n and read back on the next visit.
+  Ui.TabBarNavigation is the tab-bar part along the bottom edge, its top-level entries
+  as tabs and More last when there are more than visible, a group's tab or More opening
+  its entries in the placement's surface. The tabs node is drawn by the Tabs control,
+  its chosen tab under _telo.open.<name> when addressed. The parts sidebar,
+  sidebar-toggle, tab-bar, tabs, tab-list, tab and tab-panel join the styling contract,
+  sidebar carrying data-side and data-state (closed while collapsed), and app's display
+  and grid-template-columns and tab-bar's position and bottom are reserved; the contract
+  gains a sidebar scene and a tab-bar scene, and the default theme styles every new
+  part. Breaking for a theme of another module: it styles the new parts."

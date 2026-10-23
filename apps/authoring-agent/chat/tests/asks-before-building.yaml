@@ -14,8 +14,10 @@ metadata:
     block, which is the shape Telo Studio renders as clickable options.
 
     The second turn is the answers, as an ordinary message. It is asserted: (1)
-    the reply carries no `telo-questions` block, (2) a file was written, and (3)
-    the last check the agent's own tools ran on what it wrote is clean. Asking
+    the reply carries no `telo-questions` block, (2) a file was written, (3) no
+    `UiReact.App` was written — the answers rule a UI out, which is the user
+    overriding the agent's default (assumes-ui.yaml pins the default itself),
+    and (4) the last check the agent's own tools ran on what it wrote is clean. Asking
     alone was once all this case pinned, and an agent that answered every reply
     to its questions by asking them again passed it.
 
@@ -179,6 +181,11 @@ steps:
         inputs:
           askedAgain: !cel "steps.answerReply.result.contains('telo-questions')"
           wroteFile: !cel "steps.drainAnswer.result.items.exists(r, r.data.type == 'tool-call' && r.data.toolCall.name == 'write_file')"
+          # The answers rule a UI out, which is the user saying otherwise.
+          wroteScreen: !cel >-
+            steps.drainAnswer.result.items.exists(r, r.data.type == 'tool-call'
+              && ((r.data.toolCall.name == 'write_file' && string(r.data.toolCall.arguments.content).contains('UiReact.App'))
+                || (r.data.toolCall.name == 'edit_file' && string(r.data.toolCall.arguments.newString).contains('UiReact.App'))))
           lastCheck: !cel >-
             cel.bind(checks, steps.drainAnswer.result.items.filter(r, r.data.type == 'tool-result'
                   && has(r.data.toolResult.output) && type(r.data.toolResult.output) == type({})
@@ -193,5 +200,6 @@ steps:
             properties:
               askedAgain: { const: false }
               wroteFile: { const: true }
+              wroteScreen: { const: false }
               lastCheck: { const: 0 }
-            required: [askedAgain, wroteFile, lastCheck]
+            required: [askedAgain, wroteFile, wroteScreen, lastCheck]

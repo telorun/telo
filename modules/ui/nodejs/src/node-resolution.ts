@@ -11,6 +11,7 @@ import {
 import { headerOf, itemsOf, presentation, schemaAt, shapeLabels, type Shape, type ShapeReader } from "./model-schema.js";
 import { isChain, type Binding, type Condition } from "./row-binding.js";
 import { pendingRowAction, providedRowActions, type PendingRowAction, type RowActionConfig } from "./row-actions.js";
+import { sourceKeys } from "./source-keys.js";
 
 /** A `Ui.Node` as its author wrote it, references already live. */
 export interface AuthoredNode {
@@ -23,6 +24,14 @@ export interface AuthoredNode {
   [key: string]: unknown;
 }
 
+/** One tab of a `tabs` node as written, or as evaluated for a request. */
+export interface AuthoredTab {
+  text?: unknown;
+  children?: AuthoredNode[];
+  when?: unknown;
+  [key: string]: unknown;
+}
+
 /** What each root a tree may read is declared as, by name — what presents the
  *  values its `value` and `list` nodes name. */
 export type RootShapes = Readonly<Record<string, Shape | undefined>>;
@@ -32,7 +41,8 @@ export const NO_ROOTS: RootShapes = {};
 /**
  * Turn an authored node into the node a renderer receives: a node whose
  * `when:` is false is left out, a menu keeps only the items delivered (see
- * {@link deliveredMenu}), a composite is replaced by what it provides,
+ * {@link deliveredMenu}) and a `tabs` node only the tabs (see
+ * {@link deliveredTabs}), a composite is replaced by what it provides,
  * containers resolve their children in order, and a `value` or `list` node
  * carries what its roots say about the values it names. `undefined` means the
  * node is omitted — switched off, or a composite that provided none.
@@ -56,6 +66,25 @@ export async function resolveNode(
     // A composite with nothing to show is left out, like a node switched off.
     if (!provided.node) return undefined;
     return { node: placed(provided.node, node), assets: provided.assets };
+  }
+  if (node.type === "tabs" && Array.isArray(node.tabs)) {
+    const tabs: AuthoredTab[] = [];
+    const assets: AssetFile[][] = [];
+    for (const [index, tab] of keyedTabs(node.tabs as AuthoredTab[]).entries()) {
+      if (tab.when === false) continue;
+      const children: SpecNode[] = [];
+      for (const [at, child] of (tab.children ?? []).entries()) {
+        const resolved = await resolveNode(child, ctx, `${where}.tabs[${index}].children[${at}]`, roots);
+        if (!resolved?.node) continue;
+        children.push(resolved.node);
+        assets.push(resolved.assets);
+      }
+      tabs.push({ ...tab, children: children as AuthoredNode[] });
+    }
+    const delivered = deliveredTabs(tabs);
+    if (delivered === undefined) return undefined;
+    const { when, ...own } = withoutAbsent(node);
+    return { node: { ...own, tabs: delivered } as SpecNode, assets: mergeAssets(...assets) };
   }
   if (!Array.isArray(node.children)) {
     const { when, ...leaf } = presented(node, roots, reader, where);
@@ -102,6 +131,16 @@ export function placed(provided: SpecNode, placement: { style?: unknown; shown?:
  */
 export function presented(node: AuthoredNode, roots: RootShapes, reader: ShapeReader, where: string): AuthoredNode {
   const own = withoutAbsent(node);
+  if (own.type === "tabs" && Array.isArray(own.tabs)) {
+    return {
+      ...own,
+      tabs: (own.tabs as AuthoredTab[]).map((tab, index) =>
+        Array.isArray(tab.children)
+          ? { ...tab, children: tab.children.map((child, at) => presented(child, roots, reader, `${where}.tabs[${index}].children[${at}]`)) }
+          : tab,
+      ),
+    };
+  }
   if (Array.isArray(own.children)) {
     return {
       ...own,
@@ -153,6 +192,31 @@ export function deliveredMenu<T extends Record<string, unknown>>(menu: T): T | u
       return kept;
     });
   return items.length === 0 ? undefined : { ...menu, items };
+}
+
+/** Every tab keyed by the slug of the source text it was written with
+ *  (see {@link sourceKeys}), over every tab whatever its `when`; a tab keyed
+ *  already keeps its key. */
+function keyedTabs(tabs: AuthoredTab[]): AuthoredTab[] {
+  const keys = sourceKeys(tabs.map((tab) => tab.text), "tab");
+  return tabs.map((tab, index) => (typeof tab.key === "string" ? tab : { ...tab, key: keys[index] }));
+}
+
+/**
+ * The tabs of a `tabs` node as delivered: every tab keyed, then the tabs
+ * whose `when` is not false, each without its `when` and without a member
+ * holding nothing. Nothing when no tab is delivered — a `tabs` node with
+ * nothing to show is left out, like a node switched off.
+ */
+export function deliveredTabs(tabs: AuthoredTab[]): AuthoredTab[] | undefined {
+  const delivered = keyedTabs(tabs)
+    .filter((tab) => tab.when !== false)
+    .map((tab) => {
+      const kept: AuthoredTab = {};
+      for (const [key, value] of Object.entries(tab)) if (key !== "when" && value !== null && value !== undefined) kept[key] = value;
+      return kept;
+    });
+  return delivered.length === 0 ? undefined : delivered;
 }
 
 /** The shape the value a binding names is declared as, where its root says. */

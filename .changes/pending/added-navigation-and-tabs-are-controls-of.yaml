@@ -1,0 +1,17 @@
+modules:
+  modules/ui-react: Added
+body: "Navigation and Tabs are controls of the contract. Navigation is site navigation
+  in the WAI-ARIA disclosure pattern — links as links, groups as disclosure buttons; in
+  a row or a rail each open group's panel a layer at the end of <body> that Tab flows
+  into, placed to stay inside the viewport; in a column each open group's entries in
+  place beneath its button, at every depth, in no layer; the open groups a set of keys,
+  so several groups of a column stay open at once; given more, what does not fit a row
+  moved into a More group; an entry given opens: dialog a button
+  (aria-haspopup=\"dialog\") expanded while its key is open, whose dialog the renderer
+  draws; a nav landmark only when labelled — and Tabs is the tabs pattern with manual
+  activation. The glyph names include menu, more, collapse and expand, and the
+  interpreter has the hover step and the tag of a target. A menu node is drawn by
+  Navigation as one disclosure with no landmark: its items are links, the one styled
+  strong carries aria-current=\"true\", and its style is on the navigation part; Menu
+  stays the command menu. A theme styles the navigation, nav-toggle, nav-item, nav-group
+  and nav-panel parts."

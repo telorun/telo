@@ -70,7 +70,7 @@ import {
 } from "./call-graph.js";
 import { propertySchemas } from "./manifest-navigation.js";
 import { isStepSlot } from "./step-slot.js";
-import { isInlineResource } from "./reference-field-map.js";
+import { isInlineDeclaration as isInlineDeclarationValue, isResolvedReference } from "./resolved-reference.js";
 import { findZoneProviders } from "./resolve-zone-containment.js";
 import { isTriggerUse, topFieldOf, type RefUse } from "./ref-slot.js";
 import { canonicalJson } from "./canonical-json.js";
@@ -723,26 +723,21 @@ function entryListSpecsOf(rootSchema: Record<string, any> | undefined): EntryLis
 }
 
 /** A value written AT a ref slot that declares a resource rather than naming
- *  one — `{kind, …config}` with no `name`. */
+ *  one — `{kind, …config}` without the resolved-reference marker. */
 function isInlineDeclaration(value: unknown): boolean {
-  if (isRefSentinel(value) || !value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-  // The shape test itself is the field map's — one reader for "is this a
-  // declaration rather than a reference", since the extraction pass keys on the
-  // same answer and a second opinion here would decide differently the day the
-  // form gains a key.
-  return isInlineResource(value as Record<string, unknown>);
+  if (isRefSentinel(value)) return false;
+  // The shape test itself is `resolved-reference.ts`'s — one reader for "is this
+  // a declaration rather than a reference", since the extraction pass keys on
+  // the same answer and a second opinion here would decide differently.
+  return isInlineDeclarationValue(value);
 }
 
 /** The referenced name a ref value carries, across both written forms: an
- *  unresolved `!ref <name>` sentinel and the `{kind, name}` object
+ *  unresolved `!ref <name>` sentinel and the resolved reference
  *  `resolveRefSentinels` rewrites it into. */
 function refName(value: unknown): string | undefined {
   if (isRefSentinel(value)) return value.source;
-  if (!value || typeof value !== "object") return undefined;
-  const name = (value as Record<string, unknown>).name;
-  return typeof name === "string" ? name : undefined;
+  return isResolvedReference(value) ? value.name : undefined;
 }
 
 /**
@@ -2464,21 +2459,11 @@ function collectReferencedNames(value: unknown, out: Set<string>): void {
   }
   if (isTaggedSentinel(value) || (value as { __compiled?: unknown }).__compiled) return;
   const record = value as Record<string, unknown>;
-  if (isResolvedRef(record)) {
-    if (record.alias === undefined) out.add(record.name as string);
+  if (isResolvedReference(record)) {
+    if (record.alias === undefined) out.add(record.name);
     return;
   }
   for (const child of Object.values(record)) collectReferencedNames(child, out);
-}
-
-/** The `{kind, name, alias?}` a `!ref` is rewritten into. */
-function isResolvedRef(value: Record<string, unknown>): boolean {
-  const keys = Object.keys(value);
-  return (
-    typeof value.kind === "string" &&
-    typeof value.name === "string" &&
-    keys.every((key) => key === "kind" || key === "name" || key === "alias")
-  );
 }
 
 /**

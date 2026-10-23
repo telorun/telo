@@ -1,0 +1,51 @@
+# A navigation naming, three groups deep, a page the application does not list.
+kind: Telo.Library
+metadata:
+  name: UiReactUnroutedPage
+  version: 1.0.0
+  description: >-
+    Test fixture exporting an application whose navigation names, three groups
+    deep, a page its pages do not list.
+imports:
+  UiReact: ../../../../../
+  Ui: ../../../../../../ui
+exports:
+  resources: [deep]
+---
+kind: Ui.Page
+metadata:
+  name: home
+path: /
+title: Home
+children: []
+---
+kind: Ui.Page
+metadata:
+  name: hidden
+path: /hidden
+title: Hidden
+children: []
+---
+kind: UiReact.App
+metadata:
+  name: deep
+title: Deep
+words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
+pages:
+  - !ref home
+navigation:
+  items:
+    - type: page
+      page: !ref home
+    - type: group
+      text: One
+      items:
+        - type: group
+          text: Two
+          items:
+            - type: group
+              text: Three
+              items:
+                - type: page
+                  page: !ref hidden

@@ -108,6 +108,7 @@
     "@telorun/timer-build",
     "@telorun/type",
     "@telorun/ui",
+    "@telorun/ui-lucide-build",
     "@telorun/ui-react-build",
     "@telorun/ui-react-conformance-build",
     "@telorun/ui-react-fixture-components",

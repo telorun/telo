@@ -15,6 +15,7 @@ import {
   NO_CEL_EVAL_SITES,
   NO_NAMED_SHAPES,
   pathMatchesScope,
+  resolvedReference,
   SELF_PATH,
   templateTargetsOf,
   type CelEvalSites,
@@ -415,10 +416,10 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
           const alias = dot > 0 ? source.slice(0, dot) : undefined;
           if (alias && alias !== "Self") {
             const name = source.slice(dot + 1);
-            return { kind: refKind(name, alias), name, alias };
+            return resolvedReference(refKind(name, alias), name, alias);
           }
           const name = alias === "Self" ? source.slice(dot + 1) : source;
-          return { kind: refKind(name), name };
+          return resolvedReference(refKind(name), name);
         }
         if (Array.isArray(value)) {
           return value.map((item, i) =>

@@ -1,4 +1,4 @@
-import { readRefSlot, type RefSlot } from "@telorun/analyzer";
+import { isInlineDeclaration, isResolvedReference, readRefSlot, type RefSlot } from "@telorun/analyzer";
 import { isRefSentinel, makeTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
 import { isRecord } from "../../lib/utils";
 import type { ResolvedResourceOption } from "./types";
@@ -202,10 +202,12 @@ export function resolveRefCandidates(
 
 /** Reads a ref value into the referenced resource **name**. References are
  *  written as `!ref` sentinels (`{ __tagged, engine: "ref", source }`), so the
- *  name is `source`. Legacy `{kind, name}` objects and `"kind.name"` / bare
- *  strings are still read tolerantly — for display only, so an unmigrated file
- *  shows its current selection — and reduced to the name. The caller resolves
- *  the kind from its candidate list. Returns null for malformed input. */
+ *  name is `source`. A legacy `"kind.name"` / bare string is still read
+ *  tolerantly — for display only, so an unmigrated file shows its current
+ *  selection — and reduced to the name, as is a resolved reference (the
+ *  analyzer's `__ref`-marked shape). An object without the marker is an inline
+ *  declaration, never a reference, whatever fields it holds. The caller
+ *  resolves the kind from its candidate list. Returns null for anything else. */
 export function parseRefValue(value: unknown): string | null {
   if (isRefSentinel(value)) {
     const dot = value.source.lastIndexOf(".");
@@ -215,24 +217,23 @@ export function parseRefValue(value: unknown): string | null {
     const dot = value.lastIndexOf(".");
     return dot >= 0 ? value.slice(dot + 1) : value || null;
   }
-  if (isRecord(value) && typeof value.name === "string") return value.name;
+  if (isResolvedReference(value)) return value.name;
   return null;
 }
 
 /**
  * The kind of a resource declared INLINE at a reference slot, or null.
  *
- * A ref slot accepts two shapes, and they are told apart by `name`: the
- * reference the loader produces carries `{kind, name}`, while an inline
- * declaration is `{kind, ...config}` with no name — it exists nowhere but this
- * slot, so there is nothing to name it by. Every surface that reads a ref slot
+ * A ref slot holds a reference — a `!ref` sentinel, or once resolved an object
+ * carrying the `__ref` marker — or an inline declaration: any other object with
+ * a `kind`, a `name` field included, since a kind may declare one
+ * (`{ kind: UiLucide.Icon, name: house }`). Every surface that reads a ref slot
  * has to ask, because reading only the reference shape renders an authored
  * declaration as an empty picker and overwrites it on the next selection.
  */
 export function inlineResourceKind(value: unknown): string | null {
-  if (isRefSentinel(value) || !isRecord(value)) return null;
-  if (typeof value.kind !== "string" || value.kind === "") return null;
-  return typeof value.name === "string" ? null : value.kind;
+  if (!isInlineDeclaration(value) || value.kind === "") return null;
+  return value.kind;
 }
 
 /** Stable `"kind.name"` serialization used as a dropdown key. */

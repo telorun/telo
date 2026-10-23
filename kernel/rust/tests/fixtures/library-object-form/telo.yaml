@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: LibraryObjectFormApp
+  version: 1.0.0
+  description: |
+    Imports a library whose resource holds, at a reference slot, the legacy `{ kind, name }` form of a reference, which a published library may carry and which loads as the reference it means.
+imports:
+  Lib: ./lib

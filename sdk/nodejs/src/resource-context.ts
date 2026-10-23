@@ -278,10 +278,12 @@ export interface ResourceContext extends ControllerContext {
   withManifests<T>(manifests: any[], fn: () => T): T;
   /**
    * Normalize a nested slot value to a {@link KindRef}. The value is an inline
-   * definition (`{ kind, …config }`), an already-normalized `{ kind, name }`
-   * ref, or a `!ref` sentinel. An inline definition is *registered* into this
-   * module's scope first — minting `resourceName` (or a generated one) as its
-   * name — so the returned ref always points at a resource the kernel knows.
+   * definition (`{ kind, …config }` — any object without the resolved-reference
+   * marker, a `name` field included), a resolved reference
+   * (`{ __ref: true, kind, name, alias? }`), or a `!ref` sentinel. An inline
+   * definition is *registered* into this module's scope first — minting
+   * `resourceName` (or a generated one) as its name — so the returned ref always
+   * points at a resource the kernel knows.
    *
    * The inverse of {@link resolveRef}: this goes slot value → ref, that goes
    * ref → live instance. Controllers that dispatch through

@@ -1,0 +1,48 @@
+# One application mounted on two servers, each answering its pages.
+kind: Telo.Application
+metadata:
+  name: UiReactTwoServersApp
+  version: 1.0.0
+imports:
+  Http: ../../../../http-server
+  Ui: ../../../../ui
+  UiReact: ../../../
+ports:
+  http: { env: PORT, default: 19352 }
+  other: { env: OTHER_PORT, default: 19353 }
+targets:
+  - !ref first
+  - !ref second
+---
+kind: UiReact.App
+metadata:
+  name: admin
+title: Two servers
+words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /
+    title: Home
+    children:
+      - { type: text, text: Served twice }
+---
+kind: Http.Server
+metadata:
+  name: first
+listen:
+  address: 127.0.0.1
+  port: !cel "ports.http"
+mounts:
+  - path: /admin
+    mount: !ref admin
+---
+kind: Http.Server
+metadata:
+  name: second
+listen:
+  address: 127.0.0.1
+  port: !cel "ports.other"
+mounts:
+  - path: /admin
+    mount: !ref admin

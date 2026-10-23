@@ -66,6 +66,7 @@ describe("`!ref` sentinel at a top-level ref slot", () => {
     const normalized = analyzer.normalize(stamped, registry);
     const normalizedDispatcher = normalized.find((m) => m.metadata.name === "Main");
     expect((normalizedDispatcher as { handler?: unknown }).handler).toEqual({
+      __ref: true,
       kind: "std.Script",
       name: "DoStuff",
     });

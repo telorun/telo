@@ -25,6 +25,7 @@ import {
   formatSingleError,
   reduceSchemaErrors,
   schemaIssues,
+  withEnumValues,
   type AjvErrorLike,
   type SchemaIssue,
 } from "./schema-error-report.js";
@@ -213,6 +214,20 @@ export class DefinitionRegistry {
     return true;
   }
 
+  /** The named shape a non-local `$ref` written in `module` names — announced
+   *  or registered — with the module declaring it; `scope` resolves the
+   *  authored `telo://<Alias>/<Type>` spelling. */
+  namedShapeAt(
+    ref: string,
+    module: string | undefined,
+    scope: KindResolver | undefined,
+  ): { schema: Record<string, any>; module: string } | undefined {
+    const id = shapeId(ref, module, scope);
+    if (id === undefined) return undefined;
+    const schema = this.namedShapes.get(id) ?? this.schemaForId(id);
+    return schema ? { schema, module: parseCanonicalTypeSchemaId(id)!.moduleName } : undefined;
+  }
+
   /**
    * Announces a named `Telo.Type`'s schema to the reference reach, ahead of its
    * registration: a kind whose schema `$ref`s the shape reaches the slots it
@@ -334,7 +349,7 @@ export class DefinitionRegistry {
     const validate = this.compiledFor(schema);
     if (!validate || validate(data)) return [];
     const errors = this.judged(validate.errors, data, schema, standIns);
-    return reduceSchemaErrors(explainFormatErrors(errors, data)).map(formatSingleError);
+    return (withEnumValues(reduceSchemaErrors(explainFormatErrors(errors, data)), data) ?? []).map(formatSingleError);
   }
 
   /** {@link validateWithRefs}, with the path each issue is anchored at. */

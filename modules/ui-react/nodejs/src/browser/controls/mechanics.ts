@@ -122,6 +122,25 @@ export const CONTROL_MECHANICS: Readonly<Partial<Record<ControlName, string>>> =
     '[data-telo-part="menu-item"] { position: relative; display: flex; align-items: center; cursor: default; user-select: none; }',
   ]),
   Tooltip: layer(['[data-telo-part="tooltip"] { z-index: 50; width: fit-content; transform-origin: var(--ui-react-control-origin); }']),
+  Navigation: layer([
+    "/* The entries in a row, or in a column; in a row or a rail each open group's panel over the page, placed against its button, in a column its entries in place beneath it. */",
+    '[data-telo-part="navigation"] { box-sizing: border-box; min-width: 0; }',
+    ':is([data-telo-part="navigation"], [data-telo-part="nav-panel"]) ul { display: flex; list-style: none; margin: 0; padding: 0; min-width: 0; }',
+    '[data-telo-part="navigation"][data-layout="horizontal"] > ul { flex-direction: row; flex-wrap: nowrap; align-items: center; }',
+    ':is([data-telo-part="navigation"]:not([data-layout="horizontal"]) > ul, [data-telo-part="nav-panel"] ul, [data-telo-part="nav-group"]) { flex-direction: column; align-items: stretch; }',
+    ':is([data-telo-part="navigation"], [data-telo-part="nav-panel"]) li { display: flex; flex-direction: column; flex: none; min-width: 0; }',
+    ':is([data-telo-part="nav-item"], [data-telo-part="nav-toggle"]) { display: flex; align-items: center; box-sizing: border-box; white-space: nowrap; }',
+    '[data-telo-part="nav-toggle"] > [data-telo-part="icon"] { flex: none; pointer-events: none; }',
+    '[data-telo-part="nav-panel"] { box-sizing: border-box; z-index: 50; overflow-x: hidden; overflow-y: auto; min-width: max(9rem, var(--ui-react-control-anchor-width, 0px)); max-width: calc(100vw - 1rem); max-height: var(--ui-react-control-available-height, 100vh); transform-origin: var(--ui-react-control-origin); }',
+    '[data-telo-part="nav-group"] { box-sizing: border-box; }',
+  ]),
+  Tabs: layer([
+    "/* The tabs in a row above the chosen tab's panel. */",
+    '[data-telo-part="tabs"] { display: flex; flex-direction: column; min-width: 0; }',
+    '[data-telo-part="tab-list"] { display: flex; flex-wrap: nowrap; align-items: stretch; overflow-x: auto; }',
+    '[data-telo-part="tab"] { flex: none; white-space: nowrap; }',
+    '[data-telo-part="tab-panel"] { min-width: 0; }',
+  ]),
   Icon: layer(['[data-telo-part="icon"] { flex: none; pointer-events: none; }']),
 };
 

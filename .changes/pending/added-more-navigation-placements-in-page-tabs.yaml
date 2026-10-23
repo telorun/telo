@@ -1,0 +1,20 @@
+modules:
+  modules/ui: Added
+body: "More navigation placements, in-page tabs and abstract compact slots.
+  Ui.SidebarNavigation draws the tree in a column beside the page whose groups open in
+  place, several at once: side (start | end), rail { collapsed } letting the viewer
+  collapse it to a rail, store (a Ui.StateStore keeping the open groups and the
+  collapsed rail) and compact, which defaults to an overlay navigation whose drawer
+  opens from the sidebar's side. Ui.TabBarNavigation, a Ui.CompactNavigationPlacement,
+  draws the top-level entries as bottom tabs — at most visible (2–5, default 5), More
+  holding the rest — a group's or More's entries opening in surface (default a bottom
+  drawer); it is valid as the main placement too. Ui.NavigationPlacementSpec gains the
+  sidebar and tab-bar branches, and a compact is either an overlay or a tab bar. The
+  tabs node { type: tabs, tabs: [{ text, children, when? }], address? } joins Ui.Node
+  and Ui.SpecNode, each tab delivered by its own when, its chosen tab in the page
+  address with address. Filter placements' compact is typed by the new
+  Ui.FoldingFilterPlacement, which Ui.CollapsiblePlacement and Ui.OverlayPlacement
+  extend, and surfaces' compact by the new Ui.ViewportOverlay, which Ui.Dialog and
+  Ui.Drawer extend under Ui.Overlay, so another module's kind extending either is
+  accepted there; manifests already written validate unchanged. A compact slot naming
+  the wrong kind is now reported as not implementing the abstract."

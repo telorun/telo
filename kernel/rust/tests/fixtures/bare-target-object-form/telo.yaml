@@ -1,0 +1,22 @@
+kind: Telo.Application
+metadata:
+  name: BareTargetObjectForm
+  version: 1.0.0
+  description: |
+    A `targets:` entry written `{ kind, name }`: the legacy object form of a
+    reference, refused as such rather than as a target this kernel cannot run.
+targets:
+  - { kind: Self.Greeter, name: greeter }
+---
+kind: Telo.Definition
+metadata:
+  name: Greeter
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/unbuilt-greeter?local_path=./unbuilt#Greeter
+schema:
+  type: object
+---
+kind: Self.Greeter
+metadata:
+  name: greeter

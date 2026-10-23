@@ -127,6 +127,15 @@ new MutationObserver((records) => {
   }
 }).observe(document.head, { childList: true });
 
+/** The navigation placement `ui` fills when an application names none. */
+export const HEADER_NAVIGATION = {
+  type: "header",
+  compact: {
+    type: "overlay",
+    surface: { type: "drawer", side: "start", size: "medium", modal: true, dismiss: { escape: true, outside: true, closeButton: true } },
+  },
+};
+
 /** Render the application against pages and collections held in the test. */
 export async function render(options: {
   path: string;
@@ -149,6 +158,9 @@ export async function render(options: {
   controls?: ControlsField;
   /** The application's own header nodes, by side. */
   header?: { start: unknown[]; end: unknown[] };
+  /** The navigation as the application document carries it; one entry per
+   *  page, in the header, when not given. */
+  navigation?: { items: unknown[]; placement: unknown };
 }): Promise<Rendered> {
   const prefix = options.prefix ?? "";
   const pages = { ...options.pages };
@@ -182,6 +194,10 @@ export async function render(options: {
         title: wireText("Test App"),
         lang: options.lang ?? "en",
         pages: Object.entries(pages).map(([path, page]) => ({ path, title: wireText(page.title) })),
+        navigation: options.navigation ?? {
+          items: Object.entries(pages).map(([path, page]) => ({ type: "page", path, text: wireText(page.title) })),
+          placement: HEADER_NAVIGATION,
+        },
         words: { ...englishWords, ...options.words },
         stylesheets: [`${prefix}/_telo/ui/assets/aa/base.css`],
         controls: options.controls ?? { stylesheets: {}, sets: [] },

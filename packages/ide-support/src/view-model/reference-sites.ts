@@ -1,4 +1,4 @@
-import { isModuleKind, type AnalysisRegistry, type LoadedModule } from "@telorun/analyzer";
+import { isModuleKind, isResolvedReference, type AnalysisRegistry, type LoadedModule } from "@telorun/analyzer";
 import type { ReferenceSite } from "@telorun/editor-protocol";
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
@@ -95,17 +95,15 @@ function inlineImportEntries(raw: unknown): Record<string, unknown> | undefined 
 }
 
 /** The name a reference holds: a `!ref` as written, a legacy string's last
- *  segment, or a `{ kind, name }` object's name. Undefined for an inline
- *  declaration or any other value. */
+ *  segment, or a resolved reference's name (the `__ref`-marked object).
+ *  Undefined for an inline declaration — any other object, a `name` field
+ *  included — or any other value. */
 function refTargetName(value: unknown): string | undefined {
   if (isRefSentinel(value)) return value.source;
   if (typeof value === "string") {
     const lastDot = value.lastIndexOf(".");
     return lastDot > 0 ? value.slice(lastDot + 1) : value;
   }
-  if (value && typeof value === "object") {
-    const name = (value as Record<string, unknown>).name;
-    if (typeof name === "string") return name;
-  }
+  if (isResolvedReference(value)) return value.name;
   return undefined;
 }

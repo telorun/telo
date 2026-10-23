@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   inlineStepTargetName,
+  isKindRef,
+  kindRef,
   StepEngine,
   type KindRef,
   type Step,
@@ -9,7 +11,7 @@ import {
 
 /** A host for a body assembled in code. `ensureKindRef` follows the kernel's
  *  rule: an inline declaration is registered under the name it is handed, a
- *  named reference is returned as it is and registers nothing. */
+ *  resolved reference is returned as it is and registers nothing. */
 function recordingContext() {
   const registered: { kind: string; name: string | undefined }[] = [];
   const ctx = {
@@ -21,9 +23,9 @@ function recordingContext() {
       throw new Error("unused: nothing is dispatched here");
     },
     ensureKindRef(value: { kind: string; name?: string }, resourceName?: string): KindRef {
-      if (typeof value.name === "string") return { kind: value.kind, name: value.name } as KindRef;
+      if (isKindRef(value)) return value;
       registered.push({ kind: value.kind, name: resourceName });
-      return { kind: value.kind, name: resourceName } as KindRef;
+      return kindRef(value.kind, resourceName!);
     },
   } as unknown as StepEngineContext;
   return { ctx, registered };
@@ -77,25 +79,19 @@ describe("StepEngine.resolveInvokes — a body assembled in code", () => {
       inlineStepTargetName(owner, ["steps", "1", "then", "0"], "taken"),
     );
     // The step now holds the reference, not the declaration.
-    expect((steps[0] as { invoke: unknown }).invoke).toEqual({
-      kind: "Run.Value",
-      name: "SequenceBuiltSteps0First",
-    });
+    expect((steps[0] as { invoke: unknown }).invoke).toEqual(kindRef("Run.Value", "SequenceBuiltSteps0First"));
   });
 
-  it("leaves a named reference as it is and registers nothing", () => {
+  it("leaves a resolved reference as it is and registers nothing", () => {
     const { ctx, registered } = recordingContext();
     const steps = [
-      { name: "call", invoke: { kind: "Run.Value", name: "SequenceSeqSteps0Call" } },
+      { name: "call", invoke: kindRef("Run.Value", "SequenceSeqSteps0Call") },
     ] as unknown as Step[];
 
     new StepEngine(ctx, { kind: "Sequence", resourceName: "seq" }).resolveInvokes(steps);
 
     expect(registered).toEqual([]);
-    expect((steps[0] as { invoke: unknown }).invoke).toEqual({
-      kind: "Run.Value",
-      name: "SequenceSeqSteps0Call",
-    });
+    expect((steps[0] as { invoke: unknown }).invoke).toEqual(kindRef("Run.Value", "SequenceSeqSteps0Call"));
   });
 });
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  isKindRef,
+  kindRef,
   resolveInvocableDispatcher,
   stampRefIdentity,
   type DispatchContext,
@@ -27,9 +29,10 @@ function host(registered: Record<string, unknown> = {}) {
     },
     ensureKindRef(value: unknown): KindRef {
       normalized.push(value);
-      const declared = value as { kind?: string; name?: string };
+      if (isKindRef(value)) return value;
+      const declared = value as { kind?: string; metadata?: { name?: string } };
       if (!declared.kind) throw new Error("Resource must have 'kind' property.");
-      return { kind: declared.kind, name: declared.name ?? "inline" } as KindRef;
+      return kindRef(declared.kind, declared.metadata?.name ?? "inline");
     },
   };
   return { ctx, dispatched, normalized };
@@ -60,7 +63,7 @@ describe("resolveInvocableDispatcher", () => {
     const probe = { run: async () => void runs++ } as unknown as ResourceInstance;
     const { ctx, dispatched } = host({ probe });
 
-    const dispatch = resolveInvocableDispatcher({ kind: "Assert.Events", name: "probe" }, ctx, describeOwner);
+    const dispatch = resolveInvocableDispatcher(kindRef("Assert.Events", "probe"), ctx, describeOwner);
     await dispatch({}, invokeCtx);
 
     expect(runs).toBe(1);
@@ -105,7 +108,7 @@ describe("resolveInvocableDispatcher", () => {
     const { ctx } = host({ store: { get: async () => undefined } });
 
     expect(() =>
-      resolveInvocableDispatcher({ kind: "Cache.MemoryStore", name: "store" }, ctx, describeOwner),
+      resolveInvocableDispatcher(kindRef("Cache.MemoryStore", "store"), ctx, describeOwner),
     ).toThrowError(
       `Stream.Tap "printed": 'invoke' reference 'store' did not resolve to a resource satisfying ` +
         "`Telo.Executable`.",

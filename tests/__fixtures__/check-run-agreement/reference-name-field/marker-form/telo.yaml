@@ -1,0 +1,10 @@
+# Imports the library above. Its entry-scoped check is silent about the
+# library's resources, so the marker is refused when the import loads it.
+kind: Telo.Application
+metadata:
+  name: RefNameFieldMarkerFormApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.main

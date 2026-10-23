@@ -10,7 +10,7 @@ const CONTROLS = join(MODULE, "nodejs/src/controls");
 const read = (path: string) => readFileSync(path, "utf8");
 
 /** What the browser entry may import at run time: the page's React, the primitives, the icons and its own files. */
-const RUNTIME = new Set(["react", "react-dom", "radix-ui", "lucide-react"]);
+const RUNTIME = new Set(["react", "react-dom", "radix-ui", "radix-ui/internal", "lucide-react"]);
 
 describe("the browser entry", () => {
   it("reaches ui-react only for the contract's types", () => {

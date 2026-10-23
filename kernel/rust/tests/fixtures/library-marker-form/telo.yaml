@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: LibraryMarkerFormApp
+  version: 1.0.0
+  description: |
+    Imports a library whose resource holds, at a reference slot, an author-written `__ref` key, which only resolution may write, refused when the import loads the library.
+imports:
+  Lib: ./lib

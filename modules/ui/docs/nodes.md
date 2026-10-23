@@ -12,6 +12,7 @@ A page is a tree of nodes. A node is plain data with a `type`; the shape is
 | `badge` | `text` | a short label |
 | `link` | `text`, `href` | a link |
 | `menu` | `text`, `items` | a button opening a list of links |
+| `tabs` | `tabs`, `address?` | content under tabs, one tab at a time |
 | `image` | `src`, `alt` | an image |
 | `svg` | `markup`, `alt` | SVG markup, drawn as an image |
 | `value` | `value`, `text?` | one value of a data scope, presented as its schema says |
@@ -20,7 +21,8 @@ A page is a tree of nodes. A node is plain data with a `type`; the shape is
 
 Every node also takes:
 
-- `style` — one name from the style list, or a list of them.
+- `style` — one name from the style list, or a list of them; every node but
+  `tabs`, whose look is its theme's.
 - `when` — a boolean, `true` when left out: whether the node is **delivered**.
   It is evaluated on the server — per request on a page's own nodes (where it
   may read `request`), once at creation inside a composite — and a node whose
@@ -51,6 +53,37 @@ load, under the same [address rule](#addresses). An item whose `style` holds
 delivered by its own `when` and drawn by its own `shown`; a menu none of whose
 items is delivered is left out, as a node whose `when` is false is. A menu
 works anywhere a node does.
+
+## Tabs
+
+A `tabs` node draws its `tabs` as a row of tabs and the chosen one's
+`children` under them. Each tab is a `text` and the nodes it holds, and is
+delivered by its own `when`:
+
+```yaml
+- type: tabs
+  address: { name: section }
+  tabs:
+    - text: Summary
+      children:
+        - { type: composite, ref: !ref summaryView }
+    - text: Audit
+      when: !cel "'x-role' in request.headers && request.headers['x-role'] == 'admin'"
+      children:
+        - { type: composite, ref: !ref auditView }
+```
+
+The first tab is chosen until another is. With `address: { name }` the chosen
+tab is part of the page's address, as an [addressed surface](surfaces.md) is —
+the query key `_telo.open.<name>` holds the tab's key, the slug of the text it
+was written with (`Audit` → `audit`, a later tab of the same text `audit~2`;
+see [entry keys](../../ui-react/docs/urls.md#entry-keys)), so a tab gated off
+by `when` moves no other's — so a reload or a shared link opens that tab
+again, and the browser's back button returns to the tab before; without one
+the choice lasts as long as the page is shown. A key naming no delivered tab
+chooses the first. Only the chosen tab's nodes are drawn: another tab's are drawn anew,
+and start their requests anew, when it is chosen. A `tabs` node none of whose
+tabs is delivered is left out, as a node whose `when` is false is.
 
 ## Values and lists
 
@@ -185,7 +218,7 @@ null value takes `default`; a value no case names takes `default` too.
 ## What a renderer receives
 
 `Ui.SpecNode` is the same vocabulary after resolution: every `when` decided
-and gone — a menu's items included, so a `menu` carries at least one item — every `shown` carried as written (`{ at, matches }`, `at` a binding),
+and gone — a menu's items and a `tabs` node's tabs included, so a `menu` carries at least one item and `tabs` at least one tab — every `shown` carried as written (`{ at, matches }`, `at` a binding),
 every composite replaced by the node it provides (`table`, `form`, `action`,
 `filters`, `data`, `component`), and `error` for a node that could not be
 produced. A `value` node carries `present` — what the schema it reads says

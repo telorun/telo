@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { AnalysisRegistry } from "../src/analysis-registry.js";
 import { StaticAnalyzer } from "../src/analyzer.js";
@@ -82,8 +83,11 @@ const requires = (key: string) => ({
 const app = (name: string, kind: string, body: Record<string, unknown>): ResourceManifest =>
   ({ kind, metadata: { name, module: "app" }, ...body }) as unknown as ResourceManifest;
 
+/** A `!ref` to the resource `target` names, as an author writes it. */
+const refTo = (target: { kind: string; name: string }) => makeTaggedSentinel("ref", target.name);
+
 const call = (target: { kind: string; name: string }, inputs: Record<string, unknown>) =>
-  app("host", "Fx.Host", { target, inputs });
+  app("host", "Fx.Host", { target: refTo(target), inputs });
 
 function analyze(
   resources: ResourceManifest[],
@@ -116,7 +120,7 @@ describe("x-telo-value-schema-from inside a contract", () => {
       app("untyped", "Fx.Reader", {}),
     ];
     const caller = app("caller", "Fx.Caller", {
-      readers: readers.map((r) => ({ kind: "Fx.Reader", name: r.metadata.name })),
+      readers: readers.map((r) => makeTaggedSentinel("ref", r.metadata.name as string)),
     });
     const target = { kind: "Fx.Caller", name: "caller" };
 
@@ -135,7 +139,7 @@ describe("x-telo-value-schema-from inside a contract", () => {
 
   it("leaves the node unconstrained when the location reaches no type", () => {
     const caller = app("caller", "Fx.Caller", {
-      readers: [{ kind: "Fx.Reader", name: "untyped" }],
+      readers: [makeTaggedSentinel("ref", "untyped")],
     });
     expect(
       mismatches(
@@ -203,10 +207,10 @@ describe("x-telo-value-schema-from inside a contract", () => {
       ).map((d) => d.data?.path);
 
     it.each([
-      ["an unstamped reference", { kind: "Telo.JsonSchema", name: "Shape" }],
+      ["an unstamped reference", { __ref: true, kind: "Telo.JsonSchema", name: "Shape" }],
       [
         "a module-scoped id whose module is absent",
-        { kind: "Telo.JsonSchema", name: "Shape", $ref: "telo:absent/Shape" },
+        { __ref: true, kind: "Telo.JsonSchema", name: "Shape", $ref: "telo:absent/Shape" },
       ],
       ["a bare string", "Shape"],
     ])("contributes nothing for %s the holder's module does not declare", (_spelling, contextType) => {
@@ -218,7 +222,7 @@ describe("x-telo-value-schema-from inside a contract", () => {
       const typing = {
         inline: { kind: "Telo.JsonSchema", schema: turn("string") },
         raw: turn("string"),
-        presentModule: { kind: "Telo.JsonSchema", name: "Shape", $ref: "telo:other/Shape" },
+        presentModule: { __ref: true, kind: "Telo.JsonSchema", name: "Shape", $ref: "telo:other/Shape" },
       };
       for (const [form, contextType] of Object.entries(typing)) {
         expect([form, found(contextType, "t1")]).toEqual([form, []]);
@@ -249,7 +253,7 @@ describe("x-telo-value-schema-from inside a contract", () => {
         metadata: { name, module: "App" },
         capability: "Telo.Invocable",
         schema: { type: "object", properties: { [field]: CALLER.schema!.properties!.readers } },
-        inputType: { kind: "Telo.JsonSchema", name: "CallerInput" },
+        inputType: { __ref: true, kind: "Telo.JsonSchema", name: "CallerInput" },
       }) as unknown as ResourceManifest;
 
     expect(invalid(analyze([shape, naming("Holds", "readers"), naming("Lacks", "reader")]))).toEqual([
@@ -299,7 +303,7 @@ describe("an expression at an argument a reached type declares", () => {
       app("counts", "Fx.Reader", { contextType: declares({ id: { type: "integer" } }) }),
     ];
     const caller = app("caller", "Fx.Caller", {
-      readers: readers.map((r) => ({ kind: "Fx.Reader", name: r.metadata.name })),
+      readers: readers.map((r) => makeTaggedSentinel("ref", r.metadata.name as string)),
     });
     const found = analyze([
       ...readers,
@@ -345,7 +349,7 @@ describe("an expression at an argument a reached type declares", () => {
           archive,
           app("grid", "Fx.Grid", {
             model: declares({ id: { type: "integer" }, name: { type: "string" } }),
-            operation: { kind: "Fx.Operation", name: "archive" },
+            operation: makeTaggedSentinel("ref", "archive"),
             inputs: { id },
           }),
         ],

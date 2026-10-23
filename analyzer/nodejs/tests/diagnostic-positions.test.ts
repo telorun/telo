@@ -1,5 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
+import { makeTaggedSentinel } from "@telorun/templating";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
@@ -63,8 +64,8 @@ describe("ref diagnostics — Layer 1 (concrete path threading)", () => {
       kind: "std.Api",
       metadata: { name: "MyApi" },
       routes: [
-        { path: "/a", handler: { kind: "std.Script", name: "Known" } },
-        { path: "/b", handler: { kind: "std.Script", name: "DoesNotExist" } },
+        { path: "/a", handler: makeTaggedSentinel("ref", "Known") },
+        { path: "/b", handler: makeTaggedSentinel("ref", "DoesNotExist") },
       ],
     } as unknown as ResourceManifest;
 

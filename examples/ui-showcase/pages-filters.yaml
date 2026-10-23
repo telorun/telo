@@ -266,3 +266,12 @@ columns:
   - value: !cel "row.estimate"
   - value: !cel "row.dueOn"
   - value: !cel "row.assigneeEmail"
+---
+# The page every application lists at /filters, placing the view.
+kind: Ui.Page
+metadata:
+  name: filtersScreen
+path: /filters
+title: Filters
+children:
+  - { type: composite, ref: !ref filtersPage }

@@ -8,9 +8,11 @@ metadata:
     frontend, in English and Polish: every node type and text form, conditions
     and query parameters, data readers with loading and failure states and a
     sign-in gate, data grids, filter bars, forms, actions, custom components,
-    a generated admin screen and themes. The same pages are served three times
-    — under the built-in look with a brand chosen per request, under a Radix
-    theme, and under a theme of the example's own with a bundled typeface. The
+    a generated admin screen, tabs and themes. The same pages are served four
+    times — under the built-in look with a brand chosen per request, under a
+    Radix theme, under a theme of the example's own with a bundled typeface,
+    and with a sidebar that collapses to a rail and becomes a bottom tab bar
+    on a phone. The
     data is a small studio's team, people, projects, tasks, requests, bookings
     and comments in SQLite, with real sessions behind a sign-in gate.
 # Module `lang:`, `UiReact.App.words` and every key of the data-driven screen
@@ -33,6 +35,7 @@ imports:
   Ui: ../../modules/ui
   UiReact: ../../modules/ui-react
   Radix: ../../modules/ui-react-radix
+  UiLucide: ../../modules/ui-lucide
   # Two libraries of the example's own: its browser components, and the theme
   # the `/brand` mount draws with.
   Components: ./components
@@ -98,9 +101,9 @@ resources:
         - { type: text, text: !cel "self.body" }
 provide: !ref view
 ---
-# The showcase's mark, placed before the title of all three applications. An
+# The showcase's mark, placed before the title of all four applications. An
 # image's `src` resolves under the mount it is drawn in, and the files are
-# served under each mount, so one view serves all three.
+# served under each mount, so one view serves all four.
 kind: Ui.View
 metadata:
   name: logo
@@ -119,11 +122,11 @@ default: en
 # their own beside the shared view — the per-request nodes and the page's
 # query — because a view is resolved once at start and reads neither.
 #
-# Each of the three applications is answered in the language
+# Each of the four applications is answered in the language
 # `Self.chosenLanguage` picks — the `showcase-lang` cookie (set by
 # `/api/lang?set=pl` under its mount), else the Accept-Language header — and
 # draws the same header: the mark, then two menus, Language with the language
-# in effect marked, and Theme with the three mounts' home pages — another
+# in effect marked, and Theme with the four mounts' home pages — another
 # mount's by an absolute address built from the request's `Self.origin`, since an app-relative
 # link resolves under the mount it is drawn in — and this mount marked. This
 # one adds the brand switch to its Theme menu, each item delivered only while
@@ -183,6 +186,10 @@ header:
           href: !cel >-
             Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/brand/'
         - type: link
+          text: Sidebar
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/sidebar/'
+        - type: link
           text: Use the Acme brand
           href: "/api/brand?set=acme"
           when: !cel "!('cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme')"
@@ -191,94 +198,135 @@ header:
           href: "/api/brand?set=none"
           when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
 pages:
-  - path: /
-    title: Overview
-    children:
-      - { type: composite, ref: !ref overviewPage }
-      - type: stack
-        children:
-          - { type: text, text: Per request, style: heading }
-          - type: text
-            style: muted
-            text: These nodes are the page's own, so their when and their text are evaluated for every request.
-          - type: text
-            style: accent
-            text: Your browser asked for Polish.
-            when: !cel "'accept-language' in request.headers && Self.language(request.headers['accept-language']) == 'pl'"
-          - type: text
-            text: Your browser did not ask for Polish.
-            when: !cel "!('accept-language' in request.headers) || Self.language(request.headers['accept-language']) != 'pl'"
-          - type: badge
-            style: accent
-            text: The Acme brand is on.
-            when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
-          - type: text
-            style: muted
-            text: A text an expression computes is shown as computed, never translated.
-          - type: text
-            text: !cel "'user-agent' in request.headers ? 'User-Agent: ' + request.headers['user-agent'] : 'No User-Agent header was sent.'"
-          - type: text
-            style: muted
-            text: A link this request makes invalid is replaced by an error node, and the rest of the page is served.
-          - type: link
-            text: Leaves the application
-            href: !cel "'//' + ('host' in request.headers ? request.headers['host'] : 'elsewhere.example')"
-  - path: /conditions
-    title: Conditions
-    query:
-      mode: { type: string, enum: [ compact, detailed ] }
-    children:
-      - { type: composite, ref: !ref conditionsPage }
-      - type: stack
-        children:
-          - { type: text, text: A page's own query, style: heading }
-          - type: text
-            style: muted
-            text: This page declares mode as well, and its own nodes read it.
-          - type: text
-            style: success
-            text: The page reads mode as detailed.
-            shown: { at: !cel "query.mode", matches: { const: detailed } }
-          - type: value
-            value: !cel "query.mode"
-  - { path: /data, title: Data, children: [ { type: composite, ref: !ref dataPage } ] }
-  - { path: /tables, title: Tables, children: [ { type: composite, ref: !ref tablesPage } ] }
-  - { path: /filters, title: Filters, children: [ { type: composite, ref: !ref filtersPage } ] }
-  - { path: /forms, title: Forms, children: [ { type: composite, ref: !ref formsPage } ] }
-  - { path: /actions, title: Actions, children: [ { type: composite, ref: !ref actionsPage } ] }
-  - { path: /components, title: Components, children: [ { type: composite, ref: !ref componentsPage } ] }
-  - { path: /crud, title: CRUD, children: [ { type: composite, ref: !ref crudPage } ] }
-  - path: /themes
-    title: Themes
-    children:
-      - { type: composite, ref: !ref themesPage }
-      - type: stack
-        children:
-          - { type: text, text: Switch the mount or the brand, style: heading }
-          - type: text
-            style: muted
-            text: >-
-              These links are this application's own: a link resolves under the mount it is drawn in, so only the
-              application at the root reaches the other two. Each is an ordinary load of another application.
-          - type: columns
-            children:
-              - { type: link, text: Open the Radix mount, href: /radix/themes }
-              - { type: link, text: Open the brand mount, href: /brand/themes }
-          - type: text
-            style: muted
-            text: >-
-              This application's brand is chosen for every request. The switch sets or clears a cookie and comes
-              back here, and while the cookie is there the Acme token set is used instead of the theme's own.
-          - type: columns
-            children:
-              - { type: link, text: Use the Acme brand, href: "/api/brand?set=acme" }
-              - { type: link, text: "Use the theme's own values", href: "/api/brand?set=none" }
-          - type: badge
-            style: accent
-            text: The Acme brand is on.
-            when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
+  - !ref rootOverview
+  - !ref rootConditions
+  - !ref dataScreen
+  - !ref tablesScreen
+  - !ref filtersScreen
+  - !ref formsScreen
+  - !ref actionsScreen
+  - !ref componentsScreen
+  - !ref crudScreen
+  - !ref rootThemes
+# The pages as a tree: the screens built from nodes in one group, the ones
+# entering data in a group inside it.
+navigation:
+  items:
+    - { type: page, page: !ref rootOverview, icon: !ref overviewIcon }
+    - type: group
+      text: Building blocks
+      icon: !ref buildingBlocksIcon
+      items:
+        - { type: page, page: !ref rootConditions, icon: !ref conditionsIcon }
+        - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
+        - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
+        - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
+        - type: group
+          text: Input
+          icon: !ref inputIcon
+          items:
+            - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
+            - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
+    - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
+    - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+    - { type: page, page: !ref rootThemes, icon: !ref themesIcon }
 ---
-# The same pages under the Radix theme: its stylesheet and its eleven controls.
+# The overview at the root: the view every application places, and nodes of
+# this application's own evaluated per request.
+kind: Ui.Page
+metadata:
+  name: rootOverview
+path: /
+title: Overview
+children:
+  - { type: composite, ref: !ref overviewPage }
+  - type: stack
+    children:
+      - { type: text, text: Per request, style: heading }
+      - type: text
+        style: muted
+        text: These nodes are the page's own, so their when and their text are evaluated for every request.
+      - type: text
+        style: accent
+        text: Your browser asked for Polish.
+        when: !cel "'accept-language' in request.headers && Self.language(request.headers['accept-language']) == 'pl'"
+      - type: text
+        text: Your browser did not ask for Polish.
+        when: !cel "!('accept-language' in request.headers) || Self.language(request.headers['accept-language']) != 'pl'"
+      - type: badge
+        style: accent
+        text: The Acme brand is on.
+        when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
+      - type: text
+        style: muted
+        text: A text an expression computes is shown as computed, never translated.
+      - type: text
+        text: !cel "'user-agent' in request.headers ? 'User-Agent: ' + request.headers['user-agent'] : 'No User-Agent header was sent.'"
+      - type: text
+        style: muted
+        text: A link this request makes invalid is replaced by an error node, and the rest of the page is served.
+      - type: link
+        text: Leaves the application
+        href: !cel "'//' + ('host' in request.headers ? request.headers['host'] : 'elsewhere.example')"
+---
+# The conditions at the root, with a node of the page's own reading its query.
+kind: Ui.Page
+metadata:
+  name: rootConditions
+path: /conditions
+title: Conditions
+query:
+  mode: { type: string, enum: [ compact, detailed ] }
+children:
+  - { type: composite, ref: !ref conditionsPage }
+  - type: stack
+    children:
+      - { type: text, text: A page's own query, style: heading }
+      - type: text
+        style: muted
+        text: This page declares mode as well, and its own nodes read it.
+      - type: text
+        style: success
+        text: The page reads mode as detailed.
+        shown: { at: !cel "query.mode", matches: { const: detailed } }
+      - type: value
+        value: !cel "query.mode"
+---
+# The themes at the root, with links to the other two mounts and the brand switch.
+kind: Ui.Page
+metadata:
+  name: rootThemes
+path: /themes
+title: Themes
+children:
+  - { type: composite, ref: !ref themesPage }
+  - type: stack
+    children:
+      - { type: text, text: Switch the mount or the brand, style: heading }
+      - type: text
+        style: muted
+        text: >-
+          These links are this application's own: a link resolves under the mount it is drawn in, so only the
+          application at the root reaches the other two. Each is an ordinary load of another application.
+      - type: columns
+        children:
+          - { type: link, text: Open the Radix mount, href: /radix/themes }
+          - { type: link, text: Open the brand mount, href: /brand/themes }
+      - type: text
+        style: muted
+        text: >-
+          This application's brand is chosen for every request. The switch sets or clears a cookie and comes
+          back here, and while the cookie is there the Acme token set is used instead of the theme's own.
+      - type: columns
+        children:
+          - { type: link, text: Use the Acme brand, href: "/api/brand?set=acme" }
+          - { type: link, text: "Use the theme's own values", href: "/api/brand?set=none" }
+      - type: badge
+        style: accent
+        text: The Acme brand is on.
+        when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
+---
+# The same pages under the Radix theme: its stylesheet and its thirteen controls.
 kind: UiReact.App
 metadata:
   name: radixShowcase
@@ -321,17 +369,41 @@ header:
           text: Brand
           href: !cel >-
             Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/brand/'
+        - type: link
+          text: Sidebar
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/sidebar/'
 pages:
-  - { path: /, title: Overview, children: [ { type: composite, ref: !ref overviewPage } ] }
-  - { path: /conditions, title: Conditions, children: [ { type: composite, ref: !ref conditionsPage } ] }
-  - { path: /data, title: Data, children: [ { type: composite, ref: !ref dataPage } ] }
-  - { path: /tables, title: Tables, children: [ { type: composite, ref: !ref tablesPage } ] }
-  - { path: /filters, title: Filters, children: [ { type: composite, ref: !ref filtersPage } ] }
-  - { path: /forms, title: Forms, children: [ { type: composite, ref: !ref formsPage } ] }
-  - { path: /actions, title: Actions, children: [ { type: composite, ref: !ref actionsPage } ] }
-  - { path: /components, title: Components, children: [ { type: composite, ref: !ref componentsPage } ] }
-  - { path: /crud, title: CRUD, children: [ { type: composite, ref: !ref crudPage } ] }
-  - { path: /themes, title: Themes, children: [ { type: composite, ref: !ref themesPage } ] }
+  - !ref overviewScreen
+  - !ref conditionsScreen
+  - !ref dataScreen
+  - !ref tablesScreen
+  - !ref filtersScreen
+  - !ref formsScreen
+  - !ref actionsScreen
+  - !ref componentsScreen
+  - !ref crudScreen
+  - !ref themesScreen
+navigation:
+  items:
+    - { type: page, page: !ref overviewScreen, icon: !ref overviewIcon }
+    - type: group
+      text: Building blocks
+      icon: !ref buildingBlocksIcon
+      items:
+        - { type: page, page: !ref conditionsScreen, icon: !ref conditionsIcon }
+        - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
+        - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
+        - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
+        - type: group
+          text: Input
+          icon: !ref inputIcon
+          items:
+            - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
+            - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
+    - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
+    - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+    - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
 ---
 # The same pages under a theme of the example's own (`brand/`): Radix's
 # controls under a stylesheet written for this example, with token values of
@@ -383,17 +455,194 @@ header:
           href: !cel >-
             Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/radix/'
         - { type: link, text: Brand, href: /, style: strong }
+        - type: link
+          text: Sidebar
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/sidebar/'
 pages:
-  - { path: /, title: Overview, children: [ { type: composite, ref: !ref overviewPage } ] }
-  - { path: /conditions, title: Conditions, children: [ { type: composite, ref: !ref conditionsPage } ] }
-  - { path: /data, title: Data, children: [ { type: composite, ref: !ref dataPage } ] }
-  - { path: /tables, title: Tables, children: [ { type: composite, ref: !ref tablesPage } ] }
-  - { path: /filters, title: Filters, children: [ { type: composite, ref: !ref filtersPage } ] }
-  - { path: /forms, title: Forms, children: [ { type: composite, ref: !ref formsPage } ] }
-  - { path: /actions, title: Actions, children: [ { type: composite, ref: !ref actionsPage } ] }
-  - { path: /components, title: Components, children: [ { type: composite, ref: !ref componentsPage } ] }
-  - { path: /crud, title: CRUD, children: [ { type: composite, ref: !ref crudPage } ] }
-  - { path: /themes, title: Themes, children: [ { type: composite, ref: !ref themesPage } ] }
+  - !ref overviewScreen
+  - !ref conditionsScreen
+  - !ref dataScreen
+  - !ref tablesScreen
+  - !ref filtersScreen
+  - !ref formsScreen
+  - !ref actionsScreen
+  - !ref componentsScreen
+  - !ref crudScreen
+  - !ref themesScreen
+navigation:
+  items:
+    - { type: page, page: !ref overviewScreen, icon: !ref overviewIcon }
+    - type: group
+      text: Building blocks
+      icon: !ref buildingBlocksIcon
+      items:
+        - { type: page, page: !ref conditionsScreen, icon: !ref conditionsIcon }
+        - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
+        - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
+        - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
+        - type: group
+          text: Input
+          icon: !ref inputIcon
+          items:
+            - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
+            - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
+    - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
+    - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+    - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
+---
+# The same pages under the built-in look, their navigation in a sidebar beside
+# the page instead of the header: groups open in place, several at once, and
+# the sidebar collapses to a rail. Which groups are open and whether it is
+# collapsed are kept in the browser's local storage. Below the breakpoint it
+# becomes a tab bar along the bottom edge, its fourth tab More holding the rest.
+kind: UiReact.App
+metadata:
+  name: sidebarShowcase
+title: UI showcase — sidebar
+words: !ref Ui.words
+translator: !ref t
+lang: !cel >-
+  Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+  'accept-language' in request.headers ? request.headers['accept-language'] : '')
+theme: !ref UiReact.defaultTheme
+stylesheets:
+  - !module-path ./showcase.css
+compactBelow: 48rem
+header:
+  start:
+    - { type: composite, ref: !ref logo }
+  end:
+    - type: menu
+      text: Language
+      items:
+        - type: link
+          text: English
+          href: "/api/lang?set=en"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
+        - type: link
+          text: Polski
+          href: "/api/lang?set=pl"
+          style: !cel >-
+            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
+            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+    - type: menu
+      text: Theme
+      items:
+        - type: link
+          text: Default
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/'
+        - type: link
+          text: Radix
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/radix/'
+        - type: link
+          text: Brand
+          href: !cel >-
+            Self.origin('host' in request.headers ? request.headers['host'] : '', 'x-forwarded-proto' in request.headers ? request.headers['x-forwarded-proto'] : '') + '/brand/'
+        - { type: link, text: Sidebar, href: /, style: strong }
+pages:
+  - !ref overviewScreen
+  - !ref conditionsScreen
+  - !ref dataScreen
+  - !ref tablesScreen
+  - !ref filtersScreen
+  - !ref formsScreen
+  - !ref actionsScreen
+  - !ref componentsScreen
+  - !ref crudScreen
+  - !ref themesScreen
+navigation:
+  items:
+    - { type: page, page: !ref overviewScreen, icon: !ref overviewIcon }
+    - type: group
+      text: Building blocks
+      icon: !ref buildingBlocksIcon
+      items:
+        - { type: page, page: !ref conditionsScreen, icon: !ref conditionsIcon }
+        - { type: page, page: !ref dataScreen, icon: !ref dataIcon }
+        - { type: page, page: !ref tablesScreen, icon: !ref tablesIcon }
+        - { type: page, page: !ref filtersScreen, icon: !ref filtersIcon }
+        - type: group
+          text: Input
+          icon: !ref inputIcon
+          items:
+            - { type: page, page: !ref formsScreen, icon: !ref formsIcon }
+            - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
+    - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
+    - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+    - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
+  placement:
+    kind: Ui.SidebarNavigation
+    rail: {}
+    store: { kind: Ui.LocalStore }
+    compact: { kind: Ui.TabBarNavigation, visible: 4 }
+---
+# The navigation's icons, shared by the four applications: Lucide's glyphs, and
+# the showcase's own mark drawn from a file of the example's. A glyph takes the
+# colour of its entry's text, so no theme styles one.
+kind: Ui.FileIcon
+metadata:
+  name: overviewIcon
+file: !module-path ./icons/mark.svg
+---
+kind: UiLucide.Icon
+metadata:
+  name: buildingBlocksIcon
+name: blocks
+---
+kind: UiLucide.Icon
+metadata:
+  name: conditionsIcon
+name: split
+---
+kind: UiLucide.Icon
+metadata:
+  name: dataIcon
+name: database
+---
+kind: UiLucide.Icon
+metadata:
+  name: tablesIcon
+name: table
+---
+kind: UiLucide.Icon
+metadata:
+  name: filtersIcon
+name: funnel
+---
+kind: UiLucide.Icon
+metadata:
+  name: inputIcon
+name: text-cursor-input
+---
+kind: UiLucide.Icon
+metadata:
+  name: formsIcon
+name: clipboard-list
+---
+kind: UiLucide.Icon
+metadata:
+  name: actionsIcon
+name: zap
+---
+kind: UiLucide.Icon
+metadata:
+  name: componentsIcon
+name: puzzle
+---
+kind: UiLucide.Icon
+metadata:
+  name: crudIcon
+name: list-checks
+---
+kind: UiLucide.Icon
+metadata:
+  name: themesIcon
+name: palette
 ---
 # The typeface the brand ships. Inter comes with the example (`fonts/`, under
 # the SIL Open Font License), so the `/brand` application serves its four
@@ -469,7 +718,7 @@ singular: person
 plural: people
 model: !ref peopleModel
 ---
-# The three applications share their pages, whose request paths are
+# The four applications share their pages, whose request paths are
 # app-relative: each application reads and writes them under its own mount, so
 # the API is served under each mount, as the files are. The brand switch
 # belongs to the root application alone.
@@ -530,6 +779,23 @@ mounts:
     mount: !ref peopleApi
   - path: /brand/api
     mount: !ref showcaseApi
+  - path: /sidebar/api/private
+    mount: !ref privateApi
+    guard:
+      invoke: !ref sessionGuard
+      inputs:
+        token: !cel "Self.cookie('cookie' in request.headers ? request.headers['cookie'] : '', 'showcase-session')"
+      catches:
+        - when: !cel "error.code == 'UNAUTHORIZED'"
+          status: 401
+  - path: /sidebar/api/projects
+    mount: !ref projectsApi
+  - path: /sidebar/api/tasks
+    mount: !ref tasksApi
+  - path: /sidebar/api/people
+    mount: !ref peopleApi
+  - path: /sidebar/api
+    mount: !ref showcaseApi
   - path: /api
     mount: !ref brandSwitch
   - path: /files
@@ -538,9 +804,13 @@ mounts:
     mount: !ref files
   - path: /brand/files
     mount: !ref files
+  - path: /sidebar/files
+    mount: !ref files
   - path: /radix
     mount: !ref radixShowcase
   - path: /brand
     mount: !ref brandShowcase
+  - path: /sidebar
+    mount: !ref sidebarShowcase
   - path: /
     mount: !ref showcase

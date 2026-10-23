@@ -1,0 +1,28 @@
+# A compact placement handed a compact of its own, a tab bar showing more tabs
+# than fit, and a placement that is not compact named where a compact one goes.
+kind: Telo.Application
+metadata:
+  name: UiInvalidNavigationApp
+  version: 1.0.0
+imports:
+  Ui: ../../../../
+---
+kind: Ui.OverlayNavigation
+metadata:
+  name: overlayCompact
+compact: { kind: Ui.TabBarNavigation }
+---
+kind: Ui.TabBarNavigation
+metadata:
+  name: tabBarCompact
+compact: { kind: Ui.OverlayNavigation }
+---
+kind: Ui.TabBarNavigation
+metadata:
+  name: tooManyTabs
+visible: 6
+---
+kind: Ui.HeaderNavigation
+metadata:
+  name: sidebarAsCompact
+compact: { kind: Ui.SidebarNavigation }

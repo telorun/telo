@@ -3,8 +3,8 @@ import { useCallback, useRef } from "react";
 /**
  * What the root of every layer drawn at the end of `<body>` carries. The
  * primitives draw a dialog's surface and its overlay there as they are; a
- * list, a menu, a popover and a tooltip they draw inside an element placing
- * them, which is the root that carries it.
+ * list, a menu, a popover, a navigation panel and a tooltip they draw inside
+ * an element placing them, which is the root that carries it.
  */
 export const LAYER = "data-telo-layer";
 

@@ -1,0 +1,12 @@
+# A glyph named by a word the Lucide set does not hold.
+kind: Telo.Library
+metadata:
+  name: UiLucideUnknownName
+  version: 1.0.0
+imports:
+  UiLucide: ../../../
+---
+kind: UiLucide.Icon
+metadata:
+  name: home
+name: hous

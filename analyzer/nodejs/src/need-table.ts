@@ -41,6 +41,7 @@ import {
   DURABLE_DIRECTORY_TYPE,
   durableDirectoryParameters,
 } from "./durable-directory.js";
+import { isInlineDeclaration, isResolvedReference } from "./resolved-reference.js";
 
 /**
  * THE NEED TABLE — every need of a loaded application, where it sits in the
@@ -1399,10 +1400,8 @@ function referenceTarget(value: unknown): { name: string; alias?: string } | und
     const target = refSentinelTarget(value);
     return target ? { name: target.name, ...(target.alias ? { alias: target.alias } : {}) } : undefined;
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const ref = value as Record<string, unknown>;
-  if (typeof ref.kind !== "string" || typeof ref.name !== "string") return undefined;
-  return { name: ref.name, ...(typeof ref.alias === "string" ? { alias: ref.alias } : {}) };
+  if (!isResolvedReference(value)) return undefined;
+  return { name: value.name, ...(value.alias !== undefined ? { alias: value.alias } : {}) };
 }
 
 /** A `resources:` entry of a template body the module declares: a declaration
@@ -1440,9 +1439,8 @@ function referencesOf(
     for (const site of sitesOf(view)) {
       const at = prefix ? `${prefix}.${site.path}` : site.path;
       const nested = (value: unknown, path: string) => {
-        if (!value || typeof value !== "object" || Array.isArray(value) || isRefSentinel(value)) return;
-        const inline = value as ResourceManifest;
-        if (typeof inline.kind !== "string" || typeof (inline as { name?: unknown }).name === "string") return;
+        if (!isInlineDeclaration(value)) return;
+        const inline = value as unknown as ResourceManifest;
         visit(declaration, inline, resolve(inline.kind), path, siblings);
       };
       if (site.scopes.length > 0 && Array.isArray(site.data)) {

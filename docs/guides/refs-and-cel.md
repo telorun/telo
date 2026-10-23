@@ -29,7 +29,11 @@ The rules are short:
   [style guide](./style-guide.md).
 - **The tag is mandatory.** A bare string (`handler: Greet`) or the old object
   form (`handler: { kind: Run.Value, name: Greet }`) is rejected with
-  `INVALID_REFERENCE_FORM`.
+  `INVALID_REFERENCE_FORM`, which names the `!ref` to write. The object form is
+  read that way only for a kind that declares no `name` field; for a kind that
+  does, `{ kind, name }` is an inline declaration (below). A library you import
+  that was published with the object form still runs: there it is read as the
+  reference it means.
 
 ### The slot decides what is acceptable
 
@@ -54,7 +58,9 @@ call* is a sibling key:
 ### Inline instead of referenced
 
 Where a slot takes a reference, it usually also accepts an **inline
-declaration** — an object with a `kind:` and no `name:`:
+declaration** — an object with a `kind:` and the kind's own fields. A field
+called `name` is one of them when the kind declares it, so
+`icon: { kind: UiLucide.Icon, name: house }` declares an icon:
 
 ```yaml
 handler:

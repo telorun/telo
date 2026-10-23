@@ -6,7 +6,7 @@ import type {
   ResourceInstance,
 } from "@telorun/sdk";
 import { isCelRecord, isCompiledValue } from "@telorun/sdk";
-import { effectiveAuthorSchema, reachSites, SELF_PATH, type DefResolver } from "@telorun/analyzer";
+import { effectiveAuthorSchema, isResolvedReference, reachSites, SELF_PATH, type DefResolver } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { declaringContextOf } from "./declaring-context.js";
 import { mappingProvenance, recordTextProvenance, textProvenanceOf } from "../../text-records.js";
@@ -43,12 +43,9 @@ function resolveRefSlot(value: unknown, ctx: ResourceContext): ResourceInstance 
     const ref = ctx.ensureKindRef(value) as { name: string; alias?: string };
     name = ref.name;
     alias = ref.alias;
-  } else if (value && typeof value === "object") {
-    const ref = value as { name?: unknown; alias?: unknown };
-    if (typeof ref.name === "string") {
-      name = ref.name;
-      alias = typeof ref.alias === "string" ? ref.alias : undefined;
-    }
+  } else if (isResolvedReference(value)) {
+    name = value.name;
+    alias = value.alias;
   }
   if (!name) return undefined;
   const instance =

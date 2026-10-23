@@ -30,9 +30,7 @@ steps:
   - name: createTable
     invoke:
       kind: Sql.Command
-      connection:
-        kind: Sql.SqliteConnection
-        name: db
+      connection: !ref db
     inputs:
       sql: |
         CREATE TABLE IF NOT EXISTS feedback (

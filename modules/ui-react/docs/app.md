@@ -14,34 +14,129 @@ An application of pages. A `Telo.Mount`: list it under an `Http.Server`'s
 | `stylesheets` | | your own stylesheets, as host paths: `!module-path ./ui.css` |
 | `compactBelow` | `40rem` | the viewport width below which every surface's `compact` replacement applies: a CSS length in `px`, `rem` or `em` |
 | `header` | | `{ start?, end? }`: nodes of your own in the header, before the title and after the navigation — see [Header](#header) |
-| `pages` | required, at least one | `{ path, title, query?, children }` each |
+| `pages` | required, at least one | the [`Ui.Page`](../../ui/docs/page.md)s the application routes to, written in place or `!ref` |
+| `navigation` | | the [`Ui.Navigation`](../../ui/docs/navigation.md) tree and how it is drawn — see [Navigation](#navigation) |
 
 ## Pages
 
 ```yaml
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Todos
     children:
       - { type: text, text: Open work, style: heading }
       - { type: composite, ref: !ref todos }
+  - !ref reports
+  - !ref Billing.invoices      # a page a library exports
 ```
 
-- `path` is literal, unique in the application and never under `/_telo`. It
-  is an app-relative path: `/` followed by anything other than `/` or `\`,
-  with no control character (a tab, a line break) anywhere — so `/`,
-  `/reports` and `/a//b` are paths, and `//reports`, `/\reports` are refused
-  by `telo check` (`SCHEMA_VIOLATION`), since a browser reads them as another
-  host.
+- Each entry is a [`Ui.Page`](../../ui/docs/page.md): its `path`, `title`,
+  `query` and `children`. The application invokes it for every request to its
+  path; the page's composites are resolved once, when the page is created.
 - Two pages at one path are refused: `RESOURCE_RULE_VIOLATED` with
   `data.rule: UI_PAGE_PATH_DUPLICATE` at `telo check`,
   `ERR_UI_PAGE_PATH_DUPLICATE` at creation.
-- Every page gets a link in the navigation, in the order written.
-- `children` is a list of [`Ui.Node`](../../ui/docs/nodes.md).
-- `query` declares the query parameters the page's own nodes read, as
-  [`Ui.QueryParameters`](../../ui/docs/conditions.md#query-parameters): each a
-  string, or a list of strings for a key given more than once. The page
+- A page's `query` declares the query parameters its own nodes read; the page
   document carries it, `{}` when none is declared.
+
+## Navigation
+
+The navigation is a tree of entries naming pages by reference — never by path
+— beside links and groups nested to any depth; how it is drawn is a placement.
+The whole vocabulary is [`ui`'s](../../ui/docs/navigation.md).
+
+```yaml
+navigation:
+  items:
+    - { type: page, page: !ref home, icon: !ref homeIcon }
+    - type: group
+      text: Reports
+      icon: !ref reportsIcon
+      items:
+        - { type: page, page: !ref monthly }
+        - type: group
+          text: Archive
+          items:
+            - { type: page, page: !ref archive2025 }
+    - { type: link, text: Status, href: "https://status.example.com" }
+  placement:
+    kind: Ui.HeaderNavigation
+    compact:
+      kind: Ui.OverlayNavigation
+      surface: { kind: Ui.Drawer, side: end }
+---
+kind: UiLucide.Icon
+metadata: { name: homeIcon }
+name: house
+---
+kind: Ui.FileIcon
+metadata: { name: reportsIcon }
+file: !module-path ./icons/reports.svg
+```
+
+- With no `navigation`, there is one entry per page, in the order `pages`
+  lists them; with no `placement`, the tree is drawn in the header, and below
+  `compactBelow` behind a menu button opening a drawer from the start edge.
+  Every other default is filled by `ui` (see
+  [its defaults](../../ui/docs/navigation.md#defaults)).
+- An entry's `when` is evaluated per request over `request`, and the headers
+  it reads join the application document's `Vary`. A group none of whose
+  entries is delivered is left out.
+- An entry naming a page `pages` does not list leads nowhere: it is
+  `RESOURCE_RULE_VIOLATED` with `data.rule: UI_NAVIGATION_PAGE_UNROUTED` at
+  `telo check`, at that entry however deep, and
+  `ERR_UI_NAVIGATION_PAGE_UNROUTED` at creation.
+- **In the header** (`Ui.HeaderNavigation`) the tree is drawn in the `nav`
+  part by the [`Navigation` control](controls-abi.md#navigation) in a row: a
+  group opens as a dropdown, a group inside it as a submenu, and what does not
+  fit the row moves under More. The navigation is a landmark named by the
+  `siteNavigation` word, under every placement.
+- **Behind a menu button** (`Ui.OverlayNavigation`) the header shows the
+  `nav-menu` button — first, or last when its surface is a drawer opening from
+  the `end` edge — which opens the surface holding the whole tree in a column,
+  each group opening in place beneath its button, so several may be open at
+  once. Following an entry closes it. The surface's own `compact` applies below the
+  breakpoint, and its `address`, when it declares one, keeps it open in the
+  page's query.
+- **In a sidebar** (`Ui.SidebarNavigation`) the tree is drawn in the
+  `sidebar` part, a column beside `main` under the header at the placement's
+  `side`, in a column whose groups open in place beneath their buttons —
+  several at once, none closed by following a link. With a `rail`, the
+  `sidebar-toggle` button — named by the `collapseNavigation` word, or
+  `expandNavigation` while collapsed — collapses it to a rail of each
+  top-level entry's icon — its first letter when it has none — whose groups
+  float their entries beside it, and expands it again. The open groups, each
+  by its [key](urls.md#entry-keys), and whether it is collapsed are kept in
+  its `store` under `telo.ui:<mount path>:n` (see [what an application
+  serves](urls.md#navigation-state)) and read back when the application is
+  drawn again. Below `compactBelow` it is replaced by its `compact`: a menu
+  button with a drawer from its own side unless another is named.
+- **As a tab bar** (`Ui.TabBarNavigation`) the top-level entries are drawn as
+  tabs in the `tab-bar` part along the bottom edge — at most `visible`, the
+  last being More, holding the rest, when there are more; every tab stays in
+  the bar however narrow the screen. A page or a link's tab follows it; a
+  group's tab, or More, is a button (`aria-haspopup="dialog"`, expanded while
+  its surface is open) opening its entries in the placement's `surface`, in a
+  column whose groups open in place, and following an entry there closes
+  it. A tab bar is a sidebar's or a header's
+  `compact`, or the application's placement at every width.
+- The entry of the page being shown carries `aria-current="page"`, and every
+  group on the way to it is marked current.
+- An entry whose address does not resolve inside the application is left out
+  of the tree and drawn as the `error` node `ERR_UI_NODE_INVALID` beside it.
+
+### Icons
+
+An entry's `icon` (a [`Ui.Icon`](../../ui/docs/icons.md)) is drawn as the
+`glyph` part before its text — above it in a tab bar, in its place in a rail.
+The application reads the icon's file when it starts and serves it under
+`_telo/ui/assets/<digest>/<name>` like every other file. The glyph is an empty
+`span` whose `--ui-react-glyph` custom property names that address, which the
+renderer's layout uses as a mask over `currentColor`: the glyph takes the
+colour of the entry's text — the current entry's included — and none of the
+file's markup enters the page. A file that is not an SVG, PNG or WebP image is
+refused with `ERR_UI_ICON_FORMAT_UNKNOWN` when the application starts.
 
 ## Header
 
@@ -49,8 +144,11 @@ The header holds the application's title and the navigation. `header` adds
 nodes of your own around them, drawn on every page — the not-found page
 included: `start` before the title, `end` after the navigation. Above
 `compactBelow` the built-in layout keeps the header to one row — `start`, the
-title, the navigation taking the room left and wrapping within it, `end` at
-the inline end — and below it the header wraps. A switch belongs in a
+title, the navigation taking the room left, `end` at the inline end — and
+below it the header wraps; the default theme then keeps the menu button,
+`start`, the title and `end` on one row, and lets the header scroll away with
+the page (see [the default theme](theme.md#the-default-theme)). The `header`
+slots are the same under every navigation placement. A switch belongs in a
 [`menu`](../../ui/docs/nodes.md#menus), which takes one button's room:
 
 ```yaml
@@ -97,7 +195,8 @@ starts. Delivery that depends on the request is `when:`, below.
 
 ```yaml
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Account
     query:
       signin: { type: string, enum: [denied, expired] }
@@ -137,14 +236,14 @@ A header may be absent, so test for it with `in` before reading it.
 children, a computed list item or a computed `ref` is `REF_SLOT_COMPUTED` at
 `telo check` and `ERR_REF_SLOT_COMPUTED` at creation: a composite cannot come
 out of an expression. Each composite a page places is resolved once, when the
-application starts.
+page is created; one the header places, when the application starts.
 
 A value that does not make a valid node once evaluated — an `href` that is no
 allowed address (`javascript:…`, or `//host`, which is not app-relative), a
 `text` that is not a string — replaces that one node with
 an `error` node, code `ERR_UI_NODE_INVALID`, and is logged. The rest of the
 page is served. Each node is checked once per request; what a composite
-provides is checked once, when the application starts.
+provides is checked once, when it is resolved.
 
 ## Languages
 
@@ -181,8 +280,8 @@ document per effective language — a thousand different `Accept-Language`
 values make at most one more copy than the translator has languages.
 
 Each document's `Vary` names exactly the request headers its per-request
-expressions read — `lang`, a token set's `when`, a page or header node's `when`
-and its values — read off the expressions themselves: `request.headers.cookie` or
+expressions read — `lang`, a token set's `when`, a navigation entry's `when`, a
+page or header node's `when` and its values — read off the expressions themselves: `request.headers.cookie` or
 `'cookie' in request.headers` gives `Vary: Cookie`, a header name computed at
 request time `Vary: *`, and an application reading no header sends none. A
 literal `lang` serves every request in that language.
@@ -197,8 +296,8 @@ A fault in one node never takes the page with it.
   refused where it is written and replaced by an `error` node where it is
   computed (above). The renderer holds the same line for a document that
   reaches it some other way: such a link is not drawn as a link, the `error`
-  node `ERR_UI_NODE_INVALID` stands in its place, and a page whose `path` does
-  so is shown the same way in the navigation.
+  node `ERR_UI_NODE_INVALID` stands in its place, and a navigation entry
+  whose address does so is shown the same way beside the navigation.
 - A click on a link is taken as a move within the application only when it
   leads to a page the application declares. A `link` node to anything else
   under the mount — a file an `Http.Static` serves beneath it — is an
@@ -216,7 +315,8 @@ A custom component's own failure keeps its own codes; see
 ## Files it serves
 
 Everything under `_telo/ui/assets/<digest>/…` — the renderer and its chunks,
-component modules, every stylesheet including yours, font faces — is read when
+component modules, every stylesheet including yours, font faces, icon files —
+is read when
 the application starts and served from memory under an address that never
 changes. Editing one of your `stylesheets` takes effect when the application
 is started again, under a new address.
@@ -463,11 +563,11 @@ application starts: anything else fails the start with
 
 ## Components
 
-At start the application compares each placed component with what it hosts.
-One built for another ABI, or importing a specifier the ABI does not supply,
-is replaced by an `error` node (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`,
-`ERR_UI_COMPONENT_IMPORT_UNSUPPLIED`) and logged; the rest of the page
-renders. See [the component ABI](component-abi.md).
+The application compares each placed component with what it hosts, once
+for each node a composite provided. One built for another ABI, or importing a
+specifier the ABI does not supply, is replaced by an `error` node
+(`ERR_UI_COMPONENT_ABI_UNSUPPORTED`, `ERR_UI_COMPONENT_IMPORT_UNSUPPLIED`) and
+logged once; the rest of the page renders. See [the component ABI](component-abi.md).
 
 ## Authentication
 

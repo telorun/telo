@@ -1,0 +1,53 @@
+kind: Telo.Application
+metadata:
+  name: UiLucideIconTest
+  version: 1.0.0
+  description: |
+    A Lucide glyph named in a navigation entry is served by the application
+    under its content digest, as the SVG file the module stages for that name;
+    a name the set does not hold is refused where it is written.
+imports:
+  App: ../../app
+  Run: ../../run
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref unknownName
+  - !ref served
+---
+kind: Assert.Manifest
+metadata:
+  name: unknownName
+source: ./__fixtures__/unknown-name/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "UiLucide.Icon/home: /name must be one of 1943 allowed values; did you mean 'house'?"
+---
+kind: Run.Sequence
+metadata:
+  name: served
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/app/telo.yaml
+    ports:
+      http: 19341
+targets:
+  - !ref fixture
+steps:
+  - name: app
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19341/admin/_telo/ui/app" }
+  - name: glyph
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19341' + steps.app.result.body.navigation.items[0].icon"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        icon: !cel "steps.app.result.body.navigation.items[0].icon"
+        type: !cel "steps.glyph.result.headers['content-type']"
+      expected:
+        icon: /admin/_telo/ui/assets/8695979983a9815136c6e09a117c25699909c9f8abc64abc8749b4de632fa8c6/house.svg
+        type: image/svg+xml

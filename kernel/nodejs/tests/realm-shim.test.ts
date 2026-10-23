@@ -39,6 +39,19 @@ describe("realm shims", () => {
     expect(source).toContain("no Telo kernel is running in this process");
   });
 
+  it("writes the packages again into a directory the cache pruned since it was prepared", async () => {
+    const dir = await tempDir();
+    await ensureRealmShims(dir, dir);
+    // A build superseding this bundle pruned its directory, and a later build of
+    // the same key wrote the bundle back alone.
+    await fs.rm(path.join(dir, "node_modules"), { recursive: true, force: true });
+
+    await ensureRealmShims(dir, dir);
+
+    const slot = path.join(dir, "node_modules", "@telorun", "sdk");
+    expect(JSON.parse(await fs.readFile(path.join(slot, "package.json"), "utf8"))[SHIM_MARKER]).toBe("realm-shim");
+  });
+
   it("replaces a symlink an older kernel left, instead of writing through it", async () => {
     const dir = await tempDir();
     const victim = await tempDir();

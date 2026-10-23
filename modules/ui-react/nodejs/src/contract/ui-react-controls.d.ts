@@ -239,21 +239,69 @@ export interface ConfirmationProps extends OverlayProps {
   describedBy: string;
 }
 
-/** One entry of a menu. */
-export interface MenuItem extends Option {
-  /** Given, the entry is the current choice: the control may mark it with
-   *  `aria-current="true"` and `data-current="true"`. */
-  current?: boolean;
-}
-
 export interface MenuProps {
   open: boolean;
-  items: MenuItem[];
+  /** The things to do, each a key and its finished text. */
+  items: Option[];
   onOpenChange(open: boolean, reason?: CloseReason): void;
   /** An entry is chosen. */
   onChange(key: string): void;
   /** The renderer's button it opens from: rendered as the menu's trigger. */
   children: ReactElement;
+}
+
+/** One entry of a navigation: a link, a group of entries, or a button
+ *  opening a dialog the renderer draws. */
+export interface NavigationEntry {
+  /** Issued by the renderer, unique in the navigation. */
+  key: string;
+  label: string;
+  /** The address a link leads to; a group has none. */
+  href?: string;
+  /** A group's entries, in order; a link has none. */
+  items?: NavigationEntry[];
+  /** Given, the entry has neither `href` nor `items`: its button opens a
+   *  dialog the renderer draws, and is expanded while its key is in `open`. */
+  opens?: "dialog";
+  /** The entry is current: a link carries it as `aria-current` and
+   *  `data-current`, a group's button as `data-current`. */
+  current?: "page" | "true";
+  /** The renderer's glyph for the entry, hidden from assistive technology:
+   *  drawn before the label, and in a rail in place of its first letter. */
+  icon?: ReactElement;
+}
+
+export interface NavigationProps {
+  /** Given, the navigation is a landmark this names; without it, none. */
+  label?: string;
+  /** In a row, in a column, or in a column of each top-level entry's first
+   *  letter. A group opens a panel over the page in a row or a rail, and in
+   *  place beneath its button in a column. */
+  layout: "horizontal" | "vertical" | "rail";
+  items: NavigationEntry[];
+  /** Given, the group what does not fit a horizontal row moves into;
+   *  without it, every entry stays in the row. */
+  more?: { key: string; label: string };
+  /** The keys of the open groups, in any order: a group is drawn open when its
+   *  key is listed and every group holding it is open. */
+  open: string[];
+  /** Set on the root as given. */
+  attributes?: Record<string, string>;
+  onOpenChange(open: string[], reason?: CloseReason): void;
+  /** A link is followed: the renderer moves to it. */
+  onChange(key: string): void;
+}
+
+export interface TabsProps {
+  /** The tab list's accessible name. */
+  label?: string;
+  /** The tabs, in order, each a key and its finished text. */
+  tabs: Option[];
+  /** The chosen tab's key. */
+  value: string;
+  onChange(value: string): void;
+  /** The chosen tab's content, drawn in its panel. */
+  children: ReactNode;
 }
 
 export interface TooltipProps {
@@ -270,10 +318,14 @@ export type IconName =
   | "add"
   | "alert"
   | "close"
+  | "collapse"
   | "delete"
   | "edit"
+  | "expand"
   | "filter"
   | "loading"
+  | "menu"
+  | "more"
   | "next"
   | "previous"
   | "remove"
@@ -286,7 +338,7 @@ export interface IconProps {
   name: IconName;
 }
 
-/** The control set of `ui_react_controls-1`: a module implementing any of them
+/** The control set of `ui_react_controls-2`: a module implementing any of them
  *  exports each under its name. */
 export interface Controls {
   TextInput: ComponentType<TextInputProps>;
@@ -310,6 +362,8 @@ export interface Controls {
   Confirmation: ComponentType<ConfirmationProps>;
   Menu: ComponentType<MenuProps>;
   Tooltip: ComponentType<TooltipProps>;
+  Navigation: ComponentType<NavigationProps>;
+  Tabs: ComponentType<TabsProps>;
   Icon: ComponentType<IconProps>;
 }
 

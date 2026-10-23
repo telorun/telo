@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseAllDocuments } from "yaml";
 import * as placements from "../src/filter-placement.js";
+import * as navigation from "../src/navigation.js";
 import { DateRangeFieldController, InputFieldController } from "../src/field-controllers.js";
 import * as FiltersController from "../src/filters-controller.js";
 import * as CollectionOptionsController from "../src/option-source.js";
@@ -41,9 +42,15 @@ describe("a default the manifest declares", () => {
     expect(members).toEqual(defaultsOf(declared(kind)));
   });
 
-  it.each(["AbovePlacement", "AsidePlacement", "CollapsiblePlacement"] as const)("is what %s provides for a member left out", async (kind) => {
+  it.each(["AbovePlacement", "CollapsiblePlacement"] as const)("is what %s provides for a member left out", async (kind) => {
     const { type, ...members } = await provided(placements[`${kind}Controller`]);
     expect(members).toEqual(defaultsOf(declared(kind)));
+  });
+
+  it("is what AsidePlacement provides for a member left out, its compact a collapsible placement with its defaults", async () => {
+    const { type, compact, ...members } = await provided(placements.AsidePlacementController);
+    expect(members).toEqual(defaultsOf(declared("AsidePlacement")));
+    expect(compact).toEqual(await provided(placements.CollapsiblePlacementController));
   });
 
   it("is what a filter bar carries for a policy member, a field member and a state member left out", async () => {
@@ -111,5 +118,43 @@ describe("a default the manifest declares", () => {
     expect(node.edit.surface).toEqual(node.create.surface);
     expect([node.create.afterSubmit, node.edit.afterSubmit]).toEqual([declared("AfterCreate").default, declared("AfterEdit").default]);
     expect([node.create.unsaved, node.edit.unsaved]).toEqual([declared("UnsavedInput").default, declared("UnsavedInput").default]);
+  });
+
+  it("is what a navigation placement provides for a member left out: an overlay drawer from the start edge, under the header", async () => {
+    const overlay = await provided(navigation.OverlayNavigationController);
+    const { type, ...drawer } = overlay.surface;
+    expect([overlay.type, type]).toEqual(["overlay", "drawer"]);
+    expect(drawer).toEqual({ ...defaultsOf(declared("Drawer")), side: "start" });
+    expect(await provided(navigation.HeaderNavigationController)).toEqual({ type: "header", compact: overlay });
+  });
+
+  it("is what a sidebar provides for a member left out: no rail, memory, and a drawer from its own side", async () => {
+    const { type, compact, store, ...members } = await provided(navigation.SidebarNavigationController, { side: "end" });
+    expect([type, store]).toEqual(["sidebar", { type: "memory" }]);
+    const { rail: railDefaults, ...defaults } = defaultsOf(declared("SidebarNavigation"));
+    expect(members).toEqual({ ...defaults, side: "end" });
+    expect(compact).toEqual({ type: "overlay", surface: { ...(await provided(surfaces.DrawerController)), side: "end" } });
+    const { rail } = await provided(navigation.SidebarNavigationController, { rail: { collapsed: undefined } });
+    expect(rail).toEqual(railDefaults);
+  });
+
+  it("is what a tab bar provides for a member left out: a drawer from the bottom edge", async () => {
+    const { type, surface, ...members } = await provided(navigation.TabBarNavigationController);
+    expect(type).toBe("tab-bar");
+    expect(members).toEqual(defaultsOf(declared("TabBarNavigation")));
+    expect(surface).toEqual({ ...(await provided(surfaces.DrawerController)), side: "bottom" });
+  });
+
+  it("is what an application's navigation is when it declares none: each page in order, in the header", async () => {
+    const page = (path: string) => ({ snapshot: () => ({ path, title: { text: path }, query: {} }), invoke: async () => ({}), assets: () => [] });
+    const noIcon = async (): Promise<string> => {
+      throw new Error("no entry names an icon");
+    };
+    const prepared = await navigation.preparedNavigation(undefined, [page("/"), page("/b")] as never, ctx, "the app", noIcon);
+    expect(navigation.deliveredNavigation(prepared.items)).toEqual([
+      { type: "page", key: "entry", path: "/", text: { text: "/" } },
+      { type: "page", key: "b", path: "/b", text: { text: "/b" } },
+    ]);
+    expect(prepared.placement).toEqual(await provided(navigation.HeaderNavigationController));
   });
 });

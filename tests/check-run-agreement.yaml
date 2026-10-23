@@ -279,6 +279,12 @@ targets:
   - !ref refSlotReachValueConjunctAtRuntime
   - !ref refSlotReachValueDiscriminated
   - !ref refSlotReachValueDiscriminatedAtRuntime
+  - !ref referenceNameFieldInline
+  - !ref referenceObjectForm
+  - !ref referenceObjectFormAtRuntime
+  - !ref referenceMarkerForm
+  - !ref referenceMarkerFormAtRuntime
+  - !ref referenceNameFieldForwarded
   - !ref valueSchemaContext
   - !ref valueSchemaContextAtRuntime
   - !ref valueSchemaFromInvalid
@@ -489,6 +495,7 @@ targets:
   - !ref compileOnlyReadPerCallAtRuntime
   - !ref mapRegionUnknownField
   - !ref mapRegionUnknownFieldAtRuntime
+  - !ref inlineContractRecursiveFragment
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -3098,6 +3105,70 @@ expect:
   errors: []
   runFails: "'inner.target' must be a `!ref` to a resource satisfying `Telo.Invocable`."
 ---
+# A kind declaring a `name` field is declared inline like any other, at a
+# reference slot and as a step's target: `telo check` is clean and the run
+# creates each declaration.
+kind: Assert.Manifest
+metadata:
+  name: referenceNameFieldInline
+source: ./__fixtures__/check-run-agreement/reference-name-field/inline.yaml
+expect:
+  errors: []
+  runs: true
+---
+# `{ kind, name }` for a kind declaring no `name` field is the legacy object
+# form of a reference: refused at the declaring library with the `!ref` it
+# means…
+kind: Assert.Manifest
+metadata:
+  name: referenceObjectForm
+source: ./__fixtures__/check-run-agreement/reference-name-field/object-form/lib/telo.yaml
+expect:
+  errors:
+    - code: INVALID_REFERENCE_FORM
+      message: "Run.Sequence/main: object reference '{ kind, name }' at 'steps[0].invoke' is not supported; write it as '!ref greeting'"
+---
+# …and read as that reference in a dependency, as published artifacts carrying
+# it have always run: the silent consumer runs.
+kind: Assert.Manifest
+metadata:
+  name: referenceObjectFormAtRuntime
+source: ./__fixtures__/check-run-agreement/reference-name-field/object-form/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# An author-written `__ref` key — the marker only resolution writes — is
+# refused at the declaring library…
+kind: Assert.Manifest
+metadata:
+  name: referenceMarkerForm
+source: ./__fixtures__/check-run-agreement/reference-name-field/marker-form/lib/telo.yaml
+expect:
+  errors:
+    - code: INVALID_REFERENCE_FORM
+      message: "Run.Sequence/main: '__ref' at 'steps[0].invoke' is not supported — it marks a reference the loader resolved; write a reference as '!ref greeting'"
+---
+# …and, from a silent consumer, when the import loads the library.
+kind: Assert.Manifest
+metadata:
+  name: referenceMarkerFormAtRuntime
+source: ./__fixtures__/check-run-agreement/reference-name-field/marker-form/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_INVALID_REFERENCE_FORM] RuntimeError: Run.Sequence/main: '__ref' at 'steps[0].invoke' is not supported — it marks a reference the loader resolved; write a reference as '!ref greeting'"
+---
+# A `!ref` to a resource of a kind declaring a `name` field, forwarded through
+# a template body's `self.<field>`, stays a reference: nothing is extracted from
+# it, and the body's entry reaches the resource it names.
+kind: Assert.Manifest
+metadata:
+  name: referenceNameFieldForwarded
+source: ./__fixtures__/check-run-agreement/reference-name-field/forwarded.yaml
+expect:
+  errors: []
+  runs: true
+---
 # A contract node typed by what the resources a declaration references declare
 # (`x-telo-value-schema-from` inside `inputType`): a call omitting the caller
 # data is judged with the input's default filled, and refused where it is
@@ -5302,4 +5373,15 @@ source: ./__fixtures__/check-run-agreement/node-tree/map-app/telo.yaml
 expect:
   errors: []
   runFails: "Expression !cel \"tag.cod\" failed: no such key: \"cod\""
-
+---
+# A recursive fragment reached through a non-recursive one inside an INLINE
+# contract (`outputType: { kind: Telo.JsonSchema, schema }`) is hoisted into the
+# inline shape's `schema`, the object the kernel compiles: the check is clean and
+# the dispatch binds the same contract.
+kind: Assert.Manifest
+metadata:
+  name: inlineContractRecursiveFragment
+source: ./__fixtures__/check-run-agreement/text-record-contract/telo.yaml
+expect:
+  errors: []
+  runs: true

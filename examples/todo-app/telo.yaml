@@ -144,7 +144,8 @@ words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 tokens: { kind: Ui.DesignTokens, color.accent: "#1f8fff", radius.md: 6px }
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Todos
     children:
       - type: composite
@@ -163,7 +164,8 @@ pages:
           edit:
             surface: { kind: Ui.Drawer, side: end, address: { name: todo } }
             unsaved: confirm
-  - path: /status
+  - kind: Ui.Page
+    path: /status
     title: By status
     children:
       - { type: text, text: Todos by status, style: heading }

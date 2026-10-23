@@ -5,6 +5,7 @@ import { HostContext, HostStore, type Host } from "./host.js";
 import { pageAddress } from "./link-address.js";
 import { ErrorNode, Loading, Nodes, type SpecNode } from "./nodes.js";
 import { PressQueueContext, PressQueues } from "./operation.js";
+import { SiteNavigation, type NavigationSpec } from "./site-navigation.js";
 import { queryRoot } from "./query-root.js";
 import { RendererContext, RootsContext, type RendererEnvironment } from "./renderer-context.js";
 import { Confirmation, PageSlotContext, type PageSlot } from "./surface.js";
@@ -20,7 +21,10 @@ interface AppDocument {
   title: TranslatedText;
   /** The language the documents are in: a catalog's, else the application's own. */
   lang?: string;
+  /** Every page the application serves: what a move within it may reach. */
   pages: { path: string; title: TranslatedText }[];
+  /** The navigation tree and how it is drawn. */
+  navigation: NavigationSpec;
   /** The application's own header nodes, before its title and after its
    *  navigation; absent when it declares none. */
   header?: { start: SpecNode[]; end: SpecNode[] };
@@ -265,37 +269,22 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
       <RendererContext.Provider value={base}>
         <div data-telo-part="app" data-compact={compact ? "true" : undefined} onClick={followAnchor}>
           <header data-telo-part="header">
+            {app && <SiteNavigation navigation={app.navigation} path={path} side="start" />}
             {app?.header && app.header.start.length > 0 && (
               <div data-telo-part="header-start">
                 <Nodes nodes={app.header.start} />
               </div>
             )}
             <span data-telo-part="app-title">{app && formatText(words, app.title, {})}</span>
-            <nav data-telo-part="nav">
-              {app?.pages.map((entry) => {
-                const href = store.localHref(entry.path);
-                return href === undefined ? (
-                  <ErrorNode
-                    key={entry.path}
-                    error={{
-                      type: "error",
-                      code: "ERR_UI_NODE_INVALID",
-                      message: `The page path '${entry.path}' does not resolve inside this application.`,
-                    }}
-                  />
-                ) : (
-                  <a key={entry.path} data-telo-part="nav-link" href={href} data-current={entry.path === path ? "page" : undefined} aria-current={entry.path === path ? "page" : undefined}>
-                    {formatText(words, entry.title, {})}
-                  </a>
-                );
-              })}
-            </nav>
+            {app && <SiteNavigation navigation={app.navigation} path={path} side="middle" />}
             {app?.header && app.header.end.length > 0 && (
               <div data-telo-part="header-end">
                 <Nodes nodes={app.header.end} />
               </div>
             )}
+            {app && <SiteNavigation navigation={app.navigation} path={path} side="end" />}
           </header>
+          {app && <SiteNavigation navigation={app.navigation} path={path} side="before" />}
           <main data-telo-part="main">
             <div data-telo-part="page" data-state={state}>
               {failure ? (
@@ -326,6 +315,8 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
               )}
             </div>
           </main>
+          {app && <SiteNavigation navigation={app.navigation} path={path} side="after" />}
+          {app && <SiteNavigation navigation={app.navigation} path={path} side="bottom" />}
         </div>
         {asking && (
           <Confirmation

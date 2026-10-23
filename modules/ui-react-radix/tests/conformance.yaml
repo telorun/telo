@@ -6,7 +6,7 @@ metadata:
     The Radix theme meets the renderer's contract with nothing left out: every
     part styled, no reserved layout property set, every design token given a
     value and read, every scene drawn with its controls, and every vector of
-    its eleven controls met. A theme of another module that takes its controls
+    its thirteen controls met. A theme of another module that takes its controls
     whole and gives them a look of its own meets it too.
 imports:
   Radix: ../

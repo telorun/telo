@@ -366,18 +366,10 @@ export function validateTemplateBody(
           );
           continue;
         }
-        if (value && typeof value === "object" && !Array.isArray(value)) {
-          const obj = value as Record<string, unknown>;
-          if (typeof obj.name === "string" && extracted.has(obj.name)) continue;
-          if (typeof obj.kind === "string" && obj.name !== undefined) {
-            report(
-              "INVALID_REFERENCE_FORM",
-              path,
-              `object reference '{ kind, name }' at '${site.path}' on the ${kind} entry is ` +
-                `not supported; write it as '!ref ${describeRefName(obj.name)}'`,
-            );
-          }
-        }
+        // An object at the slot is an inline declaration (extracted into a
+        // sibling entry by now) or a resolved reference; the removed
+        // `{ kind, name }` form is refused on the raw body, before extraction,
+        // by `validateReferenceForms`.
       }
     }
   }
@@ -416,10 +408,4 @@ function describeDispatchValue(value: unknown): string {
   if (typeof value === "string") return `the string '${value}'`;
   if (value && typeof value === "object" && "name" in value) return "the '{ kind, name }' object form";
   return `a ${typeof value}`;
-}
-
-function describeRefName(name: unknown): string {
-  if (typeof name === "string") return name;
-  if (isTaggedSentinel(name)) return "<entry>";
-  return String(name);
 }

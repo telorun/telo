@@ -94,6 +94,7 @@ import {
   schemaAtPointer,
   type KindSchemas,
 } from "./validate-resource-rules.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 /**
  * The half of a definition registry both halves below need.
@@ -265,11 +266,11 @@ export function referenceValueOf(value: unknown): ReferenceValue | undefined {
       ? { alias: value.source.slice(0, dot), name: value.source.slice(dot + 1) }
       : { name: value.source };
   }
-  if (typeof value.name === "string" && typeof value.kind === "string") {
+  if (isResolvedReference(value)) {
     return {
       name: value.name,
       kind: value.kind,
-      ...(typeof value.alias === "string" ? { alias: value.alias } : {}),
+      ...(value.alias !== undefined ? { alias: value.alias } : {}),
     };
   }
   return undefined;

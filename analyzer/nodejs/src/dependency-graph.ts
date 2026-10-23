@@ -19,6 +19,7 @@ import { readSuppliedResources } from "./resource-input.js";
 import { needSupplyOf, readSuppliedNeeds } from "./need-type.js";
 import { celResourceReads } from "./cel-access-chains.js";
 import { startupObservedStateReads } from "./validate-observed-state.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 export interface ResourceNode {
   kind: string;
@@ -334,11 +335,7 @@ function referencedAliases(manifest: ResourceManifest): Set<string> {
     const proto = Object.getPrototypeOf(value);
     if (proto !== Object.prototype && proto !== null) continue;
     const record = value as Record<string, unknown>;
-    if (
-      typeof record.alias === "string" &&
-      typeof record.name === "string" &&
-      record.alias !== "Self"
-    ) {
+    if (isResolvedReference(record) && record.alias !== undefined && record.alias !== "Self") {
       found.add(record.alias);
     }
     for (const child of Object.values(record)) {
@@ -524,9 +521,8 @@ function addResourceInputEdges(
  *  What it depends on is the IMPORT that exports it, which is the projection
  *  `localDependencyNames` already makes at runtime. */
 function suppliedResourceTarget(value: unknown): string | undefined {
-  const ref = value as { name?: unknown; alias?: unknown } | undefined;
-  const alias = typeof ref?.alias === "string" ? ref.alias : undefined;
-  return alias && alias !== "Self" ? alias : typeof ref?.name === "string" ? ref.name : undefined;
+  if (!isResolvedReference(value)) return undefined;
+  return value.alias && value.alias !== "Self" ? value.alias : value.name;
 }
 
 /** What a `needs:` supply depends on: the need or fulfilment a whole supply

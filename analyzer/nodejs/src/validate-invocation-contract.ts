@@ -20,6 +20,7 @@ import { checkSchemaCompatibility } from "./schema-compat.js";
 import { signatureMismatches, type SignatureMismatch } from "./signature-substitution.js";
 import { codesOutsideCeiling, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -287,8 +288,8 @@ function contractSchemaFor(
   const named =
     typeof declared === "string"
       ? declared
-      : declared && typeof declared === "object" && typeof (declared as any).name === "string"
-        ? (declared as any).name
+      : isResolvedReference(declared)
+        ? declared.name
         : undefined;
   if (!named) return undefined;
   const typeManifest = findInModule(manifests, named, declaringModule);
@@ -307,18 +308,10 @@ function requiredInputsOf(schema: Record<string, any> | undefined): string[] | u
 function referencedNames(value: unknown): string[] {
   const out: string[] = [];
   for (const item of Array.isArray(value) ? value : [value]) {
-    // A reference is `{kind, name}` — BOTH fields. Requiring only `name` would
-    // read an inline invoke step (`{ name, invoke, inputs }`) as a reference to
-    // a resource called after the step, which it is not: that `name` labels the
-    // step, and the step is an invoke site anyway.
-    if (
-      item &&
-      typeof item === "object" &&
-      typeof (item as any).name === "string" &&
-      typeof (item as any).kind === "string"
-    ) {
-      out.push((item as any).name);
-    }
+    // A reference carries the resolved-reference marker. An inline invoke step
+    // (`{ name, invoke, inputs }`) is no reference to a resource called after
+    // the step: that `name` labels the step, and the step is an invoke site anyway.
+    if (isResolvedReference(item)) out.push(item.name);
   }
   return out;
 }
@@ -383,10 +376,7 @@ function checkContractResolves(
  *  inline shape or a raw schema names nothing and resolves on its own. */
 function namedTypeReference(value: unknown): string | undefined {
   if (typeof value === "string") return value;
-  if (!value || typeof value !== "object") return undefined;
-  const ref = value as Record<string, unknown>;
-  if (ref.schema && typeof ref.schema === "object") return undefined;
-  return typeof ref.name === "string" ? ref.name : undefined;
+  return isResolvedReference(value) ? value.name : undefined;
 }
 
 /**

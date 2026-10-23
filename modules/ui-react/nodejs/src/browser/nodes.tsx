@@ -12,6 +12,7 @@ import { ListView, type ListColumn } from "./list.js";
 import { MenuNode } from "./menu-node.js";
 import { RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
 import { Table } from "./table.js";
+import { TabsNode } from "./tabs-node.js";
 import { Presented } from "./value-cell.js";
 import { formatWord, useSay, useText, WordsContext } from "./texts.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
@@ -189,6 +190,8 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
     }
     case "menu":
       return <MenuNode node={node} />;
+    case "tabs":
+      return <TabsNode node={node} />;
     case "image":
       return <img data-telo-part="image" data-style={style} src={local(node.src)} alt={text(node.alt)} />;
     case "svg":

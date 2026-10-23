@@ -75,8 +75,8 @@ with the options you see and the facts behind them. You will be resumed with the
 build from there. With no such question, do not hand back — build. A question that only building
 turns up goes under *Questions* in your final report, never answered by a guess you then build on.
 
-The brief names the checks you run: the quick ones only. The architect runs the whole suite once
-after you, so do not run it yourself. Your context is cached for five minutes. Any wait longer than
+The brief names the checks you run: the quick ones only. Never run a whole suite — CI runs
+it. Your context is cached for five minutes. Any wait longer than
 that — a command, a poll loop, a background run you sleep on — makes your next turn rewrite all of
 it. A check that takes four minutes or more is not a quick check: skip it, say so under *Checks*,
 and leave it to the gate.

@@ -22,7 +22,7 @@ The first run builds `modules/console/rust`; later runs hit Cargo's incremental 
 | -------------- | ------------------------------------------------------------------------------------- |
 | Documents      | `Telo.Application`, `Telo.Library`, `Telo.Definition`, resource docs                   |
 | Module scope   | `imports` (local relative paths and `oci://` refs), `exports.kinds`, `exports.resources`, `Self.<Kind>` |
-| References     | `!ref <name>`, `!ref Self.<name>`, `!ref <Alias>.<name>`                               |
+| References     | `!ref <name>`, `!ref Self.<name>`, `!ref <Alias>.<name>`; an imported library's legacy `{ kind, name }` (for a kind declaring no `name` field) is read as the reference it means; the entry module's `{ kind, name }` and any author-written `__ref` key are `ERR_INVALID_REFERENCE_FORM` |
 | Capabilities   | `Telo.Invocable`                                                                       |
 | Targets        | inline invoke steps with literal `inputs`                                              |
 | Contracts      | `inputType` / `outputType`, including declared defaults                                |

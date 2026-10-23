@@ -1,7 +1,9 @@
 import type { ResourceInstance } from "./resource-instance.js";
 
 /** Marker type for x-telo-ref fields. Carries the live instance type at the TypeScript level;
- *  at runtime this field holds `{ kind, name }` until Phase 5 injection replaces it.
+ *  at runtime this field holds a resolved reference — `{ __ref: true, kind, name }` — until
+ *  Phase 5 injection replaces it. The `__ref` marker is what tells a reference from an inline
+ *  declaration, which holds `kind` and may hold a `name` field of its own.
  *  T is a phantom type — any capability interface (Invocable, Runnable, …) or ResourceInstance.
  *
  *  `alias` is set only for cross-module references resolved from `!ref Alias.name` against an
@@ -9,10 +11,45 @@ import type { ResourceInstance } from "./resource-instance.js";
  *  the target instance, so Phase 5 injection can resolve into that context rather than the
  *  referencing resource's own. Absent (or `"Self"`) means a local reference. */
 export interface KindRef<T = ResourceInstance> {
+  readonly __ref?: true;
   readonly kind: string;
   readonly name: string;
   readonly alias?: string;
   readonly __type?: T;
+}
+
+/** A reference to the resource `name` of `kind`, reached through the import `alias` when it
+ *  names another module's exported instance — what a controller building a reference in code
+ *  hands `ensureKindRef`, `resolveRef` or a step's `invoke`. A plain `{ kind, name }` object is
+ *  an inline declaration of `kind`. */
+export function kindRef<T = ResourceInstance>(kind: string, name: string, alias?: string): KindRef<T> {
+  return alias === undefined ? { __ref: true, kind, name } : { __ref: true, kind, name, alias };
+}
+
+/** True when `value` is a resolved reference — a plain object carrying the `__ref` marker, a
+ *  string `kind` and a string `name`. */
+export function isKindRef(value: unknown): value is KindRef {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+  const ref = value as { __ref?: unknown; kind?: unknown; name?: unknown };
+  return ref.__ref === true && typeof ref.kind === "string" && typeof ref.name === "string";
+}
+
+/** The name and import alias a `!ref <name>` / `!ref <Alias>.<name>` sentinel names, as the
+ *  parser leaves it (`{ __tagged: true, engine: "ref", source }`); undefined for anything else.
+ *  `Self.<name>` is a local name. */
+export function refSentinelTarget(value: unknown): { name: string; alias?: string } | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const sentinel = value as { __tagged?: unknown; engine?: unknown; source?: unknown };
+  if (sentinel.__tagged !== true || sentinel.engine !== "ref" || typeof sentinel.source !== "string") {
+    return undefined;
+  }
+  const dot = sentinel.source.indexOf(".");
+  if (dot <= 0) return { name: sentinel.source };
+  const alias = sentinel.source.slice(0, dot);
+  const name = sentinel.source.slice(dot + 1);
+  return alias === "Self" ? { name } : { name, alias };
 }
 
 /** Marker type for x-telo-scope fields. Has no runtime value — used only as a discriminant

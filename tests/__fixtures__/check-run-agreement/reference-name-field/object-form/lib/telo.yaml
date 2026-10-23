@@ -1,0 +1,33 @@
+# `{ kind, name }` at a step's target, for a kind whose schema declares no
+# `name` field: the legacy object form of a reference. `telo check` reports it
+# here, with the `!ref` it means; an application importing the library reads it
+# as that reference and runs.
+kind: Telo.Library
+metadata:
+  name: RefNameFieldObjectForm
+  version: 1.0.0
+  description: >-
+    Fixture library whose sequence invokes a value written as the legacy
+    object form of a reference.
+imports:
+  Run: ../../../../../../modules/run
+  Assert: ../../../../../../modules/assert
+exports:
+  resources: [main]
+---
+kind: Run.Value
+metadata:
+  name: greeting
+value: hello
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: greet
+    invoke: { kind: Run.Value, name: greeting }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.greet.result"
+      expected: hello

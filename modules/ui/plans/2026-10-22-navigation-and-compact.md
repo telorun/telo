@@ -17,8 +17,8 @@ tab bar — declared as data, and every screen usable on a phone.
   menu-button drawer unless the author names another.
 - **Site navigation is drawn as navigation, not as a command menu.** A new
   `Navigation` control implements the WAI-ARIA disclosure-navigation pattern;
-  it floats its panels, so it joins the layer controls, which makes this
-  `ui_react_controls-2`.
+  in a row or a rail it floats its panels, so it joins the layer controls,
+  which makes this `ui_react_controls-2`.
 - **One rule for narrow screens.** A compact behaviour that changes *what* is
   drawn or how it is used is declared as a `compact` replacement whose default
   `ui` fills; a compact behaviour that only lays out the same structure
@@ -99,8 +99,18 @@ announced as menu items, and an item is marked current through an optional
 - **`Navigation`, a layer control**, implementing disclosure navigation:
   - it draws a tree horizontally, vertically or as an icon rail;
   - it draws every item as a real link and every group as a disclosure button;
-  - it floats each open panel at the end of `<body>`, marked `data-telo-layer`,
-    with Tab order flowing into it;
+  - in a row or a rail (`horizontal`, `rail`) it floats each open group's
+    panel (`nav-panel`) at the end of `<body>`, marked `data-telo-layer`, with
+    Tab order flowing into it — a rail's top-level panel beside the rail, a
+    nested one beside its button — placed to stay inside the viewport;
+  - in a column (`vertical`) it opens each group in place, at every depth: the
+    entries in a `nav-group` right after the button, inside the navigation and
+    in no layer;
+  - `open` is the set of open group keys: a group is drawn open when its key is
+    listed and every group holding it is open. In a row or a rail opening a
+    group asks for its chain, closing its siblings and what lies beneath them;
+    in a column a press toggles that one key, so several groups stay open, and
+    Escape, a press outside and following a link close nothing;
   - it moves what does not fit into a More group;
   - it draws a `nav` landmark only when given a label.
 
@@ -128,6 +138,9 @@ announced as menu items, and an item is marked current through an optional
   under the built-ins and under the Radix set.
 - A screen reader reads a `menu` node's items as links. The current one is
   announced as current.
+- In the overlay drawer at 390px, under the built-ins and under the Radix set,
+  a nested group opens its entries beneath its button, no `nav-panel` exists,
+  the entries can be pressed, and the document is no wider than the viewport.
 - `UiReactConformance.CheckControls` passes for the built-ins and for
   `UiReactRadix.controls` at generation 2.
 
@@ -213,7 +226,7 @@ accepted there.
 
   | Kind | Draws | Keys |
   | --- | --- | --- |
-  | `Ui.SidebarNavigation` | a column beside `main` | `side` (`start` \| `end`), `rail: { collapsed }`, `store` (a `Ui.StateStore`, for open groups and the rail), `compact` |
+  | `Ui.SidebarNavigation` | a column beside `main`, each group opening in place beneath its button; collapsed to a rail, each group floating its panel beside the rail and nested groups cascading beside their buttons | `side` (`start` \| `end`), `rail: { collapsed }`, `store` (a `Ui.StateStore`, for open groups and the rail), `compact` |
   | `Ui.TabBarNavigation` (compact) | top-level entries as bottom tabs; a group or More opens its entries in `surface` | `visible` (2–5), `surface` |
 
   A sidebar's `compact` omitted is an overlay drawer opening from the sidebar's

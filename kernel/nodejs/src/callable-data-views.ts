@@ -26,6 +26,7 @@
  */
 import {
   callableReferenceNotDataMessage,
+  isResolvedReference,
   isDataSite,
   type NotData,
   type NotDataReason,
@@ -85,10 +86,8 @@ const refuse = (name: string, reason: NotDataReason): never => {
 };
 
 function readReference(value: unknown): { name: string; alias?: string } | undefined {
-  if (!isCelRecord(value)) return undefined;
-  const { kind, name, alias } = value as Record<string, unknown>;
-  if (typeof kind !== "string" || typeof name !== "string") return undefined;
-  return { name, ...(typeof alias === "string" ? { alias } : {}) };
+  if (!isResolvedReference(value)) return undefined;
+  return { name: value.name, ...(value.alias !== undefined ? { alias: value.alias } : {}) };
 }
 
 function pathOf(keys: Keys): string {
