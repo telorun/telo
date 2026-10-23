@@ -3,13 +3,14 @@ import { type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
 import { FastifyInstance } from "fastify";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { integerSetting } from "./integer-setting.js";
 import { normalizeMountPrefix } from "./mount-prefix.js";
 
 type HttpStaticResource = RuntimeResource & {
   root: string;
   index?: string;
   spaFallback?: boolean;
-  maxAge?: number;
+  maxAge?: number | bigint;
   immutable?: boolean;
 };
 
@@ -30,7 +31,10 @@ class HttpStatic implements ResourceInstance {
     this.root = resource.root;
     this.index = resource.index ?? "index.html";
     this.spaFallback = resource.spaFallback === true;
-    this.maxAge = resource.maxAge;
+    this.maxAge =
+      resource.maxAge == null
+        ? undefined
+        : integerSetting(resource.maxAge, `Http.Static[${resource.metadata?.name}]`, "maxAge");
     this.immutable = resource.immutable === true;
   }
 

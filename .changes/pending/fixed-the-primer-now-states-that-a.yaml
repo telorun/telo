@@ -1,0 +1,6 @@
+modules:
+  apps/authoring-agent: Fixed
+body: The primer now states that a module variable or secret declared as an integer, and
+  a number written literally in a step's value, are ints in CEL and need no cast; that
+  two steps sharing a name are typed only when both produce the same type; and that a
+  literal step's result meets null in a condition only through dyn(...).

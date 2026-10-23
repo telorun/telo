@@ -2,7 +2,7 @@ import pdfMake from "pdfmake/build/pdfmake.js";
 import robotoVfs from "pdfmake/build/vfs_fonts.js";
 import { type Face as FontFace, type FamilyHandle, isFamilyHandle, selectFace } from "@telorun/font";
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { InvokeError, RuntimeError } from "@telorun/sdk";
+import { InvokeError, RuntimeError, integerInput } from "@telorun/sdk";
 
 /** The faces pdfmake looks for in a family, paired with the neutral names a
  *  `Font.Family` declares them under. pdfmake's own spelling is kept on its side
@@ -104,11 +104,12 @@ class PdfMakeDocument implements ResourceInstance<Record<string, unknown>, Docum
     const expand = (value: unknown): unknown =>
       value === undefined ? undefined : this.ctx.expandValue(value, scope);
 
+    const toPdfMake = (value: unknown) => toPdfMakeNodes(value, name);
     const definition: Record<string, unknown> = {
-      content: toPdfMakeLayouts(expand(this.resource.content)),
-      background: toPdfMakeLayouts(expand(this.resource.background)),
-      header: toPdfMakeLayouts(expand(this.resource.header)),
-      footer: toPdfMakeLayouts(expand(this.resource.footer)),
+      content: toPdfMake(expand(this.resource.content)),
+      background: toPdfMake(expand(this.resource.background)),
+      header: toPdfMake(expand(this.resource.header)),
+      footer: toPdfMake(expand(this.resource.footer)),
       pageSize: this.resource.pageSize,
       pageOrientation: this.resource.pageOrientation,
       pageMargins: this.resource.pageMargins,
@@ -157,7 +158,8 @@ class PdfMakeDocument implements ResourceInstance<Record<string, unknown>, Docum
 }
 
 /**
- * Rewrites every declared `layout` object into the callbacks pdfmake expects.
+ * Rewrites every declared `layout` object into the callbacks pdfmake expects,
+ * and every integer key into the number pdfmake does arithmetic on.
  *
  * This is the one place the binding is not a mirror, and it cannot be one: a
  * manifest holds no functions, and pdfmake invokes these synchronously during
@@ -169,17 +171,39 @@ class PdfMakeDocument implements ResourceInstance<Record<string, unknown>, Docum
  * Header rows are counted from the table beside the layout, since that is what
  * `headerFillColor` and `oddRowFillColor` are relative to.
  */
-function toPdfMakeLayouts(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(toPdfMakeLayouts);
+function toPdfMakeNodes(value: unknown, name: string): unknown {
+  if (Array.isArray(value)) return value.map((item) => toPdfMakeNodes(item, name));
   if (value === null || typeof value !== "object") return value;
   const node = value as Record<string, unknown>;
   const out: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(node)) out[key] = toPdfMakeLayouts(child);
+  for (const [key, child] of Object.entries(node)) out[key] = toPdfMakeNodes(child, name);
+  integerKeys(out, ["colSpan", "rowSpan"], name);
+  if (Array.isArray(out.ol)) integerKeys(out, ["start"], name);
+  const table =
+    out.table && typeof out.table === "object" && !Array.isArray(out.table)
+      ? (out.table as Record<string, unknown>)
+      : undefined;
+  if (table) integerKeys(table, ["headerRows", "keepWithHeaderRows"], name);
   if (out.layout && typeof out.layout === "object" && !Array.isArray(out.layout)) {
-    const table = out.table as { headerRows?: number } | undefined;
-    out.layout = compileLayout(out.layout as DeclaredLayout, table?.headerRows ?? 0);
+    out.layout = compileLayout(out.layout as DeclaredLayout, (table?.headerRows as number) ?? 0);
   }
   return out;
+}
+
+/** A `!cel` integer arrives as a 64-bit integer; pdfmake mixes these keys with
+ *  numbers, so each is read as the number it holds. */
+function integerKeys(node: Record<string, unknown>, keys: string[], name: string): void {
+  for (const key of keys) {
+    const value = node[key];
+    if (value === undefined) continue;
+    const number = integerInput(value);
+    if (number === undefined) {
+      throw new Error(
+        `PdfMake.Document "${name}": '${key}' must be an integer a number can hold; got ${String(value)}.`,
+      );
+    }
+    node[key] = number;
+  }
 }
 
 /** A callback per declared key, and nothing for a key left out — pdfmake falls

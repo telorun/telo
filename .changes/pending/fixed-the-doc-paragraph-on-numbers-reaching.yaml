@@ -1,0 +1,5 @@
+modules:
+  modules/run: Fixed
+body: "The doc paragraph on numbers reaching Run.Value is corrected: a value declared as
+  an integer, and an integral number written literally in a parent step's value, is
+  already an int and needs no cast."

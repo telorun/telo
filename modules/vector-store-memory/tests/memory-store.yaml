@@ -5,7 +5,8 @@ metadata:
   description: |
     Exercises VectorStoreMemory.Store directly: dot-metric ranking, FIFO
     eviction past maxEntries, and metadataFilter operators ($in, $gte, $or)
-    via Match and Removal.
+    via Match and Removal. Dimensions an expression computes bound vectors the
+    same way.
 imports:
   VectorStore: ../../vector-store
   VectorStoreMemory: ../
@@ -19,6 +20,11 @@ metadata: { name: index }
 metric: dot
 dimensions: 2
 maxEntries: 3
+---
+# A `!cel` integer is a 64-bit integer, not the number a YAML literal is.
+kind: VectorStoreMemory.Store
+metadata: { name: computedIndex }
+dimensions: !cel "1 + 1"
 ---
 kind: VectorStore.Record
 metadata: { name: write }
@@ -128,3 +134,27 @@ steps:
         required: [result]
         properties:
           result: { const: true }
+  - name: computedWrite
+    invoke: { kind: VectorStore.Record, store: !ref computedIndex }
+    inputs:
+      items:
+        - { id: a, vector: [1, 0] }
+  - name: computedBadDim
+    try:
+      - name: computedBadWrite
+        invoke: { kind: VectorStore.Record, store: !ref computedIndex }
+        inputs:
+          items:
+            - { id: bad, vector: [1, 2, 3] }
+    catch:
+      - name: computedRejection
+        value: !cel "error.message"
+  - name: assertComputedDimensions
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        written: !cel "steps.computedWrite.result.ids"
+        rejection: !cel "steps.computedRejection.result"
+      expected:
+        written: [a]
+        rejection: 'VectorStoreMemory "cosine": expected vector of length 2, got 3.'

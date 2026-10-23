@@ -1,0 +1,30 @@
+# The singleton's two imports in the opposite order to the test that runs this:
+# the forwarded variable instantiates it and the literal borrows it.
+kind: Telo.Application
+metadata:
+  name: DeclaredIntegerSharedForwardedFirst
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+  Forwarded:
+    source: ./shared
+    variables: { size: !cel "variables.size" }
+  Literal:
+    source: ./shared
+    variables: { size: 3 }
+variables:
+  size: { type: integer, env: DECLARED_INTEGER_SHARED_SIZE, default: 3 }
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: cells
+    invoke: !ref Literal.cells
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.cells.result"
+      expected: 9

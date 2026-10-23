@@ -1,4 +1,5 @@
 import type { ResourceContext, RuntimeRun, Runnable, Stream } from "@telorun/sdk";
+import { integerInput } from "@telorun/sdk";
 import { Static, Type } from "@sinclair/typebox";
 import * as fs from "fs";
 import * as path from "path";
@@ -195,7 +196,15 @@ export async function create(
       const include = manifest.include ?? ["**/tests/*.yaml"];
       const exclude = manifest.exclude ?? ["**/__fixtures__/**"];
       const filter = manifest.filter || undefined;
-      const requestedConcurrency = manifest.concurrency ?? DEFAULT_CONCURRENCY;
+      const requestedConcurrency =
+        manifest.concurrency === undefined
+          ? DEFAULT_CONCURRENCY
+          : integerInput(manifest.concurrency);
+      if (requestedConcurrency === undefined) {
+        throw new Error(
+          `Test.Suite.${manifest.metadata.name}: 'concurrency' must be an integer a number can hold, got ${String(manifest.concurrency)}.`,
+        );
+      }
 
       const tests = discoverTests(baseDir, include, exclude, filter);
 

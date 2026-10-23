@@ -1,0 +1,6 @@
+modules:
+  modules/vector-store-pgvector: Fixed
+body: VectorStorePgvector.Store accepts a computed CEL integer for 'dimensions' and
+  bounds vectors exactly as the same literal does; before, every vector was refused as
+  the wrong length. A value no JS number holds exactly is refused at creation, naming
+  the store.

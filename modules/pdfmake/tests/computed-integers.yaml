@@ -1,0 +1,57 @@
+kind: Telo.Application
+metadata:
+  name: PdfMakeComputedIntegersTest
+  version: 1.0.0
+  description: |
+    A table's header rows and spans and an ordered list's start, computed by
+    expressions — 64-bit integers, not the numbers YAML literals are — lay the
+    document out as the same literals do: the banded table renders, the
+    row span holds, and the list counts from 3.
+imports:
+  PdfMake: ../
+  Pdf: ../../pdf
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testComputedIntegers
+---
+kind: Run.Sequence
+metadata: { name: testComputedIntegers }
+steps:
+  - name: render
+    invoke:
+      kind: PdfMake.Document
+      content:
+        - table:
+            headerRows: !cel "1"
+            keepWithHeaderRows: !cel "1"
+            body:
+              - [Head A, Head B]
+              - [{ text: Spanned, colSpan: !cel "1 + 1" }, ""]
+              - [{ text: Tall, rowSpan: !cel "2" }, r2b]
+              - ["", r3b]
+              - [r4a, r4b]
+          layout:
+            fillColor: "#FFFFFF"
+            oddRowFillColor: "#EEEEEE"
+        - ol:
+            - text: third
+            - text: fourth
+          start: !cel "3"
+    inputs: {}
+  - name: read
+    invoke: { kind: Pdf.Text }
+    inputs: { data: !cel "steps.render.result.bytes" }
+  - name: assertLayout
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result.pages"
+      expected:
+        - |-
+          Head A Head B
+          Spanned
+          Tall r2b
+          r3b
+          r4a r4b
+          third3.
+          fourth4.

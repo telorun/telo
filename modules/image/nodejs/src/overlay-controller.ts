@@ -26,7 +26,7 @@ interface OverlayInputs {
   image: Uint8Array;
   shapes: Shape[];
   format?: string;
-  quality?: number;
+  quality?: number | bigint;
 }
 
 interface OverlayOutputs {

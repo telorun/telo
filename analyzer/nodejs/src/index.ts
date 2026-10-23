@@ -549,6 +549,7 @@ export type {
 } from "./topology-role.js";
 export { topologyRoleProblems } from "./validate-topology-roles.js";
 export type { TopologyRoleProblem } from "./validate-topology-roles.js";
+export { stepValueSlotPaths } from "./step-bodies.js";
 export { readDeprecation } from "./deprecation.js";
 export type { Deprecation } from "./deprecation.js";
 export {

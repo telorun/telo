@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata:
+  name: DeclaredIntegerShared
+  version: 1.0.0
+  description: "Test fixture: a singleton configured by a declared integer input."
+lifecycle: shared
+imports:
+  Run: ../../../../modules/run
+variables:
+  size: { type: integer }
+exports:
+  resources: [cells]
+---
+kind: Run.Value
+metadata: { name: cells }
+value: !cel "variables.size * variables.size"

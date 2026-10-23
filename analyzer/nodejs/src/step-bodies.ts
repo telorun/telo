@@ -16,6 +16,9 @@ export interface StepBody {
   field: string;
   /** The field on each step naming what it dispatches (`invoke`). */
   invokeField: string;
+  /** The field on a pure step holding what it produces (`value`), where the
+   *  grammar has pure steps. */
+  valueField?: string;
   steps: unknown[];
   /** The step item schema, local `$ref` resolved, which says how steps nest. */
   itemSchema: Record<string, any> | undefined;
@@ -37,6 +40,7 @@ export function stepBodiesOf(
     out.push({
       field,
       invokeField: slot.invoke,
+      ...(slot.value !== undefined ? { valueField: slot.value } : {}),
       steps,
       itemSchema: resolveLocalRef(fieldSchema.items as Record<string, any> | undefined, schema),
     });
@@ -52,4 +56,21 @@ export function forEachStep(
   visit: (step: Record<string, any>, stepPath: string) => void,
 ): void {
   walkStepArray(body.steps, body.itemSchema, schema, body.field, visit);
+}
+
+/** The concrete path of every pure step's value slot in `declaration`, at every
+ *  nesting depth (`steps[1].then[0].value`). */
+export function stepValueSlotPaths(
+  declaration: Record<string, unknown>,
+  schema: Record<string, any>,
+): string[] {
+  const out: string[] = [];
+  for (const body of stepBodiesOf(declaration, schema)) {
+    const field = body.valueField;
+    if (field === undefined) continue;
+    forEachStep(body, schema, (step, stepPath) => {
+      if (step[field] !== undefined) out.push(`${stepPath}.${field}`);
+    });
+  }
+  return out;
 }

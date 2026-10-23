@@ -1,4 +1,9 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import {
+  type ControllerContext,
+  type ResourceContext,
+  type ResourceInstance,
+  integerInput,
+} from "@telorun/sdk";
 import { type SqlConnection, resolveSqlConnection } from "@telorun/sql";
 import { CompiledQuery, type Kysely } from "kysely";
 import type {
@@ -15,7 +20,7 @@ type Metric = "cosine" | "dot" | "euclidean";
 interface StoreResource {
   metadata: { name: string; module?: string };
   connection: unknown;
-  dimensions: number;
+  dimensions: number | bigint;
   metric?: Metric;
   table?: string;
 }
@@ -95,7 +100,13 @@ class PgvectorStore implements ResourceInstance, VectorStoreHandle {
     this.connection = connection;
     this.kysely = kysely;
     this.metric = resource.metric ?? "cosine";
-    this.dimensions = resource.dimensions;
+    const dimensions = integerInput(resource.dimensions);
+    if (dimensions === undefined) {
+      throw new Error(
+        `VectorStorePgvector.Store '${this.name}': 'dimensions' must be an integer a number can hold, got ${String(resource.dimensions)}.`,
+      );
+    }
+    this.dimensions = dimensions;
     const table = resource.table ?? "vectors";
     if (!TABLE_PATTERN.test(table)) {
       throw new Error(`VectorStorePgvector: invalid table name '${table}'.`);

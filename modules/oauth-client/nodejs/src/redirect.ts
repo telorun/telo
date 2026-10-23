@@ -9,12 +9,13 @@ import {
   type ResourceInstance,
 } from "@telorun/sdk";
 import { createServer, type Server } from "node:http";
+import { integerSetting } from "./integer-setting.js";
 
 const LOOPBACK_HOST = "127.0.0.1";
 
 interface RedirectListenerManifest {
   metadata?: { name?: string };
-  port?: number;
+  port?: number | bigint;
   path?: string;
   responseBody?: string;
 }
@@ -38,6 +39,7 @@ const MAX_HELD_RESULTS = 32;
 
 export class RedirectListenerResource implements ResourceInstance {
   private server?: Server;
+  private readonly port: number;
   private readonly path: string;
   private readonly responseBody: string;
   /** Callbacks that arrived before anyone asked for them. */
@@ -48,6 +50,7 @@ export class RedirectListenerResource implements ResourceInstance {
     private readonly manifest: RedirectListenerManifest,
     private readonly ctx: ResourceContext,
   ) {
+    this.port = manifest.port == null ? 0 : integerSetting(manifest.port, this.describe(), "port");
     this.path = manifest.path ?? "/callback";
     this.responseBody =
       manifest.responseBody ?? "<p>Sign-in complete. You can close this tab.</p>";
@@ -121,7 +124,7 @@ export class RedirectListenerResource implements ResourceInstance {
     await new Promise<void>((resolve, reject) => {
       const onListenError = (err: Error) => reject(err);
       server.once("error", onListenError);
-      server.listen(this.manifest.port ?? 0, LOOPBACK_HOST, () => {
+      server.listen(this.port, LOOPBACK_HOST, () => {
         // Hand the socket over to a real handler. Leaving the bind-time `reject`
         // attached would send every later error to an already-settled promise,
         // which discards it silently.

@@ -1,0 +1,6 @@
+modules:
+  modules/pdf: Fixed
+body: Pdf.Rasterizer and Pdf.Text accept a 'page', Pdf.Rasterizer a 'quality', and
+  Pdf.FormFields a field's 'page', supplied as a 64-bit integer — what any !cel integer
+  expression produces — instead of failing with 'Invalid page request' or refusing a
+  valid value.

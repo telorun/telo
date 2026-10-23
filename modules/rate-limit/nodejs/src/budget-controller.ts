@@ -46,12 +46,20 @@ interface BudgetResult {
  */
 class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
   private readonly windowMs: number;
+  private readonly limit: number;
 
   constructor(
     private readonly resource: BudgetResource,
     private readonly ctx: ResourceContext,
   ) {
     this.windowMs = parseDurationMs(resource.window);
+    const limit = integerInput(resource.limit);
+    if (limit === undefined) {
+      throw new Error(
+        `RateLimit.Budget "${resource.metadata.name}": 'limit' must be an integer a number can hold.`,
+      );
+    }
+    this.limit = limit;
   }
 
   async invoke(inputs: BudgetInputs): Promise<BudgetResult> {
@@ -110,7 +118,7 @@ class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
 
     if (inputs.op === "reserve") {
       const total = await store.increment(bucketKey, amount, this.windowMs);
-      if (total > this.resource.limit) {
+      if (total > this.limit) {
         // Refund the over-ceiling reservation so an unrelated caller isn't
         // charged for this denial, and deny.
         await store.increment(bucketKey, -amount, this.windowMs);
@@ -119,7 +127,7 @@ class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
         if (this.ctx.log.enabled(SEVERITY.debug)) {
           this.ctx.log.debug("Budget exhausted; reservation denied and refunded", {
             "ratelimit.key": inputs.key,
-            "ratelimit.limit": this.resource.limit,
+            "ratelimit.limit": this.limit,
             "ratelimit.requested": amount,
           });
         }
@@ -129,10 +137,10 @@ class RateLimitBudget implements ResourceInstance<BudgetInputs, BudgetResult> {
         this.ctx.log.debug("Budget reserved", {
           "ratelimit.key": inputs.key,
           "ratelimit.reserved": amount,
-          "ratelimit.remaining": this.resource.limit - total,
+          "ratelimit.remaining": this.limit - total,
         });
       }
-      return { allowed: true, remaining: this.resource.limit - total, retryAfter: 0, reserved: amount };
+      return { allowed: true, remaining: this.limit - total, retryAfter: 0, reserved: amount };
     }
 
     throw new Error(`RateLimit.Budget: unknown op '${String(inputs.op)}'; expected 'reserve' or 'settle'`);

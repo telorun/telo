@@ -65,7 +65,14 @@ import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-
 import { readStepSlot } from "./step-slot.js";
 import { withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
 import { valueDerivedContract } from "./value-derived-contract.js";
-import { inferredResultSchema } from "./step-result-inference.js";
+import {
+  inferredResultSchema,
+  isForwardableResult,
+  sameNamedResult,
+  stepContextAt,
+  stepContextOf,
+  type StepResultAlternative,
+} from "./step-result-inference.js";
 import { bodyForPath, templateBodies } from "./template-body.js";
 import {
   contextChainAt,
@@ -238,9 +245,59 @@ export function buildStepContextSchema(
       allManifests,
     );
 
-    const stepProperties: Record<string, any> = {};
+    // Every step producing a result, by name: a name may be carried by several
+    // (a branch pair, a loop's seed and the step advancing it), and it is typed
+    // only by what all of them produce.
+    const producers = new Map<string, StepProducer[]>();
+    const produce = (name: string, producer: StepProducer): void => {
+      const named = producers.get(name);
+      if (named) named.push(producer);
+      else producers.set(name, [producer]);
+    };
 
-    walkStepArray(steps, stepItemSchema, defSchema, fieldName, (s) => {
+    /** The step node of `name` as `reader` sees it — its own name is what the
+     *  other steps carrying it produce. Undefined where nothing else does. */
+    const stepNode = (name: string, reader: StepProducer): Record<string, any> | undefined => {
+      const alternatives = (producers.get(name) ?? [])
+        .filter((producer) => producer !== reader)
+        .map(alternativeOf);
+      return alternatives.length > 0
+        ? { type: "object", properties: { result: sameNamedResult(alternatives) } }
+        : undefined;
+    };
+
+    const alternativeOf = (producer: StepProducer): StepResultAlternative => ({
+      result: resultOf(producer),
+      ...(producer.at === undefined ? {} : { at: producer.at }),
+    });
+
+    // A pure step dispatches nothing, so there is no contract to resolve. Where
+    // its expression is a plain chain into something already typed — another
+    // step's result, or the kind's own inputs — that type carries through;
+    // anything else (arithmetic, a call, a comprehension) is typed by the CEL
+    // type its expression checks to, recorded when `steps` is registered with
+    // the environment, and a literal by its own shape
+    // (`step-result-inference.ts`).
+    const resultOf = (producer: StepProducer): Record<string, any> => {
+      if (producer.result) return producer.result;
+      const inferred = inferredResultSchema(producer.value) ?? PERMISSIVE_CONTRACT;
+      // Two steps forwarding each other: the one read while it is still being
+      // resolved is its own expression.
+      if (producer.resolving) return inferred;
+      producer.resolving = true;
+      const chain = bindingPathChain(producer.value);
+      const read = chain?.[0] === "steps" && chain[1] !== undefined ? stepNode(chain[1], producer) : undefined;
+      const chained = schemaAtChain(chain, {
+        properties: {
+          steps: { type: "object", properties: read ? { [chain![1]!]: read } : {} },
+          ...(ownInputs ? { inputs: ownInputs } : {}),
+        },
+      });
+      producer.resolving = false;
+      return (producer.result = chained && isForwardableResult(chained) ? chained : inferred);
+    };
+
+    walkStepArray(steps, stepItemSchema, defSchema, fieldName, (s, stepPath) => {
       const name = s.name;
       const invoke = s[invokeField] as Record<string, any> | undefined;
       // Only invoke steps register a `steps.<name>.result` entry — control-flow
@@ -249,26 +306,8 @@ export function buildStepContextSchema(
       // or unknown step references slip through chain validation.
       if (typeof name !== "string") return;
       if (!invoke || typeof invoke !== "object") {
-        // A pure step dispatches nothing, so there is no contract to resolve.
-        // Where its expression is a plain chain into something already typed —
-        // an earlier step's result, or the kind's own inputs — that type carries
-        // through; anything else (arithmetic, a call, a comprehension) is typed
-        // by the CEL type its expression checks to, recorded when `steps` is
-        // registered with the environment (`step-result-inference.ts`).
         if (valueField && valueField in s) {
-          const scopeRoot = {
-            properties: {
-              steps: { type: "object", properties: { ...stepProperties } },
-              ...(ownInputs ? { inputs: ownInputs } : {}),
-            },
-          };
-          const chained = schemaAtChain(bindingPathChain(s[valueField]), scopeRoot);
-          stepProperties[name] = {
-            type: "object",
-            properties: {
-              result: chained ?? inferredResultSchema(s[valueField]) ?? PERMISSIVE_CONTRACT,
-            },
-          };
+          produce(name, { value: s[valueField], at: `${stepPath}.${valueField}` });
         }
         return;
       }
@@ -304,23 +343,32 @@ export function buildStepContextSchema(
             );
       // The target's contract is embedded whole: a document of its own.
       const contract = outputSchema && declaredDocument(outputSchema);
-      stepProperties[name] = {
-        type: "object",
-        properties: {
-          result: contract ?? derived ?? PERMISSIVE_CONTRACT,
-        },
-      };
+      produce(name, { result: contract ?? derived ?? PERMISSIVE_CONTRACT });
     });
 
-    if (Object.keys(stepProperties).length > 0) {
-      return {
-        type: "object",
-        properties: stepProperties,
-      };
+    if (producers.size > 0) {
+      const stepProperties: Record<string, any> = {};
+      for (const [name, named] of producers) {
+        stepProperties[name] = {
+          type: "object",
+          properties: { result: sameNamedResult(named.map(alternativeOf)) },
+        };
+      }
+      return stepContextOf(stepProperties);
     }
   }
 
   return hasStepBody ? { type: "object", properties: {} } : undefined;
+}
+
+/** One step producing `steps.<name>.result`: a dispatch's contract, or a pure
+ *  step's value, resolved when first read. */
+interface StepProducer {
+  result?: Record<string, any>;
+  value?: unknown;
+  /** Where a pure step's value is written. */
+  at?: string;
+  resolving?: boolean;
 }
 
 /** Where a resource of this kind receives call arguments: undefined unless its
@@ -940,7 +988,7 @@ export class CelScopeResolver {
           ...(argumentsBound ? { inputs: { type: "object", additionalProperties: true } } : {}),
           ...(base.properties ?? {}),
           ...(argumentsBound && declaredInputs ? { inputs: declaredInputs } : {}),
-          steps: stepContext,
+          steps: stepContextAt(stepContext, localPath),
         },
       };
     }

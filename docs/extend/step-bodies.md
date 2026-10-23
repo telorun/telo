@@ -61,6 +61,28 @@ predicate is written and what it produced. Nothing is read by truthiness — a
 string `"false"` is not false — so compare explicitly
 (`!cel "variables.flag == 'true'"`).
 
+**A number written in a `value:` step is the number CEL would write.** A pure
+step whose `value:` is a literal publishes a number that is integral and within
+int64 as an `int` and any other number as a `double`, as the whole value and at any depth of a literal map
+or list — so `value: 3` then `!cel "steps.count.result * 2"` composes, as
+`!cel "3"` always did. The rule reads the value, not its spelling: `3`, `3.0`
+and `1e3` are ints, `3.5` is a double, and a double 3 is written `!cel "3.0"`.
+`telo check` types `steps.<name>.result` the same way — a literal map is a closed
+record, so a misspelled member is `CEL_UNKNOWN_FIELD`, a list is typed by its
+elements when they all agree, and `steps.count.result * 2.0` over a literal `3`
+is `CEL_TYPE_ERROR`. A `!cel` or `!interpolate` member of a literal map or list
+is left as it evaluates and stays untyped; a step whose whole `value:` is one
+`!cel` is typed by what the expression checks to.
+
+**A step name is one type only when every step carrying it agrees.** Two steps
+may share a name — one per branch of an `if`, or a loop's seed and the step
+advancing it — and `steps.<name>.result` is typed only where all of them produce
+the same type; where they differ the name is untyped and a mismatch surfaces at
+run. An expression step reads its own name as what the other steps of that name
+produce, so a counter seeded with `value: 0` is advanced with
+`!cel "steps.i.result + 1"`; `+ 1.0` is `CEL_TYPE_ERROR`, since the seed is an
+int.
+
 ## Running it
 
 Execution lives in `@telorun/sdk` beside the grammar, so a controller runs a body

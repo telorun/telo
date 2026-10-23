@@ -25,9 +25,33 @@ store: !ref mem
 limit: 100
 window: "60s"
 ---
+# A `!cel` integer is a 64-bit integer, not the number a YAML literal is.
+kind: RateLimit.Budget
+metadata: { name: computedBudget }
+store: !ref mem
+limit: !cel "50 + 50"
+window: "60s"
+---
 kind: Run.Sequence
 metadata: { name: test }
 steps:
+  - name: computedFits
+    invoke: !ref computedBudget
+    inputs: { op: reserve, key: computed, amount: 70 }
+  - name: computedOver
+    invoke: !ref computedBudget
+    inputs: { op: reserve, key: computed, amount: 70 }
+  - name: assertComputedLimit
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        fits: !cel "steps.computedFits.result.allowed"
+        remaining: !cel "steps.computedFits.result.remaining"
+        over: !cel "steps.computedOver.result.allowed"
+      expected:
+        fits: true
+        remaining: 30
+        over: false
   - name: reserve1
     invoke: !ref budget
     inputs: { op: reserve, key: global, amount: 40 }

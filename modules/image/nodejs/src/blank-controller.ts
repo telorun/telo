@@ -1,6 +1,7 @@
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { integerSetting } from "./integer-setting.js";
 import { encodeCanvas } from "./encode.js";
 
 // Canvas backends cap texture dimensions around here; beyond it allocation
@@ -15,11 +16,11 @@ interface BlankResource {
 }
 
 interface BlankInputs {
-  width: number;
-  height: number;
+  width: number | bigint;
+  height: number | bigint;
   color?: string;
   format?: string;
-  quality?: number;
+  quality?: number | bigint;
 }
 
 interface BlankOutputs {
@@ -45,13 +46,16 @@ class ImageBlank implements ResourceInstance<BlankInputs, BlankOutputs> {
     const label = `Image.Blank "${this.resource.metadata.name}"`;
     const color = inputs.color ?? this.resource.color ?? "#FFFFFF";
 
-    const canvas = createCanvas(inputs.width, inputs.height);
+    const width = integerSetting(inputs.width, label, "width");
+    const height = integerSetting(inputs.height, label, "height");
+
+    const canvas = createCanvas(width, height);
     const ctx = canvas.getContext("2d");
     assertValidColor(ctx, color, label);
     ctx.fillStyle = color;
-    ctx.fillRect(0, 0, inputs.width, inputs.height);
+    ctx.fillRect(0, 0, width, height);
     const { image, mediaType } = await encodeCanvas(canvas, inputs, this.resource, label);
-    return { image, width: inputs.width, height: inputs.height, mediaType };
+    return { image, width, height, mediaType };
   }
 
   snapshot(): Record<string, unknown> {

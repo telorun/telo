@@ -131,7 +131,7 @@ describe("asking the host for missing inputs", () => {
     await kernel.load("memory://app", { inputResolver: resolver });
     await kernel.boot();
     const root = rootOf(kernel);
-    expect(root.variables).toEqual({ clientId: "abc", logLevel: "info", retries: 3 });
+    expect(root.variables).toEqual({ clientId: "abc", logLevel: "info", retries: 3n });
     expect(root.secrets).toEqual({ token: "t0ken" });
     expect(root.ports).toEqual({ http: 8080 });
     expect(root.resources.database).toEqual({ url: "postgres://db/main" });

@@ -1,6 +1,7 @@
 import { PDFDocument } from "pdf-lib";
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { integerSetting } from "./integer-setting.js";
 
 interface FormFieldsResource {
   metadata: { name: string; module?: string };
@@ -12,7 +13,7 @@ type FieldType = "text" | "checkbox";
 interface FieldPlacement {
   name: string;
   type: FieldType;
-  page: number;
+  page: number | bigint;
   x: number;
   y: number;
   width: number;
@@ -83,13 +84,14 @@ class PdfFormFields implements ResourceInstance<FormFieldsInputs, FormFieldsOutp
       }
       batch.add(field.name);
 
-      if (!Number.isInteger(field.page) || field.page < 1 || field.page > pageCount) {
+      const pageNumber = integerSetting(field.page, `${label} field "${field.name}"`, "page");
+      if (pageNumber < 1 || pageNumber > pageCount) {
         throw new InvokeError(
           "ERR_INVALID_INPUT",
-          `${label}: field "${field.name}" targets page ${field.page}; document has ${pageCount} page(s).`,
+          `${label}: field "${field.name}" targets page ${String(field.page)}; document has ${pageCount} page(s).`,
         );
       }
-      const page = doc.getPage(field.page - 1);
+      const page = doc.getPage(pageNumber - 1);
 
       if (field.x < 0 || field.y < 0 || !(field.width > 0) || !(field.height > 0)) {
         throw new InvokeError(
@@ -109,7 +111,7 @@ class PdfFormFields implements ResourceInstance<FormFieldsInputs, FormFieldsOutp
         throw new InvokeError(
           "ERR_INVALID_INPUT",
           `${label}: field "${field.name}" box (${field.x}, ${field.y}, ${field.width}×${field.height} px ` +
-            `at scale ${scale}) falls outside page ${field.page} ` +
+            `at scale ${scale}) falls outside page ${pageNumber} ` +
             `(${page.getWidth()}×${page.getHeight()} pt).`,
         );
       }

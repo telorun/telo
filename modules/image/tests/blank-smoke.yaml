@@ -9,7 +9,8 @@ metadata:
     override yields image/jpeg with the JPEG magic bytes. Further sequences
     assert that a zero width, an unrecognized CSS color, a bad format, and an
     out-of-range quality raise ERR_INVALID_INPUT (canvas would otherwise
-    silently keep its previous fill color or clamp the quality).
+    silently keep its previous fill color or clamp the quality). Dimensions
+    and a quality an expression computes render as the same literals do.
 # The bad format reaches the call from a variable, whose declared type (a
 # string) is all `telo check` knows of it, so the value meets the RUNTIME
 # contract boundary this test is about.
@@ -26,6 +27,7 @@ imports:
 targets:
   - !ref testBlank
   - !ref testJpegFormat
+  - !ref testComputedInputs
   - !ref testZeroWidth
   - !ref testBadColor
   - !ref testBadFormat
@@ -93,6 +95,22 @@ steps:
           mediaType: { const: image/jpeg }
           magic: { const: jpeg }
         required: [ mediaType, magic ]
+---
+# A `!cel` integer is a 64-bit integer, not the number a YAML literal is.
+kind: Run.Sequence
+metadata: { name: testComputedInputs }
+steps:
+  - name: blank
+    inputs: { width: !cel "60 * 2", height: !cel "80", format: jpeg, quality: !cel "70" }
+    invoke: !ref canvas
+  - name: assertComputed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        width: !cel "steps.blank.result.width"
+        height: !cel "steps.blank.result.height"
+        mediaType: !cel "steps.blank.result.mediaType"
+      expected: { width: 120, height: 80, mediaType: image/jpeg }
 ---
 kind: Run.Sequence
 metadata: { name: testZeroWidth }

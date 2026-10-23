@@ -5,7 +5,8 @@ metadata:
   description: |
     Shell.CommandStream forwards stdout as `{type: stdout, chunk}` records and a
     terminal `exit` record. RecordStream.ExtractText projects the stdout records
-    to text and PlainText.Decoder collects the stream into a single string.
+    to text and PlainText.Decoder collects the stream into a single string. The
+    call takes a `timeoutMs` an expression computes.
 imports:
   Shell: ../
   RecordStream: ../../record-stream
@@ -40,6 +41,7 @@ steps:
   - name: stream
     inputs:
       command: "printf hello-stream"
+      timeoutMs: !cel "5000"
     invoke:
       kind: Shell.CommandStream
       host: !ref local

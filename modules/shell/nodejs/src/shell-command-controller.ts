@@ -1,6 +1,6 @@
 import type { InvokeContext, KindRef, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import type { BufferedResult, ShellHost } from "./shell-host.js";
-import { isShellHost, toCommandSpec } from "./shell-host.js";
+import { isShellHost, toCommandSpec, toTimeoutMs } from "./shell-host.js";
 
 interface ShellCommandManifest {
   metadata: { name: string; module: string };
@@ -12,7 +12,7 @@ interface CommandInput {
   args?: string[];
   env?: Record<string, string | null>;
   stdin?: string;
-  timeoutMs?: number;
+  timeoutMs?: number | bigint;
   cwd?: string;
 }
 
@@ -31,7 +31,16 @@ class ShellCommandResource implements ResourceInstance {
     );
     const spec = toCommandSpec(input, "Shell.Command");
     return host
-      .exec(spec, { env: input.env, stdin: input.stdin, timeoutMs: input.timeoutMs, cwd: input.cwd }, ctx)
+      .exec(
+        spec,
+        {
+          env: input.env,
+          stdin: input.stdin,
+          timeoutMs: toTimeoutMs(input.timeoutMs, "Shell.Command"),
+          cwd: input.cwd,
+        },
+        ctx,
+      )
       .buffered();
   }
 }

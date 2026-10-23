@@ -108,7 +108,7 @@ value:
 
 ## Numbers: int vs double
 
-CEL distinguishes integers from doubles and does not implicitly promote between them. A value that flows in through a contract (e.g. a tool argument or a parent step) arrives as a double, so multiplying it by an integer literal fails with `no such overload: dyn<double> * int`. Use a double literal, or cast with `double(...)`:
+CEL distinguishes integers from doubles and does not implicitly promote between them. A number nothing declares as an integer — an argument a contract leaves untyped, for instance — arrives as a double, so multiplying it by an integer literal fails with `no overload of "*" takes (double, int)`. Use a double literal, or cast with `double(...)`. A value declared `type: integer`, and an integral number written literally in a parent step's `value:`, is already an int and needs no cast.
 
 ```yaml
 value:

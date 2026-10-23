@@ -25,6 +25,7 @@ import { RuntimeError, TEARDOWN_LAST } from "@telorun/sdk";
 import { publishedPropsOf } from "../../evaluation-context.js";
 import type { BuiltinControllerContext } from "../../internal-context.js";
 import { buildScopeConfig, type LoggingManifestBlock } from "../../logging/kernel-logging.js";
+import { normalizeModuleInputs } from "../../declared-module-inputs.js";
 import { membersRefusal, settleMembersValue, type SchemaAccepts } from "../../members-values.js";
 import { settleImportInputs } from "./import-inputs.js";
 import { importFailure } from "../../import-load-failure.js";
@@ -663,7 +664,8 @@ function borrowSharedLibrary(
 }
 
 /** An import's `variables:` / `secrets:`, evaluated in the importer's scope,
- *  defaulted from the library's declaration and settled against it. */
+ *  defaulted from the library's declaration, settled against it, and each in the
+ *  numeric representation the library declares for it. */
 function settleImportBlocks(
   resource: any,
   declaredVariables: Record<string, unknown>,
@@ -692,8 +694,8 @@ function settleImportBlocks(
     external,
   );
   return {
-    variables: variables.values,
-    secrets: secrets.values,
+    variables: normalizeModuleInputs(variables.values, declaredVariables),
+    secrets: normalizeModuleInputs(secrets.values, declaredSecrets),
     redacted: [...variables.redacted, ...secrets.redacted],
   };
 }

@@ -3483,9 +3483,22 @@ to say.
   when an integer takes part in arithmetic with a double
   (`double(size(x)) / total`, since there is no `int OP double` overload). It
   is never a serialization step; never write it to make a value encodable.
-  A value DECLARED `type: integer` — in an `inputType`, or in a route's
-  `request.schema` — is an int in CEL however it arrived (a JSON number, a
-  YAML literal), so `inputs.n * 2` and `request.body.price + 1` need no cast.
+  A value DECLARED `type: integer` — in an `inputType`, in a route's
+  `request.schema`, or as a module `variables:` / `secrets:` entry — is an int
+  in CEL however it arrived (a JSON number, a YAML literal, an env var, a
+  default, a value an importer supplied), as long as int64 can hold it, so
+  `inputs.n * 2`, `request.body.price + 1` and `variables.retentionDays * 24`
+  need no cast.
+  A number written literally in a step's `value:` follows the same idea with
+  no declaration: integral and within int64 is an int, anything else a double, at any depth of
+  a literal map or list — `value: 3` then `steps.count.result * 2` composes,
+  and `steps.count.result * 2.0` is refused by `telo check` (`CEL_TYPE_ERROR`).
+  `3.0` and `1e3` are ints too; write a double 3 as `value: !cel "3.0"`.
+  Two steps sharing a name (a loop's seed and the step advancing it, one per
+  branch) are typed only when both produce the same type, so advance a counter
+  seeded with `value: 0` by `steps.i.result + 1`, never `+ 1.0`. A literal
+  step's result is typed, so it does not meet `null` in a condition (`true ?
+  1 : null` never did): write `has(steps.x) ? dyn(steps.x.result) : null`.
   A catalog call returning `double` (`sum`, `avg`) stays a double: wrap it in
   `int(...)` before integer arithmetic.
 - NAMING IS ENFORCED, and the rule is one sentence: case encodes what a name

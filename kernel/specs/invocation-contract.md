@@ -352,6 +352,34 @@ the keys the fill added; a key the caller supplied keeps its original value. The
 carry-back MUST reach values nested inside arrays: a schema may declare a default
 under `items`, and stopping at the array boundary drops that fill silently.
 
+A module's declared `variables` and `secrets` are not arguments of a call, and
+take the opposite rule: a runtime MUST normalize each to the numeric
+representation its entry declares — `integer` to the wide-integer type when the
+value is within that type's range, `number` to the JSON number type when the
+conversion is exact, anything else unchanged — once, where the values are bound
+to the module (the root Application after its inputs are resolved, a Library
+import after its block is decoded and validated against the library's entries
+(§4.6) and before two imports of a shared library are compared). A value type
+whose representation is an instance keeps it. Every reader, an expression and a controller alike, then holds
+the representation the declaration names.
+
+A number written literally in a pure `value:` step of the step grammar has no
+declaration, and takes JSON Schema's own integer rule: a runtime with a
+wide-integer type MUST read it as that type when it is integral and within the
+type's range, and as its JSON number type otherwise — for the whole value, and
+at every depth of a literal map or list. The rule is about the value, not its
+spelling: `3`, `3.0` and `1e3` are integers and `3.5` is not. A runtime MUST NOT
+apply it to a number an expression computes, including one computed by an
+expression that is a member of a literal map or list, and MUST NOT apply it to a
+result read back from a durable record, which is returned as recorded. A
+runtime that substitutes values into a step body before it runs — a templated
+kind resolving `self` in its body, including a resource scoped inside a body
+entry, or an inherited kind's construction mapping building its parent's
+configuration — MUST leave an expression in a `value:` an expression, evaluated
+when the step runs against the same `self`, so that what it computes is never
+read as a written number. Static analysis types the step's result by the same
+rule, so a manifest multiplying a literal `3` by `2.0` is refused before it runs.
+
 ### 4.4 Serializing a wide integer
 
 Where a value crosses a JSON boundary — a response body, a record frame, a

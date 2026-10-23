@@ -1,0 +1,86 @@
+kind: Telo.Application
+metadata:
+  name: HttpComputedIntegersTest
+  version: 1.0.0
+  description: |
+    Integer settings an expression computes behave as the same literals do. A
+    `!cel` integer is a 64-bit integer, not the number a YAML literal is: the
+    proxy hop count, a static mount's cache lifetime, the CORS preflight status
+    and cache lifetime, and the status a not-found handler's result answers with.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ip, method: GET }
+    handler: { kind: Run.Value, value: !cel "inputs" }
+    inputs:
+      ip: !cel "request.ip"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 9302 }
+    trustProxy: !cel "1"
+    cors:
+      origin: "*"
+      optionsSuccessStatus: !cel "200"
+      cacheControl: !cel "300"
+    notFoundHandler:
+      invoke: { kind: Run.Value, value: { status: !cel "400 + 10", body: { gone: true } } }
+    mounts:
+      - path: /
+        mount: !ref api
+      - path: /static
+        mount:
+          kind: Http.Static
+          root: !module-path ./__fixtures__/static-site
+          maxAge: !cel "3600"
+targets:
+  - !ref server
+steps:
+  # One hop trusted: the rightmost forwarded address is the client.
+  - name: forwarded
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:9302/ip
+      method: GET
+      headers: { X-Forwarded-For: "10.0.0.1, 10.0.0.2" }
+  - name: asset
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:9302/static/index.html, method: GET }
+  - name: preflight
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:9302/ip
+      method: OPTIONS
+      headers: { Origin: "http://example.test", Access-Control-Request-Method: GET }
+  - name: missing
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:9302/nothing-here, method: GET }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        clientIp: !cel "steps.forwarded.result.body.ip"
+        assetCacheControl: !cel "steps.asset.result.headers['cache-control']"
+        preflightStatus: !cel "steps.preflight.result.status"
+        preflightCacheControl: !cel "steps.preflight.result.headers['cache-control']"
+        missingStatus: !cel "steps.missing.result.status"
+        missingBody: !cel "steps.missing.result.body"
+      expected:
+        clientIp: 10.0.0.2
+        assetCacheControl: public, max-age=3600
+        preflightStatus: 200
+        preflightCacheControl: max-age=300
+        missingStatus: 410
+        missingBody: { gone: true }

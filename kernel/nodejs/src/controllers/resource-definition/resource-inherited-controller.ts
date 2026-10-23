@@ -1,4 +1,5 @@
 import type {
+  CompiledValue,
   ControllerInstance,
   EvaluationContext,
   ResourceContext,
@@ -6,10 +7,19 @@ import type {
   ResourceInstance,
 } from "@telorun/sdk";
 import { isCelRecord, isCompiledValue } from "@telorun/sdk";
-import { effectiveAuthorSchema, isResolvedReference, reachSites, SELF_PATH, type DefResolver } from "@telorun/analyzer";
+import {
+  effectiveAuthorSchema,
+  isResolvedReference,
+  reachSites,
+  resolveParent,
+  SELF_PATH,
+  type DefResolver,
+} from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
+import { celHostScopeValue } from "../../cel-host-scope-value.js";
 import { declaringContextOf } from "./declaring-context.js";
 import { mappingProvenance, recordTextProvenance, textProvenanceOf } from "../../text-records.js";
+import { isWithinSlot, stepValueSlots } from "./step-value-slots.js";
 
 /** Typed internal seam implemented by the concrete `ResourceContextImpl`: runs
  *  the kernel's create phase for the parent-kind manifest and returns the native
@@ -55,6 +65,51 @@ function resolveRefSlot(value: unknown, ctx: ResourceContext): ResourceInstance 
   return instance ?? undefined;
 }
 
+/** Expressions a mapping leaves compiled — at or beneath `slots`, spelled as the
+ *  mapping's paths are (`base.steps[0].value`) — and how each is handed on, given
+ *  where it was written. */
+interface KeptExpressions {
+  slots: readonly string[];
+  keep(value: CompiledValue, where: string): CompiledValue;
+}
+
+/**
+ * `value` left an expression that reads `self` as the instance it was built for,
+ * wherever it is later evaluated: the parent evaluates a step's `value:` at
+ * dispatch, in a context that binds no `self` of its own. Bound for the one call
+ * and restored after, as `expandWith` binds its scope; a failure names where the
+ * expression was written, as one evaluated at creation does.
+ */
+function withSelfBound(
+  value: CompiledValue,
+  self: Record<string, unknown>,
+  where: string,
+): CompiledValue {
+  let view: unknown;
+  return {
+    ...value,
+    call: (activation: Record<string, unknown>) => {
+      view ??= celHostScopeValue(self);
+      const previous = Object.getOwnPropertyDescriptor(activation, "self");
+      Object.defineProperty(activation, "self", {
+        value: view,
+        configurable: true,
+        enumerable: true,
+        writable: true,
+      });
+      try {
+        return value.call(activation);
+      } catch (error) {
+        if (error instanceof Error) error.message = `in ${where}: ${error.message}`;
+        throw error;
+      } finally {
+        if (previous) Object.defineProperty(activation, "self", previous);
+        else delete activation.self;
+      }
+    },
+  };
+}
+
 /** Expand a mapping node against a CEL scope. `self`-only CEL resolves to
  *  literals now; a pure `self.<path>` access is navigated directly so live
  *  instances pass through (CEL's output type checker rejects them). Shared by
@@ -68,8 +123,10 @@ function expandMappingNode(
   ctx: EvaluationContext,
   path: string,
   owner: string,
+  kept?: KeptExpressions,
 ): unknown {
   if (isCompiledValue(value)) {
+    if (kept && isWithinSlot(kept.slots, path)) return kept.keep(value, `${path} of ${owner}`);
     const src = typeof value.source === "string" ? value.source.trim() : "";
     const m = src.match(SELF_PATH);
     if (m) {
@@ -87,7 +144,7 @@ function expandMappingNode(
     }
   }
   if (Array.isArray(value)) {
-    return value.map((v, i) => expandMappingNode(v, scope, ctx, `${path}[${i}]`, owner));
+    return value.map((v, i) => expandMappingNode(v, scope, ctx, `${path}[${i}]`, owner, kept));
   }
   // Asked of the value DOMAIN, never of the prototype: a branded CEL value (an
   // instant, a duration, a uint) is a plain object, and rebuilding one from its
@@ -95,7 +152,7 @@ function expandMappingNode(
   if (value !== null && typeof value === "object" && isCelRecord(value)) {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      const expanded = expandMappingNode(v, scope, ctx, `${path}.${k}`, owner);
+      const expanded = expandMappingNode(v, scope, ctx, `${path}.${k}`, owner, kept);
       // An absent optional stays absent: a key holding `undefined` would read
       // as present to the next level's `has()` and hand CEL a non-value.
       if (expanded !== undefined) out[k] = expanded;
@@ -189,6 +246,22 @@ export function createInheritedController(
     );
   }
   const base = definition.base;
+  // `base:` builds the parent's configuration, so a pure step's `value:` in it
+  // is found through the parent kind's step-body declaration: the parent's step
+  // engine reads a number there as one the author wrote, and one `base:`
+  // computed from `self` must not be.
+  const parentDef = resolveParent(definition, resolveDef);
+  const baseValueSlots =
+    base != null && typeof base === "object" && parentDef
+      ? stepValueSlots(
+          base as Record<string, unknown>,
+          effectiveAuthorSchema(parentDef, resolveDef),
+          (kind) => {
+            const def = resolveDef(kind, definition);
+            return def ? effectiveAuthorSchema(def, resolveDef) : undefined;
+          },
+        ).map((slot) => `base.${slot}`)
+      : [];
 
   return {
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance | null> => {
@@ -221,6 +294,9 @@ export function createInheritedController(
           definingContext,
           "base",
           mappingOwner(definition),
+          baseValueSlots.length > 0
+            ? { slots: baseValueSlots, keep: (value, where) => withSelfBound(value, self, where) }
+            : undefined,
         ) as Record<string, unknown>;
       } else {
         const { kind: _kind, metadata: _metadata, name: _name, ...config } = self;
