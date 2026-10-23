@@ -1,5 +1,29 @@
 # telo-kernel
 
+## 0.5.24
+
+### Patch Changes
+
+- Updated dependencies [adf4eae]
+- Updated dependencies [ad5633d]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [ad5633d]
+- Updated dependencies [062d4d0]
+- Updated dependencies [b9e6234]
+- Updated dependencies [062d4d0]
+- Updated dependencies [b9e6234]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [832f24b]
+- Updated dependencies [832f24b]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [84f7424]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+  - @telorun/kernel@0.121.0
+  - @telorun/editor-protocol@0.2.0
+  - @telorun/language-host@0.3.0
+
 ## 0.5.23
 
 ### Patch Changes

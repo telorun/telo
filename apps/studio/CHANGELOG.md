@@ -1,5 +1,42 @@
 # @telorun/studio
 
+## 0.30.2
+
+### Patch Changes
+
+- Updated dependencies [adf4eae]
+- Updated dependencies [ad5633d]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [ad5633d]
+- Updated dependencies [062d4d0]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [b9e6234]
+- Updated dependencies [832f24b]
+- Updated dependencies [062d4d0]
+- Updated dependencies [832f24b]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [b9e6234]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [832f24b]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [832f24b]
+- Updated dependencies [ad5633d]
+- Updated dependencies [84f7424]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [ad5633d]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [84f7424]
+  - @telorun/analyzer@0.121.0
+  - @telorun/debug-wire@0.4.5
+  - @telorun/sdk@0.121.0
+  - @telorun/templating@0.121.0
+  - @telorun/editor-protocol@0.2.0
+  - @telorun/ide-support@0.121.0
+  - @telorun/language-host@0.3.0
+  - @telorun/debug-ui@0.6.7
+
 ## 0.30.1
 
 ### Patch Changes

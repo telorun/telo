@@ -1,9 +1,0 @@
----
-"@telorun/cli": minor
----
-
-A packaged executable is a manifest source: `telo describe ./orders`, `telo check ./orders`, `telo needs report ./orders`, `telo env template ./orders`, `telo cel functions ./orders` and `telo run ./orders` read its payload — unpacked into the directory the binary itself uses, against the payload's own cache — and execute nothing it carries. Only a run reclaims the application's older unpacked trees. The payload's cache is sealed: these commands read each module it holds as it is — an unpinned `oci://…@<tag>` import is not checked against its registry, so reading a binary needs no network — remove nothing from it and write nothing into it, and `telo check ./other ./orders` judges `./orders` against its own payload's copy rather than another path's cache.
-
-`TELO_APP_CLI=1` makes a packaged binary the telo CLI it carries for one start (`TELO_APP_CLI=1 ./orders describe ./orders`, `TELO_APP_CLI=1 ./orders run --inspect --debug ./orders <args>`). Unset or empty means the application; any other value is refused before anything runs, with exit status 2 in every distribution. Every telo start removes the variable from its own environment, so no kernel, controller or child process sees it; `telo runner` sets it on the children it starts when the executable it re-runs carries a payload. `./orders <args>` is now exactly `TELO_APP_CLI=1 ./orders run ./orders <args>`, and `--debug`'s `.telo.debug.jsonl` is written where the env files are read — the working directory for a packaged binary. An executable carrying a payload is never `telo package`'s own carrier.
-
-Breaking: `TELO_APP_INFO` is retired. A packaged binary started with it set refuses (exit status 2) and starts nothing, naming `TELO_APP_CLI=1 <binary> package inspect <binary>`, which prints the same index. The packaged-executable contract is written as `kernel/specs/packaged-application.md`.

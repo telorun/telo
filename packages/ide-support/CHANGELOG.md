@@ -1,5 +1,63 @@
 # @telorun/ide-support
 
+## 0.121.0
+
+### Minor Changes
+
+- b9e6234: The language-server engine serves the model structured editors read, computed from the analysis its diagnostics come from at the module's own telo version. An engine advertising `experimental.telo.viewModel` answers `telo/viewModel` with an owner module's view model — its module graph, each templated kind's body as a graph, how every kind spelling and reference constraint resolves, the invocation contracts, which of the owner's resources — and, separately, of each template body's entries — every output-constrained slot refuses and why (a slot addressed by its kind and its JSON Pointer in that kind's schema), every reference the owner writes, and the LSP version of each open document the analysis read, so a host can tell a model computed before its latest edit — or `null` for an owner it is not analysing; it sends `telo/viewModelChanged` with a revision after each analysis of an owner and when it drops one; and it answers `telo/celCompletion` with completion for a CEL value typed into a form field, addressed by resource and field path. The protocol stays at generation 1: the additions are negotiated by the capability, and the schema and README document every field.
+- 062d4d0: A `Telo.HostPath` slot may say what its path names: `x-telo-type: { name: Telo.HostPath, entry: directory }` (or `entry: file`). Omitted means either, and an absent path is never refused. `telo check` refuses a `!module-path` naming the other kind of entry, a variable declared with the other `entry` read into the field, and one an import passes to a library input declaring the other (`HOST_PATH_ENTRY_MISMATCH`); at a call's `inputs:` the mismatch is `CEL_TYPE_ARGUMENT_MISMATCH`, and a token outside `file` / `directory` is `X_TELO_TYPE_ARGUMENT_INVALID`. The kernel refuses an existing path of the other kind when it creates the resource holding it (`ERR_HOST_PATH_ENTRY_MISMATCH`) and one the filesystem will not answer for (`ERR_HOST_PATH_UNREADABLE`), and an Application variable or secret declaring `entry` at load, inside `ERR_MANIFEST_VALIDATION_FAILED`. `!module-path` completion offers only directories at a directory slot. The value-type data gains a parameter flag, `hostEntry`, which both SDK readers accept on a `fromHost` type only. `ManifestSource.exists` is replaced by `entryAt(base, relative)`, answering `file`, `directory` or nothing; the loader stamps what a single-claim tag names on it. `Telo.DurableDirectory.path` declares `entry: directory`. The Rust kernel now refuses both at creation as the Node kernel does — a path of the other kind (`ERR_HOST_PATH_ENTRY_MISMATCH`) and a relative one, literals included since it runs no analysis (`ERR_HOST_PATH_RELATIVE`) — and both kernels answer one set of vectors, `analyzer/host-path-conformance/`.
+- a6d17ff: Typing inside node trees. Eval paths, accessor fields, `x-telo-context` regions and contexts are found by one walk that follows a named shape (`$ref: telo:<Module>/<Type>`) and recursion at any depth, as well as map values (`additionalProperties` / `patternProperties`) and local references; the analyzer and the kernel read named shapes through one lookup (`NamedShapeLookup`, the registry's `schemaForId`; `kindCelEvalSites` / `governedCelEvalSites` take it as a required argument), so a site inside a recursive shape is the same site at `telo check`, at creation and at a template's deferral. A region's scope is `$` followed by an eval path (`$.content(.children[*])*.note`). A nested region adds to every region enclosing it, an inner name shadowing an outer one, and an accessor field may start its chain at a binding of any of them.
+
+  `x-telo-context-eval: <mode> | [<mode>…]` (`compile`, `runtime`, `accessor`) on a binding names the eval modes it exists at: an evaluated read of an `accessor`-only binding is `CEL_UNKNOWN_IDENTIFIER`, and an accessor chain rooted at a binding without `accessor` is `CEL_UNKNOWN_IDENTIFIER` at check and `ERR_ACCESSOR_NOT_PLAIN_CHAIN` at creation; a value that is no mode, an empty list or a repeated mode is `SCHEMA_VIOLATION`, the mark anywhere but on a binding the warning `CONTEXT_EVAL_MISPLACED`. Compile-time evaluation now skips each accessor field by itself, so an expression beside one under the same top-level property is evaluated at creation.
+
+  `x-telo-match-for: "<pointer>"` on a JSON-Schema-valued field names the sibling accessor field the schema is matched against: a schema that can never hold for the accessor's static type (`type`, `const`, `enum`, closed-object `required`, through `properties`, non-empty `items`, `allOf`, `anyOf`) is `MATCH_UNSATISFIABLE`, judged at every resource, `with:` member, template-body entry and forwarded value of the entry's own modules and refused by the kernel's load analysis; a misdirected annotation is `MATCH_FOR_INVALID`.
+
+  A referrer rule's `resolve:` binds `referrer` with the named reference slots of the referrer replaced by the declarations they name, one level deep. Format `re2-pattern` accepts the regular expressions RE2 and ECMAScript-`u` match identically, as a closed allowlist. `TEXT_SLOT_ACCESSOR` now finds an accessor field inside a named shape, reported at the kind's field naming it. Completion offers `x-telo-match-for` in a kind's schema and `x-telo-context-eval` on an `x-telo-context` binding.
+
+- 832f24b: A reference is told from an inline declaration by a marker, never by a `name` field: every resolved reference carries `__ref: true`, and any other object with a `kind` at a reference slot is an inline declaration of that kind, checked against its schema. A kind whose configuration has a field called `name` can now be declared inline — `icon: { kind: UiLucide.Icon, name: house }` — where it used to be refused as the removed `{ kind, name }` reference form.
+
+  `INVALID_REFERENCE_FORM` keeps its wording and its `!ref <name>` repair: it is reported for `{ kind, name }` when the kind's schema declares no `name` field (an open schema included), and for an author-written `__ref` key. What the per-resource checks would say about such an object, read as a declaration, is not reported a second time. Both are refused in the entry's own modules only. A dependency's `{ kind, name }` — what published artifacts carry — is still read as the reference it means, marked at normalization, so an application pinning such a library boots as before; an author-written `__ref` key in a library is refused when an import loads it (`ERR_INVALID_REFERENCE_FORM`). Whether a kind declares `name` is read through local `$ref`s, `allOf` conjuncts and union branches of its author schema. The analyzer exports the reader (`isResolvedReference`, `isInlineDeclaration`, `resolvedReference`, `declaresNameField`, `RESOLVED_REFERENCE_MARKER`); `ensureKindRef` returns a marked reference.
+
+  In `@telorun/sdk`, `KindRef` carries the `__ref` marker, and `resolveRefInstance` and a step's dispatch read a value as a reference only when it is marked or a `!ref` sentinel: a hand-built `{ kind, name }` handed to `ensureKindRef` / `resolveRef` is now an inline declaration of that kind. A controller building a reference in code writes `kindRef(kind, name, alias?)`; `isKindRef` and `refSentinelTarget` answer what a value is. The editor support reads a slot's reference the same way, so a navigation entry's inline `icon: { kind: UiLucide.Icon, name: house }` is no reference to `house`.
+
+  The Rust kernel judges reference forms only at reference slots, so a resource whose kind declares a `name` field is no longer refused; it reads a library's `{ kind, name }` as a reference and refuses its `__ref` key, and refuses a bare `targets:` entry written `{ kind, name }` as `ERR_INVALID_REFERENCE_FORM`.
+
+  A compile-eval result outside its slot's `enum` is refused in the words every schema refusal uses — `must be one of <count> allowed values; did you mean 'house'?`, or the values themselves when there are 20 or fewer — instead of naming only the slot's type.
+
+- a6d17ff: The text walk records a text only where its fragment admits the value: a string where the fragment takes one, an object only when it holds every required member of one of the fragment's closed object branches and nothing else. A `Text` that is one alternative of a union beside an object shape — a text, or a text with values of its own — is therefore read by the branch that holds it in both halves; before, the kernel judged the whole object as a `Text` and refused it at boot (`ERR_MESSAGE_SYNTAX_INVALID`) while `telo check` was silent. An expression at such a union is evaluated first and its result read by the same rule.
+
+  New annotation `x-telo-text-values: { <name>: <schema> }` on a `Text` or `Message` node declares the values whoever shows the text formats it with (`{}` for none). A placeholder or plural selector the text reads that is not declared is `MESSAGE_PLACEHOLDER_UNBOUND`, and a selector over a value declared as a string `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED` — by `telo check` for a literal text, by the kernel for a text an expression computes (`ERR_`-prefixed). The annotation on a node that is no text, naming a value typed as neither a string nor a number, or on a text a values pairing (`x-telo-text-values-for`) already binds is `TEXT_VALUES_INVALID` — at the kind, at the import reaching a dependency's, and when the kernel registers the definition (`ERR_TEXT_VALUES_INVALID`). Completion offers it in a kind's schema and in a data schema. The analyzer exports `textValuesProblems`, `judgeDeclaredValues`, `declaredValueKinds`, `fragmentAdmits` and `declaredTextValuesOf`.
+
+  New built-in fragment `telo://manifest#/$defs/TextRecord`: the closed record `{ text, context, lang, computed }` a controller receives for a `Text`, for a schema typing text that is already a record (a renderer's wire, a controller forwarding what it received). The text walk never enters one.
+
+### Patch Changes
+
+- Updated dependencies [adf4eae]
+- Updated dependencies [ad5633d]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [ad5633d]
+- Updated dependencies [062d4d0]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [b9e6234]
+- Updated dependencies [832f24b]
+- Updated dependencies [062d4d0]
+- Updated dependencies [832f24b]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [832f24b]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [832f24b]
+- Updated dependencies [84f7424]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [ad5633d]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [84f7424]
+  - @telorun/analyzer@0.121.0
+  - @telorun/templating@0.121.0
+  - @telorun/editor-protocol@0.2.0
+  - @telorun/cel@0.121.0
+
 ## 0.120.1
 
 ### Patch Changes

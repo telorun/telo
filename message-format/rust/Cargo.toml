@@ -1,6 +1,6 @@
 [package]
 name = "telorun-message-format"
-version = "0.120.0"
+version = "0.121.0"
 license = "MIT"
 edition = "2021"
 publish = false
