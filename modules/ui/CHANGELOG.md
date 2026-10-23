@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 - 2026-10-23
+### Added
+* Page width: the named shape `Ui.PageWidth` (`contained` | `full`), an optional `width` on `Ui.Page`, and a `pageWidth` input the page is invoked with; the page answers `width` in its document. `@telorun/ui` exports `resolvedPageWidth`, the one reading of that chain (the value written, else the application's, else `contained`). New design tokens `width.page` (the widest a contained page is drawn) and `space.page` (the inline inset of a page and of the header), each a CSS length in `px` or `rem`, both in `DESIGN_TOKENS`.
+
 ## 0.5.0 - 2026-10-23
 ### Added
 * A menu node: { type: menu, text, items } is a button labelled text that opens a list of link nodes. Choosing an item follows its href exactly as clicking that link would — a declared page within the application, anything else by a load — under the same address rule, a literal refused by telo check and a computed one turning the menu into an error node for that request. An item whose style holds strong is the current choice; each item is delivered by its own when and drawn by its own shown, and a menu none of whose items is delivered is left out. It works anywhere a node does.

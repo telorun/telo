@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.2 - 2026-10-23
+### Fixed
+* Pdf.Rasterizer and Pdf.Text accept a 'page', Pdf.Rasterizer a 'quality', and Pdf.FormFields a field's 'page', supplied as a 64-bit integer — what any !cel integer expression produces — instead of failing with 'Invalid page request' or refusing a valid value.
+
 ## 0.11.1 - 2026-10-10
 ### Fixed
 * The canvas decoder moves from 1.0.0 to 1.0.10. An image whose signature is recognised but whose body is corrupt or cut short is now an error the caller can catch, where it ended the whole process: Image.Fit raises ERR_UNSUPPORTED_IMAGE and Image.Overlay raises ERR_INVALID_INPUT. The pdf module stages the same version, since it points every canvas loaded after it in the process at its own decoder file.

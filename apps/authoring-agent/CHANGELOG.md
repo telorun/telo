@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.28.1 - 2026-10-23
+### Fixed
+* A conversation whose history holds a hub tool's result no longer fails its next turn with the provider's 400 "Invalid 'input[N].call_id': empty string": history is replayed as stored, and an uploaded file is a content reference (attachment:<id>) the agent's resolver reads for the model from the conversation's own uploads. Conversations stored before this are re-projected from the journal when the agent starts.
+* The chat app's two 'failure' outputs read the failure step's result through dyn(...), so a check that types a literal step's result accepts them beside null.
+* The primer now states that a module variable or secret declared as an integer, and a number written literally in a step's value, are ints in CEL and need no cast; that two steps sharing a name are typed only when both produce the same type; and that a literal step's result meets null in a condition only through dyn(...).
+
 ## 0.28.0 - 2026-10-23
 ### Added
 * The agent's telo tool may run telo describe, and the system prompt has the agent read what a manifest it wrote does — its inputs, what it starts, its entry points and which catches: entry renders each code, and what nothing reaches — to confirm it built what was asked. teloVerbs defaults to check, cel, module, search, builtins and describe.

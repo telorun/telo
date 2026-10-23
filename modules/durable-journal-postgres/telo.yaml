@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: DurableJournalPostgres
-  version: 0.10.1
+  version: 0.10.2
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Reliability, Storage]

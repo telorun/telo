@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.1 - 2026-10-23
+### Fixed
+* Test.Suite accepts a 'concurrency' supplied as a 64-bit integer — what any !cel integer expression produces — instead of failing with a BigInt conversion error.
+
 ## 0.13.0 - 2026-10-14
 ### Added
 * Test.Suite.env: environment variables every test manifest runs with, evaluated at startup so a value may be computed from another resource, such as the address of a database the suite's application started. It wins over the forwarded host environment and the tests' env files.

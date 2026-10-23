@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 - 2026-10-23
+### Fixed
+* PdfMake.Document lays out a table's 'headerRows', 'keepWithHeaderRows', a cell's 'colSpan' / 'rowSpan' and an ordered list's 'start' supplied as a 64-bit integer — what any !cel integer expression produces — as it does the same literal, instead of failing with a BigInt arithmetic error or numbering the list from 1.
+
 ## 0.4.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 - 2026-10-23
+### Fixed
+* OTLP Sink and TraceSink accept a computed (`!cel`) integer `buffer` and bound the buffer as the same literal does; before, the sink was refused at start with a JavaScript type error. A value no number holds exactly is refused, naming the sink.
+
 ## 0.7.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

@@ -1,8 +1,0 @@
-modules:
-  apps/authoring-agent: Fixed
-body: "A conversation whose history holds a hub tool's result no longer fails its next
-  turn with the provider's 400 \"Invalid 'input[N].call_id': empty string\": history is
-  replayed as stored, and an uploaded file is a content reference (attachment:<id>) the
-  agent's resolver reads for the model from the conversation's own uploads.
-  Conversations stored before this are re-projected from the journal when the agent
-  starts."

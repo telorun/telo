@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.1 - 2026-10-23
+### Fixed
+* Cache.View's invoke slot accepts a runnable as well as an invocable, as its dispatch always did, so wrapping a Run.Sequence no longer fails telo check.
+
 ## 0.13.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

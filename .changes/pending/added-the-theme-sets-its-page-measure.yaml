@@ -1,7 +1,0 @@
-modules:
-  modules/ui-react-radix: Added
-body: The theme sets its page measure and inset as the `width.page` (`72rem`) and
-  `space.page` (`1.5rem`) design tokens instead of `max-width` and inline padding on the
-  `page`, `main` and `header` parts, and styles the header's row through the new
-  `header-content` part, so a full-width page and a header lined up with a contained
-  page work under it.

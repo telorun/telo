@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.29.1 - 2026-10-23
+### Fixed
+* The doc paragraph on numbers reaching Run.Value is corrected: a value declared as an integer, and an integral number written literally in a parent step's value, is already an int and needs no cast.
+
 ## 0.29.0 - 2026-10-23
 ### Added
 * Run.Projection's result is typed and validated as an array: the new elementType field types one element (outputs is checked against it, and every element is validated at dispatch), so passing a projection's result to an input declared type: array no longer fails telo check with CEL_TYPE_ERROR. Breaking: outputType now describes the whole result array rather than one element, and a catches fallback value must be an array; a non-array fallback now fails the call with ERR_OUTPUT_INVALID.

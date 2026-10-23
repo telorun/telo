@@ -1,5 +1,0 @@
-modules:
-  modules/openai: Fixed
-body: A buffered model call whose tool call arrives with no id now gets a minted one, as
-  the streaming kinds already did, so the tool result answering it carries an id the
-  next request accepts.

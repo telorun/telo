@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0 - 2026-10-23
+### Fixed
+* A buffered model call whose tool call arrives with no id now gets a minted one, as the streaming kinds already did, so the tool result answering it carries an id the next request accepts.
+* `OpenAI.ChatModel`, `OpenAI.ResponsesModel` and their stream kinds refuse a `tool` message with no `toolCallId`, or an empty one, before anything is sent — by the `Ai.Model` contract (`ERR_INPUT_INVALID`) when dispatched, and as `ERR_MODEL_REQUEST_REJECTED` naming its index in `messages` for a caller that bypasses it — instead of sending an empty call id the endpoint rejects with a 400 naming no message.
+
 ## 0.14.0 - 2026-10-23
 ### Added
 * OpenAI.Client: an Http.Client preset with OpenAI's endpoint as the default baseUrl, a ten-minute timeout and an optional credential (left out for a self-hosted server asking no key), so a long answer is no longer cut off by the HTTP client's 10-second default.

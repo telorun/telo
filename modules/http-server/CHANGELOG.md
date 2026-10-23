@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.39.1 - 2026-10-23
+### Fixed
+* Http.Server accepts a computed (`!cel`) integer for `trustProxy`, `cors.optionsSuccessStatus` and `cors.cacheControl`, Http.Static for `maxAge`, and a not-found handler's result may answer with a computed `status`; each behaves as the same literal does. Before, `trustProxy` and `maxAge` refused the server at start, the preflight and not-found responses failed with 500, and `cacheControl` was dropped. A value no number holds exactly is refused, naming the resource and the field.
+
 ## 0.39.0 - 2026-10-23
 ### Added
 * `contentTypeParsers` is an entry list: each entry is identified by its `contentType` and dispatches to its `parser`, so an editor lists a server's parsers as it lists its mounts.

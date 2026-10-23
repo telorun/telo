@@ -1,4 +1,0 @@
-modules:
-  modules/test: Fixed
-body: Test.Suite accepts a 'concurrency' supplied as a 64-bit integer — what any !cel
-  integer expression produces — instead of failing with a BigInt conversion error.
