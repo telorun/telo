@@ -4,6 +4,7 @@ import {
   type ResourceContext,
   type ResourceInstance,
   SEVERITY,
+  integerInput,
   parseDurationMs,
 } from "@telorun/sdk";
 import { type CacheStore, isCacheStore } from "@telorun/cache";
@@ -34,12 +35,20 @@ interface GuardResult {
  */
 class RateLimitGuard implements ResourceInstance<GuardInputs, GuardResult> {
   private readonly windowMs: number;
+  private readonly limit: number;
 
   constructor(
     private readonly resource: GuardResource,
     private readonly ctx: ResourceContext,
   ) {
     this.windowMs = parseDurationMs(resource.window);
+    const limit = integerInput(resource.limit);
+    if (limit === undefined) {
+      throw new Error(
+        `RateLimit.Guard "${resource.metadata.name}": 'limit' must be an integer a number can hold.`,
+      );
+    }
+    this.limit = limit;
   }
 
   async invoke(inputs: GuardInputs): Promise<GuardResult> {
@@ -68,7 +77,7 @@ class RateLimitGuard implements ResourceInstance<GuardInputs, GuardResult> {
     const prior = cached.state !== "miss" && Array.isArray(cached.value) ? (cached.value as number[]) : [];
     const log = prior.filter((t) => t > cutoff);
 
-    if (log.length >= this.resource.limit) {
+    if (log.length >= this.limit) {
       const retryAfter = Math.max(1, Math.ceil((log[0] + this.windowMs - now) / 1000));
       // `debug`, not `info`, even though a throttle is the event this resource
       // exists to produce: absorbing a flood is its job, so one default-visible
@@ -79,7 +88,7 @@ class RateLimitGuard implements ResourceInstance<GuardInputs, GuardResult> {
       if (this.ctx.log.enabled(SEVERITY.debug)) {
         this.ctx.log.debug("Rate limit exceeded", {
           "ratelimit.key": inputs.key,
-          "ratelimit.limit": this.resource.limit,
+          "ratelimit.limit": this.limit,
           "ratelimit.retry_after": retryAfter,
         });
       }
@@ -88,7 +97,7 @@ class RateLimitGuard implements ResourceInstance<GuardInputs, GuardResult> {
 
     log.push(now);
     await store.set(bucketKey, log, this.windowMs, 0);
-    const remaining = this.resource.limit - log.length;
+    const remaining = this.limit - log.length;
     if (this.ctx.log.enabled(SEVERITY.debug)) {
       this.ctx.log.debug("Rate limit allowed", {
         "ratelimit.key": inputs.key,

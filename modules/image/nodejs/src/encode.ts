@@ -1,5 +1,6 @@
 import type { Canvas } from "@napi-rs/canvas";
 import { InvokeError } from "@telorun/sdk";
+import { integerSetting } from "./integer-setting.js";
 
 export type ImageFormat = "png" | "jpeg" | "webp";
 
@@ -11,7 +12,7 @@ const MEDIA_TYPE: Record<ImageFormat, string> = {
 
 export interface EncodeOptions {
   format?: string;
-  quality?: number;
+  quality?: number | bigint;
 }
 
 export interface EncodedImage {
@@ -44,11 +45,12 @@ export async function encodeCanvas(
     return { image: new Uint8Array(await canvas.encode("png")), mediaType };
   }
 
-  const quality = input.quality ?? resource.quality ?? 80;
-  if (!Number.isInteger(quality) || quality < 1 || quality > 100) {
+  const given = input.quality ?? resource.quality ?? 80;
+  const quality = integerSetting(given, label, "quality");
+  if (quality < 1 || quality > 100) {
     throw new InvokeError(
       "ERR_INVALID_INPUT",
-      `${label}: 'quality' must be an integer between 1 and 100; got ${quality}.`,
+      `${label}: 'quality' must be between 1 and 100, got ${String(given)}.`,
     );
   }
   return { image: new Uint8Array(await canvas.encode(format, quality)), mediaType };

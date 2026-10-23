@@ -28,6 +28,7 @@ import { decideValue, stepPath, type DurableDecisionKind } from "./durable-run.j
 import { isSuspension } from "./durable-suspension.js";
 import { InvokeError, isInvokeError } from "./invoke-error.js";
 import { executeInvokeStep, type InvokeStep, type InvokeStepContext } from "./invoke-step.js";
+import { literalStepValue } from "./literal-step-value.js";
 import { predicateResult } from "./step-predicate.js";
 import type { KindRef, ScopeContext } from "./ref.js";
 
@@ -426,7 +427,8 @@ export class StepEngine {
 
   /** A pure step: expand the expression in the step scope and publish it as
    *  `steps.<name>.result`, the same shape an invoke step records — so a
-   *  downstream step cannot tell how the value was produced. Nothing is
+   *  downstream step cannot tell how the value was produced. A number written
+   *  literally reads as CEL would read it (`literalStepValue`). Nothing is
    *  dispatched, so there is no span and no topology edge. */
   private async executeValueStep(
     step: ValueStep,
@@ -443,7 +445,7 @@ export class StepEngine {
       // a `Durable.Value` work INSIDE a collapsed region: collapse suppresses
       // per-step entries, never a direct decision.
       const result = await this.decide(invokeCtx, path, "value", () =>
-        this.ctx.expandValue(step.value, { steps, ...extraCtx }),
+        this.ctx.expandValue(literalStepValue(step.value), { steps, ...extraCtx }),
       );
       steps[step.name] = { result };
     } catch (err) {

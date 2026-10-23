@@ -2282,7 +2282,7 @@ steps:
                                     data: !cel "has(error.data) ? error.data : null"
                           outputs:
                             recorded: !cel "steps.recorded.result"
-                            failure: !cel "has(steps.failure) ? steps.failure.result : null"
+                            failure: !cel "has(steps.failure) ? dyn(steps.failure.result) : null"
                         inputs:
                           turnId: !cel "inputs.revert.turnId"
                           paths: !cel "inputs.revert.paths"
@@ -2300,7 +2300,7 @@ steps:
                   message: !cel "error.message"
                   data: !cel "has(error.data) ? error.data : null"
         outputs:
-          failure: !cel "has(steps.failure) ? steps.failure.result : null"
+          failure: !cel "has(steps.failure) ? dyn(steps.failure.result) : null"
           result: !cel >-
             has(steps.written) ? dyn(steps.written.result)
               : has(steps.edited) ? dyn(steps.edited.result)

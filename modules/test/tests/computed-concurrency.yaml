@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: TestSuiteComputedConcurrency
+  version: 1.0.0
+  description: |
+    Test.Suite takes a `concurrency` an expression computes — a 64-bit integer,
+    not the number a YAML literal is — and runs the tests it discovers that
+    many at a time.
+imports:
+  Test: ../
+targets:
+  - !ref runFixtures
+---
+kind: Test.Suite
+metadata:
+  name: runFixtures
+include: ["__fixtures__/computed-concurrency/*.yaml"]
+exclude: []
+concurrency: !cel "1 + 1"

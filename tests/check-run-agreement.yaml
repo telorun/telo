@@ -93,6 +93,12 @@ targets:
   - !ref celArgumentNullableRefAtRuntime
   - !ref celArgumentFraction
   - !ref celArgumentFractionAtRuntime
+  - !ref literalStepNumber
+  - !ref literalStepNumberAtRuntime
+  - !ref loopSeedAdvance
+  - !ref loopSeedAdvanceAtRuntime
+  - !ref templateValueStepNumber
+  - !ref baseValueStepNumber
   - !ref templateInputsCel
   - !ref templateInputsCelAtRuntime
   - !ref hostPathInterpolated
@@ -2444,6 +2450,69 @@ metadata:
 source: ./__fixtures__/check-run-agreement/cel-argument-fraction/telo.yaml
 expect:
   runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"count\":2.5}. Error: /count must be integer"
+---
+# A number written literally in a pure `value:` step is an int when integral,
+# as the same number written in CEL is: multiplied by a double it is reported
+# where the step is written…
+kind: Assert.Manifest
+metadata:
+  name: literalStepNumber
+source: ./__fixtures__/check-run-agreement/literal-step-number/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "no \"*\" is declared over int, double"
+---
+# …and, from a silent consumer, the step engine holds the int the checker typed.
+kind: Assert.Manifest
+metadata:
+  name: literalStepNumberAtRuntime
+source: ./__fixtures__/check-run-agreement/literal-step-number/telo.yaml
+expect:
+  errors: []
+  runFails: "Step \"scaled\": Expression !cel \"steps.count.result * 2.0\" failed: no overload of \"*\" takes (int, double)"
+---
+# A step name two steps carry is read by each as what the OTHER produces: a
+# loop's literal seed is an int, so advancing it by a double is reported where
+# the advancing step is written…
+kind: Assert.Manifest
+metadata:
+  name: loopSeedAdvance
+source: ./__fixtures__/check-run-agreement/loop-seed-advance/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "no \"+\" is declared over int, double"
+---
+# …and, from a silent consumer, the step engine holds the int the seed wrote.
+kind: Assert.Manifest
+metadata:
+  name: loopSeedAdvanceAtRuntime
+source: ./__fixtures__/check-run-agreement/loop-seed-advance/telo.yaml
+expect:
+  errors: []
+  runFails: "Step \"turn\": Expression !cel \"steps.turn.result + 1.0\" failed: no overload of \"+\" takes (int, double)"
+---
+# A template body's `value:` step reading `self` stays an expression: the number
+# an instance supplies is never read as one written in the step, so `ratio: 3`
+# and `ratio: 2.5` both check clean and run as the doubles the field declares.
+kind: Assert.Manifest
+metadata:
+  name: templateValueStepNumber
+source: ./__fixtures__/check-run-agreement/template-value-step-number.yaml
+expect:
+  errors: []
+  runs: true
+---
+# The same holds for a step body a `base:` builds for the parent kind: the
+# `self` it reads is the instance's, evaluated when the step runs.
+kind: Assert.Manifest
+metadata:
+  name: baseValueStepNumber
+source: ./__fixtures__/check-run-agreement/base-value-step-number.yaml
+expect:
+  errors: []
+  runs: true
 ---
 # A template kind's top-level `inputs:` is a call site like a step's: an
 # expression of the wrong type is reported where the kind is written…

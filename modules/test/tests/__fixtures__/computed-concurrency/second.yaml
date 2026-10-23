@@ -1,0 +1,5 @@
+# One of two tests the suite beside it runs together; it only has to pass.
+kind: Telo.Application
+metadata:
+  name: ComputedConcurrencySecond
+  version: 1.0.0

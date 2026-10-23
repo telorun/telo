@@ -5,10 +5,11 @@
 //! No Node test file is the twin of this one. What is Node's answer, executed
 //! (`@telorun/cel 0.118.0 at 63c81d00`): every answer on the three-deep instance of
 //! each row — the text printed, the type reported, unified, matched, listed, and the
-//! scan's verdict. What is this crate's own, because Node cannot answer it — its
-//! reader, printer and comparisons throw `RangeError` on these inputs: that each deep
-//! input is handled at all, and every answer on it, which is the three-deep answer
-//! carried to its depth.
+//! scan's verdict — and, at `@telorun/cel 0.120.1 at 32cf0f98`, the record joined with
+//! a map. What is this crate's own, because Node cannot answer it — its reader,
+//! printer and comparisons throw `RangeError` on these inputs: that each deep input is
+//! handled at all, and every answer on it, which is the three-deep answer carried to
+//! its depth.
 
 use std::fmt::{self, Write};
 use std::sync::Arc;
@@ -166,6 +167,21 @@ fn unifies_two_deep_types_that_differ_at_the_bottom() {
             let parameters = parse_type_expression(&lists("A", depth), None).expect("reads");
             let ints = parse_type_expression(&lists("int", depth), None).expect("reads");
             assert_eq!(format_type(&unify(&parameters, &ints), false), lists("int", depth));
+        }
+    });
+}
+
+#[test]
+fn joins_a_deep_record_with_a_deep_map_as_that_map() {
+    on_a_small_stack(|| {
+        for depth in [3, DEPTH] {
+            let mut records = INT;
+            for _ in 0..depth {
+                records = CelType::Record(RecordType { name: None, fields: [("x", records)].into_iter().collect(), open: false });
+            }
+            let maps = parse_type_expression(&nested("map<string, ", "int", ">", depth), None).expect("reads");
+            assert!(unify(&records, &maps) == maps);
+            assert!(unify(&maps, &records) == maps);
         }
     });
 }

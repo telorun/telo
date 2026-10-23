@@ -41,6 +41,7 @@ import {
 } from "../../refuse-computed-ref-slots.js";
 import { declarationOfInstance } from "../../instance-declaration.js";
 import { declaringContextOf } from "./declaring-context.js";
+import { isWithinSlot, stepValueSlots } from "./step-value-slots.js";
 
 /**
  * WHICH NODES OF A TEMPLATE BODY SURVIVE init() UNEXPANDED.
@@ -100,6 +101,16 @@ function referencesBeyondSelf(value: CompiledValue): boolean {
     (value.refs ?? []).some((r) => r !== "self")
   );
 }
+
+/** What a nested kind's schema says about one body entry: where its own
+ *  controller evaluates CEL, and the author-facing schema its step bodies are
+ *  read through. */
+interface NestedKindReading {
+  sites: CelEvalSites;
+  schema: Record<string, any> | undefined;
+}
+
+const UNKNOWN_NESTED_KIND: NestedKindReading = { sites: NO_CEL_EVAL_SITES, schema: undefined };
 
 /**
  * One step of a forwarded `self.<path>`. A path that continues past a reference
@@ -365,7 +376,7 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
 
       // Expand a persistent child's body against `self`. Self-only CEL resolves
       // to literals now; a node the NESTED KIND evaluates later (see
-      // `deferredPaths`) passes through compiled for the child's own controller. `!ref` sentinels are
+      // `nestedKindReading`) passes through compiled for the child's own controller. `!ref` sentinels are
       // rewritten to the `{kind, name, alias?}` injection shape here — Phase 2.5
       // (`resolveRefSentinels`) does not descend into template bodies, so the
       // child context's Phase 5 injection would otherwise see an unrecognized
@@ -379,10 +390,15 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
         value: any,
         path: string,
         deferred: CelEvalSites,
+        valueSlots: readonly string[],
         segments: (string | number)[] = [],
         provenance?: TextProvenance,
       ): any => {
         if (isCompiledValue(value)) {
+          // A pure step's `value:` stays an expression whatever it reads: the
+          // step engine reads a NUMBER it finds there as one the author wrote,
+          // so a result resolved here would be converted as a literal.
+          if (isWithinSlot(valueSlots, path)) return value;
           if (isDeferredPath(deferred, path) && referencesBeyondSelf(value)) return value;
           // A pure `self.<path>` access (e.g. a `connection: !ref` passed down) is
           // resolved by navigating the resource directly. Going through CEL would
@@ -423,13 +439,20 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
         }
         if (Array.isArray(value)) {
           return value.map((item, i) =>
-            expandSelf(item, `${path}[${i}]`, deferred, [...segments, i], provenance),
+            expandSelf(item, `${path}[${i}]`, deferred, valueSlots, [...segments, i], provenance),
           );
         }
         if (value !== null && typeof value === "object") {
           const out: Record<string, unknown> = {};
           for (const [k, v] of Object.entries(value)) {
-            out[k] = expandSelf(v, path ? `${path}.${k}` : k, deferred, [...segments, k], provenance);
+            out[k] = expandSelf(
+              v,
+              path ? `${path}.${k}` : k,
+              deferred,
+              valueSlots,
+              [...segments, k],
+              provenance,
+            );
           }
           return out;
         }
@@ -448,18 +471,24 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
        * otherwise be covered on the static side and not here, which is the two
        * halves disagreeing about when a node is evaluated.
        */
-      const deferredPathsFor = (kind: unknown): CelEvalSites => {
-        if (typeof kind !== "string") return NO_CEL_EVAL_SITES;
-        const cached = deferredByKind.get(kind);
+      const nestedKindReading = (kind: unknown): NestedKindReading => {
+        if (typeof kind !== "string") return UNKNOWN_NESTED_KIND;
+        const cached = readingByKind.get(kind);
         if (cached) return cached;
         const resolveDef = (k: string): ResourceDefinition | undefined =>
           definingContext.getDefinition?.(definingContext.kindResolver?.(k) ?? k) ??
           definingContext.getDefinition?.(k);
         const def = resolveDef(kind);
-        const capability = def?.capability;
-        const sites = def
-          ? mergeCelEvalSites(
-              celEvalSites(effectiveAuthorSchema(def, resolveDef) as Record<string, any>, shapes),
+        if (!def) {
+          readingByKind.set(kind, UNKNOWN_NESTED_KIND);
+          return UNKNOWN_NESTED_KIND;
+        }
+        const capability = def.capability;
+        const schema = effectiveAuthorSchema(def, resolveDef) as Record<string, any>;
+        const reading: NestedKindReading = {
+          schema,
+          sites: mergeCelEvalSites(
+              celEvalSites(schema, shapes),
               celEvalSites(
                 (capability ? resolveDef(capability)?.schema : undefined) as
                   | Record<string, any>
@@ -467,10 +496,10 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
                 shapes,
               ),
               implicitEvalSites(def),
-            )
-          : NO_CEL_EVAL_SITES;
-        deferredByKind.set(kind, sites);
-        return sites;
+            ),
+        };
+        readingByKind.set(kind, reading);
+        return reading;
       };
 
       // init() may run more than once: when a child's local ref names a sibling
@@ -482,7 +511,7 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
 
       /** Memo per nested kind — a body is expanded once, but a template kind is
        *  instantiated many times across an application. */
-      const deferredByKind = new Map<string, CelEvalSites>();
+      const readingByKind = new Map<string, NestedKindReading>();
 
       return {
         // The template's own resources are its allocation, and tearing the child
@@ -514,8 +543,19 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
                   refPositions?.referencePositionsOf(entry as ResourceManifest) ?? [],
                   { forwardable: true },
                 );
+                const nested = nestedKindReading(template?.kind);
+                // Where a step body keeps its pure values is the step-body
+                // declaration of the kind owning it — the entry's, or a `with:`
+                // member's own.
+                const valueSlots = nested.schema
+                  ? stepValueSlots(
+                      entry as Record<string, unknown>,
+                      nested.schema,
+                      (kind) => nestedKindReading(kind).schema,
+                    )
+                  : [];
                 const provenance = TextProvenance.of({ computed: false });
-                const expanded = expandSelf(entry, "", deferredPathsFor(template?.kind), [], provenance);
+                const expanded = expandSelf(entry, "", nested.sites, valueSlots, [], provenance);
                 recordTextProvenance(expanded, provenance);
                 childContext.registerManifest(expanded);
               }

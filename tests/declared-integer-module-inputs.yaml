@@ -1,0 +1,138 @@
+kind: Telo.Application
+metadata:
+  name: DeclaredIntegerModuleInputsTest
+  version: 1.0.0
+  description: |
+    A module variable or secret declared `integer` or `number` holds that
+    representation for every reader — at the root Application and in a library,
+    whether the value is a default, a literal the importer wrote or the
+    importer's own variable — so the arithmetic `telo check` types runs.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+  App: ../modules/app
+  Timer: ../modules/timer
+  RateLimit: ../modules/rate-limit
+  CacheMemory: ../modules/cache-memory
+  Defaulted: ./__fixtures__/declared-integer-inputs/retention
+  Supplied:
+    source: ./__fixtures__/declared-integer-inputs/retention
+    variables:
+      retentionDays: 3
+      ratio: !cel "1 + 1"
+    secrets:
+      pin: 9
+  Forwarded:
+    source: ./__fixtures__/declared-integer-inputs/retention
+    variables:
+      retentionDays: !cel "variables.days"
+  Literal:
+    source: ./__fixtures__/declared-integer-inputs/shared
+    variables: { size: 3 }
+  Borrowed:
+    source: ./__fixtures__/declared-integer-inputs/shared
+    variables: { size: !cel "variables.size" }
+variables:
+  days: { type: integer, env: DECLARED_INTEGER_DAYS, default: 2 }
+  size: { type: integer, env: DECLARED_INTEGER_SIZE, default: 3 }
+  limits:
+    env: DECLARED_INTEGER_LIMITS
+    type: object
+    properties:
+      burst: { type: integer }
+    default: { burst: 5 }
+secrets:
+  pin: { type: integer, env: DECLARED_INTEGER_PIN, default: 7 }
+targets:
+  - !ref child
+  - !ref test
+---
+kind: CacheMemory.Store
+metadata: { name: counters }
+---
+kind: App.Instance
+metadata: { name: child }
+source: ./__fixtures__/declared-integer-inputs/child.yaml
+variables:
+  count: !cel "resources.Forwarded.variables.retentionDays"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: defaulted
+    invoke: !ref Defaulted.hours
+  - name: defaultedPin
+    invoke: !ref Defaulted.pinned
+  - name: supplied
+    invoke: !ref Supplied.hours
+  - name: suppliedRatio
+    invoke: !ref Supplied.scaled
+  - name: suppliedPin
+    invoke: !ref Supplied.pinned
+  - name: forwarded
+    invoke: !ref Forwarded.hours
+  - name: literalCells
+    invoke: !ref Literal.cells
+  - name: borrowedCells
+    invoke: !ref Borrowed.cells
+  - name: reserve
+    invoke:
+      kind: RateLimit.Budget
+      store: !ref counters
+      limit: !cel "variables.size"
+      window: 60s
+    inputs: { op: reserve, key: global, amount: 2 }
+  - name: admit
+    invoke:
+      kind: RateLimit.Guard
+      store: !ref counters
+      limit: !cel "variables.size"
+      window: 60s
+    inputs: { key: global }
+  - name: awaitChild
+    invoke:
+      kind: Run.Loop
+      condition: !cel "resources.child.status.exitCode == null"
+      maxIterations: 200
+      steps:
+        - name: wait
+          invoke: { kind: Timer.Delay }
+          inputs:
+            duration: 20ms
+  - name: reversedOrder
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/declared-integer-inputs/shared-forwarded-first.yaml
+      expect:
+        runs: true
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        rootVariable: !cel "variables.days * 20"
+        rootSecret: !cel "secrets.pin + 1"
+        rootNested: !cel "variables.limits.burst * 2"
+        libraryDefault: !cel "steps.defaulted.result"
+        libraryDefaultSecret: !cel "steps.defaultedPin.result"
+        librarySupplied: !cel "steps.supplied.result"
+        librarySuppliedNumber: !cel "steps.suppliedRatio.result"
+        librarySuppliedSecret: !cel "steps.suppliedPin.result"
+        libraryForwarded: !cel "steps.forwarded.result"
+        singleton: !cel "[steps.literalCells.result, steps.borrowedCells.result]"
+        budgetRemaining: !cel "steps.reserve.result.remaining"
+        guardRemaining: !cel "steps.admit.result.remaining"
+        childExitCode: !cel "resources.child.status.exitCode"
+      expected:
+        rootVariable: 40
+        rootSecret: 8
+        rootNested: 10
+        libraryDefault: 168
+        libraryDefaultSecret: 5
+        librarySupplied: 72
+        librarySuppliedNumber: 4
+        librarySuppliedSecret: 10
+        libraryForwarded: 48
+        singleton: [9, 9]
+        budgetRemaining: 1
+        guardRemaining: 2
+        childExitCode: 0

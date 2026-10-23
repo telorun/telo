@@ -1,4 +1,9 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import {
+  type ControllerContext,
+  type ResourceContext,
+  type ResourceInstance,
+  integerInput,
+} from "@telorun/sdk";
 import type {
   MetadataFilter,
   QueryOptions,
@@ -13,7 +18,7 @@ type Metric = "cosine" | "dot" | "euclidean";
 interface StoreResource {
   metadata: { name: string; module?: string };
   metric?: Metric;
-  dimensions?: number;
+  dimensions?: number | bigint;
   maxEntries?: number;
 }
 
@@ -45,7 +50,15 @@ class MemoryVectorStore implements ResourceInstance, VectorStoreHandle {
 
   constructor(resource: StoreResource) {
     this.metric = resource.metric ?? "cosine";
-    this.dimensions = resource.dimensions;
+    if (resource.dimensions !== undefined) {
+      const dimensions = integerInput(resource.dimensions);
+      if (dimensions === undefined) {
+        throw new Error(
+          `VectorStoreMemory.Store "${resource.metadata.name}": 'dimensions' must be an integer a number can hold, got ${String(resource.dimensions)}.`,
+        );
+      }
+      this.dimensions = dimensions;
+    }
     this.maxEntries = resource.maxEntries;
   }
 

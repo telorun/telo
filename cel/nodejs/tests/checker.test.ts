@@ -370,3 +370,45 @@ describe("a presence-shaped read — `.?`, `[?]`, `has()`", () => {
     ]);
   });
 });
+
+describe("a record joins as the string-keyed map it is", () => {
+  const object = (properties: Record<string, { type: string }>) => ({ schema: { type: "object", properties } });
+
+  function records(): CelEnvironment {
+    return new CelEnvironment()
+      .registerVariable("flag", "bool")
+      .registerVariable("counts", object({ a: { type: "integer" }, b: { type: "integer" } }))
+      .registerVariable("totals", object({ c: { type: "integer" } }))
+      .registerVariable("mixed", object({ a: { type: "integer" }, name: { type: "string" } }))
+      .registerVariable("anything", { schema: { type: "object", additionalProperties: true } });
+  }
+
+  const typed = (source: string) => {
+    const result = records().check(source);
+    return result.diagnostics.length === 0 ? result.typeName : result.diagnostics[0]!.code;
+  };
+
+  it("with a map: the key joined with string, the value with every field", () => {
+    expect(typed("flag ? counts : {'x': 1}")).toBe("map<string, int>");
+    expect(typed("flag ? {'x': 1} : counts")).toBe("map<string, int>");
+    expect(typed("flag ? counts : {'x': true}")).toBe("map<string, dyn>");
+    expect(typed("flag ? counts : {1: 1}")).toBe("map<dyn, int>");
+    expect(typed("flag ? anything : {'x': 1}")).toBe("map<string, dyn>");
+  });
+
+  it("with a record of another shape, and stays itself against an equal one", () => {
+    expect(typed("flag ? counts : totals")).toBe("map<string, int>");
+    expect(typed("flag ? counts : mixed")).toBe("map<string, dyn>");
+    expect(typed("(flag ? counts : counts).nope")).toBe("CEL_UNKNOWN_FIELD");
+  });
+
+  it("as a list's element", () => {
+    expect(typed("[counts, totals]")).toBe("list<map<string, int>>");
+    expect(typed("[counts, {'x': 1}]")).toBe("list<map<string, int>>");
+  });
+
+  it("and is still refused against a scalar or a list", () => {
+    expect(typed("flag ? counts : 1")).toBe("CEL_TYPE_ERROR");
+    expect(typed("flag ? counts : [1]")).toBe("CEL_TYPE_ERROR");
+  });
+});

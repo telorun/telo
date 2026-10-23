@@ -279,7 +279,7 @@ In scope (in `!cel` and in every hole):
 - `request` — inside handler CEL (HTTP: query, body, params, headers, path, method)
 - `<Alias>.fn(…)`, `Self.fn(…)`, `<ModuleName>.fn(…)` — a module function (`Telo.Callable`), resolved on the parsed tree at compile and bound per module scope at `create()`; a bare name is always the core catalog
 
-A CEL integer is int64 and **needs no cast anywhere** — never `double(...)` to get an integer out of a manifest. A controller reading another resource's declared-integer output must accept both representations (`integerInput` from `@telorun/sdk`). Dereferencing a nullable value without a guard (`error != null && error.code`) is `CEL_NULLABLE_ACCESS`.
+A CEL integer is int64 and **needs no cast anywhere** — never `double(...)` to get an integer out of a manifest. A module `variables` / `secrets` entry declared `integer` (holding a value int64 can hold) or `number` is bound in that representation at the root Application and in every import, so `variables.x * 2` runs as checked. A controller reading another resource's declared-integer output, or a config slot fed `!cel "variables.x"`, must accept both representations (`integerInput` from `@telorun/sdk`). Dereferencing a nullable value without a guard (`error != null && error.code`) is `CEL_NULLABLE_ACCESS`.
 
 ## Declared runtime requirements (`requires:`)
 

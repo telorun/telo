@@ -455,6 +455,14 @@ are `intersection-empty` rather than silently resolved one way. **`enum` and `co
 read from their values' JSON types**, which is what makes a constant beside a host-typed branch a `string`
 rather than a `dyn` that collapses the whole union.
 
+**The type join agrees with assignability about what a record is.** A record is a map with named keys and
+stands where a string-keyed map does, so where two types are reduced to one — a conditional's branches, an
+aggregate literal's elements — a record meeting a map, or a record of another shape, joins as that map: the
+key is `string` joined with the other side's key type, the value the join of every field type with the
+other side's value type (`dyn` for an open record). Equal records stay that record, and a record against a
+scalar or a list is still nothing in common. Answering "not one type" for a record beside a map literal
+refused an expression the same engine would have accepted as an argument.
+
 **A flat field map is still accepted** (`{ fields: { columns: "map" } }`). It is not a convenience: a
 consumer replacing an older engine has to reproduce its verdicts exactly before it turns deep typing
 on, and a converter that only ever goes deep would force every such consumer to become stricter on the

@@ -1,9 +1,11 @@
 //! Twin of `cel/nodejs/tests/checker.test.ts`, case for case.
 //!
 //! Every expected value is the Node build's answer, executed:
-//! `@telorun/cel 0.118.0 at 63c81d00`. Past the Node file, where it asserts only a code or
-//! a range bound: each cause's whole diagnostic, the guarded and refused presence reads
-//! row by row, and the namespace-mismatch message.
+//! `@telorun/cel 0.118.0 at 63c81d00`, and a record joined as a map at
+//! `@telorun/cel 0.120.1 at 32cf0f98`. Past the Node file, where it asserts only a code
+//! or a range bound: each cause's whole diagnostic, the guarded and refused presence
+//! reads row by row, the record joins' whole diagnostics, and the namespace-mismatch
+//! message.
 
 mod check_support;
 
@@ -418,5 +420,83 @@ fn a_presence_read_refuses_an_operand_whose_declared_type_holds_no_members_in_ev
             "optional<dyn>",
             vec![found(TypeError, "string holds no members", 8, 9), found(TypeError, "int holds no members", 8, 9)],
         )],
+    );
+}
+
+fn records() -> CelEnvironment {
+    let object = |properties: &str| schema(&format!(r#"{{"type":"object","properties":{{{properties}}}}}"#));
+    let mut environment = environment(CelEnvironmentOptions::default());
+    environment.register_variable("flag", "bool", None).unwrap();
+    environment.register_variable("counts", object(r#""a":{"type":"integer"},"b":{"type":"integer"}"#), None).unwrap();
+    environment.register_variable("totals", object(r#""c":{"type":"integer"}"#), None).unwrap();
+    environment.register_variable("mixed", object(r#""a":{"type":"integer"},"name":{"type":"string"}"#), None).unwrap();
+    environment
+        .register_variable("anything", schema(r#"{"type":"object","additionalProperties":true}"#), None)
+        .unwrap();
+    environment
+}
+
+#[test]
+fn a_record_joins_with_a_map_the_key_joined_with_string_the_value_with_every_field() {
+    assert_rows(
+        &records(),
+        vec![
+            ("flag ? counts : {'x': 1}", "map<string, int>", vec![]),
+            ("flag ? {'x': 1} : counts", "map<string, int>", vec![]),
+            ("flag ? counts : {'x': true}", "map<string, dyn>", vec![]),
+            ("flag ? counts : {1: 1}", "map<dyn, int>", vec![]),
+            ("flag ? anything : {'x': 1}", "map<string, dyn>", vec![]),
+        ],
+    );
+}
+
+#[test]
+fn a_record_joins_with_a_record_of_another_shape_and_stays_itself_against_an_equal_one() {
+    assert_rows(
+        &records(),
+        vec![
+            ("flag ? counts : totals", "map<string, int>", vec![]),
+            ("flag ? counts : mixed", "map<string, dyn>", vec![]),
+            (
+                "(flag ? counts : counts).nope",
+                "dyn",
+                vec![found(UnknownField, "\"nope\" is not declared here (declared: a, b)", 25, 29)],
+            ),
+        ],
+    );
+}
+
+#[test]
+fn a_record_joins_as_a_map_as_a_lists_element() {
+    assert_rows(
+        &records(),
+        vec![
+            ("[counts, totals]", "list<map<string, int>>", vec![]),
+            ("[counts, {'x': 1}]", "list<map<string, int>>", vec![]),
+        ],
+    );
+}
+
+#[test]
+fn a_record_is_still_refused_against_a_scalar_or_a_list() {
+    assert_rows(
+        &records(),
+        vec![
+            (
+                "flag ? counts : 1",
+                "dyn",
+                vec![found(TypeError, "the branches of a condition answer map and int, which are not one type", 0, 17)],
+            ),
+            (
+                "flag ? counts : [1]",
+                "dyn",
+                vec![found(
+                    TypeError,
+                    "the branches of a condition answer map and list<int>, which are not one type",
+                    0,
+                    19,
+                )],
+            ),
+        ],
     );
 }

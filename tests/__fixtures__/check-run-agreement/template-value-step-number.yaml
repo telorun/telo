@@ -1,0 +1,56 @@
+# A template body's `value:` step reading `self`: the number the instance
+# supplies is computed, never written in the step, so it is the double its
+# `number` field declares whether the instance writes `3` or `2.5` — as the
+# whole value, as a member of a literal map, and inside a larger expression.
+kind: Telo.Application
+metadata:
+  name: TemplateValueStepNumber
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref verify
+---
+kind: Telo.Definition
+metadata:
+  name: Scale
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    ratio: { type: number }
+  required: [ratio]
+resources:
+  - kind: Run.Sequence
+    metadata:
+      name: scaling
+    steps:
+      - name: whole
+        value: !cel "self.ratio"
+      - name: member
+        value: { ratio: !cel "self.ratio" }
+      - name: product
+        value: !cel "self.ratio * 1.0"
+    outputs:
+      whole: !cel "steps.whole.result * 2.0"
+      member: !cel "steps.member.result.ratio * 2.0"
+      product: !cel "steps.product.result * 2.0"
+invoke: !ref scaling
+---
+kind: Run.Sequence
+metadata:
+  name: verify
+steps:
+  - name: integral
+    invoke: { kind: Self.Scale, ratio: 3 }
+  - name: fractional
+    invoke: { kind: Self.Scale, ratio: 2.5 }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        integral: !cel "steps.integral.result"
+        fractional: !cel "steps.fractional.result"
+      expected:
+        integral: { whole: 6, member: 6, product: 6 }
+        fractional: { whole: 5, member: 5, product: 5 }

@@ -1,5 +1,6 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { integerSetting } from "./integer-setting.js";
 // The legacy build is pdf.js's Node target — the same one the rasterizer loads.
 // Both reach it through `pdf-runtime`, which locates the assets pdf.js would
 // otherwise look for beside its own package.
@@ -11,7 +12,7 @@ interface TextResource {
 
 interface TextInputs {
   data: Uint8Array;
-  page?: number;
+  page?: number | bigint;
 }
 
 interface TextOutputs {
@@ -64,7 +65,10 @@ class PdfText implements ResourceInstance<TextInputs, TextOutputs> {
           `Pdf.Text "${name}": failed to parse PDF — ${err instanceof Error ? err.message : String(err)}`,
         );
       });
-      const requested = inputs.page;
+      const requested =
+        inputs.page === undefined
+          ? undefined
+          : integerSetting(inputs.page, `Pdf.Text "${name}"`, "page");
       if (requested !== undefined && requested > doc.numPages) {
         throw new InvokeError(
           "ERR_INVALID_INPUT",

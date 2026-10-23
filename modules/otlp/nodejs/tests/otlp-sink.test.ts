@@ -129,4 +129,38 @@ describe("Otlp.Sink", () => {
     stderrSpy.mockRestore();
     vi.unstubAllGlobals();
   });
+
+  // A `!cel` buffer arrives as an int64, a YAML literal as a number.
+  it.each([2, 2n])("bounds the buffer at %s records either way", async (buffer) => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { ctx, dropped } = countingContext();
+    const instance = (await create(
+      { endpoint: "https://collector.invalid/v1/logs", buffer, metadata: { name: "shipped" } },
+      ctx,
+    )) as unknown as { write(r: LogRecord): void; flush(): Promise<void> };
+
+    for (let i = 0; i < 3; i += 1) {
+      instance.write({ timestamp: 1n, severityNumber: 9, severityText: "INFO", message: `r${i}` });
+    }
+    await instance.flush();
+
+    const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string) as {
+      resourceLogs: { scopeLogs: { logRecords: unknown[] }[] }[];
+    };
+    expect(body.resourceLogs[0]!.scopeLogs[0]!.logRecords).toHaveLength(2);
+    expect(dropped()).toBe(1);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("refuses a buffer no number holds exactly, naming the sink", async () => {
+    await expect(
+      create(
+        { endpoint: "https://collector.invalid/v1/logs", buffer: 2n ** 64n, metadata: { name: "shipped" } },
+        stubContext(),
+      ),
+    ).rejects.toThrow(/Sink "shipped": 'buffer' must be an integer/);
+  });
 });

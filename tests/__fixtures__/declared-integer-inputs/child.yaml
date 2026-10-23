@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: DeclaredIntegerChild
+  version: 1.0.0
+  description: "Test fixture: a child application that fails unless its supplied integer composes as one."
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+variables:
+  count: { type: integer, env: DECLARED_INTEGER_CHILD_COUNT, default: 0 }
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "variables.count + 1"
+      expected: 3

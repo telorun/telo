@@ -152,6 +152,15 @@ When an expression in a `base:` mapping fails, the error names the definition an
 field that wrote it — `in base.headers of GoogleAuth.GoogleClient (<source>)` —
 not only the resource being created.
 
+**A step body `base:` builds keeps its `value:` expressions.** When `base:`
+writes the parent's step body (`Run.Sequence`'s `steps:`), an expression inside a
+step's `value:` is not evaluated at creation: the parent receives it as an
+expression reading this instance's `self` and evaluates it when the step runs.
+So a number `self` supplies stays what its field declares — `value: !cel
+"self.ratio"` over `ratio: 3` declared `type: number` is the double 3 — while a
+number written in the step is read as written (`value: 3` is an int). If it
+fails when the step runs, the error names its field the same way.
+
 **A base-form child's own fields are compile-eval, without annotation.** They are
 construction inputs and nothing else — no controller ever sees them, `base:`
 reads them once at creation — so an expression written at one is evaluated there,

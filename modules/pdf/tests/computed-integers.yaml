@@ -1,0 +1,52 @@
+kind: Telo.Application
+metadata:
+  name: PdfComputedIntegersTest
+  version: 1.0.0
+  description: |
+    A page number and a quality an expression computes — a 64-bit integer,
+    not the number a YAML literal is — select and encode the same page the
+    literal does, in Pdf.Rasterizer, Pdf.Text and Pdf.FormFields.
+imports:
+  Pdf: ../
+  Fixture: ./__fixtures__/sample-form.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testComputedIntegers
+---
+kind: Run.Sequence
+metadata: { name: testComputedIntegers }
+steps:
+  - name: fixture
+    invoke: !ref Fixture.sampleFormPdf
+  - name: render
+    inputs:
+      data: !cel "steps.fixture.result.data"
+      page: !cel "1 + 1"
+      format: jpeg
+      quality: !cel "70"
+    invoke: { kind: Pdf.Rasterizer, scale: 2 }
+  - name: read
+    inputs:
+      data: !cel "steps.fixture.result.data"
+      page: !cel "1 + 1"
+    invoke: { kind: Pdf.Text }
+  - name: fielded
+    inputs:
+      data: !cel "steps.fixture.result.data"
+      fields:
+        - { name: subscribe, type: checkbox, page: !cel "1 + 1", x: 240, y: 64, width: 40, height: 40 }
+    invoke: { kind: Pdf.FormFields, scale: 2 }
+  - name: assertComputed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        mediaType: !cel "steps.render.result.mediaType"
+        width: !cel "steps.render.result.width"
+        pages: !cel "steps.read.result.pages"
+        fieldAdded: !cel "size(steps.fielded.result.data) > size(steps.fixture.result.data)"
+      expected:
+        mediaType: image/jpeg
+        width: 600
+        pages: ["Subscribe to newsletter:"]
+        fieldAdded: true

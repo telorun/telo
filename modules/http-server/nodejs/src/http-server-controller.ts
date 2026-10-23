@@ -43,6 +43,7 @@ import Fastify, {
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
+import { integerSetting } from "./integer-setting.js";
 import { requestBag } from "./request-binding.js";
 import {
   boundedRequestBody,
@@ -85,10 +86,10 @@ type CorsOptions = {
   allowedHeaders?: string | string[];
   exposedHeaders?: string | string[];
   credentials?: boolean;
-  maxAge?: number;
-  cacheControl?: number | string;
+  maxAge?: number | bigint;
+  cacheControl?: number | bigint | string;
   preflightContinue?: boolean;
-  optionsSuccessStatus?: number;
+  optionsSuccessStatus?: number | bigint;
   preflight?: boolean;
   strictPreflight?: boolean;
   hideOptionsRoute?: boolean;
@@ -128,7 +129,7 @@ type HttpServerResource = RuntimeResource & {
   port?: unknown;
   unknownHosts?: "serve" | "reject";
   trustForwardedHeaders?: boolean;
-  trustProxy?: boolean | number;
+  trustProxy?: boolean | number | bigint;
   maxBodyBytes?: number;
   cors?: CorsOptions;
   contentTypeParsers?: Array<{ contentType: string; parser?: Invocable; stream?: boolean }>;
@@ -226,7 +227,7 @@ class HttpServer implements ResourceInstance {
     // it, which would turn this kind's documented hop-count option into a silent
     // no-op. The spoofing hazard that motivated their change is the one the
     // schema already states: only enable this behind a trusted proxy.
-    const configuredTrust = resource.trustProxy ?? resource.trustForwardedHeaders === true;
+    const configuredTrust = trustProxyOf(resource);
     const trustProxy: FastifyServerOptions["trustProxy"] =
       typeof configuredTrust === "number"
         ? (address, hop) => hop < configuredTrust
@@ -819,6 +820,19 @@ class HttpServer implements ResourceInstance {
       ] as const) {
         if (cfg[key] !== undefined) corsOptions[key] = cfg[key];
       }
+      // `maxAge` is printed into a header, which prints an int64 exactly; these
+      // two @fastify/cors reads only as a number (a status code, and an integer
+      // `cacheControl` it otherwise drops without a word).
+      for (const key of ["optionsSuccessStatus", "cacheControl"] as const) {
+        const value = cfg[key];
+        if (value !== undefined && typeof value !== "string") {
+          corsOptions[key] = integerSetting(
+            value,
+            `Http.Server[${this.resource.metadata.name}]`,
+            `cors.${key}`,
+          );
+        }
+      }
       await this.app.register(cors, corsOptions);
     }
 
@@ -1036,8 +1050,8 @@ class HttpServer implements ResourceInstance {
             sink,
           );
         }
-        const status = result?.status ?? 200;
-        reply.code(status);
+        // A string status passes through to Fastify as the handler wrote it.
+        reply.code(responseStatusOf(result?.status, this.resource.metadata.name) as number);
         if (result?.headers) {
           Object.entries(result.headers).forEach(([key, value]) =>
             reply.header(key, value as string),
@@ -1156,6 +1170,22 @@ class HttpServer implements ResourceInstance {
       };
     });
   }
+}
+
+/** The status a handler's result answers with when no `returns:` entry decides
+ *  it. A string stays Fastify's to read (and refuse), as it always was. */
+function responseStatusOf(status: unknown, serverName: string): number | string {
+  if (status === undefined || status === null) return 200;
+  if (typeof status === "string") return status;
+  return integerSetting(status, `Http.Server[${serverName}] notFoundHandler result`, "status");
+}
+
+/** `true`, `false` or a hop count; absent, the legacy `trustForwardedHeaders`. */
+function trustProxyOf(resource: HttpServerResource): boolean | number {
+  const configured = resource.trustProxy ?? resource.trustForwardedHeaders === true;
+  return typeof configured === "boolean"
+    ? configured
+    : integerSetting(configured, `Http.Server[${resource.metadata?.name}]`, "trustProxy");
 }
 
 export async function create(

@@ -4,8 +4,9 @@ metadata:
   version: 1.0.0
   description: |
     Shell.Command runs commands on a Shell.LocalHost: captures stdout, returns a
-    non-zero exit code (rather than throwing), honors shell features (pipes), and
-    merges the host's base env with the per-call overlay.
+    non-zero exit code (rather than throwing), honors shell features (pipes),
+    merges the host's base env with the per-call overlay, and takes a `timeoutMs`
+    an expression computes.
 imports:
   Shell: ../
   Run: ../../run
@@ -53,6 +54,15 @@ steps:
       kind: Shell.Command
       host: !ref local
 
+  # A `!cel` integer is a 64-bit integer, not the number a YAML literal is.
+  - name: timed
+    inputs:
+      command: "printf timed"
+      timeoutMs: !cel "5000"
+    invoke:
+      kind: Shell.Command
+      host: !ref local
+
   - name: assert
     inputs:
       actual:
@@ -61,11 +71,13 @@ steps:
         failCode: !cel "steps.fail.result.exitCode"
         pipeOut: !cel "steps.pipe.result.stdout"
         envOut: !cel "steps.env.result.stdout"
+        timedOut: !cel "steps.timed.result.stdout"
       expected:
         echoOut: hello
         echoCode: 0
         failCode: 3
         pipeOut: X
         envOut: hi-world
+        timedOut: timed
     invoke:
       kind: Assert.Equals

@@ -4,7 +4,8 @@ metadata:
   version: 1.0.0
   description: |
     With limit=2 per window, the first two requests for a key are allowed and
-    the third is denied; an empty key fails closed.
+    the third is denied; an empty key fails closed. A limit an expression
+    computes counts the same way.
 imports:
   RateLimit: ../
   Cache: ../../cache
@@ -23,6 +24,13 @@ store: !ref mem
 limit: 2
 window: "60s"
 ---
+# A `!cel` integer is a 64-bit integer, not the number a YAML literal is.
+kind: RateLimit.Guard
+metadata: { name: computedLimit }
+store: !ref mem
+limit: !cel "1 + 1"
+window: "60s"
+---
 kind: Run.Sequence
 metadata: { name: test }
 steps:
@@ -38,6 +46,28 @@ steps:
   - name: empty
     invoke: !ref limit
     inputs: { key: "" }
+  - name: c1
+    invoke: !ref computedLimit
+    inputs: { key: "computed" }
+  - name: c2
+    invoke: !ref computedLimit
+    inputs: { key: "computed" }
+  - name: c3
+    invoke: !ref computedLimit
+    inputs: { key: "computed" }
+  - name: assertComputedLimit
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first: !cel "steps.c1.result.allowed"
+        firstRemaining: !cel "steps.c1.result.remaining"
+        second: !cel "steps.c2.result.allowed"
+        third: !cel "steps.c3.result.allowed"
+      expected:
+        first: true
+        firstRemaining: 1
+        second: true
+        third: false
   - name: assertVerdicts
     inputs:
       a1: !cel "steps.r1.result.allowed"

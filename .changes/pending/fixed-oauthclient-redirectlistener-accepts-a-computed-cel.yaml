@@ -1,0 +1,7 @@
+modules:
+  modules/oauth-client: Fixed
+body: OAuthClient.RedirectListener accepts a computed (`!cel`) integer `port`,
+  OAuthClient.DeviceToken a computed `interval`, and OAuthClient.GrantWrite a computed
+  `tokens.expiresAt`, which is stored as a number so reading the grant back refreshes it
+  on time. Before, each failed with a JavaScript type error. A value no number holds
+  exactly is refused, naming the resource and the field.

@@ -99,6 +99,7 @@ import { ControllerRegistry } from "./controller-registry.js";
 import { loadBuiltinControllers } from "./builtin-controllers.js";
 import { EventBus } from "./events.js";
 import { enableBigIntJson } from "./bigint-json.js";
+import { normalizeModuleInputs } from "./declared-module-inputs.js";
 import { createLockedEnv, hostEnv, lockControllerEnv } from "./host-env.js";
 import { setEnvironmentNeeds } from "./controllers/module/environment-needs.js";
 import { needFulfilment, needFulfilmentController, type RedactionHost } from "./need-fulfilment.js";
@@ -1504,18 +1505,24 @@ export class Kernel implements IKernel {
           (key) => this.warnNeedEnvRead("ctx.env", key),
         );
       }
+      const declared = rootApplicationManifest as {
+        variables?: Record<string, unknown>;
+        secrets?: Record<string, unknown>;
+      };
       if (Object.keys(variables).length > 0) {
-        this.rootContext.setVariables(variables);
+        const bound = normalizeModuleInputs(variables, declared.variables ?? {});
+        this.rootContext.setVariables(bound);
         // A variable is not secret, but a value of a type with sensitive members (a URL
         // carrying a password) holds one, so its text and that member are redacted,
         // wherever it sits inside the variable.
-        this.rootContext.addRedactedValues(redactedTextsWithin(variables));
+        this.rootContext.addRedactedValues(redactedTextsWithin(bound));
       }
       if (Object.keys(secrets).length > 0) {
-        this.rootContext.setSecrets(secrets);
+        const bound = normalizeModuleInputs(secrets, declared.secrets ?? {});
+        this.rootContext.setSecrets(bound);
         // A secret is redacted whole only at its top level; one of such a type nested
         // inside it is redacted by its text and sensitive members.
-        this.rootContext.addRedactedValues(redactedTextsWithin(secrets));
+        this.rootContext.addRedactedValues(redactedTextsWithin(bound));
       }
       if (Object.keys(ports).length > 0) {
         this.rootContext.setPorts(ports);

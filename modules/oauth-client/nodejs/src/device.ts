@@ -6,6 +6,7 @@ import {
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
+import { integerSetting } from "./integer-setting.js";
 import { postToTokenEndpoint, scopeParam, withDeadline } from "./token-endpoint.js";
 import { parseTokenSet, TokenEndpointError } from "./token-set.js";
 import { resolveSource, type TokenSourceResource } from "./token-source.js";
@@ -17,13 +18,11 @@ interface SourceManifest {
 
 abstract class DeviceOperation implements ResourceInstance {
   protected readonly source: TokenSourceResource;
+  protected readonly label: string;
 
   constructor(manifest: SourceManifest, ctx: ResourceContext, kind: string) {
-    this.source = resolveSource(
-      manifest.source,
-      ctx,
-      () => `OAuthClient.${kind} "${manifest.metadata?.name ?? ""}"`,
-    );
+    this.label = `OAuthClient.${kind} "${manifest.metadata?.name ?? ""}"`;
+    this.source = resolveSource(manifest.source, ctx, () => this.label);
   }
 
   snapshot(): Record<string, unknown> {
@@ -103,13 +102,14 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 export class DeviceTokenResource extends DeviceOperation {
   async invoke(
-    inputs: { deviceCode: string; interval?: number; expiresAt?: number; key?: string },
+    inputs: { deviceCode: string; interval?: number | bigint; expiresAt?: number; key?: string },
     invokeCtx?: InvokeContext,
   ) {
     const key = this.source.grantKey(inputs.key);
     const deadline = inputs.expiresAt ?? Date.now() + 600_000;
     const signal = invokeCtx?.cancellation.signal;
-    let intervalMs = (inputs.interval ?? 5) * 1000;
+    let intervalMs =
+      (inputs.interval == null ? 5 : integerSetting(inputs.interval, this.label, "interval")) * 1000;
 
     while (Date.now() < deadline) {
       await sleep(intervalMs, signal);

@@ -1,5 +1,6 @@
 import {
   DEFAULT_BUFFER_POLICY,
+  integerInput,
   parseDurationMs,
   RuntimeError,
   type SinkBufferPolicy,
@@ -15,7 +16,7 @@ export interface OtlpExportConfig {
   headers?: Record<string, string>;
   timeout?: string;
   resourceAttributes?: Record<string, unknown>;
-  buffer?: number;
+  buffer?: number | bigint;
   on_full?: string;
   flush_interval?: string;
 }
@@ -34,8 +35,15 @@ export function bufferPolicyOf(config: OtlpExportConfig, sinkId: string): SinkBu
         `Use \`drop_new\` or \`drop_old\`, or move this sink to a worker thread.`,
     );
   }
+  // A YAML literal arrives as a number, a `!cel` one as an int64.
+  const buffer = config.buffer == null ? DEFAULT_BUFFER_POLICY.buffer : integerInput(config.buffer);
+  if (buffer === undefined) {
+    throw new Error(
+      `Sink "${sinkId}": 'buffer' must be an integer a number can hold, got ${String(config.buffer)}.`,
+    );
+  }
   return {
-    buffer: config.buffer ?? DEFAULT_BUFFER_POLICY.buffer,
+    buffer,
     onFull: (config.on_full ?? DEFAULT_BUFFER_POLICY.onFull) as SinkBufferPolicy["onFull"],
     flushIntervalMs: config.flush_interval
       ? parseDurationMs(config.flush_interval, DEFAULT_BUFFER_POLICY.flushIntervalMs)

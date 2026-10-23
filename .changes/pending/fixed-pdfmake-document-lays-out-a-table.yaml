@@ -1,0 +1,6 @@
+modules:
+  modules/pdfmake: Fixed
+body: PdfMake.Document lays out a table's 'headerRows', 'keepWithHeaderRows', a cell's
+  'colSpan' / 'rowSpan' and an ordered list's 'start' supplied as a 64-bit integer —
+  what any !cel integer expression produces — as it does the same literal, instead of
+  failing with a BigInt arithmetic error or numbering the list from 1.

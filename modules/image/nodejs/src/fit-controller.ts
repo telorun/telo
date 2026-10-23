@@ -20,7 +20,7 @@ interface FitInputs {
   maxWidth: number;
   maxHeight: number;
   format?: string;
-  quality?: number;
+  quality?: number | bigint;
 }
 
 interface FitOutputs {

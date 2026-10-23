@@ -1,0 +1,30 @@
+# A number written literally in a pure `value:` step is an int when integral —
+# what the same number written in CEL is — so multiplying it by a double has no
+# overload: `telo check` reports the expression, and the kernel refuses it for a
+# consumer. A double 3 is written `!cel "3.0"`.
+kind: Telo.Library
+metadata:
+  name: LiteralStepNumber
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [call]
+---
+kind: Run.Sequence
+metadata:
+  name: call
+steps:
+  - name: scaled
+    invoke: !ref scale
+---
+# Named, not inline: an exported instance's inline declarations are checked in
+# the consumer too, which would make the consumer report this and leave the
+# kernel's own refusal unexercised.
+kind: Run.Sequence
+metadata:
+  name: scale
+steps:
+  - name: count
+    value: 3
+  - name: scaled
+    value: !cel "steps.count.result * 2.0"

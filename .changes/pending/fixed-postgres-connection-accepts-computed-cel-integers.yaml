@@ -1,0 +1,7 @@
+modules:
+  modules/postgres: Fixed
+body: Postgres.Connection accepts computed CEL integers for every 'pool' setting (min,
+  max, idleTimeoutMs, connectionTimeoutMs, maxLifetimeMs, healthCheckMs) and configures
+  the pool and its liveness sweep exactly as the same literals do; before, the
+  connection failed to start or its timers threw. A value no JS number holds exactly is
+  refused at creation, naming the connection and the field.

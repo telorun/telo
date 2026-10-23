@@ -192,8 +192,10 @@ steps:
 kind: Run.Sequence
 metadata: { name: consoleLoginWithoutIss }
 with:
+  # A `!cel` integer is a 64-bit integer, not the number a YAML literal is.
   - kind: OAuth.RedirectListener
     metadata: { name: loopback }
+    port: !cel "0"
   - kind: OAuth.RedirectAwait
     metadata: { name: AwaitRedirect }
     listener: !ref loopback
@@ -450,7 +452,7 @@ steps:
     invoke: !ref awaitDevice
     inputs:
       deviceCode: !cel "steps.deniedStart.result.deviceCode"
-      interval: 1
+      interval: !cel "1"
       expiresAt: !cel "steps.deniedStart.result.expiresAt"
   - name: assertDeviceDenied
     invoke: !ref assertEquals
@@ -467,6 +469,28 @@ steps:
     inputs:
       actual: !cel "steps.machine.result.accessToken"
       expected: at-machine
+
+  # ---- A computed expiry is stored as the instant it names ------------------
+  # An expiry in 1970, written as a `!cel` integer, is expired: reading the token
+  # refreshes it, exactly as for the same literal.
+  - name: computedExpiryGrant
+    invoke: !ref writeGrant
+    inputs:
+      key: computed-expiry
+      tokens:
+        accessToken: at-expired
+        tokenType: Bearer
+        expiresAt: !cel "1"
+        refreshToken: rt-1
+        scope: read write
+  - name: computedExpiryToken
+    invoke: !ref currentToken
+    inputs: { key: computed-expiry }
+  - name: assertComputedExpiryRefreshed
+    invoke: !ref assertEquals
+    inputs:
+      actual: !cel "steps.computedExpiryToken.result.accessToken"
+      expected: at-fresh
 
   # ---- A stored grant is returned without a refresh ------------------------
   - name: current

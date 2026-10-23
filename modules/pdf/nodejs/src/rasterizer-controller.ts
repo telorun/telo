@@ -7,6 +7,7 @@ import type { Canvas } from "@napi-rs/canvas";
 import { loadCanvas, loadPdfjs, pdfAssetOptions } from "./pdf-runtime.js";
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
+import { integerSetting } from "./integer-setting.js";
 
 interface RasterizerResource {
   metadata: { name: string; module?: string };
@@ -17,9 +18,9 @@ interface RasterizerResource {
 
 interface RasterizerInputs {
   data: Uint8Array;
-  page?: number;
+  page?: number | bigint;
   format?: string;
-  quality?: number;
+  quality?: number | bigint;
 }
 
 interface RasterizerOutputs {
@@ -57,7 +58,7 @@ class PdfRasterizer implements ResourceInstance<RasterizerInputs, RasterizerOutp
     // enforced by the kernel's contract binding, so only the range check the
     // schema cannot express — page vs. the document's actual page count — is
     // still this controller's to make (below).
-    const pageNumber = inputs.page ?? 1;
+    const pageNumber = integerSetting(inputs.page ?? 1, `Pdf.Rasterizer "${name}"`, "page");
 
     const { createCanvas } = await loadCanvas(this.ctx);
     const task = await loadPdf(this.ctx, data);
@@ -123,7 +124,7 @@ const MEDIA_TYPE: Record<string, string> = {
  */
 function encodeCanvas(
   canvas: Canvas,
-  input: { format?: string; quality?: number },
+  input: { format?: string; quality?: number | bigint },
   resource: { format?: string; quality?: number },
   label: string,
 ): { image: Uint8Array; mediaType: string } {
@@ -138,11 +139,12 @@ function encodeCanvas(
   if (format === "png") {
     return { image: new Uint8Array(canvas.toBuffer("image/png")), mediaType };
   }
-  const quality = input.quality ?? resource.quality ?? 80;
-  if (!Number.isInteger(quality) || quality < 1 || quality > 100) {
+  const given = input.quality ?? resource.quality ?? 80;
+  const quality = integerSetting(given, label, "quality");
+  if (quality < 1 || quality > 100) {
     throw new InvokeError(
       "ERR_INVALID_INPUT",
-      `${label}: 'quality' must be an integer between 1 and 100; got ${quality}.`,
+      `${label}: 'quality' must be between 1 and 100, got ${String(given)}.`,
     );
   }
   return {

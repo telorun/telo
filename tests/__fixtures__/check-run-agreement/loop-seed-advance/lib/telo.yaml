@@ -1,0 +1,33 @@
+# A loop's counter is one step NAME carried by two steps: the seed, written
+# literally, is an int, so the step advancing it reads an int and adding a
+# double has no overload. `telo check` reports the advancing step, and the
+# kernel refuses it for a consumer. The advance is written `+ 1`.
+kind: Telo.Library
+metadata:
+  name: LoopSeedAdvance
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [call]
+---
+kind: Run.Sequence
+metadata:
+  name: call
+steps:
+  - name: counted
+    invoke: !ref count
+---
+# Named, not inline: an exported instance's inline declarations are checked in
+# the consumer too, which would make the consumer report this and leave the
+# kernel's own refusal unexercised.
+kind: Run.Sequence
+metadata:
+  name: count
+steps:
+  - name: turn
+    value: 0
+  - name: spin
+    while: !cel "steps.turn.result < 3"
+    do:
+      - name: turn
+        value: !cel "steps.turn.result + 1.0"

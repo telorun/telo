@@ -256,10 +256,11 @@ steps:
     invoke:
       kind: Assert.Equals
 
-  # A value that is not a number reaches the formatter only when it is computed;
-  # a literal is refused by the registered signature instead.
+  # A value that is not a number reaches the formatter only when its type is
+  # not known statically; a literal, in the expression or in a `value:` step, is
+  # refused by the registered signature instead.
   - name: notANumber
-    value: "abc"
+    value: !cel "dyn('abc')"
   - name: guardNaN
     try:
       - name: callNaN

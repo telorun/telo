@@ -1,4 +1,5 @@
 import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { integerSetting } from "./integer-setting.js";
 import { resolveSource, type TokenSourceResource } from "./token-source.js";
 import type { TokenSet } from "./token-set.js";
 
@@ -11,13 +12,11 @@ interface GrantManifest {
  *  share how they find their source. */
 abstract class GrantOperation implements ResourceInstance {
   protected readonly source: TokenSourceResource;
+  protected readonly label: string;
 
   constructor(manifest: GrantManifest, ctx: ResourceContext, kind: string) {
-    this.source = resolveSource(
-      manifest.source,
-      ctx,
-      () => `OAuthClient.${kind} "${manifest.metadata?.name ?? ""}"`,
-    );
+    this.label = `OAuthClient.${kind} "${manifest.metadata?.name ?? ""}"`;
+    this.source = resolveSource(manifest.source, ctx, () => this.label);
   }
 
   snapshot(): Record<string, unknown> {
@@ -41,12 +40,14 @@ export class GrantReadResource extends GrantOperation {
 }
 
 export class GrantWriteResource extends GrantOperation {
-  async invoke(inputs: { key?: string; tokens: TokenSet }) {
+  async invoke(inputs: { key?: string; tokens: Omit<TokenSet, "expiresAt"> & { expiresAt?: number | bigint | null } }) {
     const key = this.source.grantKey(inputs.key);
+    const { expiresAt } = inputs.tokens;
     await this.source.writeGrant(key, {
       accessToken: inputs.tokens.accessToken,
       tokenType: inputs.tokens.tokenType ?? "Bearer",
-      expiresAt: inputs.tokens.expiresAt ?? null,
+      // Stored as a number, so every reader compares and subtracts it alike.
+      expiresAt: expiresAt == null ? null : integerSetting(expiresAt, this.label, "tokens.expiresAt"),
       refreshToken: inputs.tokens.refreshToken ?? null,
       scope: inputs.tokens.scope ?? null,
       idToken: inputs.tokens.idToken ?? null,

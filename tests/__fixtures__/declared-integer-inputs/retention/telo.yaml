@@ -1,0 +1,26 @@
+kind: Telo.Library
+metadata:
+  name: DeclaredIntegerRetention
+  version: 1.0.0
+  description: "Test fixture: arithmetic over a declared integer and a declared number input."
+imports:
+  Run: ../../../../modules/run
+variables:
+  retentionDays: { type: integer, default: 7 }
+  ratio: { type: number, default: 1.5 }
+secrets:
+  pin: { type: integer, default: 4 }
+exports:
+  resources: [hours, scaled, pinned]
+---
+kind: Run.Value
+metadata: { name: hours }
+value: !cel "variables.retentionDays * 24"
+---
+kind: Run.Value
+metadata: { name: scaled }
+value: !cel "variables.ratio * 2.0"
+---
+kind: Run.Value
+metadata: { name: pinned }
+value: !cel "secrets.pin + 1"

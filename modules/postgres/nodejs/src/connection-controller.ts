@@ -1,4 +1,4 @@
-import { toPlainJson, type Logger, type ResourceContext } from "@telorun/sdk";
+import { integerInput, toPlainJson, type Logger, type ResourceContext } from "@telorun/sdk";
 import { quoteAnsiIdentifier, SqlConnectionBase, type SqlDialect } from "@telorun/sql";
 import { CompiledQuery, Kysely, PostgresDialect } from "kysely";
 import { Pool, type ClientConfig } from "pg";
@@ -15,7 +15,35 @@ interface PoolConfig {
 
 interface PostgresConnectionManifest {
   metadata: { name: string; module: string };
-  pool?: PoolConfig;
+  pool?: { readonly [field in keyof PoolConfig]?: number | bigint };
+}
+
+const POOL_FIELDS = [
+  "min",
+  "max",
+  "idleTimeoutMs",
+  "connectionTimeoutMs",
+  "maxLifetimeMs",
+  "healthCheckMs",
+] as const satisfies readonly (keyof PoolConfig)[];
+
+/** A `!cel` integer arrives as an int64 and a literal as a number; the pool and
+ *  its timers take a number either way. */
+function poolConfigOf(manifest: PostgresConnectionManifest): PoolConfig | undefined {
+  if (!manifest.pool) return undefined;
+  const config: PoolConfig = {};
+  for (const field of POOL_FIELDS) {
+    const raw = manifest.pool[field];
+    if (raw === undefined) continue;
+    const value = integerInput(raw);
+    if (value === undefined) {
+      throw new Error(
+        `Postgres.Connection "${manifest.metadata.name}": 'pool.${field}' must be an integer a number can hold, got ${String(raw)}.`,
+      );
+    }
+    config[field] = value;
+  }
+  return config;
 }
 
 /** The slot holding the database-access fulfilment. */
@@ -335,5 +363,5 @@ export async function create(
   resource: PostgresConnectionManifest,
   ctx: ResourceContext,
 ): Promise<PostgresConnection> {
-  return new PostgresConnection(resource.pool, ctx);
+  return new PostgresConnection(poolConfigOf(resource), ctx);
 }

@@ -1,0 +1,65 @@
+kind: Telo.Application
+metadata:
+  name: LiteralValueSteps
+  version: 1.0.0
+  description: |
+    A number written literally in a pure `value:` step reads in CEL as the same
+    number written in CEL would: an int when integral, a double otherwise — as
+    the whole value and at any depth of a literal map or list. `value: 3` then
+    `steps.x.result * 2` used to fail at dispatch with
+    `no overload of "*" takes (double, int)`. A number a `!cel` member computes
+    is left as computed.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref verifyLiteralValues
+---
+kind: Run.Sequence
+metadata: { name: verifyLiteralValues }
+steps:
+  - name: whole
+    value: 3
+  - name: wholeAsFloat
+    value: 3.0
+  - name: exponent
+    value: 1e3
+  - name: fraction
+    value: 3.5
+  - name: nested
+    value:
+      count: 3
+      list: [1, 2]
+      rows: [{ size: 4 }, { size: 5 }]
+      computed: !cel "1.0 + 1.0"
+  - name: flags
+    value: { exchanged: false, issuerMissing: true }
+  - name: fallback
+    value: { refused: true }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        whole: !cel "steps.whole.result * 2"
+        wholeAsFloat: !cel "type(steps.wholeAsFloat.result) == int"
+        exponent: !cel "steps.exponent.result + 1"
+        fraction: !cel "steps.fraction.result * 2.0"
+        member: !cel "steps.nested.result.count * 2"
+        element: !cel "steps.nested.result.list[0] * 2"
+        row: !cel "steps.nested.result.rows[1].size * 2"
+        computed: !cel "type(steps.nested.result.computed) == double"
+        againstMapLiteral: !cel "steps.whole.result == 3 ? {'exchanged': true} : steps.flags.result"
+        againstOtherShape: !cel "has(steps.flags) ? steps.flags.result : steps.fallback.result"
+        text: !interpolate "${{ steps.whole.result }} and ${{ steps.fraction.result }}"
+      expected:
+        whole: 6
+        wholeAsFloat: true
+        exponent: 1001
+        fraction: 7
+        member: 6
+        element: 2
+        row: 10
+        computed: true
+        againstMapLiteral: { exchanged: true }
+        againstOtherShape: { exchanged: false, issuerMissing: true }
+        text: "3 and 3.5"

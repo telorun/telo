@@ -725,19 +725,73 @@ fn open<'a>(
 }
 
 /// The one type both sides can be: symmetric, `dyn` where they have nothing in common.
-/// An unresolved parameter yields to the other side.
+/// An unresolved parameter yields to the other side. A record is a map with named keys
+/// (see [`assignable`]), so against a map, or a record of another shape, it joins as
+/// that map: its key `string` joined with the map's, its value every field folded from
+/// an unresolved parameter, `dyn` for an open record.
 pub fn unify(left: &CelType, right: &CelType) -> CelType {
+    /// A side borrowed from the caller, or a part of one reached through its `Arc`s.
+    enum Side<'a> {
+        Borrowed(&'a CelType),
+        Shared(Arc<CelType>),
+    }
+    impl Side<'_> {
+        fn get(&self) -> &CelType {
+            match self {
+                Side::Borrowed(ty) => ty,
+                Side::Shared(ty) => ty,
+            }
+        }
+    }
     enum Task<'a> {
-        Unify(&'a CelType, &'a CelType),
+        Unify(Side<'a>, Side<'a>),
+        /// Answers a type already known.
+        Known(CelType),
+        /// Joins the last answer with a record's field.
+        Fold(CelType),
+        /// Joins the last two answers.
+        Join,
         List,
         Map,
         Optional,
     }
-    let mut tasks = vec![Task::Unify(left, right)];
+    /// Queues the value type of the map a record is, to be answered once.
+    fn record_value(tasks: &mut Vec<Task<'_>>, record: &RecordType) {
+        if record.open {
+            tasks.push(Task::Known(DYN));
+            return;
+        }
+        // A record with no fields says nothing about its values, as an empty map does not.
+        for ty in record.fields.values().collect::<Vec<_>>().into_iter().rev() {
+            tasks.push(Task::Fold(ty.clone()));
+        }
+        tasks.push(Task::Known(parameter_of("V")));
+    }
+    /// What a record joins as a map against.
+    enum Against<'b> {
+        Map(&'b MapType),
+        Record(&'b RecordType),
+    }
+    /// Queues the map a record joins as against a map, or a record of another shape.
+    fn record_as_map(tasks: &mut Vec<Task<'_>>, record: &RecordType, other: Against<'_>) {
+        tasks.push(Task::Map);
+        tasks.push(Task::Join);
+        match other {
+            Against::Map(map) => tasks.push(Task::Known((*map.value).clone())),
+            Against::Record(other) => record_value(tasks, other),
+        }
+        record_value(tasks, record);
+        tasks.push(match other {
+            Against::Map(map) => Task::Unify(Side::Borrowed(&STRING_TYPE), Side::Shared(Arc::clone(&map.key))),
+            Against::Record(_) => Task::Known(STRING),
+        });
+    }
+    let mut tasks = vec![Task::Unify(Side::Borrowed(left), Side::Borrowed(right))];
     let mut results: Vec<CelType> = Vec::new();
     while let Some(task) = tasks.pop() {
         match task {
-            Task::Unify(left, right) => {
+            Task::Unify(left_side, right_side) => {
+                let (left, right) = (left_side.get(), right_side.get());
                 if types_equal(left, right) {
                     results.push(left.clone());
                 } else if matches!(left, CelType::Parameter(_)) {
@@ -750,20 +804,48 @@ pub fn unify(left: &CelType, right: &CelType) -> CelType {
                     match (left, right) {
                         (CelType::List(left), CelType::List(right)) => {
                             tasks.push(Task::List);
-                            tasks.push(Task::Unify(&left.element, &right.element));
+                            tasks.push(Task::Unify(
+                                Side::Shared(Arc::clone(&left.element)),
+                                Side::Shared(Arc::clone(&right.element)),
+                            ));
                         }
                         (CelType::Map(left), CelType::Map(right)) => {
                             tasks.push(Task::Map);
-                            tasks.push(Task::Unify(&left.value, &right.value));
-                            tasks.push(Task::Unify(&left.key, &right.key));
+                            tasks.push(Task::Unify(
+                                Side::Shared(Arc::clone(&left.value)),
+                                Side::Shared(Arc::clone(&right.value)),
+                            ));
+                            tasks.push(Task::Unify(
+                                Side::Shared(Arc::clone(&left.key)),
+                                Side::Shared(Arc::clone(&right.key)),
+                            ));
                         }
                         (CelType::Optional(left), CelType::Optional(right)) => {
                             tasks.push(Task::Optional);
-                            tasks.push(Task::Unify(&left.value, &right.value));
+                            tasks.push(Task::Unify(
+                                Side::Shared(Arc::clone(&left.value)),
+                                Side::Shared(Arc::clone(&right.value)),
+                            ));
+                        }
+                        (CelType::Record(record), CelType::Record(other)) => {
+                            record_as_map(&mut tasks, record, Against::Record(other))
+                        }
+                        (CelType::Record(record), CelType::Map(map)) | (CelType::Map(map), CelType::Record(record)) => {
+                            record_as_map(&mut tasks, record, Against::Map(map))
                         }
                         _ => results.push(DYN),
                     }
                 }
+            }
+            Task::Known(ty) => results.push(ty),
+            Task::Fold(field) => {
+                let joined = results.pop().expect("the fold so far was answered");
+                tasks.push(Task::Unify(Side::Shared(Arc::new(joined)), Side::Shared(Arc::new(field))));
+            }
+            Task::Join => {
+                let right = results.pop().expect("the right side was answered");
+                let left = results.pop().expect("the left side was answered");
+                tasks.push(Task::Unify(Side::Shared(Arc::new(left)), Side::Shared(Arc::new(right))));
             }
             Task::List => {
                 let element = results.pop().expect("the element was unified");

@@ -361,5 +361,26 @@ export function unify(left: CelType, right: CelType): CelType {
     return mapOf(unify(left.key, right.key), unify(left.value, right.value));
   }
   if (left.kind === "optional" && right.kind === "optional") return optionalOf(unify(left.value, right.value));
+  // A record is a map with named keys (see `assignable`), so against a map, or a record of
+  // another shape, it joins as that map.
+  if (left.kind === "record" && (right.kind === "record" || right.kind === "map")) {
+    return unifyRecordAsMap(left, right);
+  }
+  if (right.kind === "record" && left.kind === "map") return unifyRecordAsMap(right, left);
   return DYN;
+}
+
+function unifyRecordAsMap(record: RecordType, other: RecordType | MapType): MapType {
+  const key = other.kind === "map" ? unify(STRING, other.key) : STRING;
+  const values = [recordValueType(record), other.kind === "map" ? other.value : recordValueType(other)];
+  return mapOf(key, values.reduce((joined, value) => unify(joined, value)));
+}
+
+/** The value type of the string-keyed map a record is: unjudged when open, else its fields joined. */
+function recordValueType(record: RecordType): CelType {
+  if (record.open) return DYN;
+  // A record with no fields says nothing about its values, as an empty map literal does not.
+  let joined: CelType = parameterOf("V");
+  for (const type of record.fields.values()) joined = unify(joined, type);
+  return joined;
 }

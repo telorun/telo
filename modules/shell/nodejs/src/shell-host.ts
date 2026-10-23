@@ -1,4 +1,4 @@
-import type { InvokeContext } from "@telorun/sdk";
+import { integerInput, type InvokeContext } from "@telorun/sdk";
 
 /**
  * The transport-neutral `Shell.Host` contract — the module's central seam.
@@ -96,6 +96,22 @@ export function toCommandSpec(input: CommandInputShape, kind: string): CommandSp
     return { args: args as string[] };
   }
   throw new Error(`${kind}: one of 'command' (a non-empty string) or 'args' (a non-empty string array) is required`);
+}
+
+/**
+ * A `timeoutMs` input as the milliseconds a timer takes. The slot is a declared
+ * integer, which a call site supplies as a plain number (a YAML literal) or as a
+ * 64-bit integer (any `!cel` integer expression).
+ */
+export function toTimeoutMs(timeoutMs: unknown, kind: string): number | undefined {
+  if (timeoutMs === undefined || timeoutMs === null) return undefined;
+  const milliseconds = integerInput(timeoutMs);
+  if (milliseconds === undefined) {
+    throw new Error(
+      `${kind}: 'timeoutMs' must be an integer a number can hold, got ${String(timeoutMs)}`,
+    );
+  }
+  return milliseconds;
 }
 
 export interface ExecutionHandle {
