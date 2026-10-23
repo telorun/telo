@@ -1,4 +1,0 @@
-modules:
-  modules/crud: Added
-body: Crud.Ui's generated filter bar now carries its kept fields in its state, following
-  ui's shared state record; nothing it generates changes otherwise.

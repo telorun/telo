@@ -1,4 +1,0 @@
-modules:
-  modules/ui: Fixed
-body: "The description of afterSubmit: again now says the form stays open back at the
-  values a new record starts from, rather than emptied."

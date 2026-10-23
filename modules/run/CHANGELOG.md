@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.29.0 - 2026-10-23
+### Added
+* Run.Projection's result is typed and validated as an array: the new elementType field types one element (outputs is checked against it, and every element is validated at dispatch), so passing a projection's result to an input declared type: array no longer fails telo check with CEL_TYPE_ERROR. Breaking: outputType now describes the whole result array rather than one element, and a catches fallback value must be an array; a non-array fallback now fails the call with ERR_OUTPUT_INVALID.
+### Fixed
+* The retry guide says a step's timeout also fails a target that answers at or past the deadline before the timer has run.
+
 ## 0.28.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

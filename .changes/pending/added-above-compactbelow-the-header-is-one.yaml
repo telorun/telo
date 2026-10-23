@@ -1,6 +1,0 @@
-modules:
-  modules/ui-react: Added
-body: Above compactBelow the header is one row — header-start, the title, the navigation
-  taking the room left, header-end at the inline end — and the default theme's header
-  spans the full window width with its side padding instead of centring its content on
-  the page width.

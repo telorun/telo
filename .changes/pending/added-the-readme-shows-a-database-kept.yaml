@@ -1,5 +1,0 @@
-modules:
-  modules/sqlite: Added
-body: "The README shows a database kept in a durable directory (`file: !cel
-  \"resources.data.path.joinPath('app.db')\"` over a `Telo.DurableDirectory` need) and
-  states that SQLite is safe only on a `single-writer` one."

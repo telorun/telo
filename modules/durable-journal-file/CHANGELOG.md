@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-10-23
+### Added
+* Directory slots declare entry: directory, so telo check refuses a file wired where a directory is wanted (HOST_PATH_ENTRY_MISMATCH) and the kernel refuses an existing file there when the resource is created. Requires telo 0.121.0.
+
 ## 0.6.1 - 2026-10-11
 ### Fixed
 * A run is recorded already claimed by the process that starts it. Before, a resumer polling while a run was being started could take it first and execute it without its inputs, which left the run stuck as running and refused every later delivery to it.

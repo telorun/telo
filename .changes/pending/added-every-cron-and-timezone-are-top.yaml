@@ -1,4 +1,0 @@
-modules:
-  modules/scheduler: Added
-body: "`every`, `cron` and `timezone` are top-level matchers, so an editor or an
-  application outline labels a schedule's `invoke` trigger by the values written there."

@@ -1,5 +1,0 @@
-modules:
-  modules/http-server: Added
-body: "`contentTypeParsers` is an entry list: each entry is identified by its
-  `contentType` and dispatches to its `parser`, so an editor lists a server's parsers as
-  it lists its mounts."

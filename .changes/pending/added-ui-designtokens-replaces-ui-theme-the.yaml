@@ -1,7 +1,0 @@
-modules:
-  modules/ui: Added
-body: "Ui.DesignTokens replaces Ui.Theme: the brand of an interface — colours, radii,
-  spacing, shadows, type sizes and typefaces — as a closed, renderer-neutral token set
-  that any theme reads. Breaking: the kind is renamed, and its tokens are written at the
-  resource's top level instead of under tokens: (kind: Ui.DesignTokens, color.accent:
-  '#1d4ed8'). A misspelled token is still refused."

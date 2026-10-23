@@ -1,4 +1,0 @@
-modules:
-  apps/hub: Added
-body: The design-library guide tells a library that keeps files across restarts to
-  declare a Telo.DurableDirectory need rather than a data-directory variable.

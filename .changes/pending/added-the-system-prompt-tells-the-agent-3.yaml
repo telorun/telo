@@ -1,4 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The system prompt tells the agent that a Run.Projection's result is an array,
-  typed per element with elementType, and that a catches fallback is an array too.

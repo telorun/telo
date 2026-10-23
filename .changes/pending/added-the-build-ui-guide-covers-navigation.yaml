@@ -1,5 +1,0 @@
-modules:
-  apps/hub: Added
-body: "The build-ui guide covers navigation icons: an entry's icon is a UiLucide.Icon
-  from ui-lucide — declared inline where one entry uses it, named when several share it
-  — or a Ui.FileIcon, drawn in its text's colour and alone in a sidebar's rail."

@@ -1,4 +1,0 @@
-modules:
-  apps/hub: Fixed
-body: The build-ui guide counts nine layer controls, Navigation among them, replaced by
-  a control set as one unit.

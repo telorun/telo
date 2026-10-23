@@ -1,5 +1,0 @@
-modules:
-  apps/hub: Added
-body: The build-ui guide names ui-react-radix's theme, drawn with Radix, says a theme of
-  your own takes its controls whole or none of them, and says no two entries of a
-  theme's controls implement one control, even one set listed through two aliases.

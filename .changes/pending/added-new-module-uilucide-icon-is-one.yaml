@@ -1,7 +1,0 @@
-modules:
-  modules/ui-lucide: Added
-body: "New module: UiLucide.Icon is one glyph of the Lucide icon set, named as Lucide
-  names it and provided as its SVG file, for a navigation entry's icon; a name outside
-  the set is refused before the app runs. The glyphs of Lucide 1.8.0 are staged from the
-  lucide-static release with Lucide's ISC notice, and the names and the staged files are
-  one generated list."

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-10-23
+### Added
+* File slots declare entry: file, so telo check refuses a directory wired where a file is wanted (HOST_PATH_ENTRY_MISMATCH) and the kernel refuses an existing directory there when the resource is created. Requires telo 0.121.0.
+
 ## 0.3.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

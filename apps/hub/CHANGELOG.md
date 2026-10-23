@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.18.0 - 2026-10-23
+### Added
+* The build-ui guide covers navigation icons: an entry's icon is a UiLucide.Icon from ui-lucide — declared inline where one entry uses it, named when several share it — or a Ui.FileIcon, drawn in its text's colour and alone in a sidebar's rail.
+* The build-ui guide covers texts over data ({ text, values }), the required words: of UiReact.App, and serving an application translated with translator: and a per-request lang:.
+* The build-ui guide covers Ui.Data readers, shown conditions over data, query, values and row, value and list nodes, field shown and Action enabled.
+* The build-ui guide describes an action's result and failure trees, onSuccess, concurrency and clearAnswerOn, and row actions on tables and list nodes with their own enabled.
+* The build-ui guide describes form field kinds, option sources, groups and kept form state.
+* The build-ui guide names the navigation placements — the header, a sidebar collapsing to a rail and keeping its open groups, a menu button's drawer and a bottom tab bar, the last two what a narrow screen uses — and the tabs node, its chosen tab kept in the page address.
+* The build-ui guide names ui-react-radix's theme, drawn with Radix, says a theme of your own takes its controls whole or none of them, and says no two entries of a theme's controls implement one control, even one set listed through two aliases.
+* The build-ui guide names UiReact.App's header slot: nodes on every page before the title and after the navigation, evaluated per request with no query in scope.
+* The build-ui guide's themes section covers theme and brand as two keys: theme: is the required look of every part and its control sets, and tokens: is the brand over it, a closed design-token set or a list chosen per request. It covers control sets: any of the fifteen controls drawn in place may be replaced in any subset, while the nine layer controls (select, multi-select, dialog, drawer, popover, confirmation, menu, tooltip, navigation) are replaced as one unit.
+* The design-library guide says an inline declaration holds the kind's own fields, a name among them when the kind declares one, and that { kind, name } for a kind declaring no name field is the removed reference form.
+* The design-library guide tells a library that keeps files across restarts to declare a Telo.DurableDirectory need rather than a data-directory variable.
+### Fixed
+* The build-ui guide counts nine layer controls, Navigation among them, replaced by a control set as one unit.
+* The build-ui guide's address rule and examples now serve the API under the application's mount: mounted at /admin, an app-relative source.basePath or source.path is requested under /admin, so the example mounts the API at /admin/api/tasks, and Crud.Ui's basePath is its path under the application's mount.
+
 ## 0.17.1 - 2026-10-19
 ### Fixed
 * get_kinds finds a definition whose kind: or metadata.name is a quoted YAML scalar, where it answered NOT DEFINED beside an export list naming the kind (http-client's Client and Request). get_kinds takes implementation: true for debugging an inherited kind: each document keeps its base:, controllers: and template body, and a base: kind's parent is returned too.

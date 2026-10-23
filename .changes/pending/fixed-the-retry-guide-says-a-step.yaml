@@ -1,4 +1,0 @@
-modules:
-  modules/run: Fixed
-body: The retry guide says a step's timeout also fails a target that answers at or past
-  the deadline before the timer has run.

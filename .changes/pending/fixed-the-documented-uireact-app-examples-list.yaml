@@ -1,3 +1,0 @@
-modules:
-  modules/crud: Fixed
-body: The documented UiReact.App examples list their pages as Ui.Page.

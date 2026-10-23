@@ -1,7 +1,0 @@
-modules:
-  modules/ui-react: Fixed
-body: "A table, a form and an option source now read and write their app-relative
-  basePath under the application's mount, as a reader reads its source.path; a change is
-  still announced under the basePath as written. After a save, afterSubmit: again
-  returns the form to the values a new record starts from — the model's defaults and
-  each date range's initial preset — instead of emptying it."

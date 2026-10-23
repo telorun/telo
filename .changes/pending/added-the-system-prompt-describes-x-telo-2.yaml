@@ -1,4 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The system prompt describes x-telo-text-values, texts in a union and the
-  TextRecord fragment.

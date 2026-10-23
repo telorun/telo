@@ -1,7 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: "The agent's telo tool may run telo describe, and the system prompt has the agent
-  read what a manifest it wrote does — its inputs, what it starts, its entry points and
-  which catches: entry renders each code, and what nothing reaches — to confirm it built
-  what was asked. teloVerbs defaults to check, cel, module, search, builtins and
-  describe."

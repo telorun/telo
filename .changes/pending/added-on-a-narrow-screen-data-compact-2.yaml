@@ -1,7 +1,0 @@
-modules:
-  modules/ui-react-radix: Added
-body: 'On a narrow screen (`data-compact="true"` on the `app` part) the theme fits the
-  same parts to the width: the header scrolls away with the page and its title, start
-  and end share one row; filter bounds and controls shrink and wrap so no filter is
-  wider than the screen; and a table frame shows an edge shadow while more columns lie
-  beyond it.'

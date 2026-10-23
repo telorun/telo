@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.28.0 - 2026-10-23
+### Added
+* The agent's telo tool may run telo describe, and the system prompt has the agent read what a manifest it wrote does — its inputs, what it starts, its entry points and which catches: entry renders each code, and what nothing reaches — to confirm it built what was asked. teloVerbs defaults to check, cel, module, search, builtins and describe.
+* The primer describes a host path's entry argument (entry: directory | file), which variables feeding the stdlib's path slots declare.
+* The primer describes navigation icons: an entry's icon: is a Ui.FileIcon or a UiLucide.Icon from ui-lucide, declared inline where one entry uses it and named when several share it, and a collapsed sidebar is a rail of icons.
+* The primer describes persistent storage as a Telo.DurableDirectory need (size, access, a file in it through path.joinPath) and its two forwarding refusals.
+* The primer describes typing a binding from whoever references the resource (x-telo-context-from-referrer), the entries a list fills and their cycles (x-telo-context-item-fills), rule pointers that continue past a reference and resolveSelf, and x-telo-value-schema-from's member form.
+* The primer says a name in an inline declaration is configuration for a kind that declares a name field, as { kind: UiLucide.Icon, name: house }.
+* The primer says how an application's navigation is drawn: a placement kind — a header menu bar, a sidebar collapsing to a rail, a menu button's drawer or a bottom tab bar, the last two what a narrow screen uses.
+* The system prompt describes x-telo-text-values, texts in a union and the TextRecord fragment.
+* The system prompt describes x-telo-context-eval (the eval modes a context binding exists at) and the relative-pointer form of x-telo-context-element-from-item.
+* The system prompt tells the agent that a Run.Projection's result is an array, typed per element with elementType, and that a catches fallback is an array too.
+
 ## 0.27.0 - 2026-10-19
 ### Added
 * The agent finds and reads large files without reading them whole: read_file takes offset and limit and answers those lines under a [lines A-B of N of <path>] header, and the new search_files tool answers every line under a directory matching an RE2 pattern as path:line: text (files past maxSearchFileBytes named, not read; at most maxSearchMatches lines). The system prompt gains a procedure for a pasted runtime error: locate where the failing expression is written (get_kinds with implementation: true for a published kind), read only that range, reproduce it in a probe, and say when the defect is a published module's or the runtime's rather than moving import pins on a guess.
