@@ -21,7 +21,7 @@ metadata:
     splitting it, and a first message whose 4000th code point is astral is sent
     to the naming call as its first 4000 code points, the astral one whole.
 imports:
-  App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
+  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4

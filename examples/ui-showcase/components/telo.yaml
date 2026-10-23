@@ -8,7 +8,7 @@ metadata:
     grid cell, a sheet of every design token as the page applies it, and the
     page's typefaces in each face with whether the application serves them.
 imports:
-  Ui: ../../../modules/ui
+  Ui: oci://ghcr.io/telorun/ui@0.6.0#sha256-mqcJiijmgqdJn8ppG9AWh8TUxSz6ULdlo22E0EqfZko
 exports:
   resources: [ taskDesk, priorityMeter, tokenSheet, typefaceSamples ]
   browser:

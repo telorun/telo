@@ -26,7 +26,7 @@ imports:
       stateDir: !cel "variables.scratch.joinPath('state')"
       modelEndpoint: http://127.0.0.1:18562/v1
       hubPublisher: example.test
-  App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
+  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
   Stream: ../../../../modules/stream
   Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client
