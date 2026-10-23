@@ -1,5 +1,12 @@
 # @telorun/debug-ui
 
+## 0.6.7
+
+### Patch Changes
+
+- Updated dependencies [adf4eae]
+  - @telorun/debug-wire@0.4.5
+
 ## 0.6.6
 
 ### Patch Changes

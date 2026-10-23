@@ -1,5 +1,67 @@
 # @telorun/cli
 
+## 0.121.0
+
+### Minor Changes
+
+- adf4eae: `telo run` at a terminal asks for the application inputs nothing supplies instead of failing. When the only reason a root Application cannot load is that `variables:` / `secrets:` / `ports:` entries or the required fields of its needs have no value, the CLI asks for each one on stderr (a secret or sensitive need field without echo), the kernel decodes and validates each answer exactly as it would the same text in the environment, re-asks one it refuses with its own sentence, and the run starts. Answers are the fifth and last source — after a value supplied by name, the command line, `env:` and `default:` — and are never written to the process environment, `ctx.env` or a started child's environment; a need field's answer goes only into that need. Once accepted, the CLI offers to save them (default no): secrets to the sensitive env file, everything else to the other, as `telo env template --write` places them. A watch session keeps its answers across reloads.
+
+  It asks only when stdin and stderr are both terminals and `--no-input` (a new `telo run` option) is not given. Without that, the refusal is unchanged (`ERR_MANIFEST_VALIDATION_FAILED`, `ERR_NEED_UNMET`, `ERR_NEED_PARTIALLY_SUPPLIED`) and adds a hint naming the missing variables; `Kernel.RunFailed` carries them as `unresolved`. The kernel's `load()` takes the asking side as an `inputResolver` option. Every runner backend now starts applications with `--no-input`, and the oldest telo a runner supervises moves to the release carrying it.
+
+- 84f7424: Every command line the CLI's argument parser refuses — an unknown flag, a missing argument or subcommand, a value outside an option's choices — now exits with status 2 instead of 1, with the usage and the reason on stderr and nothing on stdout. `-o yaml` is one of them: it used to end in a stack trace. The status contract is written in the README's "Exit status" section: 0 the command did its work, 1 the work failed, 2 the invocation was refused. `telo describe`, `telo needs report` and `telo env template` given a manifest that cannot be read now print one error line, as `telo check` does, rather than a stack trace.
+- 062d4d0: `Telo.DurableDirectory` — a kernel-declared need type for persistent storage on disk. Its field `path` is a `Telo.HostPath`; its parameters are `size` (a whole number followed by `Mi`, `Gi` or `Ti`, default `1Gi`) and `access` (`single-writer`, the default, or `shared`), neither measured nor enforced by the kernel. A host supplies each need through its env name (`TELO_NEED_UPLOADS__PATH`), or sets `TELO_HOST_STATE_DIR` once and every unset one is answered as `<state dir>/needs/<need path>`, created at load.
+
+  However a directory is supplied, the kernel checks it names a directory the process can write to and creates it when absent, refusing otherwise with `ERR_NEED_DIRECTORY_UNUSABLE` — before any resource initializes for one read from the environment, when the import initializes for a field-by-field supply, when created for a fulfilment the manifest writes. Under a state directory, an entry under `needs/` no need names (a renamed need or import alias) refuses a load that would create a fresh directory beside it with `ERR_NEED_ORPHANED`, naming both paths, and is otherwise a `NEED_ORPHANED` warning; nothing is moved or deleted. `TELO_HOST_STATE_DIR` is hidden from controllers like a need's env name and is not inherited by an application started with `App.Instance`.
+
+  `telo check` and the kernel refuse a `shared` directory forwarded whole to a `single-writer` need, and a smaller `size` forwarded to a larger one (`NEED_FORWARD_INCOMPATIBLE`), and one directory forwarded whole to two or more needs (`NEED_DIRECTORY_FORWARDED_TWICE` / `ERR_NEED_DIRECTORY_FORWARDED_TWICE`). `telo needs report` now lists every need's `parameters` with its type's schema defaults filled in, for every need type.
+
+- 062d4d0: A `Telo.HostPath` slot may say what its path names: `x-telo-type: { name: Telo.HostPath, entry: directory }` (or `entry: file`). Omitted means either, and an absent path is never refused. `telo check` refuses a `!module-path` naming the other kind of entry, a variable declared with the other `entry` read into the field, and one an import passes to a library input declaring the other (`HOST_PATH_ENTRY_MISMATCH`); at a call's `inputs:` the mismatch is `CEL_TYPE_ARGUMENT_MISMATCH`, and a token outside `file` / `directory` is `X_TELO_TYPE_ARGUMENT_INVALID`. The kernel refuses an existing path of the other kind when it creates the resource holding it (`ERR_HOST_PATH_ENTRY_MISMATCH`) and one the filesystem will not answer for (`ERR_HOST_PATH_UNREADABLE`), and an Application variable or secret declaring `entry` at load, inside `ERR_MANIFEST_VALIDATION_FAILED`. `!module-path` completion offers only directories at a directory slot. The value-type data gains a parameter flag, `hostEntry`, which both SDK readers accept on a `fromHost` type only. `ManifestSource.exists` is replaced by `entryAt(base, relative)`, answering `file`, `directory` or nothing; the loader stamps what a single-claim tag names on it. `Telo.DurableDirectory.path` declares `entry: directory`. The Rust kernel now refuses both at creation as the Node kernel does — a path of the other kind (`ERR_HOST_PATH_ENTRY_MISMATCH`) and a relative one, literals included since it runs no analysis (`ERR_HOST_PATH_RELATIVE`) — and both kernels answer one set of vectors, `analyzer/host-path-conformance/`.
+- 84f7424: A packaged executable is a manifest source: `telo describe ./orders`, `telo check ./orders`, `telo needs report ./orders`, `telo env template ./orders`, `telo cel functions ./orders` and `telo run ./orders` read its payload — unpacked into the directory the binary itself uses, against the payload's own cache — and execute nothing it carries. Only a run reclaims the application's older unpacked trees. The payload's cache is sealed: these commands read each module it holds as it is — an unpinned `oci://…@<tag>` import is not checked against its registry, so reading a binary needs no network — remove nothing from it and write nothing into it, and `telo check ./other ./orders` judges `./orders` against its own payload's copy rather than another path's cache.
+
+  `TELO_APP_CLI=1` makes a packaged binary the telo CLI it carries for one start (`TELO_APP_CLI=1 ./orders describe ./orders`, `TELO_APP_CLI=1 ./orders run --inspect --debug ./orders <args>`). Unset or empty means the application; any other value is refused before anything runs, with exit status 2 in every distribution. Every telo start removes the variable from its own environment, so no kernel, controller or child process sees it; `telo runner` sets it on the children it starts when the executable it re-runs carries a payload. `./orders <args>` is now exactly `TELO_APP_CLI=1 ./orders run ./orders <args>`, and `--debug`'s `.telo.debug.jsonl` is written where the env files are read — the working directory for a packaged binary. An executable carrying a payload is never `telo package`'s own carrier.
+
+  Breaking: `TELO_APP_INFO` is retired. A packaged binary started with it set refuses (exit status 2) and starts nothing, naming `TELO_APP_CLI=1 <binary> package inspect <binary>`, which prints the same index. The packaged-executable contract is written as `kernel/specs/packaged-application.md`.
+
+- 84f7424: `telo describe <manifest>` prints what an application or library does, read from its manifest with nothing booted: its inputs and the fields reading each, what it starts, every entry point labelled by what selects it with what its handler can throw and which `catches:` entry renders each code, and what nothing reaches; `-o json` prints the `outlineVersion: 1` document. Every value in it is carried as written in one encoding: a JSON scalar or array is itself, an expression or a reference is `{ tag, source, type? }`, and a literal mapping is `{ map: { … } }` at every depth, so a literal never reads as an expression; the analyzer's `readWrittenValue` reads it. An expression in an entry point's or a row's `match` carries its `type` like any other value, while the module graph's own `match`, from which row ids derive, carries none, so an id never moves when a type does. The text form quotes every string inside a list or a mapping, so a literal string spelling `!cel "x"` or `{a: b}` cannot read as an expression or a mapping. A manifest `telo check` refuses has no outline: its errors go to stderr, stdout stays empty, and the command exits 1.
+
+  The analyzer's `ManifestAnalysis.outline(deps, options)` builds that document over the module graph's own arguments, each item carrying the module graph's id; `ManifestAnalysis.moduleGraph` now keeps its graph only for the same `deps` and `options` objects. The `catches:` coverage check reads one catch ladder per code, so a code rendered by a catch-all on one enclosing server and by a named entry on another is covered, where before it was reported uncovered.
+
+  The need table lists a root's own needs whatever the root's kind. Under a Library root, every need reaching it unsupplied — its own included — is an entry of the new supply form `importer`, each field carrying `required` and `sensitive` and no environment name, and `environment` is empty: a library reads nothing from the environment, its importer supplies it. `NeedTableEntry` is now a union discriminated by `supply` (`NeedSuppliedEntry`, `NeedEnvironmentEntry`, `NeedImporterEntry`), `environment` is typed `NeedEnvironmentEntry[]`, and `NeedField` is the per-field shape `NeedEnvField` extends. A module graph row and a call-graph step node carry `predicateField`, the field holding `predicate` (`if`, `while`, `switch`, a dispatch's `when`; a boot target's `when`).
+
+### Patch Changes
+
+- a6d17ff: `telo publish` and `telo release` now give a relatively imported sibling the address of the path its manifest stands for. A `telo.yaml` is its directory's index, so `./timesheets` and `./timesheets/telo.yaml` both publish at `…/timesheets`. Any other manifest is addressed by its name without the extension, so `./example/app.yaml` publishes at `…/example/app`, and a relative import inside it resolves as it does on disk. A file-form import used to publish the sibling at `…/timesheets/telo.yaml`, one level deeper than its directory, so every relative import inside it resolved one level too deep, and a module reached through import chains of different depths was refused as "published to both" two addresses. Two manifests that would publish to one address (`example/app.yaml` beside `example/app/telo.yaml`) are now refused, naming both.
+- Updated dependencies [adf4eae]
+- Updated dependencies [ad5633d]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [ad5633d]
+- Updated dependencies [062d4d0]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [b9e6234]
+- Updated dependencies [832f24b]
+- Updated dependencies [062d4d0]
+- Updated dependencies [832f24b]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [832f24b]
+- Updated dependencies [832f24b]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [832f24b]
+- Updated dependencies [ad5633d]
+- Updated dependencies [84f7424]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [ad5633d]
+- Updated dependencies [a6d17ff]
+- Updated dependencies [84f7424]
+  - @telorun/kernel@0.121.0
+  - @telorun/analyzer@0.121.0
+  - @telorun/runner-core@0.20.0
+  - @telorun/sdk@0.121.0
+  - @telorun/templating@0.121.0
+  - @telorun/ide-support@0.121.0
+
 ## 0.120.1
 
 ### Patch Changes

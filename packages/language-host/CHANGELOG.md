@@ -1,5 +1,16 @@
 # @telorun/language-host
 
+## 0.3.0
+
+### Minor Changes
+
+- b9e6234: The router carries structured editing across engines. `telo/viewModel` and `telo/celCompletion` go only to the engine serving the request's `owner`, and are answered `null` / `[]` without asking any engine when that engine does not advertise `experimental.telo.viewModel` or no running engine serves the owner — they are never sent to every engine. `telo/viewModelChanged` reaches the editor with its `owner` in canonical form and only from the owner's serving engine; revisions form one increasing sequence per owner across engines (a `telo/viewModel` answer's `revision` included), and the router sends a `telo/viewModelChanged` of its own whenever the engine serving an owner changes or goes, so a host reads the model again; an owner whose documents are all closed is forgotten, and one met again continues above every revision already shown. `LanguageRouter.supportsViewModel(owner)` tells an engine that predates structured editing (`false`) from one not running yet (`undefined`), and `canonicalUri` is exported so a host keys owners as the router does.
+
+### Patch Changes
+
+- Updated dependencies [b9e6234]
+  - @telorun/editor-protocol@0.2.0
+
 ## 0.2.1
 
 ### Patch Changes

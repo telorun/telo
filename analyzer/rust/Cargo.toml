@@ -1,6 +1,6 @@
 [package]
 name = "telo-analyzer"
-version = "0.120.1"
+version = "0.121.0"
 license-file = "../../LICENSE"
 edition = "2021"
 publish = false
